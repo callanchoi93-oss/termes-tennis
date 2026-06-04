@@ -386,22 +386,40 @@ const FIREBASE_CONFIG={
   measurementId: "G-90TM16ERSL"
 };
 let db=null;
-try{
-  // 이미 초기화된 앱이 있으면 재사용
-  if(firebase.apps.length>0){
-    db=firebase.app().database();
-  } else {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db=firebase.database();
+(function initFirebase(){
+  try{
+    let app;
+    if(firebase.apps&&firebase.apps.length>0){
+      app=firebase.apps[0];
+    } else {
+      app=firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    db=app.database?app.database():firebase.database();
+    db.ref('.info/connected').on('value',snap=>{
+      try{const d=document.getElementById('dbDot');if(d)d.className='db-dot'+(snap.val()?' on':'');}catch(e){}
+    });
+    console.log('Firebase connected');
+  }catch(e){
+    console.warn('Firebase init failed, using localStorage:',e.message);
+    db=null;
   }
-  db.ref('.info/connected').on('value',snap=>{
-    const d=document.getElementById('dbDot');
-    if(d)d.className='db-dot'+(snap.val()?' on':'');
-  });
-}catch(e){console.log('Firebase error, using localStorage:',e.message);}
+})();
 
-async function sget(k){try{if(db){const s=await db.ref('termes/'+k).get();return s.exists()?s.val():null;}const v=localStorage.getItem('termes-'+k);return v?JSON.parse(v):null;}catch(e){return null;}}
-async function sset(k,v){try{if(db){await db.ref('termes/'+k).set(v);return true;}localStorage.setItem('termes-'+k,JSON.stringify(v));return true;}catch(e){return false;}}
+async function sget(k){
+  try{
+    if(db){
+      const snap=await db.ref('termes/'+k).once('value');
+      return snap.exists()?snap.val():null;
+    }
+  }catch(e){console.warn('sget firebase err:',e.message);}
+  try{const v=localStorage.getItem('termes-'+k);return v?JSON.parse(v):null;}catch(e){return null;}
+}
+async function sset(k,v){
+  try{
+    if(db){await db.ref('termes/'+k).set(v);return true;}
+  }catch(e){console.warn('sset firebase err:',e.message);}
+  try{localStorage.setItem('termes-'+k,JSON.stringify(v));return true;}catch(e){return false;}
+}
 
 // ── CONSTANTS ──
 const CC=['#3182f6','#00b493','#f7c244','#f04452','#8b5cf6','#f97316'];
@@ -902,6 +920,7 @@ function mkKey(name){return 'member-pin-'+name.replace(/[^\uAC00-\uD7A3\u1100-\u
 // 이름 목록 렌더
 function renderNameList(){
   const wrap=document.getElementById('memberNameList');
+  if(!wrap){ console.error('memberNameList not found'); return; }
   wrap.innerHTML='';
   // Add SUPER account
   const superBtn=document.createElement('button');
@@ -1207,17 +1226,18 @@ function renderScoreUI(sess){
   });
 }
 
-// Init
-document.addEventListener('DOMContentLoaded', ()=>{
-  renderNameList();
-});
-// Fallback if DOMContentLoaded already fired
-if(document.readyState==='complete'||document.readyState==='interactive'){
-  renderNameList();
+// Init - run after everything loads
+function initApp(){
+  try{ renderNameList(); }catch(e){ console.error('renderNameList error:',e); }
+  try{ loadRanking(curYear); }catch(e){}
+  try{ loadToday(); }catch(e){}
 }
-
-loadRanking(curYear);loadToday();
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
 </html>
