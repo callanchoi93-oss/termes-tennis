@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#3182f6">
+<link rel="manifest" href="manifest.json">
+<title>TERMES</title>
+<style>
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#f2f4f6;font-family:'Pretendard',-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px}
+.logo{font-size:3.5rem;font-weight:900;letter-spacing:4px;color:#191f28;margin-bottom:6px}
+.logo span{color:#3182f6}
+.sub{font-size:13px;color:#8b95a1;letter-spacing:2px;margin-bottom:56px}
+.btns{display:flex;flex-direction:column;gap:14px;width:100%;max-width:320px}
+.btn{display:flex;align-items:center;gap:14px;padding:18px 20px;border-radius:16px;text-decoration:none;font-weight:700;font-size:15px;transition:transform .1s;border:none;cursor:pointer;font-family:'Pretendard',sans-serif;width:100%}
+.btn:active{transform:scale(.98)}
+.btn-member{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.08);color:#191f28}
+.btn-admin{background:#3182f6;color:#fff}
+.btn-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.member-icon{background:#e8f9f6}
+.admin-icon{background:rgba(255,255,255,.2)}
+.btn-text{flex:1;text-align:left}
+.btn-desc{font-size:12px;font-weight:400;opacity:.6;margin-top:2px}
+.install-btn{margin-top:20px;background:none;border:1.5px solid #d1d6db;color:#6b7684;font-size:13px;font-weight:600;padding:10px 20px;border-radius:20px;cursor:pointer;font-family:'Pretendard',sans-serif;display:none}
+.footer{margin-top:40px;font-size:12px;color:#b0b8c1;text-align:center;line-height:2}
+</style>
+</head>
+<body>
+<div class="logo">TER<span>MES</span></div>
+<div class="sub">테니스 클럽 대진 프로그램</div>
+<div class="btns">
+  <a href="member.html" class="btn btn-member">
+    <div class="btn-icon member-icon">🎾</div>
+    <div class="btn-text">
+      <div>정회원 입장</div>
+      <div class="btn-desc">대진표 · 점수 · 랭킹 · 통계</div>
+    </div>
+  </a>
+  <a href="admin.html" class="btn btn-admin">
+    <div class="btn-icon admin-icon">👑</div>
+    <div class="btn-text">
+      <div>임원진 입장</div>
+      <div class="btn-desc">대진 생성 · 참석 관리 · 등급</div>
+    </div>
+  </a>
+</div>
+<button class="install-btn" id="installBtn" onclick="installPWA()">📱 홈 화면에 추가</button>
+<div class="footer">TERMES TENNIS CLUB<br>© 2026</div>
+<script>
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e;
+  document.getElementById('installBtn').style.display = 'block';
+});
+async function installPWA() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('installBtn').style.display = 'none';
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
