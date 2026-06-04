@@ -386,7 +386,19 @@ const FIREBASE_CONFIG={
   measurementId: "G-90TM16ERSL"
 };
 let db=null;
-try{firebase.initializeApp(FIREBASE_CONFIG);db=firebase.database();db.ref('.info/connected').on('value',snap=>{const d=document.getElementById('dbDot');if(d)d.className='db-dot'+(snap.val()?' on':'');});}catch(e){console.log('localStorage mode');}
+try{
+  // 이미 초기화된 앱이 있으면 재사용
+  if(firebase.apps.length>0){
+    db=firebase.app().database();
+  } else {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db=firebase.database();
+  }
+  db.ref('.info/connected').on('value',snap=>{
+    const d=document.getElementById('dbDot');
+    if(d)d.className='db-dot'+(snap.val()?' on':'');
+  });
+}catch(e){console.log('Firebase error, using localStorage:',e.message);}
 
 async function sget(k){try{if(db){const s=await db.ref('termes/'+k).get();return s.exists()?s.val():null;}const v=localStorage.getItem('termes-'+k);return v?JSON.parse(v):null;}catch(e){return null;}}
 async function sset(k,v){try{if(db){await db.ref('termes/'+k).set(v);return true;}localStorage.setItem('termes-'+k,JSON.stringify(v));return true;}catch(e){return false;}}
@@ -732,6 +744,8 @@ function highlightSI(){document.querySelectorAll('.score-inp[data-key]').forEach
 let saveQ={},saveT=null;
 async function saveSc(key,inp){
   if(!curSession)return;
+  // 입력 중 표시
+  showTypingIndicator(key);
   if(!saveQ[key])saveQ[key]={};saveQ[key][inp.dataset.side]=inp.value===''?null:parseInt(inp.value)||0;
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{
@@ -740,9 +754,40 @@ async function saveSc(key,inp){
     if(!latest.sc)latest.sc={};
     for(const[k,sides]of Object.entries(saveQ)){if(!latest.sc[k])latest.sc[k]={};for(const[side,val]of Object.entries(sides)){if(val===null)delete latest.sc[k][side];else latest.sc[k][side]=val;}}
     saveQ={};latest.sc._totals=calcTotals(latest);latest.finished=checkFinished(latest);
+    // 입력자 기록
+    if(currentMember){
+      if(!latest.sc._typing)latest.sc._typing={};
+      latest.sc._typing[key]={name:currentMember==='__super__'?'관리자':currentMember,time:Date.now()};
+    }
     const ok=await sset('sessions/'+today,latest);
-    if(ok){curSession=latest;updateStandings(latest);if(latest.finished){clearInterval(autoTimer);toast('🏁 모든 경기가 종료되었습니다');renderScoreUI(latest);}}else toast('저장 실패');
+    if(ok){
+      curSession=latest;
+      updateStandings(latest);
+      renderTypingIndicators(latest);
+      if(latest.finished){clearInterval(autoTimer);toast('🏁 모든 경기가 종료되었습니다');renderScoreUI(latest);}
+    }else toast('저장 실패');
   },500);
+}
+
+// ── TYPING INDICATORS ──
+let typingTimer=null;
+function showTypingIndicator(key){
+  // 로컬에서 즉시 표시
+  const el=document.querySelector(`.typing-indicator[data-tkey="${key}"]`);
+  if(el&&currentMember){
+    el.textContent=(currentMember==='__super__'?'관리자':currentMember)+' 입력 중...';
+    el.style.display='block';
+  }
+}
+function renderTypingIndicators(sess){
+  if(!sess.sc||!sess.sc._typing)return;
+  const typing=sess.sc._typing;
+  const now=Date.now();
+  Object.entries(typing).forEach(([key,info])=>{
+    if(now-info.time>10000)return; // 10초 지나면 숨김
+    const el=document.querySelector(`.typing-indicator[data-tkey="${key}"]`);
+    if(el){el.textContent=info.name+' 입력 중...';el.style.display='block';}
+  });
 }
 async function syncScores(){
   const latest=await sget('sessions/'+dateKey());
@@ -772,6 +817,7 @@ async function syncScores(){
     inp.value=s&&s[inp.dataset.side]!==undefined&&s[inp.dataset.side]!==null?s[inp.dataset.side]:'';
   });
   updateStandings(latest);highlightSI();
+  renderTypingIndicators(latest);
   if(latest.finished){clearInterval(autoTimer);}
 }
 function updateStandings(sess){
@@ -856,12 +902,29 @@ function mkKey(name){return 'member-pin-'+name.replace(/[^\uAC00-\uD7A3\u1100-\u
 // 이름 목록 렌더
 function renderNameList(){
   const wrap=document.getElementById('memberNameList');
-  wrap.innerHTML=MEMBERS_LIST.map(name=>`
-    <button onclick="selectMember('${name}')" style="width:100%;padding:12px 16px;background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:12px;font-family:'Pretendard',sans-serif;font-size:15px;font-weight:600;color:var(--gray-900);cursor:pointer;text-align:left;transition:all .15s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--gray-200)'">${name}</button>
-  `).join('');
+  wrap.innerHTML='';
+  // Add SUPER account
+  const superBtn=document.createElement('button');
+  superBtn.style.cssText='width:100%;padding:12px 16px;background:#ebf3fe;border:1.5px solid #3182f6;border-radius:12px;font-family:Pretendard,sans-serif;font-size:15px;font-weight:700;color:#3182f6;cursor:pointer;text-align:left;margin-bottom:8px';
+  superBtn.textContent='👑 관리자 (전체 수정)';
+  superBtn.onclick=()=>selectSuperAdmin();
+  wrap.appendChild(superBtn);
+  // divider
+  const div=document.createElement('div');
+  div.style.cssText='height:1px;background:#e5e8eb;margin-bottom:8px';
+  wrap.appendChild(div);
+  MEMBERS_LIST.forEach(name=>{
+    const btn=document.createElement('button');
+    btn.style.cssText='width:100%;padding:12px 16px;background:#f9fafb;border:1.5px solid #e5e8eb;border-radius:12px;font-family:Pretendard,sans-serif;font-size:15px;font-weight:600;color:#191f28;cursor:pointer;text-align:left;transition:all .15s;margin-bottom:4px';
+    btn.textContent=name;
+    btn.onmouseover=()=>btn.style.borderColor='#3182f6';
+    btn.onmouseout=()=>btn.style.borderColor='#e5e8eb';
+    btn.onclick=()=>selectMember(name);
+    wrap.appendChild(btn);
+  });
 }
 
-async function selectMember(name){
+async async function selectMember(name){
   selectedMemberName=name;
   const data=await sget(mkKey(name));
   document.getElementById('loginStep1').style.display='none';
@@ -900,6 +963,22 @@ async function mPinInput(n){
   document.getElementById('memberPinError').textContent='';
   if(mPinBuf.length===6){
     setTimeout(async()=>{
+      // Super admin check
+      if(selectedMemberName==='__super__'){
+        // Super PIN = admin PIN
+        const adminPin=await sget('admin-pin')||'0604';
+        if(mPinBuf===adminPin){
+          currentMember='__super__';
+          document.getElementById('memberLoginScreen').style.display='none';
+          document.getElementById('memberBadge').textContent='👑 관리자';
+          loadRanking(curYear);loadToday();
+        } else {
+          document.getElementById('memberPinError').textContent='PIN이 올바르지 않습니다';
+          mPinBuf='';updateMemberDots();
+        }
+        return;
+      }
+      // Normal member
       const data=await sget(mkKey(selectedMemberName));
       if(data&&data.pin===mPinBuf){
         loginSuccess(selectedMemberName);
@@ -1027,6 +1106,17 @@ function selectGuest(){
   loadRanking(curYear);loadToday();
 }
 
+// Super admin
+let superPinBuf='';
+function selectSuperAdmin(){
+  selectedMemberName='__super__';
+  document.getElementById('loginStep1').style.display='none';
+  document.getElementById('loginName').textContent='관리자';
+  document.getElementById('loginStep2').classList.add('show');
+  superPinBuf=''; mPinBuf=''; updateMemberDots();
+  document.getElementById('memberPinError').textContent='';
+}
+
 // Login success
 function loginSuccess(name){
   currentMember=name;
@@ -1087,37 +1177,44 @@ async function saveNewQuestion(btn){
   modal.remove();toast('✅ 질문이 변경되었습니다');
 }
 
-// Override score input to only allow own games
+// Score input permission control
 const _origRenderScoreUI=renderScoreUI;
 function renderScoreUI(sess){
   _origRenderScoreUI(sess);
-  if(!currentMember) return; // guest: read only (already no onchange since sess may be finished)
-  // Disable inputs for other players' games
+  // Super admin: all editable (skip restriction)
+  if(currentMember==='__super__') return;
+  // Guest: all read-only already (finished check handled in renderScoreUI)
+  if(!currentMember) return;
+  // Normal member: only own courts editable
+  if(sess.finished) return; // already disabled
   const bracket=getB(sess);
   bracket.forEach((round,ri)=>{
     round.courts.forEach((ct,ci)=>{
       if(!ct||ct.length<4) return;
-      // Check if currentMember is in this court
       const myAis=[];
       for(let ai=0;ai<getP(sess).length;ai++){if(pname(sess,ai)===currentMember)myAis.push(ai);}
       const isMyCourt=myAis.some(ai=>ct.includes(ai));
       if(!isMyCourt){
-        // Disable inputs for this court
         const key=`${ri}-${ci}`;
         document.querySelectorAll(`.score-inp[data-key="${key}"]`).forEach(inp=>{
           inp.disabled=true;
           inp.style.background='var(--gray-100)';
           inp.style.color='var(--gray-400)';
           inp.style.pointerEvents='none';
-          inp.removeAttribute('onchange');
         });
       }
     });
   });
 }
 
-// Init: show login screen
-renderNameList();
+// Init
+document.addEventListener('DOMContentLoaded', ()=>{
+  renderNameList();
+});
+// Fallback if DOMContentLoaded already fired
+if(document.readyState==='complete'||document.readyState==='interactive'){
+  renderNameList();
+}
 
 loadRanking(curYear);loadToday();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
