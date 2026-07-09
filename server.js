@@ -205,6 +205,7 @@ app.post('/auth/apple', async (req, res) => {
 const CASH_BY_WON = { 8900: 25, 13900: 45, 24900: 90, 49900: 200, 129000: 600, 229000: 1100 };
 app.post('/pay/order', auth, (req, res) => {
   if (blockIosWebPurchase(req, res)) return;         // M캐쉬 충전 → 애플 IAP 필수
+  if (requirePayments(req, res)) return;
   const amount = +req.body.amount;
   const cash = CASH_BY_WON[amount];
   if (!cash) return res.status(400).json({ error: 'invalid_amount', allowed: Object.keys(CASH_BY_WON) });
@@ -1292,6 +1293,19 @@ function notifyClub(clubId, exceptUid, icon, title, body) {
   rows.forEach(r => { if (r.user_id !== exceptUid) sendPush(r.user_id, { icon, title, body }); });
 }
 
+// ══════════════════════════════════════════════════════════════
+//  결제 게이트
+//  아직 PG(토스·아임포트)도 애플 IAP도 붙어 있지 않다.
+//  "돈을 받았다"고 확인할 방법이 없으면 팔지 않는다. 공짜로 주지도 않는다.
+//  PAYMENTS_LIVE=1 을 켜야 유료 상품 경로가 열린다.
+// ══════════════════════════════════════════════════════════════
+const PAYMENTS_LIVE = process.env.PAYMENTS_LIVE === '1';
+function requirePayments(req, res) {
+  if (PAYMENTS_LIVE) return false;
+  res.status(402).json({ error: 'payments_not_ready', message: '결제 준비 중입니다' });
+  return true;
+}
+
 // ── 애플 3.1.1: iOS 앱에서 온 요청은 웹 결제를 받지 않는다 ──
 // 클라이언트에서 버튼만 숨기면 우회가 가능하므로 서버에서도 막는다.
 // iOS 앱은 X-Client-Platform: ios 헤더를 붙여 보낸다.
@@ -1351,6 +1365,7 @@ app.get('/clubs/:id/premium', (req, res) => {
 // 데모 결제. 실서비스에선 PG 웹훅에서만 activatePremium() 호출.
 app.post('/clubs/:id/premium', auth, (req, res) => {
   if (blockIosWebPurchase(req, res)) return;          // 디지털 구독 → 애플 IAP 필수
+  if (requirePayments(req, res)) return;              // 결제 검증 경로가 없으면 팔지 않는다
   const cid = +req.params.id;
   const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
   if (!owner) return res.status(403).json({ error: 'owner_only' });
@@ -1763,6 +1778,17 @@ function admin(req, res, next) {
   if ((req.headers['x-admin-key'] || req.query.key) !== ADMIN_KEY) return res.status(403).json({ error: 'admin_only' });
   next();
 }
+// 관리자가 특정 클럽에 프리미엄을 직접 부여 (초기 파트너 클럽 · 환불 · 테스트)
+// 결제와 무관하게 열어주는 유일한 경로. ADMIN_KEY 를 아는 사람만.
+app.post('/admin/clubs/:id/premium', admin, (req, res) => {
+  const cid = +req.params.id;
+  const c = db.prepare('SELECT id FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const months = Math.min(24, Math.max(1, intOrNull(req.body && req.body.months) || 1));
+  const until = activatePremium(cid, months);
+  res.json({ ok: true, club_id: cid, premium_until: until, granted_by: 'admin' });
+});
+
 app.get('/admin/stats', admin, (_req, res) => {
   const one = (sql) => db.prepare(sql).get().n;
   res.json({
