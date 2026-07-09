@@ -48,7 +48,9 @@ function anonNick(seed) {
 // 데모/개발용 로그인. 실서비스는 카카오/애플 OAuth 토큰을 서버에서 검증 후 발급하세요.
 app.post('/auth/dev-login', (req, res) => {
   const { name = '게스트', provider = 'kakao', gender = '남성', region = '경기 용인', sport = 'tennis' } = req.body || {};
-  const pid = 'dev-' + Buffer.from(name).toString('hex').slice(0, 12);
+  // 이름 전체를 해시한다. hex.slice(0,12) 는 한글 4자까지만 반영돼
+  // '상대0' '상대1' 이 같은 계정이 되는 충돌이 있었다.
+  const pid = 'dev-' + crypto.createHash('sha256').update(String(name)).digest('hex').slice(0, 16);
   let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
   if (!u) {
     const nick = anonNick(pid);
@@ -95,6 +97,15 @@ app.post('/auth/kakao/code', async (req, res) => {
     if (!tk.access_token) return res.status(401).json({ error: 'token_exchange_failed', detail: tk });
     await kakaoIssue(tk.access_token, res);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// 선수 비교용 공개 프로필 (민감정보 제외)
+app.get('/users/:id/profile', (req, res) => {
+  const u = db.prepare(`SELECT id,name,gender,region,sport,rating,mmr,peak_mmr,birth_year,handed,backhand,style,
+    wins,losses,photos,skill_verified,real_verified FROM users WHERE id=?`).get(intOrNull(req.params.id));
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const rank = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND rating>?').get(u.sport, u.rating).n;
+  res.json({ ...u, rank });
 });
 
 // 데모 매칭용 사용자 목록
@@ -228,9 +239,15 @@ app.post('/pay/refund', auth, async (req, res) => {
 
 app.get('/me', auth, (req, res) => res.json(getUser(req.uid)));
 app.patch('/me', auth, (req, res) => {
-  const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified'];
+  const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
+                 'birth_year','handed','backhand','style'];
+  const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
   const sets = [], vals = [];
-  for (const k of allow) if (k in req.body) { sets.push(`${k}=?`); vals.push(typeof req.body[k]==='object'?JSON.stringify(req.body[k]):req.body[k]); }
+  for (const k of allow) if (k in req.body) {
+    sets.push(`${k}=?`);
+    vals.push(nums.includes(k) ? intOrNull(req.body[k])
+      : typeof req.body[k]==='object' ? JSON.stringify(req.body[k]) : req.body[k]);
+  }
   if (sets.length) { db.prepare(`UPDATE users SET ${sets.join(',')} WHERE id=?`).run(...vals, req.uid); }
   res.json(getUser(req.uid));
 });
@@ -341,6 +358,8 @@ app.post('/clubs/:id/members/:uid/approve', auth, (req, res) => {
   const ok = req.body && req.body.approve === false ? false : true;
   const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
   if (ok) {
+    if (!isPremium(cid) && activeMembers(cid) >= FREE_MAX_MEMBERS)
+      return res.status(402).json({ error: 'member_limit', limit: FREE_MAX_MEMBERS, upgrade: 'club_premium' });
     db.prepare("UPDATE club_members SET status='active' WHERE club_id=? AND user_id=? AND status='pending'").run(cid, uid);
     sendPush(uid, { icon: '🎉', title: '가입 승인', body: `${club.name} 정회원이 됐어요` });
   } else {
@@ -395,7 +414,7 @@ app.get('/clubs/:id/events', (req, res) => {
       attendees: byStatus(e.id, 'going'),
       absent: byStatus(e.id, 'absent'),
       undecided: byStatus(e.id, 'undecided'),
-      guests: db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(e.id),
+      guests: db.prepare('SELECT id,name,gender,grade,fee,paid FROM event_guests WHERE event_id=? ORDER BY id').all(e.id),
       my_status: my ? (my.status || 'going') : null,
       joined: !!(my && (my.status === null || my.status === 'going')),
     };
@@ -429,6 +448,7 @@ app.post('/events/:id/rsvp', auth, (req, res) => {
   const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
   if (has) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(st, has.id);
   else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, st);
+  if (st === 'going') settleReferral(req.uid);
   res.json({ ok: true, status: st, count: goingCount(eid) });
 });
 // (구버전 호환) 토글 → going ↔ absent
@@ -446,7 +466,40 @@ app.post('/events/:id/attend', auth, (req, res) => {
 
 // ── 게스트 (비회원) ──
 app.get('/events/:id/guests', (req, res) => {
-  res.json(db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(+req.params.id));
+  res.json(db.prepare(`SELECT g.id,g.name,g.gender,g.grade,g.fee,g.paid,g.paid_at,g.added_by,u.name host_name
+    FROM event_guests g LEFT JOIN users u ON u.id=g.added_by
+    WHERE g.event_id=? ORDER BY g.id`).all(+req.params.id));
+});
+
+// 게스트비 수납 체크 (임원진)
+app.patch('/events/:eid/guests/:gid', auth, (req, res) => {
+  const eid = +req.params.eid;
+  const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(ev.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const g = db.prepare('SELECT id FROM event_guests WHERE id=? AND event_id=?').get(intOrNull(req.params.gid), eid);
+  if (!g) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  if ('fee' in b) db.prepare('UPDATE event_guests SET fee=? WHERE id=?').run(intOrNull(b.fee) || 0, g.id);
+  if ('paid' in b) {
+    const paid = b.paid ? 1 : 0;
+    db.prepare('UPDATE event_guests SET paid=?, paid_at=? WHERE id=?').run(paid, paid ? now() : null, g.id);
+  }
+  res.json({ ok: true });
+});
+
+// 이번 모임 게스트비 요약
+app.get('/events/:id/guests/summary', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
+  if (!ev || !isMember(ev.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const gs = db.prepare('SELECT fee,paid FROM event_guests WHERE event_id=?').all(eid);
+  res.json({
+    n: gs.length,
+    total: gs.reduce((a, g) => a + (g.fee || 0), 0),
+    collected: gs.filter(g => g.paid).reduce((a, g) => a + (g.fee || 0), 0),
+    paid_n: gs.filter(g => g.paid).length,
+  });
 });
 app.post('/events/:id/guests', auth, (req, res) => {
   const eid = +req.params.id;
@@ -459,9 +512,12 @@ app.post('/events/:id/guests', auth, (req, res) => {
   const grade = ['A', 'B', 'C'].includes(req.body.grade) ? req.body.grade : null;
   const dup = db.prepare('SELECT 1 FROM event_guests WHERE event_id=? AND name=?').get(eid, name);
   if (dup) return res.status(409).json({ error: 'duplicate_name' });
-  const r = db.prepare('INSERT INTO event_guests (event_id,name,gender,grade,added_by,created_at) VALUES (?,?,?,?,?,?)')
-    .run(eid, name, gender, grade, req.uid, now());
-  res.json({ ok: true, id: rid(r) });
+  const club = db.prepare('SELECT guest_fee FROM clubs WHERE id=?').get(ev.club_id);
+  const fee = intOrNull((req.body || {}).fee);
+  const useFee = fee === null ? (club && club.guest_fee) || 0 : fee;
+  const r = db.prepare('INSERT INTO event_guests (event_id,name,gender,grade,added_by,created_at,fee) VALUES (?,?,?,?,?,?,?)')
+    .run(eid, name, gender, grade, req.uid, now(), useFee);
+  res.json({ ok: true, id: rid(r), fee: useFee });
 });
 app.delete('/events/:id/guests/:gid', auth, (req, res) => {
   const eid = +req.params.id;
@@ -598,6 +654,8 @@ app.get('/posts/:id/comments', (req, res) => {
 app.post('/posts/:id/comments', auth, (req, res) => {
   const body = (req.body && req.body.body || '').trim();
   if (!body) return res.status(400).json({ error: 'empty' });
+  const bad = findContact(body);
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
   const u = getUser(req.uid);
   const r = db.prepare('INSERT INTO comments (post_id,user_id,anon_nick,body,created_at) VALUES (?,?,?,?,?)')
     .run(+req.params.id, req.uid, u.anon_nick, body, now());
@@ -607,6 +665,8 @@ app.post('/posts', auth, (req, res) => {
   const u = getUser(req.uid);
   const { title, body, category = '자유', sport } = req.body;
   if (!title) return res.status(400).json({ error: 'title_required' });
+  const bad = findContact(title + ' ' + (body || ''));
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
   const r = db.prepare(`INSERT INTO posts (user_id,sport,category,title,body,anon_nick,gender,region,created_at)
     VALUES (?,?,?,?,?,?,?,?,?)`).run(req.uid, sport || u.sport, category, title, body || '', u.anon_nick, u.gender, u.region, now());
   res.json(db.prepare('SELECT * FROM posts WHERE id=?').get(rid(r)));
@@ -863,6 +923,41 @@ app.post('/iap/google', auth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+//  연락처 차단 — 공개 글·댓글에 전화번호/카톡ID/SNS 를 못 올리게 한다.
+//  (1:1 쪽지에서는 허용. 그게 쪽지에 과금하는 이유다.)
+// ══════════════════════════════════════════════════════════════
+const _FULLW = { '０':'0','１':'1','２':'2','３':'3','４':'4','５':'5','６':'6','７':'7','８':'8','９':'9' };
+// 한글 숫자는 "전화번호 판정용 문자열"에만 적용한다.
+// 키워드 판정용 문자열에 적용하면 '아이디'→'아2디', '오픈채팅'→'5픈채팅' 처럼 단어가 깨진다.
+const _HANGUL_NUM = { '영':'0','공':'0','일':'1','이':'2','삼':'3','사':'4','오':'5','육':'6','륙':'6','칠':'7','팔':'8','구':'9' };
+const _SEP = /[\s\-\u00b7_/|,()\[\]{}<>+*~^$#!?"'`]/g;
+
+function _keywordText(t) {                       // . 과 @ 는 남긴다 (이메일·도메인 판정)
+  return String(t || '').toLowerCase().replace(/[０-９]/g, c => _FULLW[c]).replace(_SEP, '');
+}
+function _digitText(t) {                          // 숫자만 뽑아낸다 (구분자·한글숫자 우회 차단)
+  let x = String(t || '').toLowerCase().replace(/[０-９]/g, c => _FULLW[c]);
+  Object.entries(_HANGUL_NUM).forEach(([k, v]) => { x = x.split(k).join(v); });
+  return x.replace(/[^0-9]/g, '');
+}
+const _KEYWORD_RULES = [
+  { re: /openkakao|open\.kakao|kakao\.com|오픈채팅|오카방|톡방/,          reason: '오픈채팅 링크' },
+  { re: /(카톡|카카오톡|kakaotalk|katalk)\s*(아이디|id|:|=|는|은)?/,      reason: '카카오톡 아이디' },
+  { re: /(라인|line|텔레|telegram|텔레그램)(아이디|id|:|=)/,              reason: '메신저 아이디' },
+  { re: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/,                        reason: '이메일 주소' },
+  { re: /(인스타|instagram|insta)(아이디|id|:|=|@)?|@[a-z0-9._]{3,}/,     reason: 'SNS 아이디' },
+];
+const _PHONE_RE = [/01[016789]\d{7,8}/, /8210\d{7,8}/];
+
+function findContact(text) {
+  const k = _keywordText(text);
+  for (const r of _KEYWORD_RULES) if (r.re.test(k)) return r.reason;
+  const d = _digitText(text);
+  for (const re of _PHONE_RE) if (re.test(d)) return '전화번호';
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  대진(Bracket) — 클럽 모임 1회 = 대진 1개
 //  · brackets      : 발행된 대진 (편성 결과 JSON + 설정)
 //  · bracket_scores: 코트별 점수 (key = "라운드-코트" 또는 "h0-1")
@@ -903,6 +998,10 @@ CREATE TABLE IF NOT EXISTS bracket_timers (
 );
 `);
 
+// 선수 프로필 (선수 비교 화면용)
+['birth_year INTEGER', 'handed TEXT', 'backhand TEXT', 'style TEXT', 'peak_mmr INTEGER', 'wins INTEGER DEFAULT 0', 'losses INTEGER DEFAULT 0']
+  .forEach(col => { try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch (e) {} });
+
 // event_attendees.status : going | absent | undecided  (기존 행은 going 으로 간주)
 try { db.exec("ALTER TABLE event_attendees ADD COLUMN status TEXT DEFAULT 'going'"); } catch (e) {}
 // 게스트(비회원) — 대진 편성에는 들어가되 회원 통계에는 안 잡히도록 분리
@@ -912,6 +1011,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS event_guests (
   gender TEXT, grade TEXT, added_by INTEGER, created_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_guests_event ON event_guests(event_id);`);
+// 게스트비: 데려온 회원(added_by)이 책임지고, 임원이 받으면 체크한다.
+['fee INTEGER DEFAULT 0', 'paid INTEGER DEFAULT 0', 'paid_at BIGINT'].forEach(c => {
+  try { db.exec(`ALTER TABLE event_guests ADD COLUMN ${c}`); } catch (e) {}
+});
 
 // club_members.grade (A/B/C) — 대진 편성용 실력 등급. db.js를 건드리지 않고 여기서 추가.
 try { db.exec('ALTER TABLE club_members ADD COLUMN grade TEXT'); } catch (e) { /* 이미 있음 */ }
@@ -971,6 +1074,9 @@ app.post('/clubs/:id/brackets', auth, (req, res) => {
   const publish = (req.body || {}).publish ? 1 : 0;
   const t = now();
   const prev = date ? db.prepare('SELECT id FROM brackets WHERE club_id=? AND date=? AND fmt=?').get(cid, date, fmt) : null;
+  // 무료 클럽은 월 4개까지 (기존 대진 덮어쓰기·재편성은 개수에 안 들어간다)
+  if (!prev && !isPremium(cid) && bracketsThisMonth(cid) >= FREE_MAX_BRACKETS_PER_MONTH)
+    return res.status(402).json({ error: 'bracket_limit', limit: FREE_MAX_BRACKETS_PER_MONTH, upgrade: 'club_premium' });
   let id;
   if (prev) {
     db.prepare('UPDATE brackets SET sport=?,courts=?,data=?,published=?,event_id=?,updated_at=? WHERE id=?')
@@ -1041,6 +1147,440 @@ function notifyClub(clubId, exceptUid, icon, title, body) {
   const rows = db.prepare('SELECT user_id FROM club_members WHERE club_id=?').all(clubId);
   rows.forEach(r => { if (r.user_id !== exceptUid) sendPush(r.user_id, { icon, title, body }); });
 }
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 프리미엄 — 월 9,900원 (클럽당). 클럽장이 결제.
+//  무료: 정회원 15명, 대진 월 4회.  프리미엄: 무제한 + 회비 장부.
+//  ※ 실결제는 /pay/* PG 웹훅에서 activatePremium() 을 호출하세요.
+// ══════════════════════════════════════════════════════════════
+const PREMIUM_WON = 9900;
+const FREE_MAX_MEMBERS = 15;
+const FREE_MAX_BRACKETS_PER_MONTH = 4;
+
+try { db.exec('ALTER TABLE clubs ADD COLUMN premium_until BIGINT'); } catch (e) {}
+
+function isPremium(clubId) {
+  const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(clubId);
+  if (!c) return false;
+  if (!c.premium) return false;
+  return !c.premium_until || c.premium_until > now();
+}
+function activatePremium(clubId, months = 1) {
+  const c = db.prepare('SELECT premium_until FROM clubs WHERE id=?').get(clubId);
+  const base = c && c.premium_until && c.premium_until > now() ? c.premium_until : now();
+  const until = base + months * 30 * 24 * 3600 * 1000;
+  db.prepare('UPDATE clubs SET premium=1, premium_until=? WHERE id=?').run(until, clubId);
+  return until;
+}
+const monthKey = (t) => new Date(t || Date.now()).toISOString().slice(0, 7);
+function bracketsThisMonth(clubId) {
+  const from = new Date(monthKey() + '-01T00:00:00Z').getTime();
+  return db.prepare('SELECT COUNT(*) n FROM brackets WHERE club_id=? AND created_at>=?').get(clubId, from).n;
+}
+function activeMembers(clubId) {
+  return db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND (status IS NULL OR status='active')").get(clubId).n;
+}
+
+app.get('/clubs/:id/premium', (req, res) => {
+  const cid = +req.params.id;
+  const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'no_club' });
+  res.json({
+    premium: isPremium(cid), premium_until: c.premium_until || null, price: PREMIUM_WON,
+    members: activeMembers(cid), member_limit: FREE_MAX_MEMBERS,
+    brackets_this_month: bracketsThisMonth(cid), bracket_limit: FREE_MAX_BRACKETS_PER_MONTH,
+  });
+});
+
+// 데모 결제. 실서비스에선 PG 웹훅에서만 activatePremium() 호출.
+app.post('/clubs/:id/premium', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only' });
+  const months = Math.min(12, Math.max(1, intOrNull(req.body && req.body.months) || 1));
+  const until = activatePremium(cid, months);
+  notifyClub(cid, req.uid, '👑', '클럽 프리미엄이 시작됐어요', '회비 장부 · 무제한 대진을 쓸 수 있어요');
+  res.json({ ok: true, premium: true, premium_until: until, months });
+});
+app.delete('/clubs/:id/premium', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only' });
+  db.prepare('UPDATE clubs SET premium=0, premium_until=NULL WHERE id=?').run(cid);
+  res.json({ ok: true, premium: false });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  회비 장부 (클럽 프리미엄 전용)
+//
+//  ⚠️ 중요: 이 앱은 회비를 "보관하지 않는다".
+//     회비는 클럽 명의의 실제 은행 계좌로 바로 들어가고,
+//     앱은 (1) 누가 냈는지 기록하고 (2) 입금 내역과 대조만 한다.
+//     앱이 돈을 들고 있으면 전자금융업(선불업/자금이체업) 등록 대상이 된다.
+//     → 클럽장은 은행에서 언제든 직접 출금할 수 있다 (운용비 문제 해결).
+//
+//  입금 확인은 두 가지 중 하나로 붙인다:
+//     A. 가상계좌(입금전용) — 회원마다 다른 계좌번호. 100% 정확. 건당 수수료
+//     B. 오픈뱅킹 거래내역 조회 — 입금자명으로 매칭. 저렴. 동명이인 주의
+//  아래 /deposits 는 그 웹훅/폴링이 호출할 자리다.
+// ══════════════════════════════════════════════════════════════
+db.exec(`
+CREATE TABLE IF NOT EXISTS club_accounts (
+  club_id INTEGER PRIMARY KEY, bank TEXT, number TEXT, holder TEXT, updated_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS dues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL, period TEXT NOT NULL, user_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'unpaid',
+  paid_at INTEGER, deposit_id INTEGER, memo TEXT,
+  UNIQUE(club_id, period, user_id)
+);
+CREATE TABLE IF NOT EXISTS deposits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL, depositor TEXT, amount INTEGER, occurred_at INTEGER,
+  matched_user_id INTEGER, raw TEXT, created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_dues_club ON dues(club_id, period);
+CREATE INDEX IF NOT EXISTS ix_dep_club ON deposits(club_id, id DESC);`);
+
+function premiumGate(cid, res) {
+  if (!isPremium(cid)) { res.status(402).json({ error: 'premium_required', upgrade: 'club_premium', price: PREMIUM_WON }); return false; }
+  return true;
+}
+
+// 클럽 계좌 등록 (클럽장). 실서비스는 계좌 실명확인(1원 인증) 필수.
+app.post('/clubs/:id/bank', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only' });
+  const { bank = '', number = '', holder = '' } = req.body || {};
+  if (!bank || !number) return res.status(400).json({ error: 'bank_required' });
+  db.prepare(`INSERT INTO club_accounts (club_id,bank,number,holder,updated_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(club_id) DO UPDATE SET bank=excluded.bank,number=excluded.number,holder=excluded.holder,updated_at=excluded.updated_at`)
+    .run(cid, String(bank), String(number), String(holder), now());
+  res.json({ ok: true });
+});
+app.get('/clubs/:id/bank', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(db.prepare('SELECT bank,number,holder FROM club_accounts WHERE club_id=?').get(cid) || {});
+});
+
+// 이번 달 회비 고지 생성 (임원진 · 프리미엄)
+app.post('/clubs/:id/dues', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (!premiumGate(cid, res)) return;
+  const period = String((req.body && req.body.period) || monthKey());
+  const amount = intOrNull(req.body && req.body.amount);
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'amount_required' });
+  const ms = db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND (status IS NULL OR status='active')").all(cid);
+  const ins = db.prepare(`INSERT INTO dues (club_id,period,user_id,amount) VALUES (?,?,?,?)
+    ON CONFLICT(club_id,period,user_id) DO UPDATE SET amount=excluded.amount`);
+  ms.forEach(m => ins.run(cid, period, m.user_id, amount));
+  ms.forEach(m => { if (m.user_id !== req.uid) sendPush(m.user_id, { icon: '💳', title: `${period} 회비 고지`, body: `${amount.toLocaleString()}원 · 클럽 계좌로 입금해 주세요` }); });
+  res.json({ ok: true, period, amount, n: ms.length });
+});
+
+app.get('/clubs/:id/dues', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (!premiumGate(cid, res)) return;
+  const period = String(req.query.period || monthKey());
+  const officer = isOfficer(cid, req.uid);
+  const rows = db.prepare(`SELECT d.*, u.name FROM dues d JOIN users u ON u.id=d.user_id
+    WHERE d.club_id=? AND d.period=? ORDER BY (d.status='unpaid') DESC, u.name`).all(cid, period)
+    .filter(r => officer || r.user_id === req.uid);   // 일반 회원은 자기 것만
+  const all = db.prepare('SELECT status, amount FROM dues WHERE club_id=? AND period=?').all(cid, period);
+  const paid = all.filter(r => r.status === 'paid');
+  res.json({
+    period, officer, rows,
+    total: all.reduce((a, r) => a + r.amount, 0),
+    collected: paid.reduce((a, r) => a + r.amount, 0),
+    paid_n: paid.length, total_n: all.length,
+  });
+});
+
+// 수동 납부 처리 (임원진) — 현금으로 받은 경우
+app.patch('/dues/:id', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM dues WHERE id=?').get(intOrNull(req.params.id));
+  if (!d) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(d.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const paid = !(req.body && req.body.status === 'unpaid');
+  db.prepare('UPDATE dues SET status=?, paid_at=?, memo=? WHERE id=?')
+    .run(paid ? 'paid' : 'unpaid', paid ? now() : null, String((req.body && req.body.memo) || ''), d.id);
+  res.json({ ok: true, status: paid ? 'paid' : 'unpaid' });
+});
+
+
+// ── 은행 거래내역 붙여넣기 파서 ──
+// 오픈뱅킹/펌뱅킹 연동 전까지 쓰는 현실적인 방법.
+// 클럽장이 은행 앱에서 거래내역을 복사해 붙여넣으면 입금 건만 뽑아낸다.
+function parseBankText(text) {
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const raw = line.trim();
+    if (!raw) return;
+    if (/출금|송금취소|수수료|이자|잔액조회/.test(raw)) return;      // 입금 건만
+
+    // 날짜·시각을 먼저 지운다. 안 그러면 '2026' 이 금액으로 잡힌다.
+    const body = raw
+      .replace(/\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}/g, ' ')   // 2026.07.05
+      .replace(/\d{1,2}[-.\/]\d{1,2}/g, ' ')              // 07/05
+      .replace(/\d{1,2}:\d{2}(:\d{2})?/g, ' ');           // 14:22
+
+    const amounts = (body.match(/\d{1,3}(?:,\d{3})+|\d{4,}/g) || [])
+      .map(x => parseInt(x.replace(/,/g, ''), 10))
+      .filter(n => n >= 1000);
+    if (!amounts.length) return;
+
+    const stop = /입금|출금|잔액|거래|내역|은행|이체|계좌|합계|원|기업|국민|신한|하나|우리|농협|카카오|토스/;
+    const names = (body.match(/[가-힣]{2,5}/g) || []).filter(w => !stop.test(w));
+    if (!names.length) return;
+
+    // 금액이 여러 개면 첫 번째가 입금액, 마지막은 보통 잔액
+    out.push({ name: names[names.length - 1], amount: amounts[0], raw });
+  });
+  return out;
+}
+
+// 붙여넣기 → 미리보기 (저장하지 않음)
+app.post('/clubs/:id/deposits/parse', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const period = String((req.body && req.body.period) || monthKey());
+  const parsed = parseBankText((req.body && req.body.text) || '');
+  const preview = parsed.map(p => {
+    const cands = db.prepare(`SELECT d.id FROM dues d JOIN users u ON u.id=d.user_id
+      WHERE d.club_id=? AND d.period=? AND d.status='unpaid' AND u.name=? AND d.amount=?`).all(cid, period, p.name, p.amount);
+    return { ...p, willMatch: cands.length === 1, reason: cands.length > 1 ? 'ambiguous' : cands.length ? '' : 'no_match' };
+  });
+  res.json({ period, parsed: preview, n: preview.length, matchable: preview.filter(p => p.willMatch).length });
+}); 
+
+// ── 회비 납부 요청 ──
+// 임원진이 미납 회원에게 알림을 보낸다. 하루 1번으로 제한 (알림 도배 방지).
+const REMIND_COOLDOWN_MS = 20 * 3600 * 1000;   // 20시간
+try { db.exec('ALTER TABLE dues ADD COLUMN reminded_at BIGINT'); } catch (e) {}
+
+app.post('/clubs/:id/dues/remind', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (!premiumGate(cid, res)) return;
+  const period = String((req.body && req.body.period) || monthKey());
+  const only = intOrNull(req.body && req.body.user_id);   // 특정 회원만 지정
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  const bank = db.prepare('SELECT bank,number FROM club_accounts WHERE club_id=?').get(cid);
+  const t = now();
+
+  let rows = db.prepare(`SELECT d.id, d.user_id, d.amount, d.reminded_at, u.name
+    FROM dues d JOIN users u ON u.id=d.user_id
+    WHERE d.club_id=? AND d.period=? AND d.status='unpaid'`).all(cid, period);
+  if (only) rows = rows.filter(r => r.user_id === only);
+
+  const sent = [], skipped = [];
+  rows.forEach(r => {
+    if (r.user_id === req.uid) return;                                        // 본인에겐 안 보냄
+    if (r.reminded_at && t - r.reminded_at < REMIND_COOLDOWN_MS) { skipped.push(r.name); return; }
+    db.prepare('UPDATE dues SET reminded_at=? WHERE id=?').run(t, r.id);
+    sendPush(r.user_id, {
+      icon: '💳', title: `${period} 회비 납부 요청`,
+      body: `${club.name} · ${r.amount.toLocaleString()}원${bank && bank.bank ? ` · ${bank.bank} ${bank.number}` : ''}`,
+    });
+    sent.push(r.name);
+  });
+  res.json({ ok: true, sent: sent.length, skipped: skipped.length, sent_names: sent, skipped_names: skipped });
+});
+
+// 내 미납 회비 (앱 진입 시 팝업용) — 프리미엄 여부와 무관하게 본인 것은 항상 보인다
+app.get('/me/dues/unpaid', auth, (req, res) => {
+  const rows = db.prepare(`SELECT d.id, d.club_id, d.period, d.amount, d.reminded_at, c.name club_name,
+      a.bank, a.number
+    FROM dues d JOIN clubs c ON c.id=d.club_id
+    LEFT JOIN club_accounts a ON a.club_id=d.club_id
+    WHERE d.user_id=? AND d.status='unpaid' ORDER BY d.period DESC`).all(req.uid);
+  res.json(rows);
+});
+
+// ── 입금 내역 수신 (가상계좌 웹훅 / 오픈뱅킹 폴링이 호출) ──
+// 입금자명 + 금액으로 미납 회비를 자동 매칭한다.
+app.post('/clubs/:id/deposits', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const list = Array.isArray(req.body && req.body.deposits) ? req.body.deposits : [];
+  const period = String((req.body && req.body.period) || monthKey());
+  const out = [];
+  list.forEach(dep => {
+    const name = String(dep.name || '').trim();
+    const amount = intOrNull(dep.amount);
+    const at = intOrNull(dep.at) || now();
+    const r = db.prepare('INSERT INTO deposits (club_id,depositor,amount,occurred_at,raw,created_at) VALUES (?,?,?,?,?,?)')
+      .run(cid, name, amount, at, JSON.stringify(dep), now());
+    const did = rid(r);
+    // 이름 + 금액이 정확히 일치하는 미납 건만 자동 처리 (동명이인은 수동)
+    const cands = db.prepare(`SELECT d.id, d.user_id FROM dues d JOIN users u ON u.id=d.user_id
+      WHERE d.club_id=? AND d.period=? AND d.status='unpaid' AND u.name=? AND d.amount=?`).all(cid, period, name, amount);
+    if (cands.length === 1) {
+      db.prepare("UPDATE dues SET status='paid', paid_at=?, deposit_id=? WHERE id=?").run(at, did, cands[0].id);
+      db.prepare('UPDATE deposits SET matched_user_id=? WHERE id=?').run(cands[0].user_id, did);
+      sendPush(cands[0].user_id, { icon: '✅', title: '회비 입금 확인', body: `${period} 회비 ${amount.toLocaleString()}원이 확인됐어요` });
+      out.push({ name, amount, matched: true });
+    } else {
+      out.push({ name, amount, matched: false, reason: cands.length ? 'ambiguous' : 'no_match' });
+    }
+  });
+  res.json({ ok: true, results: out });
+});
+app.get('/clubs/:id/deposits', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  res.json(db.prepare('SELECT * FROM deposits WHERE club_id=? ORDER BY id DESC LIMIT 50').all(cid));
+});
+
+// ══════════════════════════════════════════════════════════════
+//  캐시 획득 — 친구 초대 · 광고 시청
+//  (충전 외에 '벌 수 있는' 경로가 있어야 쪽지 5캐시가 부담스럽지 않다)
+// ══════════════════════════════════════════════════════════════
+const INVITE_REWARD = 10;     // 초대한 사람
+const INVITEE_REWARD = 5;     // 가입한 사람
+const AD_REWARD = 1;          // 광고 1회
+const AD_DAILY_CAP = 1;       // 하루 1회. 리워드 광고 1회 수익은 3~8원이라 그 이상은 순손실
+
+['referral_code TEXT', 'referred_by INTEGER', 'referral_rewarded INTEGER DEFAULT 0'].forEach(c => { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch (e) {} });
+db.exec(`CREATE TABLE IF NOT EXISTS ad_views (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, day TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_adviews_user_day ON ad_views(user_id, day);`);
+
+const dayKey = (t) => new Date(t || Date.now()).toISOString().slice(0, 10);
+function grantCash(uid, amount, reason) {
+  const u = getUser(uid);
+  const bal = (u.cash || 0) + amount;
+  db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, uid);
+  db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+    .run(uid, amount, reason, bal, now());
+  return bal;
+}
+function myReferralCode(uid) {
+  let u = getUser(uid);
+  if (u.referral_code) return u.referral_code;
+  let code;
+  do { code = crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6); }
+  while (db.prepare('SELECT 1 FROM users WHERE referral_code=?').get(code));
+  db.prepare('UPDATE users SET referral_code=? WHERE id=?').run(code, uid);
+  return code;
+}
+
+// 초대받은 사람이 첫 모임에 '참석'하면 그때 초대자에게 보상
+function settleReferral(uid) {
+  const u = getUser(uid);
+  if (!u || !u.referred_by || u.referral_rewarded) return;
+  db.prepare('UPDATE users SET referral_rewarded=1 WHERE id=?').run(uid);
+  grantCash(u.referred_by, INVITE_REWARD, '친구 초대 확정 (첫 참석)');
+  sendPush(u.referred_by, { icon: '🎁', title: '초대 보상이 지급됐어요', body: `${u.name} 님이 첫 모임에 참석했어요 · M캐쉬 ${INVITE_REWARD}개` });
+}
+
+app.get('/me/referral', auth, (req, res) => {
+  const u = getUser(req.uid);
+  const invited = db.prepare('SELECT COUNT(*) n FROM users WHERE referred_by=?').get(req.uid).n;
+  const settled = db.prepare('SELECT COUNT(*) n FROM users WHERE referred_by=? AND referral_rewarded=1').get(req.uid).n;
+  res.json({ code: myReferralCode(req.uid), invited, settled, pending: invited - settled,
+             earned: settled * INVITE_REWARD, used: !!u.referred_by,
+             invite_reward: INVITE_REWARD, invitee_reward: INVITEE_REWARD });
+});
+
+// 초대 코드 입력 (가입자가 1회만)
+app.post('/me/referral/claim', auth, (req, res) => {
+  const code = String((req.body && req.body.code) || '').trim().toUpperCase();
+  const me = getUser(req.uid);
+  if (me.referred_by) return res.status(400).json({ error: 'already_used' });
+  const host = db.prepare('SELECT id FROM users WHERE referral_code=?').get(code);
+  if (!host) return res.status(404).json({ error: 'bad_code' });
+  if (host.id === req.uid) return res.status(400).json({ error: 'self_invite' });
+  db.prepare('UPDATE users SET referred_by=? WHERE id=?').run(host.id, req.uid);
+  const cash = grantCash(req.uid, INVITEE_REWARD, '친구 초대 코드 입력');
+  // 초대한 사람 보상은 '초대받은 사람이 실제로 모임에 참석'할 때 지급한다.
+  // 즉시 주면 부계정으로 자기 자신을 초대해 무한 캐시를 만들 수 있다.
+  sendPush(host.id, { icon: '🎁', title: '친구가 가입했어요', body: `${me.name} 님이 첫 모임에 참석하면 M캐쉬 ${INVITE_REWARD}개를 받아요` });
+  res.json({ ok: true, cash, reward: INVITEE_REWARD });
+});
+
+// 광고 시청 보상 (하루 5회)
+app.get('/cash/ad-status', auth, (req, res) => {
+  const used = db.prepare('SELECT COUNT(*) n FROM ad_views WHERE user_id=? AND day=?').get(req.uid, dayKey()).n;
+  res.json({ used, cap: AD_DAILY_CAP, left: Math.max(0, AD_DAILY_CAP - used), reward: AD_REWARD, cash: getUser(req.uid).cash });
+});
+app.post('/cash/ad-reward', auth, (req, res) => {
+  const day = dayKey();
+  const used = db.prepare('SELECT COUNT(*) n FROM ad_views WHERE user_id=? AND day=?').get(req.uid, day).n;
+  if (used >= AD_DAILY_CAP) return res.status(429).json({ error: 'daily_cap', cap: AD_DAILY_CAP });
+  db.prepare('INSERT INTO ad_views (user_id,day,created_at) VALUES (?,?,?)').run(req.uid, day, now());
+  const cash = grantCash(req.uid, AD_REWARD, '광고 시청 보상');
+  res.json({ ok: true, cash, reward: AD_REWARD, left: AD_DAILY_CAP - used - 1 });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  1:1 쪽지 — 새 대화를 여는 첫 메시지에만 캐시 차감. 답장은 무료.
+//  (스팸 비용을 보내는 쪽에 지우고, 받은 사람은 부담 없이 답장)
+// ══════════════════════════════════════════════════════════════
+const DM_COST = 5;   // 새 대화를 여는 첫 메시지
+db.exec(`CREATE TABLE IF NOT EXISTS dms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  from_id INTEGER NOT NULL, to_id INTEGER NOT NULL,
+  body TEXT NOT NULL, read INTEGER DEFAULT 0, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_dms_pair ON dms(from_id, to_id, id DESC);`);
+
+const threadKey = (a, b) => (a < b ? a + '_' + b : b + '_' + a);
+function threadExists(a, b) {
+  return !!db.prepare(`SELECT 1 FROM dms WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) LIMIT 1`).get(a, b, b, a);
+}
+
+app.get('/dm/threads', auth, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM dms WHERE from_id=? OR to_id=? ORDER BY id DESC LIMIT 200`).all(req.uid, req.uid);
+  const seen = {}, out = [];
+  rows.forEach(m => {
+    const other = m.from_id === req.uid ? m.to_id : m.from_id;
+    if (seen[other]) return;
+    seen[other] = 1;
+    const u = db.prepare('SELECT id,name,anon_nick,rating FROM users WHERE id=?').get(other);
+    const unread = db.prepare('SELECT COUNT(*) n FROM dms WHERE from_id=? AND to_id=? AND read=0').get(other, req.uid).n;
+    out.push({ user: u, last: m.body, last_at: m.created_at, mine: m.from_id === req.uid, unread });
+  });
+  res.json(out);
+});
+
+app.get('/dm/with/:uid', auth, (req, res) => {
+  const other = intOrNull(req.params.uid);
+  const rows = db.prepare(`SELECT id,from_id,to_id,body,created_at FROM dms
+    WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) ORDER BY id`).all(req.uid, other, other, req.uid);
+  db.prepare('UPDATE dms SET read=1 WHERE from_id=? AND to_id=? AND read=0').run(other, req.uid);
+  res.json(rows.map(r => ({ ...r, mine: r.from_id === req.uid })));
+});
+
+app.post('/dm', auth, (req, res) => {
+  const to = intOrNull(req.body && req.body.to);
+  const body = String((req.body && req.body.body) || '').trim().slice(0, 500);
+  if (!to || to === req.uid) return res.status(400).json({ error: 'bad_target' });
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const target = getUser(to);
+  if (!target) return res.status(404).json({ error: 'no_user' });
+  if (db.prepare('SELECT 1 FROM blocks WHERE user_id=? AND blocked_user_id=?').get(to, req.uid))
+    return res.status(403).json({ error: 'blocked' });
+
+  const isNew = !threadExists(req.uid, to);
+  if (isNew) {                                         // 새 대화만 유료
+    const me = getUser(req.uid);
+    if ((me.cash || 0) < DM_COST) return res.status(402).json({ error: 'insufficient_cash', need: DM_COST, cash: me.cash || 0 });
+    const after = me.cash - DM_COST;
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(after, req.uid);
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(req.uid, -DM_COST, '쪽지 · 새 대화', after, now());
+  }
+  const r = db.prepare('INSERT INTO dms (from_id,to_id,body,created_at) VALUES (?,?,?,?)').run(req.uid, to, body, now());
+  sendPush(to, { icon: '💬', title: '쪽지가 도착했어요', body: body.slice(0, 40) });
+  res.json({ ok: true, id: rid(r), charged: isNew ? DM_COST : 0, cash: getUser(req.uid).cash });
+});
 
 app.get('/health', (_, res) => res.json({ ok: true, ts: now() }));
 
