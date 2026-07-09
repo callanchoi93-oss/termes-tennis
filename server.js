@@ -773,6 +773,110 @@ app.get('/clubs/:id/attendance/summary', auth, (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+//  클럽 피드 (사진·글)
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  body TEXT,
+  photo TEXT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_club_posts ON club_posts(club_id, id DESC);`);
+
+app.get('/clubs/:id/feed', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(db.prepare(`SELECT p.*, u.name author FROM club_posts p
+    JOIN users u ON u.id=p.user_id WHERE p.club_id=? ORDER BY p.id DESC LIMIT 50`).all(cid));
+});
+
+app.post('/clubs/:id/feed', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const body = String((req.body || {}).body || '').trim();
+  const photo = String((req.body || {}).photo || '').trim() || null;
+  if (!body && !photo) return res.status(400).json({ error: 'empty' });
+  const bad = findContact(body);
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const r = db.prepare('INSERT INTO club_posts (club_id,user_id,body,photo,created_at) VALUES (?,?,?,?,?)')
+    .run(cid, req.uid, body, photo, now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/clubs/:cid/feed/:id', auth, (req, res) => {
+  const p = db.prepare('SELECT * FROM club_posts WHERE id=?').get(+req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(p.club_id, req.uid);
+  const can = p.user_id === req.uid || (m && ['owner', 'officer'].includes(m.role));
+  if (!can) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM club_posts WHERE id=?').run(p.id);
+  res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  내가 쓴 글
+// ══════════════════════════════════════════════════════════════
+app.get('/me/posts', auth, (req, res) => {
+  res.json({
+    lounge: db.prepare(`SELECT id,title,body,category,sport,likes,created_at,hidden,
+        (SELECT COUNT(*) FROM comments WHERE post_id=posts.id AND hidden=0) comments
+      FROM posts WHERE user_id=? ORDER BY id DESC LIMIT 50`).all(req.uid),
+    comments: db.prepare(`SELECT c.id, c.body, c.created_at, p.id post_id, p.title post_title
+      FROM comments c JOIN posts p ON p.id=c.post_id
+      WHERE c.user_id=? AND c.hidden=0 ORDER BY c.id DESC LIMIT 50`).all(req.uid),
+    club_feed: db.prepare(`SELECT cp.id, cp.body, cp.photo, cp.created_at, c.name club_name
+      FROM club_posts cp JOIN clubs c ON c.id=cp.club_id
+      WHERE cp.user_id=? ORDER BY cp.id DESC LIMIT 50`).all(req.uid),
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 리그 참가
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_league (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  sport TEXT NOT NULL,
+  division TEXT DEFAULT '3부',
+  w INTEGER DEFAULT 0, l INTEGER DEFAULT 0, pt INTEGER DEFAULT 0,
+  joined_at BIGINT NOT NULL,
+  UNIQUE(club_id, sport)
+);`);
+
+app.get('/club-league', (req, res) => {
+  const sport = req.query.sport || 'tennis';
+  res.json(db.prepare(`SELECT cl.*, c.name, c.region FROM club_league cl
+    JOIN clubs c ON c.id=cl.club_id WHERE cl.sport=?
+    ORDER BY cl.pt DESC, cl.w DESC, c.name`).all(sport));
+});
+
+// 클럽장·임원만 참가 신청
+app.post('/clubs/:id/league', auth, (req, res) => {
+  const cid = +req.params.id;
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!m || !['owner', 'officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
+  const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const sport = (req.body || {}).sport || c.sport || 'tennis';
+  const has = db.prepare('SELECT id FROM club_league WHERE club_id=? AND sport=?').get(cid, sport);
+  if (has) return res.status(409).json({ error: 'already_joined' });
+  db.prepare('INSERT INTO club_league (club_id,sport,joined_at) VALUES (?,?,?)').run(cid, sport, now());
+  notifyClub(cid, req.uid, '🏆', '클럽 리그에 참가했어요', `${c.name} · ${sport}`);
+  res.json({ ok: true });
+});
+
+app.delete('/clubs/:id/league', auth, (req, res) => {
+  const cid = +req.params.id;
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!m || !['owner', 'officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
+  const sport = req.query.sport || 'tennis';
+  db.prepare('DELETE FROM club_league WHERE club_id=? AND sport=?').run(cid, sport);
+  res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
 //  클럽 공지사항
 // ══════════════════════════════════════════════════════════════
 db.exec(`CREATE TABLE IF NOT EXISTS notices (
