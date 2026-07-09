@@ -149,6 +149,38 @@ app.post('/auth/kakao/code', async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// ── 종목별 프로필 (포지션·주발·영법 …) ──
+// 종목마다 항목이 달라서 컬럼으로 두지 않고 JSON 한 칸에 담는다.
+try { db.exec("ALTER TABLE users ADD COLUMN sport_profile TEXT"); } catch (e) {}
+
+app.get('/me/sport-profile', auth, (req, res) => {
+  const u = db.prepare('SELECT sport_profile FROM users WHERE id=?').get(req.uid);
+  let all = {};
+  try { all = JSON.parse(u.sport_profile || '{}'); } catch (e) {}
+  res.json(all);
+});
+
+app.put('/me/sport-profile/:sport', auth, (req, res) => {
+  const sport = String(req.params.sport || '').slice(0, 20);
+  const u = db.prepare('SELECT sport_profile FROM users WHERE id=?').get(req.uid);
+  let all = {};
+  try { all = JSON.parse(u.sport_profile || '{}'); } catch (e) {}
+  const body = req.body || {};
+  const clean = {};
+  Object.keys(body).slice(0, 12).forEach(k => {
+    const v = body[k];
+    if (v === '' || v == null) return;
+    clean[String(k).slice(0, 20)] = String(v).slice(0, 40);
+  });
+  all[sport] = clean;
+  db.prepare('UPDATE users SET sport_profile=? WHERE id=?').run(JSON.stringify(all), req.uid);
+  // 라켓 종목의 공통 항목은 users 컬럼에도 반영해 선수 비교에서 바로 쓴다
+  if (clean.handed)   db.prepare('UPDATE users SET handed=? WHERE id=?').run(clean.handed, req.uid);
+  if (clean.backhand) db.prepare('UPDATE users SET backhand=? WHERE id=?').run(clean.backhand, req.uid);
+  if (clean.style)    db.prepare('UPDATE users SET style=? WHERE id=?').run(clean.style, req.uid);
+  res.json({ ok: true, sport, profile: clean });
+});
+
 // 선수 비교용 공개 프로필 (민감정보 제외)
 app.get('/users/:id/profile', (req, res) => {
   const u = db.prepare(`SELECT id,name,gender,region,sport,rating,mmr,peak_mmr,birth_year,handed,backhand,style,
