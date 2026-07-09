@@ -720,6 +720,28 @@
   .dmbadge{ display:inline-block; min-width:16px; height:16px; line-height:16px; text-align:center;
             background:var(--coral); color:#fff; font-size:10px; font-weight:800;
             border-radius:999px; padding:0 4px; vertical-align:1px; }
+  .lgx{ background:linear-gradient(135deg,#8b7fd4,#6f62c4); color:#fff; padding:18px 17px }
+  .lgx-tag{ font-size:11px;font-weight:800;opacity:.85;letter-spacing:.02em }
+  .lgx-h{ font-size:21px;font-weight:900;margin-top:5px;letter-spacing:-.02em }
+  .lgx-sub{ font-size:12.5px;font-weight:600;opacity:.9;margin-top:6px;line-height:1.55 }
+  .lgx-body{ min-height:104px }
+  .lgx-row{ display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;font-size:13px;font-weight:700 }
+  .lgx-row.on{ background:var(--coral-s) }
+  .lgx-row b{ width:14px;color:var(--lgray) }
+  .lgx-row.on b{ color:var(--coral-d) }
+  .lgx-row span{ flex:1 }
+  .lgx-row i{ font-style:normal;font-size:12px;color:var(--gray) }
+  .lgx-row em{ font-style:normal;color:var(--coral-d);font-weight:900;width:26px;text-align:right }
+  .lgx-updown{ display:flex;justify-content:space-between;padding:14px 6px;font-size:13px;font-weight:800 }
+  .lgx-updown .up{ color:#1f7d4d } .lgx-updown .down{ color:#b3261e }
+  .lgx-note{ font-size:12px;color:var(--gray);font-weight:600;text-align:center;padding-bottom:8px }
+  .lgx-stats{ display:flex;justify-content:space-around;padding:20px 0 12px;text-align:center }
+  .lgx-stats b{ display:block;font-size:17px;font-weight:900;color:var(--coral-d) }
+  .lgx-stats span{ font-size:11.5px;color:var(--gray);font-weight:700 }
+  .lgx-nav{ display:flex;align-items:center;justify-content:space-between;margin-top:12px }
+  .lgx-dots{ display:flex;gap:6px }
+  .lgx-dots i{ width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer }
+  .lgx-dots i.on{ background:var(--coral);width:18px;border-radius:99px }
   /* — 오픈매치 — */
   .om-reg{ font-size:11.5px;font-weight:700;color:var(--lgray);margin-top:4px;display:flex;align-items:center;gap:3px }
   .om-host{ display:flex;align-items:center;gap:10px;margin-top:11px;padding:9px 10px;
@@ -1115,9 +1137,9 @@
       <div class="rev-dots" id="revDots"></div>
     </div>
     <div class="auth2-btns">
-      <input id="authName" placeholder="이름(닉네임)을 입력하고 시작하기" maxlength="12" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-family:inherit;font-size:15px;background:#fff;margin-bottom:10px;text-align:center;font-weight:700">
-      <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 가입/시작</span></button>
-      <button class="sbtn2" onclick="login('naver')"><span class="ic" style="background:#03c75a;color:#fff">N</span><span class="lbl">네이버로 가입/시작</span></button>
+      <input id="authName" placeholder="이름(닉네임)을 입력하고 시작하기" maxlength="12" style="display:none;width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-family:inherit;font-size:15px;background:#fff;margin-bottom:10px;text-align:center;font-weight:700">
+      <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
+      <div id="authFallback"></div>
       <div id="authSaved"></div>
       <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
     </div>
@@ -1384,6 +1406,72 @@ const SPORTS=[
   {id:'baseball',n:'야구',ic:'⚾',cat:'team',unit:'경기',fmt:'9:9',place:'구장'},
   {id:'swimming',n:'수영',ic:'🏊',cat:'record',unit:'기록',fmt:'자유형·기록',place:'레인'},
 ];
+/* ═══════════ 종목별 프로필 항목 · 경기 형식 ═══════════
+   1:1(또는 복식) 대결이 성립하는 종목만 "선수 비교"를 쓴다.
+   팀 종목은 개인 대결이 없고, 기록 종목은 상대가 아니라 기록과 겨룬다. */
+const SPORT_META = {
+  tennis: {
+    duel: true,
+    fields: [
+      {k:'handed',   label:'주손',   opts:['오른손','왼손']},
+      {k:'backhand', label:'백핸드', opts:['한손 백핸드','양손 백핸드']},
+      {k:'style',    label:'스타일', opts:['베이스라이너','서브앤발리','올라운더']},
+    ],
+    formats: ['남자복식','여자복식','혼합복식','남자단식','여자단식'],
+  },
+  badminton: {
+    duel: true,
+    fields: [
+      {k:'handed',   label:'주손',   opts:['오른손','왼손']},
+      {k:'style',    label:'스타일', opts:['공격형','수비형','올라운더']},
+      {k:'position', label:'선호 위치', opts:['전위','후위','상관없음']},
+    ],
+    formats: ['남자복식','여자복식','혼합복식','남자단식','여자단식'],
+  },
+  soccer: {
+    duel: false,
+    fields: [
+      {k:'position', label:'포지션', opts:['골키퍼','수비수','미드필더','공격수']},
+      {k:'footed',   label:'주발',   opts:['오른발','왼발','양발']},
+    ],
+    formats: ['풋살 5:5','풋살 6:6','축구 11:11'],
+  },
+  basketball: {
+    duel: false,
+    fields: [
+      {k:'position', label:'포지션', opts:['가드','포워드','센터']},
+      {k:'height',   label:'키(cm)', type:'number'},
+    ],
+    formats: ['3:3','5:5'],
+  },
+  baseball: {
+    duel: false,
+    fields: [
+      {k:'position', label:'포지션', opts:['투수','포수','내야수','외야수']},
+      {k:'handed',   label:'투타',   opts:['우투우타','우투좌타','좌투좌타','좌투우타']},
+    ],
+    formats: ['친선 경기','연습 경기'],
+  },
+  running: {
+    duel: false,
+    fields: [
+      {k:'pace',     label:'평균 페이스', placeholder:'예) 5:30/km'},
+      {k:'distance', label:'주 거리',   opts:['5K','10K','하프','풀코스']},
+    ],
+    formats: ['5K','10K','하프 코스','풀 코스','자유 러닝'],
+  },
+  swimming: {
+    duel: false,
+    fields: [
+      {k:'stroke', label:'주 영법', opts:['자유형','배영','평영','접영']},
+      {k:'level',  label:'수준',   opts:['입문','중급','상급','마스터즈']},
+    ],
+    formats: ['자유 수영','레인 훈련','기록 측정'],
+  },
+};
+const SM = () => SPORT_META[state.sport] || SPORT_META.tennis;
+const isDuelSport = () => !!SM().duel;
+
 function SP(){ return SPORTS.find(s=>s.id===state.sport)||SPORTS.find(s=>s.id==='tennis'); }
 // 종목별 클럽 생성 예시 (이름 · 지역 · 주 사용 장소)
 const CLUB_EG={
@@ -1455,17 +1543,16 @@ async function login(p){
   const nm=(_n&&_n.trim())||'곽주영';
   state.userName=nm; state.provider=p;
   try{
-    if(p==='kakao' && SERVER_OK && CFG.kakao_js_key){ kakaoLogin(); return; }   // 페이지 이동
-    else if(p==='naver' && SERVER_OK && CFG.naver_client_id){ naverLogin(); return; }   // 페이지 이동
-    else if(SERVER_OK){
-      if(p==='kakao' || p==='naver') toast(`${p==='kakao'?'카카오':'네이버'} 로그인은 아직 준비 중이에요 · 이름으로 시작합니다`);
-      await devLogin(nm);
+    if(SERVER_OK){
+      if(!CFG.kakao_js_key){ toast('카카오 로그인을 준비하고 있어요'); return; }
+      kakaoLogin(); return;                       // 카카오 동의창으로 이동
     }
-    else { /* 데모 모드 */ }
+    /* 데모 모드: 이름만으로 진행 */
   }catch(e){
     const msg=String(e.message||e);
-    if(msg==='no_kakao_key') toast('카카오 키가 설정되지 않았어요 · 데모로 진행합니다');
-    else if(msg!=='server_down') toast('로그인에 실패해 데모로 진행합니다');
+    if(msg==='no_kakao_key') toast('카카오 키가 설정되지 않았어요');
+    else if(msg!=='server_down') toast('로그인에 실패했어요');
+    return;
   }
   await loadClubIds();
   if(clubId()){ await loadClubServer(); await loadRoster(); }
@@ -1542,6 +1629,37 @@ async function api(path, opts){
   return r.json();
 }
 
+/* 로그인 화면 구성
+   · 데모(서버 없음) → 이름 입력으로 진행
+   · 서버 O · 카카오 O → 카카오 버튼만
+   · 서버 O · 카카오 X → 아직 로그인할 수 없음을 정직하게 알린다 */
+function applyAuthUI(){
+  const name = document.getElementById('authName');
+  const note = document.getElementById('authNote');
+  const fb   = document.getElementById('authFallback');
+  const kakaoReady = !!(SERVER_OK && CFG.kakao_js_key);
+
+  if(name) name.style.display = SERVER_OK ? 'none' : 'block';
+  if(note) note.textContent = SERVER_OK
+    ? (kakaoReady ? '카카오 계정으로 3초 만에 시작해요' : '로그인 준비 중이에요')
+    : '데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다';
+
+  if(fb){
+    fb.innerHTML = (SERVER_OK && !kakaoReady)
+      ? `<div class="note" style="margin-top:12px;text-align:left">
+           카카오 로그인을 준비하고 있어요. 잠시 뒤에 다시 열어주세요.</div>`
+      : '';
+  }
+}
+
+/* 배치 경기(5경기)를 마치기 전에는 레이팅을 숫자로 보여주지 않는다.
+   0승 0패인데 1000점이 찍히면 그 숫자가 뭘 뜻하는지 아무도 모른다.
+   내부 계산에는 계속 1000을 쓴다 (엘로 기준점). */
+const PLACEMENT_GAMES = 5;
+const isPlaced = () => (state.played||0) >= PLACEMENT_GAMES;
+const ratingText = () => isPlaced() ? String(state.rating) : '—';
+const ratingSub  = () => isPlaced() ? '' : `배치 ${state.played||0}/${PLACEMENT_GAMES}`;
+
 /* 공용 헬퍼 */
 function esc(t){ return String(t==null?'':t)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1593,7 +1711,7 @@ async function loadPublicData(){
     const us = await api('/users');
     const tierOf = r => r>=1400?'챌린저' : r>=1150?'아마추어' : '루키';
     PEOPLE = (us||[]).map(u=>({ id:u.id, n:u.name, g:'', region:u.region||'', exp:'',
-      tier:tierOf(u.rating||1000), w:0, l:0, manner:0, grade:'', clubs:[] }));
+      rating:u.rating||1000, tier:tierOf(u.rating||1000), w:0, l:0, manner:0, grade:'', clubs:[] }));
   }catch(e){}
   try{
     const ps = await api('/posts');
@@ -1604,7 +1722,7 @@ async function loadPublicData(){
 }
 
 async function checkServer(){
-  if(!API_BASE) return false;
+  if(!API_BASE){ SERVER_OK=false; DEMO=true; applyAuthUI(); return false; }
   try{
     const c = new AbortController(); setTimeout(()=>c.abort(), 2500);
     const r = await fetch(API_BASE + '/health', {signal:c.signal});
@@ -1618,8 +1736,7 @@ async function checkServer(){
   }
   const el = document.getElementById('srvTag');
   if(el){ el.textContent = SERVER_OK ? '서버 연결됨 · 실제 계정으로 로그인' : '데모 · 실제 결제·예약은 작동하지 않습니다'; el.className = 'demo-tag' + (SERVER_OK?' live':''); }
-  const note = document.getElementById('authNote');
-  if(note) note.textContent = SERVER_OK ? '카카오 또는 네이버 계정으로 시작하세요' : '데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다';
+  applyAuthUI();
   return SERVER_OK;
 }
 function saveSession(d){
@@ -2853,11 +2970,25 @@ function recommendClubs(){
     .map(c=>({...c, wr: c.p?Math.round(c.w/c.p*100):50}))
     .sort((a,b)=>Math.abs(a.pt-(myRow?myRow.pt:10))-Math.abs(b.pt-(myRow?myRow.pt:10)));
 }
-function smartOpponents(){ const me=state.rating, gd=state.gender||'남자부'; return [
-  {n:'이준호',r:me+22,reg:'경기 용인',gd,note:'실력 비슷 · 같은 지역'},
-  {n:'서지민',r:me-15,reg:'경기 용인',gd,note:'최근 폼 상승 · 좋은 매너'},
-  {n:'한지웅',r:me+41,reg:'경기 용인',gd,note:'한 단계 위 도전 상대'},
-];}
+/* 추천 상대 — 서버 모드에선 실제 가입자 중에서 고른다.
+   아무도 없으면 빈 배열. 없는 사람을 지어내지 않는다. */
+function smartOpponents(){
+  const me = state.rating, gd = state.gender || '남자부';
+  if(SERVER_OK){
+    const myId = (state.serverUser||{}).id;
+    return PEOPLE
+      .filter(p => p.id !== myId)
+      .map(p => ({ n:p.n, id:p.id, r:p.rating||1000, reg:p.region||'', gd,
+                   note: Math.abs((p.rating||1000)-me) <= 60 ? '실력 비슷' : '한 단계 위 도전 상대' }))
+      .sort((a,b) => Math.abs(a.r-me) - Math.abs(b.r-me))
+      .slice(0,3);
+  }
+  return [
+    {n:'이준호',r:me+22,reg:'경기 용인',gd,note:'실력 비슷 · 같은 지역'},
+    {n:'서지민',r:me-15,reg:'경기 용인',gd,note:'최근 폼 상승 · 좋은 매너'},
+    {n:'한지웅',r:me+41,reg:'경기 용인',gd,note:'한 단계 위 도전 상대'},
+  ];
+}
 function openSmartMatch(){
   const ops=smartOpponents(); const cls=['#6182e6','#62c08d','#f1a55c'];
   let h=`<div class="sh-top"><h3>추천 상대</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
@@ -3005,6 +3136,7 @@ function setLeagueTab(t){state.leagueTab=t;renderLeague();}
 function setClubDiv(d){state.clubDivView=d;renderLeague();}
 function tieAgg(){let hw=0,aw=0;state.clubTie.matches.forEach(m=>{if(m.hw===true)hw++;else if(m.hw===false)aw++;});return {hw,aw};}
 function renderClubLeague(){
+  if(!state.clubStandings.length) return leagueEmpty('클럽 리그');
   const myClub=state.activeClub||null;
   const myRow=state.clubStandings.find(c=>c.n===myClub);
   if(myRow) state.clubDivView=state.clubDivView||myRow.div;
@@ -3118,6 +3250,7 @@ function renderPreLaunch(){
   });
   h+=`<div class="card" style="background:#f6efdf;border-color:#ece1ca"><button class="btn" style="background:var(--ink)" onclick="openLeagueNow()">모집 다 차기 (시연)</button>
     <div class="note">회원이 임계치를 넘으면 리그가 열리는 걸 볼 수 있어요</div></div>`;
+  h += leagueSlides();
   return h;
 }
 function notifyLeague(){state.leagueNotified=!state.leagueNotified;renderLeague();toast(state.leagueNotified?'리그가 열리면 알려드릴게요':'알림을 취소했어요');}
@@ -3130,6 +3263,7 @@ function soccerModeSeg(){ return `<div class="miniseg" style="margin:0 0 12px"><
 function renderTeamLeague(){
   const sp=SP();
   let h=`<h2 class="t">${sp.n} 리그</h2><p class="sub">${state.leagueGender} · 팀 단위 리그를 치르고 순위로 승격·강등돼요.</p>`;
+  if(!state.clubStandings.length) return h + leagueEmpty(`${sp.n} 리그`);
   if(sp.id==='soccer') h+=soccerModeSeg();
   h+=genderSeg();
   h+=`<div class="card" style="background:linear-gradient(140deg,#8c6fd6,#6f86e2);border:none;color:#fff">
@@ -3154,6 +3288,7 @@ function renderTeamLeague(){
 function renderRecordLeague(){
   const sp=SP(); const run=sp.id==='running';
   let h=`<h2 class="t">${sp.n} 리그</h2><p class="sub">${state.leagueGender} · 기록으로 겨루는 개인 랭킹 리그예요.</p>`;
+  if(SERVER_OK && !LB_POOL.length) return h + leagueEmpty(`${sp.n} 리그`);
   h+=genderSeg();
   h+=`<div class="card" style="background:linear-gradient(135deg,#eef7d6,#e3f0c2);border:none"><div style="font-size:14px;font-weight:800;color:#5f7416">${run?'페이스 등급 · 실버':'기록 등급 · 실버'} · 지역 12위</div><div style="font-size:12.5px;color:#6f8718;font-weight:600;margin-top:4px">${run?'1km 평균 5:10':'50m 자유형 34.5초'} · 이번 달 개인 베스트 경신 🎉</div></div>`;
   h+=`<div class="card" style="background:var(--purple);border:none"><div style="font-size:13px;font-weight:800;color:#4a3f6b">이번 주 리그 챌린지</div><div style="font-size:19px;font-weight:900;margin-top:4px">${run?'주간 누적 30km':'이번 달 5km 완영'}</div><div style="height:8px;border-radius:5px;background:rgba(255,255,255,.5);margin:11px 0 6px;overflow:hidden"><div style="height:100%;width:62%;background:var(--coral)"></div></div><div style="font-size:12.5px;font-weight:700;color:#4a3f6b">${run?'18.6/30km':'3.1/5km'} · 완주 시 랭킹 포인트 +50</div></div>`;
@@ -3163,6 +3298,58 @@ function renderRecordLeague(){
   h+=`</div><button class="btn felt" onclick="go('bracket')">기록 입력하러 가기 →</button>`;
   return h;
 }
+/* ═══════════ 리그 시작 전 안내 (예시 슬라이드) ═══════════
+   아직 리그가 열리지 않았는데 가짜 순위표를 보여주면 안 된다.
+   대신 "열리면 이렇게 보인다" 를 예시로 넘겨 보게 한다. */
+const LEAGUE_SLIDES = [
+  { t:'순위표', d:'승점·득실로 자동 정렬돼요.',
+    b:`<div class="lgx-row on"><b>1</b><span>우리 클럽</span><i>4승 2패</i><em>13</em></div>
+       <div class="lgx-row"><b>2</b><span>이웃 클럽</span><i>3승 3패</i><em>11</em></div>
+       <div class="lgx-row"><b>3</b><span>옆 동네 클럽</span><i>2승 4패</i><em>7</em></div>` },
+  { t:'승격과 강등', d:'시즌이 끝나면 1위는 위로, 최하위는 아래로.',
+    b:`<div class="lgx-updown"><div class="up">▲ 1위 승격</div><div class="down">최하위 강등 ▼</div></div>
+       <div class="lgx-note">디비전이 나뉘어 비슷한 실력끼리 겨뤄요.</div>` },
+  { t:'내 기여', d:'출전·기록·수상이 시즌 단위로 쌓여요.',
+    b:`<div class="lgx-stats"><div><b>6</b><span>출전</span></div><div><b>4골 3도움</b><span>기록</span></div><div><b>MVP 2</b><span>수상</span></div></div>` },
+];
+function leagueSlides(){
+  const i = state._lgSlide || 0;
+  const s0 = LEAGUE_SLIDES[i];
+  return `
+  <div class="card" style="padding:16px 15px">
+    <div style="font-size:11.5px;font-weight:800;color:var(--lgray);margin-bottom:3px">예시 · ${i+1}/${LEAGUE_SLIDES.length}</div>
+    <div style="font-size:16px;font-weight:800">${s0.t}</div>
+    <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin:3px 0 12px">${s0.d}</div>
+    <div class="lgx-body">${s0.b}</div>
+    <div class="lgx-nav">
+      <button class="btn ghost sm" style="width:auto;padding:8px 14px;margin:0" onclick="lgSlide(-1)">‹</button>
+      <div class="lgx-dots">${LEAGUE_SLIDES.map((_,k)=>`<i class="${k===i?'on':''}" onclick="lgSlideTo(${k})"></i>`).join('')}</div>
+      <button class="btn ghost sm" style="width:auto;padding:8px 14px;margin:0" onclick="lgSlide(1)">›</button>
+    </div>
+  </div>`;
+}
+function leagueEmpty(title){
+  const i = state._lgSlide || 0;
+  const s0 = LEAGUE_SLIDES[i];
+  return `
+  <div class="card lgx">
+    <div class="lgx-tag">아직 리그가 열리지 않았어요</div>
+    <div class="lgx-h">${title}</div>
+    <div class="lgx-sub">모임에 참가하는 개인이나 클럽이 모이면 리그가 열려요.</div>
+  </div>
+
+  ${leagueSlides()}
+
+  <button class="btn" style="margin-top:14px" onclick="go('club')">클럽 만들거나 가입하기</button>
+  <button class="btn ghost" style="margin-top:8px" onclick="go('match')">오픈매치 둘러보기</button>`;
+}
+function lgSlide(d){
+  const n = LEAGUE_SLIDES.length;
+  state._lgSlide = ((state._lgSlide||0) + d + n) % n;
+  renderLeague();
+}
+function lgSlideTo(i){ state._lgSlide = i; renderLeague(); }
+
 function renderLeague(){
   const cat=SP().cat;
   if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague(); return; }
@@ -3469,9 +3656,59 @@ function openProfileEdit(){
     <div class="phgrid">${[0,1,2,3,4,5].map(cell).join('')}</div>
     <div class="note" style="text-align:left;margin-top:14px">칸을 탭하면 사진이 추가/삭제돼요 (데모). 실제 앱에서는 갤러리에서 선택해요.</div>
     <button class="btn felt" style="margin-top:12px" onclick="closeOv();toast('프로필 사진을 저장했어요');if(state.view==='me')renderMe()">프로필 사진 저장</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="openSportProfile()">${SP().n} 정보 입력 →</button>
     <button class="btn ghost" style="margin-top:9px" onclick="openEditProfile()">기본 정보(성별·경력·지역) 수정 →</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+/* 종목별 상세 정보 — 종목마다 물어볼 게 다르다.
+   테니스에 "주 영법"을 묻거나 수영에 "백핸드"를 묻지 않는다. */
+async function openSportProfile(){
+  const sp = SP(), meta = SM();
+  let saved = {};
+  if(SERVER_OK){ try{ saved = (await api('/me/sport-profile'))[sp.id] || {}; }catch(e){} }
+  else { saved = (state.sportProfile||{})[sp.id] || {}; }
+
+  const row = f => {
+    if(f.opts){
+      return `<div class="fld"><label>${f.label}</label>
+        <select id="sp_${f.k}">
+          <option value="">선택 안 함</option>
+          ${f.opts.map(o=>`<option value="${o}" ${saved[f.k]===o?'selected':''}>${o}</option>`).join('')}
+        </select></div>`;
+    }
+    return `<div class="fld"><label>${f.label}</label>
+      <input id="sp_${f.k}" ${f.type==='number'?'inputmode="numeric"':''}
+        placeholder="${f.placeholder||''}" value="${esc(saved[f.k]||'')}"></div>`;
+  };
+
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>${sp.ic} ${sp.n} 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${meta.duel
+      ? '입력하면 <b>선수 비교</b>와 매칭에 쓰여요.'
+      : '입력하면 팀 편성과 모임 추천에 쓰여요.'}</div>
+    <div class="fld"><label>출생 연도</label>
+      <input id="sp_birth" inputmode="numeric" maxlength="4" placeholder="예) 1994" value="${esc(saved.birth||'')}"></div>
+    ${meta.fields.map(row).join('')}
+    <button class="btn" style="margin-top:6px" onclick="saveSportProfile()">저장</button>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function saveSportProfile(){
+  const sp = SP(), meta = SM();
+  const val = k => ((document.getElementById('sp_'+k)||{}).value||'').trim();
+  const body = { birth: val('birth') };
+  meta.fields.forEach(f => { body[f.k] = val(f.k); });
+  if(body.birth && !/^(19|20)\d{2}$/.test(body.birth)){ toast('출생 연도를 네 자리로 입력해 주세요'); return; }
+
+  if(SERVER_OK){
+    try{ await api(`/me/sport-profile/${sp.id}`,{method:'PUT',body:JSON.stringify(body)}); }
+    catch(e){ toast('저장하지 못했어요'); return; }
+  }else{
+    state.sportProfile = state.sportProfile||{}; state.sportProfile[sp.id]=body;
+  }
+  toast(`${sp.n} 정보를 저장했어요`); closeOv();
+  if(state.view==='me') renderMe();
+}
+
 function togglePhotoCell(i){ state.photos=state.photos||[1,1,1,0,1,0]; if(i===0&&state.photos[0]&&state.photos.filter(Boolean).length===1){toast('대표 사진은 최소 1장 필요해요');return;} state.photos[i]=state.photos[i]?0:1; openProfileEdit(); }
 function openEditProfile(){
   const GEN=['남성','여성'], EXP=['1년 미만','1~3년','3~5년','5~10년','10년+'];
@@ -4486,7 +4723,8 @@ function openNewMatch(){
     <div class="fld"><label>읍/면/동 (선택)</label><input id="omDong" placeholder="예) 구갈동"></div>
     <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 기흥 테니스장 3번 코트"></div>
 
-    <div class="fld"><label>형식</label><input id="omFmt" value="복식"></div>
+    <div class="fld"><label>형식</label>
+      <select id="omFmt">${SM().formats.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
     <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>정원</label><input id="omCap" inputmode="numeric" value="8"></div>
@@ -4522,6 +4760,15 @@ function openNewMatch(){
   }
   ['omLoc','omNote','omDong'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
 }
+/* 형식 이름에 성별이 들어 있으면 그대로 쓴다 (혼합복식 → 혼성) */
+function gdFromFmt(f){
+  f = f || '';
+  if(f.includes('혼합')) return '혼성';
+  if(f.includes('남자')) return '남자부';
+  if(f.includes('여자')) return '여자부';
+  return state.gender==='여성' ? '여자부' : '남자부';
+}
+
 function fillSigungu(){
   const sd = (document.getElementById('omSido')||{}).value;
   const sel = document.getElementById('omSigungu');
@@ -4552,7 +4799,7 @@ async function createMatch(){
     await api('/open-matches',{method:'POST',body:JSON.stringify({
       sport:state.sport, dt:fmtMatchDate(start), start_at:start, end_at:end||null,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
-      loc, fmt:v('omFmt')||'복식', gd:state.gender==='여성'?'여자부':'남자부',
+      loc, fmt:v('omFmt')||SM().formats[0], gd:gdFromFmt(v('omFmt')),
       price:num('omPrice'), cap, min_cnt, note })});
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
@@ -4776,10 +5023,8 @@ function openCompare(name){
 
     <div class="cmp-tbl">
       ${cmpRow('나이', {t:ageOf(me.by), v:me.by||0}, {t:ageOf(M.by), v:M.by||0})}
-      ${cmpRow('주손', {t:me.handed}, {t:M.handed})}
-      ${cmpRow('스타일', {t:me.style}, {t:M.style})}
-      ${cmpRow('백핸드', {t:me.backhand}, {t:M.backhand})}
-      ${cmpRow('현재 MMR', {t:state.rating, v:state.rating}, {t:op.r, v:op.r}, true)}
+      ${SM().fields.map(f=>cmpRow(f.label, {t:me[f.k]}, {t:M[f.k]})).join('')}
+      ${cmpRow('현재 MMR', {t:ratingText(), v:isPlaced()?state.rating:0}, {t:op.r, v:op.r}, true)}
       ${cmpRow('최고 MMR', {t:me.peak, v:me.peak}, {t:M.peak, v:M.peak}, true)}
       ${(()=>{ const mn=me.w+me.l, on=M.w+M.l;
         // 한쪽이라도 경기 기록이 없으면 우세 표시를 하지 않는다 (0% 가 '패배'처럼 보이는 것 방지)
@@ -5964,11 +6209,9 @@ function renderMe(){
   <div class="card"><div class="ch">시즌 배지</div>
     <div class="badgrid">${myBadges().map(b=>`<div class="badgi ${b.on?'on':'off'}"><div class="bg-e">${b.e}</div><div class="bg-l">${b.l}</div></div>`).join('')}</div></div>
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openLeaderboard()">
-    <div><div style="font-size:16px;font-weight:800">개인 랭킹</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">우리 지역·부별 내 순위와 등락 보기</div></div>` : ``}
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+    <div><div style="font-size:16px;font-weight:800">개인 랭킹</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">우리 지역·부별 내 순위와 등락 보기</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openHallOfFame()">
-    <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div>` : ``}
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+    <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMyReport()">
     <div><div style="font-size:16px;font-weight:800">내 리포트 📊</div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">승률·득실·파트너 궁합을 클럽 평균과 비교</div></div>
@@ -5977,20 +6220,16 @@ function renderMe(){
     <div><div style="font-size:16px;font-weight:800">M캐쉬 ${(state.cash||0).toLocaleString()}</div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">친구 초대 · 광고 보고 받기</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openVerify()">
-    <div><div style="font-size:16px;font-weight:800">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#2f9159;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:800">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div>` : ``}
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+    <div><div style="font-size:16px;font-weight:800">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#2f9159;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:800">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
-    <div><div style="font-size:16px;font-weight:800">${SP().n} 통산 기록 📈</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">종목별 누적 스탯·하이라이트</div></div>` : ``}
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+    <div><div style="font-size:16px;font-weight:800">${SP().n} 통산 기록 📈</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">종목별 누적 스탯·하이라이트</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   <div class="card"><div class="ch">매너</div>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-size:16px;font-weight:800;color:var(--green)">😊 매너 양호</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">최근 평가 긍정 92% · 신고 0건</div></div>
       <div style="font-size:12px;color:var(--lgray);font-weight:600;text-align:right">상태가 나빠지면<br>리그 참여가 제한돼요</div></div></div>
   ${(()=>{const n=Object.keys(rivalList()).length;return `${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openRivals()">
-    <div><div style="font-size:16px;font-weight:800">함께 친 사람 · 라이벌 🔥</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div>` : ``}
-    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;})()}
+    <div><div style="font-size:16px;font-weight:800">함께 친 사람 · 라이벌 🔥</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}`;})()}
   <div class="card"><div class="ch">결제</div>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-size:16px;font-weight:800">경기당 결제</div><div style="font-size:13px;color:var(--green);font-weight:700;margin-top:3px">● 칠 때만 결제 · 약정 없음</div></div>
@@ -6090,7 +6329,11 @@ function renderHome(){
     }
   }
   // ⚔️ 오늘의 추천 상대 (개인 매칭) — 팀 스포츠는 제외
-  if(SP().cat!=='team'){ const o=smartOpponents()[0]; const exp=Math.round(expScore(state.rating,o.r)*100);
+  if(SP().cat!=='team' && !smartOpponents().length){
+    h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px">오늘의 추천 상대</div>
+        <div class="note" style="text-align:left">아직 같은 종목 회원이 없어요. <b>오픈매치</b>를 열거나 친구를 초대해 보세요.</div>`;
+  }
+  if(SP().cat!=='team' && smartOpponents().length){ const o=smartOpponents()[0]; const exp=Math.round(expScore(state.rating,o.r)*100);
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오늘의 추천 상대</span><span onclick="openSmartMatch()" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">더보기 →</span></div>
       <div class="card" style="display:flex;align-items:center;gap:13px;cursor:pointer" onclick="openCompare('${o.n}')">
         <div class="lb-av" style="width:46px;height:46px;border-radius:50%;background:var(--blue);font-size:18px;flex:none">${o.n[0]}</div>
@@ -6117,7 +6360,7 @@ function renderHome(){
   { const rec=myRecord(), t=myTier();
     h+=`<div class="card" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="go('me')">
       <div><div style="font-size:12px;color:var(--gray);font-weight:700">내 등급</div><div style="font-size:17px;font-weight:900;margin-top:2px">${(t.name||'루키').split(' ')[0]}</div></div>
-      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700">레이팅</div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${state.rating}</div></div>
+      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700">레이팅</div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${ratingText()}</div>${ratingSub()?`<div style="font-size:10.5px;color:var(--lgray);font-weight:700">${ratingSub()}</div>`:''}</div>
       <div style="text-align:right"><div style="font-size:12px;color:var(--gray);font-weight:700">전적</div><div style="font-size:17px;font-weight:900;margin-top:2px">${rec.w}승 ${rec.l}패</div></div></div>`;
   }
   // 오픈 예정 경기 peek
