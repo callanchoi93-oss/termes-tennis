@@ -7,7 +7,7 @@
  *
  * CACHE_VERSION 을 올리면 옛 캐시가 전부 지워진다. index.html 을 배포할 때 같이 올릴 것.
  */
-const CACHE_VERSION = 'matsu-v2';
+const CACHE_VERSION = 'matsu-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 
@@ -19,14 +19,19 @@ const PRECACHE = [
   '/icons/apple-touch-icon.png',
 ];
 
-// API 로 나가는 경로. 이 목록은 캐시하지 않고 항상 네트워크로 보낸다.
-const API_PREFIXES = [
-  '/config', '/diag',                        // 설정·진단은 절대 캐시하지 않는다
-  '/health', '/auth', '/me', '/clubs', '/brackets', '/events', '/dues',
-  '/dm', '/cash', '/posts', '/matches', '/open-matches', '/users',
-  '/notifications', '/pay', '/iap', '/upload', '/admin', '/devices',
+/* 무엇을 캐시할지 목록으로 관리하면, 새 API 를 만들 때마다 빠뜨린다.
+   실제로 /config 와 /club-league 가 그렇게 캐시되어 버그를 냈다.
+   그래서 뒤집는다: 캐시해도 안전한 것만 정해두고, 나머지는 전부 네트워크로 보낸다. */
+const CACHEABLE = [
+  '/', '/index.html', '/manifest.json', '/sw.js',
+  '/privacy.html', '/admin.html',
 ];
-const isApi = (p) => API_PREFIXES.some((x) => p === x || p.startsWith(x + '/') || p.startsWith(x + '?'));
+const isStatic = (p) =>
+  CACHEABLE.includes(p) ||
+  p.startsWith('/icons/') ||
+  p.startsWith('/uploads/') ||          // 올린 사진은 안 바뀐다
+  /\.(png|jpe?g|webp|svg|gif|ico|woff2?|ttf|css|js)$/i.test(p);
+const isApi = (p) => !isStatic(p);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

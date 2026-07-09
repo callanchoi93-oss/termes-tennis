@@ -743,6 +743,20 @@
   .lgx-dots{ display:flex;gap:6px }
   .lgx-dots i{ width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer }
   .lgx-dots i.on{ background:var(--coral);width:18px;border-radius:99px }
+  .ph-prev{ position:relative;margin:8px 0;border-radius:12px;overflow:hidden;max-height:220px }
+  .ph-prev img{ width:100%;display:block;object-fit:cover;max-height:220px }
+  .ph-x{ position:absolute;top:7px;right:7px;width:26px;height:26px;border-radius:50%;
+         background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;
+         font-size:17px;font-weight:700;cursor:pointer }
+  .post .photo img{ width:100%;display:block;border-radius:12px;object-fit:cover;max-height:320px }
+  .cl-row{ display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;
+           font-size:13.5px;font-weight:700;background:#fff;border:1px solid var(--line);margin-bottom:6px }
+  .cl-row.on{ background:var(--coral-s);border-color:var(--coral) }
+  .cl-row b{ width:16px;color:var(--lgray) }
+  .cl-row.on b{ color:var(--coral-d) }
+  .cl-row span{ flex:1 }
+  .cl-row i{ font-style:normal;font-size:12px;color:var(--gray) }
+  .cl-row em{ font-style:normal;color:var(--coral-d);font-weight:900;width:28px;text-align:right }
   /* — 오픈매치 — */
   .om-reg{ font-size:11.5px;font-weight:700;color:var(--lgray);margin-top:4px;display:flex;align-items:center;gap:3px }
   .om-host{ display:flex;align-items:center;gap:10px;margin-top:11px;padding:9px 10px;
@@ -2373,10 +2387,33 @@ async function pushGrades(){
 
 /* ===== 회원가입/세션 저장 (localStorage) ===== */
 const MATSU_SAVE='matsu_demo_save_v1';
-function saveMatsu(){ try{ if(!state.loggedIn) return; localStorage.setItem(MATSU_SAVE, JSON.stringify({state, posts:(typeof LOUNGE_POSTS!=='undefined'?LOUNGE_POSTS:[])})); }catch(e){} }
+let LOGGING_OUT = false;
+function saveMatsu(){ try{ if(LOGGING_OUT || !state.loggedIn) return; localStorage.setItem(MATSU_SAVE, JSON.stringify({state, posts:(typeof LOUNGE_POSTS!=='undefined'?LOUNGE_POSTS:[])})); }catch(e){} }
 function loadMatsu(){ try{ const d=JSON.parse(localStorage.getItem(MATSU_SAVE)); if(d&&d.state&&d.state.loggedIn){ Object.assign(state,d.state); if(Array.isArray(d.posts)&&typeof LOUNGE_POSTS!=='undefined'){ LOUNGE_POSTS.length=0; d.posts.forEach(p=>LOUNGE_POSTS.push(p)); } return true; } }catch(e){} return false; }
-function logoutMatsu(){ try{ localStorage.removeItem(MATSU_SAVE); }catch(e){} location.reload(); }
-function wipeMatsu(){ if(confirm('가입·글·전적 등 저장된 모든 데이터를 지울까요?')){ try{ localStorage.removeItem(MATSU_SAVE); }catch(e){} location.reload(); } }
+/* 로그아웃 — 로그인 토큰까지 지워야 한다.
+   MATSU_SAVE 만 지우면 새로고침할 때 토큰으로 자동 로그인돼 로그인 창이 안 뜬다. */
+function logoutMatsu(){
+  LOGGING_OUT = true;                            // beforeunload 가 다시 저장하지 못하게
+  state.loggedIn = false;
+  try{
+    localStorage.removeItem(MATSU_SAVE);
+    localStorage.removeItem(TOKEN_KEY);          // 토큰까지 지워야 자동 로그인이 안 된다
+    sessionStorage.removeItem('oauth_provider');
+  }catch(e){}
+  location.replace(location.pathname);           // ?code=... 같은 찌꺼기도 털어낸다
+}
+/* 이 기기에 저장된 것만 지운다. 서버의 글·클럽·전적은 그대로 남는다. */
+function wipeMatsu(){
+  if(!confirm('이 기기에 저장된 로그인 정보와 임시 데이터를 지울까요?\n\n서버에 올린 글·클럽·전적은 지워지지 않아요.')) return;
+  LOGGING_OUT = true;
+  state.loggedIn = false;
+  try{
+    localStorage.removeItem(MATSU_SAVE);
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.clear();
+  }catch(e){}
+  location.replace(location.pathname);
+}
 function populateAuthSaved(){ try{ const d=JSON.parse(localStorage.getItem(MATSU_SAVE)); const box=document.getElementById('authSaved'); if(box&&d&&d.state&&d.state.loggedIn&&d.state.userName){ box.innerHTML=`<div style="text-align:center;font-size:12px;color:var(--lgray);font-weight:700;margin:10px 0 6px">이어서 하기</div><button class="sbtn2" onclick="location.reload()"><span class="ic" style="background:var(--coral);color:#fff">${d.state.userName[0]}</span><span class="lbl">${d.state.userName} 님으로 계속</span></button>`; } }catch(e){} }
 function openQuickStart(){
   const stepc=(n,ic,t,d,act)=>`<div class="card" style="display:flex;align-items:center;gap:13px;margin-bottom:9px;cursor:pointer;padding:14px 15px" onclick="${act}">
@@ -3236,10 +3273,81 @@ function renderRankingTable(){
   h+=`<div style="font-size:11.5px;color:#7d8aa0;font-weight:600;text-align:center;margin-top:12px">레이팅(LP) 순 · 상위 3명 승격 · 하위 3명 강등</div></div>`;
   return h;
 }
-function setLeagueTab(t){state.leagueTab=t;renderLeague();}
+function setLeagueTab(t){ state.leagueTab=t; if(t==='club'&&SERVER_OK){ loadClubLeague().then(renderLeague); } renderLeague(); }
 function setClubDiv(d){state.clubDivView=d;renderLeague();}
 function tieAgg(){let hw=0,aw=0;state.clubTie.matches.forEach(m=>{if(m.hw===true)hw++;else if(m.hw===false)aw++;});return {hw,aw};}
+/* 서버 모드 클럽 리그
+   · 클럽이 없으면 → 클럽부터 만들기
+   · 클럽은 있는데 미참가 → 참가 신청 버튼 (임원만)
+   · 참가함 → 참가 클럽 목록·순위 */
+let CLUB_LEAGUE = [];
+function renderClubLeagueServer(){
+  const cid = clubId();
+  if(!cid){
+    return `<div class="card lgx">
+        <div class="lgx-tag">클럽 리그</div>
+        <div class="lgx-h">먼저 클럽이 필요해요</div>
+        <div class="lgx-sub">클럽을 만들거나 가입하면 리그에 참가할 수 있어요.</div>
+      </div>
+      <button class="btn" style="margin-top:14px" onclick="go('club')">클럽 만들거나 가입하기</button>
+      ${leagueSlides()}`;
+  }
+  const mine = CLUB_LEAGUE.find(x=>x.club_id===cid);
+  const c = AC() || {};
+  let h = '';
+  if(!mine){
+    h += `<div class="card lgx">
+        <div class="lgx-tag">클럽 리그</div>
+        <div class="lgx-h">${esc(state.activeClub||'우리 클럽')}</div>
+        <div class="lgx-sub">아직 리그에 참가하지 않았어요.<br>참가하면 같은 종목 클럽들과 순위를 겨뤄요.</div>
+      </div>
+      ${c.officer
+        ? `<button class="btn" style="margin-top:14px" onclick="joinClubLeague()">클럽 리그 참가하기</button>`
+        : `<div class="note" style="margin-top:14px">클럽장·임원만 참가 신청을 할 수 있어요.</div>`}`;
+  }
+  h += `<div class="ch" style="font-size:18px;margin:20px 4px 12px">참가 클럽 ${CLUB_LEAGUE.length}팀</div>`;
+  if(!CLUB_LEAGUE.length){
+    h += `<div class="note" style="text-align:left">아직 참가한 클럽이 없어요. 첫 번째로 참가해 보세요.</div>` + leagueSlides();
+    return h;
+  }
+  CLUB_LEAGUE.forEach((x,i)=>{
+    const me = x.club_id===cid;
+    h += `<div class="cl-row ${me?'on':''}">
+      <b>${i+1}</b><span>${esc(x.name)}${me?' <span style="font-size:10.5px;color:var(--coral-d)">우리 클럽</span>':''}</span>
+      <i>${x.w}승 ${x.l}패</i><em>${x.pt}</em></div>`;
+  });
+  if(mine && c.officer){
+    h += `<button class="btn ghost" style="margin-top:14px" onclick="leaveClubLeague()">리그 참가 취소</button>`;
+  }
+  h += `<div class="note" style="margin-top:12px;text-align:left">경기 일정은 참가 클럽이 <b>4팀 이상</b> 모이면 자동으로 짜여요.</div>`;
+  return h;
+}
+async function loadClubLeague(){
+  if(!SERVER_OK){ CLUB_LEAGUE=[]; return; }
+  try{ CLUB_LEAGUE = await api(`/club-league?sport=${state.sport}`); }catch(e){ CLUB_LEAGUE=[]; }
+}
+async function joinClubLeague(){
+  try{
+    await api(`/clubs/${clubId()}/league`,{method:'POST',body:JSON.stringify({sport:state.sport})});
+    toast('클럽 리그에 참가했어요');
+    await loadClubLeague(); renderLeague();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('officer_only')?'클럽장·임원만 신청할 수 있어요'
+        : m.includes('already_joined')?'이미 참가했어요':'참가하지 못했어요');
+  }
+}
+async function leaveClubLeague(){
+  if(!confirm('리그 참가를 취소할까요?')) return;
+  try{
+    await api(`/clubs/${clubId()}/league?sport=${state.sport}`,{method:'DELETE'});
+    toast('참가를 취소했어요');
+    await loadClubLeague(); renderLeague();
+  }catch(e){ toast('취소하지 못했어요'); }
+}
+
 function renderClubLeague(){
+  if(SERVER_OK) return renderClubLeagueServer();
   if(!state.clubStandings.length) return leagueEmpty('클럽 리그');
   const myClub=state.activeClub||null;
   const myRow=state.clubStandings.find(c=>c.n===myClub);
@@ -3659,12 +3767,27 @@ function renderClub(){
       <div class="note" style="text-align:left;margin-top:10px">참석을 누르면 <b>그날 대진 명단에 자동 포함</b>돼요.</div></div>`;
     h+=`
     <div class="composer"><textarea id="postText" placeholder="${state.activeClub}에 소식을 남겨보세요..." oninput="state._draft=this.value">${state._draft}</textarea>
-      ${state._photo?`<div class="ph-mini">🎾 사진 첨부됨</div>`:``}
-      <div class="crow"><span class="pht ${state._photo?'on':''}" onclick="togglePhoto()"><span class="bic">${ic('camera',14)}사진 ${state._photo?'첨부됨':'추가'}</span></span>
+      ${state._photo?`<div class="ph-prev"><img src="${state._photo}" alt="첨부한 사진"><span class="ph-x" onclick="clearPhoto()">×</span></div>`:``}
+      <div id="cfWarn" class="cwarn"></div>
+      <div class="crow">
+        <input type="file" id="cfFile" accept="image/*" style="display:none" onchange="pickPhoto(this)">
+        <span class="pht ${state._photo?'on':''}" onclick="document.getElementById('cfFile').click()"><span class="bic">${ic('camera',14)}사진 ${state._photo?'첨부됨':'추가'}</span></span>
         <button class="post-btn" onclick="addPost()">게시</button></div></div>`;
-    c.feed.forEach(p=>{h+=`<div class="post"><div class="hd"><div class="av">${p.who[0]}</div><div><div class="who">${p.who}</div><div class="when">${p.when}</div></div></div>
-      ${p.cap?`<div class="body">${p.cap}</div>`:``}${p.ph?`<div class="photo">🎾 ${p.ph}</div>`:``}
-      <div class="react"><span>♥ ${p.like}</span><span>💬 ${p.cm}</span><span>↗ 공유</span></div></div>`;});
+    if(SERVER_OK && !CLUB_FEED.length){
+      h+=`<div class="empty" style="padding:36px 20px"><div class="ei">${ic('image',30)}</div>
+        <div class="et">아직 소식이 없어요</div><div class="es">첫 사진이나 소식을 남겨보세요.</div></div>`;
+    }
+    const feed = SERVER_OK ? CLUB_FEED : c.feed;
+    feed.forEach(p=>{
+      const who = p.author || p.who, when = p.created_at ? timeAgo(p.created_at) : p.when;
+      const body = p.body != null ? p.body : p.cap, photo = p.photo || null;
+      const mine = SERVER_OK && p.user_id===(state.serverUser||{}).id;
+      h+=`<div class="post"><div class="hd"><div class="av">${esc(who[0])}</div>
+        <div style="flex:1"><div class="who">${esc(who)}</div><div class="when">${esc(when)}</div></div>
+        ${(mine||c.officer)&&SERVER_OK?`<span onclick="delClubPost(${p.id})" style="font-size:11.5px;font-weight:700;color:var(--lgray);cursor:pointer">삭제</span>`:''}</div>
+        ${body?`<div class="body">${esc(body)}</div>`:``}
+        ${photo?`<div class="photo"><img src="${esc(photo)}" alt="클럽 사진" loading="lazy"></div>`:(p.ph?`<div class="photo">🎾 ${p.ph}</div>`:``)}
+      </div>`;});
   } else {
     const ft=state.findTab||'club';
     h+=`<div class="seg" style="margin-bottom:12px"><div class="o ${ft==='club'?'on':''}" onclick="setFindTab('club')">클럽 찾기</div><div class="o ${ft==='member'?'on':''}" onclick="setFindTab('member')">회원 찾기</div></div>`;
@@ -3859,7 +3982,7 @@ function createClub(){
   state.clubStatus[n]='member';
   state.clubData[n]={region:r,court:court,members:1,officer:true,pending:[],
     schedule:{dt:'일정 미정 · 첫 모임을 잡아보세요',attendees:[],attend:null},
-    feed:[{who:'곽주영',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요 🎾`,ph:null,like:0,cm:0}]};
+    feed: DEMO ? [{who:state.userName||'나',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요 🎾`,ph:null,like:0,cm:0}] : []};
   state.myClubs.push(n); state.activeClub=n;
   state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'시스템',t:'클럽 단체방이 만들어졌어요.'}]};
   closeOv(); state.clubTab='my'; renderClub(); renderChat(); go('club');
@@ -4073,7 +4196,101 @@ function useEventForBracket(id){
   state.bcfg.scores={}; toast('대기열로 대진을 편성했어요'); go('bracket');
 }
 function togglePhoto(){const el=document.getElementById('postText');if(el)state._draft=el.value;state._photo=!state._photo;renderClub();}
-function addPost(){const el=document.getElementById('postText');const txt=(el?el.value:state._draft||'').trim();if(!txt&&!state._photo){toast('내용을 입력하거나 사진을 추가해 주세요');return;}AC().feed.unshift({who:'곽주영',when:'방금',cap:txt,ph:state._photo?'내가 올린 사진':null,like:0,cm:0});state._draft='';state._photo=false;renderClub();toast('게시했어요');}
+/* 내가 쓴 글 — 라운지 글, 댓글, 클럽 소식을 한곳에서 */
+async function openMyPosts(){
+  if(!SERVER_OK){ toast('서버에 연결된 뒤 이용할 수 있어요'); return; }
+  let d = {lounge:[], comments:[], club_feed:[]};
+  try{ d = await api('/me/posts'); }catch(e){ toast('불러오지 못했어요'); return; }
+  const tab = state._mpTab || 'lounge';
+  const n = { lounge:d.lounge.length, comments:d.comments.length, club:d.club_feed.length };
+
+  let h=`<div class="sh-top"><h3>내가 쓴 글</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="seg" style="margin-bottom:12px">
+      <div class="o ${tab==='lounge'?'on':''}" onclick="setMpTab('lounge')">라운지 ${n.lounge}</div>
+      <div class="o ${tab==='comments'?'on':''}" onclick="setMpTab('comments')">댓글 ${n.comments}</div>
+      <div class="o ${tab==='club'?'on':''}" onclick="setMpTab('club')">클럽 ${n.club}</div>
+    </div>`;
+
+  const empty = t => `<div class="empty" style="padding:40px 20px"><div class="ei">${ic('note',30)}</div>
+    <div class="et">${t}</div></div>`;
+
+  if(tab==='lounge'){
+    if(!d.lounge.length) h+=empty('아직 쓴 글이 없어요');
+    d.lounge.forEach(p=>{ h+=`<div class="card" style="padding:13px 15px;cursor:pointer" onclick="closeOv();openPost(${p.id})">
+      <div style="font-size:11.5px;font-weight:800;color:var(--lgray)">${esc(p.category||'자유')} · ${timeAgo(p.created_at)}
+        ${p.hidden?' · <span style="color:#b3261e">숨김 처리됨</span>':''}</div>
+      <div style="font-size:14.5px;font-weight:800;margin-top:4px">${esc(p.title)}</div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">♥ ${p.likes||0} · 💬 ${p.comments||0}</div></div>`; });
+  } else if(tab==='comments'){
+    if(!d.comments.length) h+=empty('아직 쓴 댓글이 없어요');
+    d.comments.forEach(c=>{ h+=`<div class="card" style="padding:13px 15px;cursor:pointer" onclick="closeOv();openPost(${c.post_id})">
+      <div style="font-size:11.5px;font-weight:800;color:var(--lgray)">${esc(c.post_title)} · ${timeAgo(c.created_at)}</div>
+      <div style="font-size:14px;font-weight:600;margin-top:4px;line-height:1.5">${esc(c.body)}</div></div>`; });
+  } else {
+    if(!d.club_feed.length) h+=empty('아직 클럽에 남긴 소식이 없어요');
+    d.club_feed.forEach(p=>{ h+=`<div class="card" style="padding:13px 15px">
+      <div style="font-size:11.5px;font-weight:800;color:var(--lgray)">${esc(p.club_name)} · ${timeAgo(p.created_at)}</div>
+      ${p.body?`<div style="font-size:14px;font-weight:600;margin-top:4px;line-height:1.5">${esc(p.body)}</div>`:''}
+      ${p.photo?`<div class="photo" style="margin-top:8px"><img src="${esc(p.photo)}" alt="내가 올린 사진" loading="lazy"></div>`:''}</div>`; });
+  }
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+function setMpTab(t){ state._mpTab=t; openMyPosts(); }
+
+let CLUB_FEED = [];
+
+/* 사진 고르기 → 서버에 올리고 URL 을 받는다.
+   base64 를 그대로 글에 넣으면 DB 가 순식간에 부풀어 오른다. */
+async function pickPhoto(input){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  if(!/^image\//.test(f.type)){ toast('이미지 파일만 올릴 수 있어요'); return; }
+  if(f.size > 3*1024*1024){ toast('사진이 너무 커요 · 3MB 이하로 올려주세요'); input.value=''; return; }
+  if(!SERVER_OK){ state._photo = URL.createObjectURL(f); renderClub(); return; }  // 데모
+  toast('사진 올리는 중…');
+  try{
+    const dataUrl = await new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=ng; r.readAsDataURL(f); });
+    const { url } = await api('/upload',{method:'POST',body:JSON.stringify({dataUrl})});
+    state._photo = url;
+    renderClub();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('too_large')?'사진이 너무 커요':'사진을 올리지 못했어요');
+  }
+  input.value='';
+}
+function clearPhoto(){ state._photo=null; renderClub(); }
+
+async function addPost(){
+  const el = document.getElementById('postText');
+  const txt = (el ? el.value : state._draft||'').trim();
+  if(!txt && !state._photo){ toast('내용을 입력하거나 사진을 추가해 주세요'); return; }
+  const bad = findContact(txt);
+  if(bad){ toast(`${bad}는 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
+
+  if(!SERVER_OK){                                   // 데모
+    AC().feed.unshift({who:state.userName||'나',when:'방금',cap:txt,ph:state._photo?'내가 올린 사진':null,like:0,cm:0});
+    state._draft=''; state._photo=null; renderClub(); toast('게시했어요'); return;
+  }
+  try{
+    await api(`/clubs/${clubId()}/feed`,{method:'POST',body:JSON.stringify({body:txt, photo:state._photo||null})});
+    state._draft=''; state._photo=null;
+    await loadClubFeed(); renderClub(); toast('게시했어요');
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('contact_blocked')?'연락처는 올릴 수 없어요':'게시하지 못했어요');
+  }
+}
+async function loadClubFeed(){
+  if(!SERVER_OK || !clubId()){ CLUB_FEED=[]; return; }
+  try{ CLUB_FEED = await api(`/clubs/${clubId()}/feed`); }catch(e){ CLUB_FEED=[]; }
+}
+async function delClubPost(id){
+  if(!confirm('이 글을 삭제할까요?')) return;
+  try{ await api(`/clubs/${clubId()}/feed/${id}`,{method:'DELETE'}); await loadClubFeed(); renderClub(); toast('삭제했어요'); }
+  catch(e){ toast('삭제하지 못했어요'); }
+}
 
 /* ===== 대진 ===== */
 
@@ -6316,6 +6533,10 @@ function renderMe(){
     <div><div style="font-size:16px;font-weight:800">개인 랭킹</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">우리 지역·부별 내 순위와 등락 보기</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openHallOfFame()">
     <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
+  ${SERVER_OK?`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMyPosts()">
+    <div><div style="font-size:16px;font-weight:800">내가 쓴 글 ✍️</div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">라운지 글·댓글·클럽 소식 모아보기</div></div>
+    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`:''}
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMyReport()">
     <div><div style="font-size:16px;font-weight:800">내 리포트 📊</div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">승률·득실·파트너 궁합을 클럽 평균과 비교</div></div>
@@ -6367,7 +6588,7 @@ function renderMe(){
   <div class="card"><div class="ch">계정</div>
     <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃 (다른 이름으로 가입)</button>
-    <button class="btn ghost" style="margin-top:9px;color:#c0392b" onclick="wipeMatsu()">모든 데이터 초기화</button></div>`;
+    <button class="btn ghost" style="margin-top:9px;color:#c0392b" onclick="wipeMatsu()">이 기기에서 로그아웃 · 초기화</button></div>`;
   document.getElementById('s-me').innerHTML=h;
 }
 
@@ -6591,6 +6812,8 @@ function go(v){
   if(v==='chat' && SERVER_OK) loadDMThreads().then(()=>{ if(state.view==='chat' && !state.chatRoom) renderChat(); });
   // 하단 탭을 다시 누르면 그 화면의 첫 페이지로 돌아온다 (하위 화면에 갇히지 않게)
   if(v==='club' && state.view==='club'){ state.findTab='club'; state._mq=''; }
+  if(v==='club' && SERVER_OK && clubId()) loadClubFeed().then(()=>{ if(state.view==='club') renderClub(); });
+  if(v==='league' && SERVER_OK) loadClubLeague().then(()=>{ if(state.view==='league') renderLeague(); });
   if(v==='chat' && state.view==='chat') state.chatRoom=null;
   state.view=v;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
