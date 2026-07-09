@@ -6,7 +6,8 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
-<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous">
+<script src="https://accounts.google.com/gsi/client" async defer></script></script>
 <title>MATSU · 맞수</title>
 
 <!-- ── PWA (홈 화면에 추가하면 앱처럼 뜬다) ── -->
@@ -1138,6 +1139,7 @@
     </div>
     <div class="auth2-btns">
       <input id="authName" placeholder="이름(닉네임)을 입력하고 시작하기" maxlength="12" style="display:none;width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-family:inherit;font-size:15px;background:#fff;margin-bottom:10px;text-align:center;font-weight:700">
+      <div id="gBtn" style="display:none;margin-bottom:10px"></div>
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
       <div id="authFallback"></div>
       <div id="authSaved"></div>
@@ -1629,6 +1631,48 @@ async function api(path, opts){
   return r.json();
 }
 
+/* ═══════════ 구글 로그인 (Google Identity Services) ═══════════
+   구글이 서명한 credential(JWT)을 서버로 보내면, 서버가 구글 공개키로
+   서명을 검증한다. 클라이언트에서 검증하면 위조를 못 막는다. */
+let _gsiDone = false;
+function initGoogle(){
+  if(_gsiDone || !SERVER_OK || !CFG.google_client_id) return;
+  if(typeof google==='undefined' || !google.accounts || !google.accounts.id) return;  // 스크립트 아직
+  google.accounts.id.initialize({
+    client_id: CFG.google_client_id,
+    callback: handleGoogleCredential,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
+  const box = document.getElementById('gBtn');
+  if(box){
+    box.style.display='block';
+    box.innerHTML='';
+    google.accounts.id.renderButton(box, {
+      type:'standard', theme:'outline', size:'large', shape:'pill',
+      text:'continue_with', locale:'ko', width: box.offsetWidth || 320,
+    });
+  }
+  _gsiDone = true;
+}
+async function handleGoogleCredential(resp){
+  if(!resp || !resp.credential){ toast('구글 로그인에 실패했어요'); return; }
+  try{
+    saveSession(await api('/auth/google',{method:'POST',body:JSON.stringify({credential:resp.credential})}));
+    toast('구글로 로그인했어요');
+    document.getElementById('auth').classList.remove('on');
+    afterLoginNative();
+    await loadClubIds();
+    if(clubId()){ await loadClubServer(); await loadRoster(); }
+    if(state.loggedIn){ go(state.view||'home'); }
+    else { state._obStep=1; state._obSport=state._obSport||state.sport;
+      document.getElementById('onboard').classList.add('on'); renderOnboard(); }
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('missing_env') ? '서버에 구글 클라이언트 ID가 없어요' : '구글 로그인에 실패했어요');
+  }
+}
+
 /* 로그인 화면 구성
    · 데모(서버 없음) → 이름 입력으로 진행
    · 서버 O · 카카오 O → 카카오 버튼만
@@ -1637,17 +1681,29 @@ function applyAuthUI(){
   const name = document.getElementById('authName');
   const note = document.getElementById('authNote');
   const fb   = document.getElementById('authFallback');
-  const kakaoReady = !!(SERVER_OK && CFG.kakao_js_key);
+  const gbox = document.getElementById('gBtn');
+  const kakaoReady  = !!(SERVER_OK && CFG.kakao_js_key);
+  const googleReady = !!(SERVER_OK && CFG.google_client_id);
 
   if(name) name.style.display = SERVER_OK ? 'none' : 'block';
+  if(gbox && !googleReady) gbox.style.display = 'none';
+  if(googleReady){ initGoogle(); setTimeout(initGoogle, 600); }   // 스크립트가 늦게 붙는 경우
+
+  const ready = kakaoReady || googleReady;
+  const who = (googleReady && kakaoReady) ? '구글 또는 카카오'
+            : googleReady ? '구글' : kakaoReady ? '카카오' : '';
   if(note) note.textContent = SERVER_OK
-    ? (kakaoReady ? '카카오 계정으로 3초 만에 시작해요' : '로그인 준비 중이에요')
+    ? (ready ? `${who} 계정으로 3초 만에 시작해요` : '로그인 준비 중이에요')
     : '데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다';
 
+  // 카카오만 꺼져 있으면 버튼을 감춘다 (눌러도 안 되는 버튼을 두지 않는다)
+  const kbtn = document.querySelector(`.sbtn2[onclick="login('kakao')"]`);
+  if(kbtn) kbtn.style.display = (SERVER_OK && !kakaoReady) ? 'none' : 'flex';
+
   if(fb){
-    fb.innerHTML = (SERVER_OK && !kakaoReady)
+    fb.innerHTML = (SERVER_OK && !ready)
       ? `<div class="note" style="margin-top:12px;text-align:left">
-           카카오 로그인을 준비하고 있어요. 잠시 뒤에 다시 열어주세요.</div>`
+           로그인을 준비하고 있어요. 잠시 뒤에 다시 열어주세요.</div>`
       : '';
   }
 }
