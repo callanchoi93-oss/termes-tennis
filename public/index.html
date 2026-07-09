@@ -757,6 +757,57 @@
   .cl-row span{ flex:1 }
   .cl-row i{ font-style:normal;font-size:12px;color:var(--gray) }
   .cl-row em{ font-style:normal;color:var(--coral-d);font-weight:900;width:28px;text-align:right }
+
+  /* ═══ 프로페셔널 폴리시 ═══ */
+  /* 스켈레톤 — 데이터가 오기 전 형태를 먼저 보여준다 */
+  .skel{ position:relative; overflow:hidden; background:#eee7db; border-radius:12px; }
+  .skel::after{ content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);
+    animation:shimmer 1.3s infinite; }
+  @keyframes shimmer{ from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+  .skel-card{ padding:16px; background:#fff; border:1px solid var(--line); border-radius:16px; margin-bottom:10px; }
+  .skel-line{ height:13px; margin-bottom:9px; }
+  .skel-line.w60{ width:60% } .skel-line.w40{ width:40% } .skel-line.w80{ width:80% }
+
+  /* 시트 — 손잡이 + 부드러운 스프링 */
+  .sheet{ animation:sheetUp .32s cubic-bezier(.22,1.1,.36,1) !important; padding-top:14px !important; }
+  .sheet::before{ content:''; display:block; width:40px; height:4px; border-radius:99px;
+    background:#d8d0c2; margin:0 auto 14px; }
+  .ov{ background:rgba(28,24,18,.4); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
+    transition:opacity .22s ease; }
+  @keyframes sheetUp{ from{ transform:translateY(48px); opacity:.4 } to{ transform:none; opacity:1 } }
+
+  /* 화면 전환 — 살짝 떠오르며 */
+  .screen.on{ animation:viewIn .28s cubic-bezier(.3,.9,.4,1); }
+  @keyframes viewIn{ from{ opacity:0; transform:translateY(10px) } to{ opacity:1; transform:none } }
+
+  /* 토스트 — 그림자 · 홈바 회피 */
+  .toast{ box-shadow:0 8px 28px rgba(28,24,18,.28); backdrop-filter:blur(6px);
+    bottom:calc(96px + env(safe-area-inset-bottom,0px)) !important; max-width:86vw; text-align:center;
+    line-height:1.45; }
+
+  /* 눌림 피드백 통일 */
+  .card[onclick]:active, .toolrow:active, .om-act:active, .om-re:active,
+  .post-btn:active, .btn:active, .sbtn2:active{ transform:scale(.975); transition:transform .08s; }
+
+  /* 금액·점수는 자릿수가 흔들리지 않게 */
+  .due-sum b, .om-hd, .cl-row em, .rp-cap{ font-variant-numeric:tabular-nums; }
+
+  /* 이미지 — 로드되며 떠오른다 */
+  .post .photo img, .ph-prev img{ opacity:0; transition:opacity .35s ease; }
+  .post .photo img.ld, .ph-prev img.ld{ opacity:1; }
+
+  /* 오프라인 배너 */
+  #offline{ position:fixed; top:0; left:0; right:0; z-index:300; background:#1c1812; color:#fff;
+    font-size:12.5px; font-weight:700; text-align:center; padding:9px 14px;
+    padding-top:calc(9px + env(safe-area-inset-top,0px));
+    transform:translateY(-110%); transition:transform .3s ease; }
+  #offline.on{ transform:none; }
+
+  /* 키보드 포커스 접근성 */
+  button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--coral); outline-offset:2px; }
+
   /* — 오픈매치 — */
   .om-foot{ display:flex;align-items:center;gap:7px;margin-top:12px }
   .om-re{ display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#fff;
@@ -1193,6 +1244,7 @@
   <div class="fullov" id="onboard"><div class="ob" id="obBody"></div><div class="ob-foot" id="obFoot"></div></div>
   <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
+  <div id="offline">오프라인이에요 · 연결되면 자동으로 이어져요</div>
 </div>
 <script>
 const COURT='<svg class="court" viewBox="0 0 300 200" preserveAspectRatio="none"><g stroke="#fff" stroke-width="2" fill="none"><rect x="34" y="22" width="232" height="156"/><line x1="34" y1="100" x2="266" y2="100"/><line x1="150" y1="22" x2="150" y2="178"/></g></svg>';
@@ -1639,8 +1691,30 @@ function renderOnboard(){
 function pickObSport(id){ state._obSport=id; state._obExp=null; renderOnboard(); }
 function pickOb(k,v){if(k==='g')state._obGender=v;else state._obExp=v;renderOnboard();}
 function nextOb(){ if(state._obStep<5) state._obStep++; renderOnboard(); }
+/* 로그인 직후 — 서버 프로필이 이미 완성돼 있으면 온보딩을 건너뛴다.
+   처음 가입한 사람만 온보딩을 본다. */
+function resumeOrOnboard(){
+  const u = state.serverUser || {};
+  if(u.gender && u.exp && u.sport){
+    state.loggedIn = true;
+    state.gender = u.gender; state.exp = u.exp;
+    state.sport = u.sport; if(SM()) {}      // sport 유효성은 SM() 이 기본값 처리
+    saveMatsu();
+    renderHome();renderLeague();renderClub();renderBracket();renderLounge();renderChat();renderMe();
+    go('home');
+    return true;
+  }
+  state._obStep=1; state._obSport=state._obSport||state.sport;
+  document.getElementById('onboard').classList.add('on'); renderOnboard();
+  return false;
+}
+
 function finishOnboard(){
   state.loggedIn=true;setTimeout(()=>checkMyDues(),900);state.gender=state._obGender;state.exp=state._obExp;state.sport=state._obSport;
+  // 서버에 저장해야 다음 로그인 때 온보딩을 건너뛸 수 있다
+  if(SERVER_OK && authToken()){
+    api('/me',{method:'PATCH',body:JSON.stringify({gender:state.gender, exp:state.exp, sport:state.sport})}).catch(()=>{});
+  }
   document.getElementById('onboard').classList.remove('on');
   renderHome();renderLeague();renderClub();renderBracket();
   go('home');
@@ -1758,8 +1832,7 @@ async function handleGoogleCredential(resp){
     await loadClubIds();
     if(clubId()){ await loadClubServer(); await loadRoster(); }
     if(state.loggedIn){ go(state.view||'home'); }
-    else { state._obStep=1; state._obSport=state._obSport||state.sport;
-      document.getElementById('onboard').classList.add('on'); renderOnboard(); }
+    else resumeOrOnboard();
   }catch(e){
     const m=String(e.message||'');
     toast(m.includes('missing_env') ? '서버에 구글 클라이언트 ID가 없어요' : '구글 로그인에 실패했어요');
@@ -2696,8 +2769,36 @@ function openCourtBook(){
 }
 function cycleCourt(i){ const c=AC(); const order=['open','requested','booked']; const cur=c.courtSlots[i].st; c.courtSlots[i].st=order[(order.indexOf(cur)+1)%3]; openCourtBook(); }
 // ── 사진 갤러리 ──
-function openGallery(){
-  const c=AC(); if(!c)return; c.gallery=c.gallery||[
+function openPhotoView(url, who){
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>${esc(who||'사진')}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <img src="${esc(url)}" style="width:100%;border-radius:16px" loading="lazy">`;
+  document.getElementById('ov').classList.add('on');
+}
+
+async function openGallery(){
+  const c=AC(); if(!c)return;
+  if(SERVER_OK && clubId()){
+    // 실서비스: 클럽 피드에 올라온 사진을 모아 보여준다
+    if(!window.FEED_LOADED) await loadClubFeed();
+    const photos = (CLUB_FEED||[]).filter(p=>p.photo);
+    let h=`<div class="sh-top"><h3>사진 갤러리</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">클럽 피드에 올라온 사진이 모여요.</div>`;
+    if(!photos.length){
+      h+=`<div class="empty" style="padding:40px 20px"><div class="ei">${ic('image',32)}</div>
+        <div class="et">아직 사진이 없어요</div><div class="es">클럽 피드에 첫 사진을 올려보세요.</div></div>
+        <button class="btn" onclick="closeOv();go('club');setClubTab('my')">클럽 피드로 가기</button>`;
+    }else{
+      h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
+      photos.forEach(p=>{ h+=`<div style="border-radius:14px;overflow:hidden;background:#eee7db;aspect-ratio:1">
+        <img src="${esc(p.photo)}" style="width:100%;height:100%;object-fit:cover" loading="lazy"
+             onclick="openPhotoView('${esc(p.photo)}','${esc(p.name||'')}')"></div>`; });
+      h+=`</div>`;
+    }
+    document.getElementById('sheet').innerHTML=h;
+    document.getElementById('ov').classList.add('on');
+    return;
+  } c.gallery=c.gallery||[
     {who:'곽주영',when:'6/28',cap:'주말 정기전 🎾',emo:'🎾'},
     {who:'한은주',when:'6/21',cap:'복식 결승전 명장면',emo:'🏆'},
     {who:'이석용',when:'6/14',cap:'신입 환영 모임',emo:'🤝'},
@@ -2709,7 +2810,7 @@ function openGallery(){
   c.gallery.forEach(g=>{ h+=`<div style="border:1px solid #f0e7db;border-radius:14px;overflow:hidden;background:#faf6f1">
     <div style="height:96px;background:linear-gradient(135deg,#cfe84f33,#e8845a22);display:flex;align-items:center;justify-content:center;font-size:34px">${g.emo}</div>
     <div style="padding:9px 11px"><div style="font-size:13px;font-weight:700">${g.cap}</div><div style="font-size:11px;color:var(--lgray);font-weight:600;margin-top:2px">${g.who} · ${g.when}</div></div></div>`; });
-  h+=`</div><button class="btn" style="margin-top:14px" onclick="toast('데모: 사진 업로드는 실서비스에서')">＋ 사진 올리기</button>
+  h+=`</div><button class="btn" style="margin-top:14px" onclick="closeOv();go('club');setClubTab('my');toast('클럽 피드에서 사진을 올릴 수 있어요')">＋ 사진 올리기</button>
     <button class="btn ghost" style="margin-top:9px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -3072,7 +3173,7 @@ function openClubReport(){
       <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:8px">토요일이 가장 붐벼요. 코트를 1개 더 여는 걸 추천해요.</div></div>
     <div class="card"><div class="ch" style="font-size:14px">주의가 필요한 회원</div>
       <div style="font-size:13.5px;color:var(--gray);font-weight:600;line-height:1.7;margin-top:6px">· 최근 4주 미참석 <b>3명</b> · 이탈 위험<br>· 회비 미납 <b>2명</b> — 납부 요청 발송됨</div></div>
-    <button class="btn" style="margin-top:12px" onclick="toast('리포트를 PDF로 내보냈어요 (데모)')">리포트 내보내기</button>`;
+    ${DEMO?`<button class="btn" style="margin-top:12px" onclick="toast('리포트를 PDF로 내보냈어요 (데모)')">리포트 내보내기</button>`:''}`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
@@ -3369,7 +3470,7 @@ async function loadClubLeague(){
 async function joinClubLeague(){
   try{
     await api(`/clubs/${clubId()}/league`,{method:'POST',body:JSON.stringify({sport:state.sport})});
-    toast('클럽 리그에 참가했어요');
+    buzz(); toast('클럽 리그에 참가했어요');
     await loadClubLeague(); renderLeague();
   }catch(e){
     const m=String(e.message||'');
@@ -3796,7 +3897,7 @@ function renderClub(){
           <div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 보기</div></div><div class="tr-arr">›</div></div>
+          ${DEMO?`<div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 보기</div></div><div class="tr-arr">›</div></div>`:``}
           <div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>`;
       }
     }
@@ -3815,7 +3916,9 @@ function renderClub(){
         <input type="file" id="cfFile" accept="image/*" style="display:none" onchange="pickPhoto(this)">
         <span class="pht ${state._photo?'on':''}" onclick="document.getElementById('cfFile').click()"><span class="bic">${ic('camera',14)}사진 ${state._photo?'첨부됨':'추가'}</span></span>
         <button class="post-btn" onclick="addPost()">게시</button></div></div>`;
-    if(SERVER_OK && !CLUB_FEED.length){
+    if(SERVER_OK && !window.FEED_LOADED){
+      h+=skelCards(2);
+    } else if(SERVER_OK && !CLUB_FEED.length){
       h+=`<div class="empty" style="padding:36px 20px"><div class="ei">${ic('image',30)}</div>
         <div class="et">아직 소식이 없어요</div><div class="es">첫 사진이나 소식을 남겨보세요.</div></div>`;
     }
@@ -3894,6 +3997,26 @@ function renderMemberFind(head){
   document.getElementById('s-club').innerHTML=h;
 }
 function setMTier(t){state._mtier=t;renderClub();}
+/* 회원 프로필의 행동 버튼 — 서버면 실제 대화, 데모면 안내 */
+function msgPerson(name){
+  closeOv();
+  const uid = SERVER_OK ? SRV_UID[name] : null;
+  if(uid){ openDM(uid, name); }
+  else if(SERVER_OK){ toast('같은 클럽 회원끼리 대화할 수 있어요'); }
+  else toast('데모: 메시지 보내기');
+}
+function playRequest(name){
+  closeOv();
+  const uid = SERVER_OK ? SRV_UID[name] : null;
+  if(uid){
+    openDM(uid, name);
+    setTimeout(()=>{ const t=document.getElementById('dmText');
+      if(t && !t.value) t.value='이번 주에 함께 치실래요? 🎾'; }, 450);
+  }
+  else if(SERVER_OK){ toast('같은 클럽 회원에게 요청할 수 있어요'); }
+  else toast('데모: 함께 치기 요청을 보냈어요');
+}
+
 function openPerson(name){
   const p=PEOPLE.find(x=>x.n===name); if(!p)return;
   const tot=p.w+p.l, wr=tot?Math.round(p.w/tot*100):0;
@@ -3908,8 +4031,8 @@ function openPerson(name){
       <div><div style="font-size:20px;font-weight:900;color:var(--coral-d)">${wr}%</div><div style="font-size:11px;color:var(--gray);font-weight:600">승률</div></div>
       <div><div style="font-size:20px;font-weight:900;color:var(--green)">${p.manner}</div><div style="font-size:11px;color:var(--gray);font-weight:600">매너</div></div></div>
     <div class="cond"><span>소속 클럽</span><b>${p.clubs.join(', ')}</b></div>
-    <button class="btn felt" style="margin-top:14px" onclick="closeOv();toast('데모: 함께 치기 요청을 보냈어요')">함께 치기 요청</button>
-    <button class="btn ghost" style="margin-top:9px" onclick="closeOv();toast('데모: 메시지 보내기')">메시지 보내기</button>`;
+    <button class="btn felt" style="margin-top:14px" onclick="playRequest('${name.replace(/'/g,"\\'")}')">함께 치기 요청</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="msgPerson('${name.replace(/'/g,"\\'")}')">메시지 보내기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openProfileEdit(){
@@ -4291,6 +4414,64 @@ async function openMyPosts(){
 }
 function setMpTab(t){ state._mpTab=t; openMyPosts(); }
 
+/* ═══ 프로페셔널 폴리시 (동작) ═══ */
+function skelCards(n){
+  return Array.from({length:n||3},()=>`<div class="skel-card">
+    <div class="skel skel-line w40"></div>
+    <div class="skel skel-line w80"></div>
+    <div class="skel skel-line w60"></div></div>`).join('');
+}
+/* 가벼운 햅틱 — 지원 기기에서만 */
+function buzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms||8); }catch(e){} }
+
+/* 오프라인 감지 */
+window.addEventListener('offline', ()=>{ const b=document.getElementById('offline'); if(b) b.classList.add('on'); });
+window.addEventListener('online',  ()=>{ const b=document.getElementById('offline'); if(b) b.classList.remove('on');
+  toast('다시 연결됐어요'); });
+
+/* 이미지 로드 페이드 — 동적으로 붙는 img 에도 적용 */
+new MutationObserver(muts=>{
+  muts.forEach(m=>m.addedNodes.forEach(n=>{
+    if(n.querySelectorAll) n.querySelectorAll('.photo img, .ph-prev img').forEach(img=>{
+      if(img.complete) img.classList.add('ld');
+      else img.addEventListener('load', ()=>img.classList.add('ld'), {once:true});
+    });
+  }));
+}).observe(document.body, {childList:true, subtree:true});
+
+/* 당겨서 새로고침 — 맨 위에서 아래로 당기면 현재 화면 데이터를 다시 불러온다 */
+(function(){
+  const sc=document.getElementById('scroll'); if(!sc) return;
+  let y0=null, pulled=0, spin=null;
+  sc.addEventListener('touchstart', e=>{ y0 = sc.scrollTop<=0 ? e.touches[0].clientY : null; pulled=0; }, {passive:true});
+  sc.addEventListener('touchmove', e=>{
+    if(y0==null) return;
+    pulled = e.touches[0].clientY - y0;
+    if(pulled>36 && !spin){
+      spin=document.createElement('div');
+      spin.style.cssText='text-align:center;padding:10px;color:var(--lgray);font-size:12px;font-weight:700';
+      spin.textContent='놓으면 새로고침';
+      sc.prepend(spin);
+    }
+    if(spin) spin.textContent = pulled>72 ? '↻ 놓으면 새로고침' : '↓ 더 당겨주세요';
+  }, {passive:true});
+  sc.addEventListener('touchend', async ()=>{
+    const go72 = pulled>72; y0=null; pulled=0;
+    if(spin){ spin.remove(); spin=null; }
+    if(!go72 || !SERVER_OK) return;
+    buzz();
+    const v=state.view;
+    try{
+      if(v==='match'){ window.OM_LOADED=false; renderMatch(); }   // renderMatch 가 자체 로드
+      else if(v==='club'){ if(clubId()){ await loadClubServer(); await loadClubFeed(); } renderClub(); }
+      else if(v==='league'){ await loadClubLeague(); renderLeague(); }
+      else if(v==='chat'){ await loadDMThreads(); renderChat(); }
+      else if(v==='home'){ renderHome(); }
+      toast('새로고침했어요');
+    }catch(e){}
+  }, {passive:true});
+})();
+
 let CLUB_FEED = [];
 
 /* 사진 고르기 → 서버에 올리고 URL 을 받는다.
@@ -4354,6 +4535,7 @@ async function addPost(){
 async function loadClubFeed(){
   if(!SERVER_OK || !clubId()){ CLUB_FEED=[]; return; }
   try{ CLUB_FEED = await api(`/clubs/${clubId()}/feed`); }catch(e){ CLUB_FEED=[]; }
+  window.FEED_LOADED = true;
 }
 async function delClubPost(id){
   if(!confirm('이 글을 삭제할까요?')) return;
@@ -4567,7 +4749,7 @@ async function finalizeBracket(){
   try{
     const r = await api(`/brackets/${BK_ID}/finalize`,{method:'POST',body:JSON.stringify({games})});
     state._bkFinalized = true;
-    toast(`${r.saved}게임 확정 · 레이팅에 반영됐어요`);
+    buzz(12); toast(`${r.saved}게임 확정 · 레이팅에 반영됐어요`);
     renderBracket();
   }catch(e){
     const m=String(e.message||'');
@@ -5304,6 +5486,7 @@ async function renderMatch(){
     el.innerHTML=h; return;
   }
   const sd = state._omSido||'', sg = state._omSigungu||'';
+  const loading = typeof OM_LIST==='undefined' || (OM_LIST._pending && !OM_LIST.length);
   h+=`<button class="btn ghost" style="margin-bottom:12px" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <select onchange="setOmSido(this.value)" style="flex:1;min-width:0">
@@ -5316,13 +5499,14 @@ async function renderMatch(){
         </select>
       </div>
       <div class="note" style="text-align:left;margin-bottom:12px"><b>참가비는 현장에서</b> 주최자에게 내요. 앱은 돈을 받지 않아요.</div>
-      <div id="omList">${matchCards(OM_LIST)}</div>`;
+      <div id="omList">${(!window.OM_LOADED && SERVER_OK) ? skelCards(3) : matchCards(OM_LIST)}</div>`;
   el.innerHTML=h;
   try{
     const q = new URLSearchParams({sport:state.sport});
     if(sd) q.set('sido', sd);
     if(sg) q.set('sigungu', sg);
     OM_LIST = await api(`/open-matches?${q}`);
+    window.OM_LOADED = true;
     const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
   }catch(e){}
 }
@@ -6218,7 +6402,7 @@ function renderTeamMatch(){
   h+=`<div style="height:12px"></div>`+lineupStatusCard();
   h+=lineupBlock(teamA, internal?'🔴 홍팀 라인업':'우리팀 라인업');
   h+=lineupBlock(teamB, internal?'🔵 청팀 라인업':'상대팀 · '+oppName);
-  h+=`<button class="btn felt" onclick="toast('라인업을 자동 편성했어요 (데모)')">라인업 자동 편성</button>`;
+  h+=`<button class="btn felt" onclick="closeOv();go('bracket');toast('대진 화면에서 이번 모임 라인업을 짤 수 있어요')">라인업 자동 편성 → 대진 짜기</button>`;
   h+=`<button class="btn ghost" style="margin-top:9px" onclick="openRoster()">${`<span class="bic">${ic('people',16,'currentColor')}선수단 · 등번호·주장 설정</span>`}</button>`;
   if(!internal){
     const teams=[['우리 클럽',13,1],['분당 FC',11],['수원 이글스',9],['강남 볼러스',7]];
@@ -6298,7 +6482,7 @@ function openMatchArrange(name){ name=name||'상대'; const sp=SP();
   let h=`<div class="sh-top"><h3>개인 경기 잡기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd"><b>${name}</b>님과의 1:1 경기예요. 먼저 매칭하고 <b>둘 중 한 명이 ${sp.place}를 예약</b>하면 돼요. 경기 후 마감일까지 스코어만 입력하면 레이팅에 반영돼요.</div>
     <div class="card"><div class="ch" style="font-size:14px">위치 · 일시</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 2px;border-bottom:1px solid #f4efe9"><span style="font-weight:700;font-size:14px">${ic('pin',15)}${sp.place}</span><button class="btn sm" style="width:auto;padding:7px 12px" onclick="toast('주변 ${sp.place}를 지도에서 찾아요 (데모)')">${sp.place} 찾기</button></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 2px;border-bottom:1px solid #f4efe9"><span style="font-weight:700;font-size:14px">${ic('pin',15)}${sp.place}</span>${DEMO?`<button class="btn sm" style="width:auto;padding:7px 12px" onclick="toast('주변 ${sp.place}를 지도에서 찾아요 (데모)')">${sp.place} 찾기</button>`:''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 2px"><span style="font-weight:700;font-size:14px">${ic('calendar',15)}일시</span><input type="datetime-local" style="border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-family:inherit;font-size:13px;background:#fff"></div></div>
     <div class="card" style="background:var(--purple);border:none"><div style="font-size:13px;font-weight:800;color:#4a3f6b">예약은 둘 중 아무나</div><div style="font-size:12.5px;color:#4a3f6b;font-weight:600;margin-top:4px">${name}님이 잡아도 되고, 내가 잡아도 돼요. 예약 안 돼도 <b>매칭은 먼저</b> 성사돼요.</div></div>
     <div class="card" style="display:flex;align-items:center;gap:11px"><span class="rowic">${ic('hourglass',20)}</span><div style="flex:1"><div style="font-size:13.5px;font-weight:800">스코어 입력 마감</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">경기일로부터 <b>3일 이내</b> 미입력 시 무효 처리</div></div></div>
@@ -6327,7 +6511,7 @@ function openMercenary(){ const sp=SP(); const cls=['#ec6a2e','#6182e6','#62c08d
   const mercs=[['빠른발잭','경기 용인','2km',pos[0],'매너 98'],['든든수비','경기 성남','11km',pos[1],'매너 95'],['만능멀티','서울 강남','19km',pos[2],'매너 92']];
   let h=`<div class="sh-top"><h3>용병 모집</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">인원이 부족할 때 <b>${sp.n}</b> 용병을 지역에서 구해요. 등록해두면 근처 팀이 부를 수도 있어요.</div>
-    <button class="btn felt" onclick="toast('용병 구인 글을 등록했어요 (데모)')">＋ 우리 팀 용병 구인 등록</button>
+    <button class="btn felt" onclick="closeOv();go('match');setTimeout(openNewMatch,300);toast('오픈매치로 용병을 구해보세요')">＋ 오픈매치로 용병 구하기</button>
     <div class="ch" style="font-size:15px;margin:16px 4px 10px">근처 뛸 수 있는 용병</div>`;
   mercs.forEach((m,i)=>{ h+=`<div class="card" style="display:flex;align-items:center;gap:12px;padding:13px 15px;margin-bottom:9px">
     <div class="lb-av" style="width:44px;height:44px;border-radius:50%;background:${cls[i%4]}">${m[0][0]}</div>
@@ -6436,7 +6620,7 @@ function renderRecordBoard(){
     <div style="display:flex;gap:8px;margin-top:8px">
       <input placeholder="${run?'거리 (km)':'기록 (초)'}" inputmode="decimal" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:11px;font-family:inherit;font-size:14px;background:#fff">
       <input placeholder="${run?'시간 (분)':'종목'}" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:11px;font-family:inherit;font-size:14px;background:#fff"></div>
-    <button class="btn" style="margin-top:10px" onclick="toast('기록을 등록했어요 (데모)')">기록 등록</button></div>`;
+    ${DEMO?`<button class="btn" style="margin-top:10px" onclick="toast('기록을 등록했어요 (데모)')">기록 등록</button>`:''}</div>`;
   h+=`<div class="note" style="text-align:left">${sp.n}은 맞대결 대신 <b>개인 기록</b>으로 랭킹을 매기고, 클럽 챌린지로 함께 목표에 도전해요.</div>`;
   return h;
 }
@@ -7129,7 +7313,7 @@ function renderLounge(){
   const stories=[['핸섬한냉면','🎾'],['지루한오라기','🏃'],['용감한물개','🏊'],['날쌘돌이','⚽']];
   h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:8px 4px 8px"><div style="font-size:16px;font-weight:900">스토리</div><span style="font-size:12.5px;color:var(--coral-d);font-weight:800">전체보기 ›</span></div>
     <div class="dpin-row" style="gap:10px;padding-bottom:6px">
-      <div style="flex:0 0 auto;width:66px;text-align:center;cursor:pointer" onclick="toast('스토리 올리기 (데모)')"><div style="width:66px;height:88px;border-radius:16px;background:var(--coral-s);border:2px dashed var(--coral);display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--coral-d)">＋</div><div style="font-size:11px;font-weight:700;color:var(--gray);margin-top:4px">올리기</div></div>`;
+      <div style="flex:0 0 auto;width:66px;text-align:center;cursor:pointer" onclick="if(SERVER_OK&&clubId()){go('club');setClubTab('my');toast('클럽 피드에 사진을 올려보세요')}else toast('스토리 올리기 (데모)')"><div style="width:66px;height:88px;border-radius:16px;background:var(--coral-s);border:2px dashed var(--coral);display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--coral-d)">＋</div><div style="font-size:11px;font-weight:700;color:var(--gray);margin-top:4px">올리기</div></div>`;
   stories.forEach(([nm,ic])=>{ h+=`<div style="flex:0 0 auto;width:66px;text-align:center"><div style="width:66px;height:88px;border-radius:16px;background:linear-gradient(160deg,var(--purple),var(--blue));display:flex;align-items:flex-end;justify-content:center;font-size:26px;padding-bottom:6px;position:relative"><span style="position:absolute;top:6px;left:6px;font-size:16px">${ic}</span>${'🙂'}</div><div style="font-size:10.5px;font-weight:700;color:var(--gray);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm}</div></div>`; });
   h+=`</div>`;
   // 글 목록
@@ -7227,9 +7411,8 @@ checkServer().then(async ok=>{
         if(t){ sessionStorage.removeItem('pending_invite'); setTimeout(()=>handleInviteToken(t), 800); } }catch(e){}
       await loadClubIds();
       if(clubId()){ await loadClubServer(); await loadRoster(); }
-      if(!state.loggedIn){ state._obStep=1; state._obSport=state._obSport||state.sport;
-        document.getElementById('onboard').classList.add('on'); renderOnboard(); }
-      else go(state.view||'home');
+      if(state.loggedIn) go(state.view||'home');
+      else resumeOrOnboard();
     }
   }
 });
