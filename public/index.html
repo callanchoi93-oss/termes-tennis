@@ -652,6 +652,22 @@
   .search{ display:flex; align-items:center; gap:8px; color:var(--gray); }
   .ps-m{ display:flex; flex-direction:column; gap:4px; }
   .ps-m span{ display:flex; align-items:center; gap:5px; }
+  /* — 참석 현황 — */
+  .rv-line{ display:flex; align-items:center; gap:9px; padding:9px 0; border-bottom:1px solid #f7f3ec; }
+  .rv-tag{ padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:900; flex:none; width:50px; text-align:center; }
+  .rv-line b{ font-size:14px; font-weight:900; color:var(--ink); width:16px; }
+  .rv-names{ flex:1; min-width:0; font-size:12.5px; font-weight:600; color:var(--gray);
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rv-btns{ display:flex; gap:8px; margin-top:12px; }
+  .rsvp-b{ flex:1; padding:13px 0; border-radius:14px; border:1.5px solid var(--line);
+         background:#fff; color:var(--gray); font-weight:800; font-size:14px; font-family:inherit; cursor:pointer; }
+  .rsvp-b.on{ font-weight:900; }
+  /* — 회원 관리 — */
+  .mrow{ display:flex; align-items:center; gap:11px; padding:12px 2px; border-bottom:1px solid #f4efe9; }
+  .mrow-x{ flex:1; min-width:0; }
+  .mrow-n{ font-weight:800; font-size:14.5px; color:var(--ink); }
+  .mrow-d{ font-size:12px; font-weight:600; color:var(--gray); margin-top:2px; }
+  .rbadge{ padding:5px 10px; border-radius:999px; font-size:11px; font-weight:900; white-space:nowrap; }
   /* — 개인 리포트 — */
   .rp-hero{ background:linear-gradient(140deg,#2f2a24,#1b1813); border-radius:20px; padding:18px 18px 16px; color:#fff; margin-bottom:14px; }
   .rp-hn{ font-size:13px; font-weight:800; color:#cbb8a6; letter-spacing:-.01em; }
@@ -1323,6 +1339,7 @@ async function login(p){
     else if(msg!=='server_down') toast('로그인에 실패해 데모로 진행합니다');
   }
   await loadClubIds();
+  if(clubId()){ await loadClubServer(); await loadRoster(); }
   document.getElementById('auth').classList.remove('on');
   state._obStep=1; state._obSport=state._obSport||state.sport;
   document.getElementById('onboard').classList.add('on'); renderOnboard();
@@ -1431,6 +1448,33 @@ function clubId(){ return CLUB_IDS[state.activeClub] || null; }
 async function loadClubIds(){
   if(!SERVER_OK) return;
   try{ (await api('/clubs')).forEach(c=>{ CLUB_IDS[c.name] = c.id; }); }catch(e){}
+  await adoptServerClubs();
+}
+
+/* 서버에 내 클럽이 있으면 앱의 클럽을 그것으로 교체한다.
+   (이름으로만 매칭하면, 사용자가 만든 클럽 이름이 데모 클럽과 달라
+    clubId()가 null → 조용히 데모로 떨어지는 문제가 있었다) */
+async function adoptServerClubs(){
+  let mine=[];
+  try{ mine = await api('/me/clubs'); }catch(e){ return; }
+  const active = mine.filter(c=>!c.status || c.status==='active');
+  if(!active.length) return;
+  state.clubStatus = state.clubStatus||{}; state.clubData = state.clubData||{};
+  active.forEach(c=>{
+    CLUB_IDS[c.name] = c.id;
+    if(!state.clubs.some(x=>x.n===c.name)){
+      state.clubs.unshift({n:c.name, r:c.region||'', m:c.member_count||1, ic:SP().ic, sport:c.sport||state.sport,
+        entry:c.entry_fee, season:c.season_fee, guestFee:c.guest_fee, guestReq:c.guest_cap});
+    }
+    if(state.clubStatus[c.name]!=='member') approveMember(c.name);
+    const d = state.clubData[c.name];
+    if(d){ d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region; }
+  });
+  state.myClubs = active.map(c=>c.name);
+  state.activeClub = active[0].name;
+  state.bcfg.role = (active[0].role==='owner'||active[0].role==='officer') ? 'officer' : 'member';
+  // 신청 대기 중인 클럽 표시
+  mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id; state.clubStatus[c.name]='pending'; });
 }
 
 /* 서버 → 앱 */
@@ -1503,6 +1547,318 @@ function bkStartPoll(){
       renderBracket();
     }catch(e){}
   }, 4000);
+}
+
+/* ═══════════ 참석(3단계) · 게스트 · 클럽장 양도 ═══════════ */
+const RSVP = {going:{t:'참석',c:'#1f7d4d',bg:'#e7f4ec'}, absent:{t:'불참',c:'#c0503a',bg:'#fbeae6'}, undecided:{t:'미정',c:'#8a8172',bg:'#efe9dd'}};
+
+async function setRsvp(status){
+  if(!SERVER_OK || !SRV_EVENT){
+    AC().schedule.attend = (status==='going'); renderClub();
+    toast(status==='going'?'참석 체크 완료':status==='absent'?'불참 처리됐어요':'미정으로 표시했어요'); return;
+  }
+  try{
+    await api(`/events/${SRV_EVENT.id}/rsvp`, {method:'POST', body: JSON.stringify({status})});
+    await loadClubServer(); renderClub();
+    toast(status==='going'?'참석 체크 완료 · 대진 명단에 자동으로 들어가요'
+        : status==='absent'?'불참 처리됐어요 · 대진 명단에서 빠져요':'미정으로 표시했어요');
+  }catch(e){ toast(String(e.message).includes('member_only')?'정회원만 참석할 수 있어요':'처리에 실패했어요'); }
+}
+
+/* 참석 현황 카드 (카카오 일정처럼 참석/불참/미정) */
+function rsvpCard(){
+  if(!SRV_EVENT) return '';
+  const e = SRV_EVENT, my = e.my_status;
+  const line = (k, names)=>`<div class="rv-line">
+      <span class="rv-tag" style="background:${RSVP[k].bg};color:${RSVP[k].c}">${RSVP[k].t}</span>
+      <b>${names.length}</b>
+      <span class="rv-names">${names.length?names.join(', '):'—'}</span></div>`;
+  const g = e.guests||[];
+  return `<div class="card">
+    <div class="ch" style="font-size:15px;display:flex;justify-content:space-between;align-items:center">
+      <span>${e.title}</span>
+      <span style="font-size:11.5px;color:var(--gray);font-weight:700">${e.date||''}</span></div>
+    ${line('going', e.attendees||[])}
+    ${line('absent', e.absent||[])}
+    ${line('undecided', e.undecided||[])}
+    ${g.length?`<div class="rv-line"><span class="rv-tag" style="background:#ece7f8;color:#7a5fc0">게스트</span>
+      <b>${g.length}</b><span class="rv-names">${g.map(x=>x.name).join(', ')}</span></div>`:''}
+    <div class="rv-btns">
+      ${['going','absent','undecided'].map(k=>`<button class="rsvp-b ${my===k?'on':''}" style="${my===k?`background:${RSVP[k].bg};color:${RSVP[k].c};border-color:${RSVP[k].c}55`:''}"
+        onclick="setRsvp('${k}')">${RSVP[k].t}</button>`).join('')}
+    </div>
+    ${state.bcfg.role==='officer'?`<button class="btn ghost sm" style="margin-top:9px" onclick="openGuests()"><span class="bic">${ic('user',15,'currentColor')}게스트 추가 · 관리</span></button>`:''}
+    <div class="note" style="text-align:left;margin-top:8px">참석을 누른 회원과 게스트가 <b>대진 명단에 자동으로</b> 들어가요.</div>
+  </div>`;
+}
+
+/* 게스트 관리 (임원진) */
+async function openGuests(){
+  if(!SERVER_OK || !SRV_EVENT){ toast('서버 연결과 모임이 필요해요'); return; }
+  let gs=[];
+  try{ gs = await api(`/events/${SRV_EVENT.id}/guests`); }catch(e){}
+  let h=`<div class="sh-top"><h3>게스트</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">클럽 회원이 아닌 사람도 대진에 넣을 수 있어요. <b>회원 통계·랭킹에는 반영되지 않아요.</b></div>
+    <div class="fld"><label>이름</label><input id="gName" placeholder="예) 박희진" maxlength="12"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>성별</label>
+        <div class="seg segfill" style="margin:0"><div class="o on" id="gM" onclick="pickG('gender','M')">남</div><div class="o" id="gF" onclick="pickG('gender','F')">여</div></div></div>
+      <div class="fld" style="flex:1.4"><label>등급</label>
+        <div class="seg segfill" style="margin:0">${['A','B','C'].map(x=>`<div class="o ${x==='B'?'on':''}" id="gg${x}" onclick="pickG('grade','${x}')">${x}</div>`).join('')}</div></div>
+    </div>
+    <button class="btn" onclick="addGuest()">게스트 추가</button>
+    <div class="ch" style="font-size:15px;margin:18px 4px 8px">현재 게스트 ${gs.length}명</div>`;
+  if(!gs.length) h+=`<div class="note" style="text-align:left">아직 게스트가 없어요.</div>`;
+  gs.forEach(g=>{
+    h+=`<div class="mrow">
+      <div class="lb-av" style="width:38px;height:38px;border-radius:50%;background:#b6a2ea;font-size:14px;flex:none">${g.name[0]}</div>
+      <div class="mrow-x"><div class="mrow-n">${g.name}</div>
+        <div class="mrow-d">${g.gender==='F'?'여':'남'}${g.grade?` · ${g.grade}등급`:''}</div></div>
+      <span class="rbadge" style="background:#ece7f8;color:#7a5fc0">게스트</span>
+      <button class="btn sm ghost" style="width:auto;padding:8px 11px;font-size:12px;margin-left:7px" onclick="delGuest(${g.id})">삭제</button>
+    </div>`;
+  });
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  state._gPick={gender:'M', grade:'B'};
+}
+function pickG(k,v){
+  state._gPick = state._gPick||{gender:'M',grade:'B'}; state._gPick[k]=v;
+  if(k==='gender'){ document.getElementById('gM').classList.toggle('on', v==='M'); document.getElementById('gF').classList.toggle('on', v==='F'); }
+  else ['A','B','C'].forEach(x=>document.getElementById('gg'+x).classList.toggle('on', x===v));
+}
+async function addGuest(){
+  const name=(document.getElementById('gName')||{}).value||'';
+  if(!name.trim()){ toast('이름을 입력해 주세요'); return; }
+  const p = state._gPick||{gender:'M',grade:'B'};
+  try{
+    await api(`/events/${SRV_EVENT.id}/guests`, {method:'POST', body: JSON.stringify({name:name.trim(), gender:p.gender, grade:p.grade})});
+    await loadClubServer(); await loadRoster(); openGuests(); toast('게스트를 추가했어요 · 대진 명단에 들어가요');
+  }catch(e){
+    const m=String(e.message);
+    toast(m.includes('duplicate_name')?'같은 이름의 게스트가 이미 있어요':m.includes('officer_only')?'임원진만 추가할 수 있어요':'추가에 실패했어요');
+  }
+}
+async function delGuest(gid){
+  try{ await api(`/events/${SRV_EVENT.id}/guests/${gid}`, {method:'DELETE'});
+    await loadClubServer(); await loadRoster(); openGuests(); toast('게스트를 삭제했어요');
+  }catch(e){ toast('삭제에 실패했어요'); }
+}
+
+/* 클럽장 양도 */
+async function transferOwner(uid, name){
+  if(!confirm(`${name} 님에게 클럽장을 넘길까요?\n\n넘기면 회원님은 임원이 되고, 이 작업은 새 클럽장만 되돌릴 수 있어요.`)) return;
+  try{
+    await api(`/clubs/${clubId()}/transfer-owner`, {method:'POST', body: JSON.stringify({user_id:uid})});
+    toast(`${name} 님이 새 클럽장이 됐어요`);
+    await loadClubServer(); openMembers();
+  }catch(e){
+    const m=String(e.message);
+    toast(m.includes('owner_only')?'클럽장만 넘길 수 있어요':m.includes('not_active')?'승인된 회원에게만 넘길 수 있어요':'양도에 실패했어요');
+  }
+}
+
+/* ═══════════ 회원 관리 · 임원 임명 (클럽장 전용) ═══════════ */
+const ROLE_LABEL = {owner:'클럽장', officer:'임원', member:'회원'};
+const ROLE_STYLE = {owner:'background:#fdf2dd;color:#a5750d', officer:'background:#e7eefb;color:#3f6bc2', member:'background:#efe9dd;color:#7f776a'};
+
+async function openMembers(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ toast('서버 연결이 필요해요'); return; }
+  let ms=[], my=null;
+  try{ [ms, my] = await Promise.all([api(`/clubs/${cid}/members`), api(`/clubs/${cid}/my-status`)]); }
+  catch(e){ toast('회원 목록을 불러오지 못했어요'); return; }
+  const isOwner = my && my.role==='owner';
+
+  let h=`<div class="sh-top"><h3>회원 관리</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${isOwner
+      ? '임원은 <b>모임 개설·대진 편성·등급 설정</b>을 할 수 있어요. 클럽장 권한은 넘길 수 없어요.'
+      : '임원 임명은 <b>클럽장만</b> 할 수 있어요.'}</div>`;
+
+  const order = {owner:0, officer:1, member:2};
+  ms.sort((a,b)=>(order[a.role]??3)-(order[b.role]??3) || a.name.localeCompare(b.name));
+  ms.forEach(m=>{
+    const role = m.role || 'member';
+    const me = state.serverUser && m.user_id===state.serverUser.id;
+    h+=`<div class="mrow">
+      <div class="lb-av" style="width:40px;height:40px;border-radius:50%;background:${role==='owner'?'#e8a33c':role==='officer'?'#6182e6':'#b1a896'};font-size:15px;flex:none">${m.name[0]}</div>
+      <div class="mrow-x">
+        <div class="mrow-n">${m.name}${me?' <span style="color:var(--coral-d);font-size:11.5px">(나)</span>':''}</div>
+        <div class="mrow-d">${m.grade?`${m.grade}등급 · `:''}레이팅 ${m.rating||1000}</div>
+      </div>
+      <span class="rbadge" style="${ROLE_STYLE[role]}">${ROLE_LABEL[role]}</span>
+      ${(isOwner && role!=='owner')
+        ? `<button class="btn sm ${role==='officer'?'ghost':''}" style="width:auto;padding:8px 10px;font-size:12px;margin-left:6px"
+             onclick="setMemberRole(${m.user_id},'${role==='officer'?'member':'officer'}')">${role==='officer'?'해제':'임원'}</button>
+           <button class="btn sm ghost" style="width:auto;padding:8px 10px;font-size:12px;margin-left:5px"
+             onclick="transferOwner(${m.user_id},'${m.name}')">양도</button>`
+        : ''}
+    </div>`;
+  });
+  if(!ms.length) h+=`<div class="empty" style="padding:40px 20px"><div class="ei">${ic('users',34)}</div><div class="et">아직 회원이 없어요</div></div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+
+async function setMemberRole(uid, role){
+  try{
+    await api(`/clubs/${clubId()}/members/${uid}/role`, {method:'PATCH', body: JSON.stringify({role})});
+    toast(role==='officer'?'임원으로 임명했어요':'임원 권한을 해제했어요');
+    await loadRoster(); openMembers();
+  }catch(e){
+    const m=String(e.message);
+    toast(m.includes('owner_only') ? '클럽장만 임명할 수 있어요'
+      : m.includes('cannot_change_owner') ? '클럽장 권한은 바꿀 수 없어요'
+      : m.includes('not_active') ? '가입 승인 후에 임명할 수 있어요' : '변경에 실패했어요');
+  }
+}
+
+/* ═══════════ 클럽 일정 · 참석 · 가입 승인 (서버) ═══════════ */
+let SRV_EVENT = null;       // 최신 일정 {id,title,date,count,attendees,joined}
+let SRV_MYSTATUS = null;    // {role,status}
+
+async function loadClubServer(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ SRV_EVENT=null; SRV_MYSTATUS=null; return false; }
+  const c = AC(); if(!c) return false;
+  try{
+    const [evs, ms] = await Promise.all([
+      api(`/clubs/${cid}/events`).catch(()=>[]),
+      api(`/clubs/${cid}/my-status`).catch(()=>null),
+    ]);
+    SRV_MYSTATUS = ms;
+    SRV_EVENT = (evs && evs[0]) || null;
+    if(SRV_EVENT){
+      c.schedule.dt = SRV_EVENT.date || SRV_EVENT.title;
+      c.schedule.attendees = SRV_EVENT.attendees || [];
+      c.schedule.attend = SRV_EVENT.joined ? true : c.schedule.attend;
+      c.schedule.eventId = SRV_EVENT.id;
+    }
+    if(ms && ms.role) state.bcfg.role = (ms.role==='owner'||ms.role==='officer') ? 'officer' : 'member';
+    return true;
+  }catch(e){ return false; }
+}
+
+/* 참석 토글 */
+async function setAttendServer(v){
+  const c = AC();
+  if(!SERVER_OK || !SRV_EVENT){ return false; }
+  try{
+    const r = await api(`/events/${SRV_EVENT.id}/attend`, {method:'POST'});
+    // 서버는 토글이므로, 원하는 상태와 다르면 한 번 더
+    if(v===true && !r.joined) await api(`/events/${SRV_EVENT.id}/attend`, {method:'POST'});
+    if(v===false && r.joined) await api(`/events/${SRV_EVENT.id}/attend`, {method:'POST'});
+    await loadClubServer(); renderClub();
+    toast(v===true?'참석 체크 완료 · 대진 명단에 추가됐어요':'불참 처리됐어요');
+    return true;
+  }catch(e){
+    toast(String(e.message).includes('member_only')?'정회원만 참석할 수 있어요':'참석 처리에 실패했어요');
+    return true;   // 서버가 거절한 것이므로 로컬로 되돌리지 않음
+  }
+}
+
+/* 일정 만들기 (임원진) */
+function openNewEvent(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ toast('서버에 연결되어야 일정을 만들 수 있어요'); return; }
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>새 모임 만들기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">모임을 만들면 클럽 회원 모두에게 알림이 가요. 참석 체크한 회원으로 대진이 편성됩니다.</div>
+    <div class="fld"><label>모임 이름</label><input id="evTitle" placeholder="예) 주말 정기모임" maxlength="24"></div>
+    <div class="fld"><label>일시 · 장소</label><input id="evDate" placeholder="예) 7/12 (토) 14:00 · 용인 코트" maxlength="40"></div>
+    <button class="btn" onclick="createClubEvent()">모임 만들기</button>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function createClubEvent(){
+  const t=(document.getElementById('evTitle')||{}).value||'';
+  const d=(document.getElementById('evDate')||{}).value||'';
+  if(!t.trim()){ toast('모임 이름을 입력해 주세요'); return; }
+  try{
+    await api(`/clubs/${clubId()}/events`, {method:'POST', body: JSON.stringify({title:t.trim(), date:d.trim(), tag:'정기'})});
+    closeOv(); await loadClubServer(); renderClub(); toast('모임을 만들었어요 · 회원들에게 알림이 갔어요');
+  }catch(e){ toast(String(e.message).includes('officer_only')?'모임 생성은 임원진만 가능해요':'모임 생성에 실패했어요'); }
+}
+
+/* 가입 신청 목록 · 승인 (임원진) */
+async function openJoinRequests(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ toast('서버 연결이 필요해요'); return; }
+  let rows=[];
+  try{ rows = await api(`/clubs/${cid}/join-requests`); }
+  catch(e){ toast('임원진만 볼 수 있어요'); return; }
+  let h=`<div class="sh-top"><h3>가입 신청</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">승인하면 정회원이 되어 모임 참석·대진 편성에 포함돼요.</div>`;
+  if(!rows.length) h+=`<div class="empty" style="padding:40px 20px"><div class="ei">${ic('inbox',34)}</div><div class="et">대기 중인 신청이 없어요</div></div>`;
+  rows.forEach(r=>{
+    h+=`<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 15px;margin-bottom:9px">
+      <div class="lb-av" style="width:42px;height:42px;border-radius:50%;background:var(--blue);font-size:16px;flex:none">${r.name[0]}</div>
+      <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px">${r.name}</div>
+        <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${r.region||'지역 미설정'} · 레이팅 ${r.rating||1000}</div></div>
+      <button class="btn sm" style="width:auto;padding:9px 13px" onclick="decideJoin(${r.user_id},true)">승인</button>
+      <button class="btn sm ghost" style="width:auto;padding:9px 11px" onclick="decideJoin(${r.user_id},false)">거절</button></div>`;
+  });
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function decideJoin(uid, approve){
+  try{
+    await api(`/clubs/${clubId()}/members/${uid}/approve`, {method:'POST', body: JSON.stringify({approve})});
+    toast(approve?'가입을 승인했어요':'가입 신청을 거절했어요');
+    await loadRoster(); openJoinRequests();
+  }catch(e){ toast('처리에 실패했어요'); }
+}
+
+/* 가입 신청 (일반) */
+async function createClubServer(name, region, sport){
+  if(!SERVER_OK) return null;
+  try{
+    const c = await api('/clubs', {method:'POST', body: JSON.stringify({name, region, sport: sport||state.sport})});
+    CLUB_IDS[c.name] = c.id;
+    await adoptServerClubs();
+    return c;
+  }catch(e){ return null; }
+}
+async function requestJoinServer(name){
+  const cid = CLUB_IDS[name];
+  if(!SERVER_OK || !cid) return false;
+  try{
+    const r = await api(`/clubs/${cid}/join`, {method:'POST'});
+    toast(r.status==='pending' ? '가입 신청을 보냈어요 · 임원진 승인을 기다려요' : '가입되었어요');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ═══════════ 실제 회원 명단 (서버) ═══════════
+   GET /clubs/:id/roster → 이번 모임 참석자(일정이 있으면) 또는 활성 회원 전원
+   이름·성별·등급을 그대로 앱 상태에 반영해 대진 편성에 쓴다.                */
+let SRV_ROSTER = null;      // [{user_id,name,gender,grade,is_captain}]
+let SRV_UID = {};           // 이름 → user_id
+
+async function loadRoster(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ SRV_ROSTER=null; return false; }
+  try{
+    const r = await api(`/clubs/${cid}/roster`);
+    const ms = (r.members||[]).filter(m=>m.name);
+    if(!ms.length){ SRV_ROSTER=null; return false; }
+    SRV_ROSTER = ms; SRV_UID = {};
+    const c = AC(); if(!c) return false;
+    c.grades = c.grades || {}; c.genders = c.genders || {};
+    ms.forEach(m=>{
+      if(m.user_id) SRV_UID[m.name] = m.user_id;
+      if(m.grade) c.grades[m.name] = m.grade;
+      if(m.gender) c.genders[m.name] = (m.gender==='여성'||m.gender==='F') ? 'F' : 'M';
+    });
+    c.schedule.attendees = ms.map(m=>m.name);
+    c.m = ms.length;
+    return true;
+  }catch(e){ SRV_ROSTER=null; return false; }
+}
+/* 등급 변경 → 서버 저장 (임원진) */
+async function pushGrades(){
+  const cid = clubId(); const c = AC();
+  if(!SERVER_OK || !cid || !c || state.bcfg.role!=='officer') return;
+  const grades = {};
+  Object.entries(c.grades||{}).forEach(([nm,g])=>{ if(SRV_UID[nm]) grades[SRV_UID[nm]] = g; });
+  if(!Object.keys(grades).length) return;
+  try{ await api(`/clubs/${cid}/grades`, {method:'PATCH', body: JSON.stringify({grades})}); }
+  catch(e){ if(String(e.message).includes('officer_only')) toast('등급 설정은 임원진만 가능해요'); }
 }
 
 /* ===== 회원가입/세션 저장 (localStorage) ===== */
@@ -2552,6 +2908,9 @@ function renderClub(){
       if(off){
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
           <div class="toolrow" onclick="openDues()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 정산</div><div class="tr-d">납부·미납 현황과 자동 독촉</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMyReport()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">내 리포트</div><div class="tr-d">승률·득실·파트너 궁합을 클럽 평균과 비교</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#ece7f8;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비·게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
@@ -2574,12 +2933,14 @@ function renderClub(){
           <div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>`;
       }
     }
-    h+=`
+    // 서버에 모임이 있으면 참석/불참/미정 3단계 카드, 없으면 기존 데모 UI
+    h+= (SERVER_OK && SRV_EVENT) ? rsvpCard() : `
     <div class="sched"><div class="dt">이번 모임</div><div class="loc">${sch.dt}</div>
       <div class="going">● ${going}명 참석 예정${sch.attend===true?' (나 포함)':''}</div>
       <div class="att-btns"><button class="yes ${sch.attend===true?'on':''}" onclick="setAttend(true)">참석</button>
         <button class="no ${sch.attend===false?'on':''}" onclick="setAttend(false)">불참</button></div>
-      <div class="note" style="text-align:left;margin-top:10px">참석을 누르면 <b>그날 대진 명단에 자동 포함</b>돼요.</div></div>
+      <div class="note" style="text-align:left;margin-top:10px">참석을 누르면 <b>그날 대진 명단에 자동 포함</b>돼요.</div></div>`;
+    h+=`
     <div class="composer"><textarea id="postText" placeholder="${state.activeClub}에 소식을 남겨보세요..." oninput="state._draft=this.value">${state._draft}</textarea>
       ${state._photo?`<div class="ph-mini">🎾 사진 첨부됨</div>`:``}
       <div class="crow"><span class="pht ${state._photo?'on':''}" onclick="togglePhoto()"><span class="bic">${ic('camera',14)}사진 ${state._photo?'첨부됨':'추가'}</span></span>
@@ -2889,7 +3250,7 @@ function setClubTab(t){state.clubTab=t;renderClub();}
 function setRegion(r){state.region=r;renderClub();}
 function searchClub(v){state._q=v;renderClub();const el=document.getElementById('cq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
 function switchClub(nm){state.activeClub=nm;state._draft='';state._photo=false;renderClub();}
-function setAttend(v){AC().schedule.attend=v;renderClub();toast(v===true?'참석 체크 완료 · 대진 명단에 추가됐어요':'불참 처리됐어요');}
+function setAttend(v){ setRsvp(v===true?'going':'absent'); }
 function openEventCreate(){
   // 가로 날짜 핀 (오늘부터 14일) — 점은 이미 잡힌 모임이 있는 날
   state._evDate=null; state._evTime='09:00';
@@ -3115,7 +3476,7 @@ function setGrade(nm,g){
   const c=AC(); if(!c)return; c.grades=c.grades||{};
   // 미설정 회원도 현재 표시값을 함께 고정(기본 분포가 흔들리지 않게)
   if(Object.keys(c.grades).length===0){ const att=curRoster(); const D=defaultGrades(att); att.forEach(x=>c.grades[x]=D[x]); }
-  c.grades[nm]=g; state.bcfg.scores={}; openGrades();
+  c.grades[nm]=g; state.bcfg.scores={}; pushGrades(); openGrades();
 }
 function toggleLateName(nm){const a=state.bcfg.lateNames;const i=a.indexOf(nm);if(i>=0)a.splice(i,1);else a.push(nm);
   state.bcfg.lateAfter=parseInt(document.getElementById('lateAfterSel').value)||state.bcfg.lateAfter; openLatePicker();}
@@ -4034,18 +4395,26 @@ function renderBracket(){
   if(c.officer===false && state.bcfg.role==='officer'){} // 데모: 토글로 전환
   let f=state.bracketFmt; const sch=c.schedule;
   const POOL=['이석용','김영민','정윤희','한은주','박현우','강태민','유명현','정지용','최우임','오동현','이광하','김제홍','배충호','장태성','이기훈','정혜정'];
-  const base=sch.attendees.slice(); if(sch.attend===true&&!base.includes('곽주영')) base.unshift('곽주영');
-  let attendees=base.slice();
-  // 참여 인원에 맞춰 명단 구성 (부족하면 풀에서 채움)
-  const want=state.bcfg.people;
-  for(let k=0; attendees.length<want; k++){ const nm=POOL[k%POOL.length]; if(!attendees.includes(nm)) attendees.push(nm); else attendees.push(nm+' ²'); }
-  attendees=attendees.slice(0,want);
+  let attendees;
+  if(SRV_ROSTER && SRV_ROSTER.length>=2){
+    // 실제 회원 명단 — 가짜 이름으로 채우지 않는다
+    attendees = SRV_ROSTER.map(m=>m.name);
+    state.bcfg.people = attendees.length;
+  } else {
+    const base=sch.attendees.slice(); if(sch.attend===true&&!base.includes('곽주영')) base.unshift('곽주영');
+    attendees=base.slice();
+    // 데모: 참여 인원에 맞춰 명단 구성 (부족하면 풀에서 채움)
+    const want=state.bcfg.people;
+    for(let k=0; attendees.length<want; k++){ const nm=POOL[k%POOL.length]; if(!attendees.includes(nm)) attendees.push(nm); else attendees.push(nm+' ²'); }
+    attendees=attendees.slice(0,want);
+  }
   // 회원은 임원진이 발행한 명단을 그대로 사용 (같은 대진 재현). 임원진은 자기 설정으로 편성.
   if(state.bcfg.role!=='officer' && Array.isArray(state._pubRoster) && state._pubRoster.length) attendees=state._pubRoster.slice();
   state._roster=attendees.slice();
-  const me=attendees.includes('곽주영');
+  const MEN=state.userName||'곽주영';
+  const me=attendees.includes(MEN);
   const n=attendees.length;
-  const hi=(nm)=>nm==='곽주영'?`<span style="color:var(--coral-d)">곽주영</span>`:nm;
+  const hi=(nm)=>nm===MEN?`<span style="color:var(--coral-d)">${nm}</span>`:nm;
   const NM=(arr)=>arr.map(i=>hi(attendees[i])).join('·');
   h+=`<p class="sub">${state.activeClub} · 참석 체크한 회원으로 자동 편성돼요.</p>`;
   if(!me){h+=`<div class="card" style="background:#f6efdf;border-color:#ece1ca">
@@ -4055,7 +4424,7 @@ function renderBracket(){
   const rcls=['#ec6a2e','#6182e6','#54bd7e','#b6a2ea','#f0a93b','#7a5fc0'];
   h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between;align-items:center"><span>이번 모임 · 참석 ${n}명</span>
     <div class="memstack">${attendees.slice(0,5).map((nm,i)=>`<div class="ma" style="background:${rcls[i%6]}">${nm[0]}</div>`).join('')}${attendees.length>5?`<div class="ma more">+${attendees.length-5}</div>`:''}</div></div><div class="roster">`;
-  attendees.forEach(nm=>{h+=`<span class="ptag ${nm==='곽주영'?'me':''}">${nm}${nm==='곽주영'?' (나)':''}</span>`;});
+  attendees.forEach(nm=>{h+=`<span class="ptag ${nm===MEN?'me':''}">${nm}${nm===MEN?' (나)':''}</span>`;});
   h+=`</div></div>`;
   let cf=state.bcfg;
   const officer=cf.role==='officer';
@@ -4072,7 +4441,8 @@ function renderBracket(){
     const lateOn=cf.lateNames.length>0;
     h+=`<div class="card"><div class="ch" style="font-size:15px">대진 설정 · 1인 4경기 보장 · 임원진 전용</div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px"><span style="font-weight:700;font-size:14px">참여 인원</span>
-        <div class="stepper"><button onclick="setPeople(-1)">−</button><b>${cf.people}명</b><button onclick="setPeople(1)">+</button></div></div>
+        ${SRV_ROSTER?`<span style="font-weight:800;font-size:14px;color:var(--coral-d)">${cf.people}명 · 실제 회원</span>`
+          :`<div class="stepper"><button onclick="setPeople(-1)">−</button><b>${cf.people}명</b><button onclick="setPeople(1)">+</button></div>`}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid #f4efe9"><span style="font-weight:700;font-size:14px">모임 날짜</span>
         <input type="date" value="${cf.date}" onchange="setDate(this.value)" style="border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;font-family:inherit;background:#fff"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid #f4efe9"><span style="font-weight:700;font-size:14px">코트 수</span>
@@ -4654,12 +5024,13 @@ function submitLounge(){ const t=(document.getElementById('lwTitle')||{}).value|
 }
 function go(v){
   if(state.view==='bracket' && v!=='bracket') bkStopPoll();
-  if(v==='bracket' && SERVER_OK && clubId()){ bkPull().then(ok=>{ if(ok){ renderBracket(); bkStartPoll(); } }); }
+  if(v==='bracket' && SERVER_OK && clubId()){ loadRoster().then(()=>bkPull()).then(ok=>{ renderBracket(); if(ok) bkStartPoll(); }); }
   state.view=v;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
   document.getElementById('scroll').scrollTop=0;
+  if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   saveMatsu();
 }
