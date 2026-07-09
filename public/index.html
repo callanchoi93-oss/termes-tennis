@@ -7,7 +7,19 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
-<title>MATSU · 데모</title>
+<title>MATSU · 마츠</title>
+
+<!-- ── PWA (홈 화면에 추가하면 앱처럼 뜬다) ── -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#ED7C30">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/icons/favicon-64.png" sizes="64x64" type="image/png">
+<!-- iOS 전용: 홈 화면에서 주소창 없이 전체화면으로 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MATSU">
+<meta name="description" content="동호회 대진·회비·리그를 한 곳에서">
 <style>
   :root{
     /* ── bold cream + colorful-cards editorial palette ── */
@@ -705,6 +717,24 @@
   .dm-un{ display:inline-block; min-width:17px; padding:1px 5px; border-radius:9px; background:var(--coral);
           color:#fff; font-size:10.5px; font-weight:900; text-align:center; vertical-align:1px; }
   .cwarn{ display:none; align-items:center; gap:5px; margin-top:7px; font-size:11.5px; font-weight:700; color:#c0503a; }
+  /* — 오픈매치 — */
+  .om-c{ padding:16px; }
+  .om-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .om-dt{ font-size:15px; font-weight:900; letter-spacing:-.03em; color:var(--ink); }
+  .om-loc{ font-size:12.5px; font-weight:700; color:var(--gray); margin-top:2px; }
+  .om-meta{ font-size:12px; font-weight:700; color:var(--lgray); margin-top:7px; }
+  .om-note{ font-size:12.5px; font-weight:600; color:var(--gray); background:#faf6ee;
+            border-radius:10px; padding:8px 10px; margin-top:9px; line-height:1.5; }
+  .om-ppl{ display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
+  .om-p{ font-size:11px; font-weight:800; color:var(--gray); background:#f4efe7;
+         border-radius:999px; padding:4px 9px; }
+  /* — 모임별 추이 — */
+  .tl-wrap{ display:flex; align-items:flex-end; gap:6px; height:92px; padding:8px 2px 0; }
+  .tl-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .tl-bar{ width:100%; max-width:26px; background:#efe7dc; border-radius:6px; display:flex;
+           align-items:flex-end; overflow:hidden; }
+  .tl-bar i{ display:block; width:100%; background:var(--coral); border-radius:0 0 6px 6px; }
+  .tl-d{ font-size:9.5px; font-weight:700; color:var(--lgray); white-space:nowrap; }
   /* — 선수 비교 — */
   .cmp-head{ display:flex; align-items:flex-start; justify-content:space-between; margin:4px 0 16px; }
   .cmp-p{ flex:1; text-align:center; }
@@ -1461,7 +1491,9 @@ async function api(path, opts){
   const t = authToken();
   const r = await fetch(API_BASE + path, {
     ...opts,
-    headers: { 'Content-Type':'application/json', ...(t?{Authorization:'Bearer '+t}:{}) , ...((opts&&opts.headers)||{}) },
+    headers: { 'Content-Type':'application/json',
+      ...(IS_IOS_APP?{'X-Client-Platform':'ios'}:{}),
+      ...(t?{Authorization:'Bearer '+t}:{}) , ...((opts&&opts.headers)||{}) },
   });
   if(!r.ok) throw new Error((await r.text().catch(()=>'')) || ('HTTP '+r.status));
   return r.json();
@@ -1572,7 +1604,9 @@ async function bkPush(publish){
   if(!SERVER_OK || !cid) return null;
   const b = state.bcfg;
   // renderBracket 이 실제로 편성에 쓴 명단을 그대로 저장해야 회원 기기에서 동일 대진이 재현된다
-  const data = { fmt: state.bracketFmt, attendees: (state._roster||[]).slice(),
+  // reg(코트별 4인 배정)를 같이 저장한다. 시즌 리포트가 과거 대진을 다시 생성하지 않아도 되게.
+  const reg = ((state.bk && state.bk.reg) || []).map(c => ({ key: c.key, names: c.names }));
+  const data = { fmt: state.bracketFmt, attendees: (state._roster||[]).slice(), reg,
     cfg: {people:b.people, courts:b.courts, date:b.date, lateNames:[...b.lateNames], lateAfter:b.lateAfter, seed:b.seed} };
   const r = await api(`/clubs/${cid}/brackets`, {method:'POST', body: JSON.stringify({
     sport: state.sport, fmt: state.bracketFmt, date: b.date, courts: b.courts, data, publish: publish?1:0 })});
@@ -2401,7 +2435,9 @@ function coin(sz){ sz=sz||22; return `<span style="width:${sz}px;height:${sz}px;
 function spendCash(kind,cost,label){
   if((state.free[kind]||0)>0){ state.free[kind]--; toast(`${label} · 무료 ${state.free[kind]}회 남음`); return true; }
   if(state.cash>=cost){ state.cash-=cost; toast(`${label} · M캐쉬 ${cost} 사용 (잔액 ${state.cash})`); return true; }
-  toast(`M캐쉬가 부족해요 · ${label}엔 ${cost}M캐쉬 필요`); setTimeout(openStore,650); return false;
+  if(canSellDigital()){ toast(`M캐쉬가 부족해요 · ${label}엔 ${cost}M캐쉬 필요`); setTimeout(openStore,650); }
+  else { toast(`M캐쉬가 부족해요 · 광고를 보거나 친구를 초대해 모을 수 있어요`); setTimeout(openEarn,650); }
+  return false;
 }
 // 쪽지 1건 = 1M캐쉬. 낱개 300원 기준, 묶을수록 최대 40% 할인
 const CASH_PKGS=[{n:100,won:19900,dc:34,tag:'실속'},{n:50,won:11900,dc:21},{n:30,won:7900,dc:12,tag:'인기'},{n:10,won:2900},{n:3,won:900}];
@@ -2459,6 +2495,11 @@ function openClubReport(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
+  if(!canSellDigital()){
+    // 안내 문구에 '웹에서 구매하세요' 를 쓰면 안 된다 (3.1.1 안티 스티어링).
+    toast('지금은 M캐쉬를 충전할 수 없어요');
+    return;
+  }
   let h=`<div class="sh-top"><h3>스토어</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:15px 16px">
       <div style="font-size:15px;font-weight:900">보유 M캐쉬</div>
@@ -2472,7 +2513,10 @@ function openStore(){
   h+=`<div class="note" style="text-align:left;margin-top:8px">M캐쉬는 개인 리그 <b>추가 대진</b>, <b>쪽지 보내기</b> 등에 사용돼요. 무료 제공분을 다 쓰면 M캐쉬가 필요해요. (데모 — 실제 결제 없음)</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function buyCash(n){ state.cash+=n; toast(`M캐쉬 ${n}개 충전 완료 (데모)`); openStore(); if(state.view==='home')renderHome(); if(state.view==='me')renderMe(); }
+function buyCash(n){
+  if(!canSellDigital()) return;
+  if(IS_IOS_APP && IAP_READY) return iapPurchase('cash_'+n);
+  state.cash+=n; toast(`M캐쉬 ${n}개 충전 완료 (데모)`); openStore(); if(state.view==='home')renderHome(); if(state.view==='me')renderMe(); }
 function openLeaderboard(){
   state._lbTab=state._lbTab||'region';
   const myGd=state.gender||'남자부', myReg='경기 용인';
@@ -3001,6 +3045,7 @@ function renderClub(){
           <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 장부</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubPremium()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openEarn()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">M캐쉬 받기</div><div class="tr-d">친구 초대 · 광고 보고 받기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openMatches()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('swap',19)}</div><div class="tr-x"><div class="tr-n">오픈매치</div><div class="tr-d">클럽 밖 사람들과 경기 잡기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openDMList()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('chat',19)}</div><div class="tr-x"><div class="tr-n">쪽지함</div><div class="tr-d">1:1 대화 · 연락처는 여기서만</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
@@ -3772,6 +3817,40 @@ function buildHanul(roster, courts, grades, seed){
   };
 }
 
+/* ════════════════════════════════════════════════════════════════
+   결제 라우팅 — 애플 App Store Review Guideline 3.1.1 대응
+
+   [디지털 상품] 앱 안에서 소비되는 것 → 반드시 애플 IAP
+     · M캐쉬 충전       (소모성 IAP)
+     · 클럽 프리미엄     (자동 갱신 구독)
+   [실물/오프라인 서비스] IAP 대상 아님 → 앱에서 결제하지도 않음
+     · 회비, 게스트비    (앱은 장부만. 돈은 클럽 계좌로)
+
+   iOS 앱 빌드(IS_IOS_APP)에서는 IAP가 붙기 전까지 디지털 상품
+   판매 UI를 '조용히' 숨긴다. 웹 결제로 유도하는 문구·링크를 남기면
+   3.1.1 위반(안티 스티어링)으로 반려된다. 한국 스토어프론트는
+   미국과 달리 외부 링크 예외가 적용되지 않는다.
+   ════════════════════════════════════════════════════════════════ */
+const IS_IOS_APP = (()=>{
+  try{
+    if(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform()==='ios') return true;
+    if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.matsuNative) return true;
+  }catch(e){}
+  return false;
+})();
+const IAP_READY = false;   // 애플 IAP 연동을 마치면 true
+
+// 디지털 상품을 팔 수 있는가
+function canSellDigital(){ return !IS_IOS_APP || IAP_READY; }
+
+/* IAP가 붙으면 여기로 들어온다. 지금은 자리만. */
+async function iapPurchase(productId){
+  // 예: await Capacitor.Plugins.Purchases.purchase({productId});
+  //     const receipt = ...;
+  //     await api('/iap/apple', {method:'POST', body: JSON.stringify({receipt})});
+  toast('결제를 준비 중이에요');
+}
+
 /* ═══════════ 캐시 획득 (친구초대 · 광고) ═══════════ */
 async function openEarn(){
   if(!SERVER_OK){ toast('서버 연결이 필요해요'); return; }
@@ -3798,7 +3877,7 @@ async function openEarn(){
       <button class="btn ${ad.left?'':'ghost'}" style="margin-top:12px" ${ad.left?'':'disabled'} onclick="watchAd()">
         ${ad.left? `광고 보고 ${ad.reward}M캐쉬 받기` : '오늘은 모두 받았어요'}</button>
     </div>
-    <button class="btn ghost" onclick="openStore()">M캐쉬 충전하기</button>`;
+    ${canSellDigital()?`<button class="btn ghost" onclick="openStore()">M캐쉬 충전하기</button>`:''}`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function copyCode(c){ try{ navigator.clipboard.writeText(c); }catch(e){} toast('초대 코드를 복사했어요'); }
@@ -3829,9 +3908,13 @@ async function openClubPremium(){
   if(p.premium){
     h+=`<div class="prm-hero on"><div class="prm-b">${ic('crown',15,'#a5750d')} 이용 중</div>
       <div class="prm-t">${state.activeClub}</div><div class="prm-d">${until} 까지</div></div>`;
-  } else {
+  } else if(canSellDigital()){
     h+=`<div class="prm-hero"><div class="prm-t">월 ${p.price.toLocaleString()}원</div>
       <div class="prm-d">회원 ${p.members}명이면 1인당 ${Math.round(p.price/Math.max(p.members,1)).toLocaleString()}원</div></div>`;
+  } else {
+    // 결제할 수 없는 빌드에서는 가격도 표시하지 않는다 (외부 결제 유도로 읽힐 수 있음)
+    h+=`<div class="prm-hero"><div class="prm-t">클럽 프리미엄</div>
+      <div class="prm-d">클럽 운영을 돕는 확장 기능</div></div>`;
   }
   const row=(t,free,prem)=>`<div class="prm-row"><span>${t}</span><i>${free}</i><b>${prem}</b></div>`;
   h+=`<div class="card"><div class="prm-row hd"><span></span><i>무료</i><b>프리미엄</b></div>
@@ -3842,12 +3925,15 @@ async function openClubPremium(){
     ${row('클럽 공지 푸시', '—', '○')}
     <div class="note" style="text-align:left;margin-top:10px">지금 정회원 <b>${p.members}/${p.member_limit}</b>명 · 이번 달 대진 <b>${p.brackets_this_month}/${p.bracket_limit}</b>회</div>
   </div>`;
-  if(owner && !p.premium) h+=`<button class="btn" onclick="buyClubPremium()">프리미엄 시작하기 · 월 ${p.price.toLocaleString()}원</button>`;
-  else if(owner) h+=`<button class="btn ghost" onclick="cancelClubPremium()">프리미엄 해지</button>`;
-  else h+=`<div class="note" style="text-align:left">결제는 <b>클럽장</b>만 할 수 있어요.</div>`;
+  if(owner && p.premium) h+=`<button class="btn ghost" onclick="cancelClubPremium()">프리미엄 해지</button>`;
+  else if(owner && canSellDigital()) h+=`<button class="btn" onclick="buyClubPremium()">프리미엄 시작하기 · 월 ${p.price.toLocaleString()}원</button>`;
+  else if(!owner) h+=`<div class="note" style="text-align:left">결제는 <b>클럽장</b>만 할 수 있어요.</div>`;
+  // iOS 빌드 + IAP 미연동: 결제 버튼도, 외부 결제 안내도 노출하지 않는다.
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 async function buyClubPremium(){
+  if(!canSellDigital()) return;
+  if(IS_IOS_APP && IAP_READY) return iapPurchase('club_premium_monthly');
   try{ await api(`/clubs/${clubId()}/premium`,{method:'POST',body:JSON.stringify({months:1})});
     toast('프리미엄이 시작됐어요'); openClubPremium();
   }catch(e){ toast(String(e.message).includes('owner_only')?'클럽장만 결제할 수 있어요':'결제에 실패했어요'); }
@@ -3936,6 +4022,97 @@ async function issueDues(){
   }catch(e){ const m=String(e.message);
     if(m.includes('premium_required')){ toast('회비 장부는 프리미엄 기능이에요'); setTimeout(openClubPremium,600); }
     else toast(m.includes('officer_only')?'임원진만 고지할 수 있어요':'실패했어요'); }
+}
+
+/* ═══════════ 오픈매치 (클럽 밖 모집 경기) ═══════════
+   참가비는 앱이 받지 않는다. 주최자가 현장에서 정산.        */
+async function openMatches(){
+  if(!SERVER_OK){ toast('오픈매치는 서버 연결이 필요해요'); return; }
+  let list=[];
+  try{ list = await api(`/open-matches?sport=${state.sport}`); }catch(e){ toast('불러오지 못했어요'); return; }
+  let h=`<div class="sh-top"><h3>오픈매치</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">클럽에 속하지 않아도 참여할 수 있는 경기예요. <b>참가비는 현장에서</b> 주최자에게 내요.</div>
+    <button class="btn ghost" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>`;
+  if(!list.length){
+    h+=`<div class="empty" style="padding:44px 20px"><div class="ei">${ic('swap',34)}</div>
+      <div class="et">열린 경기가 없어요</div><div class="es">첫 오픈매치를 열어보세요.</div></div>`;
+  }
+  list.forEach(m=>{
+    const closed = m.status && m.status!=='open';
+    const pct = Math.min(100, Math.round(m.cur/Math.max(m.cap,1)*100));
+    h+=`<div class="card om-c" style="${closed?'opacity:.6':''}">
+      <div class="om-top">
+        <div><div class="om-dt">${m.dt}</div><div class="om-loc">${m.loc}</div></div>
+        <span class="rbadge" style="${m.confirmed?'background:#e7f4ec;color:#1f7d4d':'background:#fdf2dd;color:#a5750d'}">
+          ${closed?'마감':m.confirmed?'성사':'모집중'}</span>
+      </div>
+      <div class="om-meta">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
+      ${m.note?`<div class="om-note">${m.note}</div>`:''}
+      <div class="rp-track" style="margin-top:10px"><i style="width:${pct}%"></i></div>
+      <div class="rp-cap">${m.cur}/${m.cap}명 · 최소 ${m.min_cnt}명이면 성사${m.confirmed?' ✓':''}</div>
+      <div class="om-ppl">${m.players.map(p=>`<span class="om-p">${p.name}</span>`).join('')}</div>
+      ${closed?'' : m.is_host
+        ? `<div style="display:flex;gap:8px;margin-top:11px">
+             <button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed')">모집 마감</button>
+             <button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'cancelled')">취소</button></div>`
+        : m.joined
+          ? `<button class="btn sm ghost" style="margin-top:11px" onclick="leaveMatch(${m.id})">참가 취소</button>`
+          : m.full
+            ? `<button class="btn sm ghost" style="margin-top:11px" disabled>정원이 찼어요</button>`
+            : `<button class="btn sm" style="margin-top:11px" onclick="joinMatch(${m.id})">참가 신청</button>`}
+    </div>`;
+  });
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+function openNewMatch(){
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="openMatches()">×</div></div>
+    <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
+    <div class="fld"><label>일시</label><input id="omDt" placeholder="예) 07.18(토) 09:00"></div>
+    <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 용인 기흥 테니스장 3번 코트"></div>
+    <div class="fld"><label>형식</label><input id="omFmt" placeholder="예) 복식" value="복식"></div>
+    <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>정원</label><input id="omCap" inputmode="numeric" value="8"></div>
+      <div class="fld" style="flex:1"><label>최소 인원</label><input id="omMin" inputmode="numeric" value="6"></div>
+    </div>
+    <div class="fld"><label>안내 (선택)</label><textarea id="omNote" rows="2" placeholder="예) 초급 환영, 공은 제가 준비합니다"></textarea></div>
+    <div id="omWarn" class="cwarn"></div>
+    <button class="btn" onclick="createMatch()">오픈매치 열기</button>`;
+  document.getElementById('ov').classList.add('on');
+  ['omLoc','omNote'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+}
+async function createMatch(){
+  const v = id => ((document.getElementById(id)||{}).value||'').trim();
+  const dt=v('omDt'), loc=v('omLoc'), note=v('omNote');
+  if(!dt||!loc){ toast('일시와 장소를 입력해 주세요'); return; }
+  const bad = findContact(`${loc} ${note}`);
+  if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
+  const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
+  try{
+    await api('/open-matches',{method:'POST',body:JSON.stringify({
+      sport:state.sport, dt, loc, fmt:v('omFmt')||'복식', gd:state.gender==='여성'?'여자부':'남자부',
+      price:num('omPrice'), cap:num('omCap')||8, min_cnt:num('omMin')||6, note })});
+    toast('오픈매치를 열었어요'); openMatches();
+  }catch(e){ toast(String(e.message).includes('contact_blocked')?'연락처는 올릴 수 없어요':'개설에 실패했어요'); }
+}
+async function joinMatch(id){
+  try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
+    toast(m.confirmed?`참가했어요 · ${m.cur}명으로 경기가 성사됐어요`:`참가했어요 · ${m.cur}/${m.cap}명`);
+    openMatches();
+  }catch(e){ const s=String(e.message);
+    toast(s.includes('full')?'정원이 찼어요':s.includes('not_open')?'모집이 끝났어요':'참가하지 못했어요'); }
+}
+async function leaveMatch(id){
+  if(!confirm('참가를 취소할까요? 주최자에게 알림이 가요.')) return;
+  try{ await api(`/open-matches/${id}/join`,{method:'DELETE'}); toast('참가를 취소했어요'); openMatches(); }
+  catch(e){ toast('취소하지 못했어요'); }
+}
+async function setMatchStatus(id, st){
+  const msg = st==='closed' ? '모집을 마감할까요?' : '오픈매치를 취소할까요? 참가자에게 알림이 가요.';
+  if(!confirm(msg)) return;
+  try{ await api(`/open-matches/${id}`,{method:'PATCH',body:JSON.stringify({status:st})});
+    toast(st==='closed'?'모집을 마감했어요':'오픈매치를 취소했어요'); openMatches();
+  }catch(e){ toast('주최자만 할 수 있어요'); }
 }
 
 /* ═══════════ 회비 납부 요청 ═══════════ */
@@ -4047,7 +4224,7 @@ async function sendDM(uid, name){
     openDM(uid, name);
   }catch(e){
     const m=String(e.message);
-    if(m.includes('insufficient_cash')){ toast('M캐쉬가 부족해요'); setTimeout(openStore,650); }
+    if(m.includes('insufficient_cash')){ toast('M캐쉬가 부족해요'); setTimeout(canSellDigital()?openStore:openEarn,650); }
     else if(m.includes('blocked')) toast('상대가 쪽지를 받지 않아요');
     else toast('쪽지를 보내지 못했어요');
   }
@@ -4166,41 +4343,51 @@ function openCompare(name){
 const ME_NAME = () => state.userName || '곽주영';
 const CLOSE_DIFF = 2;   // 접전 기준: 점수차 2점 이내
 
-function computeMyReport(){
-  const reg = (state.bk && state.bk.reg) || [];
-  const P = {};   // 이름 → 집계
+/* 세션(모임) 배열을 받아 집계한다.
+   session = { date, reg:[{key,names[4]}], scores:{key:{a,b}} }
+   이번 모임만 보려면 세션 하나, 시즌 누적이면 여러 개를 넘긴다. */
+function aggregateSessions(sessions){
+  const P = {};
   const ens = nm => P[nm] || (P[nm] = {g:0,w:0,l:0,sc:0,cc:0,cg:0,cw:0});
   const me = ME_NAME();
-  const R = { me, games:[], partner:{}, opp:{} };
+  const R = { me, games:[], partner:{}, opp:{}, sessions:[], attended:0 };
 
-  reg.forEach(c=>{
-    const sv = state.bcfg.scores[c.key] || {};
-    if(sv.a===undefined||sv.a===''||sv.b===undefined||sv.b==='') return;
-    const a = parseInt(sv.a), b = parseInt(sv.b);
-    if(isNaN(a)||isNaN(b)) return;
-    const t1 = c.names.slice(0,2), t2 = c.names.slice(2,4);
-    const close = Math.abs(a-b) <= CLOSE_DIFF;
+  sessions.forEach(S=>{
+    const my = {g:0,w:0,l:0,sc:0,cc:0};
+    let played = false;
+    (S.reg||[]).forEach(c=>{
+      const sv = (S.scores||{})[c.key] || {};
+      if(sv.a===undefined||sv.a===''||sv.b===undefined||sv.b==='') return;
+      const a = parseInt(sv.a), b = parseInt(sv.b);
+      if(isNaN(a)||isNaN(b)) return;
+      const t1 = c.names.slice(0,2), t2 = c.names.slice(2,4);
+      const close = Math.abs(a-b) <= CLOSE_DIFF;
 
-    [[t1,a,b,t2],[t2,b,a,t1]].forEach(([team,my,op,foe])=>{
-      team.forEach((nm,k)=>{
-        const st = ens(nm);
-        st.g++; st.sc += my; st.cc += op;
-        if(my>op) st.w++; else if(my<op) st.l++;
-        if(close){ st.cg++; if(my>op) st.cw++; }
-        if(nm===me){
-          const mate = team[1-k];
-          R.games.push({won:my>op, my, op, close, mate, foes:foe.slice(), key:c.key, ri:c.ri, ci:c.ci});
-          const pt = R.partner[mate] || (R.partner[mate]={g:0,w:0});
-          pt.g++; if(my>op) pt.w++;
-          foe.forEach(f=>{ const o = R.opp[f] || (R.opp[f]={g:0,w:0}); o.g++; if(my>op) o.w++; });
-        }
+      [[t1,a,b,t2],[t2,b,a,t1]].forEach(([team,mine,op,foe])=>{
+        team.forEach((nm,k)=>{
+          const st = ens(nm);
+          st.g++; st.sc += mine; st.cc += op;
+          if(mine>op) st.w++; else if(mine<op) st.l++;
+          if(close){ st.cg++; if(mine>op) st.cw++; }
+          if(nm===me){
+            played = true;
+            my.g++; my.sc+=mine; my.cc+=op;
+            if(mine>op) my.w++; else if(mine<op) my.l++;
+            const mate = team[1-k];
+            R.games.push({won:mine>op, my:mine, op, close, mate, foes:foe.slice(), key:c.key, date:S.date});
+            const pt = R.partner[mate] || (R.partner[mate]={g:0,w:0});
+            pt.g++; if(mine>op) pt.w++;
+            foe.forEach(f=>{ const o = R.opp[f] || (R.opp[f]={g:0,w:0}); o.g++; if(mine>op) o.w++; });
+          }
+        });
       });
     });
+    if(played){ R.attended++; R.sessions.push({date:S.date||'', ...my}); }
   });
 
   R.stats = P;
   R.mine = P[me] || {g:0,w:0,l:0,sc:0,cc:0,cg:0,cw:0};
-  // 클럽 평균 (2경기 이상 회원)
+  R.meetings = sessions.length;
   const mem = Object.entries(P).filter(([nm,v])=>nm!==me && v.g>=2).map(([,v])=>v);
   const avg = arr => arr.length ? arr.reduce((x,y)=>x+y,0)/arr.length : 0;
   R.club = {
@@ -4211,6 +4398,25 @@ function computeMyReport(){
   };
   return R;
 }
+
+/* 지금 화면에 있는 대진 하나 = 세션 하나 */
+function currentSession(){
+  const reg = ((state.bk && state.bk.reg) || []).map(c=>({key:c.key, names:c.names}));
+  return { date: (state.bcfg && state.bcfg.date) || '이번 모임', reg, scores: state.bcfg.scores || {} };
+}
+function computeMyReport(){ return aggregateSessions([currentSession()]); }
+
+/* 서버에서 발행된 과거 대진을 전부 가져와 시즌 누적 */
+async function loadSeasonSessions(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid) return null;
+  try{
+    const hist = await api(`/clubs/${cid}/brackets/history?limit=40`);
+    const ss = hist.filter(b => (b.reg||[]).length).map(b => ({ date: b.date || '', reg: b.reg, scores: b.scores }));
+    return ss.length ? ss : null;
+  }catch(e){ return null; }
+}
+
 
 function _bar(label, mine, club, unit, better){
   const max = Math.max(mine, club, 1) * 1.12;
@@ -4224,18 +4430,30 @@ function _bar(label, mine, club, unit, better){
   </div>`;
 }
 
-function openMyReport(){
+let _seasonCache;
+async function openMyReport(scope){
   // 대진 화면을 아직 안 열었으면 레지스트리가 비어 있으므로 한 번 렌더해서 채운다
   try{ if(!(state.bk&&state.bk.reg&&state.bk.reg.length) && AC() && SP().cat==='racket') renderBracket(); }catch(e){}
-  const R = computeMyReport();
+  scope = scope || state._rpScope || 'meet';
+  if(_seasonCache === undefined) _seasonCache = await loadSeasonSessions();
+  const seasonAvailable = !!(_seasonCache && _seasonCache.length);
+  let R;
+  if(scope==='season' && seasonAvailable) R = aggregateSessions(_seasonCache);
+  else { scope='meet'; R = computeMyReport(); }
+  state._rpScope = scope;
   const m = R.mine;
   let h = `<div class="sh-top"><h3>내 리포트</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">이번 모임 대진의 <b>입력된 점수</b>로 집계했어요. 클럽 평균과 비교해 보여줍니다.</div>`;
+    ${seasonAvailable?`<div class="miniseg" style="margin:2px 0 12px">
+      <div class="ms-b ${scope==='meet'?'on':''}" onclick="openMyReport('meet')">이번 모임</div>
+      <div class="ms-b ${scope==='season'?'on':''}" onclick="openMyReport('season')">시즌 누적</div></div>`:''}
+    <div class="sd">${scope==='season'
+      ? `발행된 대진 <b>${R.meetings}회</b> 중 <b>${R.attended}회</b> 참석했어요. 클럽 평균과 비교해 보여줍니다.`
+      : `이번 모임 대진의 <b>입력된 점수</b>로 집계했어요. 클럽 평균과 비교해 보여줍니다.`}</div>`;
 
   if(!m.g){
     h += `<div class="empty" style="padding:50px 20px"><div class="ei">${ic('chart',34)}</div>
       <div class="et">아직 기록이 없어요</div>
-      <div class="es">대진에서 점수를 입력하면<br>리포트가 채워져요.</div></div>`;
+      <div class="es">${scope==='season'?'발행된 대진에 점수가 입력되면<br>시즌 기록이 쌓여요.':'대진에서 점수를 입력하면<br>리포트가 채워져요.'}</div></div>`;
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on'); return;
   }
 
@@ -4252,6 +4470,21 @@ function openMyReport(){
       <div><b>${m.w}<i>승</i> ${m.l}<i>패</i></b><span>승률 ${wr}%</span></div>
       <div><b class="${diff>=0?'up':'dn'}">${diff>0?'+':''}${diff}</b><span>득실차</span></div>
     </div></div>`;
+
+  // 모임별 추이 (시즌 누적에서만)
+  if(scope==='season' && R.sessions.length>1){
+    const mx = Math.max(...R.sessions.map(x=>x.g), 1);
+    h += `<div class="card"><div class="ch" style="font-size:15px">모임별 성적</div>
+      <div class="tl-wrap">`;
+    R.sessions.slice(-10).forEach(x=>{
+      const wr = x.g ? Math.round(x.w/x.g*100) : 0;
+      h += `<div class="tl-col" title="${x.date} · ${x.w}승 ${x.l}패">
+        <div class="tl-bar" style="height:${Math.max(8, x.g/mx*74)}px">
+          <i style="height:${wr}%"></i></div>
+        <div class="tl-d">${(x.date||'').replace(/^\d{4}[-.]/,'').slice(0,5)}</div></div>`;
+    });
+    h += `</div><div class="rp-cap">막대 높이 = 경기 수 · 색칠된 부분 = 승리 비율 (최근 10회)</div></div>`;
+  }
 
   // 최근 폼
   const form = R.games.slice(-5);
@@ -5529,6 +5762,35 @@ if(_restored){ go(state.view||'home'); } else { populateAuthSaved(); }
 window.addEventListener('beforeunload',saveMatsu);
 setInterval(saveMatsu,2500);
 
+/* ═══════════ PWA ═══════════ */
+// file:// 로 열었을 땐 서비스워커를 등록할 수 없다 (데모 모드).
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js').then(reg=>{
+      // 새 버전이 배포되면 알려준다
+      reg.addEventListener('updatefound', ()=>{
+        const nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          if(nw.state==='installed' && navigator.serviceWorker.controller){
+            toast('새 버전이 있어요 · 앱을 다시 열면 적용돼요');
+          }
+        });
+      });
+    }).catch(()=>{});
+  });
+}
+// 홈 화면 추가 안내 (안드로이드/크롬). iOS 는 공유 버튼을 눌러야 해서 별도 안내.
+let _installPrompt = null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _installPrompt = e; });
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+async function promptInstall(){
+  if(_installPrompt){ _installPrompt.prompt(); _installPrompt = null; return; }
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  toast(ios ? '공유 버튼 → "홈 화면에 추가" 를 눌러주세요' : '브라우저 메뉴에서 "앱 설치" 를 눌러주세요');
+}
 </script>
 </body>
 </html>
