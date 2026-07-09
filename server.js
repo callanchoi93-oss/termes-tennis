@@ -84,6 +84,7 @@ async function kakaoIssue(access_token, res) {
 //  Railway Variables 에 넣으면 재배포 없이 바뀐다.
 // ══════════════════════════════════════════════════════════════
 app.get('/config', (_, res) => {
+  res.set('Cache-Control', 'no-store');   // 브라우저가 옛 응답을 붙잡지 못하게
   res.json({
     google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
@@ -1955,7 +1956,33 @@ app.post('/dm', auth, (req, res) => {
   res.json({ ok: true, id: rid(r), charged: isNew ? DM_COST : 0, cash: getUser(req.uid).cash });
 });
 
+const START_TS = Date.now();
 app.get('/health', (_, res) => res.json({ ok: true, ts: now() }));
+
+// ── 진단용 (값은 노출하지 않는다. 존재 여부·길이·앞 4글자만) ──
+// 환경변수가 이 프로세스에 실제로 도달했는지 확인한다. 원인을 찾은 뒤 지워도 된다.
+app.get('/diag', (_req, res) => {
+  const seen = k => {
+    const v = process.env[k];
+    return v ? { set: true, length: v.length, head: v.slice(0, 4) + '…' } : { set: false };
+  };
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    service: process.env.RAILWAY_SERVICE_NAME || null,
+    environment: process.env.RAILWAY_ENVIRONMENT_NAME || null,
+    deployment: (process.env.RAILWAY_DEPLOYMENT_ID || '').slice(0, 8) || null,
+    started_at: new Date(START_TS).toISOString(),
+    db_file_in_use: process.env.DB_PATH || 'matsu.db (기본값)',
+    total_env_count: Object.keys(process.env).length,
+    vars: {
+      ADMIN_KEY: seen('ADMIN_KEY'),
+      DB_PATH: seen('DB_PATH'),
+      JWT_SECRET: seen('JWT_SECRET'),
+      GOOGLE_CLIENT_ID: seen('GOOGLE_CLIENT_ID'),
+      KAKAO_JS_KEY: seen('KAKAO_JS_KEY'),
+    },
+  });
+});
 
 // ── 이미지 업로드 (프로필·경기 사진) — 로컬 디스크. 운영은 S3/CDN 권장 ──
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
