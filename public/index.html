@@ -650,6 +650,93 @@
   .search{ display:flex; align-items:center; gap:8px; color:var(--gray); }
   .ps-m{ display:flex; flex-direction:column; gap:4px; }
   .ps-m span{ display:flex; align-items:center; gap:5px; }
+  /* — 한울 수기 기록표 — */
+  .sh-ov{ position:fixed; inset:0; background:rgba(27,24,19,.55); z-index:80; overflow-y:auto;
+          padding:26px 12px; -webkit-overflow-scrolling:touch; }
+  .sh-panel{ max-width:640px; margin:0 auto; background:#fdfbf4; border-radius:22px; padding:20px 18px 26px;
+             box-shadow:0 24px 60px rgba(0,0,0,.35); }
+  .sh-head{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; }
+  .sh-eye{ font-size:11px; font-weight:900; letter-spacing:1.4px; color:var(--coral-d); }
+  .sh-title{ font-size:24px; font-weight:900; letter-spacing:-.04em; color:var(--ink); margin-top:3px; }
+  .sh-x{ width:34px;height:34px;border:none;border-radius:50%;background:#efe9dd;color:var(--gray);
+         font-size:20px;cursor:pointer;font-family:inherit;line-height:1; }
+  .sh-court{ border:1.5px solid #e3d9c4; border-radius:16px; padding:15px 14px; margin-bottom:16px; background:#fff; }
+  .sh-ct{ font-size:16px; font-weight:900; color:var(--ink); letter-spacing:-.02em; }
+  .sh-ct span{ font-size:11.5px; font-weight:700; color:var(--gray); margin-left:6px; }
+  .sh-sub{ font-size:12.5px; font-weight:800; color:var(--ink); margin:12px 0 7px; }
+  .sh-sub span{ color:#b3a894; font-weight:700; }
+  .sh-sched{ width:100%; border-collapse:collapse; }
+  .sh-sched td{ border:1px solid #e6ddc9; padding:7px 9px; font-size:13px; font-weight:700; }
+  .sh-sched td.g{ width:78px; color:var(--gray); background:#faf7ef; font-size:12px; }
+  .sh-sched td.code{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:15px;
+                     font-weight:800; letter-spacing:2px; color:var(--ink); }
+  .sh-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .sh-grid{ border-collapse:collapse; width:100%; min-width:520px; }
+  .sh-grid th,.sh-grid td{ border:1px solid #e6ddc9; padding:6px 5px; text-align:center;
+                           font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .sh-grid th{ background:#f6f1e5; color:var(--gray); font-weight:800; font-size:11px; }
+  .sh-grid th.grp{ background:#efe8d8; }
+  .sh-grid td.nm{ font-weight:800; color:var(--ink); font-size:12.5px; text-align:left; padding-left:8px; }
+  .sh-grid td.lblM,.sh-grid td.lblF{ width:30px; }
+  .sh-grid td.lblM span{ display:inline-block;width:20px;height:20px;line-height:20px;border-radius:6px;
+                         background:#e7eefb;color:#3f6bc2;font-weight:900; }
+  .sh-grid td.lblF span{ display:inline-block;width:20px;height:20px;line-height:20px;border-radius:6px;
+                         background:#fbe7f2;color:#d6336c;font-weight:900; }
+  .sh-grid td.set{ font-variant-numeric:tabular-nums; }
+  .sh-grid td.set.win{ background:#eef7ee; color:#2f7a4d; font-weight:900; }
+  .sh-grid td.set.empty{ color:#d5cabc; }
+  .sh-grid td.pos{ color:#2f7a4d; } .sh-grid td.neg{ color:#c0392b; }
+  .sh-grid td.rk{ font-weight:900; color:var(--ink); background:#faf7ef; }
+  .sh-grid tr.me td{ background:#fdf3ea; }
+  .sh-grid tr.me td.nm{ color:var(--coral-d); }
+  /* — 스코어 입력 (크게) — */
+  .sc-row{ display:flex; align-items:center; justify-content:center; gap:9px; margin-top:10px; }
+  .sc-lb{ font-size:11px; font-weight:800; color:var(--lgray); width:38px; text-align:center; }
+  .sc-in{ width:62px; height:52px; text-align:center; border:2px solid var(--line);
+          border-radius:14px; font-size:24px; font-weight:900; font-family:inherit;
+          background:#fff; color:var(--ink); outline:none; transition:.12s;
+          font-variant-numeric:tabular-nums; -moz-appearance:textfield; }
+  .sc-in:focus{ border-color:var(--brand); box-shadow:0 0 0 4px rgba(237,124,48,.14); }
+  .sc-in::placeholder{ color:#d8cfc0; font-weight:700; }
+  .sc-co{ font-size:19px; font-weight:900; color:var(--lgray); }
+  .sc-row.done .sc-in{ border-color:#cfe2b8; background:#f7fbf3; }
+  /* 코트 박스 안의 시작/타이머 */
+  .court-line .bk-ctrl{ width:100%; margin:9px 0 0; justify-content:flex-end; }
+  .bk-chip.playing{ background:#fdf2dd; color:#c47d10; }
+  .bk-chip.playing em{ font-style:normal; font-weight:700; opacity:.7; margin-left:3px; font-size:10.5px; }
+  .bk-dot{ width:6px;height:6px;border-radius:50%;background:#e0912a; animation:bkpulse 1.1s infinite; }
+  @keyframes bkpulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+  .bk-btn.go{ display:inline-flex; align-items:center; gap:5px; padding:8px 16px; font-size:12.5px; }
+  /* — 대진 운영(라이브) 레이어 — */
+  .bk-nav{ display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; scrollbar-width:none; }
+  .bk-nav::-webkit-scrollbar{ display:none; }
+  .bk-n{ flex:0 0 auto; padding:8px 13px; border-radius:999px; font-size:12.5px; font-weight:800;
+         background:#efe9dd; color:var(--gray); white-space:nowrap; }
+  .bk-n.now{ background:#e7f4ec; color:#1f7d4d; }
+  .bk-n.playing{ background:#fdf2dd; color:#c47d10; }
+  .bk-n.done{ background:#e7eefb; color:#5b7fd4; }
+  .bk-next{ display:flex; align-items:center; gap:12px; background:#fffdf6; border:1px solid var(--line2);
+            border-radius:18px; padding:14px 15px; margin-bottom:12px; box-shadow:var(--shadow-s); }
+  .bk-next.done{ background:#f1f8f3; border-color:#cfe6d8; }
+  .bk-next-ic{ width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none; }
+  .bk-next-x{ flex:1; min-width:0; }
+  .bk-next-t{ font-size:14px; font-weight:900; letter-spacing:-.02em; color:var(--ink); }
+  .bk-next-d{ font-size:12px; font-weight:700; color:var(--gray); margin-top:2px; }
+  .bk-chip{ display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:999px;
+            font-size:11.5px; font-weight:800; white-space:nowrap; }
+  .bk-chip b{ font-variant-numeric:tabular-nums; font-weight:900; }
+  .bk-btn{ border:none; border-radius:999px; padding:6px 13px; font-size:11.5px; font-weight:900;
+           font-family:inherit; cursor:pointer; }
+  .bk-btn.go{ background:var(--ink); color:#fff; }
+  .bk-btn.stop{ background:#fff; color:var(--gray); border:1px solid var(--line); margin-left:5px; }
+  .bk-ctrl{ margin-left:auto; display:flex; align-items:center; flex:none; }
+  .bk-warn{ display:flex; align-items:flex-start; gap:9px; background:#fdeee6; border:1px solid #f3c9ac;
+            border-radius:14px; padding:12px 14px; margin-bottom:12px; font-size:12.5px; font-weight:700;
+            color:#b85c2e; line-height:1.5; }
+  .bk-help{ display:flex; align-items:flex-start; gap:9px; background:#f0faf5; border:1px solid #cdeade;
+            border-radius:14px; padding:12px 14px; margin-bottom:12px; font-size:12.5px; font-weight:700;
+            color:#1f4536; line-height:1.5; }
+  .bk-help em{ display:block; font-style:normal; font-weight:800; color:#12805e; margin-top:4px; font-size:13px; }
   /* — 라인업 카드 — */
   .lu{ background:var(--coral-s); border:1px solid rgba(236,106,46,.18); }
   .lu.ok{ background:#e9f6ee; border-color:rgba(63,158,110,.28); }
@@ -2933,20 +3020,343 @@ function meetingRankHTML(){
   return h;
 }
 function scoreBox(ri,ci){
-  const s=state.bcfg.scores[ri+'-'+ci]||{};
+  const key=ri+'-'+ci;
+  const s=state.bcfg.scores[key]||{};
   const a=s.a!==undefined?s.a:'', b=s.b!==undefined?s.b:'';
-  const inp=(side,v)=>`<input value="${v}" oninput="setScore(${ri},${ci},'${side}',this.value)" inputmode="numeric" placeholder="-" style="width:38px;height:30px;text-align:center;border:1.5px solid var(--line);border-radius:8px;font-size:15px;font-family:inherit;background:#fff">`;
-  return `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px">${inp('a',a)}<span style="font-weight:800;color:var(--lgray)">:</span>${inp('b',b)}</div>`;
+  const done=a!==''&&b!=='';
+  const inp=(side,v)=>`<input class="sc-in" value="${v}" oninput="setScore('${ri}','${ci}','${side}',this.value)" inputmode="numeric" placeholder="-">`;
+  return `<div class="sc-row ${done?'done':''}">
+    <span class="sc-lb">우리팀</span>${inp('a',a)}
+    <span class="sc-co">:</span>
+    ${inp('b',b)}<span class="sc-lb">상대팀</span></div>`;
 }
 const CCB=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0'];
 function ctTypeColor(t){ return t==='남복'?'#e8845a':t==='여복'?'#e05a86':t==='혼복'?'#2f9e6e':'#7f776a'; }
 function pavatar(nm,sz){ sz=sz||20; const cols=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0','#e05a86','#3fb0c2']; let hh=0; for(const ch of String(nm))hh=(hh*31+ch.charCodeAt(0))>>>0; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cols[hh%cols.length]};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.5)}px;font-weight:800;margin-right:5px;flex-shrink:0">${String(nm)[0]}</span>`; }
 function pchip(nm){ return `<span class="p-chip ${nm==='곽주영'?'me':''}" style="display:inline-flex;align-items:center">${pavatar(nm)}${nm}</span>`; }
 function pairChips(names){ return `<div class="team-pair">${names.map(pchip).join('')}</div>`; }
-function courtLine(ci,aNames,bNames,typeLabel){
+/* ═══════════ 한울 대진 (Termes genHanulBracket 이식) ═══════════
+   실력별과 다름: 등급으로 "나누지" 않고, 실력 스네이크로 조 전력을 "고르게 맞춘다".
+   · 참석자를 등급 내림차순 정렬 → 코트 수만큼의 조에 스네이크(지그재그) 배분
+     → 각 조의 실력 합이 비슷해짐 (조 안은 A·B·C가 섞임)
+   · 각 조는 배정된 코트에 고정, 조원끼리만 4게임씩
+   · 매 게임 4명 선발(경기 수 적은 순) → 3가지 팀 분할 중
+     파트너 중복 + 상대 중복 + 실력차가 최소인 조합 선택
+   · 큰 조를 앞 코트로 (늦게 끝나는 조가 코트를 오래 씀)                       */
+const HANUL_GAMES = 4;
+function hanulScore(g){ return g==='A'?3 : g==='C'?1 : 2; }
+
+function buildHanul(roster, courts, grades, seed){
+  const T = roster.length;
+  if(T < 4) return {groups:[], games:[], sizes:[], maxDup:0};
+  const rnd = _rng((seed||1)*211 + T*17 + courts*29);
+  const numGroups = Math.min(courts, Math.max(1, Math.floor(T/4)));
+
+  // ① 실력 내림차순 → 스네이크 배분 (조 간 전력 균형)
+  const order = [...Array(T).keys()]
+    .sort((a,b)=> hanulScore(grades[roster[b]]) - hanulScore(grades[roster[a]]) || rnd()-0.5);
+  let groups = Array.from({length:numGroups}, ()=>[]);
+  let gi=0, dir=1;
+  order.forEach(idx=>{
+    groups[gi].push(idx);
+    gi += dir;
+    if(gi<0){ gi=0; dir=1; } else if(gi>=numGroups){ gi=numGroups-1; dir=-1; }
+  });
+  // ② 큰 조를 앞 코트로
+  groups.sort((a,b)=> b.length-a.length);
+
+  // ③ 조별 4게임 편성 (파트너 pu / 상대 ou 중복 최소화)
+  const pk=(a,b)=> a<b ? a+'_'+b : b+'_'+a;
+  const pu={}, ou={};
+  const gameSoFar = {}; order.forEach(i=>gameSoFar[i]=0);
+  const games = groups.map(()=>[]);
+
+  groups.forEach((grp, g)=>{
+    if(grp.length < 4) return;                       // 4명 미만 조는 경기 불가
+    let guard=0, maxG=grp.length + 8;
+    while(grp.some(i=>gameSoFar[i] < HANUL_GAMES) && guard < maxG){
+      guard++;
+      const elig = grp.filter(i=>gameSoFar[i] < HANUL_GAMES)
+                      .sort((a,b)=> gameSoFar[a]-gameSoFar[b] || rnd()-0.5);
+      if(elig.length < 4) break;
+      const four = elig.slice(0,4);
+      const sorted = four.slice().sort((a,b)=> hanulScore(grades[roster[b]]) - hanulScore(grades[roster[a]]));
+      // 3가지 팀 분할 후보 (강-약 짝 우선이 첫 후보)
+      const cands = [
+        [sorted[0],sorted[3],sorted[1],sorted[2]],
+        [sorted[0],sorted[1],sorted[2],sorted[3]],
+        [sorted[0],sorted[2],sorted[1],sorted[3]],
+      ];
+      const court = cands.map(cc=>({cc, cost:
+          (pu[pk(cc[0],cc[1])]||0) + (pu[pk(cc[2],cc[3])]||0)
+        + ((ou[pk(cc[0],cc[2])]||0)+(ou[pk(cc[0],cc[3])]||0)+(ou[pk(cc[1],cc[2])]||0)+(ou[pk(cc[1],cc[3])]||0)) * 0.5
+        + Math.abs((hanulScore(grades[roster[cc[0]]])+hanulScore(grades[roster[cc[1]]]))
+                 - (hanulScore(grades[roster[cc[2]]])+hanulScore(grades[roster[cc[3]]])))
+        })).sort((a,b)=>a.cost-b.cost)[0].cc;
+
+      pu[pk(court[0],court[1])] = (pu[pk(court[0],court[1])]||0)+1;
+      pu[pk(court[2],court[3])] = (pu[pk(court[2],court[3])]||0)+1;
+      for(const a of [court[0],court[1]]) for(const b of [court[2],court[3]]) ou[pk(a,b)]=(ou[pk(a,b)]||0)+1;
+
+      games[g].push(court);
+      four.forEach(x=>gameSoFar[x]++);
+    }
+  });
+
+  const dupVals = Object.values(pu);
+  return {
+    groups, games,
+    sizes: groups.map(g=>g.length),
+    maxDup: dupVals.length ? Math.max(...dupVals) : 0,
+    gc: gameSoFar,
+  };
+}
+
+/* ═══════════ 한울 수기 방식 경기 기록표 (Termes showHanulSheet 이식) ═══════════
+   옛날 종이 기록표 그대로: 남=1·2·3 / 여=A·B·C 코드,
+   게임 순서표(1A : 2B), 세트별 점수 그리드, 승·패·득점·실점·득실차·순위 자동 */
+function defaultGenders(roster){
+  const set=(AC()&&AC().genders)||{};
+  const rnd=_rng(roster.length*29+11); const out={};
+  roster.forEach(nm=>{ out[nm] = set[nm] || (rnd()<0.62?'M':'F'); });
+  return out;
+}
+function openHanulSheet(){
+  const c=AC(); if(!c) return;
+  const att=state._hanul; if(!att){ toast('한울 대진을 먼저 편성해 주세요'); return; }
+  const {attendees, hn, G, GD} = att;
+
+  let sheets='';
+  hn.groups.forEach((grp, gi)=>{
+    if(grp.length<4){ return; }
+    const males   = grp.filter(i=>GD[attendees[i]]==='M');
+    const females = grp.filter(i=>GD[attendees[i]]!=='M');
+    const code={};
+    males.forEach((i,k)=>code[i]=String(k+1));
+    females.forEach((i,k)=>code[i]=String.fromCharCode(65+k));
+    const ordered=[...males, ...females];
+    const games=hn.games[gi];
+
+    // 개인별 세트 결과
+    const stat={};
+    ordered.forEach(i=>{
+      const gl=[];
+      games.forEach((m,k)=>{
+        if(!m.includes(i)) return;
+        const sv=state.bcfg.scores['h'+gi+'-'+k]||{};
+        const has=sv.a!==undefined&&sv.a!==''&&sv.b!==undefined&&sv.b!=='';
+        const s1=parseInt(sv.a)||0, s2=parseInt(sv.b)||0;
+        const onA=(m[0]===i||m[1]===i);
+        gl.push({has, my:onA?s1:s2, op:onA?s2:s1, won:has&&((onA?s1:s2)>(onA?s2:s1))});
+      });
+      const p=gl.filter(x=>x.has);
+      stat[i]={gl, w:p.filter(x=>x.won).length, l:p.filter(x=>!x.won).length,
+               sc:p.reduce((a,x)=>a+x.my,0), co:p.reduce((a,x)=>a+x.op,0), played:p.length};
+      stat[i].diff=stat[i].sc-stat[i].co;
+    });
+    // 순위 (승 > 득실차)
+    const rl=ordered.map(i=>({i,w:stat[i].w,diff:stat[i].diff,played:stat[i].played}))
+                    .sort((a,b)=>b.w-a.w||b.diff-a.diff);
+    const rank={}; let rk=1;
+    rl.forEach((r,k)=>{ if(k>0&&(r.w<rl[k-1].w||(r.w===rl[k-1].w&&r.diff<rl[k-1].diff))) rk=k+1;
+                        rank[r.i]=r.played?rk:'-'; });
+    const nG=Math.max(HANUL_GAMES, ...ordered.map(i=>stat[i].gl.length));
+
+    // 게임 순서표
+    const cc=i=>code[i]||'·';
+    let sched='';
+    games.forEach((m,k)=>{ sched+=`<tr><td class="g">게임 ${k+1}</td><td class="code">${cc(m[0])}${cc(m[1])} : ${cc(m[2])}${cc(m[3])}</td></tr>`; });
+
+    // 점수표
+    let head=`<tr><th rowspan="2">번호</th><th rowspan="2">이름</th>`;
+    for(let k=0;k<nG;k++) head+=`<th rowspan="2">${k+1}세트</th>`;
+    head+=`<th colspan="2" class="grp">승패</th><th colspan="3" class="grp">게임 득실</th><th rowspan="2">순위</th></tr>
+      <tr><th>승</th><th>패</th><th>득점</th><th>실점</th><th>득실차</th></tr>`;
+    let body='';
+    ordered.forEach(i=>{
+      const d=stat[i]; let sets='';
+      for(let k=0;k<nG;k++){
+        const x=d.gl[k];
+        sets += (x&&x.has) ? `<td class="set${x.won?' win':''}">${x.my} : ${x.op}</td>`
+                           : `<td class="set empty">·</td>`;
+      }
+      const isMe = attendees[i]==='곽주영';
+      body+=`<tr class="${isMe?'me':''}">
+        <td class="${GD[attendees[i]]==='M'?'lblM':'lblF'}"><span>${code[i]}</span></td>
+        <td class="nm">${attendees[i]}${gradeBadge(G[attendees[i]]||'B')}</td>${sets}
+        <td>${d.w}</td><td>${d.l}</td><td>${d.sc}</td><td>${d.co}</td>
+        <td class="${d.diff<0?'neg':'pos'}">${d.diff>0?'+':''}${d.diff}</td>
+        <td class="rk">${rank[i]}</td></tr>`;
+    });
+
+    sheets+=`<div class="sh-court">
+      <div class="sh-ct">코트 ${gi+1} <span>${grp.length}명 · 전원 ${HANUL_GAMES}게임</span></div>
+      <div class="sh-sub">게임 순서 <span>· 남 1·2·3 / 여 A·B·C</span></div>
+      <table class="sh-sched"><tbody>${sched||'<tr><td>경기 없음</td></tr>'}</tbody></table>
+      <div class="sh-sub" style="margin-top:16px">점수표 <span>· 승패·득실·순위 자동</span></div>
+      <div class="sh-scroll"><table class="sh-grid"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    </div>`;
+  });
+
+  const ov=document.createElement('div'); ov.className='sh-ov'; ov.id='shOv';
+  ov.innerHTML=`<div class="sh-panel">
+    <div class="sh-head"><div><div class="sh-eye">한울 · 수기 방식</div><div class="sh-title">경기 기록표</div></div>
+      <button class="sh-x" onclick="document.getElementById('shOv').remove()">×</button></div>
+    ${sheets||'<div class="note">편성된 조가 없어요.</div>'}</div>`;
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+
+/* ═══════════ 대진 운영(라이브) 레이어 — Termes 이식 ═══════════
+   · 코트 상태머신 (진행가능 / 대기 / 진행중 / 완료)
+   · 코트 타이머 (시작 시각 기록 → 경과 m:ss 실시간)
+   · 30분 초과 경기 경고
+   · 내 다음 가능 매치 안내
+   · 헬퍼 후보 (가장 오래 쉰 인원)
+   · 게임 칩 네비게이션                                            */
+const BK_LONG_MIN = 30;   // 장시간 진행 경고 기준(분)
+
+function bkState(){ state.bk = state.bk || {startedAt:{}, reg:[], tick:null}; return state.bk; }
+function bkReset(){ const b=bkState(); b.reg=[]; }
+function bkRegister(key, ri, ci, names, lane){ bkState().reg.push({key, ri:+ri, ci, names, lane}); }
+function bkScored(key){ const s=state.bcfg.scores[key]||{}; return s.a!==undefined&&s.a!=='' && s.b!==undefined&&s.b!==''; }
+function bkStartedAt(key){ return bkState().startedAt[key]||null; }
+function bkFmtElapsed(ms){ const t=Math.max(0,Math.floor(ms/1000)); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
+function bkElapsedMin(key){ const t=bkStartedAt(key); return t?Math.floor((Date.now()-t)/60000):null; }
+
+/* 코트 상태: done > playing > now > wait
+   now 조건: 미시작 · 소속 선수가 다른 진행중 코트에 없음 · 동시 진행 코트 < 코트 수 */
+function bkStatuses(courts){
+  const busy = new Set();
+  let playingCount = 0;
+  courts.forEach(c=>{ if(bkStartedAt(c.key) && !bkScored(c.key)){ playingCount++; c.names.forEach(n=>busy.add(n)); } });
+  const cap = state.bcfg.courts;
+  // 레인(고정 코트) 순서 게이트: 같은 레인의 앞 게임이 끝나야 다음 게임이 열림
+  const laneBlocked = new Set();
+  courts.forEach(c=>{
+    if(c.lane===undefined) return;
+    const earlier = courts.filter(o=>o.lane===c.lane && o.ri < c.ri);
+    if(earlier.some(o=>!bkScored(o.key))) laneBlocked.add(c.key);
+  });
+  const out = {};
+  courts.forEach(c=>{
+    if(bkScored(c.key)) out[c.key]='done';
+    else if(bkStartedAt(c.key)) out[c.key]='playing';
+    else if(laneBlocked.has(c.key)) out[c.key]='wait';
+    else if(c.names.some(n=>busy.has(n))) out[c.key]='wait';
+    else if(playingCount>=cap) out[c.key]='wait';
+    else out[c.key]='now';
+  });
+  return out;
+}
+const BK_ST = {
+  now:    {t:'진행 가능', c:'#1f7d4d', bg:'#e7f4ec'},
+  playing:{t:'진행 중',  c:'#c47d10', bg:'#fdf2dd'},
+  wait:   {t:'대기',     c:'#8a8172', bg:'#efe9dd'},
+  done:   {t:'완료',     c:'#5b7fd4', bg:'#e7eefb'},
+};
+
+function bkStart(key){
+  const b=bkState();
+  if(b.startedAt[key]) delete b.startedAt[key];
+  else { b.startedAt[key]=Date.now(); toast('경기를 시작했어요 · 타이머가 돌아갑니다'); }
+  renderBracket();
+}
+
+/* 실시간 타이머 (1초) */
+function bkTick(){
+  document.querySelectorAll('[data-bkt]').forEach(el=>{
+    const t = bkStartedAt(el.getAttribute('data-bkt'));
+    if(t) el.textContent = bkFmtElapsed(Date.now()-t);
+  });
+}
+function bkTimerLoop(){ const b=bkState(); if(b.tick) return; b.tick=setInterval(bkTick,1000); }
+
+/* 코트 우측 컨트롤 (상태칩 · 시작 버튼 · 타이머) */
+function bkControl(key){
+  const st = (bkState()._st||{})[key] || 'wait';
+  const S = BK_ST[st];
+  if(st==='done') return `<span class="bk-chip" style="background:${S.bg};color:${S.c}">${S.t}</span>`;
+  if(st==='playing'){
+    const t = bkStartedAt(key);
+    const hhmm = new Date(t).toTimeString().slice(0,5);
+    return `<span class="bk-chip playing"><span class="bk-dot"></span><b data-bkt="${key}">${bkFmtElapsed(Date.now()-t)}</b><em>${hhmm} 시작</em></span>
+      <button class="bk-btn stop" onclick="event.stopPropagation();bkStart('${key}')">중단</button>`;
+  }
+  if(st==='now') return `<button class="bk-btn go" onclick="event.stopPropagation();bkStart('${key}')">${ic('clock',13,'#fff')}시작</button>`;
+  return `<span class="bk-chip" style="background:${S.bg};color:${S.c}">${S.t}</span>`;
+}
+
+/* 내 다음 가능 매치 · 30분 경고 · 헬퍼 후보 · 게임 네비 */
+function bkPanel(){
+  const b = bkState(), reg = b.reg;
+  if(!reg.length) return '';
+  const st = bkStatuses(reg); b._st = st;
+
+  // 라운드별 상태 요약
+  const rounds = [...new Set(reg.map(c=>c.ri))].sort((a,b2)=>a-b2);
+  const rStat = {};
+  rounds.forEach(ri=>{
+    const cs = reg.filter(c=>c.ri===ri).map(c=>st[c.key]);
+    rStat[ri] = cs.every(x=>x==='done') ? 'done'
+      : cs.some(x=>x==='playing') ? 'playing'
+      : cs.some(x=>x==='now') ? 'now' : 'wait';
+  });
+
+  let h = `<div class="bk-nav">${rounds.map(ri=>{
+    const s=rStat[ri];
+    return `<div class="bk-n ${s}">${ri+1}게임${s==='done'?' ✓':s==='playing'?' ●':''}</div>`;
+  }).join('')}</div>`;
+
+  // 내 다음 경기
+  const ME='곽주영';
+  const mine = reg.filter(c=>c.names.includes(ME) && st[c.key]!=='done');
+  if(mine.length){
+    const nx = mine[0];
+    const s = st[nx.key], S = BK_ST[s];
+    const ahead = reg.filter(c=>c.ri<nx.ri && st[c.key]!=='done').length;
+    const sub = s==='now' ? '지금 바로 시작할 수 있어요'
+      : s==='playing' ? '지금 진행 중이에요'
+      : `앞선 경기 ${ahead}건이 끝나면 시작해요`;
+    h += `<div class="bk-next">
+      <span class="bk-next-ic" style="background:${S.bg};color:${S.c}">${ic(s==='playing'?'live':'clock',18)}</span>
+      <div class="bk-next-x"><div class="bk-next-t">내 다음 경기 · ${nx.ri+1}게임 코트 ${nx.ci+1}</div>
+        <div class="bk-next-d">${sub}</div></div>
+      <span class="bk-chip" style="background:${S.bg};color:${S.c}">${S.t}</span></div>`;
+  } else if(reg.some(c=>c.names.includes(ME))){
+    h += `<div class="bk-next done"><span class="bk-next-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('award',18)}</span>
+      <div class="bk-next-x"><div class="bk-next-t">오늘 경기 완료</div><div class="bk-next-d">배정된 ${reg.filter(c=>c.names.includes(ME)).length}경기를 모두 마쳤어요</div></div></div>`;
+  } else {
+    h += `<div class="bk-next"><span class="bk-next-ic" style="background:var(--coral-s);color:var(--coral-d)">${ic('user',18)}</span>
+      <div class="bk-next-x"><div class="bk-next-t">아직 내 경기가 없어요</div><div class="bk-next-d">클럽 일정에서 참석을 체크하면 대진에 자동 배정돼요</div></div></div>`;
+  }
+
+  // 30분 초과 경고
+  const longRun = reg.filter(c=>st[c.key]==='playing' && (bkElapsedMin(c.key)||0)>=BK_LONG_MIN);
+  if(longRun.length){
+    h += `<div class="bk-warn">${ic('hourglass',16)}<span><b>${BK_LONG_MIN}분</b> 넘게 진행 중인 경기 ${longRun.length}건
+      (${longRun.map(c=>`${c.ri+1}게임 코트${c.ci+1}`).join(', ')}) — 끝났다면 점수를 입력해 주세요</span></div>`;
+  }
+
+  // 헬퍼 후보: 완료 경기 수가 가장 적은 인원
+  const played = {};
+  reg.forEach(c=>{ if(st[c.key]==='done') c.names.forEach(n=>played[n]=(played[n]||0)+1); });
+  const all = [...new Set(reg.flatMap(c=>c.names))];
+  const min = Math.min(...all.map(n=>played[n]||0));
+  const rested = all.filter(n=>(played[n]||0)===min);
+  if(rounds.length && rested.length && rested.length<=4 && Object.keys(played).length){
+    h += `<div class="bk-help">${ic('people',16)}<span><b>가장 오래 쉰 회원</b> — 헬퍼가 필요하면 먼저 불러주세요
+      <em>${rested.join(' · ')}</em></span></div>`;
+  }
+  return h;
+}
+
+function courtLine(ci,aNames,bNames,typeLabel,key,ri,lane){
   const col=CCB[ci%CCB.length];
+  if(key!==undefined) bkRegister(key, ri, ci, [...aNames,...bNames], lane);
+  const ctrl = key!==undefined ? `<div class="bk-ctrl"><!--BKC:${key}--></div>` : '';
   const tb=typeLabel?`<span class="ct-type" style="background:${ctTypeColor(typeLabel)}20;color:${ctTypeColor(typeLabel)}">${typeLabel}</span>`:'';
-  return `<div class="court-line" style="background:${col}12;border-left:4px solid ${col}"><div class="court-tag">코트 ${ci+1}</div>${tb}<div class="match-group">${pairChips(aNames)}<span class="vs-label">VS</span>${pairChips(bNames)}</div></div>`;
+  return `<div class="court-line" style="background:${col}12;border-left:4px solid ${col}"><div class="court-tag">코트 ${ci+1}</div>${tb}<div class="match-group">${pairChips(aNames)}<span class="vs-label">VS</span>${pairChips(bNames)}</div>${ctrl}</div>`;
 }
 function waitLine(names){ return `<div class="wait-line"><span class="wait-tag">대기</span>${names.length?names.map(n=>`<span class="wait-chip">${n}</span>`).join(''):'<span class="wait-chip" style="color:var(--green);border-color:var(--green)">전원 참가</span>'}</div>`; }
 // ── 선수단 (등번호·주장) ──
@@ -3278,6 +3688,7 @@ function renderBracket(){
       <button class="btn" style="max-width:240px;margin:0 auto" onclick="go('club')">클럽 찾아보기</button></div>`;
     document.getElementById('s-bracket').innerHTML=h;return;
   }
+  bkReset();
   if(SP().cat==='team'){ document.getElementById('s-bracket').innerHTML=h+renderTeamMatch(); return; }
   if(SP().cat==='record'){ document.getElementById('s-bracket').innerHTML=h+renderRecordBoard(); return; }
   if(c.officer===false && state.bcfg.role==='officer'){} // 데모: 토글로 전환
@@ -3311,7 +3722,7 @@ function renderBracket(){
   h+=`<div class="rolebar"><span class="rl">보기</span>
     <div class="roletog"><div class="${officer?'on':''}" onclick="setRole('officer')">임원진</div><div class="${!officer?'on':''}" onclick="setRole('member')">일반 회원</div></div></div>`;
   // ② 대진 종류 (주 탭) — 가장 잘 보이게
-  h+=`<div class="seg big segfill">${[['double','일반'],['single','단식'],['level','실력별'],['monthly','월례회'],['bw','청백전']].map(([v,t])=>`<div class="o ${f===v?'on':''}" onclick="setBF('${v}')">${t}</div>`).join('')}</div>`;
+  h+=`<div class="seg big segfill">${[['double','일반'],['single','단식'],['level','실력별'],['hanul','한울'],['monthly','월례회'],['bw','청백전']].map(([v,t])=>`<div class="o ${f===v?'on':''}" onclick="setBF('${v}')">${t}</div>`).join('')}</div>`;
   // ③ 임원진 전용 설정 / 회원 안내
   if(officer){
     const lateTxt=cf.lateNames.length?`${cf.lateNames.length}명 · ${cf.lateAfter}게임 후`:'＋ 늦참자 지정';
@@ -3335,6 +3746,7 @@ function renderBracket(){
     }
   }
 
+  h+=`<!--BKPANEL-->`;
   if(f==='bw'){
     const bw=buildBW(attendees,cf.courts,state.bw.seed,cf.lateNames,cf.lateAfter);
     const Cb=`<span style="display:inline-block;background:#2563eb;color:#fff;font-size:10px;font-weight:900;border-radius:5px;padding:1px 5px;margin-left:4px">C</span>`;
@@ -3363,6 +3775,38 @@ function renderBracket(){
       h+=waitLine([...rd.waitB,...rd.waitW]);
       h+=`</div></div>`;
     });
+  } else if(f==='hanul'){
+    // 한울: 실력 스네이크로 조 전력 균형 → 조를 코트에 고정 → 조 안에서 4게임
+    const G=defaultGrades(attendees);
+    const GD=defaultGenders(attendees);
+    const hn=buildHanul(attendees, cf.courts, G, cf.seed);
+    state._hanul={attendees, hn, G, GD};
+    if(!hn.groups.length || hn.groups.every(g=>g.length<4)){
+      h+=`<div class="card"><div class="note">한울 대진은 조당 4명 이상이 필요해요. 참여 인원을 늘리거나 코트 수를 줄여 주세요.</div></div>`;
+    } else {
+      h+=`<div class="card" style="background:#eef4ff;border-color:#cfe0ff"><div style="font-size:13.5px;font-weight:700;color:#2563eb;line-height:1.55">
+        한울 대진 · <b>${hn.groups.length}개 조 (${hn.sizes.join('/')}명)</b><br>
+        등급으로 나누지 않고 <b>실력을 지그재그로 섞어</b> 조 전력을 맞춰요. 조는 코트에 고정되고, 조원끼리 <b>1인 ${HANUL_GAMES}게임</b>을 치릅니다.
+        <span style="color:var(--gray);font-weight:600">파트너 최대 ${hn.maxDup}회 중복</span></div>
+        <button class="btn ghost sm" style="margin-top:12px" onclick="openHanulSheet()"><span class="bic">${ic('note',16,'currentColor')}수기 방식 기록표 보기</span></button></div>`;
+      hn.groups.forEach((grp, gi)=>{
+        const col=CCB[gi%CCB.length];
+        h+=`<div class="bracket"><div class="ch" style="font-size:14px;display:flex;align-items:center;gap:7px">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${col}"></span>
+          코트 ${gi+1} · ${String.fromCharCode(65+gi)}조 <span style="font-size:12px;color:var(--gray);font-weight:600">· ${grp.length}명</span></div>
+          <div class="roster" style="margin-bottom:10px">${grp.map(i=>`<span class="ptag ${attendees[i]==='곽주영'?'me':''}">${attendees[i]}${gradeBadge(G[attendees[i]]||'B')}</span>`).join('')}</div>`;
+        if(grp.length<4){
+          h+=`<div class="note" style="text-align:left">인원이 4명 미만이라 이 조는 경기를 편성하지 못했어요.</div></div>`; return;
+        }
+        hn.games[gi].forEach((m, k)=>{
+          const key='h'+gi+'-'+k;
+          h+=`<div class="round-block"><div class="round-top"><div class="round-name">${k+1}게임</div><div class="round-mode" style="background:${col}1a;color:${col}">${String.fromCharCode(65+gi)}조</div></div><div class="round-body">`;
+          h+=courtLine(gi, [attendees[m[0]],attendees[m[1]]], [attendees[m[2]],attendees[m[3]]], null, key, k, 'g'+gi)+scoreBox('h'+gi, k);
+          h+=`</div></div>`;
+        });
+        h+=`</div>`;
+      });
+    }
   } else if(f==='monthly'){
     // 월례회: 같은 등급끼리만 (A조/B조/C조)
     const G=defaultGrades(attendees);
@@ -3376,7 +3820,7 @@ function renderBracket(){
       eng.rounds.forEach((rd,ri)=>{
         h+=`<div class="round-block"><div class="round-top"><div class="round-name">${ri+1}게임</div><div class="round-mode" style="background:${gradeColor(gd)}22;color:${gradeColor(gd)}">${gd}조</div></div><div class="round-body">`;
         rd.courts.forEach((m,ci)=>{
-          h+=courtLine(ci, m.t1.map(i=>pool[i]), m.t2.map(i=>pool[i]), null)+scoreBox('m'+gd+ri,ci);
+          h+=courtLine(ci, m.t1.map(i=>pool[i]), m.t2.map(i=>pool[i]), null, 'm'+gd+ri+'-'+ci, ri)+scoreBox('m'+gd+ri,ci);
         });
         h+=waitLine(rd.waiting.map(i=>pool[i]));
         h+=`</div></div>`;
@@ -3395,7 +3839,7 @@ function renderBracket(){
       const modeLbl=level?'실력별':(f==='single'?'단식':'복식');
       h+=`<div class="round-block"><div class="round-top"><div class="round-name">${ri+1}게임</div><div class="round-mode">${modeLbl}</div></div><div class="round-body">`;
       rd.courts.forEach((m,ci)=>{
-        h+=courtLine(ci, m.t1.map(i=>attendees[i]), m.t2.map(i=>attendees[i]), null)+scoreBox(ri,ci);
+        h+=courtLine(ci, m.t1.map(i=>attendees[i]), m.t2.map(i=>attendees[i]), null, ri+'-'+ci, ri)+scoreBox(ri,ci);
       });
       h+=waitLine(rd.waiting.map(i=>attendees[i]));
       h+=`</div></div>`;
@@ -3409,7 +3853,10 @@ function renderBracket(){
     if(pub) h+=`<div class="note" style="text-align:center">회원들이 이 대진을 볼 수 있어요. 설정을 바꾸면 다시 발행해 주세요.</div>`;
   }
   h+=`<button class="btn" style="margin-top:9px;background:#222b3f" onclick="renderClubStats()"><span class="bic">${ic('chart',16,'currentColor')}클럽 순위·통계 보기</span></button>`;
+  h=h.replace('<!--BKPANEL-->', bkPanel());   // bkPanel() 안에서 상태(_st) 계산
+  h=h.replace(/<!--BKC:([^>]+?)-->/g, (_,k)=>bkControl(k));
   document.getElementById('s-bracket').innerHTML=h;
+  bkTimerLoop();
 }
 function setBF(f){state.bracketFmt=f;renderBracket();}
 
