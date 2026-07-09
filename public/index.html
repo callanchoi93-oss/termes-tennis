@@ -3225,7 +3225,7 @@ function renderClub(){
   } else {
     const ft=state.findTab||'club';
     h+=`<div class="seg" style="margin-bottom:12px"><div class="o ${ft==='club'?'on':''}" onclick="setFindTab('club')">클럽 찾기</div><div class="o ${ft==='member'?'on':''}" onclick="setFindTab('member')">회원 찾기</div></div>`;
-    if(ft==='member'){ renderMemberFind(); return; }
+    if(ft==='member'){ renderMemberFind(h); return; }
     h+=`<button class="btn felt" style="margin-bottom:14px" onclick="openCreateClub()">+ 새 클럽 만들기</button>`;
     const regions=['전체','경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'];
     h+=`<div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div><div class="chips">`;
@@ -3266,9 +3266,11 @@ let PEOPLE=[
 function setFindTab(t){state.findTab=t;state._mq=state._mq||'';renderClub();}
 function searchMember(v){state._mq=v;renderClub();const el=document.getElementById('mq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
 function setMRegion(r){state._mregion=r;renderClub();}
-function renderMemberFind(){
-  let h=document.getElementById('s-club').innerHTML; // 직전까지의 h는 renderClub 내부 변수라 직접 조립
-  h=`<div class="search">${ic('search',18)}<input placeholder="회원 이름·지역 검색" oninput="searchMember(this.value)" id="mq" value="${state._mq||''}"></div>`;
+function renderMemberFind(head){
+  // head = renderClub 이 만든 제목 + '내 클럽/클럽 찾기' + '클럽/회원' 세그먼트.
+  // 이걸 버리면 돌아갈 길이 없어진다. 반드시 앞에 붙인다.
+  let h = head || '';
+  h+=`<div class="search">${ic('search',18)}<input placeholder="회원 이름·지역 검색" oninput="searchMember(this.value)" id="mq" value="${state._mq||''}"></div>`;
   const tiers=['전체','챌린저','아마추어','루키'];
   h+=`<div class="chips">`+tiers.map(t=>`<div class="chip ${(state._mtier||'전체')===t?'on':''}" onclick="setMTier('${t}')">${t}</div>`).join('')+`</div>`;
   const q=(state._mq||'').trim(), mt=state._mtier||'전체';
@@ -4230,7 +4232,7 @@ async function openMatches(){
 function openNewMatch(){
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
-    <div class="fld"><label>일시</label><input id="omDt" placeholder="예) 07.18(토) 09:00"></div>
+    <div class="fld"><label>일시</label><input id="omDt" type="datetime-local" step="900"></div>
     <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 용인 기흥 테니스장 3번 코트"></div>
     <div class="fld"><label>형식</label><input id="omFmt" placeholder="예) 복식" value="복식"></div>
     <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
@@ -4242,21 +4244,53 @@ function openNewMatch(){
     <div id="omWarn" class="cwarn"></div>
     <button class="btn" onclick="createMatch()">오픈매치 열기</button>`;
   document.getElementById('ov').classList.add('on');
+  // 기본값: 다가오는 토요일 오전 9시 · 과거 날짜는 못 고르게
+  const dt = document.getElementById('omDt');
+  if(dt){
+    const d = new Date();
+    d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
+    d.setHours(9,0,0,0);
+    const pad = n => String(n).padStart(2,'0');
+    const fmt = x => `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
+    dt.value = fmt(d);
+    dt.min = fmt(new Date());
+  }
   ['omLoc','omNote'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+}
+/* 2026-07-18T09:00 → "07.18(토) 09:00" */
+const WD = ['일','월','화','수','목','금','토'];
+function fmtMatchDate(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getMonth()+1)}.${p(d.getDate())}(${WD[d.getDay()]}) ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 async function createMatch(){
   const v = id => ((document.getElementById(id)||{}).value||'').trim();
-  const dt=v('omDt'), loc=v('omLoc'), note=v('omNote');
-  if(!dt||!loc){ toast('일시와 장소를 입력해 주세요'); return; }
+  const raw=v('omDt'), loc=v('omLoc'), note=v('omNote');
+  if(!raw){ toast('일시를 골라주세요'); return; }
+  if(!loc){ toast('장소를 입력해 주세요'); return; }
+  if(new Date(raw) < new Date()){ toast('지난 날짜는 고를 수 없어요'); return; }
   const bad = findContact(`${loc} ${note}`);
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
+  const cap = num('omCap')||8, min_cnt = num('omMin')||6;
+  if(min_cnt > cap){ toast('최소 인원이 정원보다 많아요'); return; }
   try{
     await api('/open-matches',{method:'POST',body:JSON.stringify({
-      sport:state.sport, dt, loc, fmt:v('omFmt')||'복식', gd:state.gender==='여성'?'여자부':'남자부',
-      price:num('omPrice'), cap:num('omCap')||8, min_cnt:num('omMin')||6, note })});
+      sport:state.sport, dt:fmtMatchDate(raw), dt_iso:raw, loc, fmt:v('omFmt')||'복식',
+      gd:state.gender==='여성'?'여자부':'남자부',
+      price:num('omPrice'), cap, min_cnt, note })});
     toast('오픈매치를 열었어요'); closeOv(); go('match');
-  }catch(e){ toast(String(e.message).includes('contact_blocked')?'연락처는 올릴 수 없어요':'개설에 실패했어요'); }
+  }catch(e){
+    // 왜 실패했는지 그대로 알려준다. "실패했어요" 만으론 고칠 수가 없다.
+    const m = String(e.message||'');
+    toast( m.includes('contact_blocked') ? '연락처는 모집글에 올릴 수 없어요'
+         : m.includes('dt_loc_required') ? '일시와 장소를 모두 입력해 주세요'
+         : m.includes('401') || m.includes('no_token') ? '다시 로그인해 주세요'
+         : m.includes('Failed to fetch') ? '서버에 연결할 수 없어요'
+         : `개설 실패 · ${m.slice(0,40)}` );
+  }
 }
 async function joinMatch(id){
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
@@ -5933,6 +5967,9 @@ function go(v){
   if(state.view==='bracket' && v!=='bracket') bkStopPoll();
   if(v==='bracket' && SERVER_OK && clubId()){ loadRoster().then(()=>bkPull()).then(ok=>{ renderBracket(); if(ok) bkStartPoll(); }); }
   if(v==='chat' && SERVER_OK) loadDMThreads().then(()=>{ if(state.view==='chat' && !state.chatRoom) renderChat(); });
+  // 하단 탭을 다시 누르면 그 화면의 첫 페이지로 돌아온다 (하위 화면에 갇히지 않게)
+  if(v==='club' && state.view==='club'){ state.findTab='club'; state._mq=''; }
+  if(v==='chat' && state.view==='chat') state.chatRoom=null;
   state.view=v;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
