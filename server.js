@@ -156,6 +156,7 @@ app.post('/auth/apple', async (req, res) => {
 // env: TOSS_SECRET_KEY (테스트키로 시작 가능)
 const CASH_BY_WON = { 8900: 25, 13900: 45, 24900: 90, 49900: 200, 129000: 600, 229000: 1100 };
 app.post('/pay/order', auth, (req, res) => {
+  if (blockIosWebPurchase(req, res)) return;         // M캐쉬 충전 → 애플 IAP 필수
   const amount = +req.body.amount;
   const cash = CASH_BY_WON[amount];
   if (!cash) return res.status(400).json({ error: 'invalid_amount', allowed: Object.keys(CASH_BY_WON) });
@@ -530,24 +531,100 @@ app.delete('/events/:id/guests/:gid', auth, (req, res) => {
 // ── 오픈 예정 경기(모집) ──
 app.get('/open-matches', (req, res) => {
   const uid = tryUid(req);
-  const rows = db.prepare('SELECT * FROM open_matches ORDER BY id ASC LIMIT 30').all();
-  res.json(rows.map(m => ({
-    ...m,
-    cur: db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(m.id).n,
-    joined: uid ? !!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(m.id, uid) : false,
-  })));
+  const sport = req.query.sport;
+  const rows = db.prepare(`SELECT * FROM open_matches
+    WHERE (status IS NULL OR status!='cancelled') ${sport ? 'AND sport=?' : ''}
+    ORDER BY id DESC LIMIT 30`).all(...(sport ? [sport] : []));
+  res.json(rows.map(m => omView(m, uid)));
 });
 app.post('/open-matches', auth, (req, res) => {
-  const { sport, dt, loc, fmt, gd, price, cap, min_cnt } = req.body || {};
-  const r = db.prepare('INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(sport || 'tennis', dt || '', loc || '', fmt || '단식', gd || '남자부', +price || 0, +cap || 8, +min_cnt || 6, now());
-  res.json({ ok: true, id: rid(r) });
+  const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note } = req.body || {};
+  if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
+  const bad = findContact(`${loc} ${note || ''}`);          // 공개 모집글이므로 연락처 차단
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?)`)
+    .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
+         intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '');
+  const mid = rid(r);
+  db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
 app.post('/open-matches/:id/join', auth, (req, res) => {
   const mid = +req.params.id;
-  db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id) VALUES (?,?)').run(mid, req.uid);
-  res.json({ ok: true, cur: db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n });
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.status && m.status !== 'open') return res.status(400).json({ error: 'not_open' });
+  const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+  const already = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if (!already && cur >= (m.cap || 8)) return res.status(409).json({ error: 'full', cap: m.cap });
+  db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+
+  const after = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+  if (!already && m.host_id && m.host_id !== req.uid)
+    sendPush(m.host_id, { icon: '🙋', title: '오픈매치 참가 신청', body: `${getUser(req.uid).name} 님 · ${after}/${m.cap}명` });
+  // 최소 인원을 막 채웠으면 전원에게 성사 알림
+  if (!already && cur < (m.min_cnt || 0) && after >= (m.min_cnt || 0)) {
+    db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(mid)
+      .forEach(p => sendPush(p.user_id, { icon: '✅', title: '경기가 성사됐어요', body: `${m.dt} · ${m.loc} · ${after}명` }));
+  }
+  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
+// ══════════════════════════════════════════════════════════════
+//  오픈매치 — 클럽 밖에서 사람을 모아 경기를 잡는다.
+//  참가비는 앱이 받지 않는다(회비와 동일 원칙). 주최자가 현장에서 정산.
+//  노쇼가 실제 문제가 되면 그때 예약금(PG)을 붙인다.
+// ══════════════════════════════════════════════════════════════
+['host_id INTEGER', 'status TEXT DEFAULT \'open\'', 'note TEXT'].forEach(c => {
+  try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {}
+});
+try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } catch (e) {}
+
+function omView(m, uid) {
+  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating FROM open_match_joins j
+    JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
+  return {
+    ...m,
+    cur: joins.length,
+    players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating })),
+    joined: uid ? joins.some(j => j.user_id === uid) : false,
+    is_host: uid ? m.host_id === uid : false,
+    confirmed: joins.length >= (m.min_cnt || 0),
+    full: joins.length >= (m.cap || 0),
+  };
+}
+
+app.get('/open-matches/:id', (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  res.json(omView(m, tryUid(req)));
+});
+
+// 참가 취소
+app.delete('/open-matches/:id/join', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_leave' });
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  if (m.host_id) sendPush(m.host_id, { icon: '🚪', title: '오픈매치 참가 취소', body: `${getUser(req.uid).name} 님이 취소했어요` });
+  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
+});
+
+// 주최자가 모집 마감/취소
+app.patch('/open-matches/:id', auth, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  const st = ['open', 'closed', 'cancelled'].includes((req.body || {}).status) ? req.body.status : null;
+  if (!st) return res.status(400).json({ error: 'bad_status' });
+  db.prepare('UPDATE open_matches SET status=? WHERE id=?').run(st, m.id);
+  const players = db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id);
+  const label = st === 'closed' ? '모집이 마감됐어요' : '모집이 취소됐어요';
+  players.forEach(p => { if (p.user_id !== req.uid) sendPush(p.user_id, { icon: '📣', title: label, body: `${m.dt} · ${m.loc}` }); });
+  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(m.id), req.uid));
+});
+
 // 회비/게스트비 수정 (클럽장/임원만)
 app.patch('/clubs/:id/fees', auth, (req, res) => {
   const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(+req.params.id);
@@ -1045,6 +1122,25 @@ function bracketPayload(b) {
 }
 
 // 클럽의 최신 대진 (회원은 published=1 만)
+// 과거 대진 전체 (시즌 리포트용). 발행된 것만 집계한다.
+app.get('/clubs/:id/brackets/history', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const limit = Math.min(60, intOrNull(req.query.limit) || 30);
+  const rows = db.prepare(`SELECT id, date, fmt, sport, data, created_at FROM brackets
+    WHERE club_id=? AND published=1 ORDER BY id DESC LIMIT ?`).all(cid, limit);
+  const out = rows.map(b => {
+    const sc = db.prepare('SELECT court_key, a, b FROM bracket_scores WHERE bracket_id=?').all(b.id);
+    const scores = {};
+    sc.forEach(r => { if (r.a !== null && r.b !== null) scores[r.court_key] = { a: r.a, b: r.b }; });
+    let data = {};
+    try { data = JSON.parse(b.data); } catch (e) {}
+    return { id: b.id, date: b.date, fmt: b.fmt, sport: b.sport, created_at: b.created_at,
+             reg: data.reg || [], attendees: data.attendees || [], scores };
+  });
+  res.json(out.reverse());   // 오래된 것부터
+});
+
 app.get('/clubs/:id/brackets/latest', (req, res) => {
   const cid = +req.params.id, uid = tryUid(req);
   const officer = uid ? isOfficer(cid, uid) : false;
@@ -1148,6 +1244,18 @@ function notifyClub(clubId, exceptUid, icon, title, body) {
   rows.forEach(r => { if (r.user_id !== exceptUid) sendPush(r.user_id, { icon, title, body }); });
 }
 
+// ── 애플 3.1.1: iOS 앱에서 온 요청은 웹 결제를 받지 않는다 ──
+// 클라이언트에서 버튼만 숨기면 우회가 가능하므로 서버에서도 막는다.
+// iOS 앱은 X-Client-Platform: ios 헤더를 붙여 보낸다.
+function blockIosWebPurchase(req, res) {
+  const p = String(req.get('X-Client-Platform') || '').toLowerCase();
+  if (p === 'ios') {
+    res.status(403).json({ error: 'iap_required', message: 'iOS 앱에서는 인앱결제를 사용해야 합니다' });
+    return true;
+  }
+  return false;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  클럽 프리미엄 — 월 9,900원 (클럽당). 클럽장이 결제.
 //  무료: 정회원 15명, 대진 월 4회.  프리미엄: 무제한 + 회비 장부.
@@ -1194,6 +1302,7 @@ app.get('/clubs/:id/premium', (req, res) => {
 
 // 데모 결제. 실서비스에선 PG 웹훅에서만 activatePremium() 호출.
 app.post('/clubs/:id/premium', auth, (req, res) => {
+  if (blockIosWebPurchase(req, res)) return;          // 디지털 구독 → 애플 IAP 필수
   const cid = +req.params.id;
   const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
   if (!owner) return res.status(403).json({ error: 'owner_only' });
