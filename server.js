@@ -4,6 +4,23 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
+
+/* 웹 푸시. VAPID 키가 없으면 조용히 꺼진다.
+   키 만들기:  npx web-push generate-vapid-keys  */
+let webpush = null;
+try {
+  const { default: wp } = await import('web-push');
+  if (process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE) {
+    wp.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@matsu.app',
+      process.env.VAPID_PUBLIC, process.env.VAPID_PRIVATE);
+    webpush = wp;
+    console.log('[push] 웹 푸시 활성화');
+  } else {
+    console.log('[push] VAPID 키가 없어 푸시는 알림함에만 쌓입니다');
+  }
+} catch { console.log('[push] web-push 모듈 없음 · 알림함만 사용'); }
 import { db, initSchema, now, rid } from './db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
@@ -11,19 +28,105 @@ const PORT = process.env.PORT || 4000;
 
 initSchema();
 const app = express();
-app.use(cors());              // 운영 시 origin 화이트리스트로 제한하세요
-app.use(express.json({ limit: '2mb' }));
+/* CORS — APP_ORIGIN 이 있으면 그 도메인과 네이티브 앱만 허용한다.
+   같은 도메인 요청은 CORS 를 타지 않으므로 웹은 영향 없다. */
+const ALLOWED = [
+  process.env.APP_ORIGIN,                 // 예: https://matsu.up.railway.app
+  'capacitor://localhost', 'ionic://localhost', 'https://localhost',
+].filter(Boolean);
+app.use(cors(process.env.APP_ORIGIN ? {
+  origin: (o, cb) => cb(null, !o || ALLOWED.includes(o) || /^http:\/\/localhost(:\d+)?$/.test(o)),
+} : {}));
+
+/* 기본 보안 헤더. helmet 없이 필요한 것만 직접 단다. */
+app.use((_req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');       // 업로드 파일을 스크립트로 실행하지 못하게
+  res.set('X-Frame-Options', 'DENY');                 // 다른 사이트가 iframe 으로 감싸지 못하게
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});              // 운영 시 origin 화이트리스트로 제한하세요
+app.use(express.json({ limit: '6mb' }));   // 3MB 사진의 base64(≈4MB) + 여유
 
 // ── 인증 유틸 ──
-function sign(user) { return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' }); }
+
+// ══════════════════════════════════════════════════════════════
+//  요청 제한 — 같은 IP 가 짧은 시간에 몰아치는 것을 막는다.
+//  인스턴스가 여러 개가 되면 Redis 로 옮겨야 한다.
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS rate_buckets (
+  id TEXT PRIMARY KEY, n INTEGER NOT NULL, reset BIGINT NOT NULL
+);`);
+setInterval(() => {                                   // 지난 창 청소
+  try { db.prepare('DELETE FROM rate_buckets WHERE reset < ?').run(Date.now() - 60_000); } catch {}
+}, 5 * 60 * 1000).unref?.();
+
+function rateLimit({ windowMs, max }) {
+  return (req, res, next) => {
+    const who = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const id = who + ':' + (req.route?.path || req.path) + ':' + req.method;
+    const t = Date.now();
+    let over = false, wait = 0;
+    try {
+      tx(() => {
+        const b = db.prepare('SELECT n, reset FROM rate_buckets WHERE id=?').get(id);
+        if (!b || b.reset < t) {
+          db.prepare('INSERT OR REPLACE INTO rate_buckets (id,n,reset) VALUES (?,1,?)').run(id, t + windowMs);
+        } else {
+          db.prepare('UPDATE rate_buckets SET n=n+1 WHERE id=?').run(id);
+          if (b.n + 1 > max) { over = true; wait = Math.ceil((b.reset - t) / 1000); }
+        }
+      });
+    } catch { return next(); }                        // 제한 장치 고장이 서비스를 막으면 안 된다
+    if (over) {
+      res.set('Retry-After', String(wait));
+      return res.status(429).json({ error: 'too_many_requests', retry_after: wait });
+    }
+    next();
+  };
+}
+const limitLogin  = rateLimit({ windowMs: 60_000, max: 10 });
+const limitWrite  = rateLimit({ windowMs: 60_000, max: 30 });
+const limitUpload = rateLimit({ windowMs: 60_000, max: 12 });
+
+
+/* 동시 요청 경합 방지 — 검사와 쓰기를 한 덩어리로 묶는다.
+   BEGIN IMMEDIATE 는 시작 즉시 쓰기 잠금을 잡아, 두 요청이 같은 검사를 통과하는 것을 막는다. */
+function tx(fn, tries = 5) {
+  for (let i = 0; ; i++) {
+    try {
+      db.exec('BEGIN IMMEDIATE');
+    } catch (e) {                                       // 다른 요청이 잠금 중 → 잠깐 기다렸다 재시도
+      if (i < tries && /busy|locked/i.test(e.message)) {
+        const until = Date.now() + 15 + i * 25;
+        while (Date.now() < until) {}                   // 수 ms 스핀 (요청량이 적을 때만 안전)
+        continue;
+      }
+      throw e;
+    }
+    try { const r = fn(); db.exec('COMMIT'); return r; }
+    catch (e) { try { db.exec('ROLLBACK'); } catch {} throw e; }
+  }
+}
+
+function sign(user) {
+  // tv(token version) 를 함께 서명한다. 사용자가 '모든 기기 로그아웃' 을 하면
+  // users.token_version 이 올라가고, 옛 토큰은 전부 무효가 된다.
+  const u = db.prepare('SELECT token_version FROM users WHERE id=?').get(user.id) || {};
+  return jwt.sign({ id: user.id, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '30d' });
+}
 function auth(req, res, next) {
   const h = req.headers.authorization || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : null;
   if (!t) return res.status(401).json({ error: 'no_token' });
   try {
-    req.uid = jwt.verify(t, JWT_SECRET).id;
-    const u = db.prepare('SELECT suspended FROM users WHERE id=?').get(req.uid);
-    if (u && u.suspended) return res.status(403).json({ error: 'suspended' });
+    const p = jwt.verify(t, JWT_SECRET);
+    req.uid = p.id;
+    const u = db.prepare('SELECT suspended, token_version FROM users WHERE id=?').get(req.uid);
+    if (!u) return res.status(401).json({ error: 'bad_token' });
+    if (u.suspended) return res.status(403).json({ error: 'suspended' });
+    if ((p.tv || 0) !== (u.token_version || 0))          // 다른 기기에서 전체 로그아웃함
+      return res.status(401).json({ error: 'token_revoked' });
     next();
   } catch { return res.status(401).json({ error: 'bad_token' }); }
 }
@@ -46,7 +149,12 @@ function anonNick(seed) {
 
 // ── AUTH ──
 // 데모/개발용 로그인. 실서비스는 카카오/애플 OAuth 토큰을 서버에서 검증 후 발급하세요.
-app.post('/auth/dev-login', (req, res) => {
+const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_SERVICE_NAME;
+
+app.post('/auth/dev-login', limitLogin, (req, res) => {
+  // 이름만 넣으면 계정이 생기는 문. 운영에서는 절대 열어두면 안 된다.
+  if (IS_PROD && process.env.ALLOW_DEV_LOGIN !== '1')
+    return res.status(403).json({ error: 'disabled_in_production' });
   const { name = '게스트', provider = 'kakao', gender = '남성', region = '경기 용인', sport = 'tennis' } = req.body || {};
   // 이름 전체를 해시한다. hex.slice(0,12) 는 한글 4자까지만 반영돼
   // '상대0' '상대1' 이 같은 계정이 되는 충돌이 있었다.
@@ -93,6 +201,7 @@ app.get('/config', (_, res) => {
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
+    vapid_public: process.env.VAPID_PUBLIC || '',
     phone_auth: !!process.env.SMS_PROVIDER,     // 문자 인증 업체가 붙어 있는가
   });
 });
@@ -130,13 +239,13 @@ app.post('/auth/naver', async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
-app.post('/auth/kakao', async (req, res) => {
+app.post('/auth/kakao', limitLogin, async (req, res) => {
   const { access_token } = req.body || {};
   if (!access_token) return res.status(400).json({ error: 'no_access_token' });
   try { await kakaoIssue(access_token, res); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // (대안) 인가코드 방식: 서버가 code→token 교환. env: KAKAO_REST_KEY, KAKAO_REDIRECT_URI (, KAKAO_CLIENT_SECRET)
-app.post('/auth/kakao/code', async (req, res) => {
+app.post('/auth/kakao/code', limitLogin, async (req, res) => {
   const { code } = req.body || {};
   const key = process.env.KAKAO_REST_KEY, redirect = process.env.KAKAO_REDIRECT_URI;
   if (!code || !key || !redirect) return res.status(400).json({ error: 'missing_code_or_env' });
@@ -211,7 +320,7 @@ async function googleKeys() {
   _googleKeys = { keys: r.keys, ts: Date.now() };
   return r.keys;
 }
-app.post('/auth/google', async (req, res) => {
+app.post('/auth/google', limitLogin, async (req, res) => {
   const { credential } = req.body || {};
   if (!credential) return res.status(400).json({ error: 'no_credential' });
   const aud = process.env.GOOGLE_CLIENT_ID;
@@ -701,16 +810,27 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.status && m.status !== 'open') return res.status(400).json({ error: 'not_open' });
-  const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
-  const already = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
-  if (!already && cur >= (m.cap || 8)) return res.status(409).json({ error: 'full', cap: m.cap });
-  db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+  const ns = noShowCount(req.uid);                       // 상습 노쇼는 참가를 막는다
+  if (ns >= NOSHOW_LIMIT) return res.status(403).json({ error: 'noshow_blocked', count: ns, limit: NOSHOW_LIMIT });
+  // 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다
+  try {
+    tx(() => {
+      const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+      const already = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+      if (!already && cur >= (m.cap || 8)) throw new Error('full');
+      db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+    });
+  } catch (e) {
+    if (e.message === 'full') return res.status(409).json({ error: 'full', cap: m.cap });
+    throw e;
+  }
+  const isNewJoin = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid).joined_at > now() - 3000;
 
   const after = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
-  if (!already && m.host_id && m.host_id !== req.uid)
+  if (isNewJoin && m.host_id && m.host_id !== req.uid)
     sendPush(m.host_id, { icon: '🙋', title: '오픈매치 참가 신청', body: `${getUser(req.uid).name} 님 · ${after}/${m.cap}명` });
-  // 최소 인원을 막 채웠으면 전원에게 성사 알림
-  if (!already && cur < (m.min_cnt || 0) && after >= (m.min_cnt || 0)) {
+  // 최소 인원을 막 채웠으면 전원에게 성사 알림 (내 신청으로 정확히 채워진 경우)
+  if (isNewJoin && after === (m.min_cnt || 0)) {
     db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(mid)
       .forEach(p => sendPush(p.user_id, { icon: '✅', title: '경기가 성사됐어요', body: `${m.dt} · ${m.loc} · ${after}명` }));
   }
@@ -754,6 +874,13 @@ app.patch('/events/:eid/attendance/:uid', auth, (req, res) => {
   if (!has) db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, target, 'going');
   db.prepare('UPDATE event_attendees SET showed=?, checked_at=? WHERE event_id=? AND user_id=?')
     .run(showed, now(), eid, target);
+  if (showed === 0) {                                  // 노쇼 누적을 본인에게 알려 공정하게
+    const n = noShowCount(target);
+    if (n === NOSHOW_LIMIT - 1) sendPush(target, { icon: '⚠️', title: `노쇼가 ${n}회 기록됐어요`,
+      body: `한 번 더 기록되면 오픈매치 참가가 90일간 제한돼요` });
+    else if (n >= NOSHOW_LIMIT) sendPush(target, { icon: '🚫', title: '오픈매치 참가가 제한됐어요',
+      body: `최근 90일 노쇼 ${n}회 · 기록이 지나면 자동으로 풀려요` });
+  }
   res.json({ ok: true, user_id: target, showed });
 });
 
@@ -771,6 +898,78 @@ app.get('/clubs/:id/attendance/summary', auth, (req, res) => {
     WHERE cm.club_id=? AND cm.role!='guest'
     GROUP BY u.id ORDER BY attended DESC, noshow ASC`).all(cid, cid);
   res.json(rows);
+});
+
+// ── 모든 기기에서 로그아웃 (폰 분실 대비) ──
+try { db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0'); } catch {}
+
+app.post('/me/logout-all', auth, (req, res) => {
+  db.prepare('UPDATE users SET token_version = COALESCE(token_version,0) + 1 WHERE id=?').run(req.uid);
+  const u = getUser(req.uid);
+  res.json({ ok: true, token: sign(u) });        // 지금 기기만 새 토큰으로 살려둔다
+});
+
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 탈퇴 · 강퇴 · 임원 임명
+// ══════════════════════════════════════════════════════════════
+app.delete('/clubs/:id/leave', auth, (req, res) => {
+  const cid = +req.params.id;
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!m) return res.status(404).json({ error: 'not_member' });
+  if (m.role === 'owner') {
+    const others = db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND user_id<>?").get(cid, req.uid).n;
+    if (others > 0) return res.status(400).json({ error: 'owner_must_transfer' });   // 넘기고 나가야 한다
+  }
+  const unpaid = db.prepare("SELECT COUNT(*) n FROM dues WHERE club_id=? AND user_id=? AND status='unpaid'").get(cid, req.uid).n;
+  db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, req.uid);
+  if (m.role === 'owner') db.prepare('DELETE FROM clubs WHERE id=?').run(cid);       // 마지막 사람이면 클럽도 정리
+  res.json({ ok: true, unpaid_left: unpaid });
+});
+
+app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
+  const cid = +req.params.id, target = +req.params.uid;
+  const me = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!me || !['owner', 'officer'].includes(me.role)) return res.status(403).json({ error: 'officer_only' });
+  const t = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, target);
+  if (!t) return res.status(404).json({ error: 'not_member' });
+  if (t.role === 'owner') return res.status(403).json({ error: 'cannot_kick_owner' });
+  if (t.role === 'officer' && me.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
+  db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
+  const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
+  res.json({ ok: true });
+});
+
+app.post('/clubs/:id/members/:uid/role', auth, (req, res) => {
+  const cid = +req.params.id, target = +req.params.uid;
+  const me = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!me || me.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
+  const role = (req.body || {}).role;
+  if (!['member', 'officer', 'owner'].includes(role)) return res.status(400).json({ error: 'bad_role' });
+  if (role === 'owner') {                                     // 클럽장 넘기기
+    db.prepare("UPDATE club_members SET role='member' WHERE club_id=? AND user_id=?").run(cid, req.uid);
+    db.prepare('UPDATE clubs SET owner_id=? WHERE id=?').run(target, cid);
+  }
+  db.prepare('UPDATE club_members SET role=? WHERE club_id=? AND user_id=?').run(role, cid, target);
+  sendPush(target, { icon: '⭐', title: role === 'owner' ? '클럽장이 되었어요' : role === 'officer' ? '임원이 되었어요' : '임원에서 내려왔어요', body: '' });
+  res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  노쇼 제재 — 최근 90일간 3회 이상이면 오픈매치 참가를 막는다
+// ══════════════════════════════════════════════════════════════
+const NOSHOW_LIMIT = 3;
+const NOSHOW_WINDOW = 90 * 24 * 3600 * 1000;
+function noShowCount(uid) {
+  const since = now() - NOSHOW_WINDOW;
+  return db.prepare(`SELECT COUNT(*) n FROM event_attendees ea
+    JOIN club_events e ON e.id=ea.event_id
+    WHERE ea.user_id=? AND ea.showed=0 AND e.created_at > ?`).get(uid, since).n;
+}
+app.get('/me/noshow', auth, (req, res) => {
+  const n = noShowCount(req.uid);
+  res.json({ count: n, limit: NOSHOW_LIMIT, blocked: n >= NOSHOW_LIMIT });
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -793,7 +992,7 @@ app.get('/clubs/:id/feed', auth, (req, res) => {
     JOIN users u ON u.id=p.user_id WHERE p.club_id=? ORDER BY p.id DESC LIMIT 50`).all(cid));
 });
 
-app.post('/clubs/:id/feed', auth, (req, res) => {
+app.post('/clubs/:id/feed', auth, limitWrite, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
   const body = String((req.body || {}).body || '').trim();
@@ -813,8 +1012,18 @@ app.delete('/clubs/:cid/feed/:id', auth, (req, res) => {
   const can = p.user_id === req.uid || (m && ['owner', 'officer'].includes(m.role));
   if (!can) return res.status(403).json({ error: 'not_allowed' });
   db.prepare('DELETE FROM club_posts WHERE id=?').run(p.id);
+  removePhoto(p.photo);                                  // 디스크에 남기지 않는다
   res.json({ ok: true });
 });
+
+/* 업로드 폴더 안의 파일만 지운다. 경로 조작(../)을 막는다. */
+function removePhoto(url) {
+  if (!url || !url.startsWith('/uploads/')) return;
+  const name = path.basename(url);
+  const p = path.join(UPLOAD_DIR, name);
+  if (!p.startsWith(path.resolve(UPLOAD_DIR))) return;
+  try { fs.unlinkSync(p); } catch {}
+}
 
 // ══════════════════════════════════════════════════════════════
 //  내가 쓴 글
@@ -964,7 +1173,7 @@ app.get('/open-matches/:id/comments', (req, res) => {
     WHERE c.match_id=? ORDER BY c.id LIMIT 100`).all(+req.params.id));
 });
 
-app.post('/open-matches/:id/comments', auth, (req, res) => {
+app.post('/open-matches/:id/comments', auth, limitWrite, (req, res) => {
   const mid = +req.params.id;
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
@@ -1153,7 +1362,7 @@ app.post('/posts/:id/comments', auth, (req, res) => {
     .run(+req.params.id, req.uid, u.anon_nick, body, now());
   res.json({ ok: true, id: rid(r) });
 });
-app.post('/posts', auth, (req, res) => {
+app.post('/posts', auth, limitWrite, (req, res) => {
   const u = getUser(req.uid);
   const { title, body, category = '자유', sport } = req.body;
   if (!title) return res.status(400).json({ error: 'title_required' });
@@ -1205,12 +1414,28 @@ app.post('/cash/purchase', auth, (req, res) => {
 
 // ── 통합 검색 ──
 app.get('/search', (req, res) => {
-  const q = '%' + (req.query.q || '') + '%';
-  res.json({
-    clubs: db.prepare('SELECT id,name,sport,region FROM clubs WHERE name LIKE ? LIMIT 20').all(q),
-    users: db.prepare('SELECT id,name,region,sport FROM users WHERE name LIKE ? LIMIT 20').all(q),
-    posts: db.prepare('SELECT id,title,category,sport FROM posts WHERE hidden=0 AND (title LIKE ? OR body LIKE ?) LIMIT 20').all(q, q),
-  });
+  const raw = String(req.query.q || '').trim();
+  if ([...raw].length < 2) return res.json({ clubs: [], users: [], posts: [] });   // 2자 이상만
+  // LIKE 의 % 와 _ 는 와일드카드다. 사용자가 친 글자는 문자 그대로 찾아야 한다.
+  const q = '%' + raw.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+  const sport = req.query.sport || null;
+  const ex = " ESCAPE '\\' ";
+
+  const clubs = db.prepare(`SELECT id, name, sport, region,
+      (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id) members
+    FROM clubs WHERE name LIKE ?${ex} ${sport ? 'AND sport=?' : ''}
+    ORDER BY members DESC LIMIT 20`).all(...(sport ? [q, sport] : [q]));
+
+  const users = db.prepare(`SELECT id, name, region, sport
+    FROM users WHERE name LIKE ?${ex} AND suspended=0 ${sport ? 'AND sport=?' : ''}
+    ORDER BY name LIMIT 20`).all(...(sport ? [q, sport] : [q]));
+
+  const posts = db.prepare(`SELECT id, title, category, sport, likes, created_at
+    FROM posts WHERE hidden=0 AND (title LIKE ?${ex} OR body LIKE ?${ex})
+    ${sport ? 'AND sport=?' : ''} ORDER BY id DESC LIMIT 20`)
+    .all(...(sport ? [q, q, sport] : [q, q]));
+
+  res.json({ clubs, users, posts });
 });
 
 // ── 푸시 알림 (FCM) ──
@@ -1222,23 +1447,34 @@ app.post('/push/register', auth, (req, res) => {
   db.prepare('INSERT OR IGNORE INTO devices (user_id,token,platform,created_at) VALUES (?,?,?,?)')
     .run(req.uid, token, platform || 'web', now());
   res.json({ ok: true });
+
+app.post('/push/unregister', auth, (req, res) => {
+  const { token } = req.body || {};
+  if (token) db.prepare('DELETE FROM devices WHERE user_id=? AND token=?').run(req.uid, token);
+  else db.prepare('DELETE FROM devices WHERE user_id=?').run(req.uid);
+  res.json({ ok: true });
+});
 });
 async function sendPush(userId, msg) {
-  const rows = db.prepare('SELECT token FROM devices WHERE user_id=?').all(userId);
+  // 알림함에는 항상 남긴다. 브라우저 푸시는 구독한 기기가 있을 때만.
   db.prepare('INSERT INTO notifications (user_id,icon,title,sub,created_at) VALUES (?,?,?,?,?)')
     .run(userId, msg.icon || '🔔', msg.title || '', msg.body || '', now());
-  if (!rows.length) return;
-  const key = process.env.FCM_SERVER_KEY;
-  if (!key) { console.log('[push:mock]', userId, msg.title, '→', rows.length, 'devices'); return; }
-  try {
-    for (const { token } of rows) {
-      await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: { Authorization: 'key=' + key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: token, notification: { title: msg.title, body: msg.body } })
-      });
-    }
-  } catch (e) { console.error('push error', e.message); }
+  if (!webpush) return;
+  const rows = db.prepare('SELECT token FROM devices WHERE user_id=?').all(userId);
+  for (const { token } of rows) {
+    let sub;
+    try { sub = JSON.parse(token); } catch { continue; }        // 구독 객체가 아니면 건너뛴다
+    if (!sub || !sub.endpoint) continue;
+    webpush.sendNotification(sub, JSON.stringify({
+      title: msg.title || 'MATSU', body: msg.body || '', url: msg.url || '/',
+    })).catch(err => {
+      if (err && (err.statusCode === 404 || err.statusCode === 410)) {   // 만료된 구독은 정리
+        db.prepare('DELETE FROM devices WHERE token=?').run(token);
+      } else {
+        console.error('[push]', err && err.statusCode, err && err.body);
+      }
+    });
+  }
 }
 app.get('/notifications', auth, (req, res) => {
   res.json(db.prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 50').all(req.uid));
@@ -2107,13 +2343,25 @@ app.post('/dm', auth, (req, res) => {
     return res.status(403).json({ error: 'blocked' });
 
   const isNew = !threadExists(req.uid, to);
-  if (isNew) {                                         // 새 대화만 유료
-    const me = getUser(req.uid);
-    if ((me.cash || 0) < DM_COST) return res.status(402).json({ error: 'insufficient_cash', need: DM_COST, cash: me.cash || 0 });
-    const after = me.cash - DM_COST;
-    db.prepare('UPDATE users SET cash=? WHERE id=?').run(after, req.uid);
-    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-      .run(req.uid, -DM_COST, '쪽지 · 새 대화', after, now());
+  if (isNew) {                                         // 새 대화만 유료 · 이중 차감 방지 잠금
+    let after;
+    try {
+      after = tx(() => {
+        const me = getUser(req.uid);
+        if ((me.cash || 0) < DM_COST) throw new Error('insufficient_cash');
+        const a = me.cash - DM_COST;
+        db.prepare('UPDATE users SET cash=? WHERE id=?').run(a, req.uid);
+        db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+          .run(req.uid, -DM_COST, '대화 · 새 대화 시작', a, now());
+        return a;
+      });
+    } catch (e) {
+      if (e.message === 'insufficient_cash') {
+        const me = getUser(req.uid);
+        return res.status(402).json({ error: 'insufficient_cash', need: DM_COST, cash: me.cash || 0 });
+      }
+      throw e;
+    }
   }
   const r = db.prepare('INSERT INTO dms (from_id,to_id,body,created_at) VALUES (?,?,?,?)').run(req.uid, to, body, now());
   sendPush(to, { icon: '💬', title: '쪽지가 도착했어요', body: body.slice(0, 40) });
@@ -2149,10 +2397,12 @@ app.get('/diag', (_req, res) => {
 });
 
 // ── 이미지 업로드 (프로필·경기 사진) — 로컬 디스크. 운영은 S3/CDN 권장 ──
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+// 사진은 DB 와 같은 볼륨에 둔다. 컨테이너 임시 폴더에 두면 재배포마다 전부 사라진다.
+const DB_DIR = path.dirname(process.env.DB_PATH || './matsu.db');
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(DB_DIR, 'uploads');
 try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch {}
 app.use('/uploads', express.static(UPLOAD_DIR));
-app.post('/upload', auth, (req, res) => {
+app.post('/upload', auth, limitUpload, (req, res) => {
   const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec((req.body && req.body.dataUrl) || '');
   if (!m) return res.status(400).json({ error: 'bad_image' });
   const buf = Buffer.from(m[3], 'base64');
@@ -2162,6 +2412,274 @@ app.post('/upload', auth, (req, res) => {
   fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
   res.json({ url: '/uploads/' + name });
 });
+
+// ══════════════════════════════════════════════════════════════
+//  대진표 결과 확정 — 개인 전적·레이팅에 반영
+//  대진표는 선수 배정을 클라이언트가 갖고 있어서, 끝난 뒤 한 번에 넘겨받는다.
+// ══════════════════════════════════════════════════════════════
+try { db.exec('ALTER TABLE brackets ADD COLUMN finalized INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE brackets ADD COLUMN finalized_at BIGINT'); } catch {}
+
+app.post('/brackets/:id/finalize', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(b.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (b.finalized) return res.status(409).json({ error: 'already_finalized' });
+
+  const games = Array.isArray((req.body || {}).games) ? req.body.games : [];
+  let saved = 0;
+  const ins = db.prepare(`INSERT INTO matches
+      (sport, kind, home_club_id, away_club_id, home_user_id, away_user_id,
+       home_score, away_score, status, home_confirmed, away_confirmed, created_by, created_at)
+    VALUES (?, 'bracket', ?, ?, ?, ?, ?, ?, 'confirmed', 1, 1, ?, ?)`);
+
+  const teamElo = ids => ids.reduce((t, id) => t + ((getUser(id) || {}).rating || 1000), 0) / ids.length;
+  const bump = (id, d) => db.prepare('UPDATE users SET rating = COALESCE(rating,1000) + ? WHERE id=?').run(d, id);
+
+  for (const g of games) {
+    const hs = intOrNull(g.home_score), as = intOrNull(g.away_score);
+    if (hs == null || as == null || hs === as) continue;              // 미입력·무승부는 건너뛴다
+    const H = (Array.isArray(g.home) ? g.home : [g.home_user_id]).map(intOrNull).filter(Boolean);
+    const A = (Array.isArray(g.away) ? g.away : [g.away_user_id]).map(intOrNull).filter(Boolean);
+    if (!H.length || !A.length || H.some(x => A.includes(x))) continue;
+
+    if (H.length === 1 && A.length === 1) {                           // 단식 — 정식 전적으로
+      const r = ins.run(b.sport, b.club_id, b.club_id, H[0], A[0], hs, as, req.uid, now());
+      applyRating(db.prepare('SELECT * FROM matches WHERE id=?').get(rid(r)));
+    } else {                                                          // 복식 — 팀 평균 Elo 로 전원 반영
+      const ea = 1 / (1 + 10 ** ((teamElo(A) - teamElo(H)) / 400));
+      const sa = hs > as ? 1 : 0;
+      const d = Math.round(24 * (sa - ea));                           // 복식은 K 를 낮춘다
+      H.forEach(id => bump(id, d));
+      A.forEach(id => bump(id, -d));
+    }
+    saved++;
+  }
+  db.prepare('UPDATE brackets SET finalized=1, finalized_at=? WHERE id=?').run(now(), b.id);
+  notifyClub(b.club_id, req.uid, '🏅', '대진 결과가 반영됐어요', `${saved}경기 · 레이팅이 갱신됐어요`);
+  res.json({ ok: true, saved });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  회비 요약 · 클럽 지출 장부                                (8·9)
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL, title TEXT NOT NULL, amount INTEGER NOT NULL,
+  spent_at TEXT, memo TEXT, created_by INTEGER, created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_expenses ON club_expenses(club_id, id DESC);`);
+
+app.get('/clubs/:id/dues/summary', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const period = String(req.query.period || monthKey());
+  const cur = db.prepare(`SELECT
+      COUNT(*) n, COALESCE(SUM(amount),0) total,
+      COALESCE(SUM(CASE WHEN status='paid' THEN amount END),0) paid_amount,
+      COALESCE(SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END),0) paid_n
+    FROM dues WHERE club_id=? AND period=?`).get(cid, period);
+  const income = db.prepare(`SELECT COALESCE(SUM(amount),0) v FROM dues WHERE club_id=? AND status='paid'`).get(cid).v;
+  const spent = db.prepare('SELECT COALESCE(SUM(amount),0) v FROM club_expenses WHERE club_id=?').get(cid).v;
+  res.json({
+    period, members: cur.n, total: cur.total,
+    paid_amount: cur.paid_amount, paid_n: cur.paid_n,
+    unpaid_amount: cur.total - cur.paid_amount, unpaid_n: cur.n - cur.paid_n,
+    balance: income - spent,                      // 누적 수입 − 누적 지출
+  });
+});
+
+app.get('/clubs/:id/expenses', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(db.prepare(`SELECT e.*, u.name spender FROM club_expenses e
+    LEFT JOIN users u ON u.id=e.created_by
+    WHERE e.club_id=? ORDER BY e.id DESC LIMIT 100`).all(cid));
+});
+
+app.post('/clubs/:id/expenses', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const title = String((req.body || {}).title || '').trim().slice(0, 60);
+  const amount = intOrNull((req.body || {}).amount);
+  if (!title || !amount || amount <= 0) return res.status(400).json({ error: 'bad_input' });
+  const r = db.prepare(`INSERT INTO club_expenses (club_id,title,amount,spent_at,memo,created_by,created_at)
+    VALUES (?,?,?,?,?,?,?)`)
+    .run(cid, title, amount, String((req.body || {}).spent_at || '').slice(0, 10) || null,
+         String((req.body || {}).memo || '').slice(0, 200) || null, req.uid, now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/clubs/:cid/expenses/:id', auth, (req, res) => {
+  const cid = +req.params.cid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM club_expenses WHERE id=? AND club_id=?').run(+req.params.id, cid);
+  res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  초대 링크                                                (13)
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_invites (
+  token TEXT PRIMARY KEY, club_id INTEGER NOT NULL,
+  created_by INTEGER, expires_at BIGINT NOT NULL, uses INTEGER DEFAULT 0
+);`);
+
+app.post('/clubs/:id/invite', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const token = crypto.randomBytes(9).toString('base64url');       // 12자
+  db.prepare('INSERT INTO club_invites (token,club_id,created_by,expires_at) VALUES (?,?,?,?)')
+    .run(token, cid, req.uid, now() + 7 * 24 * 3600 * 1000);       // 7일 유효
+  res.json({ token, url: `/?invite=${token}`, expires_days: 7 });
+});
+
+app.get('/invites/:token', (req, res) => {                          // 로그인 전에도 클럽 정보는 보여준다
+  const inv = db.prepare('SELECT * FROM club_invites WHERE token=?').get(String(req.params.token));
+  if (!inv || inv.expires_at < now()) return res.status(404).json({ error: 'invalid_or_expired' });
+  const c = db.prepare(`SELECT id, name, region, sport,
+      (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id) members
+    FROM clubs WHERE id=?`).get(inv.club_id);
+  if (!c) return res.status(404).json({ error: 'invalid_or_expired' });
+  res.json({ club: c });
+});
+
+app.post('/invites/:token/accept', auth, (req, res) => {
+  const inv = db.prepare('SELECT * FROM club_invites WHERE token=?').get(String(req.params.token));
+  if (!inv || inv.expires_at < now()) return res.status(404).json({ error: 'invalid_or_expired' });
+  const cid = inv.club_id;
+  const has = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (has) return res.json({ ok: true, already: true, club_id: cid });
+  db.prepare("INSERT INTO club_members (club_id,user_id,role,status) VALUES (?,?,'member','active')")
+    .run(cid, req.uid);
+  db.prepare('UPDATE club_invites SET uses=uses+1 WHERE token=?').run(inv.token);
+  const who = getUser(req.uid);
+  const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  notifyClub(cid, req.uid, '🎉', '새 회원이 들어왔어요', `${who.name} 님이 초대 링크로 가입했어요`);
+  res.json({ ok: true, club_id: cid, club_name: c ? c.name : '' });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  오픈매치 후기 (매너 점수)                                  (14)
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS om_reviews (
+  match_id INTEGER NOT NULL, from_user INTEGER NOT NULL, to_user INTEGER NOT NULL,
+  stars INTEGER NOT NULL, tag TEXT, created_at BIGINT NOT NULL,
+  UNIQUE(match_id, from_user, to_user)
+);`);
+
+app.post('/open-matches/:id/reviews', auth, limitWrite, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const started = m.start_at ? Date.parse(m.start_at) < Date.now() : false;
+  if (!(started || (m.status && m.status !== 'open'))) return res.status(400).json({ error: 'not_finished' });
+  const me = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  const isHost = m.host_id === req.uid;
+  if (!me && !isHost) return res.status(403).json({ error: 'participants_only' });
+  const to = intOrNull((req.body || {}).to_user);
+  const stars = Math.max(1, Math.min(5, intOrNull((req.body || {}).stars) || 0));
+  if (!to || to === req.uid || !stars) return res.status(400).json({ error: 'bad_input' });
+  const target = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, to) || m.host_id === to;
+  if (!target) return res.status(400).json({ error: 'not_participant' });
+  try {
+    db.prepare('INSERT INTO om_reviews (match_id,from_user,to_user,stars,tag,created_at) VALUES (?,?,?,?,?,?)')
+      .run(mid, req.uid, to, stars, String((req.body || {}).tag || '').slice(0, 20) || null, now());
+  } catch { return res.status(409).json({ error: 'already_reviewed' }); }
+  res.json({ ok: true });
+});
+
+app.get('/users/:id/manner', (req, res) => {
+  const r = db.prepare('SELECT ROUND(AVG(stars),1) avg, COUNT(*) n FROM om_reviews WHERE to_user=?').get(+req.params.id);
+  res.json({ avg: r.avg || null, n: r.n });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 통계 — 월별 참석률 · 회비 수납률                       (15)
+// ══════════════════════════════════════════════════════════════
+app.get('/clubs/:id/stats', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const months = [];
+  const d = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const attendance = months.map(mo => {
+    const r = db.prepare(`SELECT
+        COALESCE(SUM(CASE WHEN ea.showed=1 THEN 1 ELSE 0 END),0) came,
+        COUNT(ea.id) total
+      FROM event_attendees ea JOIN club_events e ON e.id=ea.event_id
+      WHERE e.club_id=? AND substr(e.date,1,7)=? AND ea.showed IS NOT NULL`).get(cid, mo);
+    return { month: mo, came: r.came, total: r.total,
+             rate: r.total ? Math.round(r.came / r.total * 100) : null };
+  });
+  const dues = months.map(mo => {
+    const r = db.prepare(`SELECT COUNT(*) n,
+        COALESCE(SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END),0) paid
+      FROM dues WHERE club_id=? AND period=?`).get(cid, mo);
+    return { month: mo, paid: r.paid, total: r.n,
+             rate: r.n ? Math.round(r.paid / r.n * 100) : null };
+  });
+  res.json({ attendance, dues });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  자동 알림 — 미납 회비 독촉 · 오픈매치 마감 임박
+//  서버가 살아 있는 동안만 돈다. 인스턴스가 여러 개면 하나만 돌려야 한다.
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS sent_reminders (
+  kind TEXT NOT NULL, ref TEXT NOT NULL, sent_at BIGINT NOT NULL,
+  UNIQUE(kind, ref)
+);`);
+function onceOnly(kind, ref) {                     // 같은 알림을 두 번 보내지 않는다
+  try { db.prepare('INSERT INTO sent_reminders (kind,ref,sent_at) VALUES (?,?,?)').run(kind, ref, now()); return true; }
+  catch { return false; }
+}
+
+function remindUnpaidDues() {
+  const rows = db.prepare(`SELECT d.id, d.user_id, d.period, d.amount, c.name club
+    FROM dues d JOIN clubs c ON c.id=d.club_id
+    WHERE d.status='unpaid'`).all();
+  for (const r of rows) {
+    if (!onceOnly('dues', `${r.id}:${new Date().toISOString().slice(0, 7)}`)) continue;   // 월 1회
+    sendPush(r.user_id, {
+      icon: '💰', title: '회비가 아직 납부되지 않았어요',
+      body: `${r.club} · ${r.period} · ${Number(r.amount).toLocaleString()}원`,
+    });
+  }
+}
+
+function remindClosingMatches() {
+  const soon = Date.now() + 24 * 3600 * 1000;
+  const rows = db.prepare("SELECT * FROM open_matches WHERE status='open'").all();
+  for (const m of rows) {
+    const t = m.start_at ? Date.parse(m.start_at) : NaN;
+    if (!t || t > soon || t < Date.now()) continue;                   // 24시간 안에 시작하는 것만
+    const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(m.id).n;
+    if (cur >= m.min_cnt) continue;                                   // 이미 성사됨
+    if (!onceOnly('om_soon', String(m.id))) continue;
+    const need = m.min_cnt - cur;
+    if (m.host_id) sendPush(m.host_id, {
+      icon: '⏰', title: '오픈매치 성사까지 얼마 안 남았어요',
+      body: `${m.loc} · ${need}명 더 필요해요`,
+    });
+    db.prepare('SELECT user_id FROM om_likes WHERE match_id=?').all(m.id).forEach(l => {   // 관심 누른 사람
+      sendPush(l.user_id, { icon: '⏰', title: '관심 있는 오픈매치가 곧 시작해요', body: `${m.loc} · ${need}명 더 필요해요` });
+    });
+  }
+}
+
+function runReminders() {
+  try { remindUnpaidDues(); } catch (e) { console.error('dues reminder', e.message); }
+  try { remindClosingMatches(); } catch (e) { console.error('match reminder', e.message); }
+}
+if (process.env.REMINDERS !== 'off') {
+  setTimeout(runReminders, 30_000);                    // 부팅 직후 한 번
+  setInterval(runReminders, 6 * 3600 * 1000).unref?.();  // 6시간마다
+}
+app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.json({ ok: true }); });
 
 // ── 운영자 대시보드 API ──
 // 접근키: env ADMIN_KEY (미설정 시 데모용 'matsu-admin'). 헤더 x-admin-key 또는 ?key=
@@ -2208,7 +2726,15 @@ app.get('/admin/reports', admin, (_req, res) => {
   }));
 });
 app.post('/admin/reports/:id/resolve', admin, (req, res) => {
+  const rep = db.prepare('SELECT * FROM reports WHERE id=?').get(+req.params.id);
+  const action = (req.body || {}).action || 'reviewed';        // reviewed | removed | rejected
   db.prepare("UPDATE reports SET status='reviewed' WHERE id=?").run(+req.params.id);
+  if (rep && rep.reporter_id) {                                // 신고자에게 결과를 알린다
+    const msg = action === 'removed' ? '신고하신 글을 삭제했어요'
+      : action === 'rejected' ? '신고를 검토했지만 조치하지 않았어요'
+      : '신고를 검토했어요';
+    sendPush(rep.reporter_id, { icon: '🛡️', title: '신고 처리 결과', body: msg });
+  }
   res.json({ ok: true });
 });
 // ── 운영자 삭제 권한 ──
