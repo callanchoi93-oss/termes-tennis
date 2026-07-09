@@ -78,6 +78,54 @@ async function kakaoIssue(access_token, res) {
   res.json({ token: sign(u), user: u });
 }
 // 클라이언트가 Kakao SDK로 받은 access_token을 보내는 방식 (SPA 권장)
+// ══════════════════════════════════════════════════════════════
+//  클라이언트 설정 — 공개 키만 내려준다.
+//  이렇게 하면 키를 index.html 에 적을 필요가 없다 (GitHub 이 Public 이므로 중요).
+//  Railway Variables 에 넣으면 재배포 없이 바뀐다.
+// ══════════════════════════════════════════════════════════════
+app.get('/config', (_, res) => {
+  res.json({
+    kakao_js_key: process.env.KAKAO_JS_KEY || '',
+    naver_client_id: process.env.NAVER_CLIENT_ID || '',
+    naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
+    apple_client_id: process.env.APPLE_CLIENT_ID || '',
+    phone_auth: !!process.env.SMS_PROVIDER,     // 문자 인증 업체가 붙어 있는가
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  네이버 로그인
+//  브라우저 → 네이버 동의창 → code 받아옴 → 서버가 code 로 토큰 교환 → 프로필 조회
+//  env: NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_REDIRECT_URI
+// ══════════════════════════════════════════════════════════════
+app.post('/auth/naver', async (req, res) => {
+  const { code, state } = req.body || {};
+  const id = process.env.NAVER_CLIENT_ID, secret = process.env.NAVER_CLIENT_SECRET;
+  if (!code || !id || !secret) return res.status(400).json({ error: 'missing_code_or_env' });
+  try {
+    const q = new URLSearchParams({ grant_type: 'authorization_code', client_id: id, client_secret: secret, code, state: state || '' });
+    const tk = await fetch('https://nid.naver.com/oauth2.0/token?' + q).then(r => r.json());
+    if (!tk.access_token) return res.status(401).json({ error: 'token_exchange_failed', detail: tk });
+
+    const me = await fetch('https://openapi.naver.com/v1/nid/me', {
+      headers: { Authorization: 'Bearer ' + tk.access_token },
+    }).then(r => r.json());
+    if (me.resultcode !== '00' || !me.response || !me.response.id)
+      return res.status(401).json({ error: 'profile_failed', detail: me });
+
+    const p = me.response;
+    const pid = 'naver-' + p.id;
+    let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
+    if (!u) {
+      const name = p.nickname || p.name || ('네이버' + String(p.id).slice(-4));
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('naver',?,?,?,?)`)
+        .run(pid, name, anonNick(pid), now());
+      u = getUser(rid(r));
+    }
+    res.json({ token: sign(u), user: u });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 app.post('/auth/kakao', async (req, res) => {
   const { access_token } = req.body || {};
   if (!access_token) return res.status(400).json({ error: 'no_access_token' });
