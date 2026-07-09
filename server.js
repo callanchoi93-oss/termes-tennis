@@ -255,36 +255,221 @@ app.post('/clubs', auth, (req, res) => {
 });
 app.post('/clubs/:id/join', auth, (req, res) => {
   const cid = +req.params.id;
-  db.prepare(`INSERT OR IGNORE INTO club_members (club_id,user_id,role,status) VALUES (?,?, 'member','active')`).run(cid, req.uid);
-  res.json({ ok: true });
+  const club = db.prepare('SELECT name,owner_id FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'no_club' });
+  const ex = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (ex) return res.json({ ok: true, status: ex.status });          // 이미 신청/가입됨
+  db.prepare(`INSERT INTO club_members (club_id,user_id,role,status) VALUES (?,?, 'member','pending')`).run(cid, req.uid);
+  const me = getUser(req.uid);
+  // 클럽장·임원에게 알림
+  db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(cid)
+    .forEach(r => sendPush(r.user_id, { icon: '👤', title: '가입 신청', body: `${me.name} 님이 ${club.name} 가입을 신청했어요` }));
+  res.json({ ok: true, status: 'pending' });
 });
 app.get('/clubs/:id/members', (req, res) => {
-  res.json(db.prepare(`SELECT cm.*, u.name, u.gender, u.rating FROM club_members cm
-    JOIN users u ON u.id=cm.user_id WHERE cm.club_id=?`).all(+req.params.id));
+  res.json(db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
+    u.name, u.gender, u.rating FROM club_members cm
+    JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+    ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, u.name`).all(+req.params.id));
 });
+
+// 회원 등급 일괄 설정 (임원진) — { grades: { "12": "A", "34": "B" } }  키는 user_id
+app.patch('/clubs/:id/grades', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const g = (req.body && req.body.grades) || {};
+  const st = db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?');
+  Object.entries(g).forEach(([uid, v]) => {
+    const gv = ['A', 'B', 'C'].includes(String(v)) ? String(v) : null;
+    st.run(gv, cid, intOrNull(uid));
+  });
+  res.json({ ok: true, n: Object.keys(g).length });
+});
+
+// 역할 변경 (owner 만) — member ↔ officer
+app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only' });
+  const uid = intOrNull(req.params.uid);
+  const target = db.prepare('SELECT role,status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!target) return res.status(404).json({ error: 'not_member' });
+  if (target.role === 'owner') return res.status(400).json({ error: 'cannot_change_owner' });   // 클럽장은 강등 불가
+  if (target.status && target.status !== 'active') return res.status(400).json({ error: 'not_active' }); // 승인 대기중은 불가
+  const role = ['member', 'officer'].includes(req.body && req.body.role) ? req.body.role : 'member';
+  db.prepare('UPDATE club_members SET role=? WHERE club_id=? AND user_id=?').run(role, cid, uid);
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  sendPush(uid, role === 'officer'
+    ? { icon: '👑', title: '임원으로 임명됐어요', body: `${club.name} 대진 편성·모임 개설을 할 수 있어요` }
+    : { icon: '🔔', title: '임원 권한이 해제됐어요', body: `${club.name} 일반 회원으로 변경됐어요` });
+  res.json({ ok: true, role });
+});
+
+// 이번 모임 참석자 (대진 편성 대상). 일정이 있으면 그 참석자, 없으면 활성 회원 전원.
+app.get('/clubs/:id/roster', (req, res) => {
+  const cid = +req.params.id;
+  const ev = db.prepare('SELECT id FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 1').get(cid);
+  let rows;
+  let guests = [];
+  if (ev) {
+    rows = db.prepare(`SELECT u.id user_id, u.name, u.gender, cm.grade, cm.is_captain
+      FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+      LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+      WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
+    guests = db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(ev.id)
+      .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
+  }
+  if (!rows || !rows.length) {
+    rows = db.prepare(`SELECT u.id user_id, u.name, u.gender, cm.grade, cm.is_captain
+      FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
+  }
+  res.json({ event_id: ev ? ev.id : null, members: [...rows, ...guests] });
+});
+// 가입 신청 목록 (임원진)
+app.get('/clubs/:id/join-requests', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  res.json(db.prepare(`SELECT u.id user_id, u.name, u.gender, u.region, u.rating
+    FROM club_members cm JOIN users u ON u.id=cm.user_id
+    WHERE cm.club_id=? AND cm.status='pending' ORDER BY cm.id`).all(cid));
+});
+// 승인 / 거절 (임원진)
+app.post('/clubs/:id/members/:uid/approve', auth, (req, res) => {
+  const cid = +req.params.id, uid = intOrNull(req.params.uid);
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const ok = req.body && req.body.approve === false ? false : true;
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  if (ok) {
+    db.prepare("UPDATE club_members SET status='active' WHERE club_id=? AND user_id=? AND status='pending'").run(cid, uid);
+    sendPush(uid, { icon: '🎉', title: '가입 승인', body: `${club.name} 정회원이 됐어요` });
+  } else {
+    db.prepare("DELETE FROM club_members WHERE club_id=? AND user_id=? AND status='pending'").run(cid, uid);
+    sendPush(uid, { icon: '🔔', title: '가입 신청 결과', body: `${club.name} 가입이 승인되지 않았어요` });
+  }
+  res.json({ ok: true, approved: ok });
+});
+// 클럽장 양도 (현 클럽장만). 넘겨주면 본인은 임원이 된다.
+app.post('/clubs/:id/transfer-owner', auth, (req, res) => {
+  const cid = +req.params.id, uid = intOrNull(req.body && req.body.user_id);
+  const mine = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!mine) return res.status(403).json({ error: 'owner_only' });
+  if (!uid || uid === req.uid) return res.status(400).json({ error: 'bad_target' });
+  const t = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!t) return res.status(404).json({ error: 'not_member' });
+  if (t.status && t.status !== 'active') return res.status(400).json({ error: 'not_active' });
+  db.prepare("UPDATE club_members SET role='owner' WHERE club_id=? AND user_id=?").run(cid, uid);
+  db.prepare("UPDATE club_members SET role='officer' WHERE club_id=? AND user_id=?").run(cid, req.uid);
+  db.prepare('UPDATE clubs SET owner_id=? WHERE id=?').run(uid, cid);
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  sendPush(uid, { icon: '👑', title: '클럽장이 됐어요', body: `${club.name} 클럽장 권한을 넘겨받았어요` });
+  res.json({ ok: true });
+});
+
+// 내가 속한 클럽 목록 (역할·상태 포함)
+app.get('/me/clubs', auth, (req, res) => {
+  res.json(db.prepare(`SELECT c.*, cm.role, cm.status,
+      (SELECT COUNT(*) FROM club_members x WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')) member_count
+    FROM club_members cm JOIN clubs c ON c.id=cm.club_id
+    WHERE cm.user_id=? ORDER BY (cm.role='owner') DESC, c.id`).all(req.uid));
+});
+
+// 내 가입 상태
+app.get('/clubs/:id/my-status', auth, (req, res) => {
+  const m = db.prepare('SELECT role,status FROM club_members WHERE club_id=? AND user_id=?').get(+req.params.id, req.uid);
+  res.json(m || { role: null, status: null });
+});
+
 // ── 클럽 일정(모임) ──
 app.get('/clubs/:id/events', (req, res) => {
   const cid = +req.params.id; const uid = tryUid(req);
   const evs = db.prepare('SELECT * FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 20').all(cid);
-  res.json(evs.map(e => ({
-    ...e,
-    count: db.prepare('SELECT COUNT(*) n FROM event_attendees WHERE event_id=?').get(e.id).n,
-    joined: uid ? !!db.prepare('SELECT 1 FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, uid) : false,
-  })));
+  const byStatus = (eid, st) => db.prepare(`SELECT u.name FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+    WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'} ORDER BY u.name`)
+    .all(...(st === 'going' ? [eid] : [eid, st])).map(r => r.name);
+  res.json(evs.map(e => {
+    const my = uid ? db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, uid) : null;
+    return {
+      ...e,
+      count: goingCount(e.id),
+      attendees: byStatus(e.id, 'going'),
+      absent: byStatus(e.id, 'absent'),
+      undecided: byStatus(e.id, 'undecided'),
+      guests: db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(e.id),
+      my_status: my ? (my.status || 'going') : null,
+      joined: !!(my && (my.status === null || my.status === 'going')),
+    };
+  }));
 });
 app.post('/clubs/:id/events', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
   const { title, date, tag } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title_required' });
   const r = db.prepare('INSERT INTO club_events (club_id,title,date,tag,created_by,created_at) VALUES (?,?,?,?,?,?)')
-    .run(+req.params.id, title, date || '', tag || '정기', req.uid, now());
+    .run(cid, String(title), String(date || ''), String(tag || '정기'), req.uid, now());
+  notifyClub(cid, req.uid, '📅', '새 모임이 열렸어요', `${title}${date ? ' · ' + date : ''}`);
   res.json({ ok: true, id: rid(r) });
 });
+function eventGuard(eid, uid) {
+  const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
+  if (!ev) return { err: 404, msg: 'no_event' };
+  const m = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(ev.club_id, uid);
+  if (!m || (m.status && m.status !== 'active')) return { err: 403, msg: 'member_only' };
+  return { ev };
+}
+const goingCount = (eid) => db.prepare("SELECT COUNT(*) n FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").get(eid).n;
+
+// 참석 응답 — going | absent | undecided
+app.post('/events/:id/rsvp', auth, (req, res) => {
+  const eid = +req.params.id;
+  const g = eventGuard(eid, req.uid);
+  if (g.err) return res.status(g.err).json({ error: g.msg });
+  const st = ['going', 'absent', 'undecided'].includes(req.body && req.body.status) ? req.body.status : 'going';
+  const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  if (has) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(st, has.id);
+  else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, st);
+  res.json({ ok: true, status: st, count: goingCount(eid) });
+});
+// (구버전 호환) 토글 → going ↔ absent
 app.post('/events/:id/attend', auth, (req, res) => {
   const eid = +req.params.id;
-  const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
-  if (has) db.prepare('DELETE FROM event_attendees WHERE id=?').run(has.id);
-  else db.prepare('INSERT OR IGNORE INTO event_attendees (event_id,user_id) VALUES (?,?)').run(eid, req.uid);
-  res.json({ ok: true, joined: !has, count: db.prepare('SELECT COUNT(*) n FROM event_attendees WHERE event_id=?').get(eid).n });
+  const g = eventGuard(eid, req.uid);
+  if (g.err) return res.status(g.err).json({ error: g.msg });
+  const has = db.prepare('SELECT id,status FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  const going = !(has && (has.status === null || has.status === 'going'));
+  const st = going ? 'going' : 'absent';
+  if (has) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(st, has.id);
+  else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, st);
+  res.json({ ok: true, joined: going, count: goingCount(eid) });
+});
+
+// ── 게스트 (비회원) ──
+app.get('/events/:id/guests', (req, res) => {
+  res.json(db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(+req.params.id));
+});
+app.post('/events/:id/guests', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(ev.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 12);
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  const gender = ['M', 'F'].includes(req.body.gender) ? req.body.gender : null;
+  const grade = ['A', 'B', 'C'].includes(req.body.grade) ? req.body.grade : null;
+  const dup = db.prepare('SELECT 1 FROM event_guests WHERE event_id=? AND name=?').get(eid, name);
+  if (dup) return res.status(409).json({ error: 'duplicate_name' });
+  const r = db.prepare('INSERT INTO event_guests (event_id,name,gender,grade,added_by,created_at) VALUES (?,?,?,?,?,?)')
+    .run(eid, name, gender, grade, req.uid, now());
+  res.json({ ok: true, id: rid(r) });
+});
+app.delete('/events/:id/guests/:gid', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(ev.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM event_guests WHERE id=? AND event_id=?').run(intOrNull(req.params.gid), eid);
+  res.json({ ok: true });
 });
 // ── 오픈 예정 경기(모집) ──
 app.get('/open-matches', (req, res) => {
@@ -717,6 +902,19 @@ CREATE TABLE IF NOT EXISTS bracket_timers (
   PRIMARY KEY (bracket_id, court_key)
 );
 `);
+
+// event_attendees.status : going | absent | undecided  (기존 행은 going 으로 간주)
+try { db.exec("ALTER TABLE event_attendees ADD COLUMN status TEXT DEFAULT 'going'"); } catch (e) {}
+// 게스트(비회원) — 대진 편성에는 들어가되 회원 통계에는 안 잡히도록 분리
+db.exec(`CREATE TABLE IF NOT EXISTS event_guests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL, name TEXT NOT NULL,
+  gender TEXT, grade TEXT, added_by INTEGER, created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_guests_event ON event_guests(event_id);`);
+
+// club_members.grade (A/B/C) — 대진 편성용 실력 등급. db.js를 건드리지 않고 여기서 추가.
+try { db.exec('ALTER TABLE club_members ADD COLUMN grade TEXT'); } catch (e) { /* 이미 있음 */ }
 
 // node:sqlite는 boolean/undefined 바인딩을 거부한다 → 정수 또는 null 로 정규화
 function intOrNull(v) {
