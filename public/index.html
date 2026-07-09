@@ -710,7 +710,7 @@
   .due-sum{ display:flex; align-items:baseline; gap:6px; margin:6px 0 9px; }
   .due-sum b{ font-size:26px; font-weight:900; letter-spacing:-.03em; color:var(--ink); }
   .due-sum span{ font-size:13px; font-weight:700; color:var(--gray); }
-  /* — 쪽지 — */
+  /* — 대화 — */
   .dm-log{ max-height:280px; overflow-y:auto; background:#faf6ee; border-radius:16px; padding:12px; }
   .dm-b{ max-width:78%; padding:9px 12px; border-radius:14px; background:#fff; border:1px solid var(--line2);
          font-size:13.5px; font-weight:600; line-height:1.5; margin-bottom:7px; word-break:break-word; }
@@ -758,6 +758,22 @@
   .cl-row i{ font-style:normal;font-size:12px;color:var(--gray) }
   .cl-row em{ font-style:normal;color:var(--coral-d);font-weight:900;width:28px;text-align:right }
   /* — 오픈매치 — */
+  .om-foot{ display:flex;align-items:center;gap:7px;margin-top:12px }
+  .om-re{ display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#fff;
+          border-radius:999px;padding:6px 11px;font-family:inherit;font-size:12.5px;font-weight:700;
+          color:var(--gray);cursor:pointer }
+  .om-re b{ font-weight:800 }
+  .om-re.on{ background:var(--coral-s);border-color:var(--coral);color:var(--coral-d) }
+  .om-act{ border:none;border-radius:999px;padding:8px 14px;font-family:inherit;font-size:13px;
+           font-weight:800;cursor:pointer;background:#f2ece3;color:var(--gray);flex:none }
+  .om-act.primary{ background:var(--coral);color:#fff }
+  .om-act.ghost{ background:#fff;border:1.5px solid var(--line);color:var(--gray) }
+  .om-act.danger{ background:#fff;border:1.5px solid #f0d6d3;color:#b3261e }
+  .om-bank{ display:flex;align-items:center;gap:6px;margin-top:9px;padding:8px 11px;border-radius:10px;
+            background:#f4f8f4;border:1px solid #dceade;font-size:12.5px;font-weight:700;color:#1f6b45;cursor:pointer }
+  .om-bank span{ flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .om-bank em{ font-style:normal;font-size:11px;font-weight:800;color:#1f7d4d }
+
   .om-reg{ font-size:11.5px;font-weight:700;color:var(--lgray);margin-top:4px;display:flex;align-items:center;gap:3px }
   .om-host{ display:flex;align-items:center;gap:10px;margin-top:11px;padding:9px 10px;
             background:#faf6ee;border-radius:12px }
@@ -1028,7 +1044,7 @@
   .rev-dots i{ width:7px; height:7px; border-radius:50%; background:#d8cdb5; transition:.2s; }
   .rev-dots i.on{ background:var(--coral); width:20px; border-radius:4px; }
   .auth2-btns{ padding:0 22px; display:flex; flex-direction:column; gap:11px; }
-  .sbtn2{ display:flex; align-items:center; background:#fff; border:none; border-radius:30px; padding:clamp(13px,1.9vh,17px) 20px; font-family:inherit; font-size:16px; font-weight:800; color:var(--ink); cursor:pointer; box-shadow:0 3px 10px rgba(120,100,60,.12); position:relative; }
+  .sbtn2{ display:flex; align-items:center; background:#fff; border:none; border-radius:30px; height:50px; padding:0 20px; font-family:inherit; font-size:16px; font-weight:800; color:var(--ink); cursor:pointer; box-shadow:0 3px 10px rgba(120,100,60,.12); position:relative; }
   .sbtn2 .ic{ width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:14px; position:absolute; left:20px; }
   .sbtn2 .lbl{ flex:1; text-align:center; }
 
@@ -1691,15 +1707,19 @@ function initGoogle(){
   });
   const box = document.getElementById('gBtn');
   if(box){
-    box.style.display='block';
-    box.innerHTML='';
-    google.accounts.id.renderButton(box, {
+    // 구글 공식 버튼은 최대 40px 고정이라, 카카오(50px)와 맞추려면 확대해야 한다.
+    const SCALE = 1.25;                                  // 40px × 1.25 = 50px
+    const w = Math.round((box.offsetWidth || 320) / SCALE);
+    box.style.cssText = 'display:flex;justify-content:center;align-items:center;height:50px;margin-bottom:10px;overflow:visible';
+    box.innerHTML = '<div id="gBtnIn" style="transform:scale('+SCALE+');transform-origin:center"></div>';
+    google.accounts.id.renderButton(document.getElementById('gBtnIn'), {
       type:'standard', theme:'outline', size:'large', shape:'pill',
-      text:'continue_with', locale:'ko', width: box.offsetWidth || 320,
+      text:'continue_with', locale:'ko', width: w,
     });
     // renderButton 이 조용히 실패하는 경우 (원본 미승인 등) 를 잡는다
     setTimeout(()=>{
-      if(box.childElementCount===0){
+      const inner = document.getElementById('gBtnIn');
+      if(!inner || inner.childElementCount===0){
         console.error('[MATSU] 구글 버튼이 그려지지 않았습니다. 승인된 JavaScript 원본을 확인하세요:', location.origin);
         box.innerHTML = `<div class="note" style="text-align:left;color:#b3261e">
           구글 버튼을 그리지 못했어요 · 구글 콘솔의 승인된 원본에 ${esc(location.origin)} 이 있는지 확인해 주세요.</div>`;
@@ -2980,7 +3000,7 @@ function spendCash(kind,cost,label){
   else { toast(`M캐쉬가 부족해요 · 광고를 보거나 친구를 초대해 모을 수 있어요`); setTimeout(openEarn,650); }
   return false;
 }
-// 쪽지 1건 = 1M캐쉬. 낱개 300원 기준, 묶을수록 최대 40% 할인
+// 대화 1건 = 1M캐쉬. 낱개 300원 기준, 묶을수록 최대 40% 할인
 const CASH_PKGS=[{n:100,won:19900,dc:34,tag:'실속'},{n:50,won:11900,dc:21},{n:30,won:7900,dc:12,tag:'인기'},{n:10,won:2900},{n:3,won:900}];
 // ── 입회비·게스트비 설정 (클럽장) ──
 function openFeeEdit(){
@@ -3052,7 +3072,7 @@ function openStore(){
       <div style="display:flex;align-items:center;gap:11px">${coin(26)}<div style="font-size:20px;font-weight:900;color:var(--ink)">${p.n}${p.dc?`<span style="font-size:13px;color:var(--gray);font-weight:700"> (-${p.dc}%)</span>`:''}</div></div>
       <div style="position:relative">${p.tag?`<span style="position:absolute;top:-19px;right:2px;background:#6aa9e6;color:#fff;font-size:10px;font-weight:900;border-radius:6px;padding:2px 8px">${p.tag}</span>`:''}<div style="background:var(--felt);border-radius:11px;padding:10px 15px;font-size:14px;font-weight:900;color:var(--ink)">${p.won.toLocaleString()}원</div></div></div>`;
   });
-  h+=`<div class="note" style="text-align:left;margin-top:8px">M캐쉬는 개인 리그 <b>추가 대진</b>, <b>쪽지 보내기</b> 등에 사용돼요. 무료 제공분을 다 쓰면 M캐쉬가 필요해요. (데모 — 실제 결제 없음)</div>`;
+  h+=`<div class="note" style="text-align:left;margin-top:8px">M캐쉬는 개인 리그 <b>추가 대진</b>, <b>대화하기</b> 등에 사용돼요. 무료 제공분을 다 쓰면 M캐쉬가 필요해요. (데모 — 실제 결제 없음)</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 async function buyCash(n){
@@ -4267,7 +4287,7 @@ async function addPost(){
   const txt = (el ? el.value : state._draft||'').trim();
   if(!txt && !state._photo){ toast('내용을 입력하거나 사진을 추가해 주세요'); return; }
   const bad = findContact(txt);
-  if(bad){ toast(`${bad}는 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
+  if(bad){ toast(`${bad}는 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
 
   if(!SERVER_OK){                                   // 데모
     AC().feed.unshift({who:state.userName||'나',when:'방금',cap:txt,ph:state._photo?'내가 올린 사진':null,like:0,cm:0});
@@ -4708,7 +4728,7 @@ async function openEarn(){
   try{ [ref, ad] = await Promise.all([api('/me/referral'), api('/cash/ad-status')]); }catch(e){ toast('불러오지 못했어요'); return; }
   state.cash = ad.cash;
   let h=`<div class="sh-top"><h3>M캐쉬 받기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">현재 <b>${ad.cash}M캐쉬</b> · 1:1 쪽지 새 대화에 5M캐쉬가 쓰여요.</div>
+    <div class="sd">현재 <b>${ad.cash}M캐쉬</b> · 1:1 대화를 새로 열 때 5M캐쉬가 쓰여요.</div>
 
     <div class="card"><div class="ch" style="font-size:15px">친구 초대</div>
       <div class="ern-code" onclick="copyCode('${ref.code}')">${ref.code}<span>${ic('link',14,'var(--gray)')} 복사</span></div>
@@ -4952,30 +4972,94 @@ function matchCards(list){
           <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span></div>
           <div class="om-hd">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
         </div>
-        ${(!m.is_host && m.host) ? `<button class="btn ghost sm" style="width:auto;padding:7px 12px;margin:0"
-            onclick="openDM(${m.host.id},'${esc(hostName).replace(/'/g,"\\'")}')">쪽지</button>` : ''}
+        ${(!m.is_host && m.host) ? `<button class="om-act ghost"
+            onclick="openDM(${m.host.id},'${esc(hostName).replace(/'/g,"\\'")}')">대화하기</button>` : ''}
       </div>
 
+      ${m.account?`<div class="om-bank" onclick="copyText('${esc(m.account).replace(/'/g,"\\'")}')">
+        ${ic('receipt',13)} <span>${esc(m.account)}</span><em>복사</em></div>`:''}
       ${m.note?`<div class="om-note">${esc(m.note)}</div>`:''}
       <div class="rp-track" style="margin-top:10px"><i style="width:${pct}%"></i></div>
       <div class="rp-cap">${m.cur}/${m.cap}명 · 최소 ${m.min_cnt}명이면 성사${m.confirmed?' ✓':''}</div>
 
       <div class="om-ppl">${m.players.map(p=>
-        `<span class="om-p ${m.host&&p.id===m.host.id?'host':''} ${p.id===myId?'me':''}">${esc(p.name)}${m.host&&p.id===m.host.id?' 👑':''}</span>`).join('')}</div>
+        `<span class="om-p ${m.host&&p.id===m.host.id?'host':''} ${p.id===myId?'me':''}">${esc(p.name)}</span>`).join('')}</div>
 
-      ${m.is_host
-        ? `<div style="display:flex;gap:8px;margin-top:11px">
-             ${closed?'':`<button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed')">모집 마감</button>`}
-             <button class="btn sm ghost" style="flex:1;color:#b3261e" onclick="deleteMatch(${m.id})">삭제</button></div>`
-        : closed ? ''
-          : m.joined
-            ? `<button class="btn sm ghost" style="margin-top:11px" onclick="leaveMatch(${m.id})">참가 취소</button>`
-            : m.full
-              ? `<button class="btn sm ghost" style="margin-top:11px" disabled>정원이 찼어요</button>`
-              : `<button class="btn sm" style="margin-top:11px" onclick="joinMatch(${m.id})">참가 신청</button>`}
+      <div class="om-foot">
+        <button class="om-re ${m.liked?'on':''}" onclick="likeMatch(${m.id})">♥ <b>${m.likes||0}</b></button>
+        <button class="om-re" onclick="openOmComments(${m.id})">💬 <b>${m.comments||0}</b></button>
+        <span style="flex:1"></span>
+        ${m.is_host
+          ? `${closed?'':`<button class="om-act ghost" onclick="setMatchStatus(${m.id},'closed')">마감</button>`}
+             <button class="om-act danger" onclick="deleteMatch(${m.id})">삭제</button>`
+          : closed ? ''
+            : m.joined
+              ? `<button class="om-act ghost" onclick="leaveMatch(${m.id})">참가 취소</button>`
+              : m.full
+                ? `<button class="om-act" disabled style="opacity:.5">정원 마감</button>`
+                : `<button class="om-act primary" onclick="joinMatch(${m.id})">참가 신청</button>`}
+      </div>
     </div>`;
   });
   return h;
+}
+function copyText(t){
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject())
+    .then(()=>toast('계좌를 복사했어요'))
+    .catch(()=>toast(t));
+}
+async function likeMatch(id){
+  try{
+    const r = await api(`/open-matches/${id}/like`,{method:'POST',body:'{}'});
+    const m = OM_LIST.find(x=>x.id===id);
+    if(m){ m.liked=r.liked; m.likes=r.likes;
+      const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST); }
+  }catch(e){ toast('잠시 후 다시 시도해 주세요'); }
+}
+async function openOmComments(id){
+  let list=[];
+  try{ list = await api(`/open-matches/${id}/comments`); }catch(e){}
+  const m = OM_LIST.find(x=>x.id===id) || {};
+  const myId=(state.serverUser||{}).id;
+  let h=`<div class="sh-top"><h3>댓글 ${list.length}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${esc(m.loc||'')} · 궁금한 건 댓글로 물어보세요. 연락처는 적을 수 없어요.</div>`;
+  if(!list.length) h+=`<div class="note" style="text-align:left;margin-bottom:10px">첫 댓글을 남겨보세요.</div>`;
+  list.forEach(c=>{
+    const mine = c.user_id===myId, isHost = m.host && c.user_id===m.host.id;
+    h+=`<div style="padding:9px 2px;border-bottom:1px solid #f4efe9">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:12px;font-weight:800;color:var(--lgray)">${esc(c.name)}${isHost?' <span class="om-htag">주최</span>':''} · ${timeAgo(c.created_at)}</span>
+        ${(mine||m.is_host)?`<span onclick="delOmComment(${c.id},${id})" style="font-size:11px;font-weight:700;color:var(--lgray);cursor:pointer">삭제</span>`:''}
+      </div>
+      <div style="font-size:14px;font-weight:600;line-height:1.55;margin-top:3px">${esc(c.body)}</div>
+    </div>`;
+  });
+  h+=`<div style="display:flex;gap:8px;margin-top:14px">
+    <input id="omcText" placeholder="댓글을 입력하세요" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-family:inherit;font-size:14px">
+    <button class="om-act primary" style="flex:none" onclick="postOmComment(${id})">등록</button></div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+  const el=document.getElementById('omcText');
+  if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') postOmComment(id); });
+}
+async function postOmComment(id){
+  const t=((document.getElementById('omcText')||{}).value||'').trim();
+  if(!t){ toast('내용을 입력해 주세요'); return; }
+  try{
+    await api(`/open-matches/${id}/comments`,{method:'POST',body:JSON.stringify({body:t})});
+    const m = OM_LIST.find(x=>x.id===id); if(m) m.comments=(m.comments||0)+1;
+    openOmComments(id);
+  }catch(e){
+    toast(String(e.message).includes('contact_blocked')?'연락처는 댓글에 올릴 수 없어요':'등록하지 못했어요');
+  }
+}
+async function delOmComment(cid, mid){
+  if(!confirm('이 댓글을 삭제할까요?')) return;
+  try{
+    await api(`/om-comments/${cid}`,{method:'DELETE'});
+    const m = OM_LIST.find(x=>x.id===mid); if(m) m.comments=Math.max(0,(m.comments||1)-1);
+    openOmComments(mid);
+  }catch(e){ toast('삭제하지 못했어요'); }
 }
 async function deleteMatch(id){
   if(!confirm('이 오픈매치를 삭제할까요? 참가자에게 알림이 가고 되돌릴 수 없어요.')) return;
@@ -5047,6 +5131,7 @@ function openNewMatch(){
     <div class="fld"><label>형식</label>
       <select id="omFmt">${SM().formats.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
     <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
+    <div class="fld"><label>입금 계좌 (선택)</label><input id="omAccount" placeholder="예) 카카오뱅크 3333-01-1234567 곽주영"></div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>정원</label><input id="omCap" inputmode="numeric" value="8"></div>
       <div class="fld" style="flex:1"><label>최소 인원</label><input id="omMin" inputmode="numeric" value="6"></div>
@@ -5112,7 +5197,7 @@ async function createMatch(){
   if(new Date(start) < new Date()){ toast('지난 시각은 고를 수 없어요'); return; }
   if(end && new Date(end) <= new Date(start)){ toast('종료가 시작보다 빨라요'); return; }
   const bad = findContact(`${loc} ${note} ${dong}`);
-  if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
+  if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
   const cap = num('omCap')||8, min_cnt = num('omMin')||6;
   if(min_cnt > cap){ toast('최소 인원이 정원보다 많아요'); return; }
@@ -5121,7 +5206,7 @@ async function createMatch(){
       sport:state.sport, dt:fmtMatchDate(start), start_at:start, end_at:end||null,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
       loc, fmt:v('omFmt')||SM().formats[0], gd:gdFromFmt(v('omFmt')),
-      price:num('omPrice'), cap, min_cnt, note })});
+      price:num('omPrice'), cap, min_cnt, note, account:v('omAccount')||null })});
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
     const m = String(e.message||'');
@@ -5200,7 +5285,7 @@ function dismissDue(){
 }
 
 /* ═══════════ 연락처 차단 (서버와 동일 규칙) ═══════════
-   공개 글·댓글엔 못 올리고, 1:1 쪽지에서만 주고받을 수 있어요.  */
+   공개 글·댓글엔 못 올리고, 1:1 대화에서만 주고받을 수 있어요.  */
 const _FW={'０':'0','１':'1','２':'2','３':'3','４':'4','５':'5','６':'6','７':'7','８':'8','９':'9'};
 const _HN={'영':'0','공':'0','일':'1','이':'2','삼':'3','사':'4','오':'5','육':'6','륙':'6','칠':'7','팔':'8','구':'9'};
 const _SEPRE=/[\s\-\u00b7_/|,()\[\]{}<>+*~^$#!?"'`]/g;
@@ -5227,27 +5312,27 @@ function contactWarn(elId, warnId){
   const el=document.getElementById(elId), w=document.getElementById(warnId);
   if(!el||!w) return;
   const bad=findContact(el.value);
-  w.innerHTML = bad ? `${ic('lock',13,'#c0503a')} <b>${bad}</b>는 공개 글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요` : '';
+  w.innerHTML = bad ? `${ic('lock',13,'#c0503a')} <b>${bad}</b>는 공개 글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요` : '';
   w.style.display = bad ? 'flex' : 'none';
 }
 
-/* ═══════════ 1:1 쪽지 ═══════════ */
+/* ═══════════ 1:1 대화 ═══════════ */
 async function openDM(uid, name){
-  if(!SERVER_OK){ toast('쪽지는 서버 연결이 필요해요'); return; }
+  if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
   let msgs=[];
   try{ msgs = await api(`/dm/with/${uid}`); }catch(e){}
   const isNew = !msgs.length;
-  let h=`<div class="sh-top"><h3>${name} 님과의 쪽지</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  let h=`<div class="sh-top"><h3>${name} 님과 대화</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${isNew
       ? `새 대화를 열면 <b>M캐쉬 5개</b>가 사용돼요. 이후 대화와 상대의 답장은 무료예요.`
-      : `이어지는 대화는 무료예요.`} 쪽지에서는 연락처를 주고받을 수 있어요.</div>
+      : `이어지는 대화는 무료예요.`} 대화에서는 연락처를 주고받을 수 있어요.</div>
     <div class="dm-log" id="dmLog">`;
-  if(!msgs.length) h+=`<div class="note" style="text-align:left">아직 주고받은 쪽지가 없어요.</div>`;
+  if(!msgs.length) h+=`<div class="note" style="text-align:left">아직 주고받은 대화가 없어요.</div>`;
   msgs.forEach(m=>{ h+=`<div class="dm-b ${m.mine?'me':''}">${m.body.replace(/</g,'&lt;')}</div>`; });
   h+=`</div>
     <div class="fld" style="margin-top:12px"><textarea id="dmText" rows="3" placeholder="메시지를 입력하세요" maxlength="500"></textarea></div>
     <button class="btn" onclick="sendDM(${uid},'${name.replace(/'/g,"\\'")}')">
-      ${isNew?`<span class="bic">${ic('card',15,'currentColor')}쪽지 보내기 · 5M캐쉬</span>`:'쪽지 보내기'}</button>`;
+      ${isNew?`<span class="bic">${ic('card',15,'currentColor')}대화하기 · 5M캐쉬</span>`:'대화하기'}</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
   const lg=document.getElementById('dmLog'); if(lg) lg.scrollTop=lg.scrollHeight;
 }
@@ -5256,25 +5341,25 @@ async function sendDM(uid, name){
   if(!t.trim()){ toast('메시지를 입력해 주세요'); return; }
   try{
     const r = await api('/dm', {method:'POST', body: JSON.stringify({to:uid, body:t.trim()})});
-    if(r.charged) toast(`쪽지를 보냈어요 · M캐쉬 ${r.charged} 사용 (잔액 ${r.cash})`);
-    else toast('쪽지를 보냈어요');
+    if(r.charged) toast(`대화를 시작했어요 · M캐쉬 ${r.charged} 사용 (잔액 ${r.cash})`);
+    else toast('보냈어요');
     state.cash = r.cash;
     openDM(uid, name);
   }catch(e){
     const m=String(e.message);
     if(m.includes('insufficient_cash')){ toast('M캐쉬가 부족해요'); setTimeout(canSellDigital()?openStore:openEarn,650); }
-    else if(m.includes('blocked')) toast('상대가 쪽지를 받지 않아요');
-    else toast('쪽지를 보내지 못했어요');
+    else if(m.includes('blocked')) toast('상대가 대화를 받지 않아요');
+    else toast('보내지 못했어요');
   }
   if(state.view==='chat') loadDMThreads().then(renderChat);
 }
 async function openDMList(){
-  if(!SERVER_OK){ toast('쪽지는 서버 연결이 필요해요'); return; }
+  if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
   let ts=[];
   try{ ts = await api('/dm/threads'); }catch(e){}
-  let h=`<div class="sh-top"><h3>쪽지함</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">공개 글에는 연락처를 쓸 수 없어요. 개인적인 이야기는 쪽지로 나눠 주세요.</div>`;
-  if(!ts.length) h+=`<div class="empty" style="padding:44px 20px"><div class="ei">${ic('chat',34)}</div><div class="et">아직 쪽지가 없어요</div></div>`;
+  let h=`<div class="sh-top"><h3>1:1 대화</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">공개 글에는 연락처를 쓸 수 없어요. 개인적인 이야기는 대화로 나눠 주세요.</div>`;
+  if(!ts.length) h+=`<div class="empty" style="padding:44px 20px"><div class="ei">${ic('chat',34)}</div><div class="et">아직 대화가 없어요</div></div>`;
   ts.forEach(t=>{
     h+=`<div class="mrow" style="cursor:pointer" onclick="openDM(${t.user.id},'${t.user.name}')">
       <div class="lb-av" style="width:40px;height:40px;border-radius:50%;background:var(--blue);font-size:15px;flex:none">${t.user.name[0]}</div>
@@ -5368,8 +5453,8 @@ function openCompare(name){
     <button class="btn" style="margin-top:14px" onclick="challengePlayer('${op.n}')">
       <span class="bic">${ic('swap',16,'currentColor')}${op.n} 님에게 도전 신청</span></button>
     ${op.uid?`<button class="btn ghost" style="margin-top:8px" onclick="openDM(${op.uid},'${op.n}')">
-      <span class="bic">${ic('chat',15,'currentColor')}1:1 쪽지 보내기</span></button>`:''}
-    <div class="note" style="text-align:left">도전 신청은 무료예요 (하루 ${CHAL_DAILY}번). 개인적인 대화는 쪽지로 나눠 주세요.</div>`;
+      <span class="bic">${ic('chat',15,'currentColor')}1:1 대화하기</span></button>`:''}
+    <div class="note" style="text-align:left">도전 신청은 무료예요 (하루 ${CHAL_DAILY}번). 개인적인 대화는 대화로 나눠 주세요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 
@@ -6008,7 +6093,7 @@ function openMMR(){
     <div class="note" style="text-align:left">MMR(캐주얼)과 레이팅(공식 리그)은 분리돼요. 캐주얼로 몸을 풀고, 준비되면 개인리그로 승부해요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function playMMR(){ if(!spendCash('dm',5,'1:1 쪽지'))return; const win=Math.random()<0.55; const d=win?Math.round(12+Math.random()*10):-Math.round(8+Math.random()*8); state.mmr=Math.max(800,state.mmr+d); if(win)state.mmrWins++; if(state.mmr>=1300)state.plUnlocked=true; toast(`${win?'승리':'패배'} · MMR ${d>0?'+':''}${d} (${state.mmr})`); openMMR(); }
+function playMMR(){ if(!spendCash('dm',5,'1:1 대화'))return; const win=Math.random()<0.55; const d=win?Math.round(12+Math.random()*10):-Math.round(8+Math.random()*8); state.mmr=Math.max(800,state.mmr+d); if(win)state.mmrWins++; if(state.mmr>=1300)state.plUnlocked=true; toast(`${win?'승리':'패배'} · MMR ${d>0?'+':''}${d} (${state.mmr})`); openMMR(); }
 // ── 용병/게스트 모집 (팀스포츠·지역) ──
 function openMercenary(){ const sp=SP(); const cls=['#ec6a2e','#6182e6','#62c08d','#eaa24f'];
   const pos=sp.id==='soccer'?['FW','MF','GK']:sp.id==='basketball'?['가드','센터','포워드']:['투수','외야','내야'];
@@ -6325,7 +6410,7 @@ function setBF(f){state.bracketFmt=f;renderBracket();}
 
 /* ===== 채팅 ===== */
 const REPLIES=['좋아요! 그때 봬요 🎾','넵 확인했어요','오 좋네요 ㅎㅎ','그날 코트에서 만나요!','알겠습니다 👍'];
-let DM_THREADS = [];     // 서버 1:1 쪽지 스레드
+let DM_THREADS = [];     // 서버 1:1 대화 스레드
 async function loadDMThreads(){
   if(!SERVER_OK){ DM_THREADS=[]; return; }
   try{ DM_THREADS = await api('/dm/threads'); }catch(e){ DM_THREADS = []; }
@@ -6333,7 +6418,7 @@ async function loadDMThreads(){
 function renderChat(){
   if(state.chatRoom){ renderRoom(); return; }
   // 방 목록
-  let h=`<h2 class="t">대화</h2><p class="sub">클럽 단체방과 1:1 쪽지를 한곳에서.</p>`;
+  let h=`<h2 class="t">대화</h2><p class="sub">클럽 단체방과 1:1 대화를 한곳에서.</p>`;
   const ids=Object.keys(state.chats);
   const groups=ids.filter(id=>state.chats[id].type==='group');
   const dms=ids.filter(id=>state.chats[id].type==='dm');
@@ -6343,9 +6428,9 @@ function renderChat(){
   if(groups.length){h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;groups.forEach(id=>h+=row(id));}
 
   h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 4px 4px">
-        <div style="font-size:13px;font-weight:800;color:var(--gray)">1:1 쪽지</div>
+        <div style="font-size:13px;font-weight:800;color:var(--gray)">1:1 대화</div>
         <div style="font-size:11.5px;font-weight:700;color:var(--lgray)">연락처는 여기서만 주고받아요</div></div>`;
-  // 서버 스레드 (실제 쪽지)
+  // 서버 스레드 (실제 대화)
   DM_THREADS.forEach(t=>{
     const u = t.user || {};
     const nm = u.name || u.anon_nick || '알 수 없음';
@@ -6359,7 +6444,7 @@ function renderChat(){
   dms.forEach(id=>h+=row(id));
 
   if(!DM_THREADS.length && !dms.length)
-    h+=`<div class="note" style="margin-top:8px;text-align:left">아직 주고받은 쪽지가 없어요. <b>선수 비교</b>나 <b>클럽 회원</b> 화면에서 쪽지를 보낼 수 있어요.</div>`;
+    h+=`<div class="note" style="margin-top:8px;text-align:left">아직 주고받은 대화가 없어요. <b>선수 비교</b>나 <b>클럽 회원</b> 화면에서 대화를 시작할 수 있어요.</div>`;
   if(!groups.length) h+=`<div class="note" style="margin-top:12px">클럽에 정회원으로 가입하면 <b>단체방</b>이 생겨요.</div>`;
   document.getElementById('s-chat').innerHTML=h;
 }
@@ -6573,7 +6658,7 @@ function renderMe(){
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
   ${(canSellDigital() && (DEMO || !PAY_PENDING)) ? `
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openStore()">
-    <div style="display:flex;align-items:center;gap:11px">${coin(30)}<div><div style="font-size:16px;font-weight:800">M캐쉬 스토어</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">추가 대진·쪽지에 쓰는 M캐쉬 충전</div></div></div>
+    <div style="display:flex;align-items:center;gap:11px">${coin(30)}<div><div style="font-size:16px;font-weight:800">M캐쉬 스토어</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">추가 대진·대화에 쓰는 M캐쉬 충전</div></div></div>
     <div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px;color:var(--coral-d)">${state.cash}</b><span style="color:var(--coral-d);font-weight:800;font-size:18px">→</span></div></div>` : ''}
   <div class="card"><div class="ch">접근성</div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px">
@@ -6782,8 +6867,8 @@ function openPost(i){ const p=LOUNGE_POSTS[i]; if(!p)return;
     <div style="display:flex;align-items:center;gap:7px;margin-top:8px"><span style="width:22px;height:22px;border-radius:50%;background:${genC(p.g).bg};display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:${genC(p.g).c};font-weight:900">${p.g}</span><div style="font-size:12px;color:var(--lgray);font-weight:700"><b style="color:var(--ink)">${p.nick}</b> · ${p.region} · ${p.time} · 익명</div></div>
     <div style="font-size:15px;color:var(--ink2);font-weight:500;line-height:1.6;margin-top:14px">${p.b}</div>
     <div style="display:flex;gap:16px;font-size:13px;color:var(--gray);font-weight:700;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('view')}${p.v}</span><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('like')}${p.l}</span><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('comment')}${p.c}</span></div>
-    <div class="card" style="margin-top:14px;background:var(--cream2);border:none"><div style="font-size:13px;color:var(--gray);font-weight:600">익명 댓글은 자유롭게, 쪽지는 M캐쉬가 필요해요.</div></div>
-    <button class="btn" style="margin-top:12px" onclick="challengePlayer('작성자')">💌 쪽지 보내기 (M캐쉬)</button>
+    <div class="card" style="margin-top:14px;background:var(--cream2);border:none"><div style="font-size:13px;color:var(--gray);font-weight:600">익명 댓글은 자유롭게, 대화는 M캐쉬가 필요해요.</div></div>
+    <button class="btn" style="margin-top:12px" onclick="challengePlayer('작성자')">💌 대화하기 (M캐쉬)</button>
     <div style="display:flex;gap:9px;margin-top:9px"><button class="btn ghost sm" style="flex:1" onclick="reportPost(${i})">⚠ 신고</button><button class="btn ghost sm" style="flex:1" onclick="blockPostAuthor(${i})">🚫 차단</button></div>
     <button class="btn ghost" style="margin-top:9px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
@@ -6802,7 +6887,7 @@ function openLoungeWrite(){
 function submitLounge(){ const t=(document.getElementById('lwTitle')||{}).value||''; if(!t.trim()){toast('제목을 입력해 주세요');return;}
   const _b=(document.getElementById('lwBody')||{}).value||'';
   const bad=findContact(t+' '+_b);
-  if(bad){ toast(`${bad}는 공개 글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
+  if(bad){ toast(`${bad}는 공개 글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
   LOUNGE_POSTS.unshift({cat:'자유',sp:SP().n,ic:SP().ic,t:t.trim(),b:(document.getElementById('lwBody')||{}).value||'',g:state.gender==='여성'?'♀':'♂',region:'경기 용인',time:'방금',v:1,l:0,c:0,nick:myAnonNick()});
   closeOv(); state.loungeCat='전체'; renderLounge(); toast('익명으로 글을 올렸어요 · '+myAnonNick());
 }
