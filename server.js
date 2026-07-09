@@ -85,6 +85,7 @@ async function kakaoIssue(access_token, res) {
 // ══════════════════════════════════════════════════════════════
 app.get('/config', (_, res) => {
   res.json({
+    google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
@@ -194,6 +195,46 @@ app.get('/users/:id/profile', (req, res) => {
 app.get('/users', (req, res) => {
   const q = '%' + (req.query.q || '') + '%';
   res.json(db.prepare('SELECT id,name,region,sport,rating FROM users WHERE name LIKE ? ORDER BY id DESC LIMIT 30').all(q));
+});
+
+// ── 구글 로그인 (Google Identity Services, 실연동) ──
+// 클라이언트가 받은 credential(id_token, RS256 JWT)을 보내면
+// 서버가 구글 공개키(JWKS)로 서명·발급자·대상(aud)을 검증한 뒤 우리 JWT 발급.
+// 검증을 서버에서 하지 않으면 아무나 토큰을 위조해 남의 계정이 될 수 있다.
+// env: GOOGLE_CLIENT_ID
+let _googleKeys = { keys: [], ts: 0 };
+async function googleKeys() {
+  if (_googleKeys.keys.length && Date.now() - _googleKeys.ts < 3600e3) return _googleKeys.keys;
+  const url = process.env.GOOGLE_JWKS_URL || 'https://www.googleapis.com/oauth2/v3/certs';  // 테스트용 주입
+  const r = await fetch(url).then(x => x.json());
+  _googleKeys = { keys: r.keys, ts: Date.now() };
+  return r.keys;
+}
+app.post('/auth/google', async (req, res) => {
+  const { credential } = req.body || {};
+  if (!credential) return res.status(400).json({ error: 'no_credential' });
+  const aud = process.env.GOOGLE_CLIENT_ID;
+  if (!aud) return res.status(400).json({ error: 'missing_env' });
+  try {
+    const hdr = JSON.parse(Buffer.from(credential.split('.')[0], 'base64url').toString());
+    const jwk = (await googleKeys()).find(k => k.kid === hdr.kid);
+    if (!jwk) return res.status(401).json({ error: 'google_key_not_found' });
+    const pub = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+    const claims = jwt.verify(credential, pub, {
+      algorithms: ['RS256'],
+      issuer: ['https://accounts.google.com', 'accounts.google.com'],
+      audience: aud,
+    });
+    const pid = 'google-' + claims.sub;
+    const nm = claims.name || (claims.email ? claims.email.split('@')[0] : '') || ('구글' + String(claims.sub).slice(-4));
+    let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
+    if (!u) {
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('google',?,?,?,?)`)
+        .run(pid, nm, anonNick(pid), now());
+      u = getUser(rid(r));
+    }
+    res.json({ token: sign(u), user: u });
+  } catch (e) { res.status(401).json({ error: 'google_verify_failed', detail: String(e.message || e) }); }
 });
 
 // ── 애플 로그인 (Sign in with Apple, 실연동) ──
