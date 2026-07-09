@@ -1646,9 +1646,29 @@ async function api(path, opts){
    구글이 서명한 credential(JWT)을 서버로 보내면, 서버가 구글 공개키로
    서명을 검증한다. 클라이언트에서 검증하면 위조를 못 막는다. */
 let _gsiDone = false;
+function gsiReady(){
+  return typeof google!=='undefined' && google.accounts && google.accounts.id;
+}
+/* GIS 스크립트는 async defer 라 늦게 도착한다.
+   한 번 보고 없다고 포기하면 버튼이 영영 안 뜬다. 최대 10초간 기다린다. */
+let _gsiTries = 0;
+function initGoogleWhenReady(){
+  if(_gsiDone || !SERVER_OK || !CFG.google_client_id) return;
+  if(gsiReady()){ initGoogle(); return; }
+  if(_gsiTries++ > 50){                        // 200ms × 50 = 10초
+    const fb = document.getElementById('authFallback');
+    if(fb && !CFG.kakao_js_key){
+      fb.innerHTML = `<div class="note" style="margin-top:12px;text-align:left;color:#b3261e">
+        구글 로그인 스크립트를 불러오지 못했어요. 네트워크를 확인해 주세요.</div>`;
+    }
+    console.error('[MATSU] Google Identity Services 스크립트를 불러오지 못했습니다.');
+    return;
+  }
+  setTimeout(initGoogleWhenReady, 200);
+}
 function initGoogle(){
   if(_gsiDone || !SERVER_OK || !CFG.google_client_id) return;
-  if(typeof google==='undefined' || !google.accounts || !google.accounts.id) return;  // 스크립트 아직
+  if(!gsiReady()) return;
   google.accounts.id.initialize({
     client_id: CFG.google_client_id,
     callback: handleGoogleCredential,
@@ -1663,6 +1683,14 @@ function initGoogle(){
       type:'standard', theme:'outline', size:'large', shape:'pill',
       text:'continue_with', locale:'ko', width: box.offsetWidth || 320,
     });
+    // renderButton 이 조용히 실패하는 경우 (원본 미승인 등) 를 잡는다
+    setTimeout(()=>{
+      if(box.childElementCount===0){
+        console.error('[MATSU] 구글 버튼이 그려지지 않았습니다. 승인된 JavaScript 원본을 확인하세요:', location.origin);
+        box.innerHTML = `<div class="note" style="text-align:left;color:#b3261e">
+          구글 버튼을 그리지 못했어요 · 구글 콘솔의 승인된 원본에 ${esc(location.origin)} 이 있는지 확인해 주세요.</div>`;
+      }
+    }, 1500);
   }
   _gsiDone = true;
 }
@@ -1698,7 +1726,7 @@ function applyAuthUI(){
 
   if(name) name.style.display = SERVER_OK ? 'none' : 'block';
   if(gbox && !googleReady) gbox.style.display = 'none';
-  if(googleReady){ initGoogle(); setTimeout(initGoogle, 600); }   // 스크립트가 늦게 붙는 경우
+  if(googleReady) initGoogleWhenReady();
 
   const ready = kakaoReady || googleReady;
   const who = (googleReady && kakaoReady) ? '구글 또는 카카오'
@@ -1849,7 +1877,14 @@ async function handleKakaoCallback(code){
     return true;
   }catch(e){
     const m = String(e.message||'');
-    toast(m.includes('missing_code_or_env') ? '서버에 카카오 REST 키가 없어요' : '카카오 로그인에 실패했어요');
+    console.error('[MATSU] 카카오 로그인 실패:', m);
+    let msg = '카카오 로그인에 실패했어요';
+    if(m.includes('missing_code_or_env'))        msg = '서버에 카카오 REST 키가 없어요';
+    else if(m.includes('KOE006'))                msg = '카카오 콘솔에 Redirect URI 가 등록되지 않았어요';
+    else if(m.includes('KOE320'))                msg = '인증 코드가 만료됐어요 · 다시 시도해 주세요';
+    else if(m.includes('invalid_client'))        msg = 'REST API 키가 틀렸어요';
+    else if(m.includes('token_exchange_failed')) msg = `카카오가 거절했어요 · ${m.slice(0,90)}`;
+    toast(msg);
     history.replaceState({}, '', location.pathname);
     return false;
   }
