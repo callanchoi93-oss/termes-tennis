@@ -721,6 +721,24 @@
             background:var(--coral); color:#fff; font-size:10px; font-weight:800;
             border-radius:999px; padding:0 4px; vertical-align:1px; }
   /* — 오픈매치 — */
+  .om-reg{ font-size:11.5px;font-weight:700;color:var(--lgray);margin-top:4px;display:flex;align-items:center;gap:3px }
+  .om-host{ display:flex;align-items:center;gap:10px;margin-top:11px;padding:9px 10px;
+            background:#faf6ee;border-radius:12px }
+  .om-hav{ width:32px;height:32px;border-radius:50%;background:var(--coral);color:#fff;
+           display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:none }
+  .om-hn{ font-size:13.5px;font-weight:800;color:var(--ink) }
+  .om-htag{ font-size:10px;font-weight:800;color:var(--coral-d);background:var(--coral-s);
+            border-radius:6px;padding:1px 5px;vertical-align:1px }
+  .om-hd{ font-size:11.5px;font-weight:700;color:var(--gray);margin-top:2px }
+  .om-p.host{ background:var(--coral-s);color:var(--coral-d) }
+  .om-p.me{ outline:1.5px solid var(--coral) }
+  #sheet select{ border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14.5px;
+                 font-family:inherit;font-weight:700;background:#fff;box-sizing:border-box }
+  #s-match select{ border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px;
+                   font-family:inherit;font-weight:700;background:#fff;box-sizing:border-box }
+  #sheet textarea{ width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;
+                   padding:12px 14px;font-size:15px;font-family:inherit;line-height:1.6;resize:vertical;min-height:120px }
+
   .om-c{ padding:16px; }
   .om-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .om-dt{ font-size:15px; font-weight:900; letter-spacing:-.03em; color:var(--ink); }
@@ -1437,7 +1455,7 @@ async function login(p){
   const nm=(_n&&_n.trim())||'곽주영';
   state.userName=nm; state.provider=p;
   try{
-    if(p==='kakao' && SERVER_OK && CFG.kakao_js_key){ await kakaoLogin(); toast('카카오로 로그인했어요'); }
+    if(p==='kakao' && SERVER_OK && CFG.kakao_js_key){ kakaoLogin(); return; }   // 페이지 이동
     else if(p==='naver' && SERVER_OK && CFG.naver_client_id){ naverLogin(); return; }   // 페이지 이동
     else if(SERVER_OK){
       if(p==='kakao' || p==='naver') toast(`${p==='kakao'?'카카오':'네이버'} 로그인은 아직 준비 중이에요 · 이름으로 시작합니다`);
@@ -1522,6 +1540,20 @@ async function api(path, opts){
   });
   if(!r.ok) throw new Error((await r.text().catch(()=>'')) || ('HTTP '+r.status));
   return r.json();
+}
+
+/* 공용 헬퍼 */
+function esc(t){ return String(t==null?'':t)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function timeAgo(ms){
+  const d = Date.now() - (+ms||0);
+  if(d < 60e3) return '방금';
+  if(d < 3600e3) return Math.floor(d/60e3)+'분 전';
+  if(d < 86400e3) return Math.floor(d/3600e3)+'시간 전';
+  if(d < 7*86400e3) return Math.floor(d/86400e3)+'일 전';
+  const t = new Date(+ms);
+  return `${t.getMonth()+1}.${String(t.getDate()).padStart(2,'0')}`;
 }
 
 /* ═══════════ 데모 데이터 제거 ═══════════
@@ -1611,13 +1643,30 @@ async function syncMe(){
 }
 
 /* 카카오: SDK → access_token → 서버가 검증 후 우리 JWT 발급 */
-async function kakaoLogin(){
+/* 카카오 JS SDK v2 에는 Kakao.Auth.login(팝업) 이 없다. v1 에서 삭제됐다.
+   v2 는 authorize() 로 페이지를 이동시키고, redirectUri 로 ?code=... 를 돌려준다.
+   그 code 를 서버가 REST 키로 토큰과 교환한다 (POST /auth/kakao/code). */
+function kakaoLogin(){
   if(!SERVER_OK) throw new Error('server_down');
   if(!CFG.kakao_js_key) throw new Error('no_kakao_key');
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
   if(!Kakao.isInitialized()) Kakao.init(CFG.kakao_js_key);
-  const at = await new Promise((ok,ng)=>Kakao.Auth.login({success:r=>ok(r.access_token), fail:ng}));
-  saveSession(await api('/auth/kakao', {method:'POST', body:JSON.stringify({access_token:at})}));
+  try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
+  Kakao.Auth.authorize({ redirectUri: CFG.kakao_redirect_uri || (location.origin + '/') });
+}
+/* 카카오가 ?code=... 를 달고 돌려보냈을 때 */
+async function handleKakaoCallback(code){
+  try{
+    saveSession(await api('/auth/kakao/code', {method:'POST', body: JSON.stringify({code})}));
+    history.replaceState({}, '', location.pathname);
+    toast('카카오로 로그인했어요');
+    return true;
+  }catch(e){
+    const m = String(e.message||'');
+    toast(m.includes('missing_code_or_env') ? '서버에 카카오 REST 키가 없어요' : '카카오 로그인에 실패했어요');
+    history.replaceState({}, '', location.pathname);
+    return false;
+  }
 }
 /* 서버는 살아있지만 카카오 키가 없을 때 — 실제 DB 계정 생성 */
 /* 네이버는 SDK 없이 표준 OAuth 리다이렉트를 쓴다.
@@ -1630,7 +1679,10 @@ function naverAuthUrl(){
     redirect_uri:redirect, state:st });
   return 'https://nid.naver.com/oauth2.0/authorize?' + q;
 }
-function naverLogin(){ location.href = naverAuthUrl(); }
+function naverLogin(){
+  try{ sessionStorage.setItem('oauth_provider','naver'); }catch(e){}
+  location.href = naverAuthUrl();
+}
 /* 페이지가 code 를 달고 돌아왔을 때 처리 */
 async function handleNaverCallback(){
   const u = new URL(location.href);
@@ -2149,34 +2201,136 @@ function openDues(){
 function toggleDue(nm){ const c=AC(); c.dues[nm]=c.dues[nm]==='paid'?'unpaid':'paid'; openDues(); }
 function remindUnpaid(){ const c=AC(); const mem=clubMembersList(); const u=mem.filter(nm=>c.dues[nm]!=='paid'); if(!u.length){toast('미납자가 없어요');return;} pushNotif('💳','회비 납부 요청',`${u.length}명에게 납부 요청을 보냈어요`); closeOv(); toast(`미납 ${u.length}명에게 알림을 보냈어요`); }
 // ── 공지사항 ──
-function openNotices(){
-  const c=AC(); if(!c)return; c.notices=c.notices||[];
-  let h=`<div class="sh-top"><h3>공지사항</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>`;
-  if(c.officer){ h+=`<div class="fld"><label>새 공지</label><input id="ncTitle" placeholder="공지 제목 (예: 7월 정기전 안내)" maxlength="40"></div>
-    <textarea id="ncBody" placeholder="내용을 입력하세요" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;font-family:inherit;min-height:70px;resize:none"></textarea>
-    <button class="btn" style="margin-top:10px" onclick="postNotice()">공지 올리기</button>`; }
-  if(!c.notices.length){ h+=`<div class="note" style="margin-top:14px">아직 공지가 없어요.</div>`; }
-  c.notices.forEach(nt=>{ h+=`<div style="border-top:1px solid #f4efe9;padding:14px 2px 4px;margin-top:12px"><div style="font-weight:800;font-size:15px">${nt.title}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin:3px 0 7px">${nt.who} · ${nt.when}</div><div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.6;white-space:pre-wrap">${nt.body}</div></div>`; });
-  h+=`<button class="btn ghost" style="margin-top:16px" onclick="closeOv()">닫기</button>`;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+async function openNotices(){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
+  let list=[], officer=false;
+  try{
+    list = await api(`/clubs/${cid}/notices`);
+    const me = await api(`/clubs/${cid}/members`);
+    const mine = (me||[]).find(m=>m.user_id===(state.serverUser||{}).id);
+    officer = !!(mine && ['owner','officer'].includes(mine.role));
+  }catch(e){ toast('공지를 불러오지 못했어요'); return; }
+
+  let h=`<div class="sh-top"><h3>공지사항</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+  if(officer){
+    h+=`<textarea id="ncBody" placeholder="공지 내용을 입력하세요" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;font-family:inherit;min-height:76px;resize:none"></textarea>
+      <div id="ncWarn" class="cwarn"></div>
+      <label style="display:flex;align-items:center;gap:7px;margin:9px 2px;font-size:13px;font-weight:700;color:var(--gray)">
+        <input type="checkbox" id="ncPin"> 맨 위에 고정</label>
+      <button class="btn" style="margin-bottom:14px" onclick="postNotice()">공지 올리기</button>`;
+  }
+  if(!list.length){
+    h+=`<div class="empty" style="padding:40px 20px"><div class="ei">${ic('megaphone',34)}</div>
+      <div class="et">아직 공지가 없어요</div>
+      <div class="es">${officer?'첫 공지를 올려보세요.':'임원이 공지를 올리면 여기에 보여요.'}</div></div>`;
+  }
+  list.forEach(n=>{
+    const canDel = officer || n.author_id===(state.serverUser||{}).id;
+    h+=`<div class="card" style="padding:14px 15px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="font-size:11.5px;font-weight:800;color:var(--lgray)">
+          ${n.pinned?'<span style="color:var(--coral-d)">📌 고정 · </span>':''}${n.author} · ${timeAgo(n.created_at)}</div>
+        ${canDel?`<span onclick="delNotice(${n.id})" style="font-size:11.5px;font-weight:700;color:var(--lgray);cursor:pointer">삭제</span>`:''}
+      </div>
+      <div style="font-size:14.5px;font-weight:600;line-height:1.6;margin-top:7px;white-space:pre-wrap">${esc(n.body)}</div>
+    </div>`;
+  });
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+  const el=document.getElementById('ncBody');
+  if(el) el.addEventListener('input',()=>contactWarn('ncBody','ncWarn'));
 }
-function postNotice(){ const c=AC(); const t=(document.getElementById('ncTitle')||{}).value||'', bd=(document.getElementById('ncBody')||{}).value||''; if(!t.trim()){toast('공지 제목을 입력해 주세요');return;} c.notices=c.notices||[]; c.notices.unshift({title:t.trim(),body:bd.trim()||'(내용 없음)',who:'곽주영',when:'방금'}); pushNotif('📢','새 공지',t.trim()); openNotices(); renderClub(); toast('공지를 올렸어요'); }
+async function postNotice(){
+  const body=((document.getElementById('ncBody')||{}).value||'').trim();
+  if(!body){ toast('내용을 입력해 주세요'); return; }
+  const bad=findContact(body);
+  if(bad){ toast(`${bad}는 공지에 올릴 수 없어요`); return; }
+  const pinned=(document.getElementById('ncPin')||{}).checked?1:0;
+  try{
+    await api(`/clubs/${clubId()}/notices`,{method:'POST',body:JSON.stringify({body,pinned})});
+    toast('공지를 올렸어요 · 회원들에게 알림이 갔어요'); openNotices();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('officer_only')?'임원만 올릴 수 있어요'
+        : m.includes('contact_blocked')?'연락처는 올릴 수 없어요' : '올리지 못했어요');
+  }
+}
+async function delNotice(id){
+  if(!confirm('이 공지를 삭제할까요?')) return;
+  try{ await api(`/notices/${id}`,{method:'DELETE'}); toast('삭제했어요'); openNotices(); }
+  catch(e){ toast('삭제하지 못했어요'); }
+}
 // ── 출석/노쇼 ──
-function openAttend(){
-  const c=AC(); if(!c)return; c.att=c.att||{}; const mem=(c.events&&c.events[0]&&c.events[0].attendees.length)?c.events[0].attendees:clubMembersList();
-  let h=`<div class="sh-top"><h3>출석·노쇼 체크</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">모임 당일, 실제로 온 사람을 체크해요. <b>노쇼</b>는 매너 점수·통계에 반영돼요.</div>`;
-  mem.forEach(nm=>{ const st=c.att[nm]||'none';
-    h+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 2px;border-bottom:1px solid #f4efe9">
-      <span style="font-weight:700;font-size:14.5px">${nm}${nm==='곽주영'?' (나)':''}</span>
-      <div class="miniseg">
-        <div class="${st==='present'?'on':''}" style="${st==='present'?'background:var(--green)':''}" onclick="markAtt('${nm}','present')">출석</div>
-        <div class="${st==='noshow'?'on':''}" style="${st==='noshow'?'background:var(--red)':''}" onclick="markAtt('${nm}','noshow')">노쇼</div>
-      </div></div>`; });
-  const ns=mem.filter(nm=>c.att[nm]==='noshow').length;
-  h+=`<div class="note" style="margin-top:12px;text-align:left">노쇼 ${ns}명 · 노쇼는 다음 모임 우선순위·매너에 반영돼요.</div>
-    <button class="btn ghost" style="margin-top:10px" onclick="closeOv()">닫기</button>`;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+/* 출석·노쇼 — 모임별로 실제 온 사람을 체크한다 */
+async function openAttend(eid){
+  const cid = clubId();
+  if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
+  let evs=[];
+  try{ evs = await api(`/clubs/${cid}/events`); }catch(e){ toast('모임을 불러오지 못했어요'); return; }
+  if(!evs.length){
+    document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>출석·노쇼</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="empty" style="padding:44px 20px"><div class="ei">${ic('calendar',34)}</div>
+      <div class="et">모임이 없어요</div><div class="es">먼저 <b>새 모임 만들기</b>로 일정을 만들어 주세요.</div></div>`;
+    document.getElementById('ov').classList.add('on'); return;
+  }
+  eid = eid || state._attEid || evs[0].id;
+  state._attEid = eid;
+  let a;
+  try{ a = await api(`/events/${eid}/attendance`); }catch(e){ toast('불러오지 못했어요'); return; }
+
+  let h=`<div class="sh-top"><h3>출석·노쇼</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${a.is_officer
+      ? '모임 당일, 실제로 온 사람을 체크해요. <b>노쇼</b>는 누적으로 남아요.'
+      : '임원이 체크한 출석 현황이에요.'}</div>`;
+  h+=`<select id="attEv" onchange="openAttend(+this.value)" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14.5px;font-family:inherit;font-weight:700;background:#fff;margin-bottom:12px">`;
+  evs.forEach(e=>{ h+=`<option value="${e.id}" ${e.id===eid?'selected':''}>${esc(e.title||'모임')}${e.date?` · ${e.date}`:''}</option>`; });
+  h+=`</select>`;
+
+  if(!a.rows.length){
+    h+=`<div class="note" style="text-align:left">아직 참석 신청한 회원이 없어요.</div>`;
+  }
+  const stLabel = {going:'참석', absent:'불참', undecided:'미정'};
+  a.rows.forEach(r=>{
+    const me = r.user_id===(state.serverUser||{}).id;
+    h+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px;border-bottom:1px solid #f4efe9">
+      <div><div style="font-weight:800;font-size:14.5px">${esc(r.name)}${me?' <span style="color:var(--coral-d);font-size:11px">(나)</span>':''}</div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--lgray);margin-top:2px">신청: ${stLabel[r.status]||'—'}</div></div>
+      ${a.is_officer ? `<div class="miniseg">
+          <div class="ms-b ${r.showed===1?'on':''}" onclick="setShowed(${eid},${r.user_id},1)">왔음</div>
+          <div class="ms-b ${r.showed===0?'on':''}" onclick="setShowed(${eid},${r.user_id},0)">노쇼</div>
+        </div>`
+        : `<span class="rbadge" style="${r.showed===1?'background:#e7f4ec;color:#1f7d4d':r.showed===0?'background:#fde8e8;color:#b3261e':'background:#f2ece3;color:#8a8172'}">
+            ${r.showed===1?'출석':r.showed===0?'노쇼':'미확인'}</span>`}
+    </div>`;
+  });
+  h+=`<button class="btn ghost" style="margin-top:14px" onclick="openAttendSummary()">누적 출석 현황 보기</button>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+async function setShowed(eid, uid, v){
+  try{ await api(`/events/${eid}/attendance/${uid}`,{method:'PATCH',body:JSON.stringify({showed:v})});
+    openAttend(eid);
+  }catch(e){ toast(String(e.message).includes('officer_only')?'임원만 체크할 수 있어요':'실패했어요'); }
+}
+async function openAttendSummary(){
+  let rows=[];
+  try{ rows = await api(`/clubs/${clubId()}/attendance/summary`); }catch(e){ toast('불러오지 못했어요'); return; }
+  let h=`<div class="sh-top"><h3>누적 출석</h3><div class="cl" role="button" tabindex="0" onclick="openAttend()">×</div></div>
+    <div class="sd">모임에 참석 신청한 횟수 대비 실제로 온 횟수예요.</div>`;
+  if(!rows.length) h+=`<div class="note">아직 기록이 없어요.</div>`;
+  rows.forEach(r=>{
+    const total = (r.attended||0)+(r.noshow||0);
+    const rate = total ? Math.round(r.attended/total*100) : 0;
+    h+=`<div style="padding:11px 2px;border-bottom:1px solid #f4efe9">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-weight:800;font-size:14.5px">${esc(r.name)}</span>
+        <span style="font-weight:800;font-size:13px;color:${rate>=80?'#1f7d4d':rate>=50?'#a5750d':'#b3261e'}">${total?rate+'%':'—'}</span></div>
+      <div class="rp-track" style="margin-top:7px"><i style="width:${rate}%"></i></div>
+      <div class="rp-cap">출석 ${r.attended||0} · 노쇼 ${r.noshow||0}</div></div>`;
+  });
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
 }
 function markAtt(nm,st){ const c=AC(); c.att=c.att||{}; c.att[nm]=c.att[nm]===st?'none':st; openAttend(); }
 // ── 경기 기록/히스토리 ──
@@ -3179,24 +3333,22 @@ function renderClub(){
       if(c3.dues['곽주영']==='unpaid'){ h+=`<div class="card" style="background:#fff0f1;border-color:#f5c6cb"><div style="font-size:13.5px;font-weight:700;color:#c0392b">${ic('card',14)}이번 시즌 회비가 미납이에요. 클럽 회비를 확인해 주세요.</div></div>`; }
       if(off){
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
-          <div class="toolrow" onclick="openDues()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 정산</div><div class="tr-d">납부·미납 현황과 납부 요청</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 장부</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubPremium()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openMyReport()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">내 리포트</div><div class="tr-d">승률·득실·파트너 궁합을 클럽 평균과 비교</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#ece7f8;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비·게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n" style="display:flex;align-items:center;gap:5px">클럽 리포트 ${state.premium?'':ic('lock',14)}</div><div class="tr-d">${state.premium?'참여·수익·인기시간 분석':'프리미엄 전용 · 구독하면 열려요'}</div></div><div class="tr-arr">›</div></div>
+          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n" style="display:flex;align-items:center;gap:5px">클럽 리포트 ${state.premium?'':ic('lock',14)}</div><div class="tr-d">${state.premium?'참여·수익·인기시간 분석':'프리미엄 전용 · 구독하면 열려요'}</div></div><div class="tr-arr">›</div></div>` : ``}
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석·노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openGuestSettle()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">방문비 내역·정산 추적</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 관리</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>`;
+          ${DEMO ? `<div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>` : ``}
+          ${DEMO ? `<div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 관리</div></div><div class="tr-arr">›</div></div>` : ``}
+          ${DEMO ? `<div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>` : ``}
+          ${DEMO ? `<div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>` : ``}
+          ${DEMO ? `<div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>` : ``}`;
       } else {
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 정보</div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 보기</div></div><div class="tr-arr">›</div></div>
@@ -4168,41 +4320,109 @@ async function issueDues(){
     else toast(m.includes('officer_only')?'임원진만 고지할 수 있어요':'실패했어요'); }
 }
 
+/* 행정구역 (시/도 → 시군구). 읍면동은 자유 입력. */
+const REGIONS = {
+  '서울특별시':['강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구','노원구','도봉구','동대문구','동작구','마포구','서대문구','서초구','성동구','성북구','송파구','양천구','영등포구','용산구','은평구','종로구','중구','중랑구'],
+  '부산광역시':['강서구','금정구','남구','동구','동래구','부산진구','북구','사상구','사하구','서구','수영구','연제구','영도구','중구','해운대구','기장군'],
+  '대구광역시':['남구','달서구','동구','북구','서구','수성구','중구','달성군','군위군'],
+  '인천광역시':['계양구','미추홀구','남동구','동구','부평구','서구','연수구','중구','강화군','옹진군'],
+  '광주광역시':['광산구','남구','동구','북구','서구'],
+  '대전광역시':['대덕구','동구','서구','유성구','중구'],
+  '울산광역시':['남구','동구','북구','중구','울주군'],
+  '세종특별자치시':['세종시'],
+  '경기도':['수원시 장안구','수원시 권선구','수원시 팔달구','수원시 영통구','성남시 수정구','성남시 중원구','성남시 분당구','고양시 덕양구','고양시 일산동구','고양시 일산서구','용인시 처인구','용인시 기흥구','용인시 수지구','부천시','안산시 상록구','안산시 단원구','안양시 만안구','안양시 동안구','남양주시','화성시','평택시','의정부시','시흥시','파주시','김포시','광명시','광주시','군포시','오산시','이천시','양주시','안성시','구리시','포천시','의왕시','하남시','여주시','동두천시','과천시','양평군','가평군','연천군'],
+  '강원특별자치도':['춘천시','원주시','강릉시','동해시','태백시','속초시','삼척시','홍천군','횡성군','영월군','평창군','정선군','철원군','화천군','양구군','인제군','고성군','양양군'],
+  '충청북도':['청주시 상당구','청주시 서원구','청주시 흥덕구','청주시 청원구','충주시','제천시','보은군','옥천군','영동군','증평군','진천군','괴산군','음성군','단양군'],
+  '충청남도':['천안시 동남구','천안시 서북구','공주시','보령시','아산시','서산시','논산시','계룡시','당진시','금산군','부여군','서천군','청양군','홍성군','예산군','태안군'],
+  '전북특별자치도':['전주시 완산구','전주시 덕진구','군산시','익산시','정읍시','남원시','김제시','완주군','진안군','무주군','장수군','임실군','순창군','고창군','부안군'],
+  '전라남도':['목포시','여수시','순천시','나주시','광양시','담양군','곡성군','구례군','고흥군','보성군','화순군','장흥군','강진군','해남군','영암군','무안군','함평군','영광군','장성군','완도군','진도군','신안군'],
+  '경상북도':['포항시 남구','포항시 북구','경주시','김천시','안동시','구미시','영주시','영천시','상주시','문경시','경산시','의성군','청송군','영양군','영덕군','청도군','고령군','성주군','칠곡군','예천군','봉화군','울진군','울릉군'],
+  '경상남도':['창원시 의창구','창원시 성산구','창원시 마산합포구','창원시 마산회원구','창원시 진해구','진주시','통영시','사천시','김해시','밀양시','거제시','양산시','의령군','함안군','창녕군','고성군','남해군','하동군','산청군','함양군','거창군','합천군'],
+  '제주특별자치도':['제주시','서귀포시'],
+};
+
+const WD = ['일','월','화','수','목','금','토'];
 /* ═══════════ 오픈매치 (클럽 밖 모집 경기) ═══════════
    참가비는 앱이 받지 않는다. 주최자가 현장에서 정산.        */
 /* 오픈매치 카드 목록 HTML (화면·시트 공용) */
+/* "2026-07-18T09:00" ~ "2026-07-18T12:00" → "07.18(토) 09:00–12:00" */
+function fmtRange(sa, ea, fallback){
+  if(!sa) return fallback || '';
+  const p = n => String(n).padStart(2,'0');
+  const s1 = new Date(sa);
+  if(isNaN(s1)) return fallback || sa;
+  let out = `${p(s1.getMonth()+1)}.${p(s1.getDate())}(${WD[s1.getDay()]}) ${p(s1.getHours())}:${p(s1.getMinutes())}`;
+  if(ea){
+    const e1 = new Date(ea);
+    if(!isNaN(e1)){
+      const sameDay = e1.toDateString()===s1.toDateString();
+      out += '–' + (sameDay ? `${p(e1.getHours())}:${p(e1.getMinutes())}`
+                            : `${p(e1.getMonth()+1)}.${p(e1.getDate())} ${p(e1.getHours())}:${p(e1.getMinutes())}`);
+    }
+  }
+  return out;
+}
+function regionText(m){
+  return [m.sido, m.sigungu, m.dong].filter(Boolean).join(' ');
+}
 function matchCards(list){
   if(!list.length){
     return `<div class="empty" style="padding:44px 20px"><div class="ei">${ic('swap',34)}</div>
       <div class="et">열린 경기가 없어요</div><div class="es">첫 오픈매치를 열어보세요.</div></div>`;
   }
+  const myId = (state.serverUser||{}).id;
   let h='';
   list.forEach(m=>{
     const closed = m.status && m.status!=='open';
     const pct = Math.min(100, Math.round(m.cur/Math.max(m.cap,1)*100));
+    const hostName = (m.host && m.host.name) || '알 수 없음';
+    const reg = regionText(m);
     h+=`<div class="card om-c" style="${closed?'opacity:.6':''}">
       <div class="om-top">
-        <div><div class="om-dt">${m.dt}</div><div class="om-loc">${m.loc}</div></div>
+        <div style="min-width:0">
+          <div class="om-dt">${fmtRange(m.start_at, m.end_at, m.dt)}</div>
+          <div class="om-loc">${esc(m.loc)}</div>
+          ${reg?`<div class="om-reg">${ic('pin',12)} ${esc(reg)}</div>`:''}
+        </div>
         <span class="rbadge" style="${m.confirmed?'background:#e7f4ec;color:#1f7d4d':'background:#fdf2dd;color:#a5750d'}">
           ${closed?'마감':m.confirmed?'성사':'모집중'}</span>
       </div>
-      <div class="om-meta">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
-      ${m.note?`<div class="om-note">${m.note}</div>`:''}
+
+      <div class="om-host">
+        <div class="om-hav">${esc(hostName[0])}</div>
+        <div style="flex:1;min-width:0">
+          <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span></div>
+          <div class="om-hd">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
+        </div>
+        ${(!m.is_host && m.host) ? `<button class="btn ghost sm" style="width:auto;padding:7px 12px;margin:0"
+            onclick="openDM(${m.host.id},'${esc(hostName).replace(/'/g,"\\'")}')">쪽지</button>` : ''}
+      </div>
+
+      ${m.note?`<div class="om-note">${esc(m.note)}</div>`:''}
       <div class="rp-track" style="margin-top:10px"><i style="width:${pct}%"></i></div>
       <div class="rp-cap">${m.cur}/${m.cap}명 · 최소 ${m.min_cnt}명이면 성사${m.confirmed?' ✓':''}</div>
-      <div class="om-ppl">${m.players.map(p=>`<span class="om-p">${p.name}</span>`).join('')}</div>
-      ${closed?'' : m.is_host
+
+      <div class="om-ppl">${m.players.map(p=>
+        `<span class="om-p ${m.host&&p.id===m.host.id?'host':''} ${p.id===myId?'me':''}">${esc(p.name)}${m.host&&p.id===m.host.id?' 👑':''}</span>`).join('')}</div>
+
+      ${m.is_host
         ? `<div style="display:flex;gap:8px;margin-top:11px">
-             <button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed')">모집 마감</button>
-             <button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'cancelled')">취소</button></div>`
-        : m.joined
-          ? `<button class="btn sm ghost" style="margin-top:11px" onclick="leaveMatch(${m.id})">참가 취소</button>`
-          : m.full
-            ? `<button class="btn sm ghost" style="margin-top:11px" disabled>정원이 찼어요</button>`
-            : `<button class="btn sm" style="margin-top:11px" onclick="joinMatch(${m.id})">참가 신청</button>`}
+             ${closed?'':`<button class="btn sm ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed')">모집 마감</button>`}
+             <button class="btn sm ghost" style="flex:1;color:#b3261e" onclick="deleteMatch(${m.id})">삭제</button></div>`
+        : closed ? ''
+          : m.joined
+            ? `<button class="btn sm ghost" style="margin-top:11px" onclick="leaveMatch(${m.id})">참가 취소</button>`
+            : m.full
+              ? `<button class="btn sm ghost" style="margin-top:11px" disabled>정원이 찼어요</button>`
+              : `<button class="btn sm" style="margin-top:11px" onclick="joinMatch(${m.id})">참가 신청</button>`}
     </div>`;
   });
   return h;
+}
+async function deleteMatch(id){
+  if(!confirm('이 오픈매치를 삭제할까요? 참가자에게 알림이 가고 되돌릴 수 없어요.')) return;
+  try{ await api(`/open-matches/${id}`,{method:'DELETE'}); toast('삭제했어요'); renderMatch(); }
+  catch(e){ toast(String(e.message).includes('host_only')?'주최자만 삭제할 수 있어요':'삭제하지 못했어요'); }
 }
 
 /* 오픈매치 — 하단 탭의 독립 화면 */
@@ -4214,15 +4434,32 @@ async function renderMatch(){
     h+=`<div class="note" style="margin-top:12px">오픈매치는 서버 연결이 필요해요.</div>`;
     el.innerHTML=h; return;
   }
+  const sd = state._omSido||'', sg = state._omSigungu||'';
   h+=`<button class="btn ghost" style="margin-bottom:12px" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <select onchange="setOmSido(this.value)" style="flex:1;min-width:0">
+          <option value="">전국</option>
+          ${Object.keys(REGIONS).map(x=>`<option value="${x}" ${x===sd?'selected':''}>${x}</option>`).join('')}
+        </select>
+        <select onchange="setOmSigungu(this.value)" style="flex:1;min-width:0" ${sd?'':'disabled'}>
+          <option value="">전체</option>
+          ${(REGIONS[sd]||[]).map(x=>`<option value="${x}" ${x===sg?'selected':''}>${x}</option>`).join('')}
+        </select>
+      </div>
       <div class="note" style="text-align:left;margin-bottom:12px"><b>참가비는 현장에서</b> 주최자에게 내요. 앱은 돈을 받지 않아요.</div>
       <div id="omList">${matchCards(OM_LIST)}</div>`;
   el.innerHTML=h;
   try{
-    OM_LIST = await api(`/open-matches?sport=${state.sport}`);
+    const q = new URLSearchParams({sport:state.sport});
+    if(sd) q.set('sido', sd);
+    if(sg) q.set('sigungu', sg);
+    OM_LIST = await api(`/open-matches?${q}`);
     const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
   }catch(e){}
 }
+
+function setOmSido(v){ state._omSido=v; state._omSigungu=''; renderMatch(); }
+function setOmSigungu(v){ state._omSigungu=v; renderMatch(); }
 
 /* 시트로도 열 수 있게 유지 (다른 화면에서 부를 때) */
 async function openMatches(){
@@ -4230,35 +4467,69 @@ async function openMatches(){
   go('match');
 }
 function openNewMatch(){
+  const sidos = Object.keys(REGIONS);
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
-    <div class="fld"><label>일시</label><input id="omDt" type="datetime-local" step="900"></div>
-    <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 용인 기흥 테니스장 3번 코트"></div>
-    <div class="fld"><label>형식</label><input id="omFmt" placeholder="예) 복식" value="복식"></div>
+
+    <div class="fld"><label>시작</label><input id="omStart" type="datetime-local" step="900"></div>
+    <div class="fld"><label>종료</label><input id="omEnd" type="datetime-local" step="900"></div>
+
+    <div class="fld"><label>지역</label>
+      <div style="display:flex;gap:8px">
+        <select id="omSido" onchange="fillSigungu()" style="flex:1;min-width:0">
+          <option value="">시/도</option>
+          ${sidos.map(x=>`<option value="${x}">${x}</option>`).join('')}
+        </select>
+        <select id="omSigungu" style="flex:1;min-width:0"><option value="">시/군/구</option></select>
+      </div>
+    </div>
+    <div class="fld"><label>읍/면/동 (선택)</label><input id="omDong" placeholder="예) 구갈동"></div>
+    <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 기흥 테니스장 3번 코트"></div>
+
+    <div class="fld"><label>형식</label><input id="omFmt" value="복식"></div>
     <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>정원</label><input id="omCap" inputmode="numeric" value="8"></div>
       <div class="fld" style="flex:1"><label>최소 인원</label><input id="omMin" inputmode="numeric" value="6"></div>
     </div>
-    <div class="fld"><label>안내 (선택)</label><textarea id="omNote" rows="2" placeholder="예) 초급 환영, 공은 제가 준비합니다"></textarea></div>
+    <div class="fld"><label>안내 (선택)</label>
+      <textarea id="omNote" rows="6" placeholder="예) 초급 환영합니다.&#10;공은 제가 준비할게요.&#10;주차는 건물 뒤편에 가능합니다."></textarea></div>
     <div id="omWarn" class="cwarn"></div>
     <button class="btn" onclick="createMatch()">오픈매치 열기</button>`;
   document.getElementById('ov').classList.add('on');
-  // 기본값: 다가오는 토요일 오전 9시 · 과거 날짜는 못 고르게
-  const dt = document.getElementById('omDt');
-  if(dt){
-    const d = new Date();
-    d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
-    d.setHours(9,0,0,0);
-    const pad = n => String(n).padStart(2,'0');
-    const fmt = x => `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
-    dt.value = fmt(d);
-    dt.min = fmt(new Date());
+
+  // 기본값: 다가오는 토요일 09:00 ~ 12:00
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = x => `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
+  const d = new Date();
+  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
+  d.setHours(9,0,0,0);
+  const e = new Date(d); e.setHours(12,0,0,0);
+  const S=document.getElementById('omStart'), E=document.getElementById('omEnd');
+  S.value=fmt(d); S.min=fmt(new Date());
+  E.value=fmt(e); E.min=fmt(new Date());
+  S.addEventListener('change',()=>{                      // 시작을 바꾸면 종료도 따라온다
+    const st=new Date(S.value); if(isNaN(st)) return;
+    E.min = S.value;
+    if(!E.value || new Date(E.value) <= st){ const en=new Date(st); en.setHours(en.getHours()+3); E.value=fmt(en); }
+  });
+
+  // 내 지역을 기본 선택
+  const my = (state.region && state.region!=='전체') ? state.region : '';
+  if(my){
+    const hit = Object.keys(REGIONS).find(sd=>my.startsWith(sd.slice(0,2)));
+    if(hit){ document.getElementById('omSido').value=hit; fillSigungu(); }
   }
-  ['omLoc','omNote'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+  ['omLoc','omNote','omDong'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+}
+function fillSigungu(){
+  const sd = (document.getElementById('omSido')||{}).value;
+  const sel = document.getElementById('omSigungu');
+  if(!sel) return;
+  const list = REGIONS[sd] || [];
+  sel.innerHTML = `<option value="">시/군/구</option>` + list.map(x=>`<option value="${x}">${x}</option>`).join('');
 }
 /* 2026-07-18T09:00 → "07.18(토) 09:00" */
-const WD = ['일','월','화','수','목','금','토'];
 function fmtMatchDate(iso){
   const d = new Date(iso);
   if(isNaN(d)) return iso;
@@ -4267,26 +4538,28 @@ function fmtMatchDate(iso){
 }
 async function createMatch(){
   const v = id => ((document.getElementById(id)||{}).value||'').trim();
-  const raw=v('omDt'), loc=v('omLoc'), note=v('omNote');
-  if(!raw){ toast('일시를 골라주세요'); return; }
+  const start=v('omStart'), end=v('omEnd'), loc=v('omLoc'), note=v('omNote'), dong=v('omDong');
+  if(!start){ toast('시작 시각을 골라주세요'); return; }
   if(!loc){ toast('장소를 입력해 주세요'); return; }
-  if(new Date(raw) < new Date()){ toast('지난 날짜는 고를 수 없어요'); return; }
-  const bad = findContact(`${loc} ${note}`);
+  if(new Date(start) < new Date()){ toast('지난 시각은 고를 수 없어요'); return; }
+  if(end && new Date(end) <= new Date(start)){ toast('종료가 시작보다 빨라요'); return; }
+  const bad = findContact(`${loc} ${note} ${dong}`);
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 쪽지를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
   const cap = num('omCap')||8, min_cnt = num('omMin')||6;
   if(min_cnt > cap){ toast('최소 인원이 정원보다 많아요'); return; }
   try{
     await api('/open-matches',{method:'POST',body:JSON.stringify({
-      sport:state.sport, dt:fmtMatchDate(raw), dt_iso:raw, loc, fmt:v('omFmt')||'복식',
-      gd:state.gender==='여성'?'여자부':'남자부',
+      sport:state.sport, dt:fmtMatchDate(start), start_at:start, end_at:end||null,
+      sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
+      loc, fmt:v('omFmt')||'복식', gd:state.gender==='여성'?'여자부':'남자부',
       price:num('omPrice'), cap, min_cnt, note })});
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
-    // 왜 실패했는지 그대로 알려준다. "실패했어요" 만으론 고칠 수가 없다.
     const m = String(e.message||'');
     toast( m.includes('contact_blocked') ? '연락처는 모집글에 올릴 수 없어요'
-         : m.includes('dt_loc_required') ? '일시와 장소를 모두 입력해 주세요'
+         : m.includes('end_before_start') ? '종료가 시작보다 빨라요'
+         : m.includes('dt_loc_required') ? '시각과 장소를 모두 입력해 주세요'
          : m.includes('401') || m.includes('no_token') ? '다시 로그인해 주세요'
          : m.includes('Failed to fetch') ? '서버에 연결할 수 없어요'
          : `개설 실패 · ${m.slice(0,40)}` );
@@ -5690,31 +5963,33 @@ function renderMe(){
   </div>
   <div class="card"><div class="ch">시즌 배지</div>
     <div class="badgrid">${myBadges().map(b=>`<div class="badgi ${b.on?'on':'off'}"><div class="bg-e">${b.e}</div><div class="bg-l">${b.l}</div></div>`).join('')}</div></div>
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openLeaderboard()">
-    <div><div style="font-size:16px;font-weight:800">개인 랭킹</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">우리 지역·부별 내 순위와 등락 보기</div></div>
+  ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openLeaderboard()">
+    <div><div style="font-size:16px;font-weight:800">개인 랭킹</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">우리 지역·부별 내 순위와 등락 보기</div></div>` : ``}
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openHallOfFame()">
-    <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div>
+  ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openHallOfFame()">
+    <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div>` : ``}
+    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMyReport()">
+    <div><div style="font-size:16px;font-weight:800">내 리포트 📊</div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">승률·득실·파트너 궁합을 클럽 평균과 비교</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openEarn()">
     <div><div style="font-size:16px;font-weight:800">M캐쉬 ${(state.cash||0).toLocaleString()}</div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">친구 초대 · 광고 보고 받기</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openInvite()">
-    <div><div style="font-size:16px;font-weight:800">친구 초대 🎁</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">초대하고 프리미엄·배지 보상받기 · ${state.invited||0}명 초대</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openVerify()">
-    <div><div style="font-size:16px;font-weight:800">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#2f9159;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:800">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div>
+  ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openVerify()">
+    <div><div style="font-size:16px;font-weight:800">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#2f9159;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:800">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div>` : ``}
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
-    <div><div style="font-size:16px;font-weight:800">${SP().n} 통산 기록 📈</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">종목별 누적 스탯·하이라이트</div></div>
+  ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
+    <div><div style="font-size:16px;font-weight:800">${SP().n} 통산 기록 📈</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">종목별 누적 스탯·하이라이트</div></div>` : ``}
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
   <div class="card"><div class="ch">매너</div>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-size:16px;font-weight:800;color:var(--green)">😊 매너 양호</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">최근 평가 긍정 92% · 신고 0건</div></div>
       <div style="font-size:12px;color:var(--lgray);font-weight:600;text-align:right">상태가 나빠지면<br>리그 참여가 제한돼요</div></div></div>
-  ${(()=>{const n=Object.keys(rivalList()).length;return `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openRivals()">
-    <div><div style="font-size:16px;font-weight:800">함께 친 사람 · 라이벌 🔥</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div>
+  ${(()=>{const n=Object.keys(rivalList()).length;return `${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openRivals()">
+    <div><div style="font-size:16px;font-weight:800">함께 친 사람 · 라이벌 🔥</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div>` : ``}
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;})()}
   <div class="card"><div class="ch">결제</div>
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -5988,7 +6263,11 @@ checkServer().then(async ok=>{
   renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
   if(state.view) go(state.view);
   if(new URL(location.href).searchParams.get('code')){
-    const done = await handleNaverCallback();
+    let provider = 'naver';
+    try{ provider = sessionStorage.getItem('oauth_provider') || 'naver'; }catch(e){}
+    try{ sessionStorage.removeItem('oauth_provider'); }catch(e){}
+    const code = new URL(location.href).searchParams.get('code');
+    const done = provider==='kakao' ? await handleKakaoCallback(code) : await handleNaverCallback();
     if(done){
       document.getElementById('auth').classList.remove('on');
       await loadClubIds();

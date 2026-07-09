@@ -1,108 +1,145 @@
 <!DOCTYPE html>
-<html lang="ko"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
-<title>MATSU 운영 대시보드</title>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>MATSU 운영자</title>
 <style>
-  :root{--ink:#1b1813;--coral:#ec6a2e;--coralD:#cf5418;--cream:#f5f2e9;--card:#fffdf6;--gray:#7f776a;--line:#e9e3d4;--blue:#3f6bc2;--ok:#2f9159;--red:#c0392b}
+  :root{ --brand:#ED7C30; --ink:#1b1813; --gray:#6b6357; --lgray:#8a8172; --line:#e6ded2; --bg:#faf7f1; }
   *{box-sizing:border-box}
-  body{margin:0;background:#e7e0d2;font-family:'Pretendard Variable',Pretendard,sans-serif;color:var(--ink);letter-spacing:-.01em}
-  .wrap{max-width:1000px;margin:0 auto;padding:20px}
-  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-  .logo{font-size:26px;font-weight:900;letter-spacing:-1px}
-  input{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;background:#fff}
-  button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;padding:9px 14px;font-weight:800;background:var(--coral);color:#fff;font-size:13px}
-  button.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
-  button.red{background:var(--red)}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
-  @media(max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}}
-  .stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
-  .stat .v{font-size:28px;font-weight:900}
-  .stat .l{font-size:12px;color:var(--gray);font-weight:700;margin-top:2px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
-  .ch{font-size:16px;font-weight:900;margin-bottom:12px}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
-  th{color:var(--gray);font-size:11px}
-  .tag{font-size:11px;font-weight:800;border-radius:6px;padding:2px 7px;background:#efe9db}
-  .muted{color:var(--gray)}
-  .center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:12px}
-</style></head>
-<body><div class="wrap" id="app"></div>
-<script>
-const API = location.origin;
-let KEY = sessionStorage.getItem('matsu_admin_key') || '';
+  body{margin:0;padding:22px 16px 60px;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',Pretendard,sans-serif;
+    max-width:760px;margin:0 auto;line-height:1.6}
+  h1{font-size:20px;letter-spacing:-.03em;margin:0 0 4px}
+  .sub{font-size:13px;color:var(--lgray);margin-bottom:20px}
+  input,button{font-family:inherit;font-size:14px}
+  input{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;background:#fff}
+  button{padding:10px 14px;border:0;border-radius:10px;background:var(--brand);color:#fff;font-weight:800;cursor:pointer}
+  button.ghost{background:#fff;color:var(--gray);border:1.5px solid var(--line)}
+  button.del{background:#fff;color:#b3261e;border:1.5px solid #f0d6d3}
+  .row{display:flex;gap:8px;align-items:center}
+  .tabs{display:flex;gap:6px;margin:20px 0 12px}
+  .tabs div{padding:8px 14px;border-radius:999px;background:#fff;border:1.5px solid var(--line);
+    font-size:13px;font-weight:800;color:var(--gray);cursor:pointer}
+  .tabs div.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 15px;margin-bottom:9px}
+  .meta{font-size:11.5px;font-weight:800;color:var(--lgray);margin-bottom:5px}
+  .title{font-size:15px;font-weight:800}
+  .body{font-size:13.5px;color:var(--gray);white-space:pre-wrap;margin-top:5px}
+  .hidden-tag{color:#b3261e;font-weight:800}
+  .empty{text-align:center;color:var(--lgray);padding:40px 0;font-size:14px}
+  .warn{background:#fdf2dd;border:1px solid #f0dcae;border-radius:11px;padding:11px 13px;
+    font-size:12.5px;color:#7a5c12;margin-bottom:16px}
+</style>
+</head>
+<body>
+<h1>MATSU 운영자</h1>
+<div class="sub">이용약관을 위반한 게시물을 삭제합니다.</div>
 
-async function adm(path, opt={}) {
-  const r = await fetch(API + path, { ...opt, headers: { 'Content-Type':'application/json', 'x-admin-key': KEY, ...(opt.headers||{}) } });
-  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || r.status);
+<div class="warn">
+  이 화면은 <b>ADMIN_KEY</b>를 아는 사람만 쓸 수 있습니다. 키는 브라우저에만 저장되고 서버로는 요청할 때만 보냅니다.
+  키가 유출되면 Railway Variables에서 즉시 바꾸세요.
+</div>
+
+<div class="row">
+  <input id="key" type="password" placeholder="ADMIN_KEY" autocomplete="off">
+  <button onclick="load()">불러오기</button>
+</div>
+
+<div class="tabs">
+  <div id="t-posts" class="on" onclick="tab('posts')">라운지 글</div>
+  <div id="t-matches" onclick="tab('matches')">오픈매치</div>
+</div>
+
+<div id="out" class="empty">키를 입력하고 불러오기를 누르세요.</div>
+
+<script>
+let DATA = { posts: [], open_matches: [] };
+let TAB = 'posts';
+
+const keyOf = () => document.getElementById('key').value.trim();
+const esc = t => String(t == null ? '' : t)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function when(ms){
+  const d = new Date(+ms || 0);
+  if (isNaN(d)) return '';
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function api(path, opts){
+  const r = await fetch(path, { ...opts, headers: { 'Content-Type':'application/json', 'x-admin-key': keyOf() } });
+  if (!r.ok) throw new Error(r.status === 403 ? 'ADMIN_KEY가 틀렸어요' : ('HTTP ' + r.status));
   return r.json();
 }
 
-function login() {
-  document.getElementById('app').innerHTML = `
-    <div class="center">
-      <div class="logo">MATSU 운영</div>
-      <div class="card" style="width:300px">
-        <div class="ch">관리자 로그인</div>
-        <input id="k" placeholder="ADMIN_KEY" style="width:100%;margin-bottom:10px" />
-        <button style="width:100%" onclick="doLogin()">들어가기</button>
-        <p class="muted" style="font-size:12px;margin-top:10px">서버 env ADMIN_KEY (데모 기본값: matsu-admin)</p>
-      </div>
-    </div>`;
-}
-async function doLogin() {
-  KEY = document.getElementById('k').value.trim();
-  try { await adm('/admin/stats'); sessionStorage.setItem('matsu_admin_key', KEY); dashboard(); }
-  catch (e) { alert('접근 실패: ' + e.message); }
-}
-function logout(){ sessionStorage.removeItem('matsu_admin_key'); KEY=''; login(); }
-
-async function dashboard() {
-  document.getElementById('app').innerHTML = `
-    <div class="top"><div class="logo">MATSU 운영 대시보드</div><button class="ghost" onclick="logout()">로그아웃</button></div>
-    <div id="stats" class="grid"></div>
-    <div class="card"><div class="ch">🚨 신고 처리 (모더레이션)</div><div id="reports">불러오는 중…</div></div>
-    <div class="card"><div class="ch">💳 결제·매출</div><div id="orders">불러오는 중…</div></div>
-    <div class="card"><div class="ch">👥 최근 가입 회원</div><div id="users">불러오는 중…</div></div>`;
-  loadStats(); loadReports(); loadOrders(); loadUsers();
+async function load(){
+  if (!keyOf()) { alert('ADMIN_KEY를 입력하세요'); return; }
+  const out = document.getElementById('out');
+  out.className = 'empty'; out.textContent = '불러오는 중…';
+  try {
+    DATA = await api('/admin/feed');
+    render();
+  } catch (e) {
+    out.className = 'empty'; out.textContent = e.message;
+  }
 }
 
-async function loadStats() {
-  const s = await adm('/admin/stats');
-  const cell = (v,l) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`;
-  document.getElementById('stats').innerHTML =
-    cell(s.users,'회원') + cell(s.clubs,'클럽') + cell(s.posts,'노출 글') + cell(s.openReports,'미처리 신고') +
-    cell(s.matches,'경기') + cell(s.paidOrders,'결제건') + cell(s.revenueWon.toLocaleString()+'원','매출') + cell(s.cashIssued,'지급 M캐쉬');
+function tab(t){
+  TAB = t;
+  document.getElementById('t-posts').className = t === 'posts' ? 'on' : '';
+  document.getElementById('t-matches').className = t === 'matches' ? 'on' : '';
+  render();
 }
-async function loadReports() {
-  const rs = await adm('/admin/reports');
-  if (!rs.length) { document.getElementById('reports').innerHTML = '<p class="muted">미처리 신고가 없어요 👍</p>'; return; }
-  document.getElementById('reports').innerHTML = `<table><tr><th>대상</th><th>사유</th><th>상태</th><th>조치</th></tr>` +
-    rs.map(r => `<tr>
-      <td>${r.target_type} #${r.target_id}${r.target ? ' · '+esc(r.target.title) : ''} ${r.target&&r.target.hidden?'<span class="tag">숨김</span>':''}</td>
-      <td>${esc(r.reason||'')}</td>
-      <td><span class="tag">${r.status}</span></td>
-      <td>${r.target_type==='post' ? `<button class="red" onclick="hide(${r.target_id})">글 숨기기</button> ` : ''}<button class="ghost" onclick="resolve(${r.id})">넘어가기</button></td>
-    </tr>`).join('') + `</table>`;
-}
-async function loadOrders() {
-  const os = await adm('/admin/orders');
-  if (!os.length) { document.getElementById('orders').innerHTML = '<p class="muted">결제 내역이 없어요.</p>'; return; }
-  document.getElementById('orders').innerHTML = `<table><tr><th>주문</th><th>회원</th><th>금액</th><th>M캐쉬</th><th>상태</th></tr>` +
-    os.map(o => `<tr><td class="muted">${o.order_id}</td><td>${esc(o.name||'')}</td><td>${(o.amount||0).toLocaleString()}원</td><td>${o.cash}</td><td><span class="tag">${o.status}</span> ${o.status==='paid'?`<button class="red" onclick="refund('${o.order_id}')">환불</button>`:''}</td></tr>`).join('') + `</table>`;
-}
-async function loadUsers() {
-  const us = await adm('/admin/users');
-  document.getElementById('users').innerHTML = `<table><tr><th>이름</th><th>가입</th><th>종목</th><th>레이팅</th><th>M캐쉬</th><th>조치</th></tr>` +
-    us.slice(0,60).map(u => `<tr><td>${esc(u.name)} ${u.premium?'<span class="tag">P</span>':''} ${u.suspended?'<span class="tag" style="background:#fdecec;color:#c0392b">정지</span>':''}</td><td class="muted">${u.provider||''}</td><td>${u.sport}</td><td>${u.rating}</td><td>${u.cash}</td><td><button class="${u.suspended?'ghost':'red'}" onclick="suspend(${u.id})">${u.suspended?'해제':'정지'}</button></td></tr>`).join('') + `</table>`;
-}
-async function hide(id){ await adm('/admin/posts/'+id+'/hide',{method:'POST'}); loadReports(); loadStats(); }
-async function suspend(id){ await adm('/admin/users/'+id+'/suspend',{method:'POST'}); loadUsers(); }
-async function refund(oid){ if(!confirm('환불하시겠어요?'))return; try{ await adm('/admin/orders/'+oid+'/refund',{method:'POST'}); loadOrders(); loadStats(); alert('환불 처리됨'); }catch(e){ alert('환불 실패: '+e.message); } }
-async function resolve(id){ await adm('/admin/reports/'+id+'/resolve',{method:'POST'}); loadReports(); loadStats(); }
-function esc(s){ return String(s||'').replace(/[<>&]/g,x=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[x])); }
 
-// boot
-if (KEY) adm('/admin/stats').then(dashboard).catch(login); else login();
-</script></body></html>
+function render(){
+  const out = document.getElementById('out');
+  const list = TAB === 'posts' ? DATA.posts : DATA.open_matches;
+  if (!list || !list.length) { out.className = 'empty'; out.textContent = '내용이 없습니다.'; return; }
+  out.className = '';
+  out.innerHTML = list.map(x => TAB === 'posts' ? postCard(x) : matchCard(x)).join('');
+}
+
+const postCard = p => `
+  <div class="card">
+    <div class="meta">#${p.id} · ${esc(p.author || '탈퇴한 회원')} · ${when(p.created_at)}
+      ${p.hidden ? ' · <span class="hidden-tag">숨김 처리됨</span>' : ''}</div>
+    <div class="title">${esc(p.title)}</div>
+    <div class="body">${esc((p.body || '').slice(0, 300))}</div>
+    <div class="row" style="margin-top:10px">
+      ${p.hidden
+        ? `<button class="ghost" onclick="showPost(${p.id})">숨김 해제</button>`
+        : `<button class="ghost" onclick="hidePost(${p.id})">숨기기</button>`}
+      <button class="del" onclick="delPost(${p.id})">완전 삭제</button>
+    </div>
+  </div>`;
+
+const matchCard = m => `
+  <div class="card">
+    <div class="meta">#${m.id} · 주최 ${esc(m.host || '알 수 없음')}</div>
+    <div class="title">${esc(m.dt)} · ${esc(m.loc)}</div>
+    ${m.note ? `<div class="body">${esc(m.note)}</div>` : ''}
+    <div class="row" style="margin-top:10px">
+      <button class="del" onclick="delMatch(${m.id})">완전 삭제</button>
+    </div>
+  </div>`;
+
+async function hidePost(id){ await act(`/admin/posts/${id}/hide`, 'POST', '숨겼습니다'); }
+async function showPost(id){ await act(`/admin/posts/${id}/show`, 'POST', '다시 보입니다'); }
+async function delPost(id){
+  if (!confirm('이 글과 모든 댓글을 완전히 삭제합니다. 되돌릴 수 없습니다.')) return;
+  await act(`/admin/posts/${id}`, 'DELETE', '삭제했습니다');
+}
+async function delMatch(id){
+  if (!confirm('이 오픈매치를 완전히 삭제합니다. 되돌릴 수 없습니다.')) return;
+  await act(`/admin/open-matches/${id}`, 'DELETE', '삭제했습니다');
+}
+async function act(path, method, msg){
+  try { await api(path, { method }); alert(msg); load(); }
+  catch (e) { alert(e.message); }
+}
+</script>
+</body>
+</html>
