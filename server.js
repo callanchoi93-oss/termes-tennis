@@ -677,6 +677,173 @@ app.post('/iap/google', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
+// ══════════════════════════════════════════════════════════════
+//  대진(Bracket) — 클럽 모임 1회 = 대진 1개
+//  · brackets      : 발행된 대진 (편성 결과 JSON + 설정)
+//  · bracket_scores: 코트별 점수 (key = "라운드-코트" 또는 "h0-1")
+//  · bracket_timers: 코트별 시작 시각 (라이브 운영)
+//  db.js를 건드리지 않도록 여기서 자체 마이그레이션합니다.
+// ══════════════════════════════════════════════════════════════
+db.exec(`
+CREATE TABLE IF NOT EXISTS brackets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id   INTEGER NOT NULL,
+  event_id  INTEGER,
+  sport     TEXT NOT NULL DEFAULT 'tennis',
+  fmt       TEXT NOT NULL DEFAULT 'double',   -- double|single|level|hanul|monthly|bw
+  date      TEXT,
+  courts    INTEGER NOT NULL DEFAULT 3,
+  data      TEXT NOT NULL,                    -- JSON: {attendees, rounds|groups, grades, genders, cfg}
+  published INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_brackets_club ON brackets(club_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS bracket_scores (
+  bracket_id INTEGER NOT NULL,
+  court_key  TEXT NOT NULL,
+  a INTEGER, b INTEGER,
+  updated_by INTEGER,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (bracket_id, court_key)
+);
+
+CREATE TABLE IF NOT EXISTS bracket_timers (
+  bracket_id INTEGER NOT NULL,
+  court_key  TEXT NOT NULL,
+  started_at INTEGER,
+  PRIMARY KEY (bracket_id, court_key)
+);
+`);
+
+// node:sqlite는 boolean/undefined 바인딩을 거부한다 → 정수 또는 null 로 정규화
+function intOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+// 클럽 임원 여부 (owner 또는 officer)
+function isOfficer(clubId, uid) {
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(clubId, uid);
+  return !!m && (m.role === 'owner' || m.role === 'officer');
+}
+function isMember(clubId, uid) {
+  return !!db.prepare('SELECT 1 FROM club_members WHERE club_id=? AND user_id=?').get(clubId, uid);
+}
+function bracketPayload(b) {
+  const scores = {};
+  db.prepare('SELECT court_key,a,b FROM bracket_scores WHERE bracket_id=?').all(b.id)
+    .forEach(r => { scores[r.court_key] = { a: r.a, b: r.b }; });
+  const timers = {};
+  db.prepare('SELECT court_key,started_at FROM bracket_timers WHERE bracket_id=?').all(b.id)
+    .forEach(r => { if (r.started_at) timers[r.court_key] = r.started_at; });
+  return { ...b, data: JSON.parse(b.data), scores, timers };
+}
+
+// 클럽의 최신 대진 (회원은 published=1 만)
+app.get('/clubs/:id/brackets/latest', (req, res) => {
+  const cid = +req.params.id, uid = tryUid(req);
+  const officer = uid ? isOfficer(cid, uid) : false;
+  const b = db.prepare(
+    `SELECT * FROM brackets WHERE club_id=? ${officer ? '' : 'AND published=1'} ORDER BY id DESC LIMIT 1`
+  ).get(cid);
+  if (!b) return res.status(404).json({ error: 'no_bracket' });
+  res.json({ ...bracketPayload(b), officer });
+});
+
+app.get('/brackets/:id', (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  const uid = tryUid(req);
+  if (!b.published && !(uid && isOfficer(b.club_id, uid))) return res.status(403).json({ error: 'not_published' });
+  res.json(bracketPayload(b));
+});
+
+// 대진 편성 저장 (임원진). 같은 날짜면 덮어씀.
+app.post('/clubs/:id/brackets', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const { sport = 'tennis', fmt = 'double', date = '', data } = req.body || {};
+  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'data_required' });
+  const courts = intOrNull((req.body || {}).courts) || 3;
+  const event_id = intOrNull((req.body || {}).event_id);
+  const publish = (req.body || {}).publish ? 1 : 0;
+  const t = now();
+  const prev = date ? db.prepare('SELECT id FROM brackets WHERE club_id=? AND date=? AND fmt=?').get(cid, date, fmt) : null;
+  let id;
+  if (prev) {
+    db.prepare('UPDATE brackets SET sport=?,courts=?,data=?,published=?,event_id=?,updated_at=? WHERE id=?')
+      .run(String(sport), courts, JSON.stringify(data), publish, event_id, t, prev.id);
+    id = prev.id;
+    db.prepare('DELETE FROM bracket_scores WHERE bracket_id=?').run(id);   // 재편성 → 점수 초기화
+    db.prepare('DELETE FROM bracket_timers WHERE bracket_id=?').run(id);
+  } else {
+    const r = db.prepare(`INSERT INTO brackets (club_id,event_id,sport,fmt,date,courts,data,published,created_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(cid, event_id, String(sport), String(fmt), String(date), courts, JSON.stringify(data), publish, req.uid, t, t);
+    id = rid(r);
+  }
+  if (publish) notifyClub(cid, req.uid, '📢', '대진이 발행됐어요', `${date || '오늘'} · ${fmt} 대진을 확인하세요`);
+  res.json({ ok: true, id, published: !!publish });
+});
+
+// 발행 / 발행 취소
+app.post('/brackets/:id/publish', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(b.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const on = req.body && req.body.published === false ? 0 : 1;
+  db.prepare('UPDATE brackets SET published=?, updated_at=? WHERE id=?').run(on, now(), b.id);
+  if (on) notifyClub(b.club_id, req.uid, '📢', '대진이 발행됐어요', `${b.date || '오늘'} · ${b.fmt} 대진을 확인하세요`);
+  res.json({ ok: true, published: !!on });
+});
+
+// 점수 입력 (클럽 회원 누구나). null 을 보내면 지움.
+app.put('/brackets/:id/scores/:key', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const key = String(req.params.key).slice(0, 24);
+  const a = intOrNull((req.body || {}).a);
+  const bb = intOrNull((req.body || {}).b);
+  if (a === null && bb === null) db.prepare('DELETE FROM bracket_scores WHERE bracket_id=? AND court_key=?').run(b.id, key);
+  else db.prepare(`INSERT INTO bracket_scores (bracket_id,court_key,a,b,updated_by,updated_at) VALUES (?,?,?,?,?,?)
+    ON CONFLICT(bracket_id,court_key) DO UPDATE SET a=excluded.a,b=excluded.b,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+    .run(b.id, key, a, bb, req.uid, now());
+  db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), b.id);
+  res.json({ ok: true });
+});
+
+// 코트 타이머 시작/중단 (토글)
+app.post('/brackets/:id/timer/:key', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const key = String(req.params.key).slice(0, 24);
+  const cur = db.prepare('SELECT started_at FROM bracket_timers WHERE bracket_id=? AND court_key=?').get(b.id, key);
+  if (cur && cur.started_at) db.prepare('DELETE FROM bracket_timers WHERE bracket_id=? AND court_key=?').run(b.id, key);
+  else db.prepare(`INSERT INTO bracket_timers (bracket_id,court_key,started_at) VALUES (?,?,?)
+    ON CONFLICT(bracket_id,court_key) DO UPDATE SET started_at=excluded.started_at`).run(b.id, key, now());
+  // 폴링(/live)이 변경을 감지하도록 updated_at 갱신 — 없으면 타이머가 다른 기기에 전파되지 않음
+  db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), b.id);
+  res.json({ ok: true, started_at: cur && cur.started_at ? null : now() });
+});
+
+// 폴링용 — 점수·타이머만 가볍게
+app.get('/brackets/:id/live', (req, res) => {
+  const b = db.prepare('SELECT id,updated_at,published,club_id FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  const p = bracketPayload({ ...b, data: '{}' });
+  res.json({ id: b.id, updated_at: b.updated_at, scores: p.scores, timers: p.timers });
+});
+
+function notifyClub(clubId, exceptUid, icon, title, body) {
+  const rows = db.prepare('SELECT user_id FROM club_members WHERE club_id=?').all(clubId);
+  rows.forEach(r => { if (r.user_id !== exceptUid) sendPush(r.user_id, { icon, title, body }); });
+}
+
 app.get('/health', (_, res) => res.json({ ok: true, ts: now() }));
 
 // ── 이미지 업로드 (프로필·경기 사진) — 로컬 디스크. 운영은 S3/CDN 권장 ──
