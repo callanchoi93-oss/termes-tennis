@@ -86,6 +86,8 @@ async function kakaoIssue(access_token, res) {
 app.get('/config', (_, res) => {
   res.json({
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
+    kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
+    kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
@@ -580,21 +582,41 @@ app.delete('/events/:id/guests/:gid', auth, (req, res) => {
 // ── 오픈 예정 경기(모집) ──
 app.get('/open-matches', (req, res) => {
   const uid = tryUid(req);
-  const sport = req.query.sport;
-  const rows = db.prepare(`SELECT * FROM open_matches
-    WHERE (status IS NULL OR status!='cancelled') ${sport ? 'AND sport=?' : ''}
-    ORDER BY id DESC LIMIT 30`).all(...(sport ? [sport] : []));
+  const { sport, sido, sigungu } = req.query;
+  const where = ["(status IS NULL OR status!='cancelled')"];
+  const args = [];
+  if (sport)   { where.push('sport=?');   args.push(sport); }
+  if (sido)    { where.push('sido=?');    args.push(sido); }
+  if (sigungu) { where.push('sigungu=?'); args.push(sigungu); }
+  const rows = db.prepare(`SELECT * FROM open_matches WHERE ${where.join(' AND ')}
+    ORDER BY id DESC LIMIT 50`).all(...args);
   res.json(rows.map(m => omView(m, uid)));
 });
+
+// 주최자가 자기 매치를 삭제한다 (참가자 알림 후 완전 삭제)
+app.delete('/open-matches/:id', auth, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id)
+    .forEach(p => { if (p.user_id !== req.uid) sendPush(p.user_id, { icon: '🗑️', title: '오픈매치가 삭제됐어요', body: `${m.dt} · ${m.loc}` }); });
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=?').run(m.id);
+  db.prepare('DELETE FROM open_matches WHERE id=?').run(m.id);
+  res.json({ ok: true });
+});
 app.post('/open-matches', auth, (req, res) => {
-  const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note } = req.body || {};
+  const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
-  const bad = findContact(`${loc} ${note || ''}`);          // 공개 모집글이므로 연락처 차단
+  if (start_at && end_at && new Date(end_at) <= new Date(start_at))
+    return res.status(400).json({ error: 'end_before_start' });
+  const bad = findContact(`${loc} ${note || ''} ${dong || ''}`);   // 공개 모집글이므로 연락처 차단
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
-  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?)`)
+  const r = db.prepare(`INSERT INTO open_matches
+      (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?)`)
     .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
-         intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '');
+         intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
+         start_at || null, end_at || null, sido || null, sigungu || null, dong || null);
   const mid = rid(r);
   db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
@@ -620,11 +642,115 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
 // ══════════════════════════════════════════════════════════════
+//  출석 · 노쇼
+//  status: going(참석) / absent(불참) / undecided(미정)
+//  showed: 1(왔음) / 0(노쇼) / null(아직 체크 안 함)
+// ══════════════════════════════════════════════════════════════
+try { db.exec("ALTER TABLE event_attendees ADD COLUMN showed INTEGER"); } catch (e) {}
+try { db.exec("ALTER TABLE event_attendees ADD COLUMN checked_at BIGINT"); } catch (e) {}
+
+// 모임의 참석 현황 (임원은 출석 체크 가능)
+app.get('/events/:id/attendance', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = db.prepare('SELECT * FROM club_events WHERE id=?').get(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(ev.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(ev.club_id, req.uid);
+  const rows = db.prepare(`SELECT ea.user_id, u.name, ea.status, ea.showed
+    FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+    WHERE ea.event_id=? ORDER BY u.name`).all(eid);
+  res.json({
+    event: { id: ev.id, title: ev.title, date: ev.date },
+    is_officer: !!(m && ['owner', 'officer'].includes(m.role)),
+    rows,
+  });
+});
+
+// 출석 체크 (임원만). showed=1 왔음, 0 노쇼
+app.patch('/events/:eid/attendance/:uid', auth, (req, res) => {
+  const eid = +req.params.eid, target = +req.params.uid;
+  const ev = db.prepare('SELECT * FROM club_events WHERE id=?').get(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(ev.club_id, req.uid);
+  if (!m || !['owner', 'officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
+  const v = (req.body || {}).showed;
+  const showed = v === null ? null : (v ? 1 : 0);
+  const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, target);
+  if (!has) db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, target, 'going');
+  db.prepare('UPDATE event_attendees SET showed=?, checked_at=? WHERE event_id=? AND user_id=?')
+    .run(showed, now(), eid, target);
+  res.json({ ok: true, user_id: target, showed });
+});
+
+// 회원별 누적 출석/노쇼 (클럽 랭킹·신뢰도에 쓴다)
+app.get('/clubs/:id/attendance/summary', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT u.id user_id, u.name,
+      SUM(CASE WHEN ea.showed=1 THEN 1 ELSE 0 END) attended,
+      SUM(CASE WHEN ea.showed=0 THEN 1 ELSE 0 END) noshow,
+      SUM(CASE WHEN ea.status='going' THEN 1 ELSE 0 END) signed_up
+    FROM club_members cm JOIN users u ON u.id=cm.user_id
+    LEFT JOIN event_attendees ea ON ea.user_id=u.id
+      AND ea.event_id IN (SELECT id FROM club_events WHERE club_id=?)
+    WHERE cm.club_id=? AND cm.role!='guest'
+    GROUP BY u.id ORDER BY attended DESC, noshow ASC`).all(cid, cid);
+  res.json(rows);
+});
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 공지사항
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS notices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  author_id INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_notices_club ON notices(club_id, id DESC);`);
+
+app.get('/clubs/:id/notices', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT n.*, u.name author FROM notices n
+    JOIN users u ON u.id=n.author_id WHERE n.club_id=?
+    ORDER BY n.pinned DESC, n.id DESC LIMIT 50`).all(cid);
+  res.json(rows);
+});
+
+app.post('/clubs/:id/notices', auth, (req, res) => {
+  const cid = +req.params.id;
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!m || !['owner', 'officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
+  const body = String((req.body || {}).body || '').trim();
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const bad = findContact(body);                       // 공지도 공개글이다
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const r = db.prepare('INSERT INTO notices (club_id,author_id,body,pinned,created_at) VALUES (?,?,?,?,?)')
+    .run(cid, req.uid, body, intOrNull(req.body.pinned) ? 1 : 0, now());
+  notifyClub(cid, req.uid, '📢', '새 공지가 올라왔어요', body.slice(0, 40));
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/notices/:id', auth, (req, res) => {
+  const n = db.prepare('SELECT * FROM notices WHERE id=?').get(+req.params.id);
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(n.club_id, req.uid);
+  const canDelete = n.author_id === req.uid || (m && ['owner', 'officer'].includes(m.role));
+  if (!canDelete) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM notices WHERE id=?').run(n.id);
+  res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════════════════════
 //  오픈매치 — 클럽 밖에서 사람을 모아 경기를 잡는다.
 //  참가비는 앱이 받지 않는다(회비와 동일 원칙). 주최자가 현장에서 정산.
 //  노쇼가 실제 문제가 되면 그때 예약금(PG)을 붙인다.
 // ══════════════════════════════════════════════════════════════
-['host_id INTEGER', 'status TEXT DEFAULT \'open\'', 'note TEXT'].forEach(c => {
+['host_id INTEGER', 'status TEXT DEFAULT \'open\'', 'note TEXT',
+ 'start_at TEXT', 'end_at TEXT', 'sido TEXT', 'sigungu TEXT', 'dong TEXT'].forEach(c => {
   try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {}
 });
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } catch (e) {}
@@ -632,8 +758,10 @@ try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } cat
 function omView(m, uid) {
   const joins = db.prepare(`SELECT j.user_id, u.name, u.rating FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
+  const host = m.host_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) : null;
   return {
     ...m,
+    host,
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
@@ -1819,6 +1947,39 @@ app.post('/admin/reports/:id/resolve', admin, (req, res) => {
   db.prepare("UPDATE reports SET status='reviewed' WHERE id=?").run(+req.params.id);
   res.json({ ok: true });
 });
+// ── 운영자 삭제 권한 ──
+// 이용약관 위반 게시물을 운영자가 직접 지운다.
+// x-admin-key 헤더 또는 ?key= 로 인증. ADMIN_KEY 는 Railway Variables 에 있다.
+app.delete('/admin/posts/:id', admin, (req, res) => {
+  const id = +req.params.id;
+  db.prepare('DELETE FROM comments WHERE post_id=?').run(id);
+  const r = db.prepare('DELETE FROM posts WHERE id=?').run(id);
+  res.json({ ok: true, deleted: !!(r.changes) });
+});
+app.delete('/admin/comments/:id', admin, (req, res) => {
+  const r = db.prepare('DELETE FROM comments WHERE id=?').run(+req.params.id);
+  res.json({ ok: true, deleted: !!(r.changes) });
+});
+app.delete('/admin/notices/:id', admin, (req, res) => {
+  const r = db.prepare('DELETE FROM notices WHERE id=?').run(+req.params.id);
+  res.json({ ok: true, deleted: !!(r.changes) });
+});
+app.delete('/admin/open-matches/:id', admin, (req, res) => {
+  const id = +req.params.id;
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=?').run(id);
+  const r = db.prepare('DELETE FROM open_matches WHERE id=?').run(id);
+  res.json({ ok: true, deleted: !!(r.changes) });
+});
+// 최근 게시물 훑어보기 (신고가 없어도 확인할 수 있게)
+app.get('/admin/feed', admin, (_req, res) => {
+  res.json({
+    posts: db.prepare(`SELECT p.id, p.title, p.body, p.hidden, p.created_at, u.name author
+      FROM posts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.id DESC LIMIT 50`).all(),
+    open_matches: db.prepare(`SELECT m.id, m.dt, m.loc, m.note, u.name host
+      FROM open_matches m LEFT JOIN users u ON u.id=m.host_id ORDER BY m.id DESC LIMIT 50`).all(),
+  });
+});
+
 app.post('/admin/posts/:id/hide', admin, (req, res) => {
   db.prepare('UPDATE posts SET hidden=1 WHERE id=?').run(+req.params.id);
   db.prepare("UPDATE reports SET status='actioned' WHERE target_type='post' AND target_id=?").run(+req.params.id);
