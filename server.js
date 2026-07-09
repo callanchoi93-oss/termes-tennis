@@ -679,18 +679,19 @@ app.delete('/open-matches/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 app.post('/open-matches', auth, (req, res) => {
-  const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong } = req.body || {};
+  const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong, account } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
   if (start_at && end_at && new Date(end_at) <= new Date(start_at))
     return res.status(400).json({ error: 'end_before_start' });
   const bad = findContact(`${loc} ${note || ''} ${dong || ''}`);   // 공개 모집글이므로 연락처 차단
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
   const r = db.prepare(`INSERT INTO open_matches
-      (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?)`)
+      (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?)`)
     .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
-         start_at || null, end_at || null, sido || null, sigungu || null, dong || null);
+         start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
+         String(account || '').trim().slice(0, 60) || null);
   const mid = rid(r);
   db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
@@ -928,18 +929,77 @@ app.delete('/notices/:id', auth, (req, res) => {
 //  노쇼가 실제 문제가 되면 그때 예약금(PG)을 붙인다.
 // ══════════════════════════════════════════════════════════════
 ['host_id INTEGER', 'status TEXT DEFAULT \'open\'', 'note TEXT',
- 'start_at TEXT', 'end_at TEXT', 'sido TEXT', 'sigungu TEXT', 'dong TEXT'].forEach(c => {
+ 'start_at TEXT', 'end_at TEXT', 'sido TEXT', 'sigungu TEXT', 'dong TEXT',
+ 'account TEXT'].forEach(c => {
   try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {}
 });
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } catch (e) {}
+
+
+// ── 오픈매치 좋아요 · 댓글 ──
+db.exec(`CREATE TABLE IF NOT EXISTS om_likes (
+  match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  UNIQUE(match_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS om_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  body TEXT NOT NULL, created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_omc ON om_comments(match_id, id);`);
+
+app.post('/open-matches/:id/like', auth, (req, res) => {
+  const mid = +req.params.id;
+  if (!db.prepare('SELECT id FROM open_matches WHERE id=?').get(mid)) return res.status(404).json({ error: 'not_found' });
+  const has = db.prepare('SELECT 1 FROM om_likes WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if (has) db.prepare('DELETE FROM om_likes WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  else db.prepare('INSERT INTO om_likes (match_id,user_id) VALUES (?,?)').run(mid, req.uid);
+  const n = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(mid).n;
+  res.json({ ok: true, liked: !has, likes: n });
+});
+
+app.get('/open-matches/:id/comments', (req, res) => {
+  res.json(db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.name
+    FROM om_comments c JOIN users u ON u.id=c.user_id
+    WHERE c.match_id=? ORDER BY c.id LIMIT 100`).all(+req.params.id));
+});
+
+app.post('/open-matches/:id/comments', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const body = String((req.body || {}).body || '').trim().slice(0, 300);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const bad = findContact(body);                        // 댓글도 공개글이다
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const r = db.prepare('INSERT INTO om_comments (match_id,user_id,body,created_at) VALUES (?,?,?,?)')
+    .run(mid, req.uid, body, now());
+  if (m.host_id && m.host_id !== req.uid) {             // 주최자에게 알림
+    const who = getUser(req.uid);
+    sendPush(m.host_id, { icon: '💬', title: '오픈매치에 댓글이 달렸어요', body: `${who.name}: ${body.slice(0, 40)}` });
+  }
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/om-comments/:id', auth, (req, res) => {
+  const c = db.prepare('SELECT * FROM om_comments WHERE id=?').get(+req.params.id);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT host_id FROM open_matches WHERE id=?').get(c.match_id);
+  if (c.user_id !== req.uid && (!m || m.host_id !== req.uid)) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM om_comments WHERE id=?').run(c.id);
+  res.json({ ok: true });
+});
 
 function omView(m, uid) {
   const joins = db.prepare(`SELECT j.user_id, u.name, u.rating FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
   const host = m.host_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) : null;
+  const likes = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(m.id).n;
+  const liked = uid ? !!db.prepare('SELECT 1 FROM om_likes WHERE match_id=? AND user_id=?').get(m.id, uid) : false;
+  const comments = db.prepare('SELECT COUNT(*) n FROM om_comments WHERE match_id=?').get(m.id).n;
   return {
     ...m,
-    host,
+    host, likes, liked, comments,
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
