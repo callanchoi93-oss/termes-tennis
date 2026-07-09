@@ -1096,7 +1096,7 @@
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 가입/시작</span></button>
       <button class="sbtn2" onclick="login('naver')"><span class="ic" style="background:#03c75a;color:#fff">N</span><span class="lbl">네이버로 가입/시작</span></button>
       <div id="authSaved"></div>
-      <div class="auth-fine" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
+      <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
     </div>
   </div></div>
   <div class="fullov" id="onboard"><div class="ob" id="obBody"></div><div class="ob-foot" id="obFoot"></div></div>
@@ -1285,7 +1285,7 @@ function phoneDone(){
   if(c.replace(/[^0-9]/g,'').length<4){toast('인증번호를 입력해 주세요');return;}
   closeOv(); login('phone');
 }
-const AUTH_REVIEWS=[
+let AUTH_REVIEWS=[
   {t:'드디어 등급이 공정해졌다',b:'자기소개로 부풀리던 시절 끝.\n결과로 딱 정해지니까 매칭이 진짜 됨.',w:'라켓초보 · 경기 용인',time:'2일 전'},
   {t:'동네 클럽 이렇게 쉽게 구할 줄',b:'혼자 벽치기만 하다가\n이제 주말마다 게임해요 ㅋㅋ',w:'백핸드장인 · 서울 강남',time:'3일 전'},
   {t:'총무님 일이 확 줄었대요',b:'회비·대진·출석이 자동이라\n운영이 편해졌다고 하시네요.',w:'우리동네총무 · 경기 성남',time:'26.06.26'},
@@ -1518,6 +1518,45 @@ async function api(path, opts){
   if(!r.ok) throw new Error((await r.text().catch(()=>'')) || ('HTTP '+r.status));
   return r.json();
 }
+
+/* ═══════════ 데모 데이터 제거 ═══════════
+   서버가 붙어 있으면(SERVER_OK) 시연용 가짜 데이터를 모두 지운다.
+   실제 회원이 가짜 클럽·가짜 후기·가짜 경기를 보면 안 된다.        */
+let DEMO = true;      // checkServer() 가 서버를 찾으면 false 로 바뀐다
+
+function stripDemoData(){
+  LOUNGE_POSTS = [];          // 라운지 글
+  LB_POOL = [];               // 리더보드
+  AUTH_REVIEWS = [];          // 로그인 화면 "실제 회원의 후기"
+  state.clubs = [];           // 클럽 찾기 목록
+  state.clubStandings = [];   // 클럽 리그 순위
+  state.clubTie = null;       // 클럽 대항전
+  state.gigs = [];            // 용병 모집
+  state.matches = [];         // 오픈 경기 (서버 /open-matches 사용)
+  state.courts = [];          // 코트 지도
+  state.clubLogos = {};
+  state.myClubs = []; state.clubData = {}; state.activeClub = null;
+  // 로그인 화면의 후기 캐러셀 통째로 숨김
+  ['revTrack','revDots'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  const sub=document.querySelector('.auth2-sub'); if(sub) sub.textContent='동호회 대진·회비·리그를 한 곳에서';
+}
+
+/* 서버에서 공개 데이터(클럽 목록·라운지 글)를 받아온다 */
+async function loadPublicData(){
+  if(!SERVER_OK) return;
+  try{
+    const cs = await api('/clubs');
+    state.clubs = (cs||[]).map(c=>({ id:c.id, n:c.name, r:c.region||'', m:c.members||0,
+      guestFee:c.guest_fee||0, guestReq:c.guest_cap||0, entry:c.entry_fee||0, season:c.season_fee||0 }));
+  }catch(e){}
+  try{
+    const ps = await api('/posts');
+    LOUNGE_POSTS = (ps||[]).map(p=>({ id:p.id, cat:p.category||'자유', sp:SP().n, ic:SP().ic,
+      t:p.title, b:p.body||'', g:p.gender==='여성'?'여':'남', r:p.region||'', w:p.anon_nick||'익명',
+      time:'', likes:p.likes||0, cmts:p.comments||0 }));
+  }catch(e){}
+}
+
 async function checkServer(){
   if(!API_BASE) return false;
   try{
@@ -1525,9 +1564,16 @@ async function checkServer(){
     const r = await fetch(API_BASE + '/health', {signal:c.signal});
     SERVER_OK = r.ok;
   }catch(e){ SERVER_OK = false; }
-  if(SERVER_OK) await loadConfig();
+  DEMO = !SERVER_OK;
+  if(SERVER_OK){
+    await loadConfig();
+    stripDemoData();
+    await loadPublicData();
+  }
   const el = document.getElementById('srvTag');
   if(el){ el.textContent = SERVER_OK ? '서버 연결됨 · 실제 계정으로 로그인' : '데모 · 실제 결제·예약은 작동하지 않습니다'; el.className = 'demo-tag' + (SERVER_OK?' live':''); }
+  const note = document.getElementById('authNote');
+  if(note) note.textContent = SERVER_OK ? '카카오 또는 네이버 계정으로 시작하세요' : '데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다';
   return SERVER_OK;
 }
 function saveSession(d){
@@ -2183,7 +2229,7 @@ function openGallery(){
 }
 // ── 클럽 대 클럽 랭킹 ──
 // ── 개인 랭킹 리더보드 ──
-const LB_POOL=[
+let LB_POOL=[
   {n:'김도현',r:1492,reg:'경기 용인',gd:'남자부'},{n:'이준호',r:1438,reg:'경기 용인',gd:'남자부'},
   {n:'박서연',r:1401,reg:'경기 수원',gd:'여자부'},{n:'최민재',r:1366,reg:'경기 용인',gd:'남자부'},
   {n:'정유나',r:1322,reg:'서울 강남',gd:'여자부'},{n:'한지웅',r:1288,reg:'경기 용인',gd:'남자부'},
@@ -5683,7 +5729,7 @@ const ANON_ADJ=['깜찍한','신난','용감한','날쌘','엉뚱한','포근한
 const ANON_ANIMAL=['비단뱀','고슴도치','물개','수달','너구리','다람쥐','고양이','판다','여우','두더지','알파카','치타','펭귄','오소리'];
 function anonNickFor(seed){ let h=0; const s=String(seed); for(const ch of s)h=(h*31+ch.charCodeAt(0))>>>0; return ANON_ADJ[h%ANON_ADJ.length]+ANON_ANIMAL[(Math.floor(h/7))%ANON_ANIMAL.length]; }
 function myAnonNick(){ if(!state.anonNick) state.anonNick=anonNickFor('me-'+(state.provider||'matsu')+'-7k2'); return state.anonNick; }
-const LOUNGE_POSTS=[
+let LOUNGE_POSTS=[
   {cat:'자유',sp:'테니스',ic:'🎾',t:'백핸드 슬라이스 자꾸 뜨는데',b:'그립 문제일까요? 팁 좀 주세요',g:'♂',region:'경기 용인',time:'1분 전',v:14,l:3,c:2},
   {cat:'자랑',sp:'러닝',ic:'🏃',t:'드디어 10km 50분 깼다',b:'6개월 걸림 ㅠㅠ 다들 화이팅!',g:'♀',region:'서울 강남',time:'5분 전',v:53,l:12,c:7},
   {cat:'질문',sp:'축구',ic:'⚽',t:'풋살 처음인데 풋살화 추천',b:'실내 인조잔디용으로 입문용 뭐가 좋아요',g:'♂',region:'인천 연수',time:'12분 전',v:31,l:4,c:9},
@@ -5802,9 +5848,11 @@ function go(v){
 function closeOv(){document.getElementById('ov').classList.remove('on');}
 let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeOv();});
-// 서버 확인 → (네이버에서 code 를 달고 돌아왔으면) 로그인 완료 처리
+// 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
 checkServer().then(async ok=>{
   if(!ok) return;
+  renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
+  if(state.view) go(state.view);
   if(new URL(location.href).searchParams.get('code')){
     const done = await handleNaverCallback();
     if(done){
