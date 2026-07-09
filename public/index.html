@@ -1609,9 +1609,20 @@ function finishOnboard(){
 // 로그인 키는 서버 /config 에서 받아온다. index.html 에 적지 않는다.
 // (GitHub 가 Public 이라 코드에 키를 넣으면 그대로 노출된다)
 let CFG = { kakao_js_key:'', naver_client_id:'', naver_redirect_uri:'', apple_client_id:'', phone_auth:false };
+let CFG_ERROR = '';
 async function loadConfig(){
   if(!API_BASE) return CFG;
-  try{ CFG = await fetch(API_BASE + '/config').then(r=>r.json()); }catch(e){}
+  try{
+    // cache:'no-store' — 서비스워커와 브라우저 캐시를 모두 우회한다.
+    // 여기서 옛 응답을 받으면 로그인 버튼이 영영 안 뜬다.
+    const r = await fetch(API_BASE + '/config', { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    CFG = await r.json();
+  }catch(e){
+    CFG = {};
+    CFG_ERROR = String(e.message||e);
+    console.error('[MATSU] /config 를 불러오지 못했습니다:', CFG_ERROR);
+  }
   return CFG;
 }
 const API_BASE = (location.protocol==='http:'||location.protocol==='https:') ? location.origin : '';
@@ -1703,7 +1714,9 @@ function applyAuthUI(){
   if(fb){
     fb.innerHTML = (SERVER_OK && !ready)
       ? `<div class="note" style="margin-top:12px;text-align:left">
-           로그인을 준비하고 있어요. 잠시 뒤에 다시 열어주세요.</div>`
+           로그인을 준비하고 있어요. 잠시 뒤에 다시 열어주세요.
+           ${CFG_ERROR?`<br><span style="color:#b3261e">설정을 불러오지 못했어요 · ${esc(CFG_ERROR)}</span>`:''}
+         </div>`
       : '';
   }
 }

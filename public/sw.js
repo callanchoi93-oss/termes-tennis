@@ -7,7 +7,7 @@
  *
  * CACHE_VERSION 을 올리면 옛 캐시가 전부 지워진다. index.html 을 배포할 때 같이 올릴 것.
  */
-const CACHE_VERSION = 'matsu-v1';
+const CACHE_VERSION = 'matsu-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
 
@@ -21,6 +21,7 @@ const PRECACHE = [
 
 // API 로 나가는 경로. 이 목록은 캐시하지 않고 항상 네트워크로 보낸다.
 const API_PREFIXES = [
+  '/config', '/diag',                        // 설정·진단은 절대 캐시하지 않는다
   '/health', '/auth', '/me', '/clubs', '/brackets', '/events', '/dues',
   '/dm', '/cash', '/posts', '/matches', '/open-matches', '/users',
   '/notifications', '/pay', '/iap', '/upload', '/admin', '/devices',
