@@ -717,6 +717,9 @@
   .dm-un{ display:inline-block; min-width:17px; padding:1px 5px; border-radius:9px; background:var(--coral);
           color:#fff; font-size:10.5px; font-weight:900; text-align:center; vertical-align:1px; }
   .cwarn{ display:none; align-items:center; gap:5px; margin-top:7px; font-size:11.5px; font-weight:700; color:#c0503a; }
+  .dmbadge{ display:inline-block; min-width:16px; height:16px; line-height:16px; text-align:center;
+            background:var(--coral); color:#fff; font-size:10px; font-weight:800;
+            border-radius:999px; padding:0 4px; vertical-align:1px; }
   /* — 오픈매치 — */
   .om-c{ padding:16px; }
   .om-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
@@ -1072,6 +1075,7 @@
     <section class="screen" id="s-league"></section>
     <section class="screen" id="s-club"></section>
     <section class="screen" id="s-bracket"></section>
+    <section class="screen" id="s-match"></section>
     <section class="screen" id="s-lounge"></section>
     <section class="screen" id="s-chat"></section>
     <section class="screen" id="s-me"></section>
@@ -1081,6 +1085,7 @@
     <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
     <div class="tab" data-s="bracket" onclick="go('bracket')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M6 7h6a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3"/></svg>대진</div>
+    <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 6h18"/><path d="M7 22l-4-4 4-4"/><path d="M21 18H3"/></svg>매치</div>
     <div class="tab" data-s="lounge" onclick="go('lounge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>라운지</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
@@ -1528,6 +1533,7 @@ function stripDemoData(){
   LOUNGE_POSTS = [];          // 라운지 글
   state.chats = {};           // 데모 채팅방 (이석용·정윤희 …)
   state.chatRoom = null;
+  PEOPLE = [];                // 회원 찾기에 뜨던 가상 인물
   LB_POOL = [];               // 리더보드
   AUTH_REVIEWS = [];          // 로그인 화면 "실제 회원의 후기"
   state.clubs = [];           // 클럽 찾기 목록
@@ -1550,6 +1556,12 @@ async function loadPublicData(){
     const cs = await api('/clubs');
     state.clubs = (cs||[]).map(c=>({ id:c.id, n:c.name, r:c.region||'', m:c.members||0,
       guestFee:c.guest_fee||0, guestReq:c.guest_cap||0, entry:c.entry_fee||0, season:c.season_fee||0 }));
+  }catch(e){}
+  try{
+    const us = await api('/users');
+    const tierOf = r => r>=1400?'챌린저' : r>=1150?'아마추어' : '루키';
+    PEOPLE = (us||[]).map(u=>({ id:u.id, n:u.name, g:'', region:u.region||'', exp:'',
+      tier:tierOf(u.rating||1000), w:0, l:0, manner:0, grade:'', clubs:[] }));
   }catch(e){}
   try{
     const ps = await api('/posts');
@@ -2612,6 +2624,7 @@ function openClubReport(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
+  if(SERVER_OK && PAY_PENDING){ toast('M캐쉬 충전은 준비 중이에요'); setTimeout(openEarn,650); return; }
   if(!canSellDigital()){
     // 안내 문구에 '웹에서 구매하세요' 를 쓰면 안 된다 (3.1.1 안티 스티어링).
     toast('지금은 M캐쉬를 충전할 수 없어요');
@@ -3169,9 +3182,6 @@ function renderClub(){
           <div class="toolrow" onclick="openDues()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 정산</div><div class="tr-d">납부·미납 현황과 납부 요청</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비 장부</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubPremium()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openEarn()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">M캐쉬 받기</div><div class="tr-d">친구 초대 · 광고 보고 받기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openMatches()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('swap',19)}</div><div class="tr-x"><div class="tr-n">오픈매치</div><div class="tr-d">클럽 밖 사람들과 경기 잡기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openDMList()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('chat',19)}</div><div class="tr-x"><div class="tr-n">쪽지함</div><div class="tr-d">1:1 대화 · 연락처는 여기서만</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
@@ -3241,7 +3251,7 @@ function renderClub(){
   }
   document.getElementById('s-club').innerHTML=h;
 }
-const PEOPLE=[
+let PEOPLE=[
   {n:'이석용',g:'남',region:'경기 용인',exp:'5~10년',tier:'챌린저',w:142,l:60,manner:96,grade:'A',clubs:['용인 맞수 클럽']},
   {n:'정윤희',g:'여',region:'경기 용인',exp:'3~5년',tier:'아마추어',w:88,l:74,manner:94,grade:'B',clubs:['용인 맞수 클럽']},
   {n:'김영민',g:'남',region:'경기 성남',exp:'3~5년',tier:'아마추어',w:75,l:80,manner:90,grade:'B',clubs:['분당 스매시 클럽']},
@@ -4036,7 +4046,7 @@ async function openClubPremium(){
   if(p.premium){
     h+=`<div class="prm-hero on"><div class="prm-b">${ic('crown',15,'#a5750d')} 이용 중</div>
       <div class="prm-t">${state.activeClub}</div><div class="prm-d">${until} 까지</div></div>`;
-  } else if(canSellDigital() && !PAY_PENDING){
+  } else if(canSellDigital() && (DEMO || !PAY_PENDING)){
     h+=`<div class="prm-hero"><div class="prm-t">월 ${p.price.toLocaleString()}원</div>
       <div class="prm-d">회원 ${p.members}명이면 1인당 ${Math.round(p.price/Math.max(p.members,1)).toLocaleString()}원</div></div>`;
   } else {
@@ -4054,7 +4064,7 @@ async function openClubPremium(){
     <div class="note" style="text-align:left;margin-top:10px">지금 정회원 <b>${p.members}/${p.member_limit}</b>명 · 이번 달 대진 <b>${p.brackets_this_month}/${p.bracket_limit}</b>회</div>
   </div>`;
   if(owner && p.premium) h+=`<button class="btn ghost" onclick="cancelClubPremium()">프리미엄 해지</button>`;
-  else if(owner && PAY_PENDING) h+=`<div class="note" style="text-align:left">결제 기능을 준비하고 있어요. 열리면 알려드릴게요.</div>`;
+  else if(owner && PAY_PENDING && !DEMO) h+=`<div class="note" style="text-align:left">결제 기능을 준비하고 있어요. 열리면 알려드릴게요.</div>`;
   else if(owner && canSellDigital()) h+=`<button class="btn" onclick="buyClubPremium()">프리미엄 시작하기 · 월 ${p.price.toLocaleString()}원</button>`;
   else if(!owner) h+=`<div class="note" style="text-align:left">결제는 <b>클럽장</b>만 할 수 있어요.</div>`;
   // iOS 빌드 + IAP 미연동: 결제 버튼도, 외부 결제 안내도 노출하지 않는다.
@@ -4158,17 +4168,13 @@ async function issueDues(){
 
 /* ═══════════ 오픈매치 (클럽 밖 모집 경기) ═══════════
    참가비는 앱이 받지 않는다. 주최자가 현장에서 정산.        */
-async function openMatches(){
-  if(!SERVER_OK){ toast('오픈매치는 서버 연결이 필요해요'); return; }
-  let list=[];
-  try{ list = await api(`/open-matches?sport=${state.sport}`); }catch(e){ toast('불러오지 못했어요'); return; }
-  let h=`<div class="sh-top"><h3>오픈매치</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">클럽에 속하지 않아도 참여할 수 있는 경기예요. <b>참가비는 현장에서</b> 주최자에게 내요.</div>
-    <button class="btn ghost" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>`;
+/* 오픈매치 카드 목록 HTML (화면·시트 공용) */
+function matchCards(list){
   if(!list.length){
-    h+=`<div class="empty" style="padding:44px 20px"><div class="ei">${ic('swap',34)}</div>
+    return `<div class="empty" style="padding:44px 20px"><div class="ei">${ic('swap',34)}</div>
       <div class="et">열린 경기가 없어요</div><div class="es">첫 오픈매치를 열어보세요.</div></div>`;
   }
+  let h='';
   list.forEach(m=>{
     const closed = m.status && m.status!=='open';
     const pct = Math.min(100, Math.round(m.cur/Math.max(m.cap,1)*100));
@@ -4194,10 +4200,35 @@ async function openMatches(){
             : `<button class="btn sm" style="margin-top:11px" onclick="joinMatch(${m.id})">참가 신청</button>`}
     </div>`;
   });
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  return h;
+}
+
+/* 오픈매치 — 하단 탭의 독립 화면 */
+let OM_LIST = [];
+async function renderMatch(){
+  const el = document.getElementById('s-match'); if(!el) return;
+  let h=`<h2 class="t">오픈매치</h2><p class="sub">클럽에 속하지 않아도 참여할 수 있는 경기예요.</p>`;
+  if(!SERVER_OK){
+    h+=`<div class="note" style="margin-top:12px">오픈매치는 서버 연결이 필요해요.</div>`;
+    el.innerHTML=h; return;
+  }
+  h+=`<button class="btn ghost" style="margin-bottom:12px" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>
+      <div class="note" style="text-align:left;margin-bottom:12px"><b>참가비는 현장에서</b> 주최자에게 내요. 앱은 돈을 받지 않아요.</div>
+      <div id="omList">${matchCards(OM_LIST)}</div>`;
+  el.innerHTML=h;
+  try{
+    OM_LIST = await api(`/open-matches?sport=${state.sport}`);
+    const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
+  }catch(e){}
+}
+
+/* 시트로도 열 수 있게 유지 (다른 화면에서 부를 때) */
+async function openMatches(){
+  if(state.view==='match'){ renderMatch(); return; }
+  go('match');
 }
 function openNewMatch(){
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="openMatches()">×</div></div>
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
     <div class="fld"><label>일시</label><input id="omDt" placeholder="예) 07.18(토) 09:00"></div>
     <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) 용인 기흥 테니스장 3번 코트"></div>
@@ -4224,26 +4255,26 @@ async function createMatch(){
     await api('/open-matches',{method:'POST',body:JSON.stringify({
       sport:state.sport, dt, loc, fmt:v('omFmt')||'복식', gd:state.gender==='여성'?'여자부':'남자부',
       price:num('omPrice'), cap:num('omCap')||8, min_cnt:num('omMin')||6, note })});
-    toast('오픈매치를 열었어요'); openMatches();
+    toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){ toast(String(e.message).includes('contact_blocked')?'연락처는 올릴 수 없어요':'개설에 실패했어요'); }
 }
 async function joinMatch(id){
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
     toast(m.confirmed?`참가했어요 · ${m.cur}명으로 경기가 성사됐어요`:`참가했어요 · ${m.cur}/${m.cap}명`);
-    openMatches();
+    renderMatch();
   }catch(e){ const s=String(e.message);
     toast(s.includes('full')?'정원이 찼어요':s.includes('not_open')?'모집이 끝났어요':'참가하지 못했어요'); }
 }
 async function leaveMatch(id){
   if(!confirm('참가를 취소할까요? 주최자에게 알림이 가요.')) return;
-  try{ await api(`/open-matches/${id}/join`,{method:'DELETE'}); toast('참가를 취소했어요'); openMatches(); }
+  try{ await api(`/open-matches/${id}/join`,{method:'DELETE'}); toast('참가를 취소했어요'); renderMatch(); }
   catch(e){ toast('취소하지 못했어요'); }
 }
 async function setMatchStatus(id, st){
   const msg = st==='closed' ? '모집을 마감할까요?' : '오픈매치를 취소할까요? 참가자에게 알림이 가요.';
   if(!confirm(msg)) return;
   try{ await api(`/open-matches/${id}`,{method:'PATCH',body:JSON.stringify({status:st})});
-    toast(st==='closed'?'모집을 마감했어요':'오픈매치를 취소했어요'); openMatches();
+    toast(st==='closed'?'모집을 마감했어요':'오픈매치를 취소했어요'); renderMatch();
   }catch(e){ toast('주최자만 할 수 있어요'); }
 }
 
@@ -4360,6 +4391,7 @@ async function sendDM(uid, name){
     else if(m.includes('blocked')) toast('상대가 쪽지를 받지 않아요');
     else toast('쪽지를 보내지 못했어요');
   }
+  if(state.view==='chat') loadDMThreads().then(renderChat);
 }
 async function openDMList(){
   if(!SERVER_OK){ toast('쪽지는 서버 연결이 필요해요'); return; }
@@ -5420,10 +5452,15 @@ function setBF(f){state.bracketFmt=f;renderBracket();}
 
 /* ===== 채팅 ===== */
 const REPLIES=['좋아요! 그때 봬요 🎾','넵 확인했어요','오 좋네요 ㅎㅎ','그날 코트에서 만나요!','알겠습니다 👍'];
+let DM_THREADS = [];     // 서버 1:1 쪽지 스레드
+async function loadDMThreads(){
+  if(!SERVER_OK){ DM_THREADS=[]; return; }
+  try{ DM_THREADS = await api('/dm/threads'); }catch(e){ DM_THREADS = []; }
+}
 function renderChat(){
   if(state.chatRoom){ renderRoom(); return; }
   // 방 목록
-  let h=`<h2 class="t">채팅</h2><p class="sub">클럽 단체방과 1:1 대화를 한곳에서.</p>`;
+  let h=`<h2 class="t">대화</h2><p class="sub">클럽 단체방과 1:1 쪽지를 한곳에서.</p>`;
   const ids=Object.keys(state.chats);
   const groups=ids.filter(id=>state.chats[id].type==='group');
   const dms=ids.filter(id=>state.chats[id].type==='dm');
@@ -5431,8 +5468,25 @@ function renderChat(){
     return `<div class="chrow" onclick="openRoom('${id}')"><div class="av2" style="background:${r.color}">${r.type==='group'?'#':r.name[0]}</div>
       <div class="ci2"><div class="cn2">${r.name}</div><div class="cl2">${lt}</div></div></div>`;};
   if(groups.length){h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;groups.forEach(id=>h+=row(id));}
-  h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:14px 4px 4px">1:1 대화</div>`;
+
+  h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 4px 4px">
+        <div style="font-size:13px;font-weight:800;color:var(--gray)">1:1 쪽지</div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--lgray)">연락처는 여기서만 주고받아요</div></div>`;
+  // 서버 스레드 (실제 쪽지)
+  DM_THREADS.forEach(t=>{
+    const u = t.user || {};
+    const nm = u.name || u.anon_nick || '알 수 없음';
+    const preview = (t.mine?'나: ':'') + (t.last||'');
+    h+=`<div class="chrow" onclick="openDM(${u.id},'${nm.replace(/'/g,"\\'")}')">
+      <div class="av2" style="background:#8b5cf6">${nm[0]}</div>
+      <div class="ci2"><div class="cn2">${nm}${t.unread?` <span class="dmbadge">${t.unread}</span>`:''}</div>
+        <div class="cl2">${preview.slice(0,34)}</div></div></div>`;
+  });
+  // 데모 모드에서만 남는 가상 대화
   dms.forEach(id=>h+=row(id));
+
+  if(!DM_THREADS.length && !dms.length)
+    h+=`<div class="note" style="margin-top:8px;text-align:left">아직 주고받은 쪽지가 없어요. <b>선수 비교</b>나 <b>클럽 회원</b> 화면에서 쪽지를 보낼 수 있어요.</div>`;
   if(!groups.length) h+=`<div class="note" style="margin-top:12px">클럽에 정회원으로 가입하면 <b>단체방</b>이 생겨요.</div>`;
   document.getElementById('s-chat').innerHTML=h;
 }
@@ -5608,6 +5662,10 @@ function renderMe(){
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openHallOfFame()">
     <div><div style="font-size:16px;font-weight:800">명예의 전당 👑</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">역대 시즌 기록·최고 기록·챔피언</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openEarn()">
+    <div><div style="font-size:16px;font-weight:800">M캐쉬 ${(state.cash||0).toLocaleString()}</div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">친구 초대 · 광고 보고 받기</div></div>
+    <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openInvite()">
     <div><div style="font-size:16px;font-weight:800">친구 초대 🎁</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">초대하고 프리미엄·배지 보상받기 · ${state.invited||0}명 초대</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
@@ -5640,9 +5698,10 @@ function renderMe(){
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;background:#f6efdf;border-color:#ece1ca" onclick="openPremium()">
     <div><div style="font-size:16px;font-weight:800">클럽 프리미엄 ⭐</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">총무 일을 자동화 · 기본은 평생 무료</div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>
+  ${(canSellDigital() && (DEMO || !PAY_PENDING)) ? `
   <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openStore()">
     <div style="display:flex;align-items:center;gap:11px">${coin(30)}<div><div style="font-size:16px;font-weight:800">M캐쉬 스토어</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">추가 대진·쪽지에 쓰는 M캐쉬 충전</div></div></div>
-    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px;color:var(--coral-d)">${state.cash}</b><span style="color:var(--coral-d);font-weight:800;font-size:18px">→</span></div></div>
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px;color:var(--coral-d)">${state.cash}</b><span style="color:var(--coral-d);font-weight:800;font-size:18px">→</span></div></div>` : ''}
   <div class="card"><div class="ch">접근성</div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px">
       <div><div style="font-size:14.5px;font-weight:800">큰 글씨</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">화면 요소를 키워 읽기 쉽게</div></div>
@@ -5873,13 +5932,14 @@ function submitLounge(){ const t=(document.getElementById('lwTitle')||{}).value|
 function go(v){
   if(state.view==='bracket' && v!=='bracket') bkStopPoll();
   if(v==='bracket' && SERVER_OK && clubId()){ loadRoster().then(()=>bkPull()).then(ok=>{ renderBracket(); if(ok) bkStartPoll(); }); }
+  if(v==='chat' && SERVER_OK) loadDMThreads().then(()=>{ if(state.view==='chat' && !state.chatRoom) renderChat(); });
   state.view=v;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
-  ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+  ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   saveMatsu();
 }
 function closeOv(){document.getElementById('ov').classList.remove('on');}
