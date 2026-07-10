@@ -1245,6 +1245,8 @@
   <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
   <div id="offline">오프라인이에요 · 연결되면 자동으로 이어져요</div>
+  <div id="demobar" style="display:none;position:fixed;bottom:calc(64px + env(safe-area-inset-bottom,0px));left:12px;right:12px;z-index:120;background:#fdf2dd;color:#7a5a0d;border:1px solid #eeD9a8;border-radius:12px;font-size:12px;font-weight:700;text-align:center;padding:8px 12px">
+    체험판(데모)이에요 · 오픈매치·대화 등 실제 기능은 앱 주소로 접속하면 쓸 수 있어요</div>
 </div>
 <script>
 const COURT='<svg class="court" viewBox="0 0 300 200" preserveAspectRatio="none"><g stroke="#fff" stroke-width="2" fill="none"><rect x="34" y="22" width="232" height="156"/><line x1="34" y1="100" x2="266" y2="100"/><line x1="150" y1="22" x2="150" y2="178"/></g></svg>';
@@ -1946,7 +1948,9 @@ async function loadPublicData(){
 }
 
 async function checkServer(){
-  if(!API_BASE){ SERVER_OK=false; DEMO=true; applyAuthUI(); return false; }
+  if(!API_BASE){ SERVER_OK=false; DEMO=true; applyAuthUI();
+    const db0=document.getElementById('demobar'); if(db0) db0.style.display='block';
+    return false; }
   try{
     const c = new AbortController(); setTimeout(()=>c.abort(), 2500);
     const r = await fetch(API_BASE + '/health', {signal:c.signal});
@@ -1958,6 +1962,8 @@ async function checkServer(){
     stripDemoData();
     await loadPublicData();
   }
+  const db2 = document.getElementById('demobar');
+  if(db2) db2.style.display = DEMO ? 'block' : 'none';
   const el = document.getElementById('srvTag');
   if(el){ el.textContent = SERVER_OK ? '서버 연결됨 · 실제 계정으로 로그인' : '데모 · 실제 결제·예약은 작동하지 않습니다'; el.className = 'demo-tag' + (SERVER_OK?' live':''); }
   applyAuthUI();
@@ -7358,11 +7364,31 @@ function openLoungeWrite(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
   setTimeout(()=>{const e=document.getElementById('lwTitle');if(e)e.focus();},100);
 }
-function submitLounge(){ const t=(document.getElementById('lwTitle')||{}).value||''; if(!t.trim()){toast('제목을 입력해 주세요');return;}
+async function submitLounge(){
+  const t=((document.getElementById('lwTitle')||{}).value||'').trim();
+  if(!t){toast('제목을 입력해 주세요');return;}
   const _b=(document.getElementById('lwBody')||{}).value||'';
   const bad=findContact(t+' '+_b);
   if(bad){ toast(`${bad}는 공개 글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
-  LOUNGE_POSTS.unshift({cat:'자유',sp:SP().n,ic:SP().ic,t:t.trim(),b:(document.getElementById('lwBody')||{}).value||'',g:state.gender==='여성'?'♀':'♂',region:'경기 용인',time:'방금',v:1,l:0,c:0,nick:myAnonNick()});
+
+  if(SERVER_OK && authToken()){
+    // 서버에 저장해야 새로고침 후에도 남고, 다른 회원에게도 보이고, '내가 쓴 글'에도 잡힌다
+    try{
+      const cat=(document.getElementById('lwCat')||{}).value || state._lwCat || '자유';
+      await api('/posts',{method:'POST',body:JSON.stringify({title:t, body:_b, category:cat, sport:state.sport})});
+      closeOv(); state.loungeCat='전체';
+      await loadPublicData();                 // 서버 목록으로 갱신
+      renderLounge();
+      toast('익명으로 글을 올렸어요 · '+myAnonNick());
+    }catch(e){
+      const m=String(e.message||'');
+      toast(m.includes('contact_blocked')?'연락처는 공개 글에 올릴 수 없어요'
+          : m.includes('too_many')?'잠시 후 다시 시도해 주세요':'올리지 못했어요');
+    }
+    return;
+  }
+  // 데모 — 이 브라우저에만 저장
+  LOUNGE_POSTS.unshift({cat:'자유',sp:SP().n,ic:SP().ic,t,b:_b,g:state.gender==='여성'?'♀':'♂',region:'경기 용인',time:'방금',v:1,l:0,c:0,nick:myAnonNick()});
   closeOv(); state.loungeCat='전체'; renderLounge(); toast('익명으로 글을 올렸어요 · '+myAnonNick());
 }
 function go(v){
