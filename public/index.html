@@ -9,6 +9,11 @@
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <title>MATSU · 맞수</title>
+<meta property="og:type" content="website">
+<meta property="og:title" content="MATSU 맞수 · 동호회 대진·회비·리그">
+<meta property="og:description" content="클럽 대진 자동 편성, 참석 체크, 회비 장부까지 한 곳에서. 초대 링크로 바로 가입하세요.">
+<meta property="og:url" content="https://matsu.up.railway.app">
+<meta name="twitter:card" content="summary">
 
 <!-- ── PWA (홈 화면에 추가하면 앱처럼 뜬다) ── -->
 <link rel="manifest" href="/manifest.json">
@@ -642,6 +647,18 @@
   .vs-label{ font-size:11px; font-weight:900; color:var(--lgray); letter-spacing:1px; }
   .wait-line{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding:9px 13px; background:var(--cream2); border-radius:11px; }
   .wait-tag{ font-size:12px; font-weight:800; color:var(--gray); min-width:28px; }
+  @media print{
+    body.printB .appbar, body.printB .tabbar, body.printB .demo-tag, body.printB #notifDrop{ display:none !important; }
+    body.printB .screen{ display:none !important; }
+    body.printB #s-bracket{ display:block !important; }
+    body.printB .scroll{ overflow:visible !important; height:auto !important; }
+    body.printB .app{ box-shadow:none !important; max-width:none !important; }
+    body.printB .btn, body.printB button, body.printB .miniseg, body.printB .bk-nav{ display:none !important; }
+  }
+  .chat-cnt{ position:absolute; top:-3px; right:-4px; min-width:17px; height:17px; padding:0 4px;
+    border-radius:999px; background:var(--coral); color:#fff; font-size:10px; font-weight:900;
+    display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+  .msg-meta{ font-size:10.5px; font-weight:700; color:var(--lgray); text-align:right; margin:-5px 4px 8px; }
   #notifDrop{ position:fixed; top:74px; right:14px; z-index:340; width:min(330px, calc(100vw - 28px));
     background:rgba(255,253,247,.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
     border:1px solid var(--line); border-radius:18px; box-shadow:0 14px 40px rgba(50,38,20,.16);
@@ -1242,7 +1259,7 @@
     <div class="logo"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" role="button" tabindex="0" aria-label="검색" onclick="openSearch()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
-      <div class="bell" role="button" tabindex="0" aria-label="채팅" onclick="go('chat')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1 3.6-11.3 8.38 8.38 0 0 1 12.5 7.5z"/></svg></div>
+      <div class="bell" id="chatBell" role="button" tabindex="0" aria-label="채팅" onclick="go('chat')" style="position:relative"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1 3.6-11.3 8.38 8.38 0 0 1 12.5 7.5z"/></svg><span class="chat-cnt" id="chatCnt" style="display:none"></span></div>
       <div class="bell has" role="button" tabindex="0" aria-label="알림 보기" onclick="openNotif()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
     </div>
   </div>
@@ -2418,6 +2435,7 @@ async function setMemberRole(uid, role){
 
 /* ═══════════ 클럽 일정 · 참석 · 가입 승인 (서버) ═══════════ */
 let SRV_EVENT = null;       // 최신 일정 {id,title,date,count,attendees,joined}
+let SRV_EVENTS = [];        // 전체 일정 목록 (이번 주 일정 카드용)
 let SRV_MYSTATUS = null;    // {role,status}
 
 async function loadClubServer(){
@@ -2430,7 +2448,8 @@ async function loadClubServer(){
       api(`/clubs/${cid}/my-status`).catch(()=>null),
     ]);
     SRV_MYSTATUS = ms;
-    SRV_EVENT = (evs && evs[0]) || null;
+    SRV_EVENTS = evs || [];
+    SRV_EVENT = SRV_EVENTS[0] || null;
     if(SRV_EVENT){
       c.schedule.dt = SRV_EVENT.date || SRV_EVENT.title;
       c.schedule.attendees = SRV_EVENT.attendees || [];
@@ -2535,6 +2554,9 @@ async function requestJoinServer(name){
 let SRV_ROSTER = null;      // [{user_id,name,gender,grade,is_captain}]
 let SRV_UID = {};           // 이름 → user_id
 
+(function(){ // 서버 로그인 상태면 안읽음 배지 폴링 시작 (지연 시작으로 부팅 간섭 없음)
+  setTimeout(()=>{ try{ if(SERVER_OK && authToken()) startUnreadPoll(); }catch(e){} }, 3000);
+})();
 async function loadRoster(){
   const cid = clubId();
   if(!SERVER_OK || !cid){ SRV_ROSTER=null; return false; }
@@ -2543,6 +2565,7 @@ async function loadRoster(){
     const ms = (r.members||[]).filter(m=>m.name);
     if(!ms.length){ SRV_ROSTER=null; return false; }
     SRV_ROSTER = ms; SRV_UID = {};
+    state._rosterEventBased = !!r.event_id;
     const c = AC(); if(!c) return false;
     c.grades = c.grades || {}; c.genders = c.genders || {};
     ms.forEach(m=>{
@@ -2610,6 +2633,44 @@ function openQuickStart(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 /* ===== 알림 ===== */
+async function challengePlayerSrv(uid, name){
+  const today=new Date().toDateString();
+  if(state._chalDay!==today){ state._chalDay=today; state._chalN=0; }
+  if(state._chalN>=CHAL_DAILY){ toast(`도전 신청은 하루 ${CHAL_DAILY}번까지예요`); return; }
+  try{
+    await api('/matches',{method:'POST',body:JSON.stringify({sport:state.sport||'tennis', kind:'singles', away_user_id:uid})});
+    state._chalN++;
+    closeOv(); toast(`${name} 님에게 도전을 신청했어요 · 상대에게 알림이 갔어요`);
+    if(state.view==='match') renderMatch();
+  }catch(e){ toast('신청하지 못했어요 · 잠시 후 다시 시도해 주세요'); }
+}
+async function openCompareSrv(uid, name){
+  let me=null, op=null;
+  try{ [me, op] = await Promise.all([
+    api(`/users/${state.serverUser.id}/profile`), api(`/users/${uid}/profile`) ]); }catch(e){}
+  if(!me || !op){ toast('전적을 불러오지 못했어요'); return; }
+  const row=(l, a, b, hl)=>`<div style="display:flex;align-items:center;padding:10px 2px;border-top:1px solid #f4efe9">
+    <div style="flex:1;text-align:right;font-weight:${hl==='a'?'900':'700'};font-size:15px;color:${hl==='a'?'var(--coral-d)':'var(--ink)'}">${a}</div>
+    <div style="width:92px;text-align:center;font-size:11.5px;font-weight:800;color:var(--lgray)">${l}</div>
+    <div style="flex:1;font-weight:${hl==='b'?'900':'700'};font-size:15px;color:${hl==='b'?'var(--coral-d)':'var(--ink)'}">${b}</div></div>`;
+  const wrA=(me.wins+me.losses)?Math.round(me.wins/(me.wins+me.losses)*100):0;
+  const wrB=(op.wins+op.losses)?Math.round(op.wins/(op.wins+op.losses)*100):0;
+  let h=`<div class="sh-top"><h3>전적 비교</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 6px 10px">
+      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:var(--coral);font-size:19px;margin:0 auto">${esc(me.name[0])}</div><div style="font-weight:900;font-size:14px;margin-top:6px">${esc(me.name)} (나)</div></div>
+      <div style="font-size:15px;font-weight:900;color:var(--lgray)">VS</div>
+      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:#6182e6;font-size:19px;margin:0 auto">${esc(op.name[0])}</div><div style="font-weight:900;font-size:14px;margin-top:6px">${esc(op.name)}</div></div></div>
+    <div class="card" style="padding:6px 14px">
+      ${row('레이팅', me.rating, op.rating, me.rating>=op.rating?'a':'b')}
+      ${row('지역 순위', me.rank+'위', op.rank+'위', me.rank<=op.rank?'a':'b')}
+      ${row('전적', `${me.wins}승 ${me.losses}패`, `${op.wins}승 ${op.losses}패`, wrA>=wrB?'a':'b')}
+      ${row('승률', wrA+'%', wrB+'%', wrA>=wrB?'a':'b')}
+      ${row('지역', esc(me.region||'—'), esc(op.region||'—'), '')}
+    </div>
+    <div class="note" style="text-align:left;margin-top:10px">예상 승률 <b>${Math.round(expScore(me.rating,op.rating)*100)}%</b> · 레이팅 차이 기준</div>
+    <button class="btn" style="margin-top:12px" onclick="challengePlayerSrv(${uid},'${String(name).replace(/'/g,'')}')">이 상대에게 도전하기</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
 function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); }
 function clubMembersList(){
   const c=AC(); if(!c) return [];
@@ -2773,8 +2834,52 @@ async function openAttendSummary(){
 }
 function markAtt(nm,st){ const c=AC(); c.att=c.att||{}; c.att[nm]=c.att[nm]===st?'none':st; openAttend(); }
 // ── 경기 기록/히스토리 ──
-function openHistory(){
+const HFMT={club:'일반(복식)',kdk:'KDK',level:'실력별',monthly:'월례회',bw:'청백전',hanul:'한울'};
+async function openHistory(){
   const c=AC(); if(!c)return;
+  if(SERVER_OK && clubId()){
+    // 실서비스: 발행된 대진 + 확정 점수에서 내 전적을 계산한다
+    let rows=[];
+    try{ rows = await api(`/clubs/${clubId()}/brackets/history?limit=30`); }catch(e){}
+    rows.reverse();                                        // 최신부터
+    const ME=meName();
+    const hist=rows.map(b=>{
+      let myW=0,myL=0,games=0;
+      (b.reg||[]).forEach(r=>{
+        const sc=(b.scores||{})[r.key];
+        if(!sc || !Array.isArray(r.names) || r.names.length<4) return;
+        games++;
+        if(!r.names.includes(ME)) return;
+        const onA = r.names.slice(0, r.names.length/2).includes(ME);
+        const win = onA ? sc.a>sc.b : sc.b>sc.a;
+        if(sc.a===sc.b) return;
+        win ? myW++ : myL++;
+      });
+      return {date:b.date||'', fmt:HFMT[b.fmt]||b.fmt||'대진', people:(b.attendees||[]).length, myW, myL, games};
+    });
+    let h=`<div class="sh-top"><h3>경기 기록</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+      <div class="sd">${esc(state.activeClub)} · 발행된 대진과 확정 점수 기준이에요.</div>`;
+    if(!hist.length){
+      h+=`<div class="empty" style="padding:38px 20px"><div class="ei">📋</div><div class="et">아직 기록이 없어요</div>
+        <div class="es">대진을 <b>발행</b>하고 점수를 입력하면<br>모임 기록이 여기 쌓여요.</div></div>`;
+    } else {
+      const tw=hist.reduce((a,x)=>a+x.myW,0), tl=hist.reduce((a,x)=>a+x.myL,0);
+      h+=`<div class="card" style="margin:0 0 12px;padding:14px;display:flex;justify-content:space-around;text-align:center">
+        <div><div style="font-size:20px;font-weight:900">${hist.length}</div><div style="font-size:11px;color:var(--gray);font-weight:600">참여 모임</div></div>
+        <div><div style="font-size:20px;font-weight:900;color:var(--coral-d)">${tw}승 ${tl}패</div><div style="font-size:11px;color:var(--gray);font-weight:600">내 누적</div></div>
+        <div><div style="font-size:20px;font-weight:900;color:var(--green)">${tw+tl?Math.round(tw/(tw+tl)*100):0}%</div><div style="font-size:11px;color:var(--gray);font-weight:600">승률</div></div></div>`;
+      const htint=['#ece7f8','#e6f3ec','#e7eefb','#fbe8d7'];
+      hist.forEach((x,i)=>{ const win=x.myW>=x.myL && (x.myW+x.myL)>0;
+        h+=`<div class="exprow" style="background:${htint[i%4]}">
+          <div class="ex-ic">${SP().ic}</div>
+          <div class="ex-x"><div class="ex-cat">${esc(x.fmt)}</div><div class="ex-n">${esc(x.date)}</div></div>
+          <div class="ex-meta"><div class="ex-day">${x.people}명 · ${x.games}경기</div>
+            <div class="ex-v" style="color:${win?'#2f9159':'#cf5418'}">${x.myW+x.myL?`${x.myW}승 ${x.myL}패`:'미참여'}</div></div></div>`; });
+    }
+    h+=`<button class="btn ghost" style="margin-top:16px" onclick="closeOv()">닫기</button>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   if(!c.history){ const dates=['6/28 (토)','6/21 (토)','6/14 (토)','6/7 (토)']; const fmts=['일반(복식)','월례회','청백전','실력별'];
     c.history=dates.map((d,i)=>({date:d,fmt:fmts[i],people:8+((i*2)%6),myW:1+(i%3),myL:3-(i%3)})); }
   let h=`<div class="sh-top"><h3>경기 기록</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
@@ -2817,7 +2922,31 @@ function openGuestSettle(){
 }
 function toggleGuestPaid(i){ const c=AC(); c.guestLog[i].paid=!c.guestLog[i].paid; openGuestSettle(); }
 // ── 코트 예약 ──
-function openCourtBook(){
+async function openCourtBook(){
+  if(SERVER_OK && clubId()){
+    const officer = state.bcfg.role==='officer';
+    let slots=[];
+    try{ slots = await api(`/clubs/${clubId()}/courts`); }catch(e){}
+    const lab={booked:['예약 확정','#e8f9f6','var(--green)'],requested:['예약 신청중','#fff8e6','#d99a00'],open:['미예약','#f0ece6','#8a7a6e']};
+    let h=`<div class="sh-top"><h3>코트 예약</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">모임 일정에 맞춘 코트 예약 현황이에요.${officer?' 상태를 <b>탭하면</b> 미예약 → 신청중 → 확정 순으로 바뀌어요.':''}</div>`;
+    if(!slots.length) h+=`<div class="empty" style="padding:32px 20px"><div class="ei">📍</div><div class="et">등록된 예약 일정이 없어요</div>
+      <div class="es">${officer?'아래에서 첫 일정을 추가해 보세요.':'임원진이 일정을 올리면 여기서 볼 수 있어요.'}</div></div>`;
+    slots.forEach(sl=>{ const L=lab[sl.status]||lab.open;
+      h+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 2px;border-bottom:1px solid #f4efe9">
+        <div style="min-width:0"><div style="font-weight:800;font-size:14.5px">${esc(sl.label)}</div>
+          ${sl.detail?`<div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:2px">${esc(sl.detail)}</div>`:''}</div>
+        <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
+          <span onclick="${officer?`cycleCourtSrv(${sl.id},'${sl.status}')`:''}" style="${officer?'cursor:pointer;':''}background:${L[1]};color:${L[2]};font-size:12px;font-weight:800;border-radius:10px;padding:6px 11px">${L[0]}</span>
+          ${officer?`<span onclick="delCourtSrv(${sl.id})" style="cursor:pointer;color:var(--lgray);font-weight:800;font-size:15px;padding:4px">×</span>`:''}</div></div>`; });
+    if(officer){
+      h+=`<div class="fld" style="margin-top:14px"><label>새 일정</label><input id="csLabel" placeholder="예) 7/19 (토) 09:00–12:00" maxlength="40"></div>
+        <div class="fld"><label>코트 (선택)</label><input id="csDetail" placeholder="예) 기흥 테니스장 2·3번" maxlength="40"></div>
+        <button class="btn" onclick="addCourtSrv()">일정 추가</button>`;
+    }
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const c=AC(); if(!c)return; const court=c.court||'양재 시민의숲 테니스장';
   c.courtSlots=c.courtSlots||[
     {d:'7/5 (토)',t:'09:00–12:00',ct:'2·3번 코트',st:'booked'},
@@ -2834,6 +2963,26 @@ function openCourtBook(){
   h+=`<div class="note" style="text-align:left;margin-top:12px">상태를 탭하면 미예약→신청중→확정으로 바뀌어요. (실서비스는 코트장 예약 시스템과 연동)</div>
     <button class="btn ghost" style="margin-top:10px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function cycleCourtSrv(id, cur){
+  const order=['open','requested','booked'];
+  const next=order[(order.indexOf(cur)+1)%3];
+  try{ await api(`/clubs/${clubId()}/courts/${id}`,{method:'PATCH',body:JSON.stringify({status:next})}); }
+  catch(e){ toast('임원진만 바꿀 수 있어요'); }
+  openCourtBook();
+}
+async function addCourtSrv(){
+  const l=(document.getElementById('csLabel')||{}).value||'';
+  if(!l.trim()){ toast('일정을 입력해 주세요'); return; }
+  const d=(document.getElementById('csDetail')||{}).value||'';
+  try{ await api(`/clubs/${clubId()}/courts`,{method:'POST',body:JSON.stringify({label:l.trim(), detail:d.trim()})}); }
+  catch(e){ toast('추가하지 못했어요'); }
+  openCourtBook();
+}
+async function delCourtSrv(id){
+  if(!confirm('이 일정을 삭제할까요?')) return;
+  try{ await api(`/clubs/${clubId()}/courts/${id}`,{method:'DELETE'}); }catch(e){}
+  openCourtBook();
 }
 function cycleCourt(i){ const c=AC(); const order=['open','requested','booked']; const cur=c.courtSlots[i].st; c.courtSlots[i].st=order[(order.indexOf(cur)+1)%3]; openCourtBook(); }
 // ── 사진 갤러리 ──
@@ -3109,7 +3258,7 @@ function openTeamLive(){
     <div onclick="cheer('clap')" style="cursor:pointer;text-align:center"><div style="font-size:26px">👏</div><div style="font-size:12px;font-weight:800;margin-top:3px">${ch.clap}</div></div>
     <div onclick="cheer('fire')" style="cursor:pointer;text-align:center"><div style="font-size:26px">🔥</div><div style="font-size:12px;font-weight:800;margin-top:3px">${ch.fire}</div></div>
     <div onclick="cheer('muscle')" style="cursor:pointer;text-align:center"><div style="font-size:26px">💪</div><div style="font-size:12px;font-weight:800;margin-top:3px">${ch.muscle}</div></div></div>
-    <button class="btn" style="margin-top:8px" onclick="openMatchRecord()"><span class="bic">${ic('pencil',16,'currentColor')}경기 기록 입력</span></button>
+    ${DEMO?`<button class="btn" style="margin-top:8px" onclick="openMatchRecord()"><span class="bic">${ic('pencil',16,'currentColor')}경기 기록 입력</span></button>`:``}
     <button class="btn ghost" style="margin-top:9px" onclick="shareLive()"><span class="bic">${ic('link',16,'currentColor')}응원 링크 공유</span></button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -3209,9 +3358,59 @@ function openFeeEdit(){
     <button class="btn" style="margin-top:14px" onclick="closeOv();toast('회비 설정을 저장했어요');if(state.view==='club')renderClub()">저장</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function feeAdj(key,d){ const c=AC(); if(!c)return; c[key]=Math.max(0,(c[key]||0)+d); openFeeEdit(); }
+function feeAdj(key,d){ const c=AC(); if(!c)return; c[key]=Math.max(0,(c[key]||0)+d); pushFees(); openFeeEdit(); }
+let FEE_PUSH_T=null;
+function pushFees(){
+  // 서버에 회비 설정 저장 (연타 대비 0.8초 디바운스)
+  const cid=clubId(); const c=AC();
+  if(!SERVER_OK || !cid || !c) return;
+  clearTimeout(FEE_PUSH_T);
+  FEE_PUSH_T=setTimeout(async ()=>{
+    try{ await api(`/clubs/${cid}/fees`, {method:'PATCH', body: JSON.stringify({
+      entry_fee: c.entry||0, season_fee: c.season||0,
+      guest_fee: c.guestFee||0, guest_cap: c.guestReq||0 })}); }
+    catch(e){ if(String(e.message).includes('officer_only')) toast('회비 설정은 임원진만 바꿀 수 있어요'); }
+  }, 800);
+}
 // ── 프리미엄 구독 (데모) + 리포트 ──
-function openClubReport(){
+async function openClubReport(){
+  if(SERVER_OK && clubId()){
+    let st=null, att=[];
+    try{ [st, att] = await Promise.all([
+      api(`/clubs/${clubId()}/stats`), api(`/clubs/${clubId()}/attendance/summary`) ]); }catch(e){}
+    let h=`<div class="sh-top"><h3>클럽 리포트</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">${esc(state.activeClub)} · 출석·회비 실데이터 리포트예요.</div>`;
+    // 월별 참석률 미니 바
+    const bars=(st&&st.attendance)||[];
+    h+=`<div class="card"><div style="font-size:14px;font-weight:900;margin-bottom:10px">월별 참석률</div>
+      <div style="display:flex;align-items:flex-end;gap:8px;height:86px">`;
+    bars.forEach(b=>{ const r=b.rate==null?0:b.rate;
+      h+=`<div style="flex:1;text-align:center"><div style="font-size:10px;font-weight:800;color:${b.rate==null?'var(--lgray)':'var(--coral-d)'}">${b.rate==null?'—':r+'%'}</div>
+        <div style="height:${Math.max(4,r*0.6)}px;background:${b.rate==null?'#ece6d5':'var(--coral)'};border-radius:6px 6px 0 0;margin-top:3px"></div>
+        <div style="font-size:9.5px;color:var(--lgray);font-weight:700;margin-top:4px">${b.month.slice(5)}월</div></div>`; });
+    h+=`</div></div>`;
+    // 회비 수납률 (최근 달)
+    const dues=(st&&st.dues)||[]; const lastDue=[...dues].reverse().find(d=>d.total>0);
+    h+=`<div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:14px">
+      <div><div style="font-size:20px;font-weight:900;color:var(--green)">${lastDue?lastDue.rate+'%':'—'}</div><div style="font-size:11px;color:var(--gray);font-weight:600">회비 수납률${lastDue?` (${lastDue.month.slice(5)}월)`:''}</div></div>
+      <div><div style="font-size:20px;font-weight:900">${att.length}</div><div style="font-size:11px;color:var(--gray);font-weight:600">정회원</div></div>
+      <div><div style="font-size:20px;font-weight:900;color:#c0392b">${att.reduce((a,x)=>a+(x.noshow||0),0)}</div><div style="font-size:11px;color:var(--gray);font-weight:600">누적 노쇼</div></div></div>`;
+    // 출석 TOP 5
+    const top=att.filter(x=>x.attended>0).slice(0,5);
+    if(top.length){
+      h+=`<div class="card"><div style="font-size:14px;font-weight:900;margin-bottom:6px">출석 TOP 5</div>`;
+      top.forEach((x,i)=>{ h+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #f4efe9">
+        <span style="width:20px;text-align:center;font-weight:900;color:${i===0?'#e8b53a':'var(--lgray)'}">${i+1}</span>
+        <span style="flex:1;font-weight:700;font-size:13.5px">${esc(x.name)}</span>
+        <span style="font-weight:800;font-size:12.5px;color:var(--green)">출석 ${x.attended}</span>
+        ${x.noshow?`<span style="font-weight:800;font-size:12.5px;color:#c0392b">노쇼 ${x.noshow}</span>`:''}</div>`; });
+      h+=`</div>`;
+    }
+    h+=`<div class="note" style="text-align:left">출석은 <b>출석·노쇼 체크</b>, 회비는 <b>회비 장부</b>에 기록한 내용이 반영돼요.</div>
+      <button class="btn ghost" style="margin-top:10px" onclick="closeOv()">닫기</button>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const c=AC();
   if(!state.premium){
     let h=`<div class="sh-top"><h3>클럽 리포트</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
@@ -3339,7 +3538,29 @@ function smartOpponents(){
     {n:'한지웅',r:me+41,reg:'경기 용인',gd,note:'한 단계 위 도전 상대'},
   ];
 }
-function openSmartMatch(){
+async function openSmartMatch(){
+  if(SERVER_OK && state.serverUser){
+    // 실서비스: 같은 종목 유저 중 레이팅이 가장 비슷한 상대 추천
+    let all=[];
+    try{ all = await api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`); }catch(e){}
+    const myR = state.serverUser.rating || state.rating || 1000;
+    const ops = all.filter(u=>u.id!==state.serverUser.id)
+                   .sort((a,b)=>Math.abs(a.rating-myR)-Math.abs(b.rating-myR)).slice(0,6);
+    const cls=['#6182e6','#62c08d','#f1a55c'];
+    let h=`<div class="sh-top"><h3>추천 상대</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">내 레이팅 <b>${myR}</b> 기준 <b>실력이 비슷한 실제 회원</b>이에요. 도전하면 상대에게 알림이 가고, 수락하면 경기가 잡혀요.</div>`;
+    if(!ops.length) h+=`<div class="empty" style="padding:36px 20px"><div class="ei">🎾</div><div class="et">아직 추천할 상대가 없어요</div><div class="es">같은 종목 회원이 늘어나면 여기 나타나요.</div></div>`;
+    ops.forEach((o,i)=>{ const exp=Math.round(expScore(myR,o.rating)*100);
+      h+=`<div class="card" style="display:flex;align-items:center;gap:13px;margin-bottom:10px">
+        <div class="lb-av" style="width:46px;height:46px;border-radius:14px;background:${cls[i%3]};font-size:18px;cursor:pointer" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">${esc(o.name[0])}</div>
+        <div style="flex:1;min-width:0" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')" style="cursor:pointer">
+          <div style="font-weight:800;font-size:15px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:700">· 레이팅 ${o.rating}</span></div>
+          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${esc(o.region||'지역 미정')} · 탭하면 전적 비교</div>
+          <div style="font-size:11.5px;color:var(--coral-d);font-weight:800;margin-top:3px">예상 승률 ${exp}%</div></div>
+        <button class="btn sm" onclick="challengePlayerSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">도전</button></div>`; });
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const ops=smartOpponents(); const cls=['#6182e6','#62c08d','#f1a55c'];
   let h=`<div class="sh-top"><h3>추천 상대</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">내 레이팅 <b>${state.rating}</b>·지역을 기준으로 <b>실력이 비슷한 상대</b>를 추천해요. 도전을 신청하면 상대 수락 후 경기를 잡아요.</div>`;
@@ -3362,8 +3583,66 @@ function challengePlayer(n){
   closeOv(); pushNotif('⚔️','도전 신청을 보냈어요',`${n}님의 수락을 기다리고 있어요`);
   toast(`도전을 신청했어요 · 오늘 ${CHAL_DAILY-state._chalN}번 남음`);
 }
+async function challengePlayerSrv(uid, name){
+  const today=new Date().toDateString();
+  if(state._chalDay!==today){ state._chalDay=today; state._chalN=0; }
+  if(state._chalN>=CHAL_DAILY){ toast(`도전 신청은 하루 ${CHAL_DAILY}번까지예요`); return; }
+  try{
+    await api('/matches',{method:'POST',body:JSON.stringify({sport:state.sport||'tennis', kind:'singles', away_user_id:uid})});
+    state._chalN++;
+    closeOv(); toast(`${name} 님에게 도전을 신청했어요 · 상대에게 알림이 갔어요`);
+    if(state.view==='match') renderMatch();
+  }catch(e){ toast('신청하지 못했어요 · 잠시 후 다시 시도해 주세요'); }
+}
+async function openCompareSrv(uid, name){
+  let me=null, op=null;
+  try{ [me, op] = await Promise.all([
+    api(`/users/${state.serverUser.id}/profile`), api(`/users/${uid}/profile`) ]); }catch(e){}
+  if(!me || !op){ toast('전적을 불러오지 못했어요'); return; }
+  const row=(l, a, b, hl)=>`<div style="display:flex;align-items:center;padding:10px 2px;border-top:1px solid #f4efe9">
+    <div style="flex:1;text-align:right;font-weight:${hl==='a'?'900':'700'};font-size:15px;color:${hl==='a'?'var(--coral-d)':'var(--ink)'}">${a}</div>
+    <div style="width:92px;text-align:center;font-size:11.5px;font-weight:800;color:var(--lgray)">${l}</div>
+    <div style="flex:1;font-weight:${hl==='b'?'900':'700'};font-size:15px;color:${hl==='b'?'var(--coral-d)':'var(--ink)'}">${b}</div></div>`;
+  const wrA=(me.wins+me.losses)?Math.round(me.wins/(me.wins+me.losses)*100):0;
+  const wrB=(op.wins+op.losses)?Math.round(op.wins/(op.wins+op.losses)*100):0;
+  let h=`<div class="sh-top"><h3>전적 비교</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 6px 10px">
+      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:var(--coral);font-size:19px;margin:0 auto">${esc(me.name[0])}</div><div style="font-weight:900;font-size:14px;margin-top:6px">${esc(me.name)} (나)</div></div>
+      <div style="font-size:15px;font-weight:900;color:var(--lgray)">VS</div>
+      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:#6182e6;font-size:19px;margin:0 auto">${esc(op.name[0])}</div><div style="font-weight:900;font-size:14px;margin-top:6px">${esc(op.name)}</div></div></div>
+    <div class="card" style="padding:6px 14px">
+      ${row('레이팅', me.rating, op.rating, me.rating>=op.rating?'a':'b')}
+      ${row('지역 순위', me.rank+'위', op.rank+'위', me.rank<=op.rank?'a':'b')}
+      ${row('전적', `${me.wins}승 ${me.losses}패`, `${op.wins}승 ${op.losses}패`, wrA>=wrB?'a':'b')}
+      ${row('승률', wrA+'%', wrB+'%', wrA>=wrB?'a':'b')}
+      ${row('지역', esc(me.region||'—'), esc(op.region||'—'), '')}
+    </div>
+    <div class="note" style="text-align:left;margin-top:10px">예상 승률 <b>${Math.round(expScore(me.rating,op.rating)*100)}%</b> · 레이팅 차이 기준</div>
+    <button class="btn" style="margin-top:12px" onclick="challengePlayerSrv(${uid},'${String(name).replace(/'/g,'')}')">이 상대에게 도전하기</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
 function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); const bl=document.querySelector('.bell'); if(bl)bl.classList.add('has'); }
-function myBadges(){ const rec=myRecord(), sk=state.streak||0; return [
+let ME_PROF=null, ME_PROF_TS=0;
+async function loadMyProfile(){
+  if(!SERVER_OK || !state.serverUser) return null;
+  if(ME_PROF && Date.now()-ME_PROF_TS<60e3) return ME_PROF;
+  try{ ME_PROF = await api(`/users/${state.serverUser.id}/profile`); ME_PROF_TS=Date.now(); }catch(e){}
+  return ME_PROF;
+}
+function myBadges(){
+  if(SERVER_OK && ME_PROF){
+    // 실서비스: 서버 전적·순위 기준
+    const p=ME_PROF, g=(p.wins||0)+(p.losses||0);
+    return [
+      {e:SP().ic,l:'첫 '+SP().place,on:true},
+      {e:'🏅',l:'배치 완료',on:g>=5},
+      {e:'🔥',l:'꾸준함',on:g>=12},
+      {e:'✌️',l:'첫 승리',on:(p.wins||0)>=1},
+      {e:'⭐',l:'10승 달성',on:(p.wins||0)>=10},
+      {e:'👑',l:'동네 챔피언',on:p.rank===1},
+    ];
+  }
+  const rec=myRecord(), sk=state.streak||0; return [
   {e:SP().ic,l:'첫 '+SP().place,on:true},
   {e:'🏅',l:'배치 완료',on:state.played>=5},
   {e:'🔥',l:sk+'주 연속',on:sk>=2},
@@ -3371,7 +3650,25 @@ function myBadges(){ const rec=myRecord(), sk=state.streak||0; return [
   {e:'⭐',l:'10승 달성',on:rec.w>=10},
   {e:'👑',l:'동네 챔피언',on:state.rating>=1300},
 ];}
-function openClubRank(){
+async function openClubRank(){
+  const cid=clubId();
+  if(SERVER_OK && cid){
+    let rows=[];
+    try{ rows = await api(`/clubs/${cid}/rankings`); }catch(e){}
+    let h=`<div class="sh-top"><h3>클럽 랭킹</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+      <div class="sd">${esc(state.activeClub)} 회원 랭킹이에요. <b>대진 결과를 확정</b>하면 레이팅이 갱신돼요.</div>
+      <div class="lol"><div class="lol-hd"><span>회원 레이팅 랭킹</span><span>${rows.length}명</span></div>`;
+    if(!rows.length) h+=`<div class="note" style="margin:10px">아직 회원이 없어요.</div>`;
+    rows.forEach((p,i)=>{ const rank=i+1, me=p.name===meName();
+      const medal=rank===1?'#e8b53a':rank===2?'#b8bcc4':rank===3?'#cd8e5a':'var(--lgray)';
+      h+=`<div class="lrow ${me?'mine':''}" style="align-items:center">
+        <div class="lrk" style="color:${medal};width:26px">${rank}</div>
+        <div style="flex:1"><span style="font-weight:${me?'800':'700'};color:#e9edf5;font-size:14px">${esc(p.name)}${me?' (나)':''}${p.grade?` <small style="color:#8b97ad">· ${p.grade}조</small>`:''}</span><br><small style="color:#8b97ad;font-size:11px">출석 ${p.attended||0}회</small></div>
+        <div style="color:#f0b73e;font-weight:900;font-size:15px">${p.rating||1000}</div></div>`; });
+    h+=`</div><button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const rows=[
     {n:'분당 스매시 클럽',r:'경기 성남',pt:1840,w:24,l:6},
     {n:state.activeClub||'용인 맞수 클럽',r:'경기 용인',pt:1720,w:21,l:9,me:true},
@@ -3393,7 +3690,24 @@ function openClubRank(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 // ── 회원 평점 (서로 평가) ──
-function openRatePeer(){
+async function openRatePeer(){
+  if(SERVER_OK && clubId()){
+    let rows=[];
+    try{ rows = await api(`/clubs/${clubId()}/peer-reviews`); }catch(e){}
+    let h=`<div class="sh-top"><h3>회원 평점</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">함께 친 회원의 <b>매너·실력</b>을 별점으로 남겨요. <b>익명으로 집계</b>되고 누가 줬는지는 보이지 않아요.</div>`;
+    if(!rows.length) h+=`<div class="note" style="text-align:left">아직 평가할 회원이 없어요.</div>`;
+    rows.forEach(m=>{ const my=m.my||0;
+      let stars=''; for(let k=1;k<=5;k++){ stars+=`<span onclick="setPeerRateSrv(${m.user_id},${k})" style="cursor:pointer;font-size:22px;color:${k<=my?'#f0b73e':'#dcd3c7'}">★</span>`; }
+      h+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 2px;border-bottom:1px solid #f4efe9">
+        <div style="min-width:0"><div style="font-weight:700;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.name)}</div>
+          <div style="font-size:11px;color:var(--lgray);font-weight:700">${m.n?`평균 ${m.avg}점 · ${m.n}명 평가`:'아직 평가 없음'}</div></div>
+        <div style="flex-shrink:0">${stars}</div></div>`; });
+    h+=`<div class="note" style="text-align:left;margin-top:12px">별을 다시 누르면 <b>수정</b>돼요. 낮은 평점이 쌓이면 운영진이 확인할 수 있어요.</div>
+      <button class="btn" style="margin-top:10px" onclick="closeOv()">평가 완료</button>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const c=AC(); if(!c)return; const mem=clubMembersList().filter(nm=>nm!=='곽주영');
   c.peerRate=c.peerRate||{};
   let h=`<div class="sh-top"><h3>회원 평점</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
@@ -3406,6 +3720,11 @@ function openRatePeer(){
     <button class="btn" style="margin-top:10px" onclick="closeOv()">평가 완료</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+async function setPeerRateSrv(uid, stars){
+  try{ await api(`/clubs/${clubId()}/peer-reviews`,{method:'POST',body:JSON.stringify({to:uid, stars})}); }
+  catch(e){ toast('저장하지 못했어요'); }
+  openRatePeer();
+}
 function setPeerRate(nm,k){ const c=AC(); c.peerRate=c.peerRate||{}; c.peerRate[nm]=k; openRatePeer(); }
 function timeAgo(t){
   if(!t) return '';
@@ -3413,6 +3732,23 @@ function timeAgo(t){
   if(s<60e3) return '방금'; if(s<3600e3) return Math.floor(s/60e3)+'분 전';
   if(s<86400e3) return Math.floor(s/3600e3)+'시간 전';
   return Math.floor(s/86400e3)+'일 전';
+}
+let UNREAD={dm:0, clubs:{}, total:0}, UNREAD_POLL=null;
+function paintUnreadBadge(){
+  const el=document.getElementById('chatCnt'); if(!el) return;
+  const clubTotal=Object.values(UNREAD.clubs||{}).reduce((a,b)=>a+b,0);
+  const n=(UNREAD.dm||0)+clubTotal;
+  if(n>0){ el.style.display='flex'; el.textContent=n>99?'99+':n; }
+  else el.style.display='none';
+}
+async function pollUnread(){
+  if(!SERVER_OK || !authToken()) return;
+  try{ const u=await api('/me/unread'); UNREAD={dm:u.dm||0, clubs:u.clubs||{}, total:u.total||0}; paintUnreadBadge(); }catch(e){}
+}
+function startUnreadPoll(){
+  if(UNREAD_POLL) return;
+  pollUnread();
+  UNREAD_POLL=setInterval(pollUnread, 30000);
 }
 let NOTIF_CACHE=null, NOTIF_TS=0;
 async function toggleNotif(ev){
@@ -3799,7 +4135,35 @@ function lgSlide(d){
 }
 function lgSlideTo(i){ state._lgSlide = i; renderLeague(); }
 
+let LG_RANKS=null, LG_TS=0;
 function renderLeague(){
+  if(SERVER_OK && authToken()){
+    // 실서비스: 정식 리그는 준비 중 — 대신 실제 회원 레이팅 랭킹을 보여준다
+    let h=`<h2 class="t">리그</h2><p class="sub">개인 레이팅 랭킹 · 정식 리그는 준비 중이에요.</p>`;
+    h+=`<div class="card" style="background:linear-gradient(135deg,#8b7fd4,#6f62c4);border:none;color:#fff;padding:18px 17px">
+      <div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:.02em">COMING SOON</div>
+      <div style="font-size:20px;font-weight:900;margin-top:5px">승강제 리그 · 시즌 배지</div>
+      <div style="font-size:12.5px;font-weight:600;opacity:.9;margin-top:6px;line-height:1.55">부별 리그와 승격·강등, 시즌 결산은 준비 중이에요.<br>지금은 <b>경기 결과를 확정</b>할 때마다 레이팅이 쌓여요.</div></div>`;
+    if(!LG_RANKS || Date.now()-LG_TS>60e3){
+      api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`)
+        .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
+        .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
+      h+=skelCards(3);
+    } else {
+      const myId=(state.serverUser||{}).id;
+      h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:700">상위 ${LG_RANKS.length}명</span></div>`;
+      if(!LG_RANKS.length) h+=`<div class="note" style="text-align:left;margin-top:6px">아직 랭킹이 없어요. 첫 경기를 치러보세요.</div>`;
+      LG_RANKS.slice(0,30).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#e8b53a':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
+        h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f4efe9;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
+          <div style="width:24px;text-align:center;font-weight:900;color:${medal}">${i+1}</div>
+          <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}<span style="font-size:11.5px;color:var(--lgray);font-weight:600"> · ${esc(p.region||'')}</span></div>
+          <div style="font-weight:900;color:var(--coral-d)">${p.rating}</div></div>`; });
+      h+=`</div>`;
+      h+=`<div class="note" style="text-align:left">순위를 올리려면 <b>매치 탭</b>에서 실력이 비슷한 상대에게 도전하거나, 클럽 대진 결과를 확정하세요.</div>`;
+    }
+    document.getElementById('s-league').innerHTML=h;
+    return;
+  }
   const cat=SP().cat;
   if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague(); return; }
   if(cat==='record'){ document.getElementById('s-league').innerHTML=renderRecordLeague(); return; }
@@ -3948,25 +4312,27 @@ function renderClub(){
       h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`; }
     // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
-      h+=`<div class="ch" style="font-size:18px;margin:16px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>이번 주 일정</span>${off?`<button onclick="openEventCreate()" style="cursor:pointer;border:1.5px solid var(--coral);background:#fffdf6;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
-      if(!c2.events.length){ h+=`<div class="note" style="text-align:left">아직 등록된 모임이 없어요.${off?' 일정을 만들어 회원을 모아보세요.':' 임원진이 일정을 올리면 여기서 참여할 수 있어요.'}</div>`; }
+      if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS);
+      const evList = (SERVER_OK && clubId()) ? SRV_EVENTS : c2.events;
+      h+=`<div class="ch" style="font-size:18px;margin:16px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>이번 주 일정</span>${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#fffdf6;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
+      if(!evList.length){ h+=`<div class="note" style="text-align:left">아직 등록된 모임이 없어요.${off?' 일정을 만들어 회원을 모아보세요.':' 임원진이 일정을 올리면 여기서 참여할 수 있어요.'}</div>`; }
       else {
         const pc=['#f1a55c','#9bbef0','#b9a6ea','#f0a9cf'], tags=['정기','추가','번개','이벤트'];
         h+=`<div class="plan2">`;
-        c2.events.slice(0,4).forEach((ev,i)=>{ const joined=ev.attendees.includes('곽주영');
+        evList.slice(0,4).forEach((ev,i)=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const parts=(ev.date||'').split(' '); const dpart=parts.slice(0,2).join(' ')||'날짜 미정', tpart=parts.slice(2).join(' ')||'시간 미정';
           h+=`<div class="psess" style="background:${pc[i%4]}" onclick="joinEvent('${ev.id}')">
             ${joined?'<div class="ps-chk">참여중 ✓</div>':''}
-            <span class="ps-tag">${tags[i%4]}</span>
+            <span class="ps-tag">${esc(ev.tag||tags[i%4])}</span>
             <div class="ps-n">${esc(ev.title)}</div>
             <div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div>
             <div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>${joined?'탭하면 취소':'탭하면 참여'}</div></div></div>`; });
         h+=`</div>`;
-        if(off && c2.events[0]) h+=`<button class="btn ghost" style="margin-top:11px" onclick="useEventForBracket('${c2.events[0].id}')">이번 주 대기열로 대진 편성 →</button>`;
+        if(off && evList[0]) h+=`<button class="btn ghost" style="margin-top:11px" onclick="useEventForBracket('${evList[0].id}')">이번 주 참석자로 대진 편성 →</button>`;
       }
       // ⑤ 바로가기 (소셜 카드 위치)
       h+=`<div class="qlinks">
-        <div class="qlink" onclick="go('chat')"><div class="ql-ic">💬</div><div class="ql-l">채팅</div></div>
+        <div class="qlink" onclick="openClubRoom()"><div class="ql-ic">💬</div><div class="ql-l">채팅</div></div>
         <div class="qlink" onclick="openGallery()"><div class="ql-ic">📸</div><div class="ql-l">갤러리</div></div>
         <div class="qlink" onclick="openNotices()"><div class="ql-ic">📢</div><div class="ql-l">공지</div></div>
         <div class="qlink" onclick="openClubRank()"><div class="ql-ic">🏆</div><div class="ql-l">랭킹</div></div></div>`;
@@ -3991,22 +4357,23 @@ function renderClub(){
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#ece7f8;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비·게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
-          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n" style="display:flex;align-items:center;gap:5px">클럽 리포트 ${state.premium?'':ic('lock',14)}</div><div class="tr-d">${state.premium?'참여·수익·인기시간 분석':'프리미엄 전용 · 구독하면 열려요'}</div></div><div class="tr-arr">›</div></div>` : ``}
+          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n" style="display:flex;align-items:center;gap:5px">클럽 리포트 ${state.premium?'':ic('lock',14)}</div><div class="tr-d">${state.premium?'참여·수익·인기시간 분석':'프리미엄 전용 · 구독하면 열려요'}</div></div><div class="tr-arr">›</div></div>`
+          : `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 리포트</div><div class="tr-d">월별 참석률 · 회비 수납 · 노쇼</div></div><div class="tr-arr">›</div></div>`}
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석·노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
-          ${DEMO ? `<div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>` : ``}
-          ${DEMO ? `<div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 관리</div></div><div class="tr-arr">›</div></div>` : ``}
+          <div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 관리</div></div><div class="tr-arr">›</div></div>
           ${DEMO ? `<div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>` : ``}
           ${DEMO ? `<div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>` : ``}
-          ${DEMO ? `<div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>` : ``}`;
+          <div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>`;
       } else {
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 정보</div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 보기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e7eefb;color:#3f6bc2">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>
-          ${DEMO?`<div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 보기</div></div><div class="tr-arr">›</div></div>`:``}
+          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 보기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openRatePeer()"><div class="tr-ic" style="background:#ece7f8;color:#7a5fc0">⭐</div><div class="tr-x"><div class="tr-n">회원 평점</div><div class="tr-d">함께 친 회원 매너 평가</div></div><div class="tr-arr">›</div></div>`;
       }
     }
@@ -4459,14 +4826,35 @@ function createEvent(){
   const c=AC(); c.events=c.events||[]; c.events.unshift({id:'ev'+Date.now(),title:t.trim(),date:d,attendees:[]});
   closeOv(); renderClub(); toast('모임 일정을 등록했어요');
 }
-function joinEvent(id){
+async function joinEvent(id){
+  if(SERVER_OK && clubId()){
+    // 서버 모임: 탭하면 참석 ↔ 취소 (rsvp)
+    const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id)); if(!ev) return;
+    try{
+      await api(`/events/${ev.id}/rsvp`, {method:'POST', body: JSON.stringify({status: ev.joined?'absent':'going'})});
+      toast(ev.joined?'참석을 취소했어요':'참석으로 등록됐어요 · 대진 명단에 반영돼요');
+      await loadClubServer(); renderClub();
+    }catch(e){ toast('처리하지 못했어요'); }
+    return;
+  }
+
   const c=AC(); const ev=(c.events||[]).find(e=>e.id===id); if(!ev)return;
   const i=ev.attendees.indexOf('곽주영');
   if(i>=0){ev.attendees.splice(i,1);toast('참여를 취소했어요');}
   else {ev.attendees.unshift('곽주영');toast('대기열에 참여했어요');}
   renderClub();
 }
-function useEventForBracket(id){
+async function useEventForBracket(id){
+  if(SERVER_OK && clubId()){
+    // 서버 모임: 참석 응답자를 대진 명단으로 다시 불러온다
+    toast('참석자 명단으로 대진을 준비할게요');
+    const key=state.activeClub||'_';
+    if(state._attSel) delete state._attSel[key];
+    await loadRoster();
+    go('bracket');
+    return;
+  }
+
   const c=AC(); const ev=(c.events||[]).find(e=>e.id===id); if(!ev)return;
   c.schedule.attendees=ev.attendees.filter(n=>n!=='곽주영');
   c.schedule.attend=ev.attendees.includes('곽주영')?true:c.schedule.attend;
@@ -5003,6 +5391,19 @@ const CCB=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0'];
 function ctTypeColor(t){ return t==='남복'?'#e8845a':t==='여복'?'#e05a86':t==='혼복'?'#2f9e6e':'#7f776a'; }
 function pavatar(nm,sz){ sz=sz||20; const cols=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0','#e05a86','#3fb0c2']; let hh=0; for(const ch of String(nm))hh=(hh*31+ch.charCodeAt(0))>>>0; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cols[hh%cols.length]};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.5)}px;font-weight:800;margin-right:5px;flex-shrink:0">${String(nm)[0]}</span>`; }
 function meName(){ return state.userName||'곽주영'; }
+async function refreshRoster(){
+  toast('명단을 다시 불러오는 중…');
+  const key=state.activeClub||'_';
+  if(state._attSel) delete state._attSel[key];   // 참석 응답 기준으로 다시 초기화
+  await loadRoster();
+  renderBracket();
+}
+function printBracket(){
+  document.body.classList.add('printB');
+  const done=()=>document.body.classList.remove('printB');
+  window.addEventListener('afterprint', done, {once:true});
+  setTimeout(()=>{ window.print(); setTimeout(done, 1500); }, 60);
+}
 function toggleAtt(nm){
   const key=state.activeClub||'_'; state._attSel=state._attSel||{}; state._attSel[key]=state._attSel[key]||{};
   state._attSel[key][nm]=!state._attSel[key][nm];
@@ -5331,8 +5732,22 @@ async function makeInvite(){
   try{
     const r = await api(`/clubs/${cid}/invite`,{method:'POST',body:'{}'});
     const url = location.origin + r.url;
+    const title = `${state.activeClub||'MATSU'} 클럽 초대`;
+    const text = `${state.activeClub||'우리 클럽'}에 초대할게요! 링크로 바로 정회원 가입 · 7일간 유효`;
+    // 1순위 카카오톡 공유 → 2순위 시스템 공유 → 3순위 복사
+    if(window.Kakao && Kakao.isInitialized() && Kakao.Share){
+      try{
+        Kakao.Share.sendDefault({ objectType:'text', text: `${title}\n${text}`,
+          link:{ mobileWebUrl:url, webUrl:url } });
+        return;
+      }catch(e){}
+    }
+    if(navigator.share){
+      try{ await navigator.share({title, text, url}); return; }
+      catch(e){ if(e && e.name==='AbortError') return; }
+    }
     copyText(url);
-    toast('초대 링크를 복사했어요 · 7일간 유효해요');
+    toast('초대 링크를 복사했어요 · 카카오톡에 붙여넣어 보내세요 (7일 유효)');
   }catch(e){
     toast(String(e.message).includes('officer_only')?'클럽장·임원만 만들 수 있어요':'만들지 못했어요');
   }
@@ -5945,39 +6360,12 @@ function contactWarn(elId, warnId){
 /* ═══════════ 1:1 대화 ═══════════ */
 async function openDM(uid, name){
   if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
-  let msgs=[];
-  try{ msgs = await api(`/dm/with/${uid}`); }catch(e){}
-  const isNew = !msgs.length;
-  let h=`<div class="sh-top"><h3>${name} 님과 대화</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">${isNew
-      ? `새 대화를 열면 <b>M캐쉬 5개</b>가 사용돼요. 이후 대화와 상대의 답장은 무료예요.`
-      : `이어지는 대화는 무료예요.`} 대화에서는 연락처를 주고받을 수 있어요.</div>
-    <div class="dm-log" id="dmLog">`;
-  if(!msgs.length) h+=`<div class="note" style="text-align:left">아직 주고받은 대화가 없어요.</div>`;
-  msgs.forEach(m=>{ h+=`<div class="dm-b ${m.mine?'me':''}">${esc(m.body)}</div>`; });
-  h+=`</div>
-    <div class="fld" style="margin-top:12px"><textarea id="dmText" rows="3" placeholder="메시지를 입력하세요" maxlength="500"></textarea></div>
-    <button class="btn" onclick="sendDM(${uid},'${name.replace(/'/g,"\\'")}')">
-      ${isNew?`<span class="bic">${ic('card',15,'currentColor')}대화하기 · 5M캐쉬</span>`:'대화하기'}</button>`;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
-  const lg=document.getElementById('dmLog'); if(lg) lg.scrollTop=lg.scrollHeight;
-}
-async function sendDM(uid, name){
-  const t=(document.getElementById('dmText')||{}).value||'';
-  if(!t.trim()){ toast('메시지를 입력해 주세요'); return; }
-  try{
-    const r = await api('/dm', {method:'POST', body: JSON.stringify({to:uid, body:t.trim()})});
-    if(r.charged) toast(`대화를 시작했어요 · M캐쉬 ${r.charged} 사용 (잔액 ${r.cash})`);
-    else toast('보냈어요');
-    state.cash = r.cash;
-    openDM(uid, name);
-  }catch(e){
-    const m=String(e.message);
-    if(m.includes('insufficient_cash')){ toast('M캐쉬가 부족해요'); setTimeout(canSellDigital()?openStore:openEarn,650); }
-    else if(m.includes('blocked')) toast('상대가 대화를 받지 않아요');
-    else toast('보내지 못했어요');
-  }
-  if(state.view==='chat') loadDMThreads().then(renderChat);
+  closeOv();
+  state.chatRoom = 'dm:' + uid;
+  state._roomName = name;
+  go('chat');
+  await loadRoomMsgs();
+  if(state.view==='chat') renderChat();
 }
 async function openDMList(){
   if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
@@ -6673,7 +7061,31 @@ function nearbyTeams(){
   const dists=['9km','14km','21km','28km'], recs=['8승 3패','6승 5패','9승 2패','5승 6패'], tiers=['2부','2부','1부','3부'];
   return names.map((n,i)=>({n,r:regs[i],dist:dists[i],rec:recs[i],tier:tiers[i]}));
 }
-function openTeamChallenge(){
+async function openTeamChallenge(){
+  if(SERVER_OK && clubId()){
+    const officer=(state.bcfg&&state.bcfg.role==='officer');
+    let h=`<div class="sh-top"><h3>클럽 대항전</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+    if(!officer){
+      h+=`<div class="card" style="background:#f6efdf;border-color:#ece1ca"><div style="font-size:14px;font-weight:800;color:var(--coral-d)">클럽장·임원 전용</div>
+        <div style="font-size:13px;color:var(--gray);font-weight:600;line-height:1.6;margin-top:6px">클럽 대항전 신청은 상대 클럽에 정식으로 접수되는 절차라 <b>클럽 대표만</b> 진행할 수 있어요.</div></div>`;
+      document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on'); return;
+    }
+    let clubs=[];
+    try{ clubs = await api('/clubs'); }catch(e){}
+    const others = (clubs||[]).filter(c=>c.id!==clubId() && (!c.sport || c.sport===state.sport));
+    h+=`<div class="sd">맞수에 등록된 <b>실제 클럽</b>이에요. 신청하면 상대 <b>클럽장에게 알림</b>이 가고, 수락하면 매치 탭에서 일정을 잡아요.</div>`;
+    if(!others.length) h+=`<div class="empty" style="padding:34px 20px"><div class="ei">🆚</div><div class="et">아직 대전할 클럽이 없어요</div>
+      <div class="es">같은 종목 클럽이 등록되면 여기 나타나요.<br>주변 클럽에 맞수를 소개해 보세요!</div></div>`;
+    const cls=['#ec6a2e','#6182e6','#62c08d','#eaa24f'];
+    others.forEach((t,i)=>{ h+=`<div class="card" style="display:flex;align-items:center;gap:12px;padding:13px 15px;margin-bottom:9px">
+      <div class="lb-av" style="width:46px;height:46px;border-radius:14px;background:${cls[i%4]};font-size:18px">${esc(t.name[0])}</div>
+      <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
+        <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${esc(t.region||'지역 미정')} · 회원 ${t.members||0}명</div></div>
+      <button class="btn sm" style="width:auto;padding:9px 14px" onclick="challengeClubSrv(${t.id},'${String(t.name).replace(/'/g,'')}')">대전 신청</button></div>`; });
+    h+=`<div class="note" style="text-align:left">상대 클럽장이 수락하면 일정·구장을 함께 정하고, 결과가 <b>클럽 전적</b>에 남아요.</div>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+    return;
+  }
   const officer=(state.bcfg&&state.bcfg.role==='officer'); const cls=['#ec6a2e','#6182e6','#62c08d','#eaa24f'];
   let h=`<div class="sh-top"><h3>대전 신청</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>`;
   if(!officer){
@@ -6688,6 +7100,13 @@ function openTeamChallenge(){
     <button class="btn sm" style="width:auto;padding:9px 14px" onclick="challengeTeam('${t.n}')">대전 신청</button></div>`; });
   h+=`<div class="note" style="text-align:left">상대가 수락하면 <b>일정·구장·심판</b>을 정하고, 결과·기록이 팀 리그에 반영돼요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function challengeClubSrv(cid, name){
+  try{
+    await api('/matches',{method:'POST',body:JSON.stringify({sport:state.sport||'tennis', kind:'club', home_club_id:clubId(), away_club_id:cid})});
+    closeOv(); toast(`${name}에 대전을 신청했어요 · 상대 클럽장에게 알림이 갔어요`);
+    if(state.view==='match') renderMatch();
+  }catch(e){ toast('신청하지 못했어요'); }
 }
 function challengeTeam(n){ closeOv(); pushNotif('🆚','팀 대전 신청을 보냈어요',n+' 클럽장의 수락을 기다리고 있어요'); toast(n+'에 대전을 신청했어요'); }
 // ── 받은 대전 신청 (수락/거절 → 일정확정 → 결과 상호확정) ──
@@ -6911,11 +7330,15 @@ function renderBracket(){
   const rcls=['#ec6a2e','#6182e6','#54bd7e','#b6a2ea','#f0a93b','#7a5fc0'];
   let cf=state.bcfg;
   const officer=cf.role==='officer';
+  if(officer){
+    h+=`<div style="display:flex;justify-content:flex-end;margin:0 0 10px"><button class="btn sm ghost" style="padding:8px 14px;font-size:12.5px" onclick="printBracket()">🖨 대진표 PDF 저장</button></div>`;
+  }
   if(SERVER_OK && state._srvMembers && officer){
     // 임원진: 회원 이름을 탭해 참석을 켜고 끈다 · 참석자로만 대진 편성
     const selKey=state.activeClub||'_'; const sel=state._attSel[selKey]||{};
-    h+=`<div class="card"><div class="ch" style="font-size:15px">참석 체크 · ${n}/${state._srvMembers.length}명</div>
-      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin:2px 0 8px">이름을 탭하면 참석 ↔ 제외로 바뀌어요. 참석자로만 대진이 만들어져요.</div><div class="roster">`;
+    h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between;align-items:center"><span>참석 체크 · ${n}/${state._srvMembers.length}명</span>
+      <button class="btn sm ghost" style="padding:6px 12px;font-size:12px" onclick="refreshRoster()">↻ 명단 새로고침</button></div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin:2px 0 8px">${state._rosterEventBased?'모임에 <b>참석</b> 응답한 회원이 자동으로 반영돼요. ':''}이름을 탭하면 참석 ↔ 제외로 바뀌어요.</div><div class="roster">`;
     state._srvMembers.forEach(nm=>{ const on=!!sel[nm];
       h+=`<span class="ptag ${on?'me':''}" style="cursor:pointer;${on?'':'opacity:.45'}" onclick="toggleAtt('${nm.replace(/'/g,'')}')">${on?'✓ ':''}${nm}${nm===MEN?' (나)':''}</span>`; });
     h+=`</div></div>`;
@@ -6928,7 +7351,7 @@ function renderBracket(){
   if(SERVER_OK && state._srvMembers && n<4){
     h+=`<div class="empty" style="padding:34px 20px"><div class="ei">🎾</div><div class="et">참석자가 ${n}명이에요</div>
       <div class="es">복식 대진은 <b>4명 이상</b>부터 만들 수 있어요.<br>초대 링크로 회원을 모으고, 위에서 참석을 체크해 주세요.</div>
-      ${officer?`<button class="btn" style="max-width:260px;margin:0 auto" onclick="openInvite()">초대 링크 만들기</button>`:''}</div>`;
+      ${officer?`<button class="btn" style="max-width:260px;margin:0 auto" onclick="makeInvite()">초대 링크 공유하기</button>`:''}</div>`;
     document.getElementById('s-bracket').innerHTML=h; return;
   }
   // 회원: 임원진이 발행한 대진을 봄
@@ -7146,11 +7569,16 @@ function renderChat(){
   // 방 목록
   let h=`<h2 class="t">대화</h2><p class="sub">클럽 단체방과 1:1 대화를 한곳에서.</p>`;
   const ids=Object.keys(state.chats);
-  const groups=ids.filter(id=>state.chats[id].type==='group');
-  const dms=ids.filter(id=>state.chats[id].type==='dm');
+  const groups=SERVER_OK?[]:ids.filter(id=>state.chats[id].type==='group');
+  const dms=SERVER_OK?[]:ids.filter(id=>state.chats[id].type==='dm');
   const row=(id)=>{const r=state.chats[id];const last=r.msgs[r.msgs.length-1];const lt=last?(last.me?'나: ':'')+last.t:'';
     return `<div class="chrow" onclick="openRoom('${id}')"><div class="av2" style="background:${r.color}">${r.type==='group'?'#':r.name[0]}</div>
       <div class="ci2"><div class="cn2">${r.name}</div><div class="cl2">${lt}</div></div></div>`;};
+  if(SERVER_OK && clubId()){
+    h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>
+      <div class="chrow" onclick="openClubRoom()"><div class="av2" style="background:#1f7d62">#</div>
+      <div class="ci2"><div class="cn2">${esc(state.activeClub)} 단체방${(UNREAD.clubs&&UNREAD.clubs[clubId()])?` <span class="dmbadge">${UNREAD.clubs[clubId()]}</span>`:''}</div><div class="cl2">회원 전용 · 탭해서 대화하기</div></div></div>`;
+  }
   if(groups.length){h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;groups.forEach(id=>h+=row(id));}
 
   h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 4px 4px">
@@ -7174,25 +7602,126 @@ function renderChat(){
   if(!groups.length) h+=`<div class="note" style="margin-top:12px">클럽에 정회원으로 가입하면 <b>단체방</b>이 생겨요.</div>`;
   document.getElementById('s-chat').innerHTML=h;
 }
-function renderRoom(){
-  const r=state.chats[state.chatRoom];if(!r){state.chatRoom=null;return renderChat();}
-  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${r.name}</div><div class="su">${r.type==='group'?'클럽 단체방':'1:1 대화'}</div></div>${r.type==='dm'?`<span onclick="openReport('${r.name}')" style="font-size:12.5px;color:var(--lgray);font-weight:700;cursor:pointer">⚠ 신고</span>`:''}</div>`;
-  h+=`<div class="msgs">`;
-  r.msgs.forEach(m=>{
-    if(m.me) h+=`<div class="msg me">${m.t}</div>`;
-    else h+=`<div class="msg them">${r.type==='group'&&m.who?`<div class="who2">${m.who}</div>`:''}${m.t}</div>`;
+let CHAT_POLL=null, CHAT_MSGS=[];
+function stopChatPoll(){ if(CHAT_POLL){ clearInterval(CHAT_POLL); CHAT_POLL=null; } }
+function isSrvRoom(id){ return !!id && (id.startsWith('dm:') || id.startsWith('club:')); }
+
+async function loadRoomMsgs(){
+  const id=state.chatRoom; if(!isSrvRoom(id)) return;
+  try{
+    if(id.startsWith('dm:')){
+      const ms = await api(`/dm/with/${+id.slice(3)}`);
+      CHAT_MSGS = ms.map(m=>({me:m.mine, t:m.body, at:m.created_at, read:!!m.read}));
+      UNREAD.dm = 0; paintUnreadBadge();
+    } else {
+      const cid = +id.slice(5);
+      const ms = await api(`/clubs/${cid}/chat`);
+      CHAT_MSGS = ms.map(m=>({me:m.mine, who:m.name, t:m.body, at:m.created_at, unread:m.unread||0}));
+      const lastId = ms.length ? ms[ms.length-1].id : 0;
+      if(lastId) api(`/clubs/${cid}/chat/read`,{method:'POST',body:JSON.stringify({last_id:lastId})}).catch(()=>{});
+      if(UNREAD.clubs){ delete UNREAD.clubs[cid]; paintUnreadBadge(); }
+    }
+  }catch(e){}
+}
+function roomBubbles(msgs, isGroup){
+  let h=''; let lastWho=null;
+  msgs.forEach(m=>{
+    if(m.me){
+      const meta = isGroup
+        ? (m.unread>0 ? `안읽음 ${m.unread}` : '읽음')
+        : (m.read ? '읽음' : '');
+      h+=`<div class="msg me">${esc(m.t)}</div>${meta?`<div class="msg-meta">${meta}</div>`:''}`;
+      lastWho=null;
+    }
+    else {
+      const showWho = isGroup && m.who && m.who!==lastWho;
+      h+=`<div class="msg them">${showWho?`<div class="who2">${esc(m.who)}</div>`:''}${esc(m.t)}</div>`;
+      lastWho = m.who||null;
+    }
   });
-  h+=`</div><div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter')sendChat()"><button onclick="sendChat()">전송</button></div>`;
+  if(!msgs.length) h=`<div class="note" style="text-align:left;margin:8px 4px">아직 대화가 없어요. 첫 메시지를 보내보세요.</div>`;
+  return h;
+}
+function paintMsgs(){
+  const id=state.chatRoom; if(!id) return;
+  const box=document.getElementById('msgsBox'); if(!box) return;
+  const srv=isSrvRoom(id);
+  const isGroup = srv ? id.startsWith('club:') : (state.chats[id]||{}).type==='group';
+  box.innerHTML = roomBubbles(srv?CHAT_MSGS:(state.chats[id]||{msgs:[]}).msgs, isGroup);
+  const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=sc.scrollHeight;
+}
+function renderRoom(){
+  const id=state.chatRoom;
+  const srv=isSrvRoom(id);
+  let name, sub, isGroup, isDM;
+  if(srv){
+    isGroup=id.startsWith('club:'); isDM=!isGroup;
+    name = state._roomName || (isGroup ? (state.activeClub||'클럽')+' 단체방' : '대화');
+    sub = isGroup ? '클럽 단체방 · 회원 전용' : '1:1 대화';
+  } else {
+    const r=state.chats[id]; if(!r){ state.chatRoom=null; return renderChat(); }
+    name=r.name; isGroup=r.type==='group'; isDM=!isGroup; sub=isGroup?'클럽 단체방':'1:1 대화';
+  }
+  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">${sub}</div></div>${isDM?`<span onclick="openReport('${String(name).replace(/'/g,'')}')" style="font-size:12.5px;color:var(--lgray);font-weight:700;cursor:pointer">⚠ 신고</span>`:''}</div>`;
+  h+=`<div class="msgs" id="msgsBox"></div>
+      <div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." maxlength="500" onkeydown="if(event.key==='Enter')sendChat()"><button onclick="sendChat()">전송</button></div>`;
   document.getElementById('s-chat').innerHTML=h;
-  const sc=document.getElementById('scroll');if(sc)sc.scrollTop=sc.scrollHeight;
-  const inp=document.getElementById('chatIn');if(inp)inp.focus();
+  paintMsgs();
+  const inp=document.getElementById('chatIn'); if(inp) inp.focus();
+  // 서버 방은 5초마다 새 메시지 폴링 — 입력창은 다시 그리지 않아 타이핑이 안 끊긴다
+  stopChatPoll();
+  if(srv){
+    CHAT_POLL=setInterval(async ()=>{
+      if(state.view!=='chat' || state.chatRoom!==id){ stopChatPoll(); return; }
+      const before=CHAT_MSGS.length && CHAT_MSGS[CHAT_MSGS.length-1];
+      await loadRoomMsgs();
+      const after=CHAT_MSGS.length && CHAT_MSGS[CHAT_MSGS.length-1];
+      if(before!==after || (before&&after&&before.at!==after.at)) paintMsgs();
+    }, 5000);
+  }
 }
 function openRoom(id){state.chatRoom=id;renderChat();}
-function backChat(){state.chatRoom=null;renderChat();}
-function sendChat(){
+function openClubRoom(){
+  const cid=clubId();
+  if(SERVER_OK && cid){
+    state.chatRoom='club:'+cid; state._roomName=(state.activeClub||'클럽')+' 단체방';
+    go('chat'); loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); });
+  } else if(state.chats['grp:'+state.activeClub]) openRoomGo('grp:'+state.activeClub);
+  else toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요');
+}
+function openRoomGo(id){ state.chatRoom=id; go('chat'); renderChat(); }
+function backChat(){stopChatPoll();state.chatRoom=null;renderChat();}
+async function sendChat(){
   const inp=document.getElementById('chatIn');if(!inp)return;
   const t=inp.value.trim();if(!t)return;
-  const r=state.chats[state.chatRoom];r.msgs.push({me:1,t});
+  const id=state.chatRoom;
+  if(isSrvRoom(id)){
+    inp.value='';
+    CHAT_MSGS.push({me:1,t});                                  // 낙관적 표시
+    paintMsgs();
+    try{
+      if(id.startsWith('dm:')){
+        const r=await api('/dm',{method:'POST',body:JSON.stringify({to:+id.slice(3), body:t})});
+        if(r.charged) toast(`대화를 시작했어요 · M캐쉬 ${r.charged} 사용 (잔액 ${r.cash})`);
+        else if(r.cash!==undefined) toast('대화를 시작했어요 · 오늘 무료 시작 사용');
+        state.cash=r.cash;
+      } else {
+        await api(`/clubs/${+id.slice(5)}/chat`,{method:'POST',body:JSON.stringify({body:t})});
+      }
+      await loadRoomMsgs(); paintMsgs();
+      loadDMThreads && loadDMThreads();
+    }catch(e){
+      CHAT_MSGS.pop(); paintMsgs(); inp.value=t;
+      const m=String(e.message);
+      if(m.includes('insufficient_cash')){ toast('M캐쉬가 부족해요'); setTimeout(canSellDigital()?openStore:openEarn,650); }
+      else if(m.includes('blocked')) toast('상대가 대화를 받지 않아요');
+      else if(m.includes('member_only')) toast('클럽 회원만 쓸 수 있어요');
+      else toast('보내지 못했어요');
+    }
+    return;
+  }
+  const r=state.chats[id];r.msgs.push({me:1,t});
+  inp.value='';
   renderRoom();
   setTimeout(()=>{
     const rep=REPLIES[Math.floor(Math.random()*REPLIES.length)];
@@ -7319,7 +7848,12 @@ function submitManner(id){closeOv();toast('평가 고마워요 · 매너 점수�
 
 function renderMe(){
   const joined=state.matches.filter(m=>m.joined).length,clubs=state.myClubs.length,t=myTier();
-  const rec=myRecord(),wt=rec.w+rec.l,wr=wt?Math.round(rec.w/wt*100):0,peak=Math.max(...state.ratingHist);
+  let rec=myRecord(),rating=state.rating,peak=Math.max(...state.ratingHist);
+  if(SERVER_OK && state.serverUser){
+    if(!ME_PROF){ loadMyProfile().then(p=>{ if(p && state.view==='me') renderMe(); }); }
+    else { rec={w:ME_PROF.wins||0,l:ME_PROF.losses||0}; rating=ME_PROF.rating||rating; peak=Math.max(ME_PROF.peak_mmr||0, rating); }
+  }
+  const wt=rec.w+rec.l,wr=wt?Math.round(rec.w/wt*100):0;
   const rel=relRecord(),relKeys=Object.keys(rel);
   let h=`
   <div style="display:flex;align-items:center;gap:16px;margin:6px 0 18px">
@@ -7334,7 +7868,7 @@ function renderMe(){
   <div class="card"><div class="ch">전적</div>
     <div style="display:flex;text-align:center">
       <div style="flex:1"><div style="font-size:22px;font-weight:900">${rec.w}<span style="font-size:13px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:13px;color:var(--gray)">패</span></div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">승률 ${wr}%</div></div>
-      <div style="flex:1;border-left:1px solid #f4efe9"><div style="font-size:22px;font-weight:900;color:var(--coral-d)">${state.rating}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">현재 레이팅</div></div>
+      <div style="flex:1;border-left:1px solid #f4efe9"><div style="font-size:22px;font-weight:900;color:var(--coral-d)">${rating}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">현재 레이팅</div></div>
       <div style="flex:1;border-left:1px solid #f4efe9"><div style="font-size:22px;font-weight:900">${peak}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">최고</div></div></div>
     ${state.ratingHist.length>1?`<div style="margin-top:14px;border-top:1px solid #f4efe9;padding-top:12px"><div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-bottom:6px">레이팅 변화</div>${sparkline(state.ratingHist)}</div>`:''}
   </div>
@@ -7403,15 +7937,21 @@ function renderMe(){
     <div style="display:flex;justify-content:space-between;padding:8px 4px;border-top:1px solid #f4efe9"><span style="font-weight:700">가입한 클럽</span><b style="color:var(--coral-d)">${clubs}곳</b></div></div>
   <div class="card"><div class="ch">계정</div>
     <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
+    <div style="display:flex;justify-content:center;gap:14px;margin-bottom:13px">
+      <a href="${API_BASE}/terms" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">이용약관</a>
+      <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a></div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="deleteAccount()">계정 탈퇴 (개인정보 삭제)</button>`:''}</div>`;
   document.getElementById('s-me').innerHTML=h;
 }
 
 /* ===== 공통 ===== */
+let HOME_OM=null, HOME_OM_TS=0;
 function renderHome(){
   const today=new Date(); const MON=today.getMonth()+1, DAY=today.getDate();
   const hasClub=state.myClubs.length>0; const c=hasClub?AC():null;
+  const SRV = SERVER_OK && !!authToken();
+  const evSrc = (SRV && clubId()) ? (SRV_EVENTS||[]) : ((c&&c.events)||[]);
   const cls=['#ec6a2e','#6182e6','#54bd7e','#b6a2ea','#f0a93b'];
   // ⑤ 인사 헤더
   let h=`<div class="greet"><div class="gv-av">${(state.userName||'곽주영')[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${state.userName||'곽주영'} 님</div><div class="gv-d">오늘은 ${MON}월 ${DAY}일이에요<br>${SP().n}${['swimming','running'].includes(SP().id)?'하기':(SP().cat==='team'?' 하기':' 치기')} 좋은 날이에요</div></div>
@@ -7419,7 +7959,7 @@ function renderHome(){
     <div onclick="openStore()" style="display:flex;align-items:center;gap:5px;background:#fffdf6;border:1px solid var(--line);border-radius:20px;padding:7px 10px;cursor:pointer;box-shadow:var(--shadow-s);flex-shrink:0">${coin(18)}<b style="font-size:14px">${state.cash}</b></div></div>`;
   // ⑤ 히어로 카드 (다음 일정)
   { let title='이번 주<br>클럽 모임', sub='참석을 체크하면 그날 대진에 자동 포함돼요', att=[], goTo='club';
-    if(hasClub && c.events && c.events.length){ att=c.events[0].attendees; sub=`${c.events[0].title} · 참석 체크하고 대진 받기`; }
+    if(hasClub && evSrc.length){ att=evSrc[0].attendees||[]; sub=`${esc(evSrc[0].title)} · 참석 체크하고 대진 받기`; }
     else if(!hasClub){ title='테니스,<br>지금 시작'; sub='클럽에 가입하고 모임·대진을 바로 써보세요'; }
     const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>`<div class="ma" style="background:${cls[i%5]}">${nm[0]}</div>`).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
     h+=`<div class="yhero" onclick="go('${goTo}')" style="cursor:pointer"><div class="yh-deco">${SP().ic}</div>
@@ -7429,7 +7969,7 @@ function renderHome(){
   }
   // ⑤ 주간 날짜 핀
   { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
-    const evDays=new Set(); if(c&&c.events)c.events.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add(mm[1]+'/'+mm[2]);});
+    const evDays=new Set(); evSrc.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add(mm[1]+'/'+mm[2]);});
     let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();const isT=(mo===MON&&da===DAY),has=evDays.has(mo+'/'+da);
       pins+=`<div class="dpin ${isT?'on':''} ${has?'has':''}"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
     h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`;
@@ -7443,7 +7983,14 @@ function renderHome(){
       <div style="display:flex;gap:5px">${[1,2,3,4].map(w=>`<div style="width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;${w<=sk?'background:var(--coral);color:#fff':'background:#fff;color:var(--lgray)'}">${w}</div>`).join('')}</div></div>`;
   }
   // 🏅 시즌 카드
-  { const si=seasonInfo(), rk=myRegionRank();
+  if(SRV){
+    if(!ME_PROF) loadMyProfile().then(p=>{ if(p && state.view==='home') renderHome(); });
+    const si=seasonInfo();
+    h+=`<div class="card" style="margin-top:11px;cursor:pointer" onclick="go('league')">
+      <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:900">${si.name}</div><div style="font-size:13px;font-weight:900;color:var(--coral-d)">D-${si.dleft}</div></div>
+      <div style="height:7px;border-radius:4px;background:#ece6d5;margin:10px 0 8px;overflow:hidden"><div style="height:100%;width:${si.pct}%;background:var(--coral)"></div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:12.5px;color:var(--gray);font-weight:700">${ME_PROF?`우리 지역 ${ME_PROF.rank}위 · 레이팅 ${ME_PROF.rating}`:'내 순위 불러오는 중…'}</div><div style="font-size:12.5px;color:var(--coral-d);font-weight:800">랭킹 보기 →</div></div></div>`;
+  } else { const si=seasonInfo(), rk=myRegionRank();
     h+=`<div class="card" style="margin-top:11px;cursor:pointer" onclick="openSeasonResult()">
       <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:900">${si.name}</div><div style="font-size:13px;font-weight:900;color:var(--coral-d)">D-${si.dleft}</div></div>
       <div style="height:7px;border-radius:4px;background:#ece6d5;margin:10px 0 8px;overflow:hidden"><div style="height:100%;width:${si.pct}%;background:var(--coral)"></div></div>
@@ -7455,9 +8002,15 @@ function renderHome(){
       <div class="qlink" onclick="go('league')"><div class="ql-ic">${SP().ic}</div><div class="ql-l">리그</div></div>
       <div class="qlink" onclick="go('club')"><div class="ql-ic">🏠</div><div class="ql-l">클럽</div></div>
       <div class="qlink" onclick="go('bracket')"><div class="ql-ic">🏆</div><div class="ql-l">대진</div></div>
-      <div class="qlink" onclick="go('chat')"><div class="ql-ic">💬</div><div class="ql-l">채팅</div></div></div>`;
-  // 팀 스포츠 → 추천 클럽 (클럽 대전 신청)
-  if(SP().cat==='team' && state.activeClub){
+      <div class="qlink" onclick="openClubRoom()"><div class="ql-ic">💬</div><div class="ql-l">채팅</div></div></div>`;
+  // 클럽 대항전 진입 (실서비스: 등록 클럽 대상)
+  if(SRV && state.activeClub && state.bcfg.role==='officer'){
+    h+=`<div class="card" style="margin-top:11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openTeamChallenge()">
+      <div style="display:flex;align-items:center;gap:12px"><span class="rowic">🆚</span><div><div style="font-size:15px;font-weight:800">클럽 대항전 신청</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">등록된 다른 클럽에 대전 걸기 · 클럽장 전용</div></div></div>
+      <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;
+  }
+  // 팀 스포츠 → 추천 클럽 (데모)
+  if(!SRV && SP().cat==='team' && state.activeClub){
     const rc=recommendClubs()[0];
     if(rc){
       h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>대전 상대 추천</span><span onclick="openTeamChallenge()" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">더보기 →</span></div>
@@ -7470,11 +8023,23 @@ function renderHome(){
     }
   }
   // ⚔️ 오늘의 추천 상대 (개인 매칭) — 팀 스포츠는 제외
-  if(SP().cat!=='team' && !smartOpponents().length){
+  if(SRV && SP().cat!=='team' && state.serverUser){
+    const myR=(ME_PROF&&ME_PROF.rating)||(state.serverUser.rating)||1000;
+    if(!LG_RANKS){ api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`).then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='home') renderHome(); }).catch(()=>{ LG_RANKS=[]; }); }
+    const ops=(LG_RANKS||[]).filter(u=>u.id!==state.serverUser.id).sort((a,b)=>Math.abs(a.rating-myR)-Math.abs(b.rating-myR));
+    if(ops.length){ const o=ops[0]; const exp=Math.round(expScore(myR,o.rating)*100);
+      h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오늘의 추천 상대</span><span onclick="openSmartMatch()" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">더보기 →</span></div>
+        <div class="card" style="display:flex;align-items:center;gap:13px;cursor:pointer" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">
+          <div class="lb-av" style="width:46px;height:46px;border-radius:50%;background:var(--blue);font-size:18px;flex:none">${esc(o.name[0])}</div>
+          <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:15px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:700">· 레이팅 ${o.rating}</span></div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${esc(o.region||'지역 미정')} · 예상 승률 ${exp}%</div></div>
+          <button class="btn sm" onclick="event.stopPropagation();challengePlayerSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">도전</button></div>`;
+    }
+  }
+  if(!SRV && SP().cat!=='team' && !smartOpponents().length){
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px">오늘의 추천 상대</div>
         <div class="note" style="text-align:left">아직 같은 종목 회원이 없어요. <b>오픈매치</b>를 열거나 친구를 초대해 보세요.</div>`;
   }
-  if(SP().cat!=='team' && smartOpponents().length){ const o=smartOpponents()[0]; const exp=Math.round(expScore(state.rating,o.r)*100);
+  if(!SRV && SP().cat!=='team' && smartOpponents().length){ const o=smartOpponents()[0]; const exp=Math.round(expScore(state.rating,o.r)*100);
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오늘의 추천 상대</span><span onclick="openSmartMatch()" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">더보기 →</span></div>
       <div class="card" style="display:flex;align-items:center;gap:13px;cursor:pointer" onclick="openCompare('${o.n}')">
         <div class="lb-av" style="width:46px;height:46px;border-radius:50%;background:var(--blue);font-size:18px;flex:none">${o.n[0]}</div>
@@ -7482,7 +8047,7 @@ function renderHome(){
         <button class="btn sm" onclick="event.stopPropagation();openCompare('${o.n}')">비교</button></div>`;
   }
   // 🏆 내 랭킹 진입
-  h+=`<div class="card" style="margin-top:11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openLeaderboard()">
+  h+=`<div class="card" style="margin-top:11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="${SRV?`go('league')`:'openLeaderboard()'}">
     <div style="display:flex;align-items:center;gap:12px"><span class="rowic">${ic('award',21)}</span><div><div style="font-size:15px;font-weight:800">내 랭킹 보기</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">우리 지역·부별 순위와 등락</div></div></div>
     <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;
   // 🎁 친구 초대 (성장 루프)
@@ -7490,26 +8055,41 @@ function renderHome(){
     <div style="display:flex;align-items:center;gap:12px"><span class="rowic">${ic('gift',21)}</span><div><div style="font-size:15px;font-weight:800;color:var(--ink)">친구 초대하고 보상받기</div><div style="font-size:12px;color:#4a3f6b;font-weight:700;margin-top:1px">3명 초대 시 프리미엄 7일 무료</div></div></div>
     <div style="color:var(--ink);font-weight:800;font-size:18px">→</div></div>`;
   // ⑤ 이번 주 일정 2단 카드
-  if(hasClub && c.events && c.events.length){
+  if(hasClub && evSrc.length){
     const pc=['#f1a55c','#9bbef0','#b9a6ea','#f0a9cf'], tags=['정기','추가','번개','이벤트'];
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px">이번 주 일정</div><div class="plan2">`;
-    c.events.slice(0,2).forEach((ev,i)=>{const joined=ev.attendees.includes('곽주영');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=parts.slice(2).join(' ')||'시간 미정';
-      h+=`<div class="psess" style="background:${pc[i%4]}" onclick="go('club')">${joined?'<div class="ps-chk">참여중 ✓</div>':''}<span class="ps-tag">${tags[i%4]}</span><div class="ps-n">${esc(ev.title)}</div><div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div><div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>자세히 →</div></div></div>`;});
+    evSrc.slice(0,2).forEach((ev,i)=>{const joined=SRV?!!ev.joined:ev.attendees.includes('곽주영');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=parts.slice(2).join(' ')||'시간 미정';
+      h+=`<div class="psess" style="background:${pc[i%4]}" onclick="go('club')">${joined?'<div class="ps-chk">참여중 ✓</div>':''}<span class="ps-tag">${esc(ev.tag||tags[i%4])}</span><div class="ps-n">${esc(ev.title)}</div><div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div><div class="ps-foot"><div class="ps-av">${((ev.attendees||[])[0]||'?')[0]}</div><div class="ps-who">참여 ${(ev.attendees||[]).length}명<br>자세히 →</div></div></div>`;});
     h+=`</div>`;
   }
   // 내 요약 카드
-  { const rec=myRecord(), t=myTier();
+  { let rec=myRecord(); let rt=null;
+    if(SRV && ME_PROF){ rec={w:ME_PROF.wins||0,l:ME_PROF.losses||0}; rt=ME_PROF.rating; }
+    const t=myTier();
     h+=`<div class="card" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="go('me')">
       <div><div style="font-size:12px;color:var(--gray);font-weight:700">내 등급</div><div style="font-size:17px;font-weight:900;margin-top:2px">${(t.name||'루키').split(' ')[0]}</div></div>
-      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700">레이팅</div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${ratingText()}</div>${ratingSub()?`<div style="font-size:10.5px;color:var(--lgray);font-weight:700">${ratingSub()}</div>`:''}</div>
+      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700">레이팅</div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${rt!=null?rt:ratingText()}</div>${ratingSub()?`<div style="font-size:10.5px;color:var(--lgray);font-weight:700">${ratingSub()}</div>`:''}</div>
       <div style="text-align:right"><div style="font-size:12px;color:var(--gray);font-weight:700">전적</div><div style="font-size:17px;font-weight:900;margin-top:2px">${rec.w}승 ${rec.l}패</div></div></div>`;
   }
   // 오픈 예정 경기 peek
-  h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오픈 예정 경기</span><span onclick="go('league')" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">전체 →</span></div>`;
-  const ms=(state.matches||[]).filter(m=>!m.canceled).slice(0,2);
-  if(!ms.length) h+=`<div class="note" style="text-align:left">곧 새 경기가 열려요. 리그 탭에서 확인하세요.</div>`;
+  h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오픈 예정 경기</span><span onclick="go('match')" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">전체 →</span></div>`;
   const mt=['#ece7f8','#e6f3ec'];
-  ms.forEach((m,i)=>{ h+=`<div class="exprow" style="background:${mt[i%2]}" onclick="go('league')"><div class="ex-ic">${SP().ic}</div><div class="ex-x"><div class="ex-cat">${m.fmt}·${m.gd}</div><div class="ex-n">${m.dt}</div></div><div class="ex-meta"><div class="ex-day">${m.cur}/${m.cap}명</div><div class="ex-v">${m.price.toLocaleString()}<span style="font-size:11px">원</span></div></div></div>`; });
+  if(SRV){
+    if(!HOME_OM || Date.now()-HOME_OM_TS>60e3){
+      api(`/open-matches?sport=${encodeURIComponent(state.sport||'tennis')}`)
+        .then(r=>{ HOME_OM=r||[]; HOME_OM_TS=Date.now(); if(state.view==='home') renderHome(); })
+        .catch(()=>{ HOME_OM=[]; HOME_OM_TS=Date.now(); });
+      h+=skelCards(1);
+    } else {
+      const ms2=HOME_OM.slice(0,2);
+      if(!ms2.length) h+=`<div class="note" style="text-align:left">아직 열린 오픈매치가 없어요. <b>매치 탭</b>에서 첫 매치를 열어보세요.</div>`;
+      ms2.forEach((m,i)=>{ h+=`<div class="exprow" style="background:${mt[i%2]}" onclick="go('match')"><div class="ex-ic">${SP().ic}</div><div class="ex-x"><div class="ex-cat">${esc(m.fmt||'복식')}</div><div class="ex-n">${esc(m.dt||'')}</div></div><div class="ex-meta"><div class="ex-day">${m.cur||0}/${m.cap||0}명</div><div class="ex-v">${(m.price||0)?(m.price.toLocaleString())+'<span style="font-size:11px">원</span>':'무료'}</div></div></div>`; });
+    }
+  } else {
+    const ms=(state.matches||[]).filter(m=>!m.canceled).slice(0,2);
+    if(!ms.length) h+=`<div class="note" style="text-align:left">곧 새 경기가 열려요. 리그 탭에서 확인하세요.</div>`;
+    ms.forEach((m,i)=>{ h+=`<div class="exprow" style="background:${mt[i%2]}" onclick="go('league')"><div class="ex-ic">${SP().ic}</div><div class="ex-x"><div class="ex-cat">${m.fmt}·${m.gd}</div><div class="ex-n">${m.dt}</div></div><div class="ex-meta"><div class="ex-day">${m.cur}/${m.cap}명</div><div class="ex-v">${m.price.toLocaleString()}<span style="font-size:11px">원</span></div></div></div>`; });
+  }
   document.getElementById('s-home').innerHTML=h;
 }
 // ── 라운지 (전 종목 익명 커뮤니티) ──
