@@ -615,7 +615,7 @@ app.get('/clubs/:id/roster', (req, res) => {
   let rows;
   let guests = [];
   if (ev) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, cm.grade, cm.is_captain
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain
       FROM event_attendees ea JOIN users u ON u.id=ea.user_id
       LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
       WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
@@ -623,7 +623,7 @@ app.get('/clubs/:id/roster', (req, res) => {
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
   if (!rows || !rows.length) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, cm.grade, cm.is_captain
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
   }
@@ -1641,7 +1641,7 @@ app.get('/matches', (req, res) => {
 // 개인 레이팅 랭킹 (리그 화면)
 app.get('/rankings', (req, res) => {
   const { sport } = req.query;
-  let sql = 'SELECT id,name,region,sport,rating FROM users', p = [];
+  let sql = 'SELECT id,name,region,sport,rating,(wins+losses) AS games FROM users', p = [];
   if (sport) { sql += ' WHERE sport=?'; p.push(sport); }
   res.json(db.prepare(sql + ' ORDER BY rating DESC LIMIT 50').all(...p));
 });
@@ -2593,7 +2593,7 @@ app.get('/me/unread', auth, (req, res) => {
 app.get('/clubs/:id/rankings', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare(`SELECT u.id user_id, u.name, u.rating, cm.grade,
+  const rows = db.prepare(`SELECT u.id user_id, u.name, u.rating, (u.wins+u.losses) AS games, cm.grade,
       (SELECT COUNT(*) FROM event_attendees ea JOIN club_events e ON e.id=ea.event_id
         WHERE ea.user_id=u.id AND e.club_id=cm.club_id AND ea.showed=1) attended
     FROM club_members cm JOIN users u ON u.id=cm.user_id
