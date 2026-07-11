@@ -2159,6 +2159,7 @@ async function nameLoginSrv(){
   state.userName=nm;
   await loadClubIds();
   if(clubId()){ await loadClubServer(); await loadRoster(); }
+  renderHome();renderClub();renderBracket();renderChat();renderMe();   // 채택된 클럽을 화면에 반영
   document.getElementById('auth').classList.remove('on');
   afterLoginNative();
   state._obStep=1; state._obSport=state._obSport||state.sport;
@@ -2200,9 +2201,16 @@ async function adoptServerClubs(){
       state.clubs.unshift({n:c.name, r:c.region||'', m:c.member_count||1, ic:SP().ic, sport:c.sport||state.sport,
         entry:c.entry_fee, season:c.season_fee, guestFee:c.guest_fee, guestReq:c.guest_cap});
     }
-    if(state.clubStatus[c.name]!=='member') approveMember(c.name);
+    // 데모용 approveMember 를 쓰면 가짜 신청자·환영 토스트·화면 이동까지 딸려온다.
+    // 서버 채택은 조용히, 실데이터 자리만 만든다.
+    state.clubStatus[c.name]='member';
+    if(!state.clubData[c.name]){
+      state.clubData[c.name]={region:c.region||'', members:c.member_count||1, officer:false,
+        entry:c.entry_fee||0, season:c.season_fee||0, guestFee:c.guest_fee||0, guestReq:c.guest_cap||0,
+        pending:[], schedule:{dt:'', attendees:[], attend:null}, feed:[]};
+    }
     const d = state.clubData[c.name];
-    if(d){ d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region; }
+    d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region;
   });
   state.myClubs = active.map(c=>c.name);
   state.activeClub = active[0].name;
@@ -2290,7 +2298,7 @@ const RSVP = {going:{t:'참석',c:'#1f7d4d',bg:'#e7f4ec'}, absent:{t:'불참',c:
 
 async function setRsvp(status){
   if(!SERVER_OK || !SRV_EVENT){
-    AC().schedule.attend = (status==='going'); renderClub();
+    const _c=AC(); if(_c){ _c.schedule=_c.schedule||{dt:'',attendees:[],attend:null}; _c.schedule.attend=(status==='going'); } renderClub();
     toast(status==='going'?'참석 체크 완료':status==='absent'?'불참 처리됐어요':'미정으로 표시했어요'); return;
   }
   try{
@@ -2482,12 +2490,18 @@ async function loadClubServer(){
     SRV_EVENTS = evs || [];
     SRV_EVENT = SRV_EVENTS[0] || null;
     if(SRV_EVENT){
+      c.schedule = c.schedule || {dt:'', attendees:[], attend:null};
       c.schedule.dt = SRV_EVENT.date || SRV_EVENT.title;
       c.schedule.attendees = SRV_EVENT.attendees || [];
       c.schedule.attend = SRV_EVENT.joined ? true : c.schedule.attend;
       c.schedule.eventId = SRV_EVENT.id;
     }
     if(ms && ms.role) state.bcfg.role = (ms.role==='owner'||ms.role==='officer') ? 'officer' : 'member';
+    // 임원이면 대기 중인 가입 신청 수를 함께 가져온다 (놓치지 않게 배지로 표시)
+    state._joinReqN = 0;
+    if(state.bcfg.role==='officer'){
+      try{ const jr = await api(`/clubs/${cid}/join-requests`); state._joinReqN = (jr||[]).length; }catch(e){}
+    }
     return true;
   }catch(e){ return false; }
 }
@@ -2596,6 +2610,7 @@ async function loadRoster(){
     const ms = (r.members||[]).filter(m=>m.name);
     if(!ms.length){ SRV_ROSTER=null; return false; }
     SRV_ROSTER = ms; SRV_UID = {};
+    ms.forEach(m=>{ if(m.photos) regPhoto(m.name, m.photos); });
     state._rosterEventBased = !!r.event_id;
     const c = AC(); if(!c) return false;
     c.grades = c.grades || {}; c.genders = c.genders || {};
@@ -3585,7 +3600,7 @@ async function openSmartMatch(){
       h+=`<div class="card" style="display:flex;align-items:center;gap:13px;margin-bottom:10px">
         <div class="lb-av" style="width:46px;height:46px;border-radius:14px;background:${cls[i%3]};font-size:18px;cursor:pointer" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">${esc(o.name[0])}</div>
         <div style="flex:1;min-width:0" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')" style="cursor:pointer">
-          <div style="font-weight:800;font-size:15px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:700">· 레이팅 ${o.rating}</span></div>
+          <div style="font-weight:800;font-size:15px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:700">· ${(o.games||0)>=5?'레이팅 '+o.rating:'배치 중'}</span></div>
           <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${esc(o.region||'지역 미정')} · 탭하면 전적 비교</div>
           <div style="font-size:11.5px;color:var(--coral-d);font-weight:800;margin-top:3px">예상 승률 ${exp}%</div></div>
         <button class="btn sm" onclick="challengePlayerSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">도전</button></div>`; });
@@ -3695,7 +3710,7 @@ async function openClubRank(){
       h+=`<div class="lrow ${me?'mine':''}" style="align-items:center">
         <div class="lrk" style="color:${medal};width:26px">${rank}</div>
         <div style="flex:1"><span style="font-weight:${me?'800':'700'};color:#e9edf5;font-size:14px">${esc(p.name)}${me?' (나)':''}${p.grade?` <small style="color:#8b97ad">· ${p.grade}조</small>`:''}</span><br><small style="color:#8b97ad;font-size:11px">출석 ${p.attended||0}회</small></div>
-        <div style="color:#f0b73e;font-weight:900;font-size:15px">${p.rating||1000}</div></div>`; });
+        <div style="color:${(p.games||0)>=5?'#f0b73e':'#8b97ad'};font-weight:900;font-size:${(p.games||0)>=5?'15px':'12px'}">${(p.games||0)>=5?(p.rating||1000):'배치 중'}</div></div>`; });
     h+=`</div><button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button>`;
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
     return;
@@ -4188,7 +4203,7 @@ function renderLeague(){
         h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
           <div style="width:24px;text-align:center;font-weight:900;color:${medal}">${i+1}</div>
           <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}<span style="font-size:11.5px;color:var(--lgray);font-weight:600"> · ${esc(p.region||'')}</span></div>
-          <div style="font-weight:900;color:var(--coral-d)">${p.rating}</div></div>`; });
+          <div style="font-weight:900;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:'배치 중'}</div></div>`; });
       h+=`</div>`;
       h+=`<div class="note" style="text-align:left">순위를 올리려면 <b>매치 탭</b>에서 실력이 비슷한 상대에게 도전하거나, 클럽 대진 결과를 확정하세요.</div>`;
     }
@@ -4321,19 +4336,22 @@ function renderClub(){
     if(state.myClubs.length>1){
       h+=`<div class="cswitch">`;state.myClubs.forEach(nm=>{h+=`<div class="cs ${nm===state.activeClub?'on':''}" onclick="switchClub('${nm}')">${nm}</div>`;});h+=`</div>`;
     }
-    const c=AC(),sch=c.schedule,going=sch.attendees.length+(sch.attend===true?1:0);
+    const c=AC(); c.schedule=c.schedule||{dt:'',attendees:[],attend:null};
+    const sch=c.schedule, going=(sch.attendees||[]).length+(sch.attend===true?1:0);
     const today=new Date(); const MON=today.getMonth()+1, DAY=today.getDate();
     // ⑤ 인사 헤더
-    h+=`<div class="greet"><div class="gv-av">곽</div><div class="gv-x"><div class="gv-h">안녕하세요, 곽주영 님</div><div class="gv-d">오늘 ${MON}월 ${DAY}일 · ${state.activeClub}</div></div><div class="gv-s" onclick="setClubTab('find')">${ic('search',20)}</div></div>`;
+    h+=`<div class="greet"><div class="gv-av" style="${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':meName()[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${meName()} 님</div><div class="gv-d">오늘 ${MON}월 ${DAY}일 · ${state.activeClub}</div></div><div class="gv-s" onclick="setClubTab('find')">${ic('search',20)}</div></div>`;
     // ⑤ 히어로 카드 (이번 주 클럽 모임 + 참여 아바타)
     { const ev0=(c.events&&c.events[0])||null; const att=ev0?ev0.attendees:sch.attendees; const cls=['#e07b48','#7b8fc4','#5fae86','#a79cd2','#d8a468'];
-      const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>`<div class="ma" style="background:${cls[i%5]}">${nm[0]}</div>`).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
+      const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:cls[i%5]}">${ph?'':nm[0]}</div>`;}).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
       h+=`<div class="yhero"><div class="yh-deco">${SP().ic}</div>
         <div class="yh-n">이번 주<br>클럽 모임</div>
         <div class="yh-s">참석을 체크하면 그날 대진에 자동 포함돼요</div>
         <div class="yh-foot">${stack}<span style="font-size:12.5px;font-weight:800;color:#473c69">${att.length?att.length+'명 참여 예정':'아직 없음'}</span></div></div>`; }
     // 임원진 알림
-    if(c.officer && (c.pending||[]).length){ h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openAdmin()"><div><div style="font-size:14px;font-weight:800;color:#fff">임원진 · 가입 신청 ${c.pending.length}건</div><div style="font-size:12.5px;color:#cbb8a6;font-weight:600;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--felt);font-weight:800;font-size:18px">→</div></div>`; }
+    if(SERVER_OK && c.officer && (state._joinReqN||0)>0){
+      h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openJoinRequests()"><div><div style="font-size:14px;font-weight:800;color:#fff">임원진 · 가입 신청 ${state._joinReqN}건</div><div style="font-size:12.5px;color:#cbb8a6;font-weight:600;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--coral);font-weight:800;font-size:18px">→</div></div>`;
+    } else if(!SERVER_OK && c.officer && (c.pending||[]).length){ h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openAdmin()"><div><div style="font-size:14px;font-weight:800;color:#fff">임원진 · 가입 신청 ${c.pending.length}건</div><div style="font-size:12.5px;color:#cbb8a6;font-weight:600;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--felt);font-weight:800;font-size:18px">→</div></div>`; }
     // ⑤ 주간 날짜 핀 (이번 주 일~토 · 오늘 강조 · 모임 있는 날 점)
     { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
       const evDays=new Set(); (c.events||[]).forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); if(mm) evDays.add(mm[1]+'/'+mm[2]); });
@@ -4409,12 +4427,13 @@ function renderClub(){
       }
     }
     // 서버에 모임이 있으면 참석/불참/미정 3단계 카드, 없으면 기존 데모 UI
-    h+= (SERVER_OK && SRV_EVENT) ? rsvpCard() : `
+    h+= ((SERVER_OK && SRV_EVENT) ? rsvpCard()
+      : SERVER_OK ? `<div class="note" style="text-align:left;margin-bottom:12px">아직 예정된 모임이 없어요. ${c.officer?'아래 <b>＋만들기</b>로 첫 모임을 열어보세요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.'}</div>` : `
     <div class="sched"><div class="dt">이번 모임</div><div class="loc">${sch.dt}</div>
       <div class="going">● ${going}명 참석 예정${sch.attend===true?' (나 포함)':''}</div>
       <div class="att-btns"><button class="yes ${sch.attend===true?'on':''}" onclick="setAttend(true)">참석</button>
         <button class="no ${sch.attend===false?'on':''}" onclick="setAttend(false)">불참</button></div>
-      <div class="note" style="text-align:left;margin-top:10px">참석을 누르면 <b>그날 대진 명단에 자동 포함</b>돼요.</div></div>`;
+      <div class="note" style="text-align:left;margin-top:10px">참석을 누르면 <b>그날 대진 명단에 자동 포함</b>돼요.</div></div>`);
     h+=`
     <div class="composer"><textarea id="postText" placeholder="${state.activeClub}에 소식을 남겨보세요..." oninput="state._draft=this.value">${state._draft}</textarea>
       ${state._photo?`<div class="ph-prev"><img src="${state._photo}" alt="첨부한 사진"><span class="ph-x" onclick="clearPhoto()">×</span></div>`:``}
@@ -4571,7 +4590,7 @@ function renderProfileEditSrv(){
   const photos=state._myPhotos||[];
   const cell=(i)=>{ const url=photos[i], main=i===0;
     return url
-      ? `<div class="phc on" style="background-image:url('${url.startsWith('http')?url:API_BASE+url}');background-size:cover;background-position:center" onclick="removeMyPhoto(${i})" role="button" aria-label="사진 삭제">
+      ? `<div class="phc on" style="background-image:url('${url.startsWith('http')?url:API_BASE+url}');background-size:cover;background-position:center" onclick="openPhotoMenu(${i})" role="button" aria-label="사진 옵션">
            ${main?`<span class="ph-main">대표</span>`:''}<span class="ph-x">×</span></div>`
       : `<div class="phc" onclick="pickMyPhoto()" role="button" aria-label="사진 추가"><span class="ph-plus">＋</span></div>`; };
   let h=`<div class="sh-top"><h3>프로필 수정</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
@@ -4589,22 +4608,117 @@ function pickMyPhoto(){
 }
 async function uploadMyPhoto(file){
   if(!file) return;
-  toast('사진 올리는 중…');
   try{
-    const dataUrl = await shrinkImage(file, 900, 0.82);
-    const r = await api('/upload',{method:'POST', body: JSON.stringify({dataUrl})});
-    state._myPhotos = [...(state._myPhotos||[]), r.url].slice(0,6);
+    const dataUrl = await shrinkImage(file, 1600, 0.9);   // 크롭 전 1차 축소 (메모리 보호)
+    openCropEditor(dataUrl, null);
+  }catch(e){ toast('사진을 불러오지 못했어요'); }
+}
+
+/* ── 원형 범위 조정(크롭) 편집기 ─────────────────────────────
+   드래그로 위치, 슬라이더로 확대. 저장 시 600×600 정사각으로
+   구워서 올리므로 어디서 보든(원형·사각) 같은 구도가 나온다. */
+let CROP=null;
+function openCropEditor(srcUrl, slot){
+  const img=new Image();
+  img.onload=()=>{
+    const VP=280;
+    const min=Math.max(VP/img.width, VP/img.height);
+    CROP={img, s:min, min, x:(VP-img.width*min)/2, y:(VP-img.height*min)/2, slot, VP};
+    renderCropSheet();
+  };
+  img.onerror=()=>toast('사진을 불러오지 못했어요');
+  img.src=srcUrl;
+}
+function renderCropSheet(){
+  const c=CROP; if(!c) return;
+  let h=`<div class="sh-top"><h3>원형 범위 조정</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">사진을 <b>끌어서 위치</b>를 잡고, 슬라이더로 <b>확대</b>하세요. 원 안이 프로필에 보이는 부분이에요.</div>
+    <div id="cropVp" style="position:relative;width:${c.VP}px;height:${c.VP}px;margin:0 auto;overflow:hidden;border-radius:22px;background:#161513;touch-action:none;cursor:grab">
+      <img id="cropImg" src="${c.img.src}" draggable="false" style="position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none">
+      <div style="position:absolute;left:50%;top:50%;width:${c.VP-24}px;height:${c.VP-24}px;transform:translate(-50%,-50%);border-radius:50%;box-shadow:0 0 0 999px rgba(20,18,14,.55);border:2px solid rgba(255,255,255,.85);pointer-events:none"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 4px 4px">
+      <span style="font-size:16px">🔍</span>
+      <input id="cropZoom" type="range" min="100" max="300" value="${Math.round(c.s/c.min*100)}" style="flex:1;accent-color:var(--coral)" oninput="cropZoom(this.value)">
+    </div>
+    <button class="btn" style="margin-top:14px" onclick="saveCrop()">이 범위로 저장</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="renderProfileEditSrv()">취소</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  applyCropTf();
+  const vp=document.getElementById('cropVp');
+  let drag=null;
+  vp.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,ox:CROP.x,oy:CROP.y}; vp.setPointerCapture(e.pointerId); vp.style.cursor='grabbing'; });
+  vp.addEventListener('pointermove',e=>{ if(!drag)return;
+    CROP.x=drag.ox+(e.clientX-drag.x); CROP.y=drag.oy+(e.clientY-drag.y); clampCrop(); applyCropTf(); });
+  const up=()=>{ drag=null; vp.style.cursor='grab'; };
+  vp.addEventListener('pointerup',up); vp.addEventListener('pointercancel',up);
+}
+function clampCrop(){
+  const c=CROP, w=c.img.width*c.s, ht=c.img.height*c.s;
+  c.x=Math.min(0, Math.max(c.VP-w, c.x));
+  c.y=Math.min(0, Math.max(c.VP-ht, c.y));
+}
+function applyCropTf(){
+  const el=document.getElementById('cropImg'); if(!el||!CROP) return;
+  el.style.transform=`translate(${CROP.x}px,${CROP.y}px) scale(${CROP.s})`;
+}
+function cropZoom(v){
+  const c=CROP; if(!c) return;
+  const ns=c.min*(+v/100);
+  const cx=c.VP/2, cy=c.VP/2;                           // 뷰포트 중심 고정 확대
+  c.x = cx - (cx - c.x)*(ns/c.s);
+  c.y = cy - (cy - c.y)*(ns/c.s);
+  c.s = ns; clampCrop(); applyCropTf();
+}
+async function saveCrop(){
+  const c=CROP; if(!c) return;
+  toast('사진 저장 중…');
+  try{
+    const OUT=600, cv=document.createElement('canvas'); cv.width=OUT; cv.height=OUT;
+    const ctx=cv.getContext('2d');
+    ctx.drawImage(c.img, -c.x/c.s, -c.y/c.s, c.VP/c.s, c.VP/c.s, 0, 0, OUT, OUT);
+    const dataUrl=cv.toDataURL('image/jpeg', .86);
+    const r=await api('/upload',{method:'POST', body: JSON.stringify({dataUrl})});
+    if(c.slot==null) state._myPhotos=[...(state._myPhotos||[]), r.url].slice(0,6);
+    else state._myPhotos[c.slot]=r.url;
     await api('/me',{method:'PATCH', body: JSON.stringify({photos: state._myPhotos})});
-    state.serverUser.photos = JSON.stringify(state._myPhotos);
-    renderProfileEditSrv(); if(state.view==='me') renderMe();
-    toast('사진을 저장했어요');
-  }catch(e){ toast('업로드하지 못했어요 · 잠시 후 다시 시도해 주세요'); }
+    state.serverUser.photos=JSON.stringify(state._myPhotos);
+    regPhoto(meName(), state._myPhotos);
+    CROP=null;
+    renderProfileEditSrv();
+    if(state.view==='me') renderMe();
+    if(state.view==='home') renderHome();
+    toast('프로필 사진을 저장했어요');
+  }catch(e){ toast('저장하지 못했어요 · 잠시 후 다시 시도해 주세요'); }
+}
+
+/* 사진 탭 → 메뉴 (범위 조정 · 대표로 · 삭제) */
+function openPhotoMenu(i){
+  const photos=state._myPhotos||[]; const url=photos[i]; if(!url) return;
+  const full=url.startsWith('http')?url:API_BASE+url;
+  let h=`<div class="sh-top"><h3>사진 ${i===0?'(대표)':''}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="width:150px;height:150px;border-radius:50%;background:url('${full}') center/cover;margin:4px auto 16px;border:3px solid var(--coral-s)"></div>
+    <button class="btn" onclick="openCropEditor('${full}', ${i})">원형 범위 조정</button>
+    ${i>0?`<button class="btn ghost" style="margin-top:9px" onclick="makeMainPhoto(${i})">대표 사진으로</button>`:''}
+    <button class="btn ghost" style="margin-top:9px;color:#c0392b;border-color:#e5b5ae" onclick="removeMyPhoto(${i})">삭제</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function makeMainPhoto(i){
+  const p=state._myPhotos||[]; if(!p[i]) return;
+  state._myPhotos=[p[i], ...p.filter((_,k)=>k!==i)];
+  try{ await api('/me',{method:'PATCH', body: JSON.stringify({photos: state._myPhotos})});
+    state.serverUser.photos=JSON.stringify(state._myPhotos);
+    regPhoto(meName(), state._myPhotos);
+  }catch(e){}
+  renderProfileEditSrv(); if(state.view==='me') renderMe();
+  toast('대표 사진을 바꿨어요');
 }
 async function removeMyPhoto(i){
   if(!confirm('이 사진을 삭제할까요?')) return;
   state._myPhotos = (state._myPhotos||[]).filter((_,k)=>k!==i);
   try{ await api('/me',{method:'PATCH', body: JSON.stringify({photos: state._myPhotos})});
     state.serverUser.photos = JSON.stringify(state._myPhotos);
+    delete PHOTO_MAP[meName()]; regPhoto(meName(), state._myPhotos);
   }catch(e){}
   renderProfileEditSrv(); if(state.view==='me') renderMe();
 }
@@ -5126,7 +5240,7 @@ async function addPost(){
   if(bad){ toast(`${bad}는 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
 
   if(!SERVER_OK){                                   // 데모
-    AC().feed.unshift({who:state.userName||'나',when:'방금',cap:txt,ph:state._photo?'내가 올린 사진':null,like:0,cm:0});
+    const _fc=AC(); (_fc.feed=_fc.feed||[]).unshift({who:state.userName||'나',when:'방금',cap:txt,ph:state._photo?'내가 올린 사진':null,like:0,cm:0});
     state._draft=''; state._photo=null; renderClub(); toast('게시했어요'); return;
   }
   try{
@@ -5475,7 +5589,20 @@ function scoreBox(ri,ci){
 }
 const CCB=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0'];
 function ctTypeColor(t){ return t==='남복'?'#e8845a':t==='여복'?'#e05a86':t==='혼복'?'#2f9e6e':'#7f776a'; }
-function pavatar(nm,sz){ sz=sz||20; const cols=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0','#e05a86','#3fb0c2']; let hh=0; for(const ch of String(nm))hh=(hh*31+ch.charCodeAt(0))>>>0; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cols[hh%cols.length]};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.5)}px;font-weight:800;margin-right:5px;flex-shrink:0">${String(nm)[0]}</span>`; }
+let PHOTO_MAP = {};          // 이름 → 프로필 사진 URL (서버 명단에서 채움)
+function photoOf(nm){
+  if(PHOTO_MAP[nm]) return PHOTO_MAP[nm];
+  if(nm===meName()) return myPhotoUrl();
+  return null;
+}
+function regPhoto(nm, photos){
+  try{ const arr = typeof photos==='string' ? JSON.parse(photos||'[]') : (photos||[]);
+    if(arr[0]) PHOTO_MAP[nm] = arr[0].startsWith('http') ? arr[0] : API_BASE + arr[0]; }catch(e){}
+}
+function pavatar(nm,sz){ sz=sz||20;
+  const ph=photoOf(nm);
+  if(ph) return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:url('${ph}') center/cover;display:inline-flex;flex-shrink:0;margin-right:5px"></span>`;
+  const cols=['#ec6a2e','#6182e6','#62c08d','#b9a6ea','#eaa24f','#7a5fc0','#e05a86','#3fb0c2']; let hh=0; for(const ch of String(nm))hh=(hh*31+ch.charCodeAt(0))>>>0; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cols[hh%cols.length]};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.5)}px;font-weight:800;margin-right:5px;flex-shrink:0">${String(nm)[0]}</span>`; }
 function meName(){ return state.userName||'곽주영'; }
 async function refreshRoster(){
   toast('명단을 다시 불러오는 중…');
@@ -7470,7 +7597,7 @@ function renderBracket(){
     h+=`</div></div>`;
   } else {
     h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between;align-items:center"><span>이번 모임 · 참석 ${n}명</span>
-      <div class="memstack">${attendees.slice(0,5).map((nm,i)=>`<div class="ma" style="background:${rcls[i%6]}">${nm[0]}</div>`).join('')}${attendees.length>5?`<div class="ma more">+${attendees.length-5}</div>`:''}</div></div><div class="roster">`;
+      <div class="memstack">${attendees.slice(0,5).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:rcls[i%6]}">${ph?'':nm[0]}</div>`;}).join('')}${attendees.length>5?`<div class="ma more">+${attendees.length-5}</div>`:''}</div></div><div class="roster">`;
     attendees.forEach(nm=>{h+=`<span class="ptag ${nm===MEN?'me':''}">${nm}${nm===MEN?' (나)':''}</span>`;});
     h+=`</div></div>`;
   }
@@ -8087,14 +8214,14 @@ function renderHome(){
   const evSrc = (SRV && clubId()) ? (SRV_EVENTS||[]) : ((c&&c.events)||[]);
   const cls=['#e07b48','#7b8fc4','#5fae86','#a79cd2','#d8a468'];
   // ⑤ 인사 헤더
-  let h=`<div class="greet"><div class="gv-av">${(state.userName||'곽주영')[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${state.userName||'곽주영'} 님</div><div class="gv-d">오늘은 ${MON}월 ${DAY}일이에요<br>${SP().n}${['swimming','running'].includes(SP().id)?'하기':(SP().cat==='team'?' 하기':' 치기')} 좋은 날이에요</div></div>
+  let h=`<div class="greet"><div class="gv-av" style="${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':(state.userName||'곽주영')[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${state.userName||'곽주영'} 님</div><div class="gv-d">오늘은 ${MON}월 ${DAY}일이에요<br>${SP().n}${['swimming','running'].includes(SP().id)?'하기':(SP().cat==='team'?' 하기':' 치기')} 좋은 날이에요</div></div>
     <div onclick="openSportPicker()" style="display:flex;align-items:center;gap:5px;background:var(--brand);color:#fff;border-radius:20px;padding:8px 14px;cursor:pointer;flex-shrink:0"><span style="font-size:13px;font-weight:800;letter-spacing:-.02em">${SP().n}</span><span style="font-size:10px;opacity:.85">▾</span></div>
     <div onclick="openStore()" style="display:flex;align-items:center;gap:5px;background:#ffffff;border:1px solid var(--line);border-radius:20px;padding:7px 10px;cursor:pointer;box-shadow:var(--shadow-s);flex-shrink:0">${coin(18)}<b style="font-size:14px">${state.cash}</b></div></div>`;
   // ⑤ 히어로 카드 (다음 일정)
   { let title='이번 주<br>클럽 모임', sub='참석을 체크하면 그날 대진에 자동 포함돼요', att=[], goTo='club';
     if(hasClub && evSrc.length){ att=evSrc[0].attendees||[]; sub=`${esc(evSrc[0].title)} · 참석 체크하고 대진 받기`; }
     else if(!hasClub){ title='테니스,<br>지금 시작'; sub='클럽에 가입하고 모임·대진을 바로 써보세요'; }
-    const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>`<div class="ma" style="background:${cls[i%5]}">${nm[0]}</div>`).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
+    const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:cls[i%5]}">${ph?'':nm[0]}</div>`;}).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
     h+=`<div class="yhero" onclick="go('${goTo}')" style="cursor:pointer"><div class="yh-deco">${SP().ic}</div>
       <div class="yh-n">${title}</div><div class="yh-s">${sub}</div>
       ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}
@@ -8417,6 +8544,14 @@ document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov'
 // 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
 checkServer().then(async ok=>{
   if(!ok) return;
+  // 저장된 세션으로 다시 연 경우에도 서버 가입 정보를 반드시 동기화한다.
+  // (이게 빠져 있어서 "정회원인데 클럽이 없다고 나오는" 버그가 있었다)
+  if(authToken()){
+    try{
+      await loadClubIds();                              // → adoptServerClubs 포함
+      if(clubId()){ await loadClubServer(); await loadRoster(); }
+    }catch(e){}
+  }
   renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
   if(state.view) go(state.view);
   const _mid = new URL(location.href).searchParams.get('match');
