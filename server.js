@@ -170,20 +170,27 @@ function cleanName(s, fallback) {
   return t || fallback || '회원';
 }
 
+try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
+const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
+
 app.post('/auth/dev-login', limitLogin, (req, res) => {
-  // 이름만 넣으면 계정이 생기는 문. 운영에서는 절대 열어두면 안 된다.
+  // 이름 로그인 — 카카오 키가 준비될 때까지의 임시 입구.
+  // 이름만으로는 남의 계정에 못 들어가게 4~6자리 간편 비밀번호(PIN)를 요구한다.
   if (IS_PROD && process.env.ALLOW_DEV_LOGIN !== '1')
     return res.status(403).json({ error: 'disabled_in_production' });
   const { name = '게스트', provider = 'kakao', gender = '남성', region = '경기 용인', sport = 'tennis' } = req.body || {};
+  const pin = String((req.body || {}).pin || '').replace(/\D/g, '');   // 선택 사항 — 안 쓰면 이름만으로 로그인
   // 이름 전체를 해시한다. hex.slice(0,12) 는 한글 4자까지만 반영돼
   // '상대0' '상대1' 이 같은 계정이 되는 충돌이 있었다.
   const pid = 'dev-' + crypto.createHash('sha256').update(String(name)).digest('hex').slice(0, 16);
   let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
   if (!u) {
     const nick = anonNick(pid);
-    const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,region,sport,anon_nick,created_at)
-      VALUES (?,?,?,?,?,?,?,?)`).run(provider, pid, cleanName(name, '게스트'), gender, region, sport, nick, now());
+    const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,region,sport,anon_nick,created_at,dev_pin)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(provider, pid, cleanName(name, '게스트'), gender, region, sport, nick, now(), pin ? pinHash(pid, pin) : null);
     u = getUser(rid(r));
+  } else if (u.dev_pin && pin && u.dev_pin !== pinHash(pid, pin)) {
+    return res.status(403).json({ error: 'wrong_pin', message: '간편 비밀번호가 달라요' });
   }
   res.json({ token: sign(u), user: u });
 });
@@ -215,6 +222,7 @@ app.get('/config', (_, res) => {
   res.json({
     google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
+    name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
@@ -509,15 +517,26 @@ app.patch('/me', auth, (req, res) => {
 // ── CLUBS ──
 app.get('/clubs', (req, res) => {
   const { sport, region, q } = req.query;
-  let sql = 'SELECT * FROM clubs WHERE 1=1', p = [];
-  if (sport) { sql += ' AND sport=?'; p.push(sport); }
-  if (region) { sql += ' AND region LIKE ?'; p.push('%' + region + '%'); }
-  if (q) { sql += ' AND name LIKE ?'; p.push('%' + q + '%'); }
-  res.json(db.prepare(sql + ' ORDER BY created_at DESC LIMIT 100').all(...p));
+  // 활동 지표(회원 수·최근 활동)로 정렬 — 유령 클럽이 검색을 오염시키지 않게
+  let sql = `SELECT c.*,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members,
+      COALESCE((SELECT MAX(e.created_at) FROM club_events e WHERE e.club_id=c.id),
+               (SELECT MAX(ch.created_at) FROM club_chat ch WHERE ch.club_id=c.id), c.created_at) last_active
+    FROM clubs c WHERE 1=1`, p = [];
+  if (sport) { sql += ' AND c.sport=?'; p.push(sport); }
+  if (region) { sql += ' AND c.region LIKE ?'; p.push('%' + region + '%'); }
+  if (q) { sql += ' AND c.name LIKE ?'; p.push('%' + q + '%'); }
+  res.json(db.prepare(sql + ' ORDER BY members DESC, last_active DESC LIMIT 100').all(...p));
 });
 app.post('/clubs', auth, (req, res) => {
-  const { name, sport, region } = req.body;
+  let { name, sport, region } = req.body;
+  name = cleanName(name, '').slice(0, 24);
   if (!name || !sport) return res.status(400).json({ error: 'name_sport_required' });
+  // 스팸 방지 최소 장치 — 승인제 대신 조용한 한도로 막는다
+  const owned = db.prepare("SELECT COUNT(*) n FROM club_members WHERE user_id=? AND role='owner'").get(req.uid).n;
+  if (owned >= 3) return res.status(400).json({ error: 'club_limit', message: '클럽은 1인당 3개까지 만들 수 있어요' });
+  const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport=?').get(name, sport);
+  if (dup) return res.status(409).json({ error: 'name_taken', message: '이미 있는 클럽 이름이에요' });
   const r = db.prepare(`INSERT INTO clubs (name,sport,region,owner_id,created_at) VALUES (?,?,?,?,?)`)
     .run(name, sport, region || '', req.uid, now());
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
