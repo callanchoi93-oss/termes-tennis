@@ -103,6 +103,7 @@
   .clubrow .ci{width:46px;height:46px;border-radius:13px;background:var(--coral-s);color:var(--coral-d);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .clubrow .info{flex:1}.clubrow .info .n{font-size:16px;font-weight:800}.clubrow .info .m{font-size:12.5px;color:var(--gray);font-weight:500;margin-top:2px}
   .roster{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:4px}
+  .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{font-size:13px;font-weight:700;padding:7px 12px;border-radius:18px;background:#fff;border:1px solid var(--line);color:var(--ink)}
   .ptag.me{background:var(--coral);color:#fff;border-color:var(--coral)}
   .bracket{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
@@ -299,6 +300,7 @@
   /* 칩 */
   .chip{ border:1px solid var(--line2); box-shadow:0 1px 2px rgba(60,40,25,.03); }
   .chip.on{ border-color:transparent; box-shadow:0 2px 8px rgba(232,132,90,.20); }
+  .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{ border:1px solid var(--line2); }
   /* 타이포·여백 정돈 */
   h2.t{ letter-spacing:-0.03em; font-size:24px; }
@@ -488,7 +490,8 @@
     border:1px solid var(--line2); border-radius:18px; margin-bottom:9px; cursor:pointer; box-shadow:var(--shadow-s);
     transition:transform .12s ease; }
   .toolrow:active{ transform:scale(.985); }
-  .toolrow .tr-ic{ width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:21px; flex-shrink:0; }
+  .toolrow .tr-ic{ width:46px; height:46px; border-radius:14px; display:grid; place-items:center; font-size:21px; flex-shrink:0; line-height:0; }
+  .toolrow .tr-ic svg{ display:block; margin:auto; }
   .toolrow .tr-x{ flex:1; min-width:0; }
   .toolrow .tr-n{ font-size:15px; font-weight:800; color:var(--ink); }
   .toolrow .tr-d{ font-size:12px; color:var(--gray); font-weight:600; margin-top:2px; }
@@ -663,12 +666,12 @@
   #guestOv{ position:fixed; inset:0; background:#fff; z-index:420; overflow-y:auto;
     display:none; -webkit-overflow-scrolling:touch; }
   #guestOv.on{ display:block; }
-  .gl-hero{ position:relative; overflow:hidden; background:#fbd9d0; padding:34px 22px 30px; text-align:center; }
+  .gl-hero{ position:relative; overflow:hidden; background:#fceee4; padding:34px 22px 30px; text-align:center; }
   .gl-hero>*{ position:relative; }
   .gl-wave{ position:absolute; inset:0; width:100%; height:100%; }
   .gl-blob{ /* 이전 패턴 자리 — 플랫하게 비움 */ }
-  .gl-done{ font-size:15px; font-weight:900; color:#1f6b41; }
-  .gl-title{ font-size:33px; font-weight:900; letter-spacing:-.03em; color:#1f4d38;
+  .gl-done{ font-size:15px; font-weight:900; color:#cf5418; }
+  .gl-title{ font-size:33px; font-weight:900; letter-spacing:-.02em; color:#fff;
     line-height:1.2; margin-top:34px; word-break:keep-all; }
   .gl-links{ margin-top:24px; font-size:13.5px; font-weight:800; color:#1f6b41; }
   .gl-links span{ cursor:pointer; margin:0 8px; text-decoration:underline; text-underline-offset:3px; }
@@ -1760,7 +1763,16 @@ function updNavLabels(){
   const el=document.getElementById('navBkLbl');
   if(el) el.textContent = SP().cat==='record' ? '조편성' : SP().cat==='team' ? '매치업' : '대진';
 }
-function pickSport(id){ state.sport=id; closeOv(); updNavLabels(); renderHome(); renderLeague(); renderClub(); renderBracket(); toast(`${SP().n} 모드로 전환했어요`); }
+function pickSport(id){
+  state.sport=id; closeOv();
+  syncActiveClub();                                      // 이 종목의 클럽으로 전환
+  // 종목 범위 캐시 초기화 (다른 종목 데이터가 새 화면에 남지 않게)
+  try{ SRV_EVENT=null; SRV_EVENTS=null; }catch(e){}
+  try{ REC_MINE=null; REC_BOARD=null; }catch(e){}
+  try{ TEAMM=null; TM_PUB=null; TM_A=[]; TM_B=[]; BK_SWAP_SEL=null; }catch(e){}
+  updNavLabels(); renderHome(); renderLeague(); renderClub(); renderBracket();
+  toast(`${SP().n} 모드로 전환했어요`);
+}
 async function login(p){
   const _n=(document.getElementById('authName')||{}).value;
   const nm=(_n&&_n.trim())||'곽주영';
@@ -1834,7 +1846,7 @@ function resumeOrOnboard(){
 }
 
 function finishOnboard(){
-  state.loggedIn=true;setTimeout(()=>checkMyDues(),900);state.gender=state._obGender;state.exp=state._obExp;state.sport=state._obSport;
+  state.loggedIn=true;setTimeout(()=>checkMyDues(),900);state.gender=state._obGender;state.exp=state._obExp;state.sport=state._obSport;state.mainSport=state._obSport;
   // 서버에 저장해야 다음 로그인 때 온보딩을 건너뛸 수 있다
   if(SERVER_OK && authToken()){
     api('/me',{method:'PATCH',body:JSON.stringify({gender:state.gender, exp:state.exp, sport:state.sport})}).catch(()=>{});
@@ -2080,9 +2092,13 @@ async function loadPublicData(){
   }catch(e){}
   try{
     const ps = await api('/posts');
-    LOUNGE_POSTS = (ps||[]).map(p=>({ id:p.id, cat:p.category||'자유', sp:SP().n, ic:SP().ic,
-      t:p.title, b:p.body||'', g:p.gender==='여성'?'여':'남', r:p.region||'', w:p.anon_nick||'익명',
-      time:'', likes:p.likes||0, cmts:p.comments||0 }));
+    LOUNGE_POSTS = (ps||[]).map(p=>{
+      const psp = SPORTS.find(s=>s.id===p.sport) || SP();   // 글에 저장된 종목 (없으면 현재)
+      return { id:p.id, cat:p.category||'자유', sp:psp.n, ic:psp.ic, sportId:psp.id,
+        t:p.title, b:p.body||'', g:p.gender==='여성'?'여':'남', r:p.region||'',
+        nick:p.anon_nick||'익명', region:p.region||'전국', time:timeAgo(p.created_at)||'방금',
+        v:p.views||0, l:p.likes||0, c:p.comments||0 };
+    });
   }catch(e){}
 }
 
@@ -2230,6 +2246,14 @@ let BK_POLL = null, BK_SEEN = 0;
 const _scoreDebounce = {};
 
 function clubId(){ return CLUB_IDS[state.activeClub] || null; }
+let SRV_MYCLUBS=[];
+// 클럽은 만든 종목에 속한다: 종목을 바꾸면 그 종목의 클럽으로 전환 (없으면 무소속)
+function syncActiveClub(){
+  if(!(SERVER_OK && SRV_MYCLUBS.length)) return;
+  const match = SRV_MYCLUBS.find(c=>(c.sport||'')===state.sport);
+  state.activeClub = match ? match.name : null;
+  state.bcfg.role = (match && (match.role==='owner'||match.role==='officer')) ? 'officer' : 'member';
+}
 async function loadClubIds(){
   if(!SERVER_OK) return;
   try{ (await api('/clubs')).forEach(c=>{ CLUB_IDS[c.name] = c.id; }); }catch(e){}
@@ -2263,8 +2287,8 @@ async function adoptServerClubs(){
     d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region;
   });
   state.myClubs = active.map(c=>c.name);
-  state.activeClub = active[0].name;
-  state.bcfg.role = (active[0].role==='owner'||active[0].role==='officer') ? 'officer' : 'member';
+  SRV_MYCLUBS = active;
+  syncActiveClub();                                      // 현재 종목의 클럽만 활성으로
   // 신청 대기 중인 클럽 표시
   mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id; state.clubStatus[c.name]='pending'; });
 }
@@ -2280,6 +2304,7 @@ async function bkPull(){
     if(d.cfg) Object.assign(state.bcfg, d.cfg);
     if(d.fmt) state.bracketFmt = d.fmt;
     state._pubRoster = Array.isArray(d.attendees) && d.attendees.length ? d.attendees : null;
+    TM_PUB = d.team || null;                             // 팀 종목: 발행된 라인업
     bkApplyLive(b.scores, b.timers);
     const c = AC();
     if(c) c.published = b.published ? {fmt:b.fmt, cfg:d.cfg, ts:b.updated_at} : null;
@@ -2647,57 +2672,38 @@ async function makeInviteImage(eid){
   const W=1080,H=1350, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const x=cv.getContext('2d');
   const F=(w,s)=>`${w} ${s}px Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif`;
-  // 배경: 연핑크
-  x.fillStyle='#fbd9d0'; x.fillRect(0,0,W,H);
-  // 물결: 겹친 빨간 타원 2개 (레퍼런스 패턴)
-  x.fillStyle='#e6564a';
+  // 연핑크 배경 + 겹친 빨간 타원 물결
+  x.fillStyle='#fceee4'; x.fillRect(0,0,W,H);
+  x.fillStyle='#ec6a2e';
   x.beginPath(); x.ellipse(180,330,650,240,0,0,7); x.fill();
   x.beginPath(); x.ellipse(900,330,650,240,0,0,7); x.fill();
-  // 상단 문구 (핑크 영역)
   x.textAlign='center';
-  x.fillStyle='#1f8f57'; x.font=F(900,36);
-  x.fillText('게스트 초대장', W/2, 116);
-  // 클럽명 (빨간 물결 위, 진초록)
-  x.fillStyle='#1f4d38'; x.font=F(900,84);
-  const cName=club.slice(0,10);
-  x.fillText(cName, W/2, 330);
-  x.fillStyle='#1f4d38'; x.font=F(800,40);
-  x.fillText((ev.title||'정기 모임').slice(0,12), W/2, 408);
-  // 물결 아래 안내
-  x.fillStyle='#1f8f57'; x.font=F(800,32);
-  x.fillText('게스트로 함께해요', W/2, 626);
-  // 정보 (좌측 정렬 2열: Date/Time, Venue)
-  x.textAlign='left';
-  const L=110;
-  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Date', L, 730);
-  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText(dTxt, L, 782);
-  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Time', 620, 730);
-  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText(tTxt||'공지 참고', 620, 782);
-  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Venue', L, 866);
-  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText((pTxt||'클럽 공지 참고').slice(0,20), L, 918);
-  // 꽃밭 (레트로 리소 꽃 3송이: 노랑 오프셋 + 빨강 4잎 + 노랑 중심 + 초록 줄기·잎)
-  function flower(cx0, cy0, s){
-    x.save(); x.translate(cx0, cy0); x.scale(s, s);
-    x.fillStyle='#2f8f5b';
-    x.fillRect(-9, 20, 18, 96);
-    x.beginPath(); x.moveTo(-72,116); x.bezierCurveTo(-72,66,-16,74,0,112);
-    x.bezierCurveTo(16,74,72,66,72,116); x.bezierCurveTo(72,172,-72,172,-72,116);
-    x.closePath(); x.fill();
-    x.fillStyle='#f2c53d';
-    [[-28,-28],[40,-28],[-28,40],[40,40]].forEach(([a,b])=>{ x.beginPath(); x.arc(a,b,38,0,7); x.fill(); });
-    x.fillStyle='#e6564a';
-    [[-34,-34],[34,-34],[-34,34],[34,34]].forEach(([a,b])=>{ x.beginPath(); x.arc(a,b,38,0,7); x.fill(); });
-    x.fillStyle='#f2c53d'; x.beginPath(); x.arc(0,0,26,0,7); x.fill();
-    x.restore();
-  }
-  flower(240, 1060, 0.78); flower(540, 1040, 1.02); flower(830, 1068, 0.68);
-  // 링크
+  x.fillStyle='#cf5418'; x.font=F(900,36);
+  x.fillText('게스트 초대장', W/2, 112);
+  x.fillStyle='#ffffff'; x.font=F(900, club.length>7?66:84);
+  x.fillText(club.slice(0,10), W/2, 330);
+  x.fillStyle='#ffffff'; x.font=F(800,40);
+  x.fillText((ev.title||'정기 모임').slice(0,12), W/2, 406);
+  x.fillStyle='#cf5418'; x.font=F(800,32);
+  x.fillText('게스트로 함께해요', W/2, 630);
+  // Date / Time / Venue (레퍼런스 배치)
+  x.textAlign='left'; const L=110;
+  x.fillStyle='#1c1b18'; x.font=F(900,36); x.fillText('Date', L, 760);
+  x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText(dTxt, L, 818);
+  x.fillStyle='#1c1b18'; x.font=F(900,36); x.fillText('Time', 640, 760);
+  x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText(tTxt||'공지 참고', 640, 818);
+  x.fillStyle='#1c1b18'; x.font=F(900,36); x.fillText('Venue', L, 926);
+  x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText((pTxt||'클럽 공지 참고').slice(0,18), L, 984);
+  x.fillStyle='#1c1b18'; x.font=F(900,36); x.fillText('Type', L, 1092);
+  x.fillStyle='#2c2a24'; x.font=F(700,40);
+  x.fillText(`${(SPORTS.find(s=>s.id===(state.sport))||{}).n||''} 게스트`, L, 1150);
+  // 링크 박스
   x.textAlign='center';
   x.fillStyle='#ffffff';
-  if(x.roundRect){ x.beginPath(); x.roundRect(140,1246,800,84,24); x.fill(); } else x.fillRect(140,1246,800,84);
-  x.fillStyle='#cf5418'; x.font=F(800,28);
+  if(x.roundRect){ x.beginPath(); x.roundRect(120,1226,840,92,24); x.fill(); } else x.fillRect(120,1226,840,92);
+  x.fillStyle='#cf5418'; x.font=F(800,29);
   const shortUrl=url.replace(/^https?:\/\//,'');
-  x.fillText(shortUrl.length>46?shortUrl.slice(0,46)+'…':shortUrl, W/2, 1300);
+  x.fillText(shortUrl.length>46?shortUrl.slice(0,46)+'…':shortUrl, W/2, 1284);
 
   // 미리보기 시트
   const dataUrl=cv.toDataURL('image/png');
@@ -3591,7 +3597,7 @@ function openPitch(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 // ── M캐쉬(블릿) + 스토어 ──
-function coin(sz){ sz=sz||22; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:#ec6a2e;color:#7a5400;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:${Math.round(sz*0.58)}px;flex-shrink:0">M</span>`; }
+function coin(sz){ sz=sz||22; return `<span style="width:${sz}px;height:${sz}px;border-radius:50%;background:#f2c53d;color:#7a5400;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:${Math.round(sz*0.58)}px;flex-shrink:0;box-shadow:inset 0 -2px 0 rgba(122,84,0,.25)">M</span>`; }
 function spendCash(kind,cost,label){
   if((state.free[kind]||0)>0){ state.free[kind]--; toast(`${label} · 무료 ${state.free[kind]}회 남음`); return true; }
   if(state.cash>=cost){ state.cash-=cost; toast(`${label} · M캐쉬 ${cost} 사용 (잔액 ${state.cash})`); return true; }
@@ -4651,7 +4657,7 @@ function renderClub(){
           ${SERVER_OK?`<div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('link',19)}</div>
             <div class="tr-tx"><b>초대 링크 만들기</b><span>링크 하나로 바로 정회원 · 7일 유효</span></div><div class="tr-go">→</div></div>`:''}
           <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubPremium()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openPromo({tag:'맞수 프리미엄',visual:'👑',title:'총무 일을 절반으로\n줄여보세요',body:'회원 무제한, 회비 장부 자동화, 모임 정산까지 — 우리 클럽 운영을 맞수가 대신해요.',cta:'플랜 살펴보기',onCta:'openClubPremium()'})"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
@@ -5769,7 +5775,25 @@ function toggleLateName(nm){const a=state.bcfg.lateNames;const i=a.indexOf(nm);i
   state.bcfg.lateAfter=parseInt(document.getElementById('lateAfterSel').value)||state.bcfg.lateAfter; openLatePicker();}
 function setHanulMode(m){ state.bcfg.hanulMode=m; state.bcfg.scores={}; const c=AC(); if(c)c.published=null; renderBracket(); }
 function saveLate(){const sel=document.getElementById('lateAfterSel');if(sel)state.bcfg.lateAfter=parseInt(sel.value)||2;{const c=AC();if(c)c.published=null;}closeOv();renderBracket();toast(state.bcfg.lateNames.length?`늦참 ${state.bcfg.lateNames.length}명 · ${state.bcfg.lateAfter}게임 후 합류`:'늦참자 없음');}
+function bkSwapTap(nm){
+  if(state.bcfg.role!=='officer' || !SERVER_OK) return;
+  if(BK_SWAP_SEL===null){ BK_SWAP_SEL=nm; renderBracket(); return; }
+  if(BK_SWAP_SEL===nm){ BK_SWAP_SEL=null; renderBracket(); return; }
+  const r=state._roster||[];
+  const i=r.indexOf(BK_SWAP_SEL), j=r.indexOf(nm);
+  if(i<0||j<0){ BK_SWAP_SEL=null; renderBracket(); return; }
+  [r[i],r[j]]=[r[j],r[i]];                               // 자리 교환 → 대진이 결정적으로 재편성된다
+  const a=BK_SWAP_SEL; BK_SWAP_SEL=null;
+  const wasPub = AC() && AC().published;
+  state.bcfg.scores={};                                   // 자리 바뀐 대진의 점수는 무효
+  renderBracket();
+  if(wasPub){ bkPush(true).then(()=>toast(`${a} ↔ ${nm} · 수정 대진을 발행했어요`)); }
+  else toast(`${a} ↔ ${nm} · 자리를 바꿨어요`);
+}
 async function reshuffle(){
+  { const need=MIN_PLAYERS[SP().id]||4;
+    const cur=(state.clubData[state.activeClub]&&(state.clubData[state.activeClub].schedule.attendees||[]).length)||0;
+    if(SERVER_OK && cur && cur<need){ openMinModal(); return; } }
   const n=Object.keys(state.bcfg.scores).filter(k=>{const v=state.bcfg.scores[k];return v.a!==''&&v.b!=='';}).length;
   if(n && !confirm(`입력된 점수 ${n}건이 삭제됩니다. 대진을 다시 짤까요?`)) return;
   state.bcfg.seed++; state.bcfg.scores={}; bkState().startedAt={}; state._pubRoster=null;
@@ -6162,6 +6186,50 @@ async function watchAd(){
 }
 
 /* ═══════════ 클럽 프리미엄 ═══════════ */
+/* ── 프로모션 모달: 업데이트 공지·프리미엄 업셀 공용 (하단 시트, 비주얼+제목+CTA) ── */
+const MIN_PLAYERS={tennis:4,badminton:4,soccer:6,basketball:6,baseball:10,running:2,swimming:2};
+const MIN_SEEN={};
+function openMinModal(){
+  const sp=SP(), min=MIN_PLAYERS[sp.id]||4;
+  const what = sp.cat==='record' ? (sp.id==='swimming'?'레인 배정':'조 편성') : sp.cat==='team' ? '팀 매치업' : '대진';
+  openPromo({ tag:'맞수 '+what, visual:sp.ic,
+    title:`${min}명이 모이면\n${what}이 완성돼요`,
+    body: sp.cat==='team'
+      ? `클럽에 ${min}명 이상이 모이면 참석 회원으로 두 팀을 자동으로 나눠드려요. 지금은 미리보기로 구조를 둘러보세요.`
+      : sp.cat==='record'
+      ? `참석 ${min}명부터 기록 기반으로 ${what}을 만들어드려요.`
+      : `복식 ${what}은 참석 ${min}명부터 자동으로 짜드려요. 초대장으로 회원을 모아보세요.`,
+    cta:'초대장으로 모으기', onCta:"closeOv();go('club')" });
+}
+function openPromo(o){
+  document.getElementById('sheet').innerHTML=`
+    <div style="text-align:center;padding:6px 4px 2px">
+      <div style="background:var(--cream2);border-radius:20px;padding:26px 14px;margin-bottom:18px">
+        <div style="font-size:44px;line-height:1">${o.visual||'🥨'}</div>
+        ${o.visualSub?`<div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:8px">${o.visualSub}</div>`:''}
+      </div>
+      <div style="font-size:13px;font-weight:900;background:linear-gradient(90deg,#ec6a2e,#c8372d);-webkit-background-clip:text;background-clip:text;color:transparent">${esc(o.tag||'맞수')}</div>
+      <h2 style="font-size:22px;font-weight:900;line-height:1.35;margin:10px 0 12px;letter-spacing:-.01em;white-space:pre-line">${esc(o.title||'')}</h2>
+      <p style="font-size:13.5px;color:var(--gray);font-weight:600;line-height:1.65;margin-bottom:20px">${esc(o.body||'')}</p>
+      <button class="btn" onclick="${o.onCta||'closeOv()'}">${esc(o.cta||'확인')}</button>
+      <div onclick="closeOv();${o.onLater||''}" style="font-size:14px;font-weight:800;color:var(--gray);padding:15px 0 6px;cursor:pointer">나중에 하기</div>
+    </div>`;
+  document.getElementById('ov').classList.add('on');
+}
+// 업데이트 공지: 버전당 1회
+const APP_NEWS={ ver:'u20260712',
+  tag:'맞수 업데이트', visual:'🎟️', 
+  title:'게스트 초대장과\n클럽 기록실이 생겼어요',
+  body:'모임 카드에서 초대장을 만들어 카톡방에 뿌려보세요. 팀 종목은 자체전·대외전 기록실, 러닝·수영은 거리별 개인 기록(PB)이 쌓여요.',
+  cta:'새 기능 둘러보기', onCta:"closeOv();go('club')" };
+function maybeShowNews(){
+  try{
+    if(!state.loggedIn) return;
+    if(localStorage.getItem('matsu_news')===APP_NEWS.ver) return;
+    localStorage.setItem('matsu_news', APP_NEWS.ver);
+    setTimeout(()=>openPromo(APP_NEWS), 1200);
+  }catch(e){}
+}
 async function openClubPremium(){
   const cid=clubId(); if(!SERVER_OK||!cid){ toast('서버 연결이 필요해요'); return; }
   let p={}, my=null;
@@ -6306,8 +6374,9 @@ function glParseDate(d){
 /* ── 클럽 초대장: 초대 링크를 열면 나오는 소개 화면 ── */
 // 프레첼 캐릭터 (로고 + 시그니처 눈) — 히어로 장식용
 const GL_WAVE = `<svg class="gl-wave" viewBox="0 0 900 520" preserveAspectRatio="none" aria-hidden="true">
-  <ellipse cx="150" cy="260" rx="540" ry="200" fill="#e6564a"/>
-  <ellipse cx="750" cy="260" rx="540" ry="200" fill="#e6564a"/>
+  <rect width="900" height="520" fill="#fceee4"/>
+  <ellipse cx="150" cy="260" rx="540" ry="200" fill="#ec6a2e"/>
+  <ellipse cx="750" cy="260" rx="540" ry="200" fill="#ec6a2e"/>
 </svg>`;
 // 레트로 꽃 (리소그래프 스타일: 노랑 오프셋 그림자 + 4잎 + 노랑 중심)
 function glFlower(s, stem){
@@ -6319,11 +6388,7 @@ function glFlower(s, stem){
     <circle r="26" fill="#f2c53d"/>
   </g>`;
 }
-const GL_FLOWERS = `<svg viewBox="0 0 900 190" style="width:100%;display:block;margin-top:18px" aria-hidden="true">
-  <g transform="translate(160,96)">${glFlower(0.62)}</g>
-  <g transform="translate(450,88)">${glFlower(0.92)}</g>
-  <g transform="translate(740,100)">${glFlower(0.56)}</g>
-</svg>`;
+const GL_FLOWERS = '';
 const PRETZEL_CHAR = GL_WAVE;   // 히어로 상단 장식 = 물결 패턴
 async function openInviteCard(token){
   const el=document.getElementById('guestOv');
@@ -7759,7 +7824,93 @@ function lineupRow(nm,role,i){ const r=rosterEntry(nm);
     <div style="flex:1;min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm==='곽주영'?'<span style="color:var(--coral-d)">곽주영</span>':nm}${r.captain?' <span style="display:inline-flex;width:17px;height:17px;border-radius:50%;background:#e0a82e;color:#fff;font-size:10px;font-weight:900;align-items:center;justify-content:center;vertical-align:middle">C</span>':''}</div>
     <span style="font-size:11.5px;font-weight:800;color:var(--gray);background:var(--cream2);border-radius:6px;padding:3px 9px;flex-shrink:0">${role}</span></div>`;
 }
+let TM_A=[], TM_B=[], TM_SEED=0, TM_PUB=null, BK_SWAP_SEL=null;
+function tmPool(){
+  // 참석 체크 회원 우선, 없으면 클럽 로스터 전체 — 가짜 이름은 절대 섞지 않는다
+  let pool=[];
+  if(SRV_EVENT && (SRV_EVENT.attendees||[]).length){
+    pool=[...SRV_EVENT.attendees];
+    if(SRV_EVENT.joined && !pool.includes(meName())) pool.push(meName());
+  } else if(SRV_ROSTER && SRV_ROSTER.length){
+    pool=SRV_ROSTER.map(m=>m.name);
+  }
+  return [...new Set(pool)];
+}
+function tmShuffle(){
+  TM_SEED++;
+  const pool=tmPool().slice();
+  for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+  TM_A=pool.filter((_,i)=>i%2===0); TM_B=pool.filter((_,i)=>i%2===1);
+  renderBracket();
+}
+function tmMove(nm){                                     // 임원: 칩 탭 → 반대 팀으로 이동
+  if(state.bcfg.role!=='officer') return;
+  if(TM_A.includes(nm)){ TM_A=TM_A.filter(x=>x!==nm); TM_B.push(nm); }
+  else if(TM_B.includes(nm)){ TM_B=TM_B.filter(x=>x!==nm); TM_A.push(nm); }
+  renderBracket();
+}
+async function tmPublish(){
+  try{
+    await api(`/clubs/${clubId()}/brackets`,{method:'POST',body:JSON.stringify({
+      sport:state.sport, fmt:'team', date:(SRV_EVENT&&SRV_EVENT.date)||'', courts:1,
+      data:{ team:{a:TM_A, b:TM_B} }, publish:1 })});
+    TM_PUB={a:[...TM_A], b:[...TM_B]};
+    renderBracket(); toast('라인업을 회원들에게 발행했어요');
+  }catch(e){ toast('발행하지 못했어요'); }
+}
+function tmFmtHint(n, spid){
+  if(spid==='soccer')     return n>=12?'6 vs 6 풋살':n>=10?'5 vs 5 풋살':n>=6?'3 vs 3 미니게임':'미니게임';
+  if(spid==='basketball') return n>=10?'5 vs 5 정규':n>=6?'3 vs 3 하프코트':'슈팅 게임';
+  return n>=18?'9 vs 9 정식':n>=10?'연습 경기':'캐치볼·배팅 연습';
+}
+function tmToRecord(){
+  TR_SIDES={};
+  TM_A.forEach(n=>TR_SIDES[n]='A');
+  TM_B.forEach(n=>TR_SIDES[n]='B');
+  window.TR_PREFILL={ ta:'조끼', tb:'맨' };
+  openTeamRecord('intra');
+}
+function renderTeamMatchSrv(){
+  const sp=SP(); const pool=tmPool(); const n=pool.length;
+  const min=MIN_PLAYERS[sp.id]||6;
+  const officer=state.bcfg.role==='officer';
+  // 회원: 발행된 라인업만 본다
+  if(!officer){
+    if(!TM_PUB) return `<div class="empty" style="padding:34px 20px"><div class="ei">${sp.ic}</div>
+      <div class="et">아직 발행된 라인업이 없어요</div><div class="es">임원진이 팀을 나눠 발행하면 여기에 떠요.</div></div>`;
+    TM_A=[...TM_PUB.a]; TM_B=[...TM_PUB.b];
+  } else if(!TM_A.length && !TM_B.length){
+    if(TM_PUB){ TM_A=[...TM_PUB.a]; TM_B=[...TM_PUB.b]; }      // 발행본에서 이어서 수정
+    else if(n){ TM_A=pool.filter((_,i)=>i%2===0); TM_B=pool.filter((_,i)=>i%2===1); }
+  }
+  let h='';
+  h+=`<div class="card" style="background:var(--ink);border:none;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:12px;color:#b8b3a8;font-weight:700">${SRV_EVENT?esc(SRV_EVENT.title||'이번 모임'):'클럽 전체'}</div>
+      <div style="font-size:15px;font-weight:900;margin-top:2px">${n}명 · ${tmFmtHint(n,sp.id)}</div></div>
+    <span style="font-size:22px">${sp.ic}</span></div>`;
+  if(n<min){
+    h+=`<div class="card" style="background:var(--coral-s);border-color:#f2d3bd"><div style="font-size:12.5px;font-weight:700;color:var(--coral-d);line-height:1.55">참석 <b>${min}명</b>부터 팀을 나눠드려요 · 지금은 클럽 인원으로 미리보기 중</div></div>`;
+    if(!MIN_SEEN[sp.id]){ MIN_SEEN[sp.id]=1; setTimeout(openMinModal, 500); }
+  }
+  const teamCard=(label,color,list)=>`<div class="card" style="padding:13px 15px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+      <b style="font-size:15px;font-weight:900"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${color};margin-right:6px"></span>${label} <span style="font-size:11.5px;color:var(--lgray);font-weight:700">${list.length}명</span></b></div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px">${list.map(nm=>`<span ${officer?`onclick="tmMove('${esc(nm)}')" role="button"`:''} style="display:inline-flex;align-items:center;gap:6px;background:var(--cream2);border-radius:11px;padding:6px 10px 6px 6px;${officer?'cursor:pointer':''}">${pavatar(nm,22)}<span style="font-size:12.5px;font-weight:800">${esc(nm)}${nm===meName()?' (나)':''}</span>${officer?'<span style="font-size:10px;color:var(--lgray);font-weight:900">⇄</span>':''}</span>`).join('')||'<span style="font-size:12.5px;color:var(--lgray);font-weight:700">인원 없음</span>'}</div></div>`;
+  h+=teamCard('조끼팀','#ec6a2e',TM_A);
+  h+=`<div style="text-align:center;font-size:13px;font-weight:900;color:var(--lgray);margin:2px 0">VS</div>`;
+  h+=teamCard('맨팀','#1c1b18',TM_B);
+  if(officer){
+    h+=`<div class="note" style="text-align:left;margin:2px 0 8px">이름을 <b>탭하면 반대 팀으로</b> 이동해요. 다 만졌으면 발행하세요.</div>`;
+    h+=`<button class="btn felt" onclick="tmShuffle()">팀 다시 섞기</button>`;
+    h+=`<button class="btn" style="margin-top:8px" onclick="tmPublish()">${TM_PUB?'수정본 다시 발행':'회원들에게 라인업 발행'}</button>`;
+    h+=`<button class="btn ghost" style="margin-top:8px" onclick="tmToRecord()">이 라인업으로 자체전 기록하기</button>`;
+  } else {
+    h+=`<div class="note" style="text-align:left">임원진이 발행한 라인업이에요. 변경은 임원에게 요청하세요.</div>`;
+  }
+  return h;
+}
 function renderTeamMatch(){
+  if(SERVER_OK && clubId() && SRV_ROSTER) return renderTeamMatchSrv();
   const sp=SP(); const mem=clubMembersList();
   const roles=sp.id==='soccer'?soccerRoles():sp.id==='basketball'?['가드','가드','포워드','포워드','센터']:['투수','포수','내야','내야','외야'];
   const fmt=teamFmt(sp);
@@ -8012,6 +8163,11 @@ async function delRecord(id){
 /* ── 팀 종목: 클럽 경기 결과 장부 ── */
 let TR_MODE='intra';   // 기록 입력 모드: intra(자체전) | external(대외전)
 let TR_SIDES={};       // 자체전 선수 배정 {이름: 'A'|'B'}
+function trApplyPrefill(){
+  const p=window.TR_PREFILL; if(!p) return; window.TR_PREFILL=null;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null) el.value=v; };
+  set('tmTeamA',p.ta); set('tmTeamB',p.tb); set('tmPlayersA',p.pa); set('tmPlayersB',p.pb);
+}
 async function openTeamRecord(mode){
   const cid=clubId();
   if(!cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
@@ -8145,6 +8301,7 @@ async function openTeamRecord(mode){
       <button class="btn" onclick="saveTeamMatch()">결과 저장 · 회원들에게 알림</button>`;
   }
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  setTimeout(trApplyPrefill, 50);
 }
 let TR_EXP={};
 function trExpCard(){
@@ -8605,14 +8762,16 @@ function renderBracket(){
   } else {
     h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between;align-items:center"><span>이번 모임 · 참석 ${n}명</span>
       <div class="memstack">${attendees.slice(0,5).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:rcls[i%6]}">${ph?'':nm[0]}</div>`;}).join('')}${attendees.length>5?`<div class="ma more">+${attendees.length-5}</div>`:''}</div></div><div class="roster">`;
-    attendees.forEach(nm=>{h+=`<span class="ptag ${nm===MEN?'me':''}">${nm}${nm===MEN?' (나)':''}</span>`;});
-    h+=`</div></div>`;
+    const canSwap = SERVER_OK && officer;
+    attendees.forEach(nm=>{h+=`<span class="ptag ${nm===MEN?'me':''} ${BK_SWAP_SEL===nm?'swapsel':''}" ${canSwap?`onclick="bkSwapTap('${esc(nm)}')" role="button"`:''} ${canSwap?'style="cursor:pointer"':''}>${nm}${nm===MEN?' (나)':''}</span>`;});
+    h+=`</div>${canSwap?`<div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:8px">${BK_SWAP_SEL?`<b style="color:var(--coral-d)">${esc(BK_SWAP_SEL)}</b>님과 바꿀 사람을 탭하세요`:'이름 두 명을 차례로 탭하면 대진 자리가 바뀌어요 · 발행 후에도 가능'}</div>`:''}</div>`;
   }
-  if(SERVER_OK && state._srvMembers && n<4){
-    h+=`<div class="empty" style="padding:34px 20px"><div class="ei">🎾</div><div class="et">참석자가 ${n}명이에요</div>
-      <div class="es">복식 대진은 <b>4명 이상</b>부터 만들 수 있어요.<br>초대 링크로 회원을 모으고, 위에서 참석을 체크해 주세요.</div>
-      ${officer?`<button class="btn" style="max-width:260px;margin:0 auto" onclick="makeInvite()">초대 링크 공유하기</button>`:''}</div>`;
-    document.getElementById('s-bracket').innerHTML=h; return;
+  if(SERVER_OK && state._srvMembers && n<(MIN_PLAYERS[SP().id]||4)){
+    // 프로그램은 그대로 보여주고, 안내는 배너 + 모달(세션당 1회)로
+    h+=`<div class="card" style="background:var(--coral-s);border-color:#f2d3bd;display:flex;gap:10px;align-items:center">
+      <span style="font-size:20px">${SP().ic}</span>
+      <div style="font-size:12.5px;font-weight:700;color:var(--coral-d);line-height:1.5">참석 <b>${MIN_PLAYERS[SP().id]||4}명</b>부터 대진이 자동으로 완성돼요 · 지금은 미리보기예요</div></div>`;
+    if(!MIN_SEEN[SP().id]){ MIN_SEEN[SP().id]=1; setTimeout(openMinModal, 500); }
   }
   // 회원: 임원진이 발행한 대진을 봄
   if(!officer && c.published){ f=c.published.fmt; cf=Object.assign({},state.bcfg,c.published.cfg); }
@@ -8945,7 +9104,9 @@ function openClubRoom(){
   const cid=clubId();
   if(SERVER_OK && cid){
     state.chatRoom='club:'+cid; state._roomName=(state.activeClub||'클럽')+' 단체방';
-    go('chat'); loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); });
+    go('chat'); renderChat();                            // 방을 먼저 연다 (낙관적)
+    loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); })
+      .catch(()=>{ toast('메시지를 불러오지 못했어요 · 아래로 당겨 새로고침'); });
   } else if(state.chats['grp:'+state.activeClub]) openRoomGo('grp:'+state.activeClub);
   else toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요');
 }
@@ -9137,7 +9298,7 @@ function meTeamCard(){
       <div style="flex:1"><div style="font-size:22px;font-weight:900">${gp}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">출전</div></div>
       ${cats.slice(0,2).map((c,i)=>`<div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:22px;font-weight:900;color:${i===0?'var(--coral-d)':'var(--ink)'}">${st[c[0]]||0}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">${c[1]}</div></div>`).join('')}
       <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:22px;font-weight:900;color:#5b3fa8">${gp?((st[cats[0][0]]||0)/gp).toFixed(2):'—'}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">${cats[0][1]}기대값</div></div></div>
-    <button class="btn ghost sm" style="margin-top:12px" onclick="openTeamRecord()">클럽 기록실 →</button></div>`;
+  </div>`;
 }
 function renderMe(){
   const joined=state.matches.filter(m=>m.joined).length,clubs=state.myClubs.length,t=myTier();
@@ -9531,12 +9692,15 @@ function genC(g){ return g==='♀'?{c:'#e0468a',bg:'#fbe7f2'}:{c:'#5b3fa8',bg:'#
 function renderLounge(){
   state.loungeCat=state.loungeCat||'전체';
   const cat=state.loungeCat;
+  if(state.loungeMine===undefined) state.loungeMine=true;  // 기본: 주종목만
+  const mainSp = state.mainSport || state.sport;
   let posts=LOUNGE_POSTS.filter(p=>!p._blocked);
+  if(state.loungeMine) posts=posts.filter(p=>(p.sportId||'')===mainSp || p.sp===(SPORTS.find(s=>s.id===mainSp)||{}).n);
   if(cat==='인기') posts=posts.slice().sort((a,b)=>b.v-a.v);
   else if(cat!=='전체') posts=posts.filter(p=>p.cat===cat);
   let h=`<h2 class="t">라운지</h2><p class="sub">모든 종목이 모이는 익명 커뮤니티예요.</p>
     <div class="seg big segfill">${LOUNGE_CATS.map(c=>`<div class="o ${cat===c?'on':''}" onclick="state.loungeCat='${c}';renderLounge()">${c}</div>`).join('')}</div>
-    <div class="chips" style="padding:2px 0 6px"><div class="chip">내 종목만</div><div class="chip on">전체 지역 ▾</div></div>`;
+    <div class="chips" style="padding:2px 0 6px"><div class="chip ${state.loungeMine?'on':''}" onclick="state.loungeMine=!state.loungeMine;renderLounge()">내 주종목만</div><div class="chip">전체 지역</div></div>`;
   // 글 목록
   h+=`<div style="font-size:16px;font-weight:900;margin:14px 4px 4px">인기 글</div>`;
   posts.forEach((p,i)=>{
@@ -9691,7 +9855,9 @@ function closeOv(){document.getElementById('ov').classList.remove('on');}
 let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeOv();});
 // 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
+if(!state.mainSport && state.sport) state.mainSport=state.sport;   // 기존 유저: 현재 종목을 주종목으로 1회 고정
 checkServer().then(async ok=>{
+  setTimeout(maybeShowNews, 400);
   if(!ok) return;
   // 저장된 세션으로 다시 연 경우에도 서버 가입 정보를 반드시 동기화한다.
   // (이게 빠져 있어서 "정회원인데 클럽이 없다고 나오는" 버그가 있었다)
