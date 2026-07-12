@@ -1275,7 +1275,8 @@
 <div class="app">
   <div class="demo-tag" id="srvTag">데모 · 실제 결제·예약은 작동하지 않습니다</div>
   <div class="appbar">
-    <div class="logo"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
+    <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:19px;font-weight:800;color:var(--ink);flex:none;margin-right:2px">‹</div>
+    <div class="logo" style="cursor:pointer" onclick="go('home')" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" role="button" tabindex="0" aria-label="검색" onclick="openSearch()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
       <div class="bell" id="chatBell" role="button" tabindex="0" aria-label="채팅" onclick="go('chat')" style="position:relative"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1 3.6-11.3 8.38 8.38 0 0 1 12.5 7.5z"/></svg><span class="chat-cnt" id="chatCnt" style="display:none"></span></div>
@@ -1296,7 +1297,7 @@
     <div class="tab on" data-s="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
     <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
-    <div class="tab" data-s="bracket" onclick="go('bracket')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M6 7h6a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3"/></svg>대진</div>
+    <div class="tab" data-s="bracket" onclick="go('bracket')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M6 7h6a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3"/></svg><span id="navBkLbl">대진</span></div>
     <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 6h18"/><path d="M7 22l-4-4 4-4"/><path d="M21 18H3"/></svg>매치</div>
     <div class="tab" data-s="lounge" onclick="go('lounge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>라운지</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
@@ -1332,6 +1333,7 @@
     </div>
   </div></div>
   <div class="fullov" id="onboard"><div class="ob" id="obBody"></div><div class="ob-foot" id="obFoot"></div></div>
+  <div id="guestOv"></div>
   <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
   <div id="offline">오프라인이에요 · 연결되면 자동으로 이어져요</div>
@@ -1728,7 +1730,11 @@ function openSportPicker(){
     <div class="note" style="text-align:left;margin-top:14px">라켓(테니스·배드민턴)은 대진표, 팀(축구·농구·야구)은 팀 매치, 개인(수영·러닝)은 기록 랭킹으로 운영돼요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function pickSport(id){ state.sport=id; closeOv(); renderHome(); renderLeague(); renderClub(); renderBracket(); toast(`${SP().n} 모드로 전환했어요`); }
+function updNavLabels(){
+  const el=document.getElementById('navBkLbl');
+  if(el) el.textContent = SP().cat==='record' ? '조편성' : SP().cat==='team' ? '매치업' : '대진';
+}
+function pickSport(id){ state.sport=id; closeOv(); updNavLabels(); renderHome(); renderLeague(); renderClub(); renderBracket(); toast(`${SP().n} 모드로 전환했어요`); }
 async function login(p){
   const _n=(document.getElementById('authName')||{}).value;
   const nm=(_n&&_n.trim())||'곽주영';
@@ -2351,6 +2357,7 @@ function rsvpCard(){
     </div>
     ${state.bcfg.role==='officer'?`<button class="btn ghost sm" style="margin-top:9px" onclick="openGuests()"><span class="bic">${ic('user',15,'currentColor')}게스트 추가 · 관리</span></button>
     <div style="display:flex;gap:14px;justify-content:center;margin-top:9px">
+      <span onclick="shareGuestLink(${e.id})" style="font-size:12px;font-weight:800;color:#1f8f57;cursor:pointer;text-decoration:underline">게스트 모집</span>
       <span onclick="editEvent(${e.id})" style="font-size:12px;font-weight:800;color:var(--gray);cursor:pointer;text-decoration:underline">모임 수정</span>
       <span onclick="delEvent(${e.id})" style="font-size:12px;font-weight:800;color:var(--coral-d);cursor:pointer;text-decoration:underline">모임 취소</span></div>`:''}
     <div class="note" style="text-align:left;margin-top:8px">참석을 누른 회원과 게스트가 <b>대진 명단에 자동으로</b> 들어가요.</div>
@@ -2595,6 +2602,16 @@ function editEvent(eid){
   const mm = String(e.date||'').match(/(\d{1,2})\/(\d{1,2}).*?(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?$/);
   if(mm){ NE.m=+mm[1]-1; NE.day=+mm[2]; if(mm[3])NE.time=mm[3]; if(mm[4])NE.place=mm[4].trim(); }
   renderNewEvent();
+}
+async function shareGuestLink(eid){
+  try{
+    const r=await api(`/clubs/${clubId()}/events/${eid}/guest-link`,{method:'POST',body:'{}'});
+    const url=`${location.origin}${location.pathname}?guest=${r.token}`;
+    const text=`[${state.activeClub}] 게스트 모집!\n${url}`;
+    if(navigator.share){ try{ await navigator.share({title:'게스트 모집', text}); return; }catch(e){ if(e.name==='AbortError') return; } }
+    await navigator.clipboard.writeText(url);
+    toast('모집 링크를 복사했어요 · 카톡방에 붙여넣으세요');
+  }catch(e){ toast('링크를 만들지 못했어요'); }
 }
 async function delEvent(eid){
   if(!confirm('이 모임을 취소할까요?\n참석 응답한 회원들에게 취소 알림이 가요.')) return;
@@ -6153,6 +6170,105 @@ async function makeInvite(){
     toast(String(e.message).includes('officer_only')?'클럽장·임원만 만들 수 있어요':'만들지 못했어요');
   }
 }
+/* ══ 게스트 모집 링크: 랜딩 → 신청 → 완료 (플랩 스타일) ══ */
+let GL = null;   // {token, data, applied:Set}
+function glParseDate(d){
+  // "7/12 (일) 09:00 · 용인 코트" → {date:'7월 12일 일요일', time:'09:00', place:'용인 코트'}
+  const m=String(d||'').match(/(\d{1,2})\/(\d{1,2})\s*(?:\(([^)]+)\))?\s*(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?/);
+  if(!m) return {date:d||'', time:'', place:''};
+  const wd={'일':'일요일','월':'월요일','화':'화요일','수':'수요일','목':'목요일','금':'금요일','토':'토요일'}[m[3]]||m[3]||'';
+  return {date:`${+m[1]}월 ${+m[2]}일${wd?' '+wd:''}`, time:m[4]||'', place:m[5]||''};
+}
+async function openGuestLanding(token){
+  const el=document.getElementById('guestOv');
+  el.classList.add('on');
+  el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  let d;
+  try{ d=await api(`/guest/${encodeURIComponent(token)}`); }
+  catch(e){
+    el.innerHTML=`<div style="padding:80px 24px;text-align:center">
+      <div style="font-size:19px;font-weight:900">링크를 찾을 수 없어요</div>
+      <div style="font-size:13.5px;color:var(--gray);font-weight:600;margin-top:8px;line-height:1.6">모집이 마감됐거나 잘못된 링크예요.<br>클럽 임원에게 새 링크를 요청해 주세요.</div>
+      <button class="btn" style="max-width:220px;margin:26px auto 0" onclick="glClose()">맞수 둘러보기</button></div>`;
+    return;
+  }
+  GL={token, data:d, applied:new Set()};
+  const sp=(SPORTS.find(s=>s.id===d.club.sport)||{}).n||'';
+  const p=glParseDate(d.event.date);
+  el.innerHTML=`
+    <div class="gl-hero"><div class="gl-blob">
+      <div class="gl-done" style="color:#ffe3d2">게스트 초대장</div>
+      <div class="gl-title">${esc(d.club.name)}</div>
+      <div style="font-size:14px;font-weight:800;color:#ffe3d2;margin-top:10px">${esc(d.event.title||'정기 모임')}</div>
+    </div></div>
+    <div class="gl-info">
+      <div><b>날짜</b><div>${esc(p.date)||'—'}</div></div>
+      <div><b>시간</b><div>${esc(p.time)||'—'}</div></div>
+      <div class="full"><b>장소</b><div>${esc(p.place||d.club.region||'클럽 공지 참고')}</div></div>
+      <div class="full"><b>유형</b><div>${esc(sp)} · 게스트${d.club.guest_fee?` · 게스트비 ${Number(d.club.guest_fee).toLocaleString()}원`:''}</div></div>
+    </div>
+    <div class="gl-band"></div>
+    <div class="gl-form">
+      <h3 style="font-size:17px;font-weight:900;margin-bottom:14px">이름만 남기면 신청 끝이에요</h3>
+      <div class="fld"><label>이름</label><input id="glName" placeholder="실명을 입력해 주세요" maxlength="12"></div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <span onclick="GL.g='남';glGenderUI()" id="glM" class="tchip" style="flex:1;text-align:center">남</span>
+        <span onclick="GL.g='여';glGenderUI()" id="glF" class="tchip" style="flex:1;text-align:center">여</span></div>
+      <div class="fld"><label>연락처 (선택)</label><input id="glPhone" inputmode="tel" placeholder="임원이 안내를 드릴 번호" maxlength="13"></div>
+      <button class="btn" onclick="glApply()">게스트 신청하기</button>
+      <div class="note" style="text-align:left;margin-top:10px">신청하면 클럽 임원에게 알림이 가고, 승인 후 모임 안내를 받아요.</div>
+    </div>`;
+}
+function glGenderUI(){
+  const m=document.getElementById('glM'), f=document.getElementById('glF');
+  if(m&&f){ m.classList.toggle('on',GL.g==='남'); f.classList.toggle('on',GL.g==='여'); }
+}
+async function glApply(eventId){
+  const name=((document.getElementById('glName')||{}).value||GL.name||'').trim();
+  if(!name){ toast('이름을 입력해 주세요'); return; }
+  GL.name=name;
+  const phone=((document.getElementById('glPhone')||{}).value||GL.phone||'').trim(); GL.phone=phone;
+  const eid=eventId || GL.data.event.id;
+  try{
+    await api(`/guest/${encodeURIComponent(GL.token)}/apply`,{method:'POST',
+      body:JSON.stringify({name, phone, gender:GL.g||null, event_id:eid})});
+    GL.applied.add(eid);
+    if(eid===GL.data.event.id) glDone(); else { glDone(); toast('추가 신청 완료!'); }
+  }catch(e){
+    if(String(e.message).includes('already_applied')){ GL.applied.add(eid); glDone(); toast('이미 신청되어 있어요'); }
+    else toast('신청하지 못했어요 · 잠시 후 다시 시도해 주세요');
+  }
+}
+function glDone(){
+  const d=GL.data, el=document.getElementById('guestOv');
+  const sp=(SPORTS.find(s=>s.id===d.club.sport)||{}).n||'';
+  const p=glParseDate(d.event.date);
+  let others='';
+  (d.others||[]).forEach(o=>{
+    const op=glParseDate(o.date); const done=GL.applied.has(o.id);
+    others+=`<div class="gl-slot">
+      <div><div class="t">${esc(o.title||'모임')}</div><div class="d">${esc(op.date)}${op.time?` · ${esc(op.time)}`:''}</div></div>
+      ${done?`<span style="font-size:12.5px;font-weight:900;color:#1f8f57">신청됨</span>`
+        :`<button class="btn sm" style="width:auto;padding:9px 16px" onclick="glApply(${o.id})">신청</button>`}</div>`;
+  });
+  el.innerHTML=`
+    <div class="gl-hero"><div class="gl-blob">
+      <div class="gl-done" style="color:#ffe3d2">신청이 완료됐어요!</div>
+      <div class="gl-title">${esc(d.club.name)}</div>
+      <div class="gl-links"><span onclick="glClose()">맞수 둘러보기</span><span style="text-decoration:none;cursor:default">|</span><span onclick="glDone()">신청 내역 보기</span></div>
+    </div></div>
+    <div class="gl-info">
+      <div><b>날짜</b><div>${esc(p.date)||'—'}</div></div>
+      <div><b>시간</b><div>${esc(p.time)||'—'}</div></div>
+      <div class="full"><b>장소</b><div>${esc(p.place||d.club.region||'클럽 공지 참고')}</div></div>
+      <div class="full"><b>유형</b><div>${esc(sp)} · 게스트 (${esc(GL.name)}님)${d.club.guest_fee?` · 게스트비 ${Number(d.club.guest_fee).toLocaleString()}원`:''}</div></div>
+    </div>
+    ${others?`<div class="gl-band"></div>
+    <div class="gl-next"><h3>${esc(d.club.name)}의 다음 모임도 미리 신청하세요</h3>${others}</div>`:'<div style="height:40px"></div>'}`;
+  window.scrollTo(0,0);
+}
+function glClose(){ document.getElementById('guestOv').classList.remove('on'); }
+
 async function handleInviteToken(token){
   let info;
   try{ info = await api(`/invites/${token}`); }
@@ -8148,6 +8264,52 @@ function openRoster(){
 function rosterNo(nm,d){ const r=rosterEntry(nm); r.no=Math.max(0,(+r.no||0)+d); openRoster(); }
 function setCaptain(nm){ clubRoster().forEach(r=>r.captain=(r.name===nm)); openRoster(); }
 function soccerModeSeg2(){ return `<div class="miniseg" style="margin:0 0 12px"><div class="${state.soccerMode==='futsal'?'on':''}" onclick="state.soccerMode='futsal';renderBracket()">풋살 5:5</div><div class="${state.soccerMode==='full'?'on':''}" onclick="state.soccerMode='full';renderBracket()">축구 11:11</div></div>`; }
+/* ── 러닝·수영 조 편성: 참석자를 기록 기반 페이스로 정렬해 조/레인 자동 제안 ── */
+async function renderPaceGroups(h){
+  const sp=SP(), el=document.getElementById('s-bracket');
+  h+=`<p class="sub">${sp.id==='swimming'?'참석자를 페이스별 레인으로 나눠요.':'참석자를 페이스별 조로 나눠요.'} 기록이 쌓일수록 정확해져요.</p>`;
+  if(!SRV_EVENT){
+    h+=`<div class="empty"><div class="ei">${sp.ic}</div><div class="et">예정된 모임이 없어요</div>
+      <div class="es">클럽 탭에서 모임을 만들고 참석을 받으면<br>${sp.id==='swimming'?'레인':'조'} 편성이 여기 나와요.</div>
+      <button class="btn" style="max-width:240px;margin:0 auto" onclick="go('club')">클럽 탭으로</button></div>`;
+    el.innerHTML=h; return;
+  }
+  const att=[...(SRV_EVENT.attendees||[])];
+  if(SRV_EVENT.joined && !att.includes(meName())) att.push(meName());
+  h+=`<div class="card" style="background:var(--ink);border:none;color:#fff;padding:15px 16px">
+    <div style="font-size:12px;color:#b8b3a8;font-weight:700">${esc(SRV_EVENT.title||'모임')}</div>
+    <div style="font-size:15px;font-weight:900;margin-top:3px">${esc(SRV_EVENT.date||'')} · 참석 ${att.length}명</div></div>`;
+  if(att.length<2){
+    h+=`<div class="note" style="text-align:left">참석자가 2명 이상 모이면 ${sp.id==='swimming'?'레인':'조'}을 나눠드려요.</div>`;
+    el.innerHTML=h; return;
+  }
+  el.innerHTML=h+skelCards(2);
+  // 이번 달 보드에서 회원별 최고 페이스를 가져온다
+  let paceOf={};
+  try{
+    const b=await api(`/clubs/${clubId()}/records/board?sport=${sp.id}`);
+    (b.rows||[]).forEach(r=>{ if(r.best_pace_per_km_x1000) paceOf[r.name]=r.best_pace_per_km_x1000; });
+  }catch(e){}
+  const fmtP=v=>{ if(!v) return null; const s = sp.id==='swimming' ? v/10000 : v/1000;   // /100m | /km
+    return `${Math.floor(s/60)}'${String(Math.round(s%60)).padStart(2,'0')}"${sp.id==='swimming'?'/100m':'/km'}`; };
+  const sorted=att.map(n=>({n, p:paceOf[n]||null})).sort((a,b)=>(a.p||9e9)-(b.p||9e9));
+  const nG=Math.max(1,Math.ceil(sorted.length/5));       // 조당 최대 5명
+  const size=Math.ceil(sorted.length/nG);
+  for(let g=0; g<nG; g++){
+    const grp=sorted.slice(g*size,(g+1)*size); if(!grp.length) break;
+    const label = sp.id==='swimming' ? `${g+1}레인` : `${String.fromCharCode(65+g)}조`;
+    const paces=grp.filter(x=>x.p).map(x=>x.p);
+    const range=paces.length?`${fmtP(Math.min(...paces))}${paces.length>1?` ~ ${fmtP(Math.max(...paces))}`:''}`:'기록 없음';
+    h+=`<div class="card" style="padding:13px 15px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+        <b style="font-size:15px;font-weight:900">${label} <span style="font-size:11.5px;color:var(--lgray);font-weight:700">${grp.length}명</span></b>
+        <span style="font-size:11.5px;font-weight:800;color:var(--coral-d)">${range}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px">
+        ${grp.map(x=>`<span style="display:inline-flex;align-items:center;gap:6px;background:var(--cream2);border-radius:11px;padding:6px 10px 6px 6px">${pavatar(x.n,22)}<span style="font-size:12.5px;font-weight:800">${esc(x.n)}</span>${x.p?`<span style="font-size:10.5px;color:var(--gray);font-weight:700">${fmtP(x.p)}</span>`:''}</span>`).join('')}</div></div>`;
+  }
+  h+=`<div class="note" style="text-align:left">빠른 페이스부터 ${sp.id==='swimming'?'1레인':'A조'} · 기록이 없는 회원은 마지막에 배치돼요. 현장 상황에 맞게 조정하세요.</div>`;
+  el.innerHTML=h;
+}
 function renderRecordBoard(){
   const sp=SP(); const run=sp.id==='running';
   let h=`<p class="sub">${state.activeClub||'내 기록'} · ${sp.n}은 개인 기록으로 겨뤄요.</p>`;
@@ -8172,7 +8334,7 @@ function renderRecordBoard(){
 }
 function renderBracket(){
   const c=AC();
-  const spTitle=SP().cat==='record'?SP().n+' 기록':SP().cat==='team'?SP().n+' 매치':'클럽 대진';
+  const spTitle=SP().cat==='record'?(SERVER_OK&&authToken()?SP().n+' 조 편성':SP().n+' 기록'):SP().cat==='team'?SP().n+' 매치':'클럽 대진';
   let h=`<h2 class="t">${spTitle}</h2>`;
   if(!c){
     h+=`<p class="sub">가입한 클럽의 ${SP().unit}가 여기 나와요.</p>
@@ -8183,7 +8345,9 @@ function renderBracket(){
   }
   bkReset();
   if(SP().cat==='team'){ document.getElementById('s-bracket').innerHTML=h+renderTeamMatch(); return; }
-  if(SP().cat==='record'){ document.getElementById('s-bracket').innerHTML=h+renderRecordBoard(); return; }
+  if(SP().cat==='record'){
+    if(SERVER_OK && authToken()){ renderPaceGroups(h); return; }
+    document.getElementById('s-bracket').innerHTML=h+renderRecordBoard(); return; }
   if(c.officer===false && state.bcfg.role==='officer'){} // 데모: 토글로 전환
   let f=state.bracketFmt; const sch=c.schedule;
   const POOL=['이석용','김영민','정윤희','한은주','박현우','강태민','유명현','정지용','최우임','오동현','이광하','김제홍','배충호','장태성','이기훈','정혜정'];
@@ -8963,7 +9127,7 @@ function renderHome(){
     <div class="qlinks">
       <div class="qlink" onclick="go('league')"><div class="ql-ic">${SP().ic}</div><div class="ql-l">리그</div></div>
       <div class="qlink" onclick="go('club')"><div class="ql-ic">🏠</div><div class="ql-l">클럽</div></div>
-      <div class="qlink" onclick="go('bracket')"><div class="ql-ic">🏆</div><div class="ql-l">대진</div></div>
+      <div class="qlink" onclick="go('bracket')"><div class="ql-ic">🏆</div><div class="ql-l">${SP().cat==='record'?'조편성':SP().cat==='team'?'매치업':'대진'}</div></div>
       <div class="qlink" onclick="openClubRoom()"><div class="ql-ic">💬</div><div class="ql-l">채팅</div></div></div>`;
   // 클럽 대항전 진입 (실서비스: 등록 클럽 대상)
   if(SRV && state.activeClub && state.bcfg.role==='officer'){
@@ -9288,7 +9452,20 @@ async function submitLounge(){
   LOUNGE_POSTS.unshift({cat:'자유',sp:SP().n,ic:SP().ic,t,b:_b,g:state.gender==='여성'?'♀':'♂',region:'경기 용인',time:'방금',v:1,l:0,c:0,nick:myAnonNick()});
   closeOv(); state.loungeCat='전체'; renderLounge(); toast('익명으로 글을 올렸어요 · '+myAnonNick());
 }
-function go(v){
+let NAV_HIST=[];
+function goBack(){
+  const prev=NAV_HIST.pop() || 'home';
+  go(prev, true);
+}
+function updBackBtn(){
+  const b=document.getElementById('backBtn');
+  if(b) b.style.display = (state.view!=='home') ? 'flex' : 'none';
+}
+function go(v, isBack){
+  if(!isBack && state.view && state.view!==v){
+    NAV_HIST.push(state.view);
+    if(NAV_HIST.length>10) NAV_HIST.shift();
+  }
   if(state.view==='bracket' && v!=='bracket') bkStopPoll();
   if(v==='bracket' && SERVER_OK && clubId()){ loadRoster().then(()=>bkPull()).then(ok=>{ renderBracket(); if(ok) bkStartPoll(); }); }
   if(v==='chat' && SERVER_OK) loadDMThreads().then(()=>{ if(state.view==='chat' && !state.chatRoom) renderChat(); });
@@ -9298,7 +9475,7 @@ function go(v){
   if(v==='league' && SERVER_OK) loadClubLeague().then(()=>{ if(state.view==='league') renderLeague(); });
   if(v==='me' && SERVER_OK && authToken()) api('/me/noshow').then(r=>{ state._noshow=r; if(state.view==='me') renderMe(); }).catch(()=>{});
   if(v==='chat' && state.view==='chat') state.chatRoom=null;
-  state.view=v;
+  state.view=v; updBackBtn();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
@@ -9328,6 +9505,11 @@ checkServer().then(async ok=>{
     try{ sessionStorage.setItem('pending_match', _mid); }catch(e){}
     history.replaceState({}, '', location.pathname);
     if(state.loggedIn && authToken()) setTimeout(()=>handleMatchLink(+_mid), 900);
+  }
+  const _guest = new URL(location.href).searchParams.get('guest');
+  if(_guest){
+    history.replaceState({matsu:1}, '', location.pathname);
+    setTimeout(()=>openGuestLanding(_guest), 300);      // 로그인 없이 바로 신청 화면
   }
   const _inv = new URL(location.href).searchParams.get('invite');
   if(_inv){
@@ -9434,7 +9616,21 @@ async function afterLoginNative(){ if(IS_NATIVE) setTimeout(initNativePush, 800)
 /* ═══════════ PWA ═══════════ */
 // file:// 로 열었을 땐 서비스워커를 등록할 수 없다 (데모 모드).
 if('serviceWorker' in navigator && location.protocol.startsWith('http') && !IS_NATIVE){
-  window.addEventListener('load', ()=>{
+  /* ── 뒤로가기 처리: 백 버튼·스와이프백이 앱을 종료시키지 않는다 ──
+   시트가 열려 있으면 닫고, 다른 탭이면 홈으로, 홈이면 그대로 머문다. */
+history.replaceState({matsu:1},'');
+history.pushState({matsu:1},'');
+window.addEventListener('popstate', ()=>{
+  const ov=document.getElementById('ov');
+  const nd=document.getElementById('notifDrop');
+  if(ov && ov.classList.contains('on')){ closeOv(); }
+  else if(nd){ closeNotifDrop(); }
+  else if(NAV_HIST.length){ goBack(); }
+  else if(state.view!=='home'){ go('home', true); }
+  history.pushState({matsu:1},'');                      // 항상 한 칸 유지
+});
+
+window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
       // 새 버전이 배포되면 알려준다
       reg.addEventListener('updatefound', ()=>{
