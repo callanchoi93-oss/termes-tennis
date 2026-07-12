@@ -781,6 +781,72 @@ app.post('/events/:id/attend', auth, (req, res) => {
 });
 
 // ── 게스트 (비회원) ──
+// ══════════════════════════════════════════════════════════════
+//  게스트 모집 링크 — 모임 단위 공개 링크로 외부인이 게스트 신청
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS guest_links (
+  token TEXT PRIMARY KEY,
+  club_id INTEGER NOT NULL, event_id INTEGER NOT NULL,
+  created_by INTEGER, created_at BIGINT
+);`);
+try { db.exec('ALTER TABLE event_guests ADD COLUMN phone TEXT'); } catch (e) { /* 신청자 연락처 */ }
+try { db.exec("ALTER TABLE event_guests ADD COLUMN source TEXT DEFAULT 'manual'"); } catch (e) { /* link 신청 구분 */ }
+
+app.post('/clubs/:id/events/:eid/guest-link', auth, (req, res) => {
+  const cid = +req.params.id, eid = +req.params.eid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const ev = db.prepare('SELECT id FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  const exist = db.prepare('SELECT token FROM guest_links WHERE event_id=?').get(eid);
+  if (exist) return res.json({ token: exist.token });
+  const token = crypto.randomBytes(9).toString('base64url');
+  db.prepare('INSERT INTO guest_links (token,club_id,event_id,created_by,created_at) VALUES (?,?,?,?,?)')
+    .run(token, cid, eid, req.uid, now());
+  res.json({ token });
+});
+
+// 공개: 링크 정보 (로그인 불필요)
+app.get('/guest/:token', (req, res) => {
+  const gl = db.prepare('SELECT * FROM guest_links WHERE token=?').get(String(req.params.token));
+  if (!gl) return res.status(404).json({ error: 'no_link' });
+  const club = db.prepare('SELECT id,name,region,sport,guest_fee FROM clubs WHERE id=?').get(gl.club_id);
+  const ev = db.prepare('SELECT id,title,date FROM club_events WHERE id=?').get(gl.event_id);
+  if (!club || !ev) return res.status(404).json({ error: 'no_event' });
+  const nGuests = db.prepare('SELECT COUNT(*) n FROM event_guests WHERE event_id=?').get(ev.id).n;
+  // 같은 클럽의 다른 모임들 (다음 매치 미리 신청용)
+  const others = db.prepare('SELECT id,title,date FROM club_events WHERE club_id=? AND id!=? ORDER BY id DESC LIMIT 3')
+    .all(gl.club_id, ev.id);
+  res.json({ club: { name: club.name, region: club.region, sport: club.sport, guest_fee: club.guest_fee || 0 },
+    event: { ...ev, guests: nGuests }, others });
+});
+
+// 게스트 신청 — 맞수 회원으로 신청한다 (가입이 곧 유입)
+try { db.exec('ALTER TABLE event_guests ADD COLUMN user_id INTEGER'); } catch (e) { /* 이미 있음 */ }
+
+app.post('/guest/:token/apply', auth, limitWrite, (req, res) => {
+  const gl = db.prepare('SELECT * FROM guest_links WHERE token=?').get(String(req.params.token));
+  if (!gl) return res.status(404).json({ error: 'no_link' });
+  const me = getUser(req.uid);
+  if (!me) return res.status(401).json({ error: 'unauthorized' });
+  if (isMember(gl.club_id, req.uid)) return res.status(409).json({ error: 'already_member' });
+  let eid = intOrNull((req.body || {}).event_id) || gl.event_id;
+  // 신청 대상 모임은 반드시 같은 클럽 소속이어야 한다
+  const ev = db.prepare('SELECT id,title FROM club_events WHERE id=? AND club_id=?').get(eid, gl.club_id);
+  if (!ev) return res.status(400).json({ error: 'bad_request' });
+  const dup = db.prepare('SELECT 1 FROM event_guests WHERE event_id=? AND (user_id=? OR name=?)')
+    .get(eid, req.uid, me.name);
+  if (dup) return res.status(409).json({ error: 'already_applied' });
+  const club = db.prepare('SELECT guest_fee FROM clubs WHERE id=?').get(gl.club_id);
+  db.prepare(`INSERT INTO event_guests (event_id,name,gender,added_by,created_at,fee,source,user_id)
+    VALUES (?,?,?,?,?,?,'link',?)`)
+    .run(eid, me.name, me.gender || null, null, now(), (club && club.guest_fee) || 0, req.uid);
+  // 임원들에게 알림 — 신청자가 회원이라 앱에서 바로 채팅으로 연락 가능
+  db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(gl.club_id)
+    .forEach(o => sendPush(o.user_id, { icon: '🙌', title: '게스트 신청이 들어왔어요',
+      body: `${me.name}님 · ${ev.title} — 채팅으로 안내해 주세요`, link: 'club' }));
+  res.json({ ok: true });
+});
+
 app.get('/events/:id/guests', (req, res) => {
   res.json(db.prepare(`SELECT g.id,g.name,g.gender,g.grade,g.fee,g.paid,g.paid_at,g.added_by,u.name host_name
     FROM event_guests g LEFT JOIN users u ON u.id=g.added_by
@@ -2931,7 +2997,7 @@ app.post('/clubs/:id/invite', auth, (req, res) => {
 app.get('/invites/:token', (req, res) => {                          // 로그인 전에도 클럽 정보는 보여준다
   const inv = db.prepare('SELECT * FROM club_invites WHERE token=?').get(String(req.params.token));
   if (!inv || inv.expires_at < now()) return res.status(404).json({ error: 'invalid_or_expired' });
-  const c = db.prepare(`SELECT id, name, region, sport,
+  const c = db.prepare(`SELECT id, name, region, sport, entry_fee, season_fee,
       (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id) members
     FROM clubs WHERE id=?`).get(inv.club_id);
   if (!c) return res.status(404).json({ error: 'invalid_or_expired' });
