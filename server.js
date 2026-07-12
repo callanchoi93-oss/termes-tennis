@@ -716,6 +716,36 @@ app.post('/clubs/:id/events', auth, (req, res) => {
   notifyClub(cid, req.uid, '📅', '새 모임이 열렸어요', `${title}${date ? ' · ' + date : ''}`);
   res.json({ ok: true, id: rid(r) });
 });
+
+app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
+  const cid = +req.params.id, eid = +req.params.eid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const ev = db.prepare('SELECT * FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  const title = String((req.body || {}).title || ev.title);
+  const date = String((req.body || {}).date != null ? (req.body || {}).date : ev.date);
+  db.prepare('UPDATE club_events SET title=?, date=? WHERE id=?').run(title, date, eid);
+  // 참석 응답한 회원들에게 변경 알림
+  db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
+    .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
+      { icon: '📅', title: '모임 일정이 바뀌었어요', body: `${title} · ${date}` }); });
+  res.json({ ok: true });
+});
+
+app.delete('/clubs/:id/events/:eid', auth, (req, res) => {
+  const cid = +req.params.id, eid = +req.params.eid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const ev = db.prepare('SELECT * FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  // 참석자에게 취소 알림 후 정리
+  db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
+    .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
+      { icon: '📅', title: '모임이 취소됐어요', body: `${ev.title}${ev.date ? ' · ' + ev.date : ''}` }); });
+  db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM event_guests WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
+  res.json({ ok: true });
+});
 function eventGuard(eid, uid) {
   const ev = db.prepare('SELECT club_id FROM club_events WHERE id=?').get(eid);
   if (!ev) return { err: 404, msg: 'no_event' };
@@ -1070,24 +1100,82 @@ db.exec(`CREATE TABLE IF NOT EXISTS club_posts (
 );
 CREATE INDEX IF NOT EXISTS ix_club_posts ON club_posts(club_id, id DESC);`);
 
+// 피드 확장 — 제목 · 앨범(여러 장) · 좋아요 · 댓글
+try { db.exec('ALTER TABLE club_posts ADD COLUMN title TEXT'); } catch (e) { /* 이미 있음 */ }
+try { db.exec('ALTER TABLE club_posts ADD COLUMN photos TEXT'); } catch (e) { /* 이미 있음 */ }
+db.exec(`CREATE TABLE IF NOT EXISTS feed_likes (
+  post_id INTEGER NOT NULL, user_id INTEGER NOT NULL, UNIQUE(post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS feed_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  body TEXT NOT NULL, created_at BIGINT
+);`);
+
 app.get('/clubs/:id/feed', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  res.json(db.prepare(`SELECT p.*, u.name author FROM club_posts p
-    JOIN users u ON u.id=p.user_id WHERE p.club_id=? ORDER BY p.id DESC LIMIT 50`).all(cid));
+  const rows = db.prepare(`SELECT p.*, u.name author FROM club_posts p
+    JOIN users u ON u.id=p.user_id WHERE p.club_id=? ORDER BY p.id DESC LIMIT 50`).all(cid);
+  const nLikes = db.prepare('SELECT COUNT(*) n FROM feed_likes WHERE post_id=?');
+  const myLike = db.prepare('SELECT 1 FROM feed_likes WHERE post_id=? AND user_id=?');
+  const nCmts  = db.prepare('SELECT COUNT(*) n FROM feed_comments WHERE post_id=?');
+  res.json(rows.map(p => ({ ...p,
+    likes: nLikes.get(p.id).n, liked: !!myLike.get(p.id, req.uid),
+    comments: nCmts.get(p.id).n, mine: p.user_id === req.uid })));
 });
 
 app.post('/clubs/:id/feed', auth, limitWrite, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const title = String((req.body || {}).title || '').trim().slice(0, 60);
   const body = String((req.body || {}).body || '').trim();
-  const photo = String((req.body || {}).photo || '').trim() || null;
-  if (!body && !photo) return res.status(400).json({ error: 'empty' });
+  let photos = (req.body || {}).photos;
+  photos = Array.isArray(photos) ? photos.filter(u => typeof u === 'string').slice(0, 10) : [];
+  const photo = photos[0] || String((req.body || {}).photo || '').trim() || null;
+  if (!title && !body && !photo) return res.status(400).json({ error: 'empty' });
+  const bad = findContact(title + ' ' + body);
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const r = db.prepare('INSERT INTO club_posts (club_id,user_id,title,body,photo,photos,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(cid, req.uid, title || null, body, photo, JSON.stringify(photos), now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.post('/feed/:id/like', auth, (req, res) => {         // 좋아요 토글
+  const pid = +req.params.id;
+  const p = db.prepare('SELECT club_id FROM club_posts WHERE id=?').get(pid);
+  if (!p || !isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const has = db.prepare('SELECT 1 FROM feed_likes WHERE post_id=? AND user_id=?').get(pid, req.uid);
+  if (has) db.prepare('DELETE FROM feed_likes WHERE post_id=? AND user_id=?').run(pid, req.uid);
+  else db.prepare('INSERT INTO feed_likes (post_id,user_id) VALUES (?,?)').run(pid, req.uid);
+  res.json({ ok: true, liked: !has,
+    likes: db.prepare('SELECT COUNT(*) n FROM feed_likes WHERE post_id=?').get(pid).n });
+});
+
+app.get('/feed/:id/comments', auth, (req, res) => {
+  const pid = +req.params.id;
+  const p = db.prepare('SELECT club_id FROM club_posts WHERE id=?').get(pid);
+  if (!p || !isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, u.name FROM feed_comments c
+    JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.id`).all(pid)
+    .map(c => ({ ...c, mine: c.user_id === req.uid })));
+});
+
+app.post('/feed/:id/comments', auth, limitWrite, (req, res) => {
+  const pid = +req.params.id;
+  const p = db.prepare('SELECT club_id, user_id FROM club_posts WHERE id=?').get(pid);
+  if (!p || !isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const body = String((req.body || {}).body || '').trim().slice(0, 300);
+  if (!body) return res.status(400).json({ error: 'empty' });
   const bad = findContact(body);
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
-  const r = db.prepare('INSERT INTO club_posts (club_id,user_id,body,photo,created_at) VALUES (?,?,?,?,?)')
-    .run(cid, req.uid, body, photo, now());
-  res.json({ ok: true, id: rid(r) });
+  db.prepare('INSERT INTO feed_comments (post_id,user_id,body,created_at) VALUES (?,?,?,?)')
+    .run(pid, req.uid, body, now());
+  if (p.user_id !== req.uid) {                          // 글쓴이에게 알림
+    const me = getUser(req.uid);
+    sendPush(p.user_id, { icon: '💬', title: '내 소식에 댓글이 달렸어요', body: `${me.name}: ${body.slice(0, 40)}`, link: `feed:${pid}` });
+  }
+  res.json({ ok: true });
 });
 
 app.delete('/clubs/:cid/feed/:id', auth, (req, res) => {
@@ -1577,11 +1665,21 @@ app.post('/push/unregister', auth, (req, res) => {
   else db.prepare('DELETE FROM devices WHERE user_id=?').run(req.uid);
   res.json({ ok: true });
 });
+try { db.exec('ALTER TABLE notifications ADD COLUMN link TEXT'); } catch (e) { /* 이미 있음 */ }
+
+// 아이콘 → 이동 화면 기본 매핑. 개별 알림은 msg.link 로 덮어쓸 수 있다.
+const ICON_LINKS = {
+  '⚔️': 'match', '🆚': 'match', '🎾': 'club', '📅': 'club', '💰': 'club',
+  '💬': 'chat', '✅': 'club', '👋': 'club', '🏆': 'bracket', '📋': 'bracket',
+  '🔔': 'home', '⭐': 'league', '🥇': 'league', '📣': 'club', '🙌': 'club', '🏃': 'league', '🏊': 'league', '⚽': 'league', '🏀': 'league', '⚾': 'league', '🏸': 'bracket',
+};
+
 async function sendPush(userId, msg, opts) {
   // 알림함에는 기본으로 남긴다. 채팅처럼 잦은 알림은 skipInbox 로 푸시만 보낸다.
+  const link = msg.link || ICON_LINKS[msg.icon] || null;
   if (!(opts && opts.skipInbox))
-    db.prepare('INSERT INTO notifications (user_id,icon,title,sub,created_at) VALUES (?,?,?,?,?)')
-      .run(userId, msg.icon || '🔔', msg.title || '', msg.body || '', now());
+    db.prepare('INSERT INTO notifications (user_id,icon,title,sub,created_at,link) VALUES (?,?,?,?,?,?)')
+      .run(userId, msg.icon || '🔔', msg.title || '', msg.body || '', now(), link);
   if (!webpush) return;
   const rows = db.prepare('SELECT token FROM devices WHERE user_id=?').all(userId);
   for (const { token } of rows) {
@@ -2960,6 +3058,143 @@ app.delete('/clubs/:id/courts/:sid', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ══════════════════════════════════════════════════════════════
+//  기록 종목 (러닝·수영) — 개인 기록장 + 클럽 월간 보드
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS sport_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL, sport TEXT NOT NULL,
+  ymd TEXT NOT NULL, dist_m INTEGER NOT NULL, secs INTEGER,
+  note TEXT, created_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS ix_records_user ON sport_records(user_id, sport, ymd);`);
+try { db.exec("ALTER TABLE sport_records ADD COLUMN rtype TEXT DEFAULT 'train'"); } catch (e) { /* 이미 있음 */ }
+try { db.exec('ALTER TABLE sport_records ADD COLUMN stroke TEXT'); } catch (e) { /* 수영 영법 */ }
+
+app.get('/records', auth, (req, res) => {
+  const sport = String(req.query.sport || '');
+  res.json(db.prepare(`SELECT * FROM sport_records WHERE user_id=? ${sport ? 'AND sport=?' : ''}
+    ORDER BY ymd DESC, id DESC LIMIT 40`).all(...(sport ? [req.uid, sport] : [req.uid])));
+});
+
+app.post('/records', auth, limitWrite, (req, res) => {
+  const b = req.body || {};
+  const sport = String(b.sport || '').slice(0, 20);
+  const ymd = String(b.ymd || '').slice(0, 10);
+  const dist_m = Math.max(1, Math.min(300000, intOrNull(b.dist_m) || 0));
+  const secs = Math.max(0, Math.min(86400, intOrNull(b.secs) || 0)) || null;
+  const note = String(b.note || '').trim().slice(0, 60) || null;
+  const rtype = b.rtype === 'race' ? 'race' : 'train';
+  const stroke = ['자유형','배영','평영','접영','혼영'].includes(b.stroke) ? b.stroke : null;
+  if (!sport || !/^\d{4}-\d{2}-\d{2}$/.test(ymd) || !dist_m)
+    return res.status(400).json({ error: 'bad_request' });
+  const r = db.prepare('INSERT INTO sport_records (user_id,sport,ymd,dist_m,secs,note,created_at,rtype,stroke) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(req.uid, sport, ymd, dist_m, secs, note, now(), rtype, stroke);
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/records/:id', auth, (req, res) => {
+  db.prepare('DELETE FROM sport_records WHERE id=? AND user_id=?').run(+req.params.id, req.uid);
+  res.json({ ok: true });
+});
+
+// 클럽 월간 보드 — 이번 달 누적 거리·횟수 랭킹
+app.get('/clubs/:id/records/board', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const sport = String(req.query.sport || '');
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  const rows = db.prepare(`SELECT u.id user_id, u.name,
+      COALESCE(SUM(r.dist_m),0) total_m, COUNT(r.id) sessions,
+      MIN(CASE WHEN r.secs>0 THEN r.secs*1000.0/r.dist_m END) best_pace_per_km_x1000
+    FROM club_members cm JOIN users u ON u.id=cm.user_id
+    LEFT JOIN sport_records r ON r.user_id=u.id AND r.sport=? AND r.ymd LIKE ?
+    WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+    GROUP BY u.id ORDER BY total_m DESC, u.name`).all(sport, month + '%', cid);
+  res.json({ month, rows });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  팀 종목 (축구·농구·야구) — 클럽 경기 결과 장부
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_team_matches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL, ymd TEXT NOT NULL,
+  opponent TEXT NOT NULL, our_score INTEGER NOT NULL, their_score INTEGER NOT NULL,
+  note TEXT, created_by INTEGER, created_at BIGINT
+);`);
+// 자체전(팀 내부 경기) 지원 — 조끼팀 vs 맨팀 같은 내부 게임을 아카이빙한다
+try { db.exec("ALTER TABLE club_team_matches ADD COLUMN kind TEXT DEFAULT 'external'"); } catch (e) { /* 이미 있음 */ }
+try { db.exec('ALTER TABLE club_team_matches ADD COLUMN team_a TEXT'); } catch (e) { /* */ }
+try { db.exec('ALTER TABLE club_team_matches ADD COLUMN team_b TEXT'); } catch (e) { /* */ }
+try { db.exec('ALTER TABLE club_team_matches ADD COLUMN players_a TEXT'); } catch (e) { /* */ }
+try { db.exec('ALTER TABLE club_team_matches ADD COLUMN players_b TEXT'); } catch (e) { /* */ }
+try { db.exec('ALTER TABLE club_team_matches ADD COLUMN stats TEXT'); } catch (e) { /* 경기별 개인 스탯 JSON */ }
+
+app.get('/clubs/:id/team-matches', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare('SELECT * FROM club_team_matches WHERE club_id=? ORDER BY ymd DESC, id DESC LIMIT 100').all(cid);
+  const sum = { w: 0, d: 0, l: 0 };                     // 대외전 승/무/패만
+  rows.filter(m => (m.kind || 'external') !== 'intra')
+    .forEach(m => { if (m.our_score > m.their_score) sum.w++; else if (m.our_score < m.their_score) sum.l++; else sum.d++; });
+  res.json({ rows, summary: sum });
+});
+
+app.post('/clubs/:id/team-matches', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const b = req.body || {};
+  const ymd = String(b.ymd || '').slice(0, 10);
+  const kind = b.kind === 'intra' ? 'intra' : 'external';
+  const our = intOrNull(b.our_score), their = intOrNull(b.their_score);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd) || our == null || their == null)
+    return res.status(400).json({ error: 'bad_request' });
+  const clip = (arr) => Array.isArray(arr) ? JSON.stringify(arr.map(x => String(x).slice(0, 12)).slice(0, 20)) : null;
+  let opponent = cleanName(b.opponent, '').slice(0, 24);
+  let team_a = null, team_b = null, players_a = null, players_b = null;
+  // 개인 스탯: {"이름":{"goal":2,"assist":1}} — 이름·키·값 전부 위생 처리
+  let stats = null;
+  if (b.stats && typeof b.stats === 'object') {
+    const out = {};
+    Object.entries(b.stats).slice(0, 20).forEach(([nm, cats]) => {
+      if (!cats || typeof cats !== 'object') return;
+      const c = {};
+      Object.entries(cats).slice(0, 6).forEach(([k, v]) => {
+        const n = Math.max(0, Math.min(99, intOrNull(v) || 0));
+        if (n > 0) c[String(k).slice(0, 10)] = n;
+      });
+      if (Object.keys(c).length) out[String(nm).slice(0, 12)] = c;
+    });
+    if (Object.keys(out).length) stats = JSON.stringify(out);
+  }
+  if (kind === 'intra') {
+    team_a = cleanName(b.team_a, '팀 A').slice(0, 12) || '팀 A';
+    team_b = cleanName(b.team_b, '팀 B').slice(0, 12) || '팀 B';
+    players_a = clip(b.players_a); players_b = clip(b.players_b);
+    opponent = team_b;                                   // 목록 호환용
+  } else if (!opponent) return res.status(400).json({ error: 'bad_request' });
+  const r = db.prepare(`INSERT INTO club_team_matches
+      (club_id,ymd,opponent,our_score,their_score,note,created_by,created_at,kind,team_a,team_b,players_a,players_b,stats)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(cid, ymd, opponent, Math.max(0, our), Math.max(0, their),
+      String(b.note || '').slice(0, 60) || null, req.uid, now(), kind, team_a, team_b, players_a, players_b, stats);
+  if (kind === 'intra')
+    notifyClub(cid, req.uid, '🏆', '자체전 결과가 올라왔어요', `${team_a} ${our} : ${their} ${team_b}`);
+  else {
+    const rslt = our > their ? '승리' : our < their ? '패배' : '무승부';
+    notifyClub(cid, req.uid, '🏆', `경기 결과 · ${rslt}`, `vs ${opponent} ${our}:${their}`);
+  }
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.delete('/clubs/:id/team-matches/:mid', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM club_team_matches WHERE id=? AND club_id=?').run(+req.params.mid, cid);
+  res.json({ ok: true });
+});
+
 app.get('/users/:id/manner', (req, res) => {
   const r = db.prepare('SELECT ROUND(AVG(stars),1) avg, COUNT(*) n FROM om_reviews WHERE to_user=?').get(+req.params.id);
   res.json({ avg: r.avg || null, n: r.n });
@@ -3079,7 +3314,48 @@ function remindRsvpNudge() {
   }
 }
 
+// 모임 다음 날 넛지 — 전 종목. 종목마다 '다음 날 할 일'이 다르다:
+//   기록(러닝·수영): 참석자에게 기록 입력 / 라켓: 참석자에게 결과 확정 / 팀: 임원에게 기록실 입력
+const SPORT_NUDGE = {
+  running:    { icon: '🏃', who: 'attendees', title: '어제 기록을 남겨보세요', link: 'league',
+    body: (ev) => `${ev.club} · ${ev.title} — 거리와 시간을 올리면 이번 달 랭킹과 개인 기록에 반영돼요` },
+  swimming:   { icon: '🏊', who: 'attendees', title: '어제 기록을 남겨보세요', link: 'league',
+    body: (ev) => `${ev.club} · ${ev.title} — 거리와 시간을 올리면 이번 달 랭킹과 개인 기록에 반영돼요` },
+  tennis:     { icon: '🎾', who: 'attendees', title: '어제 경기 결과를 확정하세요', link: 'bracket',
+    body: (ev) => `${ev.club} · ${ev.title} — 점수를 확정하면 레이팅과 랭킹에 반영돼요` },
+  badminton:  { icon: '🏸', who: 'attendees', title: '어제 경기 결과를 확정하세요', link: 'bracket',
+    body: (ev) => `${ev.club} · ${ev.title} — 점수를 확정하면 레이팅과 랭킹에 반영돼요` },
+  soccer:     { icon: '⚽', who: 'officers', title: '어제 경기를 기록실에 남겨보세요', link: 'league',
+    body: (ev) => `${ev.club} · ${ev.title} — 자체전 결과와 골·도움을 기록하면 회원 스탯에 쌓여요` },
+  basketball: { icon: '🏀', who: 'officers', title: '어제 경기를 기록실에 남겨보세요', link: 'league',
+    body: (ev) => `${ev.club} · ${ev.title} — 자체전 결과와 개인 스탯을 기록하면 아카이브에 쌓여요` },
+  baseball:   { icon: '⚾', who: 'officers', title: '어제 경기를 기록실에 남겨보세요', link: 'league',
+    body: (ev) => `${ev.club} · ${ev.title} — 경기 결과와 개인 기록을 남기면 아카이브에 쌓여요` },
+};
+
+function remindRecordAfterEvent() {
+  const today = new Date();
+  const yst = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const evs = db.prepare(`SELECT e.*, c.name club, c.sport FROM club_events e
+    JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 60`).all();
+  for (const ev of evs) {
+    const cfg = SPORT_NUDGE[ev.sport] || SPORT_NUDGE.tennis;
+    const mm = String(ev.date || '').match(/(\d{1,2})\/(\d{1,2})/);
+    if (!mm) continue;
+    const evDate = new Date(today.getFullYear(), +mm[1] - 1, +mm[2]);
+    if (evDate.getTime() !== yst.getTime()) continue;   // 정확히 어제 모임만
+    const targets = cfg.who === 'officers'
+      ? db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(ev.club_id)
+      : db.prepare("SELECT DISTINCT user_id FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").all(ev.id);
+    targets.forEach(a => {
+      if (!onceOnly('rec_nudge', `${ev.id}:${a.user_id}`)) return;
+      sendPush(a.user_id, { icon: cfg.icon, title: cfg.title, body: cfg.body(ev), link: cfg.link });
+    });
+  }
+}
+
 function runReminders() {
+  try { remindRecordAfterEvent(); } catch (e) { console.error('record nudge', e.message); }
   try { remindUnpaidDues(); } catch (e) { console.error('dues reminder', e.message); }
   try { remindRsvpNudge(); } catch (e) { console.error('rsvp nudge', e.message); }
   try { remindClosingMatches(); } catch (e) { console.error('match reminder', e.message); }
