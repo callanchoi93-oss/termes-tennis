@@ -42,6 +42,7 @@
   .demo-tag.live{background:#d8f0e2;color:#1f5c40}
   .demo-tag{background:var(--felt);color:var(--gray);text-align:center;font-size:11px;font-weight:800;padding:4px;flex-shrink:0}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 8px;flex-shrink:0}
+  .appbar .logo{margin-right:auto}   /* 뒤로가기가 있어도 로고는 그 바로 옆에 */
   .logo{font-size:21px;font-weight:800;letter-spacing:-.5px}.logo b{color:var(--coral)}
   .bell{width:36px;height:36px;border-radius:11px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
   .scroll{flex:1;overflow-y:auto;padding:4px 16px 100px;-webkit-overflow-scrolling:touch}
@@ -658,6 +659,31 @@
   .chat-cnt{ position:absolute; top:-3px; right:-4px; min-width:17px; height:17px; padding:0 4px;
     border-radius:999px; background:var(--coral); color:#fff; font-size:10px; font-weight:900;
     display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+  /* 게스트·초대장 풀스크린 — 플랫 히어로 (패턴 없음) */
+  #guestOv{ position:fixed; inset:0; background:#fff; z-index:420; overflow-y:auto;
+    display:none; -webkit-overflow-scrolling:touch; }
+  #guestOv.on{ display:block; }
+  .gl-hero{ position:relative; overflow:hidden; background:#fbd9d0; padding:34px 22px 30px; text-align:center; }
+  .gl-hero>*{ position:relative; }
+  .gl-wave{ position:absolute; inset:0; width:100%; height:100%; }
+  .gl-blob{ /* 이전 패턴 자리 — 플랫하게 비움 */ }
+  .gl-done{ font-size:15px; font-weight:900; color:#1f6b41; }
+  .gl-title{ font-size:33px; font-weight:900; letter-spacing:-.03em; color:#1f4d38;
+    line-height:1.2; margin-top:34px; word-break:keep-all; }
+  .gl-links{ margin-top:24px; font-size:13.5px; font-weight:800; color:#1f6b41; }
+  .gl-links span{ cursor:pointer; margin:0 8px; text-decoration:underline; text-underline-offset:3px; }
+  .gl-info{ padding:26px 24px 10px; display:grid; grid-template-columns:1fr 1fr; gap:20px 14px; }
+  .gl-info .full{ grid-column:1/3; }
+  .gl-info b{ display:block; font-size:14px; font-weight:900; margin-bottom:5px; }
+  .gl-info div>div{ font-size:15.5px; font-weight:600; color:var(--ink2); line-height:1.5; }
+  .gl-band{ height:10px; background:var(--cream2); margin-top:14px; }
+  .gl-form{ padding:22px 24px 40px; }
+  .gl-next{ padding:20px 18px 40px; }
+  .gl-next h3{ font-size:16.5px; font-weight:900; letter-spacing:-.01em; margin:0 4px 13px; }
+  .gl-slot{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:13px 14px;
+    margin-bottom:9px; display:flex; align-items:center; justify-content:space-between; }
+  .gl-slot .t{ font-size:14px; font-weight:800; }
+  .gl-slot .d{ font-size:12px; color:var(--gray); font-weight:700; margin-top:2px; }
   .cal-nav{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 8px; }
   .cal-nav b{ font-size:15px; font-weight:900; }
   .cal-nav span{ width:34px; height:34px; border-radius:11px; border:1px solid var(--line); display:flex;
@@ -1275,7 +1301,7 @@
 <div class="app">
   <div class="demo-tag" id="srvTag">데모 · 실제 결제·예약은 작동하지 않습니다</div>
   <div class="appbar">
-    <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:19px;font-weight:800;color:var(--ink);flex:none;margin-right:2px">‹</div>
+    <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:19px;font-weight:800;color:var(--ink);flex:none;margin-right:10px">‹</div>
     <div class="logo" style="cursor:pointer" onclick="go('home')" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" role="button" tabindex="0" aria-label="검색" onclick="openSearch()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
@@ -2357,7 +2383,8 @@ function rsvpCard(){
     </div>
     ${state.bcfg.role==='officer'?`<button class="btn ghost sm" style="margin-top:9px" onclick="openGuests()"><span class="bic">${ic('user',15,'currentColor')}게스트 추가 · 관리</span></button>
     <div style="display:flex;gap:14px;justify-content:center;margin-top:9px">
-      <span onclick="shareGuestLink(${e.id})" style="font-size:12px;font-weight:800;color:#1f8f57;cursor:pointer;text-decoration:underline">게스트 모집</span>
+      <span onclick="makeInviteImage(${e.id})" style="font-size:12px;font-weight:800;color:#1f8f57;cursor:pointer;text-decoration:underline">초대장 만들기</span>
+      <span onclick="shareGuestLink(${e.id})" style="font-size:12px;font-weight:800;color:#1f8f57;cursor:pointer;text-decoration:underline">링크만 복사</span>
       <span onclick="editEvent(${e.id})" style="font-size:12px;font-weight:800;color:var(--gray);cursor:pointer;text-decoration:underline">모임 수정</span>
       <span onclick="delEvent(${e.id})" style="font-size:12px;font-weight:800;color:var(--coral-d);cursor:pointer;text-decoration:underline">모임 취소</span></div>`:''}
     <div class="note" style="text-align:left;margin-top:8px">참석을 누른 회원과 게스트가 <b>대진 명단에 자동으로</b> 들어가요.</div>
@@ -2602,6 +2629,103 @@ function editEvent(eid){
   const mm = String(e.date||'').match(/(\d{1,2})\/(\d{1,2}).*?(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?$/);
   if(mm){ NE.m=+mm[1]-1; NE.day=+mm[2]; if(mm[3])NE.time=mm[3]; if(mm[4])NE.place=mm[4].trim(); }
   renderNewEvent();
+}
+/* ── 외부 공유용 초대장 이미지: 카톡방에 뿌리는 그래픽 카드 ── */
+async function makeInviteImage(eid){
+  const ev = (SRV_EVENTS||[]).find(x=>x.id===eid) || SRV_EVENT;
+  if(!ev){ toast('모임 정보를 찾을 수 없어요'); return; }
+  let token;
+  try{ const r=await api(`/clubs/${clubId()}/events/${eid}/guest-link`,{method:'POST',body:'{}'}); token=r.token; }
+  catch(e){ toast('링크를 만들지 못했어요'); return; }
+  const url=`${location.origin}${location.pathname}?guest=${token}`;
+  const club=state.activeClub||'클럽';
+  // 날짜 문자열 분해: "7/12 (토) 09:00 · 장소"
+  const m=String(ev.date||'').match(/(\d{1,2}\/\d{1,2})\s*(?:\(([^)]+)\))?\s*(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?/);
+  const dTxt=m?`${m[1]}${m[2]?` (${m[2]})`:''}`:(ev.date||'일정 공지 참고');
+  const tTxt=m&&m[3]?m[3]:'', pTxt=m&&m[4]?m[4]:'';
+
+  const W=1080,H=1350, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const x=cv.getContext('2d');
+  const F=(w,s)=>`${w} ${s}px Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif`;
+  // 배경: 연핑크
+  x.fillStyle='#fbd9d0'; x.fillRect(0,0,W,H);
+  // 물결: 겹친 빨간 타원 2개 (레퍼런스 패턴)
+  x.fillStyle='#e6564a';
+  x.beginPath(); x.ellipse(180,330,650,240,0,0,7); x.fill();
+  x.beginPath(); x.ellipse(900,330,650,240,0,0,7); x.fill();
+  // 상단 문구 (핑크 영역)
+  x.textAlign='center';
+  x.fillStyle='#1f8f57'; x.font=F(900,36);
+  x.fillText('게스트 초대장', W/2, 116);
+  // 클럽명 (빨간 물결 위, 진초록)
+  x.fillStyle='#1f4d38'; x.font=F(900,84);
+  const cName=club.slice(0,10);
+  x.fillText(cName, W/2, 330);
+  x.fillStyle='#1f4d38'; x.font=F(800,40);
+  x.fillText((ev.title||'정기 모임').slice(0,12), W/2, 408);
+  // 물결 아래 안내
+  x.fillStyle='#1f8f57'; x.font=F(800,32);
+  x.fillText('게스트로 함께해요', W/2, 626);
+  // 정보 (좌측 정렬 2열: Date/Time, Venue)
+  x.textAlign='left';
+  const L=110;
+  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Date', L, 730);
+  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText(dTxt, L, 782);
+  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Time', 620, 730);
+  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText(tTxt||'공지 참고', 620, 782);
+  x.fillStyle='#1c1b18'; x.font=F(900,34); x.fillText('Venue', L, 866);
+  x.font=F(700,36); x.fillStyle='#2c2a24'; x.fillText((pTxt||'클럽 공지 참고').slice(0,20), L, 918);
+  // 꽃밭 (레트로 리소 꽃 3송이: 노랑 오프셋 + 빨강 4잎 + 노랑 중심 + 초록 줄기·잎)
+  function flower(cx0, cy0, s){
+    x.save(); x.translate(cx0, cy0); x.scale(s, s);
+    x.fillStyle='#2f8f5b';
+    x.fillRect(-9, 20, 18, 96);
+    x.beginPath(); x.moveTo(-72,116); x.bezierCurveTo(-72,66,-16,74,0,112);
+    x.bezierCurveTo(16,74,72,66,72,116); x.bezierCurveTo(72,172,-72,172,-72,116);
+    x.closePath(); x.fill();
+    x.fillStyle='#f2c53d';
+    [[-28,-28],[40,-28],[-28,40],[40,40]].forEach(([a,b])=>{ x.beginPath(); x.arc(a,b,38,0,7); x.fill(); });
+    x.fillStyle='#e6564a';
+    [[-34,-34],[34,-34],[-34,34],[34,34]].forEach(([a,b])=>{ x.beginPath(); x.arc(a,b,38,0,7); x.fill(); });
+    x.fillStyle='#f2c53d'; x.beginPath(); x.arc(0,0,26,0,7); x.fill();
+    x.restore();
+  }
+  flower(240, 1060, 0.78); flower(540, 1040, 1.02); flower(830, 1068, 0.68);
+  // 링크
+  x.textAlign='center';
+  x.fillStyle='#ffffff';
+  if(x.roundRect){ x.beginPath(); x.roundRect(140,1246,800,84,24); x.fill(); } else x.fillRect(140,1246,800,84);
+  x.fillStyle='#cf5418'; x.font=F(800,28);
+  const shortUrl=url.replace(/^https?:\/\//,'');
+  x.fillText(shortUrl.length>46?shortUrl.slice(0,46)+'…':shortUrl, W/2, 1300);
+
+  // 미리보기 시트
+  const dataUrl=cv.toDataURL('image/png');
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <img src="${dataUrl}" alt="초대장" style="width:100%;border-radius:18px;border:1px solid var(--line)">
+    <button class="btn" style="margin-top:12px" onclick="shareInviteImage()">이미지 공유하기</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="downloadInviteImage()">이미지 저장</button>
+    <div class="note" style="text-align:left;margin-top:10px">이미지와 함께 링크도 자동으로 첨부돼요. 카톡방에 그대로 공유하세요.</div>`;
+  document.getElementById('ov').classList.add('on');
+  window._invCanvas=cv; window._invUrl=url; window._invClub=club;
+}
+async function shareInviteImage(){
+  const cv=window._invCanvas; if(!cv) return;
+  cv.toBlob(async blob=>{
+    const file=new File([blob], 'matsu_초대장.png', {type:'image/png'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], text:`[${window._invClub}] 게스트 모집!\n${window._invUrl}`}); return; }
+      catch(e){ if(e.name==='AbortError') return; }
+    }
+    try{ await navigator.clipboard.writeText(window._invUrl); }catch(e){}
+    downloadInviteImage();
+    toast('이미지를 저장했어요 · 링크는 복사됐어요');
+  }, 'image/png');
+}
+function downloadInviteImage(){
+  const cv=window._invCanvas; if(!cv) return;
+  const a=document.createElement('a');
+  a.href=cv.toDataURL('image/png'); a.download='matsu_초대장.png'; a.click();
 }
 async function shareGuestLink(eid){
   try{
@@ -6179,6 +6303,67 @@ function glParseDate(d){
   const wd={'일':'일요일','월':'월요일','화':'화요일','수':'수요일','목':'목요일','금':'금요일','토':'토요일'}[m[3]]||m[3]||'';
   return {date:`${+m[1]}월 ${+m[2]}일${wd?' '+wd:''}`, time:m[4]||'', place:m[5]||''};
 }
+/* ── 클럽 초대장: 초대 링크를 열면 나오는 소개 화면 ── */
+// 프레첼 캐릭터 (로고 + 시그니처 눈) — 히어로 장식용
+const GL_WAVE = `<svg class="gl-wave" viewBox="0 0 900 520" preserveAspectRatio="none" aria-hidden="true">
+  <ellipse cx="150" cy="260" rx="540" ry="200" fill="#e6564a"/>
+  <ellipse cx="750" cy="260" rx="540" ry="200" fill="#e6564a"/>
+</svg>`;
+// 레트로 꽃 (리소그래프 스타일: 노랑 오프셋 그림자 + 4잎 + 노랑 중심)
+function glFlower(s, stem){
+  return `<g transform="scale(${s})">
+    ${stem?`<rect x="-9" y="30" width="18" height="${stem}" fill="#2f8f5b"/>
+    <path d="M -70 ${30+stem} C -70 ${-14+stem}, -14 ${-4+stem}, 0 ${34+stem} C 14 ${-4+stem}, 70 ${-14+stem}, 70 ${30+stem} C 70 ${86+stem}, -70 ${86+stem}, -70 ${30+stem} Z" fill="#2f8f5b"/>`:''}
+    <g transform="translate(6,5)" fill="#f2c53d"><circle cx="-34" cy="-34" r="38"/><circle cx="34" cy="-34" r="38"/><circle cx="-34" cy="34" r="38"/><circle cx="34" cy="34" r="38"/></g>
+    <g fill="#e6564a"><circle cx="-34" cy="-34" r="38"/><circle cx="34" cy="-34" r="38"/><circle cx="-34" cy="34" r="38"/><circle cx="34" cy="34" r="38"/></g>
+    <circle r="26" fill="#f2c53d"/>
+  </g>`;
+}
+const GL_FLOWERS = `<svg viewBox="0 0 900 190" style="width:100%;display:block;margin-top:18px" aria-hidden="true">
+  <g transform="translate(160,96)">${glFlower(0.62)}</g>
+  <g transform="translate(450,88)">${glFlower(0.92)}</g>
+  <g transform="translate(740,100)">${glFlower(0.56)}</g>
+</svg>`;
+const PRETZEL_CHAR = GL_WAVE;   // 히어로 상단 장식 = 물결 패턴
+async function openInviteCard(token){
+  const el=document.getElementById('guestOv');
+  el.classList.add('on');
+  el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  let d;
+  try{ d=await api(`/invites/${encodeURIComponent(token)}`); }
+  catch(e){ el.classList.remove('on'); return; }        // 만료 등 — 기존 로그인 흐름으로
+  const c=d.club;
+  const sp=(SPORTS.find(s=>s.id===c.sport)||{}).n||'';
+  const fee=(c.entry_fee||c.season_fee)
+    ? `${c.entry_fee?`입회비 ${Number(c.entry_fee).toLocaleString()}원`:''}${c.entry_fee&&c.season_fee?' · ':''}${c.season_fee?`시즌비 ${Number(c.season_fee).toLocaleString()}원`:''}`
+    : '회비 없음';
+  el.innerHTML=`
+    <div class="gl-hero">
+      ${PRETZEL_CHAR}
+      <div class="gl-done">클럽 초대장</div>
+      <div class="gl-title">${esc(c.name)}</div>
+      <div style="font-size:14px;font-weight:800;color:var(--gray);margin-top:10px">함께 운동할 사람을 찾고 있어요</div>
+      ${GL_FLOWERS}
+    </div>
+    <div class="gl-info">
+      <div><b>지역</b><div>${esc(c.region||'지역 미지정')}</div></div>
+      <div><b>종목</b><div>${esc(sp)}</div></div>
+      <div><b>멤버</b><div>${c.members||1}명 활동 중</div></div>
+      <div><b>회비</b><div>${fee}</div></div>
+    </div>
+    <div class="gl-band"></div>
+    <div class="gl-form">
+      <button class="btn" onclick="acceptInviteCard('${esc(token)}')">가입 신청하고 함께하기</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="glClose()">둘러보기만 할게요</button>
+      <div class="note" style="text-align:left;margin-top:12px">${state.loggedIn?'신청하면 클럽 임원진이 확인 후 승인해요.':'로그인하면 가입 신청이 임원진에게 자동으로 전달돼요.'}</div>
+    </div>`;
+  window.scrollTo(0,0);
+}
+function acceptInviteCard(token){
+  glClose();
+  if(state.loggedIn && authToken()) handleInviteToken(token);
+  // 비로그인: pending_invite 저장분이 로그인 직후 자동 처리된다
+}
 async function openGuestLanding(token){
   const el=document.getElementById('guestOv');
   el.classList.add('on');
@@ -6197,9 +6382,11 @@ async function openGuestLanding(token){
   const p=glParseDate(d.event.date);
   el.innerHTML=`
     <div class="gl-hero"><div class="gl-blob">
-      <div class="gl-done" style="color:#ffe3d2">게스트 초대장</div>
+      ${PRETZEL_CHAR}
+      <div class="gl-done" style="color:#1f8f57">게스트 초대장</div>
       <div class="gl-title">${esc(d.club.name)}</div>
-      <div style="font-size:14px;font-weight:800;color:#ffe3d2;margin-top:10px">${esc(d.event.title||'정기 모임')}</div>
+      <div style="font-size:14px;font-weight:800;color:var(--gray);margin-top:10px">${esc(d.event.title||'정기 모임')}</div>
+      ${GL_FLOWERS}
     </div></div>
     <div class="gl-info">
       <div><b>날짜</b><div>${esc(p.date)||'—'}</div></div>
@@ -6209,14 +6396,10 @@ async function openGuestLanding(token){
     </div>
     <div class="gl-band"></div>
     <div class="gl-form">
-      <h3 style="font-size:17px;font-weight:900;margin-bottom:14px">이름만 남기면 신청 끝이에요</h3>
-      <div class="fld"><label>이름</label><input id="glName" placeholder="실명을 입력해 주세요" maxlength="12"></div>
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <span onclick="GL.g='남';glGenderUI()" id="glM" class="tchip" style="flex:1;text-align:center">남</span>
-        <span onclick="GL.g='여';glGenderUI()" id="glF" class="tchip" style="flex:1;text-align:center">여</span></div>
-      <div class="fld"><label>연락처 (선택)</label><input id="glPhone" inputmode="tel" placeholder="임원이 안내를 드릴 번호" maxlength="13"></div>
-      <button class="btn" onclick="glApply()">게스트 신청하기</button>
-      <div class="note" style="text-align:left;margin-top:10px">신청하면 클럽 임원에게 알림이 가고, 승인 후 모임 안내를 받아요.</div>
+      <button class="btn" onclick="glApply()">${state.loggedIn&&authToken()?'게스트 신청하기':'가입하고 게스트 신청하기'}</button>
+      <div class="note" style="text-align:left;margin-top:10px">${state.loggedIn&&authToken()
+        ?'신청하면 클럽 임원에게 알림이 가고, 앱 채팅으로 안내를 받아요.'
+        :'이름만 넣으면 가입 완료 — 가입하는 순간 신청이 자동으로 전달돼요.'}</div>
     </div>`;
 }
 function glGenderUI(){
@@ -6224,20 +6407,36 @@ function glGenderUI(){
   if(m&&f){ m.classList.toggle('on',GL.g==='남'); f.classList.toggle('on',GL.g==='여'); }
 }
 async function glApply(eventId){
-  const name=((document.getElementById('glName')||{}).value||GL.name||'').trim();
-  if(!name){ toast('이름을 입력해 주세요'); return; }
-  GL.name=name;
-  const phone=((document.getElementById('glPhone')||{}).value||GL.phone||'').trim(); GL.phone=phone;
   const eid=eventId || GL.data.event.id;
+  if(!(state.loggedIn && authToken())){
+    // 비로그인 → 가입으로. 가입이 끝나면 저장해 둔 토큰으로 자동 신청된다.
+    try{ sessionStorage.setItem('pending_guest', JSON.stringify({token:GL.token, eid})); }catch(e){}
+    glClose();
+    document.getElementById('auth').classList.add('on');
+    toast('이름만 넣으면 가입 완료 · 신청이 자동으로 이어져요');
+    return;
+  }
   try{
     await api(`/guest/${encodeURIComponent(GL.token)}/apply`,{method:'POST',
-      body:JSON.stringify({name, phone, gender:GL.g||null, event_id:eid})});
-    GL.applied.add(eid);
+      body:JSON.stringify({event_id:eid})});
+    GL.applied.add(eid); GL.name=state.userName;
     if(eid===GL.data.event.id) glDone(); else { glDone(); toast('추가 신청 완료!'); }
   }catch(e){
-    if(String(e.message).includes('already_applied')){ GL.applied.add(eid); glDone(); toast('이미 신청되어 있어요'); }
+    const m=String(e.message||'');
+    if(m.includes('already_applied')){ GL.applied.add(eid); glDone(); toast('이미 신청되어 있어요'); }
+    else if(m.includes('already_member')){ glClose(); toast('이미 이 클럽의 회원이에요'); }
     else toast('신청하지 못했어요 · 잠시 후 다시 시도해 주세요');
   }
+}
+// 가입 직후: 보관해 둔 게스트 신청을 자동으로 잇는다
+async function resumePendingGuest(){
+  let p=null;
+  try{ p=JSON.parse(sessionStorage.getItem('pending_guest')||'null'); }catch(e){}
+  if(!p||!p.token) return false;
+  sessionStorage.removeItem('pending_guest');
+  await openGuestLanding(p.token);                       // GL 재구성
+  if(GL && GL.data) await glApply(p.eid||GL.data.event.id);
+  return true;
 }
 function glDone(){
   const d=GL.data, el=document.getElementById('guestOv');
@@ -6253,21 +6452,24 @@ function glDone(){
   });
   el.innerHTML=`
     <div class="gl-hero"><div class="gl-blob">
-      <div class="gl-done" style="color:#ffe3d2">신청이 완료됐어요!</div>
+      ${PRETZEL_CHAR}
+      <div class="gl-done" style="color:#1f8f57">신청이 완료됐어요!</div>
       <div class="gl-title">${esc(d.club.name)}</div>
       <div class="gl-links"><span onclick="glClose()">맞수 둘러보기</span><span style="text-decoration:none;cursor:default">|</span><span onclick="glDone()">신청 내역 보기</span></div>
+      ${GL_FLOWERS}
     </div></div>
     <div class="gl-info">
       <div><b>날짜</b><div>${esc(p.date)||'—'}</div></div>
       <div><b>시간</b><div>${esc(p.time)||'—'}</div></div>
       <div class="full"><b>장소</b><div>${esc(p.place||d.club.region||'클럽 공지 참고')}</div></div>
-      <div class="full"><b>유형</b><div>${esc(sp)} · 게스트 (${esc(GL.name)}님)${d.club.guest_fee?` · 게스트비 ${Number(d.club.guest_fee).toLocaleString()}원`:''}</div></div>
+      <div class="full"><b>유형</b><div>${esc(sp)} · 게스트${GL.name?` (${esc(GL.name)}님)`:''}${d.club.guest_fee?` · 게스트비 ${Number(d.club.guest_fee).toLocaleString()}원`:''}</div></div>
     </div>
     ${others?`<div class="gl-band"></div>
     <div class="gl-next"><h3>${esc(d.club.name)}의 다음 모임도 미리 신청하세요</h3>${others}</div>`:'<div style="height:40px"></div>'}`;
   window.scrollTo(0,0);
 }
 function glClose(){ document.getElementById('guestOv').classList.remove('on'); }
+
 
 async function handleInviteToken(token){
   let info;
@@ -9459,7 +9661,8 @@ function goBack(){
 }
 function updBackBtn(){
   const b=document.getElementById('backBtn');
-  if(b) b.style.display = (state.view!=='home') ? 'flex' : 'none';
+  const show = state.view!=='home';
+  if(b) b.style.display = show ? 'flex' : 'none';
 }
 function go(v, isBack){
   if(!isBack && state.view && state.view!==v){
@@ -9515,7 +9718,8 @@ checkServer().then(async ok=>{
   if(_inv){
     try{ sessionStorage.setItem('pending_invite', _inv); }catch(e){}
     history.replaceState({}, '', location.pathname);
-    if(state.loggedIn && authToken()) handleInviteToken(_inv);
+    setTimeout(()=>openInviteCard(_inv), 300);          // 초대장 먼저 보여준다
+    // 로그인 상태면 초대장의 버튼에서 handleInviteToken이 이어진다
     // 로그인 전이면 로그인 뒤에 처리된다 (아래 저장분 확인)
   }
   if(new URL(location.href).searchParams.get('code')){
@@ -9528,6 +9732,7 @@ checkServer().then(async ok=>{
       document.getElementById('auth').classList.remove('on');
       try{ const t=sessionStorage.getItem('pending_invite');
         if(t){ sessionStorage.removeItem('pending_invite'); setTimeout(()=>handleInviteToken(t), 800); } }catch(e){}
+      try{ if(sessionStorage.getItem('pending_guest')) setTimeout(()=>resumePendingGuest(), 900); }catch(e){}
       try{ const mI=sessionStorage.getItem('pending_match');
         if(mI){ sessionStorage.removeItem('pending_match'); setTimeout(()=>handleMatchLink(+mI), 1000); } }catch(e){}
       await loadClubIds();
@@ -9542,6 +9747,7 @@ if(_restored){ document.getElementById('auth').classList.remove('on'); document.
 setTimeout(()=>{ if(state.loggedIn){ syncMe(); checkMyDues(); afterLoginNative();
   try{ const t=sessionStorage.getItem('pending_invite');
     if(t && SERVER_OK && authToken()){ sessionStorage.removeItem('pending_invite'); handleInviteToken(t); } }catch(e){}
+  try{ if(SERVER_OK && authToken() && sessionStorage.getItem('pending_guest')) setTimeout(()=>resumePendingGuest(), 600); }catch(e){}
   try{ const mI=sessionStorage.getItem('pending_match');
     if(mI && SERVER_OK && authToken()){ sessionStorage.removeItem('pending_match'); handleMatchLink(+mI); } }catch(e){}
 } }, 1500);
