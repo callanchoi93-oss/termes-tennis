@@ -2016,7 +2016,12 @@ function applyAuthUI(){
       fb.innerHTML = `
         <input id="nlName" placeholder="이름 (실명 또는 닉네임)" maxlength="12" autocomplete="username" onkeydown="if(event.key==='Enter')nameLoginSrv()"
           style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-family:inherit;font-size:15px;background:#fff;margin-bottom:8px;text-align:center;font-weight:700">
-        <button class="btn" onclick="nameLoginSrv()">시작하기</button>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin:2px 2px 10px;cursor:pointer">
+          <input type="checkbox" id="nlAgree" style="margin-top:2px;accent-color:var(--coral)">
+          <span style="font-size:12px;color:var(--gray);font-weight:600;line-height:1.5;text-align:left">(필수)
+            <a href="${API_BASE}/terms" target="_blank" style="color:var(--coral-d)">이용약관</a>과
+            <a href="${API_BASE}/privacy" target="_blank" style="color:var(--coral-d)">개인정보처리방침</a>에 동의합니다</span></label>
+        <button class="btn" onclick="if(!document.getElementById('nlAgree').checked){toast('약관 동의가 필요해요');return;}nameLoginSrv()">시작하기</button>
         <div class="note" style="margin-top:10px;text-align:left">이름으로 바로 시작해요. 카카오 로그인이 열리면 자동으로 전환됩니다.</div>`;
     } else {
       fb.innerHTML = (SERVER_OK && !ready)
@@ -6132,11 +6137,45 @@ const PAY_PENDING = true;
 function canSellDigital(){ return !IS_IOS_APP || IAP_READY; }
 
 /* IAP가 붙으면 여기로 들어온다. 지금은 자리만. */
+/* ── 인앱결제 브리지 ──
+   네이티브 셸(Capacitor/WKWebView)이 아래 둘 중 하나를 제공하면 그대로 동작한다.
+   ① window.MatsuIAP.purchase(productId) — Promise<{receipt}> 반환
+   ② window.webkit.messageHandlers.matsuIAP.postMessage({productId})
+      → 네이티브가 결제 후 window.matsuIAPResult({ok, receipt|error}) 호출
+   결제 확인(전원 버튼 두 번)은 StoreKit이 자동으로 띄운다. */
+const IAP_PRODUCT_MAP = {                                 // 클라 id → 스토어 상품 id
+  cash_25:'matsu_cash_25', cash_45:'matsu_cash_45', cash_90:'matsu_cash_90',
+  cash_200:'matsu_cash_200', cash_600:'matsu_cash_600', cash_1100:'matsu_cash_1100',
+  club_premium_monthly:'matsu_premium_monthly', club_premium_yearly:'matsu_premium_yearly',
+};
+async function iapVerify(receipt){
+  try{
+    const r = await api('/iap/apple', {method:'POST', body: JSON.stringify({receipt})});
+    if(r.premium){ state.premium=true; toast('프리미엄이 활성화됐어요'); }
+    else if(r.cash!=null){ state.cash=r.cash; toast(r.already?'이미 처리된 결제예요':`M캐쉬 ${r.credited}개 충전 완료`); }
+    closeOv(); if(state.view==='home')renderHome(); if(state.view==='me')renderMe();
+  }catch(e){ toast('결제 확인에 실패했어요 · 고객센터에 문의해 주세요'); }
+}
+window.matsuIAPResult = (r)=>{                            // ② 방식 콜백
+  if(!r || !r.ok){ toast(r&&r.error==='cancelled'?'결제를 취소했어요':'결제가 완료되지 않았어요'); return; }
+  iapVerify(r.receipt);
+};
 async function iapPurchase(productId){
-  // 예: await Capacitor.Plugins.Purchases.purchase({productId});
-  //     const receipt = ...;
-  //     await api('/iap/apple', {method:'POST', body: JSON.stringify({receipt})});
-  toast('결제를 준비 중이에요');
+  const pid = IAP_PRODUCT_MAP[productId] || productId;
+  try{
+    if(window.MatsuIAP && window.MatsuIAP.purchase){       // ① Promise 브리지
+      toast('결제 창을 여는 중…');
+      const r = await window.MatsuIAP.purchase(pid);
+      if(r && r.receipt) await iapVerify(r.receipt);
+      return;
+    }
+    if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.matsuIAP){
+      toast('결제 창을 여는 중…');                          // ② postMessage 브리지
+      window.webkit.messageHandlers.matsuIAP.postMessage({productId: pid});
+      return;
+    }
+  }catch(e){ toast('결제가 완료되지 않았어요'); return; }
+  toast('앱 버전에서만 결제할 수 있어요');
 }
 
 /* ═══════════ 캐시 획득 (친구초대 · 광고) ═══════════ */
