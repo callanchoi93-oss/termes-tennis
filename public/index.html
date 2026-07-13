@@ -105,6 +105,7 @@
   .clubrow .ci{width:46px;height:46px;border-radius:13px;background:var(--coral-s);color:var(--coral-d);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .clubrow .info{flex:1}.clubrow .info .n{font-size:16px;font-weight:800}.clubrow .info .m{font-size:12.5px;color:var(--gray);font-weight:500;margin-top:2px}
   .roster{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:4px}
+  .dslice svg{ width:300px !important; height:100% !important; }
   .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{font-size:13px;font-weight:700;padding:7px 12px;border-radius:18px;background:#fff;border:1px solid var(--line);color:var(--ink)}
   .ptag.me{background:var(--coral);color:#fff;border-color:var(--coral)}
@@ -302,6 +303,7 @@
   /* 칩 */
   .chip{ border:1px solid var(--line2); box-shadow:0 1px 2px rgba(60,40,25,.03); }
   .chip.on{ border-color:transparent; box-shadow:0 2px 8px rgba(232,132,90,.20); }
+  .dslice svg{ width:300px !important; height:100% !important; }
   .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{ border:1px solid var(--line2); }
   /* 타이포·여백 정돈 */
@@ -2539,7 +2541,15 @@ async function openMembers(){
 
   let h=`<div class="sh-top"><h3>연명부</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">총 <b>${ms.length}명</b> · 임원 ${cnt('owner')+cnt('officer')} · 정회원 ${cnt('member')} · 게스트 ${cnt('guest')}${restN?` · 휴회 ${restN}`:''}</div>`;
-  if(officer) h+=`<button class="btn ghost sm" style="margin-bottom:10px" onclick="exportRoster()">Excel(.xlsx)로 내려받기</button>`;
+  if(officer){
+    h+=`<button class="btn ghost sm" style="margin-bottom:10px" onclick="exportRoster()">Excel(.xlsx)로 내려받기</button>`;
+    api(`/clubs/${cid}/rest-requests`).then(rs=>{
+      if(rs&&rs.length){ const el=document.getElementById('restReqBtn'); if(el){ el.style.display='block'; el.innerHTML=`휴회·복회 신청 <b style="color:var(--coral-d)">${rs.length}건</b> 확인하기`; } }
+    }).catch(()=>{});
+    h+=`<button id="restReqBtn" class="btn sm" style="margin-bottom:10px;display:none;background:#fff3e0;color:#c47d10" onclick="openRestRequests()"></button>`;
+  } else {
+    h+=`<button class="btn ghost sm" style="margin-bottom:10px" onclick="openRestApply()">휴회·복회 신청하기</button>`;
+  }
 
   const order = {owner:0, officer:1, member:2, guest:3};
   ms.sort((a,b)=>(a.resting?1:0)-(b.resting?1:0) || (order[a.role]??3)-(order[b.role]??3) || a.name.localeCompare(b.name));
@@ -2552,7 +2562,7 @@ async function openMembers(){
       <div class="lb-av" style="width:40px;height:40px;border-radius:50%;background:${role==='owner'?'#e8a33c':role==='officer'?'#1c1b18':m.resting?'#cfc9bd':'#b1a896'};font-size:15px;flex:none;${m.resting?'opacity:.7':''}">${m.name[0]}</div>
       <div class="mrow-x">
         <div class="mrow-n" style="${m.resting?'color:var(--lgray)':''}">${m.name}${me?' <span style="color:var(--coral-d);font-size:11.5px">(나)</span>':''}${m.resting?' <span style="font-size:10.5px;color:var(--lgray)">휴회</span>':''}</div>
-        <div class="mrow-d">${officer&&m.phone?`${m.phone} · `:''}${jdTxt?`가입 ${jdTxt}`:m.grade?`${m.grade}등급`:'레이팅 '+(m.rating||1000)}</div>
+        <div class="mrow-d">${(()=>{ let c=''; try{ const ym=JSON.parse(m.sport_started||'{}')[state.sport]; const yr=careerYearsFrom(ym); if(yr) c=`구력 ${yr}년 · `; }catch(e){} return c; })()}${officer&&m.phone?`${m.phone} · `:''}${jdTxt?`가입 ${jdTxt}`:''}</div>
       </div>
       <span class="rbadge" style="${ROLE_STYLE[role]}">${ROLE_LABEL[role]}</span>
     </div>`;
@@ -2578,34 +2588,131 @@ function openMemberEdit(uid){
   }
   document.getElementById('sheet').innerHTML=h;
 }
+const REST_REASONS=['부상·건강','업무·학업','임신·출산','장기 여행·출장','개인 사정'];
+let RA={type:'rest', reason:REST_REASONS[0]};
+function openRestApply(){
+  RA={type:'rest', reason:REST_REASONS[0]};
+  renderRestApply();
+  document.getElementById('ov').classList.add('on');
+}
+function renderRestApply(){
+  const t=RA.type;
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>휴회·복회 신청</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">임원진이 승인하면 연명부에 반영돼요.</div>
+    <div class="seg" style="margin-bottom:12px"><div class="o ${t==='rest'?'on':''}" onclick="RA.type='rest';renderRestApply()">휴회</div><div class="o ${t==='return'?'on':''}" onclick="RA.type='return';renderRestApply()">복회</div></div>
+    ${t==='rest'?`<div style="display:flex;gap:10px"><div class="fld" style="flex:1"><label>시작일</label><input type="date" id="raStart"></div>
+      <div class="fld" style="flex:1"><label>종료일 (미정이면 비움)</label><input type="date" id="raEnd"></div></div>`
+    :`<div class="fld"><label>복귀 예정일</label><input type="date" id="raStart"></div>`}
+    <div class="fld"><label>사유</label>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:4px">${REST_REASONS.map(r=>`<span class="tchip ${RA.reason===r?'on':''}" onclick="RA.reason='${r}';renderRestApply()">${r}</span>`).join('')}</div></div>
+    <button class="btn" style="margin-top:14px" onclick="submitRestApply()">${t==='rest'?'휴회':'복회'} 신청하기</button>`;
+}
+async function submitRestApply(){
+  const start=(document.getElementById('raStart')||{}).value||'';
+  const end=(document.getElementById('raEnd')||{}).value||'';
+  try{
+    await api(`/clubs/${clubId()}/rest-requests`,{method:'POST',
+      body:JSON.stringify({rtype:RA.type, start, end, reason:RA.reason})});
+    closeOv(); toast('신청했어요 · 임원진 승인을 기다려요');
+  }catch(e){
+    toast(String(e.message).includes('already_pending')?'이미 대기 중인 신청이 있어요':'신청하지 못했어요');
+  }
+}
+/* 임원: 휴회·복회 신청 처리 */
+async function openRestRequests(){
+  let rs=[]; try{ rs=await api(`/clubs/${clubId()}/rest-requests`); }catch(e){ toast('불러오지 못했어요'); return; }
+  let h=`<div class="sh-top"><h3>휴회·복회 신청</h3><div class="cl" role="button" tabindex="0" onclick="openMembers()">‹</div></div>`;
+  if(!rs.length) h+=`<div class="empty" style="padding:36px 20px"><div class="et">대기 중인 신청이 없어요</div></div>`;
+  rs.forEach(r=>{
+    h+=`<div class="card" style="padding:14px 15px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b style="font-size:14.5px">${esc(r.name)} · ${r.rtype==='rest'?'휴회':'복회'}</b>
+        <span style="font-size:11.5px;color:var(--gray);font-weight:700">${esc(r.reason||'')}</span></div>
+      <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:4px">${r.start||'즉시'}${r.end?` ~ ${r.end}`:''}</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn sm" style="flex:1" onclick="decideRest(${r.id},true)">승인</button>
+        <button class="btn sm ghost" style="flex:1" onclick="decideRest(${r.id},false)">거절</button></div></div>`;
+  });
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+async function decideRest(rid, approve){
+  try{ await api(`/clubs/${clubId()}/rest-requests/${rid}/decide`,{method:'POST',body:JSON.stringify({approve})});
+    toast(approve?'처리했어요':'거절했어요'); openRestRequests();
+  }catch(e){ toast('처리에 실패했어요'); }
+}
 async function toggleResting(uid, v){
   try{ await api(`/clubs/${clubId()}/members/${uid}/resting`,{method:'PATCH',body:JSON.stringify({resting:v})});
     toast(v?'휴회 처리했어요':'휴회를 해제했어요'); openMembers();
   }catch(e){ toast('변경에 실패했어요'); }
 }
 
-/* 연명부 Excel 내보내기 (SheetJS 지연 로드, 실패 시 CSV) */
+/* 연명부 Excel 내보내기 — 원본 연명부 서식 재현 (남색 헤더·연하늘 임원행·눈금선 없음) */
 async function exportRoster(){
-  const rows = MB_CACHE.map(m=>{
-    const jd = m.joined_at? new Date(m.joined_at):null;
-    return [ m.resting?'휴회':'', ROLE_LABEL[m.role||'member'], m.name, m.phone||'',
-      jd?`${jd.getFullYear()}-${String(jd.getMonth()+1).padStart(2,'0')}-${String(jd.getDate()).padStart(2,'0')}`:'' ];
-  });
-  const head=[['분류','구분','이름','연락처','가입일']];
   const fname=`${state.activeClub||'클럽'}_연명부_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+  const careerOf=(m)=>{ try{ const yr=careerYearsFrom(JSON.parse(m.sport_started||'{}')[state.sport]); return yr?`${yr}년`:''; }catch(e){ return ''; } };
+  const jdOf=(m)=>{ const d=m.joined_at?new Date(m.joined_at):null;
+    return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:''; };
+  const rows = MB_CACHE.map(m=>({ cls:m.resting?'휴회':'', role:ROLE_LABEL[m.role||'member'],
+    name:m.name, career:careerOf(m), phone:m.phone||'', jd:jdOf(m), officer:['owner','officer'].includes(m.role) }));
   try{
-    if(!window.XLSX){
+    if(!window.XLSX || !window.XLSX.__styled){
       await new Promise((ok,no)=>{ const s=document.createElement('script');
-        s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload=ok; s.onerror=no; document.head.appendChild(s); });
+        s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+        s.onload=()=>{ window.XLSX.__styled=true; ok(); }; s.onerror=no; document.head.appendChild(s); });
     }
-    const ws=XLSX.utils.aoa_to_sheet([[`${state.activeClub||''} 회원 명부`],[],...head,...rows]);
-    ws['!cols']=[{wch:6},{wch:8},{wch:10},{wch:16},{wch:12}];
+    const NAVY='1B3A6B', SKY='D6E8F7', INKC='1B2B3A';
+    const bd={style:'thin',color:{rgb:'B9C6D6'}};
+    const B={top:bd,bottom:bd,left:bd,right:bd};
+    const S_TITLE={font:{bold:true,sz:13,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:NAVY}},alignment:{vertical:'center'}};
+    const S_HEAD ={font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:NAVY}},alignment:{horizontal:'center'},border:B};
+    const S_OFF  ={font:{bold:true,sz:9,color:{rgb:INKC}},fill:{fgColor:{rgb:SKY}},border:B};
+    const S_ROW  ={font:{sz:9,color:{rgb:INKC}},fill:{fgColor:{rgb:'FFFFFF'}},border:B};
+    const S_BLANK={fill:{fgColor:{rgb:'FFFFFF'}}};
+    const C=(v,s)=>({v:v==null?'':v, t:'s', s});
+    const aoa=[];
+    aoa.push([C(`${state.activeClub||''} 회원 명부`,S_TITLE),C('',S_TITLE),C('',S_TITLE),C('',S_TITLE),C('',S_TITLE),C('',S_TITLE)]);
+    aoa.push([C('',S_BLANK)]);
+    const cnt=r=>MB_CACHE.filter(m=>(m.role||'member')===r&&!m.resting).length;
+    aoa.push([C(`총 ${MB_CACHE.length}명 · 임원 ${cnt('owner')+cnt('officer')} · 정회원 ${cnt('member')} · 게스트 ${cnt('guest')} · 휴회 ${MB_CACHE.filter(m=>m.resting).length}`,S_BLANK)]);
+    aoa.push([C('',S_BLANK)]);
+    aoa.push(['분류','구분','이름','구력','연락처','가입일'].map(t=>C(t,S_HEAD)));
+    rows.forEach(r=>{
+      const st=r.officer?S_OFF:S_ROW;
+      aoa.push([C(r.cls,st),C(r.role,st),C(r.name,st),C(r.career,st),C(r.phone,st),C(r.jd,st)]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:6},{wch:9},{wch:11},{wch:7},{wch:16},{wch:12}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}},{s:{r:2,c:0},e:{r:2,c:5}}];
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'회원명단');
+    // 부속 시트: 휴회·복회 이력 / 탈퇴 회원
+    try{
+      const logs = await api(`/clubs/${clubId()}/roster-logs`);
+      const dt=(t)=>{ const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+      const mk=(title, headArr, rowsArr, widths)=>{
+        const a=[[C(title,S_TITLE),...headArr.slice(1).map(()=>C('',S_TITLE))],[C('',S_BLANK)],
+          headArr.map(t=>C(t,S_HEAD)),
+          ...rowsArr.map(r=>r.map(v=>C(v,S_ROW)))];
+        const w=XLSX.utils.aoa_to_sheet(a);
+        w['!cols']=widths; w['!merges']=[{s:{r:0,c:0},e:{r:0,c:headArr.length-1}}];
+        return w;
+      };
+      XLSX.utils.book_append_sheet(wb, mk(`${state.activeClub||''} 휴회·복회 기록`,
+        ['이름','구분','시작일','종료일','사유','처리일'],
+        (logs.rests||[]).map(r=>[r.name, r.rtype==='rest'?'휴회':'복회', r.start||'', r.end||'', r.reason||'', dt(r.created_at)]),
+        [{wch:10},{wch:6},{wch:12},{wch:12},{wch:14},{wch:12}]), '휴회복회');
+      XLSX.utils.book_append_sheet(wb, mk(`${state.activeClub||''} 탈퇴 회원`,
+        ['이름','구분','탈퇴일'],
+        (logs.exits||[]).map(e=>[e.name, e.reason||'탈퇴', dt(e.left_at)]),
+        [{wch:10},{wch:10},{wch:12}]), '탈퇴회원');
+    }catch(e){}
     XLSX.writeFile(wb, fname+'.xlsx');
     toast('연명부 Excel을 내려받았어요');
   }catch(e){
-    const csv='\ufeff'+[...head,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const head=[['분류','구분','이름','구력','연락처','가입일']];
+    const body=rows.map(r=>[r.cls,r.role,r.name,r.career,r.phone,r.jd]);
+    const csv='\ufeff'+[...head,...body].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=fname+'.csv'; a.click();
     toast('CSV로 내려받았어요 (Excel에서 열려요)');
@@ -4464,33 +4571,7 @@ function renderTeamLeague(){
   h+=`<button class="btn felt" onclick="go('bracket')">이번 주 매치 보기 →</button>`;
   return h;
 }
-function renderRecordLeague(){
-  const sp=SP(); const run=sp.id==='running';
-  let h=`<h2 class="t">${sp.n} 리그</h2><p class="sub">${state.leagueGender} · 기록으로 겨루는 개인 랭킹 리그예요.</p>`;
-  if(SERVER_OK && !LB_POOL.length) return h + leagueEmpty(`${sp.n} 리그`);
-  h+=genderSeg();
-  h+=`<div class="card" style="background:linear-gradient(135deg,#eef7d6,#e3f0c2);border:none"><div style="font-size:14px;font-weight:800;color:#5f7416">${run?'페이스 등급 · 실버':'기록 등급 · 실버'} · 지역 12위</div><div style="font-size:12.5px;color:#6f8718;font-weight:600;margin-top:4px">${run?'1km 평균 5:10':'50m 자유형 34.5초'} · 이번 달 개인 베스트 경신 🎉</div></div>`;
-  h+=`<div class="card" style="background:var(--purple);border:none"><div style="font-size:13px;font-weight:800;color:#4a3f6b">이번 주 리그 챌린지</div><div style="font-size:19px;font-weight:900;margin-top:4px">${run?'주간 누적 30km':'이번 달 5km 완영'}</div><div style="height:8px;border-radius:5px;background:rgba(255,255,255,.5);margin:11px 0 6px;overflow:hidden"><div style="height:100%;width:62%;background:var(--coral)"></div></div><div style="font-size:12.5px;font-weight:700;color:#4a3f6b">${run?'18.6/30km':'3.1/5km'} · 완주 시 랭킹 포인트 +50</div></div>`;
-  const recs=run?[['김도현','4:38'],['이준호','4:52'],['정유나','5:01'],['곽주영','5:10',1],['박서연','5:25']]:[['김도현','29.8'],['정유나','31.2'],['오세훈','33.0'],['곽주영','34.5',1],['강하늘','37.0']];
-  h+=`<div class="card"><div class="ch" style="font-size:15px">우리 지역 ${run?'페이스':'50m 자유형'} 랭킹</div>`;
-  recs.forEach((r,i)=>{ const me=r[2]; h+=`<div style="display:flex;align-items:center;gap:11px;padding:10px 2px;border-top:${i?'1px solid #f0efec':'none'};${me?'background:var(--coral-s);border-radius:10px;padding:10px 8px':''}"><b style="width:22px;text-align:center;color:${i===0?'#e0a82e':'var(--lgray)'}">${i+1}</b>${pavatar(r[0],32)}<div style="flex:1;font-weight:${me?'800':'700'};font-size:14px">${r[0]}${me?' (나)':''}</div><b style="color:var(--coral-d);font-size:15px">${r[1]}<span style="font-size:11px;color:var(--gray);font-weight:700">${run?' /km':' 초'}</span></b></div>`; });
-  h+=`</div><button class="btn felt" onclick="go('bracket')">기록 입력하러 가기 →</button>`;
-  return h;
-}
-/* ═══════════ 리그 시작 전 안내 (예시 슬라이드) ═══════════
-   아직 리그가 열리지 않았는데 가짜 순위표를 보여주면 안 된다.
-   대신 "열리면 이렇게 보인다" 를 예시로 넘겨 보게 한다. */
-const LEAGUE_SLIDES = [
-  { t:'순위표', d:'승점·득실로 자동 정렬돼요.',
-    b:`<div class="lgx-row on"><b>1</b><span>우리 클럽</span><i>4승 2패</i><em>13</em></div>
-       <div class="lgx-row"><b>2</b><span>이웃 클럽</span><i>3승 3패</i><em>11</em></div>
-       <div class="lgx-row"><b>3</b><span>옆 동네 클럽</span><i>2승 4패</i><em>7</em></div>` },
-  { t:'승격과 강등', d:'시즌이 끝나면 1위는 위로, 최하위는 아래로.',
-    b:`<div class="lgx-updown"><div class="up">▲ 1위 승격</div><div class="down">최하위 강등 ▼</div></div>
-       <div class="lgx-note">디비전이 나뉘어 비슷한 실력끼리 겨뤄요.</div>` },
-  { t:'내 기여', d:'출전·기록·수상이 시즌 단위로 쌓여요.',
-    b:`<div class="lgx-stats"><div><b>6</b><span>출전</span></div><div><b>4골 3도움</b><span>기록</span></div><div><b>MVP 2</b><span>수상</span></div></div>` },
-];
+function _renderRecordLeagueLegacy_removed(){}
 function leagueSlides(){
   const i = state._lgSlide || 0;
   const s0 = LEAGUE_SLIDES[i];
@@ -4565,12 +4646,12 @@ function renderLeague(){
       h+=`</div>`;
       h+=`<div class="note" style="text-align:left">순위를 올리려면 <b>매치 탭</b>에서 실력이 비슷한 상대에게 도전하거나, 클럽 대진 결과를 확정하세요.</div>`;
     }
-    document.getElementById('s-league').innerHTML=h;
+    document.getElementById('s-league').innerHTML=h+diaryCard(); ensureRecs();
     return;
   }
   const cat=SP().cat;
-  if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague(); return; }
-  if(cat==='record'){ document.getElementById('s-league').innerHTML=renderRecordLeague(); return; }
+  if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague()+diaryCard(); ensureRecs(); return; }
+  if(cat==='record'){ renderRecordLeague(); return; }
   const t=myTier();
   const ltab=state.leagueTab;
   let h=`<h2 class="t">리그</h2><p class="sub">개인 레이팅 리그와 클럽 단체전.</p>
@@ -4727,8 +4808,8 @@ function renderClub(){
       h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`; }
     // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
-      if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS);
-      const evList = (SERVER_OK && clubId()) ? SRV_EVENTS : c2.events;
+      if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
+      const evList = ((SERVER_OK && clubId()) ? SRV_EVENTS : (c2&&c2.events)) || [];
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>이번 주 일정</span>${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#ffffff;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
       if(!evList.length){ h+=`<div class="note" style="text-align:left">아직 등록된 모임이 없어요.${off?' 일정을 만들어 회원을 모아보세요.':' 임원진이 일정을 올리면 여기서 참여할 수 있어요.'}</div>`; }
       else {
@@ -8138,7 +8219,7 @@ async function renderRecordLeague(){
       clubId()?api(`/clubs/${clubId()}/records/board?sport=${sp.id}`).catch(()=>null):Promise.resolve(null)
     ]).then(([m,b])=>{ REC_MINE=m; REC_BOARD=b; REC_TS=Date.now(); if(state.view==='league') renderRecordLeague(); });
     h+=skelCards(3);
-    document.getElementById('view').innerHTML=h; return;
+    document.getElementById('s-league').innerHTML=h; return;
   }
   const month=new Date().toISOString().slice(0,7);
   const mine=(REC_MINE||[]).filter(r=>r.ymd.startsWith(month));
@@ -8152,6 +8233,7 @@ async function renderRecordLeague(){
       <div style="flex:1;border-left:1px solid rgba(255,255,255,.25)"><div style="font-size:22px;font-weight:900">${mine.length}</div><div style="font-size:11px;opacity:.85;font-weight:700">${sp.unit} 횟수</div></div>
       <div style="flex:1;border-left:1px solid rgba(255,255,255,.25)"><div style="font-size:22px;font-weight:900">${fmtPace(totS,totM,sp.id)}</div><div style="font-size:11px;opacity:.85;font-weight:700">평균 페이스</div></div></div></div>
   <button class="btn" style="margin:2px 0 14px" onclick="openAddRecord()">＋ 오늘 기록 추가</button>`;
+  h+=recCalendarCard();
   if(allBest) h+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
     <div><div style="font-size:12px;color:var(--gray);font-weight:700">개인 최고 페이스</div>
       <div style="font-size:16px;font-weight:900;margin-top:2px">${fmtPace(allBest.secs,allBest.dist_m,sp.id)}</div></div>
@@ -8257,48 +8339,388 @@ async function renderRecordLeague(){
         <span onclick="delRecord(${r.id})" style="color:var(--lgray);font-weight:900;cursor:pointer;padding:2px 4px">×</span></div>`; });
     h+=`</div>`;
   }
-  document.getElementById('view').innerHTML=h;
+  document.getElementById('s-league').innerHTML=h;
 }
 let REC_TYPE='train', REC_STROKE='자유형', PB_STROKE='자유형';
 function renderStrokeChips(){
   document.querySelectorAll('#strokeChips .tchip').forEach(el=>{
     el.classList.toggle('on', el.dataset.s===REC_STROKE); });
 }
-function openAddRecord(presetM, presetLabel){
-  const sp=SP(); const today=new Date().toISOString().slice(0,10);
-  const dl = sp.id==='swimming' ? '거리 (m)' : '거리 (km)';
-  const dv = presetM ? (sp.id==='swimming'?presetM:(presetM/1000)) : '';
-  REC_TYPE = presetLabel ? 'race' : 'train';            // PB 보드에서 오면 대회 기본
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>기록 추가 · ${sp.n}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div style="display:flex;gap:7px;margin-bottom:12px">
-      <span id="rtTrain" onclick="setRecType('train')" style="flex:1;text-align:center;font-size:13px;font-weight:800;border-radius:12px;padding:10px;cursor:pointer;${REC_TYPE==='train'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">연습</span>
-      <span id="rtRace" onclick="setRecType('race')" style="flex:1;text-align:center;font-size:13px;font-weight:800;border-radius:12px;padding:10px;cursor:pointer;${REC_TYPE==='race'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">대회</span></div>
-    <div class="fld"><label>날짜</label><input id="rcYmd" type="date" value="${today}" max="${today}" style="font-family:inherit"></div>
-    ${sp.id==='swimming'?`<div class="fld" style="margin-bottom:8px"><label>영법</label></div>
-    <div id="strokeChips" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px">${['자유형','배영','평영','접영','혼영'].map(s=>`<span onclick="REC_STROKE='${s}';renderStrokeChips()" class="tchip ${REC_STROKE===s?'on':''}" data-s="${s}">${s}</span>`).join('')}</div>`:''}
-    <div style="display:flex;gap:10px"><div class="fld" style="flex:1"><label>${dl}</label><input id="rcDist" type="number" inputmode="decimal" placeholder="${sp.id==='swimming'?'1000':'5.0'}" value="${dv}"></div>
-    <div class="fld" style="flex:1"><label>시간 (분)</label><input id="rcMin" type="number" inputmode="decimal" placeholder="30"></div></div>
-    <div class="fld"><label>메모 (선택)</label><input id="rcNote" placeholder="${presetLabel?'예) OO마라톤 '+presetLabel:(sp.id==='swimming'?'예) 자유형 위주':'예) 한강 코스')}" maxlength="30"></div>
-    <button class="btn" onclick="saveRecord()">기록 저장</button>`;
+/* ── 다이어리 캘린더: 개인·클럽 기록을 달력으로 (메모·사진 포함) ── */
+let REC_CAL_YM = new Date().toISOString().slice(0,7);
+const MONTH_PAL=['#c9dff2','#e3d1f2','#f2cfc0','#cfe3b8','#f7d98c','#bfe0da','#cde3a8','#f2e8c9','#cbc5f0','#f3c9b8','#d9c9f2','#e8e0c9'];
+const ENTRY_PAL=['#8c6fd6','#e8734a','#5f9e6e','#8f5a62'];
+function ensureRecs(){
+  if(!SERVER_OK || !authToken()) return;
+  if(REC_MINE!==null && Date.now()-REC_TS<60e3) return;
+  REC_MINE=REC_MINE||[]; REC_TS=Date.now();
+  api(`/records?sport=${SP().id}`).then(m=>{ REC_MINE=m||[]; REC_TS=Date.now(); if(state.view==='league') renderLeague(); }).catch(()=>{});
+}
+function diaryCard(){ return recCalendarCard(); }
+function recCalMove(d){
+  const [y,m]=REC_CAL_YM.split('-').map(Number);
+  const nd=new Date(y, m-1+d, 1);
+  REC_CAL_YM=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}`;
+  renderRecordLeague();
+}
+let DIARY_FILTER='all', DIARY_MODE='month', DIARY_YEAR=new Date().getFullYear();
+function diaryYearMove(d){ DIARY_YEAR+=d; renderLeague(); }
+function diaryOpenMonth(ym){ REC_CAL_YM=ym; DIARY_MODE='month'; renderLeague(); }
+function recYearCard(){
+  const sp=SP(), Y=DIARY_YEAR;
+  const byDay={};
+  (REC_MINE||[]).forEach(r=>{ if(r.ymd&&r.ymd.startsWith(Y+'-')) byDay[r.ymd]=(byDay[r.ymd]||0)+1; });
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 4px 12px">
+    <b style="font-size:15px;font-weight:900">${sp.n} 다이어리 · 연간</b>
+    <div style="display:flex;align-items:center;gap:12px;font-weight:900">
+      <span onclick="diaryYearMove(-1)" style="cursor:pointer;padding:2px 8px">‹</span>
+      <span style="font-size:15px;letter-spacing:.04em">${Y}</span>
+      <span onclick="diaryYearMove(1)" style="cursor:pointer;padding:2px 8px">›</span>
+      <span onclick="DIARY_MODE='month';renderLeague()" style="font-size:12px;font-weight:800;border:1.5px solid #d8d4cb;border-radius:16px;padding:7px 12px;cursor:pointer;background:#fff">월간 보기</span></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`;
+  const monKo=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  for(let m=1;m<=12;m++){
+    const ym=`${Y}-${String(m).padStart(2,'0')}`;
+    const pal=MONTH_PAL[(m-1)%12];
+    const first=new Date(Y,m-1,1), days=new Date(Y,m,0).getDate();
+    const cnt=Object.keys(byDay).filter(d=>d.startsWith(ym)).length;
+    let mini='';
+    for(let i=0;i<first.getDay();i++) mini+='<span></span>';
+    for(let d=1;d<=days;d++){
+      const ymd=`${ym}-${String(d).padStart(2,'0')}`;
+      const has=byDay[ymd];
+      mini+=`<span style="font-size:7.5px;font-weight:${has?'900':'600'};text-align:center;line-height:1.6;${has?'color:#cf5418':'color:rgba(28,27,24,.75)'}">${d}</span>`;
+    }
+    h+=`<div onclick="diaryOpenMonth('${ym}')" style="background:${pal};border-radius:18px;padding:12px 11px;cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b style="font-size:12.5px;font-weight:900">${monKo[m-1]}</b>
+        ${cnt?`<span style="font-size:9.5px;font-weight:900;background:rgba(255,255,255,.7);border-radius:8px;padding:2px 7px;color:#cf5418">${cnt}일</span>`:''}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr)">${mini}</div>
+    </div>`;
+  }
+  h+=`</div><div class="note" style="text-align:left;margin-top:10px">모든 운동 기록은 자동 저장돼요 — 월을 탭하면 그달 기록으로, 날짜를 탭하면 그날 일지로 들어가요.</div>`;
+  return h;
+}
+const DAYCARD_PAL=[['#2f2f2f','#fff'],['#e0614a','#fff'],['#a9a4ea','#1c1b18'],['#8f4a52','#fff'],['#cde3a8','#1c1b18'],['#20364e','#fff']];
+function recCalendarCard(){
+  if(DIARY_MODE==='year') return recYearCard();
+  const sp=SP(), isRec=sp.cat==='record';
+  const [y,m]=REC_CAL_YM.split('-').map(Number);
+  const pal=MONTH_PAL[(m-1)%12];
+  const first=new Date(y,m-1,1), days=new Date(y,m,0).getDate();
+  const monName=(mm)=>['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][((mm-1)%12+12)%12];
+  const byDay={};
+  (REC_MINE||[]).forEach(r=>{ if(r.ymd&&r.ymd.startsWith(REC_CAL_YM)){ (byDay[r.ymd]=byDay[r.ymd]||[]).push(r); } });
+  const today=new Date().toISOString().slice(0,10);
+
+  /* ── 필터 칩 (레퍼런스 1·2화면 상단) ── */
+  const chip=(id,label)=>`<span onclick="DIARY_FILTER='${id}';renderLeague()" style="font-size:12.5px;font-weight:800;border-radius:20px;padding:9px 16px;cursor:pointer;
+    ${DIARY_FILTER===id?'background:#1c1b18;color:#fff':'border:1.5px solid #d8d4cb;color:#1c1b18;background:#fff'}">${label}</span>`;
+  let h=`<div style="display:flex;gap:8px;align-items:center;margin:14px 2px 12px">
+    ${chip('today','오늘')}${chip('week','이번 주')}${chip('all','전체')}
+    <span onclick="DIARY_YEAR=+REC_CAL_YM.slice(0,4);DIARY_MODE='year';renderLeague()" style="font-size:12px;font-weight:800;border:1.5px solid #d8d4cb;border-radius:20px;padding:9px 13px;cursor:pointer;background:#fff">연간</span>
+    <span onclick="openAddRecord(null,null,'${today}')" style="margin-left:auto;width:38px;height:38px;border:1.5px solid #d8d4cb;border-radius:50%;display:grid;place-items:center;font-size:19px;font-weight:800;cursor:pointer;background:#fff">＋</span></div>`;
+
+  /* ── 미니 달력 (레퍼런스 3화면: 숫자만 + 오늘 채운 원) ── */
+  let cells='';
+  for(let i=0;i<first.getDay();i++) cells+='<div></div>';
+  for(let d=1;d<=days;d++){
+    const ymd=`${REC_CAL_YM}-${String(d).padStart(2,'0')}`;
+    const rs=byDay[ymd]||[];
+    const isToday=ymd===today;
+    cells+=`<div onclick="openDayRec('${ymd}')" style="height:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer">
+      <span style="width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:${rs.length||isToday?'900':'700'};
+        ${isToday?'background:#1c1b18;color:#fff':'color:#1c1b18'}">${d}</span>
+      <span style="width:4px;height:4px;border-radius:50%;margin-top:1px;background:${rs.length?'#cf5418':'transparent'}"></span>
+    </div>`;
+  }
+  h+=`<div class="card" style="padding:16px 14px 10px;background:${pal};border:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <b style="font-size:14.5px;font-weight:900">${sp.n} 다이어리</b>
+      <div style="display:flex;align-items:center;gap:9px;font-weight:900">
+        <span onclick="recCalMove(-1)" style="cursor:pointer;font-size:11px;color:rgba(28,27,24,.4);letter-spacing:.08em">${monName(m-1)}</span>
+        <span onclick="recCalMove(-1)" style="cursor:pointer;padding:0 2px">‹</span>
+        <span style="font-size:14px;letter-spacing:.08em">${monName(m)}</span>
+        <span onclick="recCalMove(1)" style="cursor:pointer;padding:0 2px">›</span>
+        <span onclick="recCalMove(1)" style="cursor:pointer;font-size:11px;color:rgba(28,27,24,.4);letter-spacing:.08em">${monName(m+1)}</span></div></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);font-size:9.5px;color:rgba(28,27,24,.5);font-weight:800;text-align:center;margin-bottom:2px">
+      <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr)">${cells}</div>
+  </div>`;
+
+  /* ── 요일별 컬러 데이 카드 (레퍼런스 2화면) ── */
+  const DOW_EN=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  let list=Object.keys(byDay);
+  if(!list.includes(today) && today.startsWith(REC_CAL_YM)) list.push(today);
+  list.sort().reverse();
+  if(DIARY_FILTER==='today') list=list.filter(d=>d===today);
+  if(DIARY_FILTER==='week'){
+    const now=new Date(today); const ws=new Date(now); ws.setDate(now.getDate()-now.getDay());
+    const we=new Date(ws); we.setDate(ws.getDate()+6);
+    const f=d=>{const x=new Date(d);return x>=ws&&x<=we;};
+    list=list.filter(f);
+  }
+  list.slice(0,14).forEach((ymd,idx)=>{
+    const rs=byDay[ymd]||[];
+    const d=new Date(ymd);
+    const [bg,fg]=DAYCARD_PAL[idx%DAYCARD_PAL.length];
+    const chipBg = fg==='#fff' ? 'rgba(255,255,255,.22)' : 'rgba(28,27,24,.10)';
+    const entries = rs.length
+      ? rs.map(r=>`<span style="font-size:10.5px;font-weight:800;background:${chipBg};border-radius:8px;padding:5px 9px;white-space:nowrap">${r.rtype==='race'?(isRec?'대회':'경기'):'연습'}${isRec&&r.dist_m>1?` ${fmtDist(r.dist_m)}`:''}${r.photo?' · 사진':''}</span>`).join('')
+      : `<span style="font-size:11px;font-weight:700;opacity:.65">아직 기록이 없어요 · ＋로 남겨보세요</span>`;
+    h+=`<div onclick="openDayRec('${ymd}')" style="background:${bg};color:${fg};border-radius:20px;padding:14px 15px;margin-bottom:9px;display:flex;align-items:center;gap:14px;cursor:pointer">
+      <div style="text-align:center;flex:none;width:52px">
+        <div style="font-size:11px;font-weight:900;letter-spacing:.06em;opacity:.8">${DOW_EN[d.getDay()]}</div>
+        <div style="font-size:26px;font-weight:900;line-height:1.05">${d.getDate()}</div>
+        <div style="font-size:10px;font-weight:900;letter-spacing:.06em;opacity:.8">${monName(m)}</div></div>
+      <div style="width:1.5px;align-self:stretch;background:${fg==='#fff'?'rgba(255,255,255,.28)':'rgba(28,27,24,.15)'};flex:none"></div>
+      <div style="flex:1;display:flex;flex-wrap:wrap;gap:6px;min-width:0">${entries}</div>
+      <span onclick="event.stopPropagation();openAddRecord(null,null,'${ymd}')" style="flex:none;width:30px;height:30px;border-radius:50%;border:1.7px solid ${fg==='#fff'?'rgba(255,255,255,.55)':'rgba(28,27,24,.35)'};display:grid;place-items:center;font-size:16px;font-weight:800">＋</span>
+    </div>`;
+  });
+  if(!list.length) h+=`<div class="note" style="text-align:left">이 ${DIARY_FILTER==='today'?'날':'기간'}엔 기록이 없어요 · ＋ 버튼으로 남겨보세요</div>`;
+  return h;
+}
+function fmtDetail(spid, dj){
+  let d=null; try{ d=typeof dj==='string'?JSON.parse(dj):dj; }catch(e){}
+  if(!d) return '';
+  if(spid==='tennis'||spid==='badminton'){
+    const parts=[d.fmt, d.games?`${d.games}게임`:null, (d.win!=null||d.lose!=null)?`${d.win||0}승 ${d.lose||0}패`:null, d.partner?`with ${d.partner}`:null];
+    return parts.filter(Boolean).join(' · ');
+  }
+  if(spid==='soccer') return [d.pos, d.mins?`${d.mins}분`:null, d.goals>0?`${d.goals}득점`:null, d.assists>0?`${d.assists}도움`:null].filter(Boolean).join(' · ');
+  if(spid==='basketball') return [d.pts!=null?`${d.pts}점`:null, d.reb>0?`${d.reb}리바`:null, d.ast>0?`${d.ast}어시`:null, d.qtr?`${d.qtr}쿼터`:null].filter(Boolean).join(' · ');
+  if(spid==='baseball') return [d.pos, d.ab?`${d.hits||0}/${d.ab}`:null, d.rbi>0?`${d.rbi}타점`:null].filter(Boolean).join(' · ');
+  if(spid==='running') return d.course||'';
+  if(spid==='swimming') return d.sets||'';
+  return '';
+}
+function openDayRec(ymd){
+  const sp=SP(), isRec=sp.cat==='record';
+  const rs=(REC_MINE||[]).filter(r=>r.ymd===ymd);
+  const [yy,mm,dd]=ymd.split('-');
+  const dow=['일','월','화','수','목','금','토'][new Date(ymd).getDay()];
+  let h=`<div class="sh-top"><h3>${+mm}월 ${+dd}일 (${dow})</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="border-radius:16px;overflow:hidden;margin:2px 0 12px;line-height:0">${DIARY_ART[sp.id]||''}</div>`;
+  if(!rs.length){
+    const ex = isRec
+      ? (sp.id==='swimming'?'자유형 1,000m 25분 · 3스트로크 호흡 유지':'한강 5km 32분 · 후반 페이스 유지 성공')
+      : (sp.cat==='team'?'자체전 2쿼터 출전 · 수비 로테이션 안정적':'복식 3게임 2승 1패 · 백핸드 리턴 좋았음');
+    h+=`<div class="empty" style="padding:26px 20px"><div class="ei">${sp.ic}</div><div class="et">이 날 기록이 없어요</div>
+      <div class="es">예) ${ex}</div></div>`;
+  }
+  rs.forEach((r,idx)=>{
+    const bg=ENTRY_PAL[idx%ENTRY_PAL.length];
+    h+=`<div class="card" style="padding:14px 15px;background:${bg};border:none;color:#fff">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="font-size:12px;font-weight:900;background:rgba(255,255,255,.25);border-radius:9px;padding:4px 9px">${r.rtype==='race'?(isRec?'대회':'경기'):'연습'}</span>
+        ${isRec&&r.dist_m>0?`<b style="font-size:15px">${fmtDist(r.dist_m)}</b>
+          <span style="font-size:12px;opacity:.85;font-weight:700">${r.secs?fmtPace(r.secs,r.dist_m,sp.id):''}${r.stroke?` · ${r.stroke}`:''}${fmtDetail(sp.id,r.detail)?` · ${fmtDetail(sp.id,r.detail)}`:''}</span>`
+        :`<b style="font-size:14px">${fmtDetail(sp.id, r.detail)||sp.n+' 일지'}</b>`}
+        <span onclick="delRecord(${r.id});setTimeout(()=>openDayRec('${ymd}'),400)" style="margin-left:auto;font-weight:900;cursor:pointer;padding:2px 6px;opacity:.7">×</span></div>
+      ${r.note?`<div style="font-size:13.5px;font-weight:600;margin-top:9px;line-height:1.55">${esc(r.note)}</div>`:''}
+      ${r.photo?`<img src="${r.photo}" style="width:100%;border-radius:12px;margin-top:10px;display:block">`:''}
+    </div>`;
+  });
+  h+=`<button class="btn" style="margin-top:6px" onclick="openAddRecord(null,null,'${ymd}')">＋ 이 날 ${isRec?'기록':'일지'} 추가</button>`;
+  document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
 }
-function setRecType(t){
-  REC_TYPE=t;
-  const a=document.getElementById('rtTrain'), b=document.getElementById('rtRace');
-  if(a&&b){
-    const on='background:var(--ink);color:#fff;border:none', off='background:none;border:1.5px solid var(--line);color:var(--gray)';
-    a.style.cssText+=';'+(t==='train'?on:off); b.style.cssText+=';'+(t==='race'?on:off);
-    const note=document.getElementById('rcNote');
-    if(note && !note.value) note.placeholder = t==='race' ? '예) OO마라톤' : (SP().id==='swimming'?'예) 자유형 위주':'예) 한강 코스');
-  }
+let REC_PHOTO=null;
+function recPickPhoto(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const cv=document.createElement('canvas');
+      const s=Math.min(1, 900/Math.max(img.width,img.height));
+      cv.width=img.width*s; cv.height=img.height*s;
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      REC_PHOTO=cv.toDataURL('image/jpeg',0.72);
+      const el=document.getElementById('rcPhotoPrev');
+      if(el){ el.src=REC_PHOTO; el.style.display='block'; }
+    };
+    img.src=rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+/* 종목별 상세 입력 필드 정의 — 종목마다 완전히 다른 작성 항목 */
+const DIARY_ART = {
+  tennis: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#c96a4e"/>
+    <rect x="90" y="34" width="720" height="192" fill="#7fae74"/>
+    <g fill="none" stroke="#fff" stroke-width="4">
+      <rect x="90" y="34" width="720" height="192"/>
+      <line x1="90" y1="62" x2="810" y2="62"/><line x1="90" y1="198" x2="810" y2="198"/>
+      <line x1="228" y1="34" x2="228" y2="226"/><line x1="672" y1="34" x2="672" y2="226"/>
+      <line x1="228" y1="130" x2="672" y2="130"/></g>
+    <rect x="446" y="22" width="8" height="216" fill="#2f4a3a"/>
+    <rect x="440" y="16" width="20" height="12" rx="3" fill="#2f4a3a"/><rect x="440" y="232" width="20" height="12" rx="3" fill="#2f4a3a"/>
+  </svg>`,
+  badminton: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#3f57b5"/>
+    <rect x="120" y="30" width="660" height="200" fill="#5fae6e"/>
+    <g fill="none" stroke="#fff" stroke-width="3.5">
+      <rect x="120" y="30" width="660" height="200"/>
+      <line x1="120" y1="52" x2="780" y2="52"/><line x1="120" y1="208" x2="780" y2="208"/>
+      <line x1="330" y1="30" x2="330" y2="230"/><line x1="570" y1="30" x2="570" y2="230"/>
+      <line x1="120" y1="130" x2="330" y2="130"/><line x1="570" y1="130" x2="780" y2="130"/></g>
+    <rect x="447" y="18" width="6" height="224" fill="#22324f"/>
+  </svg>`,
+  soccer: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#6da55b"/>
+    <g fill="#77b063">${[0,1,2,3,4].map(i=>`<rect x="${90+i*144}" y="0" width="72" height="260"/>`).join('')}</g>
+    <g fill="none" stroke="#fff" stroke-width="4">
+      <rect x="60" y="26" width="780" height="208"/>
+      <line x1="450" y1="26" x2="450" y2="234"/><circle cx="450" cy="130" r="46"/>
+      <rect x="60" y="72" width="92" height="116"/><rect x="748" y="72" width="92" height="116"/>
+      <rect x="60" y="102" width="38" height="56"/><rect x="802" y="102" width="38" height="56"/></g>
+    <circle cx="450" cy="130" r="5" fill="#fff"/>
+  </svg>`,
+  basketball: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#4a6fd0"/>
+    <g fill="none" stroke="#fff" stroke-width="4">
+      <rect x="60" y="26" width="780" height="208"/>
+      <line x1="450" y1="26" x2="450" y2="234"/><circle cx="450" cy="130" r="42"/></g>
+    <rect x="60" y="90" width="110" height="80" fill="#d05045"/>
+    <rect x="730" y="90" width="110" height="80" fill="#d05045"/>
+    <g fill="none" stroke="#fff" stroke-width="4">
+      <rect x="60" y="90" width="110" height="80"/><rect x="730" y="90" width="110" height="80"/>
+      <path d="M 60 52 Q 260 130 60 208"/><path d="M 840 52 Q 640 130 840 208"/>
+      <circle cx="170" cy="130" r="26"/><circle cx="730" cy="130" r="26"/></g>
+  </svg>`,
+  baseball: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#6da55b"/>
+    <g fill="#77b063">${[0,1,2,3,4,5].map(i=>`<rect x="${i*150}" y="0" width="75" height="260"/>`).join('')}</g>
+    <path d="M 450 250 L 250 130 L 450 10 L 650 130 Z" fill="#d9a866"/>
+    <path d="M 450 218 L 305 130 L 450 42 L 595 130 Z" fill="#77b063"/>
+    <g fill="none" stroke="#fff" stroke-width="5"><path d="M 450 250 L 250 130 L 450 10 L 650 130 Z"/></g>
+    <circle cx="450" cy="130" r="24" fill="#d9a866"/>
+    <g fill="#fff"><rect x="440" y="240" width="20" height="12"/><rect x="244" y="124" width="14" height="14"/>
+      <rect x="642" y="124" width="14" height="14"/><rect x="443" y="8" width="14" height="14"/></g>
+  </svg>`,
+  running: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#b0503f"/>
+    <rect x="150" y="70" width="750" height="120" rx="60" fill="#6da55b"/>
+    <g fill="none" stroke="#fff" stroke-width="3">
+      ${[0,1,2,3,4].map(i=>`<rect x="${44+i*26}" y="${18+i*26}" width="${900-(44+i*26)+400}" height="${260-2*(18+i*26)}" rx="${112-i*26}"/>`).join('')}
+    </g>
+    <line x1="700" y1="18" x2="700" y2="118" stroke="#fff" stroke-width="5" stroke-dasharray="10 8"/>
+  </svg>`,
+  swimming: `<svg viewBox="0 0 900 260" style="width:100%;display:block">
+    <rect width="900" height="260" fill="#5fa8d6"/>
+    <g stroke="#eef6fb" stroke-width="4" stroke-dasharray="16 12">
+      ${[1,2,3,4].map(i=>`<line x1="0" y1="${i*52}" x2="900" y2="${i*52}"/>`).join('')}
+    </g>
+    <g fill="#2f6a94">${[0,1,2,3,4].map(i=>`<rect x="0" y="${i*52+20}" width="46" height="12" rx="6"/><rect x="854" y="${i*52+20}" width="46" height="12" rx="6"/>`).join('')}</g>
+    <path d="M 300 96 q 24 -18 48 0 q 24 18 48 0" fill="none" stroke="#eef6fb" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 520 174 q 24 -18 48 0 q 24 18 48 0" fill="none" stroke="#eef6fb" stroke-width="6" stroke-linecap="round"/>
+  </svg>`,
+};
+const SPORT_FORMS = {
+  tennis:     [{id:'fmt',t:'chips',l:'형식',opts:['단식','복식']},{id:'games',t:'num',l:'게임 수',ph:'3'},{id:'win',t:'num',l:'승',ph:'2'},{id:'lose',t:'num',l:'패',ph:'1'},{id:'partner',t:'text',l:'파트너 (선택)',ph:'이름'}],
+  badminton:  [{id:'fmt',t:'chips',l:'형식',opts:['단식','복식','혼복']},{id:'games',t:'num',l:'게임 수',ph:'4'},{id:'win',t:'num',l:'승',ph:'3'},{id:'lose',t:'num',l:'패',ph:'1'}],
+  soccer:     [{id:'pos',t:'chips',l:'포지션',opts:['FW','MF','DF','GK']},{id:'mins',t:'num',l:'출전 시간 (분)',ph:'40'},{id:'goals',t:'num',l:'득점',ph:'0'},{id:'assists',t:'num',l:'도움',ph:'0'}],
+  basketball: [{id:'pts',t:'num',l:'득점',ph:'12'},{id:'reb',t:'num',l:'리바운드',ph:'5'},{id:'ast',t:'num',l:'어시스트',ph:'3'},{id:'qtr',t:'num',l:'출전 쿼터',ph:'2'}],
+  baseball:   [{id:'pos',t:'chips',l:'포지션',opts:['투수','포수','내야','외야','지명']},{id:'ab',t:'num',l:'타수',ph:'3'},{id:'hits',t:'num',l:'안타',ph:'2'},{id:'rbi',t:'num',l:'타점',ph:'1'}],
+  running:    [{id:'course',t:'text',l:'코스 (선택)',ph:'한강 반포 코스'}],
+  swimming:   [{id:'sets',t:'text',l:'세트 구성 (선택)',ph:'100m × 10, 휴식 20초'}],
+};
+const DIARY_EXAMPLES = {
+  tennis:['복식 3게임 2승 1패. 백핸드 리턴이 안정적이었고 발리 마무리는 연습 필요','서브 토스 교정 30분. 세컨서브 성공률이 눈에 띄게 올라감','랠리를 길게 가져가는 경기 운영이 좋았음. 후반 체력 보완이 과제'],
+  badminton:['혼복 4게임. 드롭 위주 운영이 상대 전위에 잘 먹혔음','클리어 자세 교정, 손목 스냅을 의식하니 비거리 개선','스매시 리시브 집중 훈련 20분. 낮은 자세 유지가 관건'],
+  soccer:['자체전 2쿼터 풀타임. 좌측 수비는 안정적, 빌드업 패스 미스 2회는 아쉬움','슈팅 훈련 100개. 인프런트 감이 돌아옴, 디딤발 간격 의식','리그전 1도움. 후반 15분부터 체력 저하 뚜렷 — 인터벌 보강 필요'],
+  basketball:['자체전 12득점 5리바운드. 픽앤롤 호흡이 특히 좋았음','자유투 50개 중 41개 성공. 릴리즈 타이밍 일정해짐','수비 로테이션이 반 박자 늦는 습관 발견, 다음 연습서 교정'],
+  baseball:['연습경기 3타수 2안타 1타점. 변화구 대응이 좋아지는 중','배팅 케이지 100스윙. 손목 힘을 빼니 타구질 개선','내야 펑고 30개. 송구 정확도가 안정권에 들어옴'],
+  running:['한강 코스 5km 32분. 후반 페이스 유지에 성공','인터벌 400m 8회, 회복 조깅 90초 간격. 심박 회복 빨라짐','LSD 12km. 무릎 통증 없이 완주, 보폭을 줄인 게 효과'],
+  swimming:['자유형 1,000m 25분. 3스트로크 호흡 리듬 유지','킥판 4×100m. 발목 유연성이 다음 과제','접영 25m 8회. 웨이브 타이밍이 조금씩 맞아감'],
+};
+let RC_SLIDE=0;
+function rcGoSlide(n){
+  const box=document.getElementById('rcSlides'); if(!box) return;
+  RC_SLIDE=Math.max(0,Math.min(2,n));
+  box.scrollTo({left:box.clientWidth*RC_SLIDE, behavior:'smooth'});
+  rcSyncDots();
+}
+function rcSyncDots(){
+  const box=document.getElementById('rcSlides'); if(!box) return;
+  RC_SLIDE=Math.round(box.scrollLeft/box.clientWidth);
+  [0,1,2].forEach(k=>{ const d=document.getElementById('rcDot'+k);
+    if(d) d.style.background = k===RC_SLIDE ? 'var(--ink)' : '#d8d4cb'; });
+  const nx=document.getElementById('rcNext');
+  if(nx) nx.textContent = RC_SLIDE===2 ? '저장하기' : '다음';
+}
+function rcNext(){ if(RC_SLIDE>=2) saveRecord(); else rcGoSlide(RC_SLIDE+1); }
+function openAddRecord(presetM, presetLabel, presetYmd){
+  const sp=SP(); const today=new Date().toISOString().slice(0,10);
+  const isRec = sp.cat==='record';
+  REC_PHOTO=null; RC_SLIDE=0;
+  REC_TYPE = presetLabel ? 'race' : 'train';
+  const fields=(SPORT_FORMS[sp.id]||[]);
+  const fld=(f)=>{
+    if(f.t==='chips') return `<div class="fld"><label>${f.l}</label>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:4px">${f.opts.map((o,k)=>`<span class="tchip ${k===0?'on':''}" data-fid="${f.id}" data-v="${o}" onclick="this.parentNode.querySelectorAll('.tchip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${o}</span>`).join('')}</div></div>`;
+    return `<div class="fld"><label>${f.l}</label><input id="rcF_${f.id}" type="${f.t==='num'?'number':'text'}" ${f.t==='num'?'inputmode="numeric"':''} placeholder="${f.ph||''}" maxlength="20"></div>`;
+  };
+  const dl = sp.id==='swimming' ? '거리 (m)' : '거리 (km)';
+  const dv = presetM ? (sp.id==='swimming'?presetM:(presetM/1000)) : '';
+  const slide=(inner)=>`<div style="flex:0 0 100%;scroll-snap-align:start;padding:2px 4px;box-sizing:border-box">${inner}</div>`;
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>${sp.n} 일지 쓰기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="border-radius:16px;overflow:hidden;margin:2px 0 12px;line-height:0">${DIARY_ART[sp.id]||''}</div>
+    <div id="rcSlides" onscroll="clearTimeout(window._rcS);window._rcS=setTimeout(rcSyncDots,80)"
+      style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -4px">
+      ${slide(`
+        <div class="sd" style="margin-bottom:10px">언제, 어떤 운동이었나요?</div>
+        <div class="fld"><label>날짜</label><input id="rcYmd" type="date" value="${presetYmd||today}" max="${today}" style="font-family:inherit"></div>
+        <div style="display:flex;gap:7px;margin-bottom:6px">
+          <span id="rtTrain" onclick="setRecType('train')" style="flex:1;text-align:center;font-size:13px;font-weight:800;border-radius:12px;padding:11px;cursor:pointer;${REC_TYPE==='train'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">연습</span>
+          <span id="rtRace" onclick="setRecType('race')" style="flex:1;text-align:center;font-size:13px;font-weight:800;border-radius:12px;padding:11px;cursor:pointer;${REC_TYPE==='race'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">${isRec?'대회':'경기'}</span></div>
+      `)}
+      ${slide(`
+        <div class="sd" style="margin-bottom:10px">${sp.n}만의 상세를 남겨요 (전부 선택 입력)</div>
+        ${isRec?`${sp.id==='swimming'?`<div class="fld" style="margin-bottom:6px"><label>영법</label></div>
+          <div id="strokeChips" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">${['자유형','배영','평영','접영','혼영'].map(s=>`<span onclick="REC_STROKE='${s}';renderStrokeChips()" class="tchip ${REC_STROKE===s?'on':''}" data-s="${s}">${s}</span>`).join('')}</div>`:''}
+        <div style="display:flex;gap:10px"><div class="fld" style="flex:1"><label>${dl}</label><input id="rcDist" type="number" inputmode="decimal" placeholder="${sp.id==='swimming'?'1000':'5.0'}" value="${dv}"></div>
+        <div class="fld" style="flex:1"><label>시간 (분)</label><input id="rcMin" type="number" inputmode="decimal" placeholder="30"></div></div>`:''}
+        ${fields.map(fld).join('')}
+      `)}
+      ${slide(`
+        <div class="sd" style="margin-bottom:10px">한 줄 소감과 사진을 남겨요</div>
+        <div class="fld"><label>메모</label><input id="rcNote" placeholder="오늘 운동은 어땠나요?" maxlength="100"></div>
+        <div style="font-size:11px;font-weight:800;color:var(--lgray);margin:2px 2px 6px">예시 — 탭하면 채워져요</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+          ${(DIARY_EXAMPLES[sp.id]||[]).map(e=>`<span onclick="document.getElementById('rcNote').value=this.textContent" style="font-size:12px;font-weight:600;background:var(--cream2);border-radius:10px;padding:9px 12px;cursor:pointer;color:#5a554c;line-height:1.5">${e}</span>`).join('')}
+        </div>
+        <div class="fld"><label>사진 (선택)</label>
+          <input type="file" accept="image/*" onchange="recPickPhoto(this)" style="font-size:12.5px">
+          <img id="rcPhotoPrev" style="display:none;width:100%;border-radius:12px;margin-top:8px"></div>
+      `)}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin:10px 0 12px">
+      <span id="rcDot0" style="width:7px;height:7px;border-radius:50%;background:var(--ink)"></span>
+      <span id="rcDot1" style="width:7px;height:7px;border-radius:50%;background:#d8d4cb"></span>
+      <span id="rcDot2" style="width:7px;height:7px;border-radius:50%;background:#d8d4cb"></span></div>
+    <div style="display:flex;gap:9px">
+      <button class="btn ghost" style="flex:1" onclick="RC_SLIDE===0?closeOv():rcGoSlide(RC_SLIDE-1)">이전</button>
+      <button class="btn" id="rcNext" style="flex:2" onclick="rcNext()">다음</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function saveRecord(){
   const sp=SP();
+  const isRec = sp.cat==='record';
+  // 종목별 상세 수집
+  const detail={};
+  (SPORT_FORMS[sp.id]||[]).forEach(f=>{
+    if(f.t==='chips'){ const on=document.querySelector(`.tchip.on[data-fid="${f.id}"]`); if(on) detail[f.id]=on.dataset.v; }
+    else { const el=document.getElementById('rcF_'+f.id); if(el&&el.value.trim()) detail[f.id]=el.value.trim().slice(0,20); }
+  });
   const ymd=(document.getElementById('rcYmd')||{}).value||'';
   const dRaw=parseFloat((document.getElementById('rcDist')||{}).value||'0');
   const min=parseFloat((document.getElementById('rcMin')||{}).value||'0');
-  if(!ymd || !dRaw){ toast('날짜와 거리를 입력해 주세요'); return; }
-  const dist_m = Math.round(sp.id==='swimming' ? dRaw : dRaw*1000);
+  if(!ymd || (isRec && !dRaw)){ toast(isRec?'날짜와 거리를 입력해 주세요':'날짜를 확인해 주세요'); return; }
+  const dist_m = isRec ? Math.round(sp.id==='swimming' ? dRaw : dRaw*1000) : 1;
   const secs = Math.round(min*60)||null;
   // PB 갱신 판정: 같은 표준거리의 기존 최고와 비교
   let isPB=false;
@@ -8313,7 +8735,7 @@ async function saveRecord(){
   }
   try{
     await api('/records',{method:'POST',body:JSON.stringify({sport:sp.id, ymd, dist_m, secs,
-      rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim()})});
+      rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim(), photo: REC_PHOTO||undefined, detail: Object.keys(detail).length?detail:undefined })});
     closeOv(); REC_MINE=null; renderRecordLeague();
     toast(isPB?'개인 기록 갱신! 축하해요':'기록을 저장했어요');
   }catch(e){ toast('저장하지 못했어요'); }
@@ -9459,6 +9881,29 @@ function myAppsCard(){
       <span style="font-size:10.5px;font-weight:900;border-radius:8px;padding:4px 8px;flex-shrink:0;background:var(--coral-s);color:var(--coral-d)">${r.b}</span></div>`).join('')}
   </div>`;
 }
+function sportStartedMap(){ try{ return JSON.parse((state.serverUser&&state.serverUser.sport_started)||'{}'); }catch(e){ return {}; } }
+function careerYearsFrom(ym){
+  if(!ym) return null;
+  const [y,m]=ym.split('-').map(Number); if(!y) return null;
+  const months=(new Date().getFullYear()-y)*12+(new Date().getMonth()+1-(m||1));
+  return Math.max(1, Math.floor(months/12)+1);            // 1년 미만도 1년차
+}
+function myCareerTxt(){
+  const ym=sportStartedMap()[state.sport];
+  const yr=careerYearsFrom(ym);
+  return yr? `${ym} 시작 · ${yr}년차` : '';
+}
+async function editMyStart(){
+  const map=sportStartedMap();
+  const v=prompt(`${SP().n} 시작 시점 (YYYY-MM)\n연명부의 구력으로 표시돼요`, map[state.sport]||'');
+  if(v===null) return;
+  const t=v.trim();
+  if(t && !/^\d{4}(-\d{1,2})?$/.test(t)){ toast('예: 2021-03 또는 2021'); return; }
+  if(t) map[state.sport]=t.length===4?t+'-01':t; else delete map[state.sport];
+  try{ const u=await api('/me',{method:'PATCH',body:JSON.stringify({sport_started:map})});
+    state.serverUser=u; toast(t?'구력을 저장했어요':'구력을 지웠어요'); renderMe();
+  }catch(e){ toast('저장하지 못했어요'); }
+}
 async function editMyPhone(){
   const cur=(state.serverUser&&state.serverUser.phone)||'';
   const v=prompt('연락처 (연명부용 · 클럽 임원에게만 보여요)\n비워두면 표시되지 않아요', cur);
@@ -9519,6 +9964,10 @@ function renderMe(){
   ${t.placing&&SP().cat==='racket'?`<div class="card" style="background:var(--violet-s);border:1px solid rgba(124,92,214,.18)"><div style="font-size:15px;font-weight:800;color:var(--violet-d)">배치 진행 ${state.played}/5 · 5경기 후 등급이 정해져요</div>
     <div class="gprog vio"><i style="width:${Math.max(state.played/5*100,4)}%"></i></div>
     <div style="font-size:13px;color:var(--violet-d);opacity:.85;font-weight:600">리그 경기를 치를수록 실제 등급을 찾아가요. 자기신고가 아니라 결과로 정해져 공정해요.</div></div>`:''}
+  ${SERVER_OK&&authToken()?`<div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:13.5px;font-weight:800">${SP().n} 구력</div>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${myCareerTxt()||'탭해서 시작 시점 입력 (예: 2021-03)'}</div></div>
+    <span style="color:var(--lgray);font-weight:800">›</span></div>`:''}
   ${SERVER_OK&&authToken()?`<div class="card" onclick="editMyPhone()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
     <div><div style="font-size:13.5px;font-weight:800">연락처 <span style="font-size:11px;color:var(--lgray)">연명부용 · 임원에게만</span></div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${(state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)'}</div></div>
@@ -9624,7 +10073,7 @@ function renderHome(){
   // ⑤ 히어로 카드 (다음 일정)
   { let title='이번 주<br>클럽 모임', sub='참석을 체크하면 그날 대진에 자동 포함돼요', att=[], goTo='club';
     if(hasClub && evSrc.length){ att=evSrc[0].attendees||[]; sub=`${esc(evSrc[0].title)} · ${SP().cat==='racket'?'참석 체크하고 대진 받기':'참석 체크하세요'}`; }
-    else if(!hasClub){ title='테니스,<br>지금 시작'; sub='클럽에 가입하고 모임·대진을 바로 써보세요'; }
+    else if(!hasClub){ title=`${SP().n},<br>지금 시작`; sub='클럽에 가입하고 모임·대진을 바로 써보세요'; }
     const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:cls[i%5]}">${ph?'':nm[0]}</div>`;}).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
     h+=`<div class="yhero" onclick="go('${goTo}')" style="cursor:pointer"><div class="yh-deco">${SP().ic}</div>
       <div class="yh-n">${title}</div><div class="yh-s">${sub}</div>
@@ -9639,6 +10088,24 @@ function renderHome(){
     h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`;
   }
   // 🔥 연속 참여 스트릭
+  // ✍️ 운동 다이어리 — 모든 종목에서 홈 최상단급 노출
+  { ensureRecs();
+    const ymNow=new Date().toISOString().slice(0,7);
+    const todayY=new Date().toISOString().slice(0,10);
+    const daysSet=new Set((REC_MINE||[]).filter(r=>r.ymd&&r.ymd.startsWith(ymNow)).map(r=>r.ymd));
+    const doneToday=daysSet.has(todayY);
+    const pal=MONTH_PAL[(new Date().getMonth())%12];
+    h+=`<div class="card" style="margin-top:4px;background:${pal};border:none;padding:0;overflow:hidden">
+      <div style="display:flex;align-items:center">
+        <div onclick="go('league')" style="flex:1;min-width:0;padding:15px 0 15px 16px;cursor:pointer">
+          <div style="font-size:15px;font-weight:900">${SP().n} 다이어리</div>
+          <div style="font-size:12px;font-weight:700;color:rgba(28,27,24,.62);margin-top:3px">
+            ${doneToday?'오늘 기록 완료 · 이번 달 '+daysSet.size+'일째':'이번 달 '+daysSet.size+'일 기록 · 오늘도 남겨볼까요?'}</div>
+        </div>
+        <span onclick="openAddRecord()" style="flex:none;width:40px;height:40px;border-radius:50%;background:#1c1b18;color:#fff;display:grid;place-items:center;font-size:20px;font-weight:800;cursor:pointer;margin-right:14px">＋</span>
+        <div onclick="go('league')" class="dslice" style="flex:none;width:118px;align-self:stretch;overflow:hidden;cursor:pointer;line-height:0;opacity:.94">${(typeof DIARY_ART!=='undefined'&&DIARY_ART[SP().id])||''}</div>
+      </div></div>`;
+  }
   { const sk=state.streak||0;
     h+=`<div class="card" style="margin-top:4px;background:var(--coral-s);border:none;display:flex;align-items:center;gap:14px">
       <div style="font-size:32px">🔥</div>
