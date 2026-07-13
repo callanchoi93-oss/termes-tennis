@@ -668,14 +668,14 @@
   #guestOv{ position:fixed; inset:0; background:#fff; z-index:420; overflow-y:auto;
     display:none; -webkit-overflow-scrolling:touch; }
   #guestOv.on{ display:block; }
-  .gl-hero{ position:relative; overflow:hidden; background:#fff; padding:34px 22px 30px; text-align:center; }
+  .gl-hero{ position:relative; overflow:hidden; background:#fff; padding:20px 22px 26px; text-align:center; }
   .gl-hero>*{ position:relative; }
   .gl-wave{ position:absolute; inset:0; width:100%; height:100%; }
   .gl-blob{ /* 이전 패턴 자리 — 플랫하게 비움 */ }
   .gl-done{ font-size:14px; color:#cf5418; font-family:'GmarketSansBold',Pretendard,sans-serif; letter-spacing:.02em; }
-  .gl-title{ font-size:33px; font-weight:900; letter-spacing:-.02em; color:#1c1b18; text-shadow:0 0 14px #f7dfad,0 0 8px #f7dfad,0 0 4px #f7dfad; font-family:'Jalnan',Pretendard,sans-serif; font-weight:normal;
-    line-height:1.2; margin-top:34px; word-break:keep-all; }
-  .gl-links{ margin-top:24px; font-size:13.5px; font-weight:800; color:#1f6b41; }
+  .gl-title{ font-size:37px; font-weight:900; letter-spacing:-.02em; color:#1c1b18; text-shadow:0 0 14px #f7dfad,0 0 8px #f7dfad,0 0 4px #f7dfad; font-family:'Jalnan',Pretendard,sans-serif; font-weight:normal;
+    line-height:1.2; margin-top:60px; word-break:keep-all; }
+  .gl-links{ margin-top:88px; font-size:13.5px; font-weight:800; color:#1f6b41; }
   .gl-links span{ cursor:pointer; margin:0 8px; text-decoration:underline; text-underline-offset:3px; }
   .gl-info{ padding:26px 24px 10px; display:grid; grid-template-columns:1fr 1fr; gap:20px 14px; }
   .gl-info .full{ grid-column:1/3; }
@@ -2697,8 +2697,8 @@ async function makeInviteImage(eid){
     const pzi=window._pzImgO;
     x.save();
     x.beginPath();
-    x.ellipse(180,330,650,240,0,0,7);
-    x.ellipse(900,330,650,240,0,0,7);
+    x.ellipse(180,330,650,200,0,0,7);
+    x.ellipse(900,330,650,200,0,0,7);
     x.clip();
     x.fillStyle='#f7dfad'; x.fillRect(0,0,W,H);          // 물결 배경 = 버터 옐로
     if(pzi && pzi.naturalWidth){
@@ -2719,16 +2719,16 @@ async function makeInviteImage(eid){
   }catch(e){}
   x.textAlign='center';
   x.fillStyle='#cf5418'; x.font=F(400,34,"'GmarketSansBold',Pretendard,sans-serif");
-  x.fillText('게스트 초대장', W/2, 112);
-  x.font=F(400, club.length>7?66:84, "'Jalnan',Pretendard,sans-serif");
+  x.fillText('게스트 초대장', W/2, 76);
+  x.font=F(400, club.length>7?72:92, "'Jalnan',Pretendard,sans-serif");
   x.lineJoin='round'; x.strokeStyle='#f7dfad'; x.lineWidth=18;
-  x.strokeText(club.slice(0,10), W/2, 330);
-  x.fillStyle='#1c1b18'; x.fillText(club.slice(0,10), W/2, 330);
+  x.strokeText(club.slice(0,10), W/2, 316);
+  x.fillStyle='#1c1b18'; x.fillText(club.slice(0,10), W/2, 316);
   x.font=F(400,40,"'Jalnan',Pretendard,sans-serif"); x.lineWidth=14;
-  x.strokeText((ev.title||'정기 모임').slice(0,12), W/2, 406);
-  x.fillStyle='#1c1b18'; x.fillText((ev.title||'정기 모임').slice(0,12), W/2, 406);
+  x.strokeText((ev.title||'정기 모임').slice(0,12), W/2, 402);
+  x.fillStyle='#1c1b18'; x.fillText((ev.title||'정기 모임').slice(0,12), W/2, 402);
   x.fillStyle='#cf5418'; x.font=F(800,32);
-  x.fillText('게스트로 함께해요', W/2, 630);
+  x.fillText('게스트로 함께해요', W/2, 600);
   // Date / Time / Venue (레퍼런스 배치)
   x.textAlign='left'; const L=110;
   x.fillStyle='#1c1b18'; x.font=F(400,33,"'GmarketSansBold',Pretendard,sans-serif"); x.fillText('Date', L, 760);
@@ -4640,7 +4640,7 @@ function renderClub(){
     const sch=c.schedule, going=(sch.attendees||[]).length+(sch.attend===true?1:0);
     const today=new Date(); const MON=today.getMonth()+1, DAY=today.getDate();
     // ⑤ 인사 헤더
-    h+=`<div class="greet"><div class="gv-av" style="${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':meName()[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${meName()} 님</div><div class="gv-d">오늘 ${MON}월 ${DAY}일 · ${state.activeClub}</div></div><div class="gv-s" onclick="setClubTab('find')">${ic('search',20)}</div></div>`;
+    h+=`<div class="greet"><div class="gv-av" onclick="go('me')" style="cursor:pointer;${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':meName()[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요, ${meName()} 님</div><div class="gv-d">오늘 ${MON}월 ${DAY}일 · ${state.activeClub}</div></div><div class="gv-s" onclick="setClubTab('find')">${ic('search',20)}</div></div>`;
     // ⑤ 히어로 카드 (이번 주 클럽 모임 + 참여 아바타)
     { const ev0=(c.events&&c.events[0])||null; const att=ev0?ev0.attendees:sch.attendees; const cls=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b','#5b3fa8'];
       const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:cls[i%5]}">${ph?'':nm[0]}</div>`;}).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
@@ -6466,8 +6466,8 @@ const GL_WAVE = (()=>{
   }
   return `<svg class="gl-wave" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
     <defs><clipPath id="glWaveClip">
-      <ellipse cx="150" cy="260" rx="540" ry="200"/>
-      <ellipse cx="750" cy="260" rx="540" ry="200"/>
+      <ellipse cx="150" cy="260" rx="540" ry="150"/>
+      <ellipse cx="750" cy="260" rx="540" ry="150"/>
     </clipPath></defs>
     <rect width="${W}" height="${H}" fill="#ffffff"/>
     <g clip-path="url(#glWaveClip)">
