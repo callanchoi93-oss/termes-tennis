@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-G';
+const BUILD='v0714-I';
 let _ERR_TS=0; const _ERRLOG=[];
 function _logErr(tag,msg){
   _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
@@ -2179,6 +2179,12 @@ async function checkServer(){
 }
 function saveSession(d){
   try{ localStorage.setItem(TOKEN_KEY, d.token); }catch(e){}
+  // 이전에 다른 계정이 쓰던 폰이면 클럽·화면 잔재를 비운다 (유령 클럽 방지)
+  if(state._uid && d.user && d.user.id && state._uid !== d.user.id){
+    state.myClubs=[]; state.activeClub=null; state.clubData={}; state.loggedIn=false;
+    try{ SRV_MYCLUBS=[]; }catch(e){}
+  }
+  if(d.user && d.user.id) state._uid = d.user.id;
   state.userName = d.user.name || state.userName;
   state.serverUser = d.user;
   if(d.user.anon_nick) state.anonNick = d.user.anon_nick;
@@ -5000,7 +5006,24 @@ function renderTeamLeague(){
   return h;
 }
 function _renderRecordLeagueLegacy_removed(){}
+/* 리그가 비어 있을 때 보여주는 예시 슬라이드 — 리그가 열리면 뭘 보게 되는지 */
+const LEAGUE_SLIDES = [
+  { t:'실시간 순위표', d:'경기 결과가 쌓이면 승률·득실로 순위가 매겨져요',
+    b:`<div style="display:flex;flex-direction:column;gap:6px">${[['1','김맞수','8승 2패','+21'],['2','이코트','7승 3패','+13'],['3','박랠리','6승 4패','+4']].map(r=>`
+      <div style="display:flex;align-items:center;gap:10px;background:#faf8f4;border-radius:11px;padding:9px 12px;font-size:12.5px;font-weight:800">
+        <span style="color:var(--coral-d);width:14px">${r[0]}</span><span style="flex:1">${r[1]}</span>
+        <span style="color:var(--gray);font-weight:700">${r[2]}</span><span style="color:#2f9159">${r[3]}</span></div>`).join('')}</div>` },
+  { t:'시즌과 명예의 전당', d:'분기마다 다이아손·승률왕·개근왕이 기록으로 남아요',
+    b:`<div style="display:flex;gap:8px">${[['다이아손','#3fa571'],['승률왕','#e8845a'],['개근왕','#8c6fd6']].map(x=>`
+      <div style="flex:1;text-align:center;background:#faf8f4;border-radius:12px;padding:12px 4px">
+        <div style="font-size:11px;font-weight:900;color:${x[1]}">${x[0]}</div>
+        <div style="font-size:13px;font-weight:800;margin-top:4px">???</div></div>`).join('')}</div>` },
+  { t:'전적과 능력치', d:'선수를 탭하면 파트너 궁합·설욕 상대·육각형 스탯이 열려요',
+    b:`<div style="text-align:center;font-size:12.5px;font-weight:700;color:var(--gray);background:#faf8f4;border-radius:12px;padding:16px 10px">
+      승률 · 공격 · 수비 · 접전 · 폼 · 꾸준함<br><b style="color:#8c6fd6">6각 레이더 차트</b>로 한눈에</div>` },
+];
 function leagueSlides(){
+  if(typeof LEAGUE_SLIDES==='undefined' || !LEAGUE_SLIDES.length) return '';
   const i = state._lgSlide || 0;
   const s0 = LEAGUE_SLIDES[i];
   return `
@@ -11377,8 +11400,7 @@ checkServer().then(async ok=>{
         if(mI){ sessionStorage.removeItem('pending_match'); setTimeout(()=>handleMatchLink(+mI), 1000); } }catch(e){}
       await loadClubIds();
       if(clubId()){ await loadClubServer(); await loadRoster(); }
-      if(state.loggedIn) go(state.view||'home');
-      else resumeOrOnboard();
+      resumeOrOnboard();                     // 서버 프로필(gender·exp·sport) 기준 — 로컬 잔재를 믿지 않는다
     }
   }
 });
