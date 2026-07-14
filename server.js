@@ -173,7 +173,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sF-0714';
+const SRV_BUILD = 'sH-0714';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -3376,7 +3376,7 @@ app.post('/records', auth, limitWrite, (req, res) => {
     return res.status(400).json({ error: 'bad_request' });
   const r = db.prepare('INSERT INTO sport_records (user_id,sport,ymd,dist_m,secs,note,created_at,rtype,stroke,photo,detail) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(req.uid, sport, ymd, dist_m, secs, note, now(), rtype, stroke, photo, detail);
-  res.json({ ok: true, id: rid(r) });
+  res.json(db.prepare('SELECT * FROM sport_records WHERE id=?').get(rid(r)));   // 저장된 행 전체 반환
 });
 
 // 기록 수정 (본인 것만)
@@ -3695,6 +3695,60 @@ app.post('/admin/clubs/:id/premium', admin, (req, res) => {
   const months = Math.min(24, Math.max(1, intOrNull(req.body && req.body.months) || 1));
   const until = activatePremium(cid, months);
   res.json({ ok: true, club_id: cid, premium_until: until, granted_by: 'admin' });
+});
+
+// 클럽 영구 삭제 — 연관 데이터까지 전부 (복구 불가)
+app.delete('/admin/clubs/:id', admin, (req, res) => {
+  const cid = +req.params.id;
+  const c = db.prepare('SELECT id,name FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map(t => t.name);
+  let wiped = [];
+  tx(() => {
+    tables.forEach(t => {
+      const cols = db.prepare(`PRAGMA table_info(${t})`).all().map(x => x.name);
+      if (cols.includes('club_id') && t !== 'clubs') {
+        const n = db.prepare(`DELETE FROM ${t} WHERE club_id=?`).run(cid).changes;
+        if (n) wiped.push(`${t}:${n}`);
+      }
+    });
+    db.prepare('DELETE FROM clubs WHERE id=?').run(cid);
+  });
+  res.json({ ok: true, deleted: c.name, wiped });
+});
+
+// 사용자 영구 삭제 — 탈퇴(익명) 계정 정리용 (복구 불가)
+app.delete('/admin/users/:id', admin, (req, res) => {
+  const uid = +req.params.id;
+  const u = db.prepare('SELECT id,name,suspended FROM users WHERE id=?').get(uid);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  if (!u.suspended && req.query.force !== '1')
+    return res.status(400).json({ error: 'active_user', message: '활성 계정이에요 · ?force=1 로만 삭제 가능' });
+  const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map(t => t.name);
+  let wiped = [];
+  tx(() => {
+    tables.forEach(t => {
+      const cols = db.prepare(`PRAGMA table_info(${t})`).all().map(x => x.name);
+      if (t === 'users') return;
+      ['user_id', 'from_user', 'to_user', 'from_id', 'to_id', 'author_id', 'host_id'].forEach(col => {
+        if (cols.includes(col)) {
+          const n = db.prepare(`DELETE FROM ${t} WHERE ${col}=?`).run(uid).changes;
+          if (n) wiped.push(`${t}.${col}:${n}`);
+        }
+      });
+    });
+    db.prepare('DELETE FROM users WHERE id=?').run(uid);
+  });
+  res.json({ ok: true, deleted: u.name, wiped });
+});
+
+// 정리 대상 조회 — 탈퇴 계정·클럽 목록
+app.get('/admin/purge-list', admin, (_req, res) => {
+  res.json({
+    suspended_users: db.prepare('SELECT id,name,created_at FROM users WHERE suspended=1').all(),
+    clubs: db.prepare(`SELECT c.id, c.name, c.sport,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members FROM clubs c ORDER BY c.id`).all(),
+  });
 });
 
 app.get('/admin/stats', admin, (_req, res) => {
