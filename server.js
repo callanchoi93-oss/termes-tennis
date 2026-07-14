@@ -173,6 +173,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
+const SRV_BUILD = 'sF-0714';
+app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
+
 app.post('/auth/dev-login', limitLogin, (req, res) => {
   // 이름 로그인 — 카카오 키가 준비될 때까지의 임시 입구.
   // 이름만으로는 남의 계정에 못 들어가게 4~6자리 간편 비밀번호(PIN)를 요구한다.
@@ -1200,7 +1203,7 @@ app.delete('/me', auth, (req, res) => {
     db.prepare('DELETE FROM notifications WHERE user_id=?').run(uid);
     // 사용자 행은 익명화 — 라운지 글·전적·회비 행이 참조 무결성을 잃지 않게
     db.prepare(`UPDATE users SET
-        name='탈퇴한 회원', provider=NULL, provider_id=NULL,
+        name='탈퇴한 회원', provider=NULL, provider_id=NULL, phone=NULL,
         gender=NULL, region=NULL, exp=NULL, anon_nick='탈퇴한 회원',
         cash=0, suspended=1, token_version=COALESCE(token_version,0)+1
       WHERE id=?`).run(uid);
