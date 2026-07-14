@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-J';
+const BUILD='v0714-L';
 let _ERR_TS=0; const _ERRLOG=[];
 function _logErr(tag,msg){
   _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
@@ -1797,6 +1797,8 @@ function pickSport(id){
   updNavLabels();
   [['renderHome',renderHome],['renderLeague',renderLeague],['renderClub',renderClub],['renderBracket',renderBracket]]
     .forEach(([nm,fn])=>{ try{ fn(); }catch(e){ try{ toast(`화면 오류(${nm}): ${String(e.message).slice(0,60)}`); }catch(_){}} });
+  saveMatsu();
+  go('home');                                   // 어느 탭에서 바꿔도 홈에서 새 종목이 바로 보이게
   toast(`${SP().n} 모드로 전환했어요`);
 }
 async function login(p){
@@ -2352,8 +2354,8 @@ async function adoptServerClubs(){
     const d = state.clubData[c.name];
     d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region;
   });
-  state.myClubs = active.map(c=>c.name);
   SRV_MYCLUBS = active;
+  syncActiveClub();                    // 종목 필터 재적용 — 다른 종목 클럽이 새 종목에 새지 않게
   syncActiveClub();                                      // 현재 종목의 클럽만 활성으로
   // 신청 대기 중인 클럽 표시
   mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id; state.clubStatus[c.name]='pending'; });
@@ -5220,8 +5222,23 @@ function renderClub(){
         <div style="font-size:13px;color:var(--gray);font-weight:600;line-height:1.55;margin:5px 0 11px">이 기기에만 저장된 클럽이라 사진 게시·공지·회비·대진 저장이 동작하지 않아요. 등록하면 전부 사용할 수 있어요.</div>
         <button class="btn sm" onclick="repairClubServer()">서버에 클럽 등록하기</button></div>`;
     }
+    // 다른 종목에 가입해 둔 클럽 — 종목 배지와 함께 표기, 탭하면 그 종목으로 전환
+    {
+      const others=(SRV_MYCLUBS||[]).filter(c=>(c.sport||'')!==state.sport);
+      if(others.length){
+        h+=`<div style="font-size:12px;font-weight:800;color:var(--lgray);margin:2px 2px 7px">다른 종목의 내 클럽</div>`;
+        others.forEach(c=>{
+          const spo=SPORTS.find(s=>s.id===c.sport)||{ic:'🏅',n:c.sport||'기타'};
+          h+=`<div class="card" onclick="pickSport('${c.sport}');setTimeout(()=>{switchClub('${esc(c.name)}');go('club')},80)" style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <div style="font-size:22px;flex:none">${spo.ic}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800">${esc(c.name)}</div>
+              <div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:2px">${spo.n} · ${c.role==='owner'?'클럽장':c.role==='officer'?'임원':'회원'} · ${c.member_count||1}명</div></div>
+            <span style="font-size:10.5px;font-weight:900;background:var(--cream2);border-radius:9px;padding:5px 9px;color:#8a6a3f">${spo.n}</span></div>`;
+        });
+      }
+    }
     if(state.myClubs.length===0){
-      h+=`<div class="empty"><div class="ei">${SP().ic}</div><div class="et">아직 가입한 클럽이 없어요</div>
+      h+=`<div class="empty"><div class="ei">${SP().ic}</div><div class="et">아직 이 종목엔 가입한 클럽이 없어요</div>
         <div class="es">클럽은 게스트로 먼저 참여해 보고<br>마음에 들면 정회원으로 가입해요.</div>
         <button class="btn" style="max-width:240px;margin:0 auto" onclick="setClubTab('find')">클럽 찾아보기</button></div>`;
       document.getElementById('s-club').innerHTML=h;return;
@@ -5387,7 +5404,7 @@ function renderClub(){
     regions.forEach(r=>{h+=`<div class="chip ${state.region===r?'on':''}" onclick="setRegion('${r}')">${r}</div>`;});
     h+=`</div>`;
     const q=(state._q||'').trim();
-    const list=state.clubs.filter(c=>(state.region==='전체'||c.r===state.region)&&(!q||c.n.includes(q)||c.r.includes(q)));
+    const list=state.clubs.filter(c=>(c.sport||state.sport)===state.sport&&(state.region==='전체'||c.r===state.region)&&(!q||c.n.includes(q)||c.r.includes(q)));
     if(!list.length) h+=`<div class="empty"><div class="ei">${ic('search',34)}</div><div class="et">조건에 맞는 클럽이 없어요</div><div class="es">검색어나 지역을 바꿔보거나<br>새 클럽을 직접 만들어보세요.</div></div>`;
     const cg=['linear-gradient(135deg,#3fa571,#5b3fa8)','linear-gradient(135deg,#f1a55c,#e07f3a)','linear-gradient(135deg,#3fa571,#3f9e6e)','linear-gradient(135deg,#8a857c,#55514a)'];
     list.forEach((c,i)=>{const joined=state.myClubs.includes(c.n),gv=state.guestVisits[c.n]||0;
@@ -9502,7 +9519,7 @@ async function saveRecord(){
     const _mth = REC_EDIT_ID ? 'PATCH' : 'POST';
     const saved = await api(_url,{method:_mth,body:JSON.stringify({sport:sp.id, ymd, dist_m, secs,
       rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim(), photos: REC_PHOTOS.length?REC_PHOTOS:undefined, detail: Object.keys(detail).length?detail:undefined })});
-    if(!saved || !saved.ymd){ toast('서버가 구버전이에요 · server.js를 재배포해 주세요'); return; }
+    if(!saved || (!saved.ymd && !saved.ok)){ toast('저장 응답이 이상해요 · server.js 배포를 확인해 주세요'); return; }
     closeOv(); REC_MINE=null; REC_TS=0; ensureRecs();
     if(state.view==='me') renderMe(); else if(state.view==='league') renderLeague(); else renderHome();
     toast(REC_EDIT_ID?'기록을 수정했어요':(isPB?'개인 기록 갱신! 축하해요':'기록을 저장했어요'));
