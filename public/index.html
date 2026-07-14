@@ -1789,6 +1789,10 @@ function updNavLabels(){
 }
 function pickSport(id){
   state.sport=id; closeOv();
+  // 전환을 서버에 저장하지 않으면, 프로필을 서버 기준으로 다시 세우는 순간(새로고침·재접속)
+  // 온보딩 때 종목으로 되돌아간다. 캐시된 프로필과 서버 모두 새 종목으로 맞춰준다.
+  if(state.serverUser) state.serverUser.sport=id;
+  if(SERVER_OK && authToken()) api('/me',{method:'PATCH',body:JSON.stringify({sport:id})}).catch(()=>{});
   syncActiveClub();                                      // 이 종목의 클럽으로 전환
   // 종목 범위 캐시 초기화 (다른 종목 데이터가 새 화면에 남지 않게)
   try{ SRV_EVENT=null; SRV_EVENTS=null; }catch(e){}
@@ -9165,7 +9169,7 @@ function openDayRec(ymd){
           <span style="font-size:12px;opacity:.85;font-weight:700">${r.secs?fmtPace(r.secs,r.dist_m,sp.id):''}${r.stroke?` · ${r.stroke}`:''}${fmtDetail(sp.id,r.detail)?` · ${fmtDetail(sp.id,r.detail)}`:''}</span>`
         :`<b style="font-size:14px">${fmtDetail(sp.id, r.detail)||sp.n+' 일지'}</b>`}
         <span onclick="openEditRecord(${r.id})" style="margin-left:auto;font-size:11.5px;font-weight:800;cursor:pointer;padding:4px 9px;background:rgba(255,255,255,.22);border-radius:8px">수정</span>
-        <span onclick="delRecord(${r.id});setTimeout(()=>openDayRec('${ymd}'),400)" style="font-weight:900;cursor:pointer;padding:2px 6px;opacity:.7;margin-left:6px">×</span></div>
+        <span onclick="delRecord(${r.id},'${ymd}')" style="font-weight:900;cursor:pointer;padding:2px 6px;opacity:.7;margin-left:6px">×</span></div>
       ${r.note?`<div style="font-size:13.5px;font-weight:600;margin-top:9px;line-height:1.55">${esc(r.note)}</div>`:''}
       ${recPhotosParse(r.photo).length?`<div style="display:flex;gap:7px;margin-top:10px">${recPhotosParse(r.photo).map(p=>`<img src="${p}" style="flex:1;min-width:0;border-radius:11px;display:block">`).join('')}</div>`:''}
     </div>`;
@@ -9526,9 +9530,18 @@ async function saveRecord(){
     REC_EDIT_ID=null;
   }catch(e){ toast('저장하지 못했어요'); }
 }
-async function delRecord(id){
+async function delRecord(id, ymd){
   if(!confirm('이 기록을 삭제할까요?')) return;
-  try{ await api(`/records/${id}`,{method:'DELETE'}); REC_MINE=null; renderRecordLeague(); }catch(e){}
+  try{
+    await api(`/records/${id}`,{method:'DELETE'});
+    // 캐시 전체를 null 로 비우면 다시 불러오기 전까지 목록이 통째로 사라진다.
+    // 삭제한 항목만 캐시에서 제거해 나머지 기록은 그대로 보이게 한다.
+    if(Array.isArray(REC_MINE)) REC_MINE = REC_MINE.filter(r=>r.id!==id);
+    if(SP().cat==='record') renderRecordLeague();
+    else if(state.view==='me') renderMe(); else if(state.view==='league') renderLeague(); else renderHome();
+    if(ymd) openDayRec(ymd);           // 달력 그날 시트를 갱신된 목록으로 다시 그림
+    toast('기록을 삭제했어요');
+  }catch(e){ toast('삭제하지 못했어요'); }
 }
 
 /* ── 팀 종목: 클럽 경기 결과 장부 ── */
@@ -9555,6 +9568,7 @@ async function openTeamRecord(mode){
     let pa=[],pb=[],st={};
     try{pa=JSON.parse(m.players_a||'[]');pb=JSON.parse(m.players_b||'[]');}catch(e){}
     try{st=JSON.parse(m.stats||'{}');}catch(e){}
+    if(!Array.isArray(pa))pa=[]; if(!Array.isArray(pb))pb=[]; if(!st||typeof st!=='object')st={};
     const intra=(m.kind||'external')==='intra';
     // 출전 (배정되었거나 스탯이 있는 선수)
     const played=new Set([...pa,...pb,...Object.keys(st)]);
@@ -11050,6 +11064,7 @@ function renderHome(){
     const cats=statCats(); const me=meName(); let gp=0, s1=0;
     ((TEAMM&&TEAMM.rows)||[]).forEach(m=>{
       let pa=[],pb=[],st={}; try{pa=JSON.parse(m.players_a||'[]');pb=JSON.parse(m.players_b||'[]');st=JSON.parse(m.stats||'{}');}catch(e){}
+      if(!Array.isArray(pa))pa=[]; if(!Array.isArray(pb))pb=[]; if(!st||typeof st!=='object')st={};
       if([...pa,...pb,...Object.keys(st)].includes(me)){ gp++; s1+=(st[me]&&st[me][cats[0][0]])||0; }
     });
     h+=`<div class="card" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openTeamRecord()">
