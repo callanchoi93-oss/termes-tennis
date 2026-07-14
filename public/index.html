@@ -10763,7 +10763,7 @@ function meRecordCard(){
     <span onclick="go('league')" style="display:inline-block;margin-top:10px;font-size:11.5px;font-weight:800;color:var(--gray);border:1.5px solid var(--line);border-radius:14px;padding:6px 12px;cursor:pointer">기록 탭에서 자세히 →</span></div>`;
 }
 function meTeamCard(){
-  if(SERVER_OK && !TEAMM) loadTeamSum(()=>{ if(state.view==='me') renderMe(); });
+  if(SERVER_OK && !TEAMM && clubId()) loadTeamSum(()=>{ if(state.view==='me') renderMe(); });
   const cats=statCats(), me=meName(); let gp=0; const st={};
   ((TEAMM&&TEAMM.rows)||[]).forEach(m=>{
     let pa=[],pb=[],ms={}; try{pa=JSON.parse(m.players_a||'[]');pb=JSON.parse(m.players_b||'[]');ms=JSON.parse(m.stats||'{}');}catch(e){}
@@ -10888,7 +10888,8 @@ function loadRecMine(cb){                                // 기록 종목 캐시
   api(`/records?sport=${SP().id}`).then(r=>{ REC_MINE=r||[]; REC_TS=Date.now(); cb&&cb(); }).catch(()=>{});
 }
 function loadTeamSum(cb){                                // 팀 종목 캐시
-  if(!clubId()){ cb&&cb(); return; }
+  if(!clubId()){ return; }        // 클럽이 없으면 불러올 팀 데이터가 없다. 여기서 cb()를 부르면
+                                  // 콜백이 renderHome/renderMe를 다시 부르고 → loadTeamSum → cb … 무한 재귀가 된다.
   if(TEAMM && Date.now()-TEAMM_TS<60e3){ cb&&cb(); return; }
   api(`/clubs/${clubId()}/team-matches`).then(r=>{ TEAMM=r; TEAMM_TS=Date.now(); cb&&cb(); }).catch(()=>{});
 }
@@ -10961,7 +10962,7 @@ function renderHome(){
         <div style="flex:1;border-left:1px solid var(--line)"><div style="font-size:19px;font-weight:900">${mine.length}</div><div style="font-size:11px;color:var(--gray);font-weight:600">기록 횟수</div></div></div></div>`;
   } else if(SRV && SP().cat==='team'){
     // 팀 종목: 클럽 전적 카드
-    if(!TEAMM) loadTeamSum(()=>{ if(state.view==='home') renderHome(); });
+    if(!TEAMM && clubId()) loadTeamSum(()=>{ if(state.view==='home') renderHome(); });
     const s=(TEAMM&&TEAMM.summary)||{w:0,d:0,l:0};
     const nIntra=(TEAMM&&TEAMM.rows||[]).filter(m=>(m.kind||'external')==='intra').length;
     h+=`<div class="card" style="margin-top:11px;cursor:pointer" onclick="openTeamRecord()">
