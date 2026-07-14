@@ -991,6 +991,18 @@ app.delete('/events/:id/guests/:gid', auth, (req, res) => {
   res.json({ ok: true });
 });
 // ── 오픈 예정 경기(모집) ──
+// 페어플레이 점수 — 기본 80, 최근 후기 30건 반영 (5점 +2 · 4점 +1 · 3점 0 · 2점 -2 · 1점 -4), 0~100
+function fairplayOf(uid) {
+  // 오픈매치 후기 + 클럽 회원 평가 합산, 최근 30건만 반영
+  const rows = db.prepare(`SELECT stars, created_at t FROM om_reviews WHERE to_user=?
+    UNION ALL SELECT stars, COALESCE(updated_at,0) t FROM club_peer_reviews WHERE to_user=?
+    ORDER BY t DESC LIMIT 30`).all(uid, uid);
+  const adj = { 5: 2, 4: 1, 3: 0, 2: -2, 1: -4 };
+  let s = 80;
+  rows.forEach(r => { s += adj[r.stars] || 0; });
+  return { score: Math.max(0, Math.min(100, s)), reviews: rows.length };
+}
+app.get('/me/fairplay', auth, (req, res) => res.json(fairplayOf(req.uid)));
 app.get('/open-matches', (req, res) => {
   const uid = tryUid(req);
   const { sport, sido, sigungu } = req.query;
@@ -1001,7 +1013,16 @@ app.get('/open-matches', (req, res) => {
   if (sigungu) { where.push('sigungu=?'); args.push(sigungu); }
   const rows = db.prepare(`SELECT * FROM open_matches WHERE ${where.join(' AND ')}
     ORDER BY id DESC LIMIT 50`).all(...args);
-  res.json(rows.map(m => omView(m, uid)));
+  const fpCache = {};
+  res.json(rows.map(m => {
+    const v = omView(m, uid);
+    if (m.host_id) {
+      if (!fpCache[m.host_id]) fpCache[m.host_id] = fairplayOf(m.host_id);
+      v.host_fp = fpCache[m.host_id].score;
+      v.host_fp_n = fpCache[m.host_id].reviews;
+    }
+    return v;
+  }));
 });
 
 // 주최자가 자기 매치를 삭제한다 (참가자 알림 후 완전 삭제)
@@ -1446,6 +1467,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS notices (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_notices_club ON notices(club_id, id DESC);`);
+try { db.exec('ALTER TABLE notices ADD COLUMN popup_days INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE notices ADD COLUMN poll TEXT'); } catch (e) {}
+db.exec(`CREATE TABLE IF NOT EXISTS notice_votes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, notice_id INTEGER, user_id INTEGER,
+  choice INTEGER, answer TEXT, created_at INTEGER, UNIQUE(notice_id, user_id))`);
 
 app.get('/clubs/:id/notices', auth, (req, res) => {
   const cid = +req.params.id;
@@ -1453,7 +1479,32 @@ app.get('/clubs/:id/notices', auth, (req, res) => {
   const rows = db.prepare(`SELECT n.*, u.name author FROM notices n
     JOIN users u ON u.id=n.author_id WHERE n.club_id=?
     ORDER BY n.pinned DESC, n.id DESC LIMIT 50`).all(cid);
-  res.json(rows);
+  {
+    const cnt = db.prepare('SELECT choice, COUNT(*) n FROM notice_votes WHERE notice_id=? AND choice IS NOT NULL GROUP BY choice');
+    const mineQ = db.prepare('SELECT choice, answer FROM notice_votes WHERE notice_id=? AND user_id=?');
+    const answersQ = db.prepare(`SELECT v.answer, u.name FROM notice_votes v JOIN users u ON u.id=v.user_id
+      WHERE v.notice_id=? AND v.answer IS NOT NULL ORDER BY v.id DESC LIMIT 50`);
+    res.json(rows.map(n => {
+      let poll = null;
+      if (n.poll) {
+        try { poll = JSON.parse(n.poll); } catch (e) {}
+        if (poll) {
+          const mine = mineQ.get(n.id, req.uid);
+          if (poll.type === 'choice') {
+            const counts = Array(poll.options.length).fill(0);
+            cnt.all(n.id).forEach(r => { if (counts[r.choice] !== undefined) counts[r.choice] = r.n; });
+            poll.counts = counts; poll.total = counts.reduce((a, b) => a + b, 0);
+            poll.myChoice = mine ? mine.choice : null;
+          } else {
+            poll.answers = answersQ.all(n.id);
+            poll.myAnswer = mine ? mine.answer : null;
+            poll.total = poll.answers.length;
+          }
+        }
+      }
+      return { ...n, poll };
+    }));
+  }
 });
 
 app.post('/clubs/:id/notices', auth, (req, res) => {
@@ -1464,10 +1515,40 @@ app.post('/clubs/:id/notices', auth, (req, res) => {
   if (!body) return res.status(400).json({ error: 'empty' });
   const bad = findContact(body);                       // 공지도 공개글이다
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
-  const r = db.prepare('INSERT INTO notices (club_id,author_id,body,pinned,created_at) VALUES (?,?,?,?,?)')
-    .run(cid, req.uid, body, intOrNull(req.body.pinned) ? 1 : 0, now());
+  let poll = null;
+  const pb = req.body.poll;
+  if (pb && typeof pb === 'object' && ['choice', 'text'].includes(pb.type)) {
+    if (pb.type === 'choice') {
+      const opts = (Array.isArray(pb.options) ? pb.options : []).map(o => String(o).trim().slice(0, 40)).filter(Boolean).slice(0, 8);
+      if (opts.length >= 2) poll = JSON.stringify({ q: String(pb.q || '').slice(0, 80), type: 'choice', options: opts });
+    } else poll = JSON.stringify({ q: String(pb.q || '').slice(0, 80), type: 'text' });
+  }
+  const popupDays = Math.max(0, Math.min(14, intOrNull(req.body.popup_days) || 0));
+  const r = db.prepare('INSERT INTO notices (club_id,author_id,body,pinned,created_at,popup_days,poll) VALUES (?,?,?,?,?,?,?)')
+    .run(cid, req.uid, body, intOrNull(req.body.pinned) ? 1 : 0, now(), popupDays, poll);
   notifyClub(cid, req.uid, '📢', '새 공지가 올라왔어요', body.slice(0, 40));
   res.json({ ok: true, id: rid(r) });
+});
+
+// 공지 투표 (회원 · 1인 1표, 다시 누르면 변경)
+app.post('/notices/:id/vote', auth, (req, res) => {
+  const n = db.prepare('SELECT * FROM notices WHERE id=?').get(+req.params.id);
+  if (!n || !n.poll) return res.status(404).json({ error: 'no_poll' });
+  if (!isMember(n.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  let poll; try { poll = JSON.parse(n.poll); } catch (e) { return res.status(400).json({ error: 'bad_poll' }); }
+  const b = req.body || {};
+  let choice = null, answer = null;
+  if (poll.type === 'choice') {
+    choice = intOrNull(b.choice);
+    if (choice == null || choice < 0 || choice >= poll.options.length) return res.status(400).json({ error: 'bad_choice' });
+  } else {
+    answer = String(b.answer || '').trim().slice(0, 120);
+    if (!answer) return res.status(400).json({ error: 'empty' });
+  }
+  db.prepare(`INSERT INTO notice_votes (notice_id,user_id,choice,answer,created_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(notice_id,user_id) DO UPDATE SET choice=excluded.choice, answer=excluded.answer, created_at=excluded.created_at`)
+    .run(n.id, req.uid, choice, answer, now());
+  res.json({ ok: true });
 });
 
 app.delete('/notices/:id', auth, (req, res) => {
@@ -3152,6 +3233,11 @@ app.post('/open-matches/:id/reviews', auth, limitWrite, (req, res) => {
   const mid = +req.params.id;
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
+  // 평가 창: 경기 시작 이후 ~ 종료(없으면 시작) + 24시간
+  const startT = m.start_at ? Date.parse(m.start_at) : null;
+  const endT = (m.end_at ? Date.parse(m.end_at) : startT);
+  if (startT && Date.now() < startT) return res.status(400).json({ error: 'not_started' });
+  if (endT && Date.now() > endT + 24 * 3600e3) return res.status(400).json({ error: 'review_closed' });
   const started = m.start_at ? Date.parse(m.start_at) < Date.now() : false;
   if (!(started || (m.status && m.status !== 'open'))) return res.status(400).json({ error: 'not_finished' });
   const me = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
