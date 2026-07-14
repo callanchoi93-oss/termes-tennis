@@ -1460,7 +1460,16 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-C';   // 배포 확인용 — 응답마다 갱신됨
+const BUILD='v0714-D';
+let _ERR_TS=0;
+window.addEventListener('error', e=>{
+  if(Date.now()-_ERR_TS<3000) return; _ERR_TS=Date.now();
+  try{ toast(`오류: ${String(e.message||'').slice(0,70)}`); }catch(_){}
+});
+window.addEventListener('unhandledrejection', e=>{
+  if(Date.now()-_ERR_TS<3000) return; _ERR_TS=Date.now();
+  try{ toast(`오류(P): ${String(e.reason&&e.reason.message||e.reason||'').slice(0,70)}`); }catch(_){}
+});   // 배포 확인용 — 응답마다 갱신됨
 const AC=()=>state.activeClub?state.clubData[state.activeClub]:null;
 const placedGames=()=>state.played;
 const OPP={1:1020,2:1000,3:980,4:1010,5:1040};
@@ -11246,7 +11255,9 @@ function go(v, isBack){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
-  ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+  try{
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+  }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
 function closeOv(){document.getElementById('ov').classList.remove('on');}
