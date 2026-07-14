@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-F';
+const BUILD='v0714-G';
 let _ERR_TS=0; const _ERRLOG=[];
 function _logErr(tag,msg){
   _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
@@ -1927,7 +1927,16 @@ async function api(path, opts){
     if(e && e.name==='AbortError') throw new Error('네트워크가 느려요 · 잠시 후 다시 시도해 주세요');
     throw e;
   } finally { clearTimeout(kill); }
-  if(!r.ok) throw new Error((await r.text().catch(()=>'')) || ('HTTP '+r.status));
+  if(!r.ok){
+    const body = await r.text().catch(()=>'');
+    if(r.status===403 && body.includes('suspended') && !window._SUSP_HANDLED){
+      window._SUSP_HANDLED = true;                        // 탈퇴/정지 계정의 낡은 토큰 — 파기하고 처음으로
+      try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(MATSU_SAVE); }catch(e){}
+      alert('탈퇴되었거나 이용이 제한된 계정이에요.\n처음 화면으로 이동합니다 — 새로 가입할 수 있어요.');
+      location.replace(location.pathname);
+    }
+    throw new Error(body || ('HTTP '+r.status));
+  }
   return r.json();
 }
 
@@ -2158,7 +2167,13 @@ async function checkServer(){
   const db2 = document.getElementById('demobar');
   if(db2) db2.style.display = DEMO ? 'block' : 'none';
   const el = document.getElementById('srvTag');
-  if(el){ el.textContent = SERVER_OK ? '서버 연결됨 · 실제 계정으로 로그인' : '데모 · 실제 결제·예약은 작동하지 않습니다'; el.className = 'demo-tag' + (SERVER_OK?' live':''); }
+  if(el){
+    el.textContent = SERVER_OK ? `서버 연결됨 · ${BUILD}` : '데모 · 실제 결제·예약은 작동하지 않습니다';
+    el.className = 'demo-tag' + (SERVER_OK?' live':'');
+    if(SERVER_OK) api('/version').then(v=>{
+      el.textContent = `서버 연결됨 · 앱 ${BUILD} · 서버 ${v.build||'구버전'}`;
+    }).catch(()=>{ el.textContent = `서버 연결됨 · 앱 ${BUILD} · 서버 구버전(재배포 필요)`; el.style.background='#f7e9c9'; el.style.color='#7a5c12'; });
+  }
   applyAuthUI();
   return SERVER_OK;
 }
@@ -4622,6 +4637,17 @@ function startUnreadPoll(){
   UNREAD_POLL=setInterval(pollUnread, 30000);
 }
 let NOTIF_CACHE=null, NOTIF_TS=0;
+function notifGuess(title){
+  closeNotifDrop();
+  const t=title||'';
+  if(t.includes('쪽지')||t.includes('메시지')){ state.chatRoom=null; go('chat'); return; }
+  if(t.includes('오픈매치')||t.includes('참가')){ go('match'); return; }
+  if(t.includes('회원')||t.includes('가입')){ go('club'); state.clubTab='my'; renderClub(); setTimeout(()=>{ try{ openRoster(); }catch(e){} },200); return; }
+  if(t.includes('모임')||t.includes('일정')||t.includes('참석')){ go('club'); return; }
+  if(t.includes('대진')){ go('bracket'); return; }
+  if(t.includes('공지')){ go('club'); setTimeout(()=>{ try{ openNotices(); }catch(e){} },200); return; }
+  go('home');
+}
 function notifGo(link){
   closeNotifDrop();
   if(!link) return;
@@ -4680,7 +4706,7 @@ async function toggleNotif(ev){
     return;
   }
   el.innerHTML=`<div class="nd-h">알림</div>` + rows.map(r=>
-    `<div class="nd-row" style="display:flex;gap:11px;align-items:flex-start${r.link?';cursor:pointer':''}" ${r.link?`onclick="notifGo('${esc(r.link)}')"`:''}>
+    `<div class="nd-row" style="display:flex;gap:11px;align-items:flex-start;cursor:pointer" onclick="${r.link?`notifGo('${esc(r.link)}')`:`notifGuess('${esc((r.t||'').slice(0,30))}')`}">
        <div class="nd-ic">${r.ic||'🔔'}</div>
        <div style="flex:1;min-width:0">
          <div class="nd-t">${esc(r.t)}</div>
