@@ -106,6 +106,7 @@
   .clubrow .info{flex:1}.clubrow .info .n{font-size:16px;font-weight:800}.clubrow .info .m{font-size:12.5px;color:var(--gray);font-weight:500;margin-top:2px}
   .roster{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:4px}
   .dslice svg{ width:300px !important; height:100% !important; }
+  @keyframes radarIn{ from{ transform:scale(.55); opacity:0; } to{ transform:scale(1); opacity:1; } }
   #rcSlides input, #rcSlides textarea{ box-sizing:border-box; width:100%; max-width:100%; }
   .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{font-size:13px;font-weight:700;padding:7px 12px;border-radius:18px;background:#fff;border:1px solid var(--line);color:var(--ink)}
@@ -305,6 +306,7 @@
   .chip{ border:1px solid var(--line2); box-shadow:0 1px 2px rgba(60,40,25,.03); }
   .chip.on{ border-color:transparent; box-shadow:0 2px 8px rgba(232,132,90,.20); }
   .dslice svg{ width:300px !important; height:100% !important; }
+  @keyframes radarIn{ from{ transform:scale(.55); opacity:0; } to{ transform:scale(1); opacity:1; } }
   #rcSlides input, #rcSlides textarea{ box-sizing:border-box; width:100%; max-width:100%; }
   .ptag.swapsel{ outline:2.5px solid var(--coral); outline-offset:1px; background:var(--coral-s); }
   .ptag{ border:1px solid var(--line2); }
@@ -1458,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-A';   // 배포 확인용 — 응답마다 갱신됨
+const BUILD='v0714-C';   // 배포 확인용 — 응답마다 갱신됨
 const AC=()=>state.activeClub?state.clubData[state.activeClub]:null;
 const placedGames=()=>state.played;
 const OPP={1:1020,2:1000,3:980,4:1010,5:1040};
@@ -2567,7 +2569,7 @@ async function openMembers(){
       <div class="lb-av" style="width:40px;height:40px;border-radius:50%;background:${role==='owner'?'#e8a33c':role==='officer'?'#1c1b18':m.resting?'#cfc9bd':'#b1a896'};font-size:15px;flex:none;${m.resting?'opacity:.7':''}">${m.name[0]}</div>
       <div class="mrow-x">
         <div class="mrow-n" style="${m.resting?'color:var(--lgray)':''}">${m.name}${me?' <span style="color:var(--coral-d);font-size:11.5px">(나)</span>':''}${m.resting?' <span style="font-size:10.5px;color:var(--lgray)">휴회</span>':''}</div>
-        <div class="mrow-d">${(()=>{ let c=''; try{ const ym=JSON.parse(m.sport_started||'{}')[state.sport]; const yr=careerYearsFrom(ym); if(yr) c=`${SP().cat==='record'?'경력':'구력'} ${yr}년 · `; }catch(e){} return c; })()}${officer&&m.phone?`${m.phone} · `:''}${jdTxt?`가입 ${jdTxt}`:''}</div>
+        <div class="mrow-d">${(()=>{ let c=''; try{ const ym=JSON.parse(m.sport_started||'{}')[state.sport]; const t=careerTextFrom(ym); if(t) c=`${SP().cat==='record'?'경력':'구력'} ${t} · `; }catch(e){} return c; })()}${officer&&m.phone?`${m.phone} · `:''}${jdTxt?`가입 ${jdTxt}`:''}</div>
       </div>
       <span class="rbadge" style="${ROLE_STYLE[role]}">${ROLE_LABEL[role]}</span>
     </div>`;
@@ -2656,7 +2658,7 @@ async function toggleResting(uid, v){
 /* 연명부 Excel 내보내기 — 원본 연명부 서식 재현 (남색 헤더·연하늘 임원행·눈금선 없음) */
 async function exportRoster(){
   const fname=`${state.activeClub||'클럽'}_연명부_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
-  const careerOf=(m)=>{ try{ const yr=careerYearsFrom(JSON.parse(m.sport_started||'{}')[state.sport]); return yr?`${yr}년`:''; }catch(e){ return ''; } };
+  const careerOf=(m)=>{ try{ return careerTextFrom(JSON.parse(m.sport_started||'{}')[state.sport])||''; }catch(e){ return ''; } };
   const jdOf=(m)=>{ const d=m.joined_at?new Date(m.joined_at):null;
     return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:''; };
   const rows = MB_CACHE.map(m=>({ cls:m.resting?'휴회':'', role:ROLE_LABEL[m.role||'member'],
@@ -3498,7 +3500,7 @@ async function openAttendSummary(){
 }
 function markAtt(nm,st){ const c=AC(); c.att=c.att||{}; c.att[nm]=c.att[nm]===st?'none':st; openAttend(); }
 // ── 경기 기록/히스토리 ──
-const HFMT={club:'일반(복식)',kdk:'KDK',level:'실력별',monthly:'월례회',bw:'청백전',hanul:'한울'};
+const HFMT={club:'일반(복식)',kdk:'KDK',level:'실력별',monthly:'월례회',bw:'청백전',hanul:'한울',double:'복식',single:'단식',mixed:'혼합복식',team:'팀전',rr:'리그전',ko:'토너먼트'};
 /* 모임 상세: 경기별 선수·점수·득실차 */
 function openHistMeet(bi){
   const ME=meName();
@@ -3564,6 +3566,112 @@ function openPlayerStats(ni){
         ${vsMe.ow>vsMe.ol?`<div style="font-size:10.5px;font-weight:800;color:#cf5418;margin-top:5px">내가 설욕해야 할 상대예요</div>`:''}`:''}
     </div>`;
   }
+  /* 능력치 육각형 — 클럽 내 상대 백분위 (프리미엄 룩) */
+  {
+    const stats={};
+    HIST_NAMES.forEach(n=>{
+      const gs=HIST_GAMES.filter(g=>[...g.A,...g.B].includes(n));
+      if(!gs.length) return;
+      let w=0,gf=0,ga=0,cw=0,cn=0; const days=new Set();
+      gs.forEach(g=>{ const inA=g.A.includes(n); const win=inA?g.a>g.b:g.b>g.a;
+        const my=inA?g.a:g.b, op=inA?g.b:g.a;
+        if(win)w++; gf+=my; ga+=op; days.add(g.bi);
+        if(Math.abs(g.a-g.b)<=2){ cn++; if(win)cw++; } });
+      const l5=gs.slice(-5); const l5w=l5.filter(g=>{const inA=g.A.includes(n);return inA?g.a>g.b:g.b>g.a;}).length;
+      stats[n]={ wr:w/gs.length, atk:gf/gs.length, dfn:-ga/gs.length, clutch:cn?cw/cn:0.5, form:l5.length?l5w/l5.length:0.5, act:days.size };
+    });
+    const my=stats[P];
+    if(my && Object.keys(stats).length>=2){
+      const pct=(key)=>{ const vals=Object.values(stats).map(s=>s[key]); const lo=Math.min(...vals), hi=Math.max(...vals);
+        return hi===lo ? 60 : Math.round(20+ (my[key]-lo)/(hi-lo)*80); };
+      const axes=[['승률','wr'],['공격','atk'],['수비','dfn'],['접전','clutch'],['폼','form'],['꾸준함','act']];
+      const vals=axes.map(([_,k])=>pct(k));
+      const bestI=vals.indexOf(Math.max(...vals));
+      const avg=Math.round(vals.reduce((a,b)=>a+b,0)/6);
+      const CX=160, CY=150, R=100;
+      const pt=(i,r)=>{ const a=-Math.PI/2 + i*Math.PI/3; return [CX+Math.cos(a)*r, CY+Math.sin(a)*r]; };
+      const poly=(f)=>axes.map((_,i)=>pt(i,R*f).join(',')).join(' ');
+      // 링 사이 교차 밴드 + 은은한 링
+      const bands=[[1,.75,'#faf8f3'],[.75,.5,'#ffffff'],[.5,.25,'#faf8f3'],[.25,0,'#ffffff']]
+        .map(([o,n2,c])=>`<path d="M ${poly(o).split(' ').join(' L ')} Z ${n2>0?`M ${poly(n2).split(' ').join(' L ')} Z`:''}" fill="${c}" fill-rule="evenodd"/>`).join('');
+      const rings=[.25,.5,.75,1].map((f,k)=>`<polygon points="${poly(f)}" fill="none" stroke="${k===3?'#ded8cb':'#eae5da'}" stroke-width="${k===3?1.6:1.1}"/>`).join('');
+      const spokes=axes.map((_,i)=>{ const [x,y]=pt(i,R); return `<line x1="${CX}" y1="${CY}" x2="${x}" y2="${y}" stroke="#eae5da" stroke-width="1.1"/>`; }).join('');
+      const shapePts=vals.map((v,i)=>pt(i,R*v/100).join(',')).join(' ');
+      const dots=vals.map((v,i)=>{ const [x,y]=pt(i,R*v/100);
+        return i===bestI
+          ? `<circle cx="${x}" cy="${y}" r="8" fill="rgba(140,111,214,.25)"/><circle cx="${x}" cy="${y}" r="4.5" fill="#8c6fd6" stroke="#fff" stroke-width="2"/>`
+          : `<circle cx="${x}" cy="${y}" r="3.8" fill="#fff" stroke="#8c6fd6" stroke-width="2.2"/>`; }).join('');
+      const labels=axes.map(([l],i)=>{ const [x,y]=pt(i,R+26);
+        const best=i===bestI;
+        return `<text x="${x}" y="${y-4}" text-anchor="middle" font-size="10.5" font-weight="800" fill="${best?'#8c6fd6':'#a8a29a'}">${l}</text>
+          <text x="${x}" y="${y+11}" text-anchor="middle" font-size="13.5" font-weight="900" fill="${best?'#8c6fd6':'#1c1b18'}">${vals[i]}</text>`; }).join('');
+      h+=`<div class="card" style="padding:16px 15px 10px;margin-bottom:12px;overflow:hidden;position:relative">
+        <svg viewBox="0 0 320 320" style="position:absolute;right:-70px;top:-70px;width:230px;opacity:.05" aria-hidden="true">
+          <polygon points="${poly(1)}" fill="none" stroke="#1c1b18" stroke-width="3" transform="rotate(18 160 150)"/></svg>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative">
+          <div><div style="font-size:9.5px;font-weight:900;letter-spacing:.14em;color:#b3aea4">PLAYER STATS</div>
+            <div style="font-size:15px;font-weight:900;margin-top:3px">능력치 육각형</div></div>
+          <div style="text-align:right"><div style="font-size:9.5px;font-weight:900;letter-spacing:.1em;color:#b3aea4">OVERALL</div>
+            <div style="font-size:24px;font-weight:900;background:linear-gradient(120deg,#ff8a5c,#b08cff);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.05">${avg}</div></div></div>
+        <svg viewBox="0 0 320 306" style="width:100%;display:block;margin-top:4px;position:relative">
+          <defs>
+            <radialGradient id="rdG" cx="50%" cy="44%" r="62%">
+              <stop offset="0%" stop-color="#ff8a5c" stop-opacity=".34"/>
+              <stop offset="55%" stop-color="#b08cff" stop-opacity=".2"/>
+              <stop offset="100%" stop-color="#b08cff" stop-opacity=".05"/>
+            </radialGradient>
+            <linearGradient id="rdS" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff8a5c"/><stop offset="100%" stop-color="#8f7bff"/>
+            </linearGradient>
+            <filter id="rdGlow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          ${[.25,.5,.75,1].map((f,k)=>`<polygon points="${poly(f)}" fill="${k===0?'#faf8f4':'none'}" stroke="${k===3?'#ded8cb':'#ece7dc'}" stroke-width="${k===3?1.5:1.1}"/>`).join('')}
+          ${axes.map((_,i2)=>{ const [x,y]=pt(i2,R); return `<line x1="${CX}" y1="${CY}" x2="${x}" y2="${y}" stroke="#ece7dc" stroke-width="1.1"/>`; }).join('')}
+          <g style="transform-origin:160px 150px;animation:radarIn .55s cubic-bezier(.2,.8,.3,1.15)">
+            <polygon points="${shapePts}" fill="url(#rdG)" stroke="url(#rdS)" stroke-width="2.8" stroke-linejoin="round" filter="url(#rdGlow)"/>
+          </g>
+          ${vals.map((v,i2)=>{ const [x,y]=pt(i2,R*v/100);
+            return i2===bestI
+              ? `<circle cx="${x}" cy="${y}" r="9" fill="rgba(255,138,92,.28)"/><circle cx="${x}" cy="${y}" r="4.6" fill="#ff8a5c" stroke="#fff" stroke-width="2"/>`
+              : `<circle cx="${x}" cy="${y}" r="3.6" fill="#fff" stroke="#8f7bff" stroke-width="2.2"/>`; }).join('')}
+          ${axes.map(([l],i2)=>{ const [x,y]=pt(i2,R+26); const best=i2===bestI;
+            return `<text x="${x}" y="${y-5}" text-anchor="middle" font-size="10" font-weight="800" fill="${best?'#e0703f':'#a8a29a'}">${l}</text>
+              <text x="${x}" y="${y+11}" text-anchor="middle" font-size="14" font-weight="900" fill="${best?'#e0703f':'#1c1b18'}">${vals[i2]}</text>`; }).join('')}
+        </svg>
+        <div style="text-align:center;margin:2px 0 6px;position:relative">
+          <span style="display:inline-block;font-size:10.5px;font-weight:900;color:#e0703f;background:#fceee4;border:1px solid #f3cdb8;border-radius:20px;padding:5px 13px">가장 강한 축 · ${axes[bestI][0]} ${vals[bestI]}</span></div>
+      </div>`;
+    }
+  }
+  /* 강점 분석 — 접전·화력·최근 폼 */
+  {
+    const mineG=HIST_GAMES.filter(g=>[...g.A,...g.B].includes(P))
+      .map(g=>{ const inA=g.A.includes(P); return {win:inA?g.a>g.b:g.b>g.a, margin:Math.abs(g.a-g.b), my:inA?g.a:g.b}; });
+    const clutch=mineG.filter(g=>g.margin<=2);
+    const cw=clutch.filter(g=>g.win).length;
+    const blowW=mineG.filter(g=>g.win&&g.margin>=4).length;
+    const last5=mineG.slice(-5), l5w=last5.filter(g=>g.win).length;
+    const avgSc=mineG.length?Math.round(mineG.reduce((a,g)=>a+g.my,0)/mineG.length*10)/10:0;
+    const chips=[];
+    if(clutch.length>=3 && cw/clutch.length>=0.6) chips.push([`접전에 강해요 · 접전 ${clutch.length}경기 중 ${cw}승`,'#8c6fd6']);
+    if(clutch.length>=3 && cw/clutch.length<0.4) chips.push([`접전 보완 필요 · 접전 ${clutch.length}경기 중 ${cw}승`,'#cf5418']);
+    if(mineG.length>=4 && blowW/Math.max(1,W)>=0.5) chips.push([`화력형 · 승리의 절반 이상이 큰 점수차`,'#e0614a']);
+    if(last5.length>=4 && l5w>=4) chips.push([`상승세 · 최근 ${last5.length}경기 ${l5w}승`,'#2f9159']);
+    if(last5.length>=4 && l5w<=1) chips.push([`최근 주춤 · 최근 ${last5.length}경기 ${l5w}승`,'#a5750d']);
+    if(mineG.length>=3) chips.push([`경기당 평균 ${avgSc}득점`,'#55514a']);
+    if(chips.length){
+      h+=`<div class="card" style="padding:13px 15px"><div style="font-size:12.5px;font-weight:900;margin-bottom:9px">플레이 성향</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+        ${chips.slice(0,4).map(([t,c])=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700">
+          <span style="width:8px;height:8px;border-radius:50%;background:${c};flex:none"></span>${t}</div>`).join('')}</div>
+        ${mineG.length>=5?`<div style="display:flex;gap:3px;margin-top:11px">${mineG.slice(-10).map(g=>`<span style="flex:1;height:22px;border-radius:6px;background:${g.win?'#bfe0c9':'#f3cdb8'};display:grid;place-items:center;font-size:9px;font-weight:900;color:${g.win?'#2f7d4f':'#cf5418'}">${g.win?'승':'패'}</span>`).join('')}</div>
+        <div style="font-size:10px;font-weight:800;color:var(--lgray);margin-top:4px;text-align:right">최근 ${Math.min(10,mineG.length)}경기 흐름 →</div>`:''}
+      </div>`;
+    }
+  }
   if(bestP.length){
     h+=`<div class="card" style="padding:13px 15px"><div style="font-size:12.5px;font-weight:900;margin-bottom:8px">호흡이 좋은 파트너</div>
       ${bestP.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;margin-top:7px"><span>${hPn(p.n)}</span><b>${p.w}승 ${p.l}패 · ${Math.round(p.rate*100)}%</b></div>${bar(p.w,p.l,'#8c6fd6')}`).join('')}</div>`;
@@ -3625,7 +3733,7 @@ async function openHistory(){
       hist.forEach((x,i)=>{ const win=x.myW>=x.myL && (x.myW+x.myL)>0;
         h+=`<div class="exprow" style="background:${htint[i%4]};cursor:pointer" onclick="openHistMeet(${x.bi})">
           <div class="ex-ic">${SP().ic}</div>
-          <div class="ex-x"><div class="ex-cat">${esc(x.fmt)}</div><div class="ex-n">${esc(x.date)}</div></div>
+          <div class="ex-x"><div class="ex-cat">${esc(x.fmt)}</div><div class="ex-n">${/\d{4}/.test(x.date)?esc(x.date):`${new Date().getFullYear()}. ${esc(x.date)}`}</div></div>
           <div class="ex-meta"><div class="ex-day">${x.people}명 · ${x.games}경기 ›</div>
             <div class="ex-v" style="color:${win?'#2f9159':'#cf5418'}">${x.myW+x.myL?`${x.myW}승 ${x.myL}패`:'미참여'}</div></div></div>`; });
     }
@@ -7315,7 +7423,7 @@ function matchCards(list){
       <div class="om-host">
         <div class="om-hav">${esc(hostName[0])}</div>
         <div style="flex:1;min-width:0">
-          <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span>${m.host_fp!=null?`<span onclick="event.stopPropagation();openFairplayInfo()" style="font-size:10px;font-weight:900;border-radius:8px;padding:3px 7px;cursor:pointer;background:${m.host_fp>=85?'#e6f3ec':m.host_fp>=70?'#fdf2dd':'#fceee4'};color:${m.host_fp>=85?'#2f7d4f':m.host_fp>=70?'#a5750d':'#cf5418'}">페어플레이 ${m.host_fp}${m.host_fp_n?'':' · 신규'}</span>`:''}</div>
+          <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span>${m.host_fp!=null?`<span onclick="event.stopPropagation();openFairplayInfo()" style="font-size:10px;font-weight:900;border-radius:8px;padding:3px 7px;cursor:pointer;background:${m.host_fp>=85?'#e6f3ec':m.host_fp>=70?'#fdf2dd':'#fceee4'};color:${m.host_fp>=85?'#2f7d4f':m.host_fp>=70?'#a5750d':'#cf5418'}">페어플레이 ${m.host_fp}점${m.host_fp_n?'':' · 신규'}</span>`:''}</div>
           <div class="om-hd">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
         </div>
         ${(!m.is_host && m.host) ? `<button class="om-act ghost"
@@ -10475,16 +10583,21 @@ function myAppsCard(){
   </div>`;
 }
 function sportStartedMap(){ try{ return JSON.parse((state.serverUser&&state.serverUser.sport_started)||'{}'); }catch(e){ return {}; } }
-function careerYearsFrom(ym){
+function careerMonthsFrom(ym){
   if(!ym) return null;
   const [y,m]=ym.split('-').map(Number); if(!y) return null;
-  const months=(new Date().getFullYear()-y)*12+(new Date().getMonth()+1-(m||1));
-  return Math.max(1, Math.floor(months/12)+1);            // 1년 미만도 1년차
+  return Math.max(0,(new Date().getFullYear()-y)*12+(new Date().getMonth()+1-(m||1)));
 }
+function careerTextFrom(ym){
+  const t=careerMonthsFrom(ym); if(t==null) return null;
+  const y=Math.floor(t/12), m=t%12;
+  return y>0 ? (m>0?`${y}년 ${m}개월`:`${y}년`) : `${Math.max(1,m)}개월`;
+}
+function careerYearsFrom(ym){ const t=careerMonthsFrom(ym); return t==null?null:Math.max(1,Math.floor(t/12)+1); }
 function myCareerTxt(){
   const ym=sportStartedMap()[state.sport];
-  const yr=careerYearsFrom(ym);
-  return yr? `${ym} 시작 · ${yr}년차` : '';
+  const t=careerTextFrom(ym);
+  return t? `${ym} 시작 · ${t}` : '';
 }
 async function editMyStart(){
   const map=sportStartedMap();
@@ -10567,7 +10680,7 @@ function renderMe(){
   ensureRecs();
   if(SERVER_OK && authToken()) api('/me/fairplay').then(f=>{
     const s=document.getElementById('myFpScore'), l=document.getElementById('myFpLine');
-    if(s){ s.textContent=f.score; s.style.color = f.score>=85?'#2f7d4f':f.score>=70?'#a5750d':'#cf5418'; }
+    if(s){ s.textContent=f.score+'점'; s.style.color = f.score>=85?'#2f7d4f':f.score>=70?'#a5750d':'#cf5418'; }
     if(l) l.textContent = f.reviews? `후기 ${f.reviews}건 반영 · 탭해서 산정 방식 보기` : '아직 후기가 없어요 · 80점에서 시작';
   }).catch(()=>{
     const l=document.getElementById('myFpLine');
@@ -10644,20 +10757,10 @@ function renderMe(){
     <div><div style="font-size:16px;font-weight:800">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#2f9159;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:800">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
     <div><div style="font-size:16px;font-weight:800">${SP().n} 통산 기록 📈</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">종목별 누적 스탯·하이라이트</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}
-  <div class="card"><div class="ch">매너</div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><div style="font-size:16px;font-weight:800;color:var(--green)">😊 매너 양호</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">최근 평가 긍정 92% · 신고 0건</div></div>
-      <div style="font-size:12px;color:var(--lgray);font-weight:600;text-align:right">상태가 나빠지면<br>리그 참여가 제한돼요</div></div></div>
+  </div>
   ${(()=>{const n=Object.keys(rivalList()).length;return `${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openRivals()">
     <div><div style="font-size:16px;font-weight:800">함께 친 사람 · 라이벌 🔥</div><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div><div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>` : ``}`;})()}
-  <div class="card"><div class="ch">결제</div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><div style="font-size:16px;font-weight:800">경기당 결제</div><div style="font-size:13px;color:var(--green);font-weight:700;margin-top:3px">● 칠 때만 결제 · 약정 없음</div></div>
-      <div style="text-align:right"><div style="font-size:18px;font-weight:900">55,000~85,000<small style="font-size:11px;color:var(--gray)">원</small></div><div style="font-size:12px;color:var(--lgray);font-weight:600">경기·코트별</div></div></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;border-top:1px solid #f0efec;padding-top:14px">
-      <div><div style="font-size:15px;font-weight:800">결제 수단</div><div style="font-size:12.5px;font-weight:700;margin-top:3px;color:${state.card?'var(--green)':'var(--lgray)'}">${state.card?'● 카드 등록됨 (•••• 4321)':'○ 미등록'}</div></div>
-      <button class="btn sm ${state.card?'ghost':''}" onclick="openCard()">
-  <div class="card"><div class="ch">접근성</div>
+    <div class="card"><div class="ch">접근성</div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px">
       <div><div style="font-size:14.5px;font-weight:800">큰 글씨</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">화면 요소를 키워 읽기 쉽게</div></div>
       <div role="switch" aria-checked="${state.a11y.big}" tabindex="0" onclick="toggleA11y('big')" style="width:50px;height:30px;border-radius:16px;background:${state.a11y.big?'var(--coral)':'#d9d1c2'};position:relative;cursor:pointer;transition:.15s;flex-shrink:0"><div style="width:24px;height:24px;border-radius:50%;background:#fff;position:absolute;top:3px;left:${state.a11y.big?'23px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div>
