@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-I';
+const BUILD='v0714-J';
 let _ERR_TS=0; const _ERRLOG=[];
 function _logErr(tag,msg){
   _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
@@ -11508,17 +11508,29 @@ window.addEventListener('popstate', ()=>{
 
 window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
-      // 새 버전이 배포되면 알려준다
+      reg.update().catch(()=>{});                             // 열 때마다 새 워커 확인
+      setInterval(()=>reg.update().catch(()=>{}), 15*60e3);   // 켜 둔 채로도 15분마다
       reg.addEventListener('updatefound', ()=>{
         const nw = reg.installing;
         if(!nw) return;
         nw.addEventListener('statechange', ()=>{
           if(nw.state==='installed' && navigator.serviceWorker.controller){
-            toast('새 버전이 있어요 · 앱을 다시 열면 적용돼요');
+            toast('새 버전을 적용하는 중…');
           }
         });
       });
     }).catch(()=>{});
+    // 새 워커가 주도권을 잡으면 한 번만 새로고침 — 옛 화면이 남지 않게
+    let _swReloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+      if(_swReloaded) return; _swReloaded=true;
+      location.reload();
+    });
+    // 푸시 알림 탭 → 워커가 보낸 링크로 이동
+    navigator.serviceWorker.addEventListener('message', (ev)=>{
+      const l=ev.data && ev.data.notifLink;
+      if(l && typeof notifGo==='function' && l!=='/') try{ notifGo(l); }catch(e){}
+    });
   });
 }
 // 홈 화면 추가 안내 (안드로이드/크롬). iOS 는 공유 버튼을 눌러야 해서 별도 안내.
