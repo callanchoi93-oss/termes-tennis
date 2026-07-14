@@ -8995,8 +8995,9 @@ async function saveRecord(){
   try{
     const _url = REC_EDIT_ID ? `/records/${REC_EDIT_ID}` : '/records';
     const _mth = REC_EDIT_ID ? 'PATCH' : 'POST';
-    await api(_url,{method:_mth,body:JSON.stringify({sport:sp.id, ymd, dist_m, secs,
+    const saved = await api(_url,{method:_mth,body:JSON.stringify({sport:sp.id, ymd, dist_m, secs,
       rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim(), photos: REC_PHOTOS.length?REC_PHOTOS:undefined, detail: Object.keys(detail).length?detail:undefined })});
+    if(!saved || !saved.ymd){ toast('서버가 구버전이에요 · server.js를 재배포해 주세요'); return; }
     closeOv(); REC_MINE=null; REC_TS=0; ensureRecs();
     if(state.view==='me') renderMe(); else if(state.view==='league') renderLeague(); else renderHome();
     toast(REC_EDIT_ID?'기록을 수정했어요':(isPB?'개인 기록 갱신! 축하해요':'기록을 저장했어요'));
