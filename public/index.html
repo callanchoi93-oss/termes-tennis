@@ -1458,6 +1458,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
+const BUILD='v0714-A';   // 배포 확인용 — 응답마다 갱신됨
 const AC=()=>state.activeClub?state.clubData[state.activeClub]:null;
 const placedGames=()=>state.played;
 const OPP={1:1020,2:1000,3:980,4:1010,5:1040};
@@ -2812,6 +2813,51 @@ async function syncGameDiary(list){
       added++;
     }
     if(added){ REC_MINE=null; REC_TS=0; toast(`오픈매치 ${added}건을 다이어리에 자동 기록했어요`); }
+  }catch(e){}
+}
+
+/* 클럽 대진 점수 → 다이어리에 그날 승패 요약 자동 기록 */
+let _CGD_DONE=false;
+async function syncClubGameDiary(){
+  if(_CGD_DONE || !SERVER_OK || !clubId() || !authToken()) return;
+  _CGD_DONE=true;
+  try{
+    const rows = await api(`/clubs/${clubId()}/brackets/history?limit=10`);
+    const ME=meName(); const Y=new Date().getFullYear();
+    if(REC_MINE===null){ try{ REC_MINE=await api(`/records?sport=${SP().id}`); REC_TS=Date.now(); }catch(e){ REC_MINE=[]; } }
+    let added=0;
+    for(const b of (rows||[])){
+      let myW=0,myL=0;
+      (b.reg||[]).forEach(r=>{
+        const sc=(b.scores||{})[r.key];
+        if(!sc || !Array.isArray(r.names) || sc.a===sc.b || !r.names.includes(ME)) return;
+        const half=Math.floor(r.names.length/2);
+        const win = r.names.slice(0,half).includes(ME) ? sc.a>sc.b : sc.b>sc.a;
+        win?myW++:myL++;
+      });
+      if(myW+myL===0) continue;
+      const m=String(b.date||'').match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+      const ymd = m ? `${Y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}` : null;
+      if(!ymd) continue;
+      const summary=`${myW}승 ${myL}패`;
+      // 이미 이 대진이 반영됐으면 스킵
+      const hasBk=(REC_MINE||[]).some(r=>{ try{ return JSON.parse(r.detail||'{}').bkId===b.id; }catch(e){ return false; } });
+      if(hasBk) continue;
+      // 같은 날 클럽 모임 엔트리가 있으면 거기에 승패를 병합, 없으면 새로
+      const dayClub=(REC_MINE||[]).find(r=>r.ymd===ymd && r.rtype==='club');
+      if(dayClub){
+        let det={}; try{ det=JSON.parse(dayClub.detail||'{}'); }catch(e){}
+        det.bkId=b.id;
+        await api(`/records/${dayClub.id}`,{method:'PATCH',body:JSON.stringify({
+          note:`${(dayClub.note||'클럽 모임').split(' · 게임')[0]} · 게임 ${summary}`, detail:det })}).catch(()=>{});
+      } else {
+        await api('/records',{method:'POST',body:JSON.stringify({
+          sport:SP().id, ymd, dist_m:1, rtype:'club',
+          note:`클럽 대진 · 게임 ${summary}`, detail:{bkId:b.id, club:state.activeClub||''} })}).catch(()=>{});
+      }
+      added++;
+    }
+    if(added){ REC_MINE=null; REC_TS=0; toast(`클럽 게임 기록 ${added}건을 다이어리에 반영했어요`); }
   }catch(e){}
 }
 
@@ -4987,6 +5033,7 @@ async function repairClubServer(){
 let _NPOP_DONE=false;
 function renderClub(){
   if(!_NPOP_DONE && state.clubTab==='my' && SERVER_OK && clubId()){ _NPOP_DONE=true; setTimeout(maybeNoticePopup, 600); }
+  if(state.clubTab==='my' && SERVER_OK && clubId()) setTimeout(syncClubGameDiary, 900);
   const t=state.clubTab;
   let h=`<h2 class="t">클럽</h2><p class="sub">우리 클럽 소식과 일정을 한곳에서.</p>
   <div class="seg"><div class="o ${t==='my'?'on':''}" onclick="setClubTab('my')">내 클럽</div><div class="o ${t==='find'?'on':''}" onclick="setClubTab('find')">클럽 찾기</div></div>`;
@@ -5136,14 +5183,16 @@ function renderClub(){
       let phs=[]; try{ phs = p.photos ? (typeof p.photos==='string'?JSON.parse(p.photos):p.photos) : (p.photo?[p.photo]:[]); }catch(e){ phs=p.photo?[p.photo]:[]; }
       const thumb = phs[0] ? (phs[0].startsWith('http')?phs[0]:API_BASE+phs[0]) : null;
       if(SERVER_OK){
-        h+=`<div class="post" style="cursor:pointer" onclick="openFeedPost(${p.id})">
-          <div class="hd"><div class="av" style="${photoOf(who)?`background:url('${photoOf(who)}') center/cover`:''}">${photoOf(who)?'':esc(who[0])}</div>
-            <div style="flex:1"><div class="who">${esc(who)}</div><div class="when">${esc(when)}</div></div></div>
-          ${p.title?`<div style="font-size:16px;font-weight:900;margin:2px 0 4px;letter-spacing:-.01em">${esc(p.title)}</div>`:``}
-          ${body?`<div class="body" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(body)}</div>`:``}
-          ${thumb?`<div class="photo" style="position:relative"><img src="${esc(thumb)}" alt="클럽 사진" loading="lazy">${phs.length?`<span style="position:absolute;right:10px;bottom:10px;background:rgba(20,18,14,.6);color:#fff;font-size:11px;font-weight:800;border-radius:9px;padding:4px 9px">사진 ${phs.length}</span>`:''}</div>`:``}
-          <div style="display:flex;gap:14px;font-size:12.5px;font-weight:800;color:var(--gray);margin-top:10px">
-            <span style="color:${p.liked?'var(--coral-d)':'inherit'}">♥ ${p.likes||0}</span><span>💬 ${p.comments||0}</span></div>
+        const tTitle = p.title || (body||'').split('\n')[0].slice(0,26) || '(내용 없음)';
+        h+=`<div onclick="openFeedPost(${p.id})" style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px 15px;margin-bottom:9px;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <div class="av" style="width:36px;height:36px;flex:none;${photoOf(who)?`background:url('${photoOf(who)}') center/cover`:''}">${photoOf(who)?'':esc(who[0])}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(tTitle)}</div>
+            <div style="font-size:11.5px;color:var(--lgray);font-weight:700;margin-top:3px">${esc(who)} · ${esc(when)}</div></div>
+          <div style="flex:none;display:flex;gap:9px;font-size:11.5px;font-weight:800;color:var(--gray)">
+            ${phs.length?`<span>사진 ${phs.length}</span>`:''}
+            <span style="color:${p.liked?'var(--coral-d)':'inherit'}">♥ ${p.likes||0}</span>
+            <span>💬 ${p.comments||0}</span></div>
         </div>`;
       } else {
         h+=`<div class="post"><div class="hd"><div class="av">${esc(who[0])}</div>
@@ -6746,9 +6795,7 @@ const APP_NEWS={ ver:'u20260712',
 function maybeShowNews(){
   try{
     if(!state.loggedIn) return;
-    if(localStorage.getItem('matsu_news')===APP_NEWS.ver) return;
-    localStorage.setItem('matsu_news', APP_NEWS.ver);
-    setTimeout(()=>openPromo(APP_NEWS), 1200);
+    return;   // 기능 업데이트 안내 팝업 비활성화 (요청)
   }catch(e){}
 }
 async function openClubPremium(){
@@ -10522,7 +10569,10 @@ function renderMe(){
     const s=document.getElementById('myFpScore'), l=document.getElementById('myFpLine');
     if(s){ s.textContent=f.score; s.style.color = f.score>=85?'#2f7d4f':f.score>=70?'#a5750d':'#cf5418'; }
     if(l) l.textContent = f.reviews? `후기 ${f.reviews}건 반영 · 탭해서 산정 방식 보기` : '아직 후기가 없어요 · 80점에서 시작';
-  }).catch(()=>{});
+  }).catch(()=>{
+    const l=document.getElementById('myFpLine');
+    if(l) l.textContent='서버가 구버전이에요 · server.js를 재배포해 주세요';
+  });
   if(SERVER_OK && authToken() && MY_APPS && Date.now()-(MY_APPS._ts||0)>3e4){ MY_APPS=null; }
 
   const joined=state.matches.filter(m=>m.joined).length,clubs=state.myClubs.length,t=myTier();
@@ -10540,7 +10590,7 @@ function renderMe(){
     <div style="width:72px;height:72px;border-radius:50%;background:${myPhotoUrl()?`url('${myPhotoUrl()}') center/cover`:'linear-gradient(135deg,var(--coral),var(--coral-d))'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;font-weight:800">${myPhotoUrl()?'':(state.userName||'곽주영')[0]}</div>
     <div><div style="font-size:22px;font-weight:800">${state.userName||'곽주영'} ${state.premium?'<span style="font-size:11px;color:#cf5418;background:#fceee4;border-radius:8px;padding:2px 7px;vertical-align:2px;font-weight:800">프리미엄 ✓</span>':''}</div>
       <span class="plbadge">${t.name}</span>
-      <div style="font-size:13px;color:var(--gray);font-weight:600;margin-top:6px">${state.gender||'-'} · ${SP().cat==='racket'?'구력':'경력'} ${state.exp||'-'} <span onclick="openProfileEdit()" style="color:var(--coral-d);font-weight:800;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:4px;vertical-align:-3px">${ic('camera',15)}프로필 수정</span></div>
+      <div style="font-size:13px;color:var(--gray);font-weight:600;margin-top:6px">${state.gender||'-'} · ${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')} <span onclick="openProfileEdit()" style="color:var(--coral-d);font-weight:800;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:4px;vertical-align:-3px">${ic('camera',15)}프로필 수정</span></div>
       <div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:3px">라운지 익명 · ${myAnonNick()}</div></div></div></div>
   ${t.placing&&SP().cat==='racket'?`<div class="card" style="background:var(--violet-s);border:1px solid rgba(124,92,214,.18)"><div style="font-size:15px;font-weight:800;color:var(--violet-d)">배치 진행 ${state.played}/5 · 5경기 후 등급이 정해져요</div>
     <div class="gprog vio"><i style="width:${Math.max(state.played/5*100,4)}%"></i></div>
@@ -10559,6 +10609,7 @@ function renderMe(){
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${(state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)'}</div></div>
     <span style="color:var(--lgray);font-weight:800">›</span></div>`:''}
   ${myAppsCard()}
+  <div style="text-align:center;font-size:10.5px;color:#c9c4ba;font-weight:700;margin:18px 0 6px">MATSU ${BUILD} — 이 코드가 안 보이면 index.html이 아직 반영 전이에요</div>
   ${SP().cat==='record'?meRecordCard():SP().cat==='team'?meTeamCard():`<div class="card"><div class="ch">전적</div>
     <div style="display:flex;text-align:center">
       <div style="flex:1"><div style="font-size:22px;font-weight:900">${rec.w}<span style="font-size:13px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:13px;color:var(--gray)">패</span></div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">승률 ${wr}%</div></div>
