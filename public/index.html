@@ -1313,7 +1313,7 @@
   <div class="demo-tag" id="srvTag">데모 · 실제 결제·예약은 작동하지 않습니다</div>
   <div class="appbar">
     <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:19px;font-weight:800;color:var(--ink);flex:none;margin-right:10px">‹</div>
-    <div class="logo" style="cursor:pointer" onclick="go('home')" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
+    <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" role="button" tabindex="0" aria-label="검색" onclick="openSearch()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
       <div class="bell" id="chatBell" role="button" tabindex="0" aria-label="채팅" onclick="go('chat')" style="position:relative"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1 3.6-11.3 8.38 8.38 0 0 1 12.5 7.5z"/></svg><span class="chat-cnt" id="chatCnt" style="display:none"></span></div>
@@ -1460,13 +1460,19 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-D';
-let _ERR_TS=0;
+const BUILD='v0714-F';
+let _ERR_TS=0; const _ERRLOG=[];
+function _logErr(tag,msg){
+  _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
+  if(_ERRLOG.length>8) _ERRLOG.shift();
+}
 window.addEventListener('error', e=>{
+  _logErr('E', e.message + (e.filename?` @${(e.lineno||'')}`:''));
   if(Date.now()-_ERR_TS<3000) return; _ERR_TS=Date.now();
   try{ toast(`오류: ${String(e.message||'').slice(0,70)}`); }catch(_){}
 });
 window.addEventListener('unhandledrejection', e=>{
+  _logErr('P', e.reason&&e.reason.message||e.reason||'');
   if(Date.now()-_ERR_TS<3000) return; _ERR_TS=Date.now();
   try{ toast(`오류(P): ${String(e.reason&&e.reason.message||e.reason||'').slice(0,70)}`); }catch(_){}
 });   // 배포 확인용 — 응답마다 갱신됨
@@ -4660,7 +4666,7 @@ async function toggleNotif(ev){
       rows=(NOTIF_CACHE||[]).slice(0,15).map(n=>({t:n.title, s:n.sub, w:timeAgo(n.created_at), link:n.link||'', ic:n.icon||'🔔'}));
     }catch(e){}
   }
-  if(!rows.length){
+  if(!rows.length && !SERVER_OK){                     // 데모 모드에서만 예시 알림
     rows=(state.notifs||[]).map(n=>({t:n.title, s:n.sub, w:n.when}));
     if(!rows.length) rows=[
       {t:'박현우 님이 클럽에 가입했어요', s:state.activeClub||'내 클럽', w:'10분 전'},
@@ -4669,6 +4675,10 @@ async function toggleNotif(ev){
     ];
   }
   const el=document.getElementById('notifDrop'); if(!el) return;
+  if(!rows.length){
+    el.innerHTML=`<div class="nd-h">알림</div><div class="nd-row" style="color:var(--lgray);padding:18px 14px">새 알림이 없어요</div>`;
+    return;
+  }
   el.innerHTML=`<div class="nd-h">알림</div>` + rows.map(r=>
     `<div class="nd-row" style="display:flex;gap:11px;align-items:flex-start${r.link?';cursor:pointer':''}" ${r.link?`onclick="notifGo('${esc(r.link)}')"`:''}>
        <div class="nd-ic">${r.ic||'🔔'}</div>
@@ -10276,7 +10286,7 @@ const REPLIES=['좋아요! 그때 봬요 🎾','넵 확인했어요','오 좋네
 let DM_THREADS = [];     // 서버 1:1 대화 스레드
 async function loadDMThreads(){
   if(!SERVER_OK){ DM_THREADS=[]; return; }
-  try{ DM_THREADS = await api('/dm/threads'); }catch(e){ DM_THREADS = []; }
+  try{ DM_THREADS = await api('/dm/threads'); }catch(e){ if(DM_THREADS===null) DM_THREADS = undefined; }
 }
 function renderChat(){
   if(state.chatRoom){ renderRoom(); return; }
@@ -10299,7 +10309,7 @@ function renderChat(){
         <div style="font-size:13px;font-weight:800;color:var(--gray)">1:1 대화</div>
         <div style="font-size:11.5px;font-weight:700;color:var(--lgray)">연락처는 여기서만 주고받아요</div></div>`;
   // 서버 스레드 (실제 대화)
-  DM_THREADS.forEach(t=>{
+  (Array.isArray(DM_THREADS)?DM_THREADS:[]).forEach(t=>{
     const u = t.user || {};
     const nm = u.name || u.anon_nick || '알 수 없음';
     const preview = (t.mine?'나: ':'') + (t.last||'');
@@ -10311,8 +10321,10 @@ function renderChat(){
   // 데모 모드에서만 남는 가상 대화
   dms.forEach(id=>h+=row(id));
 
-  if(!DM_THREADS.length && !dms.length)
-    h+=`<div class="note" style="margin-top:8px;text-align:left">아직 주고받은 대화가 없어요. <b>선수 비교</b>나 <b>클럽 회원</b> 화면에서 대화를 시작할 수 있어요.</div>`;
+  if(SERVER_OK && !Array.isArray(DM_THREADS))
+    h+=`<div class="note" style="margin-top:8px;text-align:left">대화를 불러오지 못했어요. <span onclick="loadDMThreads().then(()=>renderChat())" style="color:var(--coral-d);font-weight:800;cursor:pointer">다시 시도</span></div>`;
+  else if(!(DM_THREADS||[]).length && !dms.length)
+    h+=`<div class="note" style="margin-top:8px;text-align:left">아직 주고받은 대화가 없어요. <b>클럽 연명부</b>나 <b>선수 프로필</b>에서 대화를 시작할 수 있어요.</div>`;
   if(!groups.length) h+=`<div class="note" style="margin-top:12px">클럽에 정회원으로 가입하면 <b>단체방</b>이 생겨요.</div>`;
   document.getElementById('s-chat').innerHTML=h;
 }
@@ -11234,6 +11246,33 @@ function updBackBtn(){
   const b=document.getElementById('backBtn');
   const show = state.view!=='home';
   if(b) b.style.display = show ? 'flex' : 'none';
+}
+let _LT=[],_LTN=0;
+function logoTap(){
+  const now=Date.now();
+  _LT=_LT.filter(t=>now-t<1600); _LT.push(now);
+  if(_LT.length>=5){ _LT=[]; openDiag(); return; }
+  go('home');
+}
+function openDiag(){
+  const chk=(v)=>v?'✅':'❌';
+  const lines=[
+    `빌드: ${typeof BUILD!=='undefined'?BUILD:'(스탬프 없음 — 구버전)'}`,
+    `서버 연결: ${chk(typeof SERVER_OK!=='undefined'&&SERVER_OK)}  로그인 토큰: ${chk(!!authToken())}`,
+    `종목: ${state.sport} · 뷰: ${state.view} · 클럽ID: ${clubId()||'—'}`,
+    `채팅 화면(s-chat): ${chk(!!document.getElementById('s-chat'))}  renderChat: ${chk(typeof renderChat==='function')}`,
+    `알림 함수: ${chk(typeof toggleNotif==='function')}  드롭 CSS: ${chk(!!document.getElementById('notifDrop')||true)}`,
+    `열린 시트(ov.on): ${chk(document.getElementById('ov').classList.contains('on'))}`,
+  ];
+  const errs=_ERRLOG.length?_ERRLOG.join('\n'):'(기록된 오류 없음)';
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>진단</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="card" style="padding:13px 15px;font-size:12.5px;font-weight:700;line-height:2">${lines.join('<br>')}</div>
+    <div class="card" style="padding:13px 15px"><div style="font-size:12px;font-weight:900;margin-bottom:6px">최근 오류 로그</div>
+      <pre id="dgErr" style="font-size:10.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:#8a4a2a;margin:0">${errs}</pre></div>
+    <button class="btn ghost" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('dgErr').textContent).then(()=>toast('복사했어요'))">오류 로그 복사</button>
+    <div class="note">로고를 빠르게 5번 탭하면 언제든 이 화면이 열려요. 스크린샷을 개발에 보내주세요.</div>`;
+  document.getElementById('ov').classList.add('on');
 }
 function go(v, isBack){
   if(!isBack && state.view && state.view!==v){
