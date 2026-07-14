@@ -290,7 +290,14 @@ app.post('/auth/kakao/code', limitLogin, async (req, res) => {
 // ── 종목별 프로필 (포지션·주발·영법 …) ──
 // 종목마다 항목이 달라서 컬럼으로 두지 않고 JSON 한 칸에 담는다.
 try { db.exec("ALTER TABLE users ADD COLUMN sport_profile TEXT"); } catch (e) {}
-try { db.exec('ALTER TABLE users ADD COLUMN phone TEXT'); } catch (e) {}                    // 연명부 연락처 (본인 입력)
+try { db.exec('ALTER TABLE users ADD COLUMN phone TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN sport_started TEXT'); } catch (e) {}   // 종목별 시작 시점 {"tennis":"2019-05"}
+db.exec(`CREATE TABLE IF NOT EXISTS member_exits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
+  reason TEXT, left_at INTEGER)`);
+db.exec(`CREATE TABLE IF NOT EXISTS rest_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
+  rtype TEXT, start TEXT, end TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at INTEGER)`);                    // 연명부 연락처 (본인 입력)
 try { db.exec('ALTER TABLE club_members ADD COLUMN resting INTEGER DEFAULT 0'); } catch (e) {}  // 휴회
 try { db.exec('ALTER TABLE club_members ADD COLUMN joined_at INTEGER'); } catch (e) {}      // 가입(승인)일
 
@@ -505,7 +512,7 @@ app.post('/pay/refund', auth, async (req, res) => {
 app.get('/me', auth, (req, res) => res.json(getUser(req.uid)));
 app.patch('/me', auth, (req, res) => {
   const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
-                 'birth_year','handed','backhand','style','phone'];
+                 'birth_year','handed','backhand','style','phone','sport_started'];
   const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
   const sets = [], vals = [];
   for (const k of allow) if (k in req.body) {
@@ -565,7 +572,7 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.joined_at, u.name, u.gender, u.rating${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.joined_at, u.name, u.gender, u.rating, u.sport_started${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
   res.json(rows);
@@ -598,6 +605,51 @@ app.patch('/clubs/:id/genders', auth, (req, res) => {
 });
 
 // 휴회 토글 (임원)
+// 휴회·복회 신청 (회원) — 임원 승인제
+// 연명부 부속 기록 — 휴회·복회 이력 + 탈퇴 회원 (엑셀 시트용)
+app.get('/clubs/:id/roster-logs', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const rests = db.prepare(`SELECT r.rtype, r.start, r.end, r.reason, r.created_at, r.status, u.name
+    FROM rest_requests r JOIN users u ON u.id=r.user_id
+    WHERE r.club_id=? AND r.status='approved' ORDER BY r.id DESC LIMIT 200`).all(cid);
+  const exits = db.prepare('SELECT name, reason, left_at FROM member_exits WHERE club_id=? ORDER BY id DESC LIMIT 200').all(cid);
+  res.json({ rests, exits });
+});
+
+app.post('/clubs/:id/rest-requests', auth, (req, res) => {
+  const cid = +req.params.id;
+  const mem = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')").get(cid, req.uid);
+  if (!mem) return res.status(403).json({ error: 'not_member' });
+  const { rtype, start, end, reason } = req.body || {};
+  if (!['rest', 'return'].includes(rtype)) return res.status(400).json({ error: 'bad_type' });
+  const dup = db.prepare("SELECT 1 FROM rest_requests WHERE club_id=? AND user_id=? AND status='pending'").get(cid, req.uid);
+  if (dup) return res.status(409).json({ error: 'already_pending' });
+  db.prepare('INSERT INTO rest_requests (club_id,user_id,rtype,start,end,reason,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(cid, req.uid, rtype, start || '', end || '', (reason || '').slice(0, 40), now());
+  const u = getUser(req.uid), club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(cid)
+    .forEach(o => sendPush(o.user_id, { icon: '🛌', title: (rtype==='rest'?'휴회':'복회')+' 신청', body: `${u.name} · ${reason||''}` }));
+  res.json({ ok: true });
+});
+app.get('/clubs/:id/rest-requests', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  res.json(db.prepare(`SELECT r.*, u.name FROM rest_requests r JOIN users u ON u.id=r.user_id
+    WHERE r.club_id=? AND r.status='pending' ORDER BY r.id DESC`).all(cid));
+});
+app.post('/clubs/:id/rest-requests/:rid/decide', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const r = db.prepare('SELECT * FROM rest_requests WHERE id=? AND club_id=?').get(+req.params.rid, cid);
+  if (!r || r.status !== 'pending') return res.status(404).json({ error: 'not_found' });
+  const ok = !(req.body && req.body.approve === false);
+  db.prepare('UPDATE rest_requests SET status=? WHERE id=?').run(ok ? 'approved' : 'rejected', r.id);
+  if (ok) db.prepare('UPDATE club_members SET resting=? WHERE club_id=? AND user_id=?').run(r.rtype === 'rest' ? 1 : 0, cid, r.user_id);
+  sendPush(r.user_id, { icon: ok ? '✅' : '🔔', title: (r.rtype==='rest'?'휴회':'복회') + (ok?' 승인':' 신청 결과'), body: ok ? '처리되었어요' : '승인되지 않았어요' });
+  res.json({ ok: true });
+});
+
 app.patch('/clubs/:id/members/:uid/resting', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
@@ -617,7 +669,9 @@ app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
     const t = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, intOrNull(req.params.uid));
     if (!t) return res.status(404).json({ error: 'not_member' });
     if (['owner', 'officer'].includes(t.role)) return res.status(400).json({ error: 'cannot_change' });
-    db.prepare('UPDATE club_members SET role=? WHERE club_id=? AND user_id=?').run(wanted, cid, intOrNull(req.params.uid));
+    if (wanted === 'member' && t.role === 'guest')
+      db.prepare('UPDATE club_members SET role=?, joined_at=? WHERE club_id=? AND user_id=?').run(wanted, now(), cid, intOrNull(req.params.uid));
+    else db.prepare('UPDATE club_members SET role=? WHERE club_id=? AND user_id=?').run(wanted, cid, intOrNull(req.params.uid));
     return res.json({ ok: true, role: wanted });
   }
   const uid = intOrNull(req.params.uid);
@@ -1098,6 +1152,13 @@ app.get('/me/applications', auth, (req, res) => {
 });
 
 app.delete('/me', auth, (req, res) => {
+  try {
+    const u = getUser(req.uid);
+    db.prepare("SELECT club_id FROM club_members WHERE user_id=? AND (status IS NULL OR status='active')").all(req.uid)
+      .forEach(r => db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
+        .run(r.club_id, req.uid, u ? u.name : '', '계정 탈퇴', now()));
+  } catch (e) {}
+
   const uid = req.uid;
   // 클럽장은 넘기고 나가야 한다 — 클럽이 주인 없이 남으면 안 된다
   const owned = db.prepare("SELECT c.name FROM club_members m JOIN clubs c ON c.id=m.club_id WHERE m.user_id=? AND m.role='owner'").all(uid);
@@ -1161,6 +1222,9 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
   if (!t) return res.status(404).json({ error: 'not_member' });
   if (t.role === 'owner') return res.status(403).json({ error: 'cannot_kick_owner' });
   if (t.role === 'officer' && me.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
+  { const u = getUser(target);
+    db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
+      .run(cid, target, u ? u.name : '', '탈퇴', now()); }
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
   sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
@@ -1636,12 +1700,7 @@ function applyRating(m) {
 }
 
 // ── RECORDS (수영/러닝) ──
-app.post('/records', auth, (req, res) => {
-  const { sport, event, value } = req.body;
-  const r = db.prepare('INSERT INTO records (user_id,sport,event,value,recorded_at) VALUES (?,?,?,?,?)')
-    .run(req.uid, sport, event, value, now());
-  res.json(db.prepare('SELECT * FROM records WHERE id=?').get(rid(r)));
-});
+// (구 records 라우트 제거 — sport_records 라우트가 처리)
 app.get('/records/leaderboard', (req, res) => {
   const { sport, event } = req.query;
   res.json(db.prepare(`SELECT r.user_id, u.name, MIN(r.value) best FROM records r JOIN users u ON u.id=r.user_id
@@ -3197,6 +3256,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS sport_records (
 CREATE INDEX IF NOT EXISTS ix_records_user ON sport_records(user_id, sport, ymd);`);
 try { db.exec("ALTER TABLE sport_records ADD COLUMN rtype TEXT DEFAULT 'train'"); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE sport_records ADD COLUMN stroke TEXT'); } catch (e) { /* 수영 영법 */ }
+try { db.exec('ALTER TABLE sport_records ADD COLUMN photo TEXT'); } catch (e) { /* 다이어리 사진 */ }
+try { db.exec('ALTER TABLE sport_records ADD COLUMN detail TEXT'); } catch (e) { /* 종목별 상세(JSON) */ }
 
 app.get('/records', auth, (req, res) => {
   const sport = String(req.query.sport || '');
@@ -3210,16 +3271,50 @@ app.post('/records', auth, limitWrite, (req, res) => {
   const ymd = String(b.ymd || '').slice(0, 10);
   const dist_m = Math.max(1, Math.min(300000, intOrNull(b.dist_m) || 0));
   const secs = Math.max(0, Math.min(86400, intOrNull(b.secs) || 0)) || null;
-  const note = String(b.note || '').trim().slice(0, 60) || null;
-  const rtype = b.rtype === 'race' ? 'race' : 'train';
+  const note = String(b.note || '').trim().slice(0, 120) || null;
+  const rtype = ['race', 'club', 'lesson'].includes(b.rtype) ? b.rtype : 'train';
   const stroke = ['자유형','배영','평영','접영','혼영'].includes(b.stroke) ? b.stroke : null;
+  let photo = null;
+  if (typeof b.photo === 'string' && b.photo.startsWith('data:image') && b.photo.length < 400000) photo = b.photo;
+  else if (Array.isArray(b.photos)) {
+    const arr = b.photos.filter(p => typeof p === 'string' && p.startsWith('data:image')).slice(0, 3);
+    const s = JSON.stringify(arr);
+    if (arr.length && s.length < 900000) photo = s;   // 여러 장은 JSON 배열로
+  }
+  let detail = null;
+  if (b.detail && typeof b.detail === 'object') { const s = JSON.stringify(b.detail); if (s.length <= 600) detail = s; }
   if (!sport || !/^\d{4}-\d{2}-\d{2}$/.test(ymd) || !dist_m)
     return res.status(400).json({ error: 'bad_request' });
-  const r = db.prepare('INSERT INTO sport_records (user_id,sport,ymd,dist_m,secs,note,created_at,rtype,stroke) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(req.uid, sport, ymd, dist_m, secs, note, now(), rtype, stroke);
+  const r = db.prepare('INSERT INTO sport_records (user_id,sport,ymd,dist_m,secs,note,created_at,rtype,stroke,photo,detail) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(req.uid, sport, ymd, dist_m, secs, note, now(), rtype, stroke, photo, detail);
   res.json({ ok: true, id: rid(r) });
 });
 
+// 기록 수정 (본인 것만)
+app.patch('/records/:id', auth, (req, res) => {
+  const r = db.prepare('SELECT * FROM sport_records WHERE id=? AND user_id=?').get(+req.params.id, req.uid);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(b.ymd || '') ? b.ymd : r.ymd;
+  const dist_m = Math.min(1000000, Math.max(1, intOrNull(b.dist_m) ?? r.dist_m));
+  const secs = b.secs === null ? null : (intOrNull(b.secs) ?? r.secs);
+  const note = b.note !== undefined ? (String(b.note || '').trim().slice(0, 120) || null) : r.note;
+  const rtype = ['race', 'club', 'train', 'lesson'].includes(b.rtype) ? b.rtype : r.rtype;
+  const stroke = ['자유형','배영','평영','접영','혼영'].includes(b.stroke) ? b.stroke : r.stroke;
+  let photo = r.photo;
+  if (b.photo === null || (Array.isArray(b.photos) && b.photos.length === 0)) photo = null;
+  else if (typeof b.photo === 'string' && b.photo.startsWith('data:image') && b.photo.length < 400000) photo = b.photo;
+  else if (Array.isArray(b.photos)) {
+    const arr = b.photos.filter(p => typeof p === 'string' && p.startsWith('data:image')).slice(0, 3);
+    const s = JSON.stringify(arr);
+    if (s.length < 900000) photo = arr.length ? s : null;
+  }
+  let detail = r.detail;
+  if (b.detail && typeof b.detail === 'object') { const s = JSON.stringify(b.detail); if (s.length <= 600) detail = s; }
+  db.prepare('UPDATE sport_records SET ymd=?, dist_m=?, secs=?, note=?, rtype=?, stroke=?, photo=?, detail=? WHERE id=?')
+    .run(ymd, dist_m, secs, note, rtype, stroke, photo, detail, r.id);
+  res.json(db.prepare('SELECT * FROM sport_records WHERE id=?').get(r.id));
+});
 app.delete('/records/:id', auth, (req, res) => {
   db.prepare('DELETE FROM sport_records WHERE id=? AND user_id=?').run(+req.params.id, req.uid);
   res.json({ ok: true });
