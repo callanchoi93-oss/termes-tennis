@@ -1460,7 +1460,14 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0714-L';
+const BUILD='v0715-F1';
+/* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
+try{
+  if(localStorage.getItem('matsu_build')!==BUILD){
+    localStorage.setItem('matsu_build', BUILD);
+    if(window.caches && caches.keys) caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).catch(()=>{});
+  }
+}catch(e){}
 let _ERR_TS=0; const _ERRLOG=[];
 function _logErr(tag,msg){
   _ERRLOG.push(`${new Date().toTimeString().slice(0,8)} ${tag} ${String(msg).slice(0,110)}`);
@@ -5474,6 +5481,11 @@ function playRequest(name){
   closeOv();
   const uid = SERVER_OK ? SRV_UID[name] : null;
   if(uid){
+    if(confirm(`${name} 님에게 도전을 신청할까요?\n수락 → 결과 입력 → 서로 확인하면 레이팅에 반영돼요.`)){
+      api('/matches',{method:'POST',body:JSON.stringify({sport:SP().id,kind:'friendly',away_user_id:uid})})
+        .then(()=>{ toast('도전을 신청했어요 · 매치 탭에서 진행을 확인하세요'); MYMATCH=null; })
+        .catch(()=>toast('도전 신청에 실패했어요'));
+    }
     openDM(uid, name);
     setTimeout(()=>{ const t=document.getElementById('dmText');
       if(t && !t.value) t.value='이번 주에 함께 치실래요? 🎾'; }, 450);
@@ -6006,6 +6018,70 @@ function togglePhoto(){const el=document.getElementById('postText');if(el)state.
 /* 내가 쓴 글 — 라운지 글, 댓글, 클럽 소식을 한곳에서 */
 /* 폰 분실 대비 — 서버가 token_version 을 올려 옛 토큰을 전부 무효로 만든다.
    지금 쓰는 기기만 새 토큰으로 살아남는다. */
+/* ═══ 운영자 콘솔 — 신고 처리 (서버 /admin API, x-admin-key 로 인증) ═══ */
+async function adminApi(path, opts){
+  const r = await fetch(API_BASE + path, Object.assign({}, opts||{}, {
+    headers: Object.assign({'Content-Type':'application/json','x-admin-key': localStorage.getItem('matsu_admin_key')||''}, (opts||{}).headers||{})
+  }));
+  if(r.status===403){ localStorage.removeItem('matsu_admin_key'); throw new Error('admin_key'); }
+  if(!r.ok) throw new Error('http'+r.status);
+  return r.json();
+}
+function openAdminPanel(){
+  if(!localStorage.getItem('matsu_admin_key')){
+    const k=prompt('운영 키를 입력하세요 (Railway 의 ADMIN_KEY)'); if(!k) return;
+    localStorage.setItem('matsu_admin_key', k.trim());
+  }
+  renderAdminPanel();
+}
+async function renderAdminPanel(){
+  let reps=[], stats=null;
+  try{
+    reps = await adminApi('/admin/reports');
+    stats = await adminApi('/admin/stats').catch(()=>null);
+  }catch(e){
+    toast(e.message==='admin_key'?'운영 키가 올바르지 않아요':'불러오지 못했어요');
+    return;
+  }
+  let h=`<div class="sh-top"><h3>운영자 콘솔</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+  if(stats) h+=`<div style="font-size:12.5px;color:var(--gray);font-weight:700;margin:0 0 12px">회원 ${stats.users??'-'} · 클럽 ${stats.clubs??'-'} · 미처리 신고 ${reps.length}건</div>`;
+  if(!reps.length){
+    h+=`<div class="empty" style="padding:26px 20px"><div class="ei">🛡️</div><div class="et">미처리 신고가 없어요</div></div>`;
+  }else{
+    h+=reps.map(r=>{
+      const preview = r.target ? esc((r.target.title||'').slice(0,40)) : '';
+      const acts = [
+        r.target_type==='post' && r.target ? `<button class="btn sm" style="width:auto;padding:6px 10px" onclick="adminRemovePost(${r.target.id},${r.id})">글 숨김+삭제조치</button>` : '',
+        r.target_type==='user' ? `<button class="btn sm" style="width:auto;padding:6px 10px" onclick="adminSuspend(${r.target_id},${r.id})">계정 정지/해제</button>` : '',
+        `<button class="btn sm ghost" style="width:auto;padding:6px 10px" onclick="adminResolve(${r.id},'rejected')">기각</button>`,
+        `<button class="btn sm ghost" style="width:auto;padding:6px 10px" onclick="adminResolve(${r.id},'reviewed')">검토 완료</button>`
+      ].filter(Boolean).join(' ');
+      return `<div class="card" style="padding:12px 14px">
+        <div style="font-size:12px;color:var(--gray);font-weight:800">#${r.id} · ${esc(r.target_type||'')} ${r.target_id||''}</div>
+        <div style="font-size:13.5px;font-weight:700;margin:4px 0 2px">${esc(r.reason||'사유 없음')}</div>
+        ${preview?`<div style="font-size:12px;color:var(--gray)">${preview}</div>`:''}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${acts}</div></div>`;
+    }).join('');
+  }
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+function adminResolve(id, action){
+  adminApi(`/admin/reports/${id}/resolve`,{method:'POST',body:JSON.stringify({action})})
+    .then(()=>{ toast('처리했어요 · 신고자에게 결과를 알렸어요'); renderAdminPanel(); })
+    .catch(()=>toast('처리하지 못했어요'));
+}
+function adminRemovePost(pid, repId){
+  if(!confirm('신고된 글을 숨기고 "삭제 조치"로 처리할까요?')) return;
+  adminApi(`/admin/posts/${pid}/hide`,{method:'POST',body:'{}'})
+    .then(()=>adminResolve(repId,'removed'))
+    .catch(()=>toast('숨기지 못했어요'));
+}
+function adminSuspend(uid, repId){
+  adminApi(`/admin/users/${uid}/suspend`,{method:'POST',body:'{}'})
+    .then(r=>{ toast(r.suspended?'계정을 정지했어요':'정지를 해제했어요'); if(repId) adminResolve(repId,'reviewed'); })
+    .catch(()=>toast('처리하지 못했어요'));
+}
 /* 계정 탈퇴 — 개인정보는 서버에서 파기되고, 클럽 장부·라운지 글은 익명으로 남는다 */
 async function deleteAccount(){
   if(!SERVER_OK || !authToken()){ toast('서버 연결이 필요해요'); return; }
@@ -7694,9 +7770,78 @@ async function deleteMatch(id){
 
 /* 오픈매치 — 하단 탭의 독립 화면 */
 let OM_LIST = [];
+/* ═══ 내 대전 (도전 매치) — 서버의 수락→결과입력→상호확인→레이팅 흐름을 화면에 연결 ═══ */
+let MYMATCH=null, MYMATCH_TS=0;
+function myUid(){ return (state.serverUser&&state.serverUser.id)||null; }
+function ensureMyMatches(){
+  if(!SERVER_OK || !authToken() || !myUid()) return;
+  if(MYMATCH!==null && Date.now()-MYMATCH_TS<3e4) return;
+  MYMATCH=MYMATCH||[]; MYMATCH_TS=Date.now();
+  api(`/matches?user=${myUid()}`).then(rs=>{
+    MYMATCH=(rs||[]).filter(m=>m.kind!=='bracket'); MYMATCH_TS=Date.now();
+    if(state.view==='match') renderMatch();
+  }).catch(()=>{});
+}
+function myMatchesCard(){
+  if(!SERVER_OK || !authToken() || !myUid()) return '';
+  ensureMyMatches();
+  const me=myUid();
+  const rows=(MYMATCH||[]).filter(m=>m.status!=='declined').slice(0,5);
+  if(!rows.length) return '';
+  const items=rows.map(m=>{
+    const home=m.home_user_id===me;
+    const opp=esc(home?(m.away_name||'상대'):(m.home_name||'상대'));
+    const myS=home?m.home_score:m.away_score, opS=home?m.away_score:m.home_score;
+    const myOk=home?m.home_confirmed:m.away_confirmed;
+    let right='';
+    if(m.status==='requested'){
+      right=home
+        ?`<span style="font-size:12px;color:var(--gray);font-weight:700">수락 대기</span> <button class="btn sm ghost" style="width:auto;padding:6px 10px" onclick="mmDecline(${m.id})">취소</button>`
+        :`<button class="btn sm" style="width:auto;padding:6px 12px" onclick="mmAccept(${m.id})">수락</button> <button class="btn sm ghost" style="width:auto;padding:6px 10px" onclick="mmDecline(${m.id})">거절</button>`;
+    }else if(m.status==='scheduled'){
+      right=`<button class="btn sm" style="width:auto;padding:6px 12px" onclick="mmResult(${m.id})">결과 입력</button>`;
+    }else if(m.status==='played'){
+      right=myOk
+        ?`<span style="font-size:12px;color:var(--gray);font-weight:700">상대 확인 대기 · ${myS}:${opS}</span>`
+        :`<button class="btn sm" style="width:auto;padding:6px 12px" onclick="mmApprove(${m.id})">점수 확인 ${myS}:${opS}</button>`;
+    }else if(m.status==='confirmed'){
+      const win=myS>opS;
+      right=`<span style="font-size:12.5px;font-weight:900;color:${win?'#2f7d4f':'#cf5418'}">${win?'승':'패'} ${myS}:${opS} · 레이팅 반영</span>`;
+    }
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 2px;border-top:1px solid #f0efec">
+      <div style="min-width:0"><b style="font-size:13.5px">${opp}</b><span style="font-size:11.5px;color:var(--gray);font-weight:700;margin-left:6px">${m.status==='requested'?'도전':'대전'}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${right}</div></div>`;
+  }).join('');
+  return `<div class="card"><div class="ch">내 대전 <span style="font-weight:700;font-size:11.5px;color:var(--gray)">결과는 서로 확인해야 레이팅에 반영돼요</span></div>${items}</div>`;
+}
+function mmReload(){ MYMATCH=null; ensureMyMatches(); }
+async function mmAccept(id){ try{ await api(`/matches/${id}/accept`,{method:'POST',body:'{}'}); toast('대전을 수락했어요'); }catch(e){ toast('실패했어요'); } mmReload(); }
+async function mmDecline(id){ if(!confirm('이 대전을 취소/거절할까요?')) return; try{ await api(`/matches/${id}/decline`,{method:'POST',body:'{}'}); }catch(e){} mmReload(); }
+async function mmResult(id){
+  const m=(MYMATCH||[]).find(x=>x.id===id); if(!m) return;
+  const home=m.home_user_id===myUid();
+  const my=parseInt(prompt('내 점수(이긴 게임/세트 수)?','')); if(isNaN(my)) return;
+  const op=parseInt(prompt('상대 점수?','')); if(isNaN(op)) return;
+  if(my===op){ toast('무승부는 레이팅에 반영할 수 없어요'); return; }
+  const body={ home_score: home?my:op, away_score: home?op:my, side: home?'home':'away' };
+  try{ await api(`/matches/${id}/result`,{method:'POST',body:JSON.stringify(body)}); toast('결과를 입력했어요 · 상대 확인을 기다려요'); }
+  catch(e){ toast('저장하지 못했어요'); }
+  mmReload();
+}
+async function mmApprove(id){
+  const m=(MYMATCH||[]).find(x=>x.id===id); if(!m) return;
+  const home=m.home_user_id===myUid();
+  const myS=home?m.home_score:m.away_score, opS=home?m.away_score:m.home_score;
+  if(confirm(`상대가 입력한 점수예요.\n나 ${myS} : ${opS} 상대\n맞으면 확인을 눌러 확정하세요.`)){
+    try{ await api(`/matches/${id}/result`,{method:'POST',body:JSON.stringify({home_score:m.home_score,away_score:m.away_score,side:home?'home':'away'})});
+      toast('결과가 확정됐어요 · 레이팅에 반영돼요'); }catch(e){ toast('실패했어요'); }
+    mmReload();
+  }else if(confirm('점수가 다른가요? 직접 다시 입력할까요?')){ mmResult(id); }
+}
 async function renderMatch(){
   const el = document.getElementById('s-match'); if(!el) return;
   let h=`<h2 class="t">오픈매치</h2><p class="sub">클럽에 속하지 않아도 참여할 수 있는 경기예요.</p>`;
+  h+=myMatchesCard();
   // 페어플레이 평가 창(경기 후 24시간)이 열린 매치 배너
   try{
     const now=Date.now();
@@ -9190,8 +9335,16 @@ function recPickPhoto(inp){
         const s=Math.min(1, 900/Math.max(img.width,img.height));
         cv.width=img.width*s; cv.height=img.height*s;
         cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-        REC_PHOTOS.push(cv.toDataURL('image/jpeg',0.72));
-        renderRcPhotos();
+        const dataUrl=cv.toDataURL('image/jpeg',0.72);
+        if(SERVER_OK && authToken()){
+          // base64 를 그대로 기록에 넣으면 DB 가 사진 크기만큼 부푼다 — 파일로 올리고 URL 만 저장
+          REC_PHOTOS.push('⏳'); renderRcPhotos();
+          api('/upload',{method:'POST',body:JSON.stringify({dataUrl})})
+            .then(r=>{ const i=REC_PHOTOS.indexOf('⏳'); if(i>=0) REC_PHOTOS[i]=r.url; renderRcPhotos(); })
+            .catch(()=>{ const i=REC_PHOTOS.indexOf('⏳'); if(i>=0) REC_PHOTOS.splice(i,1); renderRcPhotos(); toast('사진 업로드에 실패했어요'); });
+        }else{
+          REC_PHOTOS.push(dataUrl); renderRcPhotos();
+        }
       };
       img.src=rd.result;
     };
@@ -9203,7 +9356,7 @@ function rcDelPhoto(i){ REC_PHOTOS.splice(i,1); renderRcPhotos(); }
 function renderRcPhotos(){
   const el=document.getElementById('rcPhotoPrev'); if(!el) return;
   el.innerHTML=REC_PHOTOS.map((p,i)=>`<div style="position:relative;flex:1;min-width:0">
-    <img src="${p}" style="width:100%;border-radius:11px;display:block">
+    ${p==='⏳'?`<div style="width:100%;aspect-ratio:4/3;border-radius:11px;background:#f0efec;display:grid;place-items:center;font-size:20px">⏳</div>`:`<img src="${p}" style="width:100%;border-radius:11px;display:block">`}
     <span onclick="rcDelPhoto(${i})" style="position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:800;cursor:pointer">×</span></div>`).join('');
   el.style.display=REC_PHOTOS.length?'flex':'none';
 }
@@ -9522,7 +9675,7 @@ async function saveRecord(){
     const _url = REC_EDIT_ID ? `/records/${REC_EDIT_ID}` : '/records';
     const _mth = REC_EDIT_ID ? 'PATCH' : 'POST';
     const saved = await api(_url,{method:_mth,body:JSON.stringify({sport:sp.id, ymd, dist_m, secs,
-      rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim(), photos: REC_PHOTOS.length?REC_PHOTOS:undefined, detail: Object.keys(detail).length?detail:undefined })});
+      rtype:REC_TYPE, stroke:(sp.id==='swimming'?REC_STROKE:null), note:((document.getElementById('rcNote')||{}).value||'').trim(), photos: (w=>w.length?w:undefined)(REC_PHOTOS.filter(p=>p!=='⏳')), detail: Object.keys(detail).length?detail:undefined })});
     if(!saved || (!saved.ymd && !saved.ok)){ toast('저장 응답이 이상해요 · server.js 배포를 확인해 주세요'); return; }
     closeOv(); REC_MINE=null; REC_TS=0; ensureRecs();
     if(state.view==='me') renderMe(); else if(state.view==='league') renderLeague(); else renderHome();
@@ -10777,7 +10930,14 @@ function meTeamCard(){
       <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:22px;font-weight:900;color:#5b3fa8">${gp?((st[cats[0][0]]||0)/gp).toFixed(2):'—'}</div><div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:2px">${cats[0][1]}기대값</div></div></div>
   </div>`;
 }
+let _RM_BUSY=false;
 function renderMe(){
+  if(_RM_BUSY) return;
+  _RM_BUSY=true;
+  try{ _renderMeCore(); }
+  finally{ _RM_BUSY=false; }
+}
+function _renderMeCore(){
   ensureRecs();
   if(SERVER_OK && authToken()) api('/me/fairplay').then(f=>{
     const s=document.getElementById('myFpScore'), l=document.getElementById('myFpLine');
@@ -10877,6 +11037,7 @@ function renderMe(){
       <a href="${API_BASE}/terms" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">이용약관</a>
       <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a></div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>
+    ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="openAdminPanel()">운영자 콘솔 (키 필요)</button>`:''}
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="deleteAccount()">계정 탈퇴 (개인정보 삭제)</button>`:''}</div>`;
   document.getElementById('s-me').innerHTML=h;
 }
@@ -10893,7 +11054,16 @@ function loadTeamSum(cb){                                // 팀 종목 캐시
   if(TEAMM && Date.now()-TEAMM_TS<60e3){ cb&&cb(); return; }
   api(`/clubs/${clubId()}/team-matches`).then(r=>{ TEAMM=r; TEAMM_TS=Date.now(); cb&&cb(); }).catch(()=>{});
 }
+/* 재진입 가드 — 홈을 그리는 도중 어떤 경로로든 renderHome 이 다시 불리면(동기 재귀)
+   스택 초과로 홈만 죽는다. 원인 코드가 어디 숨어 있든 여기서 원천 차단한다. */
+let _RH_BUSY=false;
 function renderHome(){
+  if(_RH_BUSY) return;
+  _RH_BUSY=true;
+  try{ _renderHomeCore(); }
+  finally{ _RH_BUSY=false; }
+}
+function _renderHomeCore(){
   const today=new Date(); const MON=today.getMonth()+1, DAY=today.getDate();
   const hasClub=state.myClubs.length>0; const c=hasClub?AC():null;
   const SRV = SERVER_OK && !!authToken();
