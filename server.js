@@ -3694,6 +3694,37 @@ function admin(req, res, next) {
 }
 // 관리자가 특정 클럽에 프리미엄을 직접 부여 (초기 파트너 클럽 · 환불 · 테스트)
 // 결제와 무관하게 열어주는 유일한 경로. ADMIN_KEY 를 아는 사람만.
+// 운영자용 클럽 목록 — 클럽장·회원까지 함께 (클럽장 변경 UI 용)
+app.get('/admin/clubs', admin, (_req, res) => {
+  const clubs = db.prepare(`SELECT c.id, c.name, c.sport, c.region,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members
+    FROM clubs c ORDER BY c.id DESC LIMIT 200`).all();
+  res.json(clubs.map(c => ({
+    ...c,
+    owner: db.prepare(`SELECT u.id, u.name FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND cm.role='owner' LIMIT 1`).get(c.id) || null,
+    roster: db.prepare(`SELECT u.id, u.name, cm.role FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY cm.role='owner' DESC, u.name LIMIT 50`).all(c.id),
+  })));
+});
+// 운영자가 클럽장을 강제 변경 — 분쟁·연락 두절 클럽장 처리용. 기존 양도와 같은 규칙으로 정리한다.
+app.post('/admin/clubs/:id/owner', admin, (req, res) => {
+  const cid = +req.params.id, uid = intOrNull(req.body && req.body.user_id);
+  const club = db.prepare('SELECT id,name FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'not_found' });
+  const t = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!uid || !t) return res.status(400).json({ error: 'not_member' });
+  if (t.status && t.status !== 'active') return res.status(400).json({ error: 'not_active' });
+  const prev = db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role='owner'").get(cid);
+  tx(() => {
+    if (prev) db.prepare("UPDATE club_members SET role='officer' WHERE club_id=? AND user_id=?").run(cid, prev.user_id);
+    db.prepare("UPDATE club_members SET role='owner' WHERE club_id=? AND user_id=?").run(cid, uid);
+    db.prepare('UPDATE clubs SET owner_id=? WHERE id=?').run(uid, cid);
+  });
+  sendPush(uid, { icon: '👑', title: '클럽장이 됐어요', body: `${club.name} 클럽장 권한을 받았어요 (운영자 지정)` });
+  if (prev && prev.user_id !== uid) sendPush(prev.user_id, { icon: '🔧', title: '클럽장 변경 안내', body: `${club.name} 클럽장이 운영자에 의해 변경됐어요 · 임원으로 남아요` });
+  res.json({ ok: true, club_id: cid, new_owner: uid });
+});
 app.post('/admin/clubs/:id/premium', admin, (req, res) => {
   const cid = +req.params.id;
   const c = db.prepare('SELECT id FROM clubs WHERE id=?').get(cid);
