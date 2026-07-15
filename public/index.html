@@ -2141,7 +2141,7 @@ async function loadPublicData(){
   if(!SERVER_OK) return;
   try{
     const cs = await api('/clubs');
-    state.clubs = (cs||[]).map(c=>({ id:c.id, n:c.name, r:c.region||'', m:c.members||0,
+    state.clubs = (cs||[]).map(c=>({ id:c.id, n:c.name, r:c.region||'', m:c.members||0, sport:c.sport||'',
       guestFee:c.guest_fee||0, guestReq:c.guest_cap||0, entry:c.entry_fee||0, season:c.season_fee||0 }));
   }catch(e){}
   try{
@@ -3163,7 +3163,10 @@ async function createClubServer(name, region, sport){
     CLUB_IDS[c.name] = c.id;
     await adoptServerClubs();
     return c;
-  }catch(e){ return null; }
+  }catch(e){
+    let err=null; try{ err=JSON.parse(e.message); }catch(_){}
+    return { _fail:true, error:(err&&err.error)||'', message:(err&&err.message)||'' };
+  }
 }
 async function requestJoinServer(name){
   const cid = CLUB_IDS[name];
@@ -5426,7 +5429,7 @@ function renderClub(){
         <div class="amen-row">
           <div class="amen"><div class="am-ic">👥</div><div class="am-v">${c.m}명</div><div class="am-l">회원</div></div>
           <div class="amen"><div class="am-ic">📍</div><div class="am-v">${c.r.split(' ').pop()}</div><div class="am-l">지역</div></div>
-          <div class="amen"><div class="am-ic">${SP().ic}</div><div class="am-v">주말</div><div class="am-l">정기모임</div></div>
+          <div class="amen"><div class="am-ic">${(SPORTS.find(s=>s.id===c.sport)||SP()).ic}</div><div class="am-v">주말</div><div class="am-l">정기모임</div></div>
           <div class="amen"><div class="am-ic">🎟️</div><div class="am-v">${gv>0?gv+'회':'가능'}</div><div class="am-l">게스트</div></div>
         </div>
         <button class="btn ${joined?'done':'ghost'} sm" style="width:100%">${joined?'가입된 클럽 ✓':'둘러보기 →'}</button></div>`;});
@@ -5767,11 +5770,17 @@ async function createClub(){
   const n=g('ncName').trim(), r=g('ncRegion').trim(), court=g('ncCourt').trim();
   if(!n){toast('클럽 이름을 입력해 주세요');return;}
   if(!r){toast('활동 지역을 입력해 주세요');return;}
-  if(state.myClubs.includes(n)||state.clubs.some(c=>c.n===n)){toast('이미 있는 클럽 이름이에요');return;}
+  if(state.myClubs.includes(n)||state.clubs.some(c=>c.n===n&&(!c.sport||c.sport===state.sport))){toast('이 종목에 이미 있는 클럽 이름이에요');return;}
   // 서버 연결 상태면 서버에 먼저 만든다 — 안 그러면 피드·공지·회비·대진이 전부 데모로 떨어진다
   if(SERVER_OK){
     const sc = await createClubServer(n, r, state.sport);
-    if(!sc){ toast('클럽을 만들지 못했어요 · 잠시 후 다시 시도해 주세요'); return; }
+    if(!sc || sc._fail){
+      const code = sc && sc.error;
+      toast(code==='club_limit' ? ((sc&&sc.message)||'클럽은 1인당 3개까지 만들 수 있어요')
+        : code==='name_taken' ? '같은 종목에 이미 있는 클럽 이름이에요'
+        : '클럽을 만들지 못했어요 · 잠시 후 다시 시도해 주세요');
+      return;
+    }
   }
   const gr=parseInt(g('ncGuestReq'))||0, gf=parseInt(g('ncGuestFee'))||0, en=parseInt(g('ncEntry'))||0, se=parseInt(g('ncSeason'))||0;
   // 카탈로그에도 추가(찾기 목록에 보이게)
@@ -5780,7 +5789,7 @@ async function createClub(){
   state.clubData[n]={region:r,court:court,members:1,officer:true,pending:[],
     schedule:{dt:'일정 미정 · 첫 모임을 잡아보세요',attendees:[],attend:null},
     feed: DEMO ? [{who:state.userName||'나',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요 🎾`,ph:null,like:0,cm:0}] : []};
-  state.myClubs.push(n); state.activeClub=n;
+  if(!state.myClubs.includes(n)) state.myClubs.push(n); state.activeClub=n;
   state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'시스템',t:'클럽 단체방이 만들어졌어요.'}]};
   closeOv(); state.clubTab='my'; renderClub(); renderChat(); go('club');
   toast(n+' 클럽을 만들었어요! 회장이 되셨어요');
@@ -6035,14 +6044,16 @@ function openAdminPanel(){
   renderAdminPanel();
 }
 async function renderAdminPanel(){
-  let reps=[], stats=null;
+  let reps=[], stats=null, clubs=[];
   try{
     reps = await adminApi('/admin/reports');
     stats = await adminApi('/admin/stats').catch(()=>null);
+    clubs = await adminApi('/admin/clubs').catch(()=>[]);
   }catch(e){
     toast(e.message==='admin_key'?'운영 키가 올바르지 않아요':'불러오지 못했어요');
     return;
   }
+  window._ADM_CLUBS = clubs||[];
   let h=`<div class="sh-top"><h3>운영자 콘솔</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   if(stats) h+=`<div style="font-size:12.5px;color:var(--gray);font-weight:700;margin:0 0 12px">회원 ${stats.users??'-'} · 클럽 ${stats.clubs??'-'} · 미처리 신고 ${reps.length}건</div>`;
   if(!reps.length){
@@ -6063,8 +6074,29 @@ async function renderAdminPanel(){
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${acts}</div></div>`;
     }).join('');
   }
-  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('sheet').innerHTML=h + ((window._ADM_CLUBS||[]).length?`
+    <div class="ch" style="margin-top:16px">클럽 관리 <span style="font-weight:700;font-size:11.5px;color:var(--gray)">클럽장 강제 변경 (분쟁·연락 두절 시)</span></div>`+
+    window._ADM_CLUBS.slice(0,30).map(c=>`<div class="card" style="padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="min-width:0"><b style="font-size:14px">${esc(c.name)}</b>
+          <span style="font-size:11.5px;color:var(--gray);font-weight:700;margin-left:6px">${esc((SPORTS.find(s=>s.id===c.sport)||{}).n||c.sport||'')} · ${c.members}명</span>
+          <div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:3px">클럽장: ${c.owner?esc(c.owner.name):'없음'}</div></div>
+        <button class="btn sm ghost" style="width:auto;padding:6px 10px;flex-shrink:0" onclick="adminPickOwner(${c.id})">클럽장 변경</button></div></div>`).join('') : '');
   document.getElementById('ov').classList.add('on');
+}
+function adminPickOwner(cid){
+  const c=(window._ADM_CLUBS||[]).find(x=>x.id===cid); if(!c) return;
+  const roster=(c.roster||[]).filter(m=>!c.owner || m.id!==c.owner.id);
+  if(!roster.length){ toast('넘겨받을 수 있는 회원이 없어요'); return; }
+  const menu=roster.map((m,i)=>`${i+1}. ${m.name}${m.role==='officer'?' (임원)':''}`).join('\n');
+  const pick=prompt(`${c.name} — 새 클럽장을 번호로 선택하세요.\n${menu}`);
+  const idx=parseInt(pick)-1;
+  if(isNaN(idx) || !roster[idx]) return;
+  const target=roster[idx];
+  if(!confirm(`${target.name} 님을 ${c.name} 클럽장으로 지정할까요?\n기존 클럽장은 임원으로 남고, 양쪽 모두에게 알림이 가요.`)) return;
+  adminApi(`/admin/clubs/${cid}/owner`,{method:'POST',body:JSON.stringify({user_id:target.id})})
+    .then(()=>{ toast('클럽장을 변경했어요'); renderAdminPanel(); })
+    .catch(()=>toast('변경하지 못했어요'));
 }
 function adminResolve(id, action){
   adminApi(`/admin/reports/${id}/resolve`,{method:'POST',body:JSON.stringify({action})})
@@ -11083,11 +11115,13 @@ function _renderHomeCore(){
       ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}
       <div class="yh-foot">${stack}<span style="font-size:12.5px;font-weight:800;color:#473c69">${att.length?att.length+'명 참여 예정':(hasClub?'일정 확인 →':'클럽 찾아보기 →')}</span></div></div>`;
   }
-  // ⑤ 주간 날짜 핀
+  // ⑤ 주간 날짜 핀 — 모임·기록 있는 날 점 표시, 탭하면 그날 일지 시트
   { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
-    const evDays=new Set(); evSrc.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add(mm[1]+'/'+mm[2]);});
+    const evDays=new Set(); evSrc.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add((+mm[1])+'/'+(+mm[2]));});
+    (REC_MINE||[]).forEach(r=>{ if(r.ymd){ const [,m2,d2]=r.ymd.split('-'); evDays.add((+m2)+'/'+(+d2)); } });
     let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();const isT=(mo===MON&&da===DAY),has=evDays.has(mo+'/'+da);
-      pins+=`<div class="dpin ${isT?'on':''} ${has?'has':''}"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
+      const ymd=`${d.getFullYear()}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
+      pins+=`<div class="dpin ${isT?'on':''} ${has?'has':''}" style="cursor:pointer" onclick="openDayRec('${ymd}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
     h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`;
   }
   // 🔥 연속 참여 스트릭
