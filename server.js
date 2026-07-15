@@ -1755,7 +1755,10 @@ app.post('/matches/:id/result', auth, (req, res) => {
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (!matchParty(m, req.uid)) return res.status(403).json({ error: 'party_only' });
   const col = side === 'away' ? 'away_confirmed' : 'home_confirmed';
-  db.prepare(`UPDATE matches SET home_score=?, away_score=?, ${col}=1, status='played' WHERE id=?`)
+  const other = col === 'away_confirmed' ? 'home_confirmed' : 'away_confirmed';
+  // 이미 입력된 점수와 다른 점수를 제출하면 상대 확인을 되돌린다 — 불일치가 그대로 확정되는 것 방지
+  const changed = m.home_score != null && (+m.home_score !== +home_score || +m.away_score !== +away_score);
+  db.prepare(`UPDATE matches SET home_score=?, away_score=?, ${col}=1${changed ? `, ${other}=0` : ''}, status='played' WHERE id=?`)
     .run(home_score, away_score, m.id);
   const m2 = db.prepare('SELECT * FROM matches WHERE id=?').get(m.id);
   if (m2.home_confirmed && m2.away_confirmed) {
@@ -1985,10 +1988,13 @@ app.get('/matches/:id/events', (req, res) => {
 });
 // 경기 목록 (대진 화면)
 app.get('/matches', (req, res) => {
+  const uid = intOrNull(req.query.user);
+  const where = uid ? 'WHERE m.home_user_id=? OR m.away_user_id=?' : '';
+  const p = uid ? [uid, uid] : [];
   res.json(db.prepare(`SELECT m.*, hu.name home_name, au.name away_name, hc.name home_club, ac.name away_club
     FROM matches m LEFT JOIN users hu ON hu.id=m.home_user_id LEFT JOIN users au ON au.id=m.away_user_id
     LEFT JOIN clubs hc ON hc.id=m.home_club_id LEFT JOIN clubs ac ON ac.id=m.away_club_id
-    ORDER BY m.id DESC LIMIT 40`).all());
+    ${where} ORDER BY m.id DESC LIMIT 40`).all(...p));
 });
 // 개인 레이팅 랭킹 (리그 화면)
 app.get('/rankings', (req, res) => {
