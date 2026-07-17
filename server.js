@@ -231,6 +231,9 @@ app.get('/config', (_, res) => {
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
+    support_email: process.env.SUPPORT_EMAIL || '',
+    toss_client_key: process.env.TOSS_CLIENT_KEY || '',
+    toss_ready: !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY),
     vapid_public: process.env.VAPID_PUBLIC || '',
     phone_auth: !!process.env.SMS_PROVIDER,     // 문자 인증 업체가 붙어 있는가
   });
@@ -2038,9 +2041,22 @@ app.get('/pay/checkout', (req, res) => {
   } catch(e){ document.body.innerHTML = '<p>clientKey를 확인하세요.</p>'; }
 </script></body></html>`);
 });
-app.get('/pay/done', (_req, res) => {
+app.get('/pay/done', async (req, res) => {
+  const { paymentKey, orderId, amount, fail } = req.query || {};
+  let msg = '<b>결제 처리 완료</b><p>앱으로 돌아가면 잔액이 갱신돼요.</p>';
+  if (fail) msg = '<b>결제가 취소되거나 실패했어요</b><p>앱으로 돌아가 다시 시도해 주세요.</p>';
+  else if (paymentKey && orderId) {
+    try {   // 토스가 successUrl 에 붙여준 파라미터로 서버가 직접 최종 승인 — 클라이언트 폴링 불필요
+      const r = await fetch(`http://127.0.0.1:${PORT}/pay/confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentKey, orderId, amount: +amount })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) msg = `<b>승인에 실패했어요</b><p>${String((j && (j.error || '')) || '').slice(0, 80)} · 문제가 계속되면 문의해 주세요.</p>`;
+    } catch (e) { msg = '<b>승인 확인 중 오류</b><p>잠시 후 앱에서 잔액을 확인해 주세요. 웹훅으로 자동 반영될 수 있어요.</p>'; }
+  }
   res.set('Content-Type', 'text/html; charset=utf-8')
-    .send('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:24px"><b>결제 처리 완료</b><p>앱으로 돌아갑니다…</p></body>');
+    .send(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:24px">${msg}</body>`);
 });
 
 // ── 인앱결제(IAP) 영수증 검증 → M캐쉬 지급 ──
