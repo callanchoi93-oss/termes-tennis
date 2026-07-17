@@ -1364,6 +1364,7 @@
         <div id="gBtnIn" style="position:absolute;inset:0;opacity:0;overflow:hidden"></div>
       </div>
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
+      <button class="sbtn2" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:17px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
       <div id="authFallback"></div>
       <div id="authSaved"></div>
       <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
@@ -2013,6 +2014,46 @@ function initGoogle(){
     }, 1500);
   }
   _gsiDone = true;
+}
+/* ── 애플 로그인 (Sign in with Apple JS) ──
+   서버 검증(/auth/apple)은 이미 있다. 여기서는 SDK 로드 → 팝업 → id_token 전달만 한다.
+   Railway 도메인을 Apple Developer 의 Services ID(Return URL 포함)에 등록해야 동작한다. */
+let _appleSdk=null;
+function loadAppleSdk(){
+  if(_appleSdk) return _appleSdk;
+  _appleSdk=new Promise((ok,no)=>{
+    const s=document.createElement('script');
+    s.src='https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+    s.onload=ok; s.onerror=()=>no(new Error('sdk'));
+    document.head.appendChild(s);
+  });
+  return _appleSdk;
+}
+async function appleLogin(){
+  if(!SERVER_OK){ toast('애플 로그인은 서버 연결이 필요해요'); return; }
+  if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
+  try{
+    await loadAppleSdk();
+    AppleID.auth.init({ clientId:CFG.apple_client_id, scope:'name email',
+      redirectURI: location.origin, usePopup:true });
+    const resp = await AppleID.auth.signIn();
+    const idt = resp && resp.authorization && resp.authorization.id_token;
+    if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
+    // 이름은 최초 1회만 내려온다 — 있으면 함께 보낸다
+    const nm = resp.user && resp.user.name ? `${resp.user.name.lastName||''}${resp.user.name.firstName||''}`.trim() : '';
+    saveSession(await api('/auth/apple',{method:'POST',body:JSON.stringify({id_token:idt, name:nm})}));
+    toast('Apple로 로그인했어요');
+    document.getElementById('auth').classList.remove('on');
+    afterLoginNative();
+    await loadClubIds();
+    if(clubId()){ await loadClubServer(); await loadRoster(); }
+    if(state.loggedIn){ go(state.view||'home'); }
+    else resumeOrOnboard();
+  }catch(e){
+    if(e && (e.error==='popup_closed_by_user'||e.error==='user_cancelled_authorize')) return;
+    const m=String((e&&e.message)||e||'');
+    toast(m==='sdk' ? '애플 SDK를 불러오지 못했어요' : '애플 로그인에 실패했어요');
+  }
 }
 async function handleGoogleCredential(resp){
   if(!resp || !resp.credential){ toast('구글 로그인에 실패했어요'); return; }
@@ -4247,7 +4288,7 @@ function coin(sz){ sz=sz||22; return `<span style="width:${sz}px;height:${sz}px;
 function spendCash(cost, label){ return true; }   // M캐쉬 폐지 — 전 기능 무료
 
 // 대화 1건 = 1M캐쉬. 낱개 300원 기준, 묶을수록 최대 40% 할인
-const CASH_PKGS=[{n:100,won:19900,dc:34,tag:'실속'},{n:50,won:11900,dc:21},{n:30,won:7900,dc:12,tag:'인기'},{n:10,won:2900},{n:3,won:900}];
+const CASH_PKGS=[{n:1100,won:229000,dc:41,tag:'최대'},{n:600,won:129000,dc:40},{n:200,won:49900,dc:30,tag:'인기'},{n:90,won:24900,dc:22},{n:45,won:13900,dc:13},{n:25,won:8900}];
 // ── 입회비·게스트비 설정 (클럽장) ──
 function openFeeEdit(){
   const c=AC(); if(!c){toast('클럽 정보를 찾을 수 없어요');return;}
@@ -4352,7 +4393,7 @@ async function openClubReport(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
-  if(SERVER_OK && PAY_PENDING){ toast('M캐쉬 충전은 준비 중이에요'); setTimeout(openEarn,650); return; }
+  if(SERVER_OK && PAY_PENDING_FN()){ toast('M캐쉬 충전은 준비 중이에요'); setTimeout(openEarn,650); return; }
   if(!canSellDigital()){
     // 안내 문구에 '웹에서 구매하세요' 를 쓰면 안 된다 (3.1.1 안티 스티어링).
     toast('지금은 M캐쉬를 충전할 수 없어요');
@@ -4375,6 +4416,19 @@ async function buyCash(n){
   if(!canSellDigital()) return;
   if(IS_IOS_APP && IAP_READY) return iapPurchase('cash_'+n);
   if(SERVER_OK){
+    if(!PAY_PENDING_FN()){
+      try{
+        const pkg=CASH_PKGS.find(p=>p.n===n); if(!pkg){ toast('패키지를 찾을 수 없어요'); return; }
+        const o=await api('/pay/order',{method:'POST',body:JSON.stringify({amount:pkg.won})});
+        closeOv();
+        window.open(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`,'_blank');
+        toast('결제창을 열었어요 · 완료 후 돌아오면 잔액이 갱신돼요');
+      }catch(e){
+        const m=String(e.message||'');
+        toast(m.includes('ios_iap_required')?'iOS 앱에서는 인앱 결제로 충전해요':'주문을 만들지 못했어요 · 잠시 후 다시 시도해 주세요');
+      }
+      return;
+    }
     // 실제 결제(PG/IAP)가 붙기 전에는 캐시를 지급하지 않는다.
     // 서버도 402 payments_not_ready 로 막고 있다.
     toast('M캐쉬 충전은 준비 중이에요 · 광고나 초대로 모을 수 있어요');
@@ -5413,7 +5467,8 @@ function renderClub(){
     h+=`<div class="seg" style="margin-bottom:12px"><div class="o ${ft==='club'?'on':''}" onclick="setFindTab('club')">클럽 찾기</div><div class="o ${ft==='member'?'on':''}" onclick="setFindTab('member')">회원 찾기</div></div>`;
     if(ft==='member'){ renderMemberFind(h); return; }
     h+=`<button class="btn felt" style="margin-bottom:14px" onclick="openCreateClub()">+ 새 클럽 만들기</button>`;
-    const regions=['전체','경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'];
+    const _rs=[...new Set(state.clubs.filter(c=>(!c.sport||c.sport===state.sport)).map(c=>c.r).filter(Boolean))];
+    const regions=['전체', ...(_rs.length?_rs.slice(0,8):['경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'])];
     h+=`<div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div><div class="chips">`;
     regions.forEach(r=>{h+=`<div class="chip ${state.region===r?'on':''}" onclick="setRegion('${r}')">${r}</div>`;});
     h+=`</div>`;
@@ -6967,7 +7022,8 @@ const IS_IOS_APP = (()=>{
 const IAP_READY = false;   // 애플 IAP 연동을 마치면 true
 // PG/IAP 가 붙기 전에는 유료 상품을 팔지 않는다. 서버도 402 로 막는다.
 // 결제가 열리면 이 값을 false 로 바꾼다.
-const PAY_PENDING = true;
+/* 결제 준비 여부 — 서버에 토스 키가 설정되면 자동으로 열린다 */
+function PAY_PENDING_FN(){ return !(CFG.toss_ready && CFG.toss_client_key); }
 
 // 디지털 상품을 팔 수 있는가
 function canSellDigital(){ return !IS_IOS_APP || IAP_READY; }
@@ -7113,7 +7169,7 @@ async function openClubPremium(){
   if(p.premium){
     h+=`<div class="prm-hero on"><div class="prm-b">${ic('crown',15,'#a5750d')} 이용 중</div>
       <div class="prm-t">${state.activeClub}</div><div class="prm-d">${until} 까지</div></div>`;
-  } else if(canSellDigital() && (DEMO || !PAY_PENDING)){
+  } else if(canSellDigital() && (DEMO || !PAY_PENDING_FN())){
     h+=`<div class="prm-hero"><div class="prm-t">월 ${p.price.toLocaleString()}원</div>
       <div class="prm-d">회원 ${p.members}명이면 1인당 ${Math.round(p.price/Math.max(p.members,1)).toLocaleString()}원</div></div>`;
   } else {
@@ -7131,7 +7187,7 @@ async function openClubPremium(){
     <div class="note" style="text-align:left;margin-top:10px">지금 정회원 <b>${p.members}/${p.member_limit}</b>명 · 이번 달 대진 <b>${p.brackets_this_month}/${p.bracket_limit}</b>회</div>
   </div>`;
   if(owner && p.premium) h+=`<button class="btn ghost" onclick="cancelClubPremium()">프리미엄 해지</button>`;
-  else if(owner && PAY_PENDING && !DEMO) h+=`<div class="note" style="text-align:left">결제 기능을 준비하고 있어요. 열리면 알려드릴게요.</div>`;
+  else if(owner && PAY_PENDING_FN() && !DEMO) h+=`<div class="note" style="text-align:left">결제 기능을 준비하고 있어요. 열리면 알려드릴게요.</div>`;
   else if(owner && canSellDigital()) h+=`<button class="btn" onclick="buyClubPremium()">프리미엄 시작하기 · 월 ${p.price.toLocaleString()}원</button>`;
   else if(!owner) h+=`<div class="note" style="text-align:left">결제는 <b>클럽장</b>만 할 수 있어요.</div>`;
   // iOS 빌드 + IAP 미연동: 결제 버튼도, 외부 결제 안내도 노출하지 않는다.
@@ -11067,7 +11123,8 @@ function _renderMeCore(){
     <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
     <div style="display:flex;justify-content:center;gap:14px;margin-bottom:13px">
       <a href="${API_BASE}/terms" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">이용약관</a>
-      <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a></div>
+      <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a>
+      <a href="mailto:${CFG.support_email||'matsu.help@gmail.com'}?subject=%5B%EB%A7%9E%EC%88%98%5D%20%EB%AC%B8%EC%9D%98" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">문의하기</a></div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="openAdminPanel()">운영자 콘솔 (키 필요)</button>`:''}
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="deleteAccount()">계정 탈퇴 (개인정보 삭제)</button>`:''}</div>`;
@@ -11088,6 +11145,18 @@ function loadTeamSum(cb){                                // 팀 종목 캐시
 }
 /* 재진입 가드 — 홈을 그리는 도중 어떤 경로로든 renderHome 이 다시 불리면(동기 재귀)
    스택 초과로 홈만 죽는다. 원인 코드가 어디 숨어 있든 여기서 원천 차단한다. */
+/* 신규 유저 첫 5분 — 클럽이 없으면 같은 종목 클럽을 지역 우선으로 추천 */
+function homeRecClubs(){
+  const mine=new Set(state.myClubs||[]);
+  const myReg=(state.serverUser&&state.serverUser.region)||'';
+  const list=state.clubs.filter(c=>(!c.sport||c.sport===state.sport)&&!mine.has(c.n));
+  if(!list.length) return '';
+  list.sort((a,b)=>(((b.r&&myReg&&b.r===myReg)?1:0)-((a.r&&myReg&&a.r===myReg)?1:0))||((b.m||0)-(a.m||0)));
+  return `<div class="card"><div class="ch">${myReg?esc(myReg)+' 근처 ':''}추천 클럽 <span style="font-weight:700;font-size:11.5px;color:var(--gray)">첫 클럽을 골라보세요</span></div>`+
+    list.slice(0,3).map(c=>`<div data-n="${esc(c.n)}" onclick="go('club');setClubTab('find');searchClub(this.dataset.n)" style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px;border-top:1px solid #f0efec;cursor:pointer">
+      <div><b style="font-size:14px">${esc(c.n)}</b><div style="font-size:12px;color:var(--gray);font-weight:700">${esc(c.r||'지역 미정')} · ${c.m||0}명</div></div>
+      <span style="font-size:12.5px;font-weight:900;color:var(--coral-d)">둘러보기 ›</span></div>`).join('')+`</div>`;
+}
 let _RH_BUSY=false;
 function renderHome(){
   if(_RH_BUSY) return;
@@ -11114,6 +11183,7 @@ function _renderHomeCore(){
       <div class="yh-n">${title}</div><div class="yh-s">${sub}</div>
       ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}
       <div class="yh-foot">${stack}<span style="font-size:12.5px;font-weight:800;color:#473c69">${att.length?att.length+'명 참여 예정':(hasClub?'일정 확인 →':'클럽 찾아보기 →')}</span></div></div>`;
+  if(!hasClub) h+=homeRecClubs();
   }
   // ⑤ 주간 날짜 핀 — 모임·기록 있는 날 점 표시, 탭하면 그날 일지 시트
   { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
