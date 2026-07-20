@@ -7854,7 +7854,7 @@ function openOmDetail(id){
   const isMgr=m.is_host||(m.manager&&m.manager.id===me);
   const closed=(m.status&&m.status!=='open')||m.past||(m.start_at&&Date.parse(m.start_at)<Date.now());
   const mgrName=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
-  const info=(ic,l)=>`<div class="om-info" style="display:flex;align-items:center;gap:9px;flex:1;min-width:45%"><span style="font-size:17px;display:inline-flex;align-items:center">${ic}</span><b>${l}</b></div>`;
+  const info=(ic,l)=>`<div class="om-info" style="display:flex;align-items:center;gap:9px;min-width:0"><span style="font-size:17px;display:inline-flex;align-items:center;flex-shrink:0">${ic}</span><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</b></div>`;
   let h=`<div class="om-detail"><div class="sh-top"><h3>매치 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   const _ph=(m.photos&&m.photos.length?m.photos:(m.photo?[m.photo]:[]));
   if(_ph.length) h+=`<div style="position:relative;margin-bottom:14px">
@@ -7869,10 +7869,9 @@ function openOmDetail(id){
       <b class="om-price">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
       <span class="om-pricenote">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
     <div class="ch">매치 정보</div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px 8px;padding:6px 2px 12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:6px 2px 14px;align-items:center">
       ${info(im('star'),'모든 레벨')}${info(`<span style="display:inline-flex;align-items:center">${im('tennisM',20)}<span style="margin-left:-6px;display:inline-flex">${im('girl',20)}</span></span>`,'남녀 모두')}
-      ${info(im('clock'),'3시간')}${info(im('girl'),`여성 ${(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length}명 참여`)}
-      ${info(im('group'),`${m.cur||0}/${m.cap||0}명 · 전원 모이면 확정`)}${info(im('money'),'신청 시 결제 · 30분 내 취소')}
+      ${info(im('clock'),'3시간')}${info(im('group'),`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
     </div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
@@ -7880,11 +7879,13 @@ function openOmDetail(id){
         <div style="font-size:11.5px;color:var(--gray);font-weight:700">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
     ${(m.players||[]).length?(()=>{
       const order=['러브','퓨처스','챌린저','투어','그랜드슬램'];
-      const col={'러브':'#8a8378','퓨처스':'#f2b90d','챌린저':'#2f6fed','투어':'#e5493a','그랜드슬램':'#1b1813'};
+      const col={'러브':'#ddd7cb','퓨처스':'#ecc98f','챌린저':'#e39f68','투어':'#cf5418','그랜드슬램':'#3b2a1a'};
       const c={}; m.players.forEach(p=>{ const key=(p.rating||1000)===1000?'러브':levelOf(p.rating).tier; c[key]=(c[key]||0)+1; });
       const mx=Math.max(1,...order.map(k=>c[k]||0));
-      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 분포</span>${m.joined?` <span style="font-size:11px;font-weight:900;color:#1f7d4d">· 나 참가중 ✓</span>`:''}</div>
-      <div style="display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
+      const femN=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
+      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="display:inline-flex;align-items:center;gap:8px"><span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 분포</span>${m.joined?`<span style="font-size:10.5px;font-weight:700;color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:3px 10px;letter-spacing:0">참가 중</span>`:''}</span></div>
+      <div style="position:relative;display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
+        <span style="position:absolute;left:61.8%;top:0;transform:translateX(-50%);font-size:10.5px;font-weight:700;color:var(--lgray);white-space:nowrap">여성 ${femN}명</span>
         ${order.map(k=>{const n=c[k]||0;const hpx=n?Math.max(14,Math.round(n/mx*72)):4;
           return `<div style="flex:1;text-align:center">
             <div style="font-size:12px;font-weight:900;color:${n?'var(--ink)':'#c9c3b8'}">${n||''}</div>
@@ -8599,6 +8600,10 @@ async function createMatch(){
   }
 }
 async function joinMatch(id){
+  const mm=(OM_LIST||[]).find(x=>x.id===id);
+  if(mm&&mm.price){
+    if(!confirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n30분 안에는 취소할 수 있고, 이후엔 확정돼요.\n\n신청할까요?`)) return;
+  }
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
     const pay = m.price?` · 인당 ${m.price.toLocaleString()}원, 30분 안에 취소하지 않으면 확정돼요`:'';
     toast(m.confirmed?`참가했어요 · ${m.cur}명 전원 모여 경기가 확정됐어요${pay}`:`참가했어요 · ${m.cur}/${m.cap}명${pay}`);
@@ -11554,7 +11559,7 @@ function _renderMeCore(){
   const ratingLabel=placing?'배치 중':rating, peakLabel=placing?'—':peak;
   const rel=relRecord(),relKeys=Object.keys(rel);
   let h=`
-  <div style="display:flex;align-items:center;gap:16px;margin:22px 0 18px">
+  <div style="display:flex;align-items:center;gap:16px;margin:6px 0 18px">
     <div style="width:72px;height:72px;border-radius:50%;background:${myPhotoUrl()?`url('${myPhotoUrl()}') center/cover`:'linear-gradient(135deg,var(--coral),var(--coral-d))'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;font-weight:800">${myPhotoUrl()?'':(state.userName||'곽주영')[0]}</div>
     <div><div style="font-size:22px;font-weight:800">${state.userName||'곽주영'} ${state.premium?'<span style="font-size:11px;color:#cf5418;background:#fceee4;border-radius:8px;padding:2px 7px;vertical-align:2px;font-weight:800">프리미엄 ✓</span>':''}</div>
       <span class="plbadge">${t.name}</span>
@@ -11758,13 +11763,13 @@ function _renderHomeCore(){
     HOME_BANNERS=[]; api('/banners').then(r=>{ HOME_BANNERS=r||[]; if(state.view==='home') renderHome(); }).catch(()=>{});
   }
   let h='';
-  { h+=`<div class="yhero"><div class="yh-deco">${SP().ic}</div>
+  { const bn=(HOME_BANNERS||[])[0]||null;
+    if(bn&&bn.image) h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
+      <img src="${esc(bn.image)}" style="width:100%;display:block" alt="배너"></div>`;
+    h+=`<div class="yhero"><div class="yh-deco">${SP().ic}</div>
       <div class="yh-n">안녕하세요,<br>${esc(state.userName||'회원')} 님</div>
       <div class="yh-s">오늘은 ${MON}월 ${DAY}일 · ${SP().n} 치기 좋은 날이에요</div>
       ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}</div>`;
-    const bn=(HOME_BANNERS||[])[0]||null;
-    if(bn&&bn.image) h+=`<div style="border-radius:20px;overflow:hidden;margin:10px 0 2px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
-      <img src="${esc(bn.image)}" style="width:100%;display:block" alt="배너"></div>`;
   h+=homeQuickMenu();
   }
   // ⑤ 주간 날짜 핀 — 모임·기록 있는 날 점 표시, 탭하면 그날 일지 시트
