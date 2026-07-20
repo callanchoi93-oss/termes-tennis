@@ -1334,7 +1334,6 @@
     <div class="tab on" data-s="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
     <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
-    <div class="tab" data-s="bracket" onclick="go('bracket')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M6 7h6a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3"/></svg><span id="navBkLbl">대진</span></div>
     <div class="tab" data-s="sched" onclick="go('sched')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>일정</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
@@ -1461,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0727-N2';
+const BUILD='v0730-M2';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -5303,6 +5302,9 @@ function renderClub(){
   const t=state.clubTab;
   let h=`<h2 class="t">클럽</h2><p class="sub">우리 클럽 소식과 일정을 한곳에서.</p>
   <div class="seg"><div class="o ${t==='my'?'on':''}" onclick="setClubTab('my')">내 클럽</div><div class="o ${t==='find'?'on':''}" onclick="setClubTab('find')">클럽 찾기</div></div>`;
+  if(t==='my'&&state.activeClub) h+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('bracket')">
+    <div><b style="font-size:14.5px">🎾 모임 대진 편성</b><div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:2px">참석자로 코트별 대진을 자동으로 짜요</div></div>
+    <span style="color:var(--coral-d);font-weight:900">›</span></div>`;
   if(t==='my'){
     if(SERVER_OK && state.activeClub && !clubId()){
       h+=`<div class="card" style="background:#fdf4ec;border-color:#eeddc8">
@@ -7706,7 +7708,7 @@ function matchCards(list){
     const nearFull = !closed && !m.past && m.cap-m.cur>0 && m.cap-m.cur<=3;
     const stTxt = closed?'종료':m.past?'경기 종료':nearFull?'확정임박':m.confirmed?'성사':'모집중';
     const stCol = closed||m.past?['#f1eee8','#8a8378']:nearFull?['#fdeee7','#cf5418']:m.confirmed?['#e7f4ec','#1f7d4d']:['#eef2fd','#2f5bd6'];
-    h+=`<div class="card om-c" id="omc${m.id}" style="padding:0;overflow:hidden;${closed?'opacity:.65':''}">
+    h+=`<div class="card om-c" id="omc${m.id}" onclick="openOmDetail(${m.id})" style="padding:0;overflow:hidden;cursor:pointer;${closed?'opacity:.65':''}">
       ${m.photo?`<div style="height:112px;background:url('${esc(m.photo)}') center/cover"></div>`:''}
       <div style="padding:16px 18px 12px;background:linear-gradient(135deg,#fdfcfa,#f7f3ec)">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
@@ -7724,7 +7726,7 @@ function matchCards(list){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
-          ${[m.fmt,m.gd,`${m.cap}명 정원`,`최소 ${m.min_cnt}명 성사`].filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
+          ${[m.fmt,m.gd,(m.min_cnt>=m.cap?`${m.cap}명 모이면 확정`:`${m.cap}명 정원`),(m.min_cnt>=m.cap?null:`최소 ${m.min_cnt}명 성사`)].filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
         </div>
       </div>
       <div style="padding:12px 18px 16px">
@@ -7733,47 +7735,25 @@ function matchCards(list){
         <div class="om-hav">${esc(hostName[0])}</div>
         <div style="flex:1;min-width:0">
           <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span>${m.host_fp!=null?`<span onclick="event.stopPropagation();openFairplayInfo()" style="font-size:10px;font-weight:900;border-radius:8px;padding:3px 7px;cursor:pointer;background:${m.host_fp>=85?'#e6f3ec':m.host_fp>=70?'#fdf2dd':'#fceee4'};color:${m.host_fp>=85?'#2f7d4f':m.host_fp>=70?'#a5750d':'#cf5418'}">페어플레이 ${m.host_fp}점${m.host_fp_n?'':' · 신규'}</span>`:''}</div>
-          <div class="om-hd">주최자 · 문의는 대화하기로</div>
-        </div>
-        ${(!m.is_host && m.host) ? `<button class="om-act ghost"
-            onclick="openDM(${m.host.id},'${esc(hostName).replace(/'/g,"\\'")}')">대화하기</button>` : ''}
+          <div class="om-hd">매니저 · 개설부터 운영까지 진행해요</div>
       </div>
 
-      ${m.manager?`<div class="om-hd" style="margin-top:3px">🎽 운영 ${esc(m.manager.name)} 매니저${m.manager_fee?` · 정산 ${m.manager_fee.toLocaleString()}원`:''}${m.settled?' <b style="color:#2f7d4f">정산요청됨</b>':''}</div>`:''}
+      ${m.manager?`<div class="om-hd" style="margin-top:3px">🎽 ${esc(m.manager.name)} 매니저가 진행해요</div>`:''}
       ${m.account?`<div class="om-bank" onclick="copyText('${esc(m.account).replace(/'/g,"\\'")}')">
         ${ic('receipt',13)} <span>${esc(m.account)}</span><em>복사</em></div>`:''}
       ${m.note?`<div class="om-note">${esc(m.note)}</div>`:''}
       <div class="rp-track" style="margin-top:10px"><i style="width:${pct}%"></i></div>
-      <div class="rp-cap">${m.cur}/${m.cap}명 · 최소 ${m.min_cnt}명이면 성사${m.confirmed?' ✓':''}</div>
+      <div class="rp-cap">${m.cur}/${m.cap}명 · ${m.min_cnt>=m.cap?`전원 모이면 확정`:`최소 ${m.min_cnt}명이면 성사`}${m.confirmed?' ✓':''}</div>
 
       <div class="om-ppl">${m.players.map(p=>
         `<span class="om-p ${m.host&&p.id===m.host.id?'host':''} ${p.id===myId?'me':''}">${esc(p.name)}</span>`).join('')}</div>
 
-      <div class="om-foot">
-        <button class="om-re ${m.liked?'on':''}" onclick="likeMatch(${m.id})">♥ <b>${m.likes||0}</b></button>
-        <button class="om-re" onclick="openOmComments(${m.id})">💬 <b>${m.comments||0}</b></button>
-        ${closed?'':`<button class="om-re" onclick="shareMatch(${m.id})">↗ 공유</button>`}
+      <div class="om-foot" onclick="event.stopPropagation();openOmDetail(${m.id})" style="cursor:pointer">
+        <span class="om-re">♥ <b>${m.likes||0}</b></span>
+        <span class="om-re">💬 <b>${m.comments||0}</b></span>
         <span style="flex:1"></span>
-        ${(closed||m.past)&&(m.joined||m.is_host)&&m.players.length>1?`<button class="om-act ghost" onclick="openOmReviews(${m.id})">후기</button>`:''}
-        ${(closed||m.past)&&(m.joined||m.is_host)?`<button class="om-act ${m.my_mreview?'ghost':'primary'}" onclick="openOmMatchReview(${m.id})">${m.my_mreview?'평가 수정':'매치 평가'}</button>`:''}
-        ${(closed||m.past)&&(m.is_host||(m.manager&&m.manager.id===(state.serverUser||{}).id))?`<button class="om-act primary" onclick="openOmAssess(${m.id})">📊 참가자 평가</button>`:''}
-        ${(m.is_host||(m.manager&&m.manager.id===(state.serverUser||{}).id))&&(m.players||[]).length>=4?`<button class="om-act ghost" onclick="omMakeBracket(${m.id})">🎾 대진 짜기</button>`:''}
-        ${m.bracket&&(m.joined||m.is_host)?`<button class="om-act ghost" onclick="openOmBracket(${m.id})">대진 보기</button>`:''}
-        ${!m.is_host&&!closed&&!m.past&&m.joined&&!m.manager?(m.mgr_applied
-          ?`<span style="font-size:11px;font-weight:800;color:var(--gray)">매니저 지원됨</span>`
-          :`<button class="om-act ghost" onclick="omManagerApply(${m.id})">🎽 매니저 지원</button>`):''}
-        ${m.is_host
-          ? `${(m.mgr_apps&&m.mgr_apps.length&&!m.manager)?`<button class="om-act primary" onclick="omManagerPick(${m.id})">매니저 지정(${m.mgr_apps.length})</button>`:''}
-             ${(closed||m.past)&&m.manager&&m.manager_fee&&!m.settled?`<button class="om-act primary" onclick="omSettle(${m.id})">💰 정산</button>`:''}
-             ${closed?'':`<button class="om-act ghost" onclick="omPhotoPick(${m.id})">📷</button>`}
-             ${closed?'':`<button class="om-act ghost" onclick="setMatchStatus(${m.id},'closed')">마감</button>`}
-             <button class="om-act danger" onclick="deleteMatch(${m.id})">삭제</button>`
-          : closed ? ''
-            : m.joined
-              ? `<button class="om-act ghost" onclick="leaveMatch(${m.id})">참가 취소</button>`
-              : m.full
-                ? `<button class="om-act" disabled style="opacity:.5">정원 마감</button>`
-                : `<button class="om-act primary" onclick="joinMatch(${m.id})">참가 신청</button>`}
+        ${m.joined&&!closed?`<span style="font-size:11.5px;font-weight:900;color:#1f7d4d">참가중 ✓</span>`:''}
+        <span style="font-size:12.5px;font-weight:900;color:var(--coral-d)">자세히 보기 ›</span>
       </div>
       </div>
     </div>`;
@@ -7818,13 +7798,61 @@ function renderSched(){
   h+=diaryCard();                                                 // 월 달력 · 날짜 탭 → 그날 일지
   el.innerHTML=h;
 }
-/* 홈 리스트 → 해당 매치 카드로 점프(스크롤+하이라이트) */
-function openMatchCard(id){
-  go('match');
-  let n=0; const t=setInterval(()=>{ const el=document.getElementById('omc'+id);
-    if(el){ clearInterval(t); el.scrollIntoView({behavior:'smooth',block:'start'});
-      el.style.boxShadow='0 0 0 3px var(--coral)'; setTimeout(()=>{ el.style.boxShadow=''; },1600); }
-    else if(++n>24) clearInterval(t); },150);
+/* ═══ 플랩식 매치 상세 — 카드 탭 시 전체 정보 + 모든 액션 ═══ */
+function openMatchCard(id){ openOmDetail(id); }
+function openOmDetail(id){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id);
+  if(!m){ go('match'); return; }
+  const me=(state.serverUser||{}).id;
+  const isMgr=m.is_host||(m.manager&&m.manager.id===me);
+  const closed=(m.status&&m.status!=='open')||m.past||(m.start_at&&Date.parse(m.start_at)<Date.now());
+  const mgrName=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
+  const info=(ic,l)=>`<div style="display:flex;align-items:center;gap:9px;flex:1;min-width:45%"><span style="font-size:17px">${ic}</span><b style="font-size:13.5px">${l}</b></div>`;
+  let h=`<div class="sh-top"><h3>매치 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+  if(m.photo) h+=`<div style="height:140px;border-radius:16px;background:url('${esc(m.photo)}') center/cover;margin-bottom:14px"></div>`;
+  h+=`<div style="font-size:13px;font-weight:800;color:var(--gray)">${fmtRange(m.start_at,m.end_at,m.dt)}</div>
+    <div style="font-size:21px;font-weight:900;letter-spacing:-.02em;margin-top:3px">${esc(m.loc||'')}</div>
+    ${(m.sido||m.sigungu)?`<div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}</div>`:''}
+    <div style="font-size:12.5px;color:var(--lgray);font-weight:800;margin-top:8px">♥ ${m.likes||0} &nbsp; 💬 ${m.comments||0}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
+      <b style="font-size:19px;color:var(--coral-d)">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
+      <span style="font-size:12px;font-weight:800;color:#8a7550">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
+    <div class="ch">매치 정보</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px 8px;padding:6px 2px 12px">
+      ${info('⭐','모든 레벨')}${info('⚧',m.gd?esc(m.gd):'남녀 모두')}
+      ${info('⏱','3시간')}${info('🎾',esc(m.fmt||'복식'))}
+      ${info('👥',`${m.cur||0}/${m.cap||0}명 · 전원 모이면 확정`)}${info('💳','신청 시 결제 · 30분 내 취소')}
+    </div>
+    ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
+      <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
+      <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
+        <div style="font-size:11.5px;color:var(--gray);font-weight:700">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
+    ${(m.players||[]).length?`<div class="ch">참가자 ${m.cur||m.players.length}명</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;padding:4px 0 12px">${m.players.map(p=>`<span style="font-size:12.5px;font-weight:800;background:${p.id===(m.host&&m.host.id)?'#fdeee7':'#f1eee8'};color:${p.id===(m.host&&m.host.id)?'var(--coral-d)':'#5a544b'};border-radius:16px;padding:6px 12px">${esc(p.name)}</span>`).join('')}</div>`:''}
+    ${m.note?`<div class="ch">안내</div><div style="font-size:13.5px;color:#4a463f;font-weight:600;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
+  // ── 액션 ──
+  const acts=[];
+  if(!closed&&!m.is_host&&!m.joined&&!m.full) acts.push(`<button class="btn" onclick="joinMatch(${m.id});closeOv()">신청하기${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</button>`);
+  if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소 <span style="font-weight:700;font-size:11.5px">· 신청 30분 안에만</span></button>`);
+  if(m.full&&!m.joined&&!m.is_host&&!closed) acts.push(`<button class="btn" disabled style="opacity:.5">정원 마감</button>`);
+  if(closed&&(m.joined||m.is_host)) acts.push(`<button class="btn ${m.my_mreview?'ghost':''}" onclick="openOmMatchReview(${m.id})">${m.my_mreview?'리뷰/칭찬 수정':'매치 평가 남기기'}</button>`);
+  if((closed)&&(m.joined||m.is_host)&&(m.players||[]).length>1) acts.push(`<button class="btn ghost" onclick="openOmReviews(${m.id})">함께 뛴 사람 후기</button>`);
+  if(m.bracket&&(m.joined||m.is_host)) acts.push(`<button class="btn ghost" onclick="openOmBracket(${m.id})">대진표 보기</button>`);
+  if(isMgr){
+    acts.push(`<div class="ch" style="margin-top:6px">매니저 메뉴</div>`);
+    if((m.players||[]).length>=4) acts.push(`<button class="btn ghost" onclick="omMakeBracket(${m.id})">🎾 대진 짜기</button>`);
+    if(closed) acts.push(`<button class="btn ghost" onclick="openOmAssess(${m.id})">📊 참가자 등급 평가</button>`);
+    if(closed&&m.manager_fee&&!m.settled) acts.push(`<button class="btn ghost" onclick="omSettle(${m.id})">💰 정산 요청 · ${(m.manager_fee||0).toLocaleString()}원</button>`);
+    if(m.settled) acts.push(`<div class="note" style="text-align:left">정산 요청됨 · 운영자 이체 후 완료 처리돼요</div>`);
+    if(!closed) acts.push(`<div style="display:flex;gap:8px">
+      <button class="btn ghost" style="flex:1" onclick="omPhotoPick(${m.id})">📷 코트 사진</button>
+      <button class="btn ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button></div>`);
+    acts.push(`<button class="btn ghost" style="color:#c8452c" onclick="deleteMatch(${m.id});closeOv()">매치 삭제</button>`);
+  }
+  acts.push(`<button class="btn ghost" onclick="likeMatch(${m.id})">♥ 찜하기</button>`);
+  h+=`<div style="display:grid;gap:9px;margin-top:6px">${acts.join('')}</div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
 }
 /* 주최자·매니저가 코트 사진 업로드 → 홈 리스트·카드 썸네일 */
 function omPhotoPick(id){
@@ -8268,13 +8296,36 @@ async function openMatches(){
   if(state.view==='match'){ renderMatch(); return; }
   go('match');
 }
+function omCalc(){
+  const box=document.getElementById('omCalcBox'); if(!box) return;
+  const c=+((document.getElementById('omCourts')||{}).value||3);
+  const cost=parseInt((((document.getElementById('omCourtCost')||{}).value)||'').replace(/[^0-9]/g,''),10)||0;
+  const cap=c*6;
+  if(!cost){ box.innerHTML=`정원 <b>${cap}명</b> · 전원 모이면 확정 · 예약 금액을 넣으면 인당 참가비가 계산돼요`; return; }
+  const per=Math.ceil((cost/cap+9000)/500)*500;
+  box.innerHTML=`인당 <b style="color:var(--coral-d);font-size:15px">${per.toLocaleString()}원</b> = 구장 1/${cap} ${Math.round(cost/cap).toLocaleString()}원 + 운영·공 9,000원<br><span style="color:var(--lgray)">정원 ${cap}명 전원 모이면 확정 · 3시간</span>`;
+}
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
 
-    <div class="fld"><label>시작</label><input id="omStart" type="datetime-local" step="900"></div>
-    <div class="fld"><label>종료</label><input id="omEnd" type="datetime-local" step="900"></div>
+    <div style="background:#fdf6ec;border:1.5px solid #f0e2c8;border-radius:16px;padding:13px 14px;margin:2px 0 12px">
+      <b style="font-size:13.5px">🎽 매니저 가이드</b>
+      <div style="font-size:12.5px;color:#6b5b3f;font-weight:700;margin-top:6px;line-height:1.55">
+        · 구장을 예약하고 <b>예약 금액만</b> 적으세요 — 인당 참가비가 자동 계산돼요<br>
+        · 매치는 <b>시작부터 3시간</b>, 코트당 6명이 <b>전원 모여야 확정</b>돼요<br>
+        · 참가비는 신청 시 결제 · <b>30분 안에 취소하지 않으면 확정</b>이에요<br>
+        · 종료 후 <b>참가자 등급 평가</b>는 매니저 몫 — 미배치 선수는 바로 배치돼요</div></div>
+
+    <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 자동 +3시간</span></label><input id="omStart" type="datetime-local" step="900"></div>
+
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>예약 코트 수</label>
+        <select id="omCourts" onchange="omCalc()"><option value="1">1코트 · 6명</option><option value="2">2코트 · 12명</option><option value="3" selected>3코트 · 18명</option></select></div>
+      <div class="fld" style="flex:1.3"><label>구장 예약 금액 (원)</label><input id="omCourtCost" inputmode="numeric" placeholder="예) 252000" oninput="omCalc()"></div>
+    </div>
+    <div id="omCalcBox" style="background:#f6f4ef;border-radius:14px;padding:11px 13px;font-size:13px;font-weight:700;color:#5a544b;margin:-2px 0 12px"></div>
 
     <div class="fld"><label>지역</label>
       <div style="display:flex;gap:8px">
@@ -8290,12 +8341,7 @@ function openNewMatch(){
 
     <div class="fld"><label>형식</label>
       <select id="omFmt">${SM().formats.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
-    <div class="fld"><label>참가비 (원)</label><input id="omPrice" inputmode="numeric" placeholder="비워두면 무료"></div>
-    <div class="fld"><label>입금 계좌 (선택)</label><input id="omAccount" placeholder="예) 카카오뱅크 3333-01-1234567 곽주영"></div>
-    <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>정원</label><input id="omCap" inputmode="numeric" value="8"></div>
-      <div class="fld" style="flex:1"><label>최소 인원</label><input id="omMin" inputmode="numeric" value="6"></div>
-    </div>
+
     <div class="fld"><label>안내 (선택)</label>
       <textarea id="omNote" rows="6" placeholder="예) ${OM_EX().note}"></textarea></div>
     <div id="omWarn" class="cwarn"></div>
@@ -8308,15 +8354,9 @@ function openNewMatch(){
   const d = new Date();
   d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
   d.setHours(9,0,0,0);
-  const e = new Date(d); e.setHours(12,0,0,0);
-  const S=document.getElementById('omStart'), E=document.getElementById('omEnd');
+  const S=document.getElementById('omStart');
   S.value=fmt(d); S.min=fmt(new Date());
-  E.value=fmt(e); E.min=fmt(new Date());
-  S.addEventListener('change',()=>{                      // 시작을 바꾸면 종료도 따라온다
-    const st=new Date(S.value); if(isNaN(st)) return;
-    E.min = S.value;
-    if(!E.value || new Date(E.value) <= st){ const en=new Date(st); en.setHours(en.getHours()+3); E.value=fmt(en); }
-  });
+  omCalc();                                              // 정원·인당가 초기 표시
 
   // 내 지역을 기본 선택
   const my = (state.region && state.region!=='전체') ? state.region : '';
@@ -8364,26 +8404,24 @@ function fmtMatchDate(iso){
 }
 async function createMatch(){
   const v = id => ((document.getElementById(id)||{}).value||'').trim();
-  const start=v('omStart'), end=v('omEnd'), loc=v('omLoc'), note=v('omNote'), dong=v('omDong');
+  const start=v('omStart'), loc=v('omLoc'), note=v('omNote'), dong=v('omDong');
   if(!start){ toast('시작 시각을 골라주세요'); return; }
   if(!loc){ toast('장소를 입력해 주세요'); return; }
   if(new Date(start) < new Date()){ toast('지난 시각은 고를 수 없어요'); return; }
-  if(end && new Date(end) <= new Date(start)){ toast('종료가 시작보다 빨라요'); return; }
   const bad = findContact(`${loc} ${note} ${dong}`);
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
-  const cap = num('omCap')||8, min_cnt = num('omMin')||6;
-  if(min_cnt > cap){ toast('최소 인원이 정원보다 많아요'); return; }
+  const courts = num('omCourts')||3, court_cost = num('omCourtCost');
   try{
     try{
       const fp=await api('/me/fairplay');
       if(fp && fp.score<55 && !confirm(`현재 페어플레이 ${fp.score}점이에요.\n점수가 낮으면 참가율이 떨어질 수 있어요.\n좋은 경기로 회복한 뒤 열어도 좋아요. 계속할까요?`)) return;
     }catch(e){}
     await api('/open-matches',{method:'POST',body:JSON.stringify({
-      sport:state.sport, dt:fmtMatchDate(start), start_at:start, end_at:end||null,
+      sport:state.sport, dt:fmtMatchDate(start), start_at:start,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
       loc, fmt:v('omFmt')||SM().formats[0], gd:gdFromFmt(v('omFmt')),
-      price:num('omPrice'), cap, min_cnt, note, account:v('omAccount')||null })});
+      courts, court_cost, note })});
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
     const m = String(e.message||'');
@@ -8397,7 +8435,8 @@ async function createMatch(){
 }
 async function joinMatch(id){
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
-    toast(m.confirmed?`참가했어요 · ${m.cur}명으로 경기가 성사됐어요`:`참가했어요 · ${m.cur}/${m.cap}명`);
+    const pay = m.price?` · 인당 ${m.price.toLocaleString()}원, 30분 안에 취소하지 않으면 확정돼요`:'';
+    toast(m.confirmed?`참가했어요 · ${m.cur}명 전원 모여 경기가 확정됐어요${pay}`:`참가했어요 · ${m.cur}/${m.cap}명${pay}`);
     renderMatch();
   }catch(e){ const s=String(e.message);
     toast(s.includes('full')?'정원이 찼어요':s.includes('not_open')?'모집이 끝났어요':'참가하지 못했어요'); }
@@ -8405,7 +8444,7 @@ async function joinMatch(id){
 async function leaveMatch(id){
   if(!confirm('참가를 취소할까요? 주최자에게 알림이 가요.')) return;
   try{ await api(`/open-matches/${id}/join`,{method:'DELETE'}); toast('참가를 취소했어요'); renderMatch(); }
-  catch(e){ toast('취소하지 못했어요'); }
+  catch(e){ toast(String(e.message||'').includes('join_confirmed')?'확정된 참가예요 · 신청 후 30분이 지나 취소할 수 없어요':'취소하지 못했어요'); }
 }
 async function setMatchStatus(id, st){
   const msg = st==='closed' ? '모집을 마감할까요?' : '오픈매치를 취소할까요? 참가자에게 알림이 가요.';
@@ -11354,15 +11393,25 @@ function _renderMeCore(){
     <div style="width:72px;height:72px;border-radius:50%;background:${myPhotoUrl()?`url('${myPhotoUrl()}') center/cover`:'linear-gradient(135deg,var(--coral),var(--coral-d))'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;font-weight:800">${myPhotoUrl()?'':(state.userName||'곽주영')[0]}</div>
     <div><div style="font-size:22px;font-weight:800">${state.userName||'곽주영'} ${state.premium?'<span style="font-size:11px;color:#cf5418;background:#fceee4;border-radius:8px;padding:2px 7px;vertical-align:2px;font-weight:800">프리미엄 ✓</span>':''}</div>
       <span class="plbadge">${t.name}</span>
-      <div style="font-size:13px;color:var(--gray);font-weight:600;margin-top:6px">${state.gender||'-'} · ${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')} <span onclick="openProfileEdit()" style="color:var(--coral-d);font-weight:800;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:4px;vertical-align:-3px">${ic('camera',15)}프로필 수정</span></div>
-      <div style="font-size:12px;color:var(--lgray);font-weight:600;margin-top:3px">라운지 익명 · ${myAnonNick()}</div></div></div></div>
+      <div style="font-size:13px;color:var(--gray);font-weight:600;margin-top:6px">${state.gender||'-'} · ${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')} <span onclick="openProfileEdit()" style="color:var(--coral-d);font-weight:800;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:4px;vertical-align:-3px">${ic('camera',15)}프로필 수정</span></div></div></div></div>
   ${t.placing&&SP().cat==='racket'?`<div class="card" style="background:var(--violet-s);border:1px solid rgba(124,92,214,.18)"><div style="font-size:15px;font-weight:800;color:var(--violet-d)">배치 진행 ${state.played}/5 · 5경기 후 등급이 정해져요</div>
     <div class="gprog vio"><i style="width:${Math.max(state.played/5*100,4)}%"></i></div>
     <div style="font-size:13px;color:var(--violet-d);opacity:.85;font-weight:600">리그 경기를 치를수록 실제 등급을 찾아가요. 자기신고가 아니라 결과로 정해져 공정해요.</div></div>`:''}
-  ${SERVER_OK&&authToken()?`<div class="card" onclick="openFairplayInfo()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:13.5px;font-weight:800">페어플레이 <span style="font-size:11px;color:var(--lgray)">경기 매너 점수</span></div>
-      <div id="myFpLine" style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">불러오는 중…</div></div>
-    <b id="myFpScore" style="font-size:19px;color:#2f7d4f">—</b></div>`:''}
+  ${SERVER_OK&&authToken()?`<div style="display:flex;gap:10px;margin-bottom:12px">
+    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openFairplayInfo()">
+      <div style="font-size:12px;color:var(--gray);font-weight:800">매너</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="font-size:19px">😊</span><b id="myFpScore" style="font-size:17px;color:#2f7d4f">—</b></div>
+      <div id="myFpLine" style="font-size:10.5px;color:var(--lgray);font-weight:700;margin-top:5px;line-height:1.4">불러오는 중…</div></div>
+    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
+      <div style="font-size:12px;color:var(--gray);font-weight:800">레벨</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:#2f6fed;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:900">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:15px">${esc(t.name.split(' · ')[0])}</b></div>
+      <div style="font-size:10.5px;color:var(--lgray);font-weight:700;margin-top:5px" onclick="event.stopPropagation();openRatingTrend()">${t.placing?'배치 진행 중':esc(t.name.split(' · ')[1]||'')} · <span style="color:var(--coral-d)">추이 ›</span></div></div></div>
+  <div class="card" style="background:linear-gradient(135deg,#2f6fed,#2456c8);border:none;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:12px;font-weight:800;color:#cfe0ff">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()} 캐시</b></div>
+    <button class="btn sm" style="width:auto;padding:10px 18px;background:#f2b90d;color:#3a2c00;border:none" onclick="openStore()">충전하기</button></div>
+  <div class="ch" style="margin-top:16px">나의 맞수</div>
+  ${[['📅','신청 내역',"go('sched')"],['📈','등급 추이','openRatingTrend()'],['💳','정산 계좌 · 매니저 정산','openBankSetup()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:14px 16px" onclick="${x[2]}">
+    <span style="font-size:19px">${x[0]}</span><b style="flex:1;font-size:14.5px">${x[1]}</b><span style="color:var(--lgray);font-weight:900">›</span></div>`).join('')}`:''}
   ${SERVER_OK&&authToken()?`<div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
     <div><div style="font-size:13.5px;font-weight:800">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
       <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${myCareerTxt()||'탭해서 시작 시점 입력 (예: 2021-03)'}</div></div>
@@ -11564,9 +11613,10 @@ function _renderHomeCore(){
     const evDays=new Set(); evSrc.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add((+mm[1])+'/'+(+mm[2]));});
     (REC_MINE||[]).forEach(r=>{ if(r.ymd){ const [,m2,d2]=r.ymd.split('-'); evDays.add((+m2)+'/'+(+d2)); } });
     const HD=state._homeDay||_ymd(new Date());
-    let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();const has=evDays.has(mo+'/'+da);
+    const omDays=new Set((HOME_OM_ALL||[]).map(m=>m.start_at?_ymd(new Date(m.start_at)):null).filter(Boolean));
+    let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();
       const ymd=`${d.getFullYear()}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
-      const isSel=(ymd===HD);
+      const isSel=(ymd===HD), has=omDays.has(ymd);   // 점 = 그날 오픈매치 존재
       pins+=`<div class="dpin ${isSel?'on':''} ${has?'has':''}" style="cursor:pointer" onclick="selectHomeDay('${ymd}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
     h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`;
   }
