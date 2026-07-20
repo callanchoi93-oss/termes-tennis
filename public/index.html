@@ -1316,8 +1316,7 @@
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" role="button" tabindex="0" aria-label="검색" onclick="openSearch()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
-      <div class="bell" id="chatBell" role="button" tabindex="0" aria-label="채팅" onclick="go('chat')" style="position:relative"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1 3.6-11.3 8.38 8.38 0 0 1 12.5 7.5z"/></svg><span class="chat-cnt" id="chatCnt" style="display:none"></span></div>
-      <div class="bell has" role="button" tabindex="0" aria-label="알림 보기" onclick="openNotif()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+      
     </div>
   </div>
   <div class="scroll" id="scroll">
@@ -1326,6 +1325,7 @@
     <section class="screen" id="s-club"></section>
     <section class="screen" id="s-bracket"></section>
     <section class="screen" id="s-match"></section>
+    <section class="screen" id="s-sched"></section>
     <section class="screen" id="s-lounge"></section>
     <section class="screen" id="s-chat"></section>
     <section class="screen" id="s-me"></section>
@@ -1335,8 +1335,7 @@
     <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
     <div class="tab" data-s="bracket" onclick="go('bracket')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M6 7h6a3 3 0 0 1 3 3v4a3 3 0 0 0 3 3"/></svg><span id="navBkLbl">대진</span></div>
-    <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 6h18"/><path d="M7 22l-4-4 4-4"/><path d="M21 18H3"/></svg>매치</div>
-    <div class="tab" data-s="lounge" onclick="go('lounge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>라운지</div>
+    <div class="tab" data-s="sched" onclick="go('sched')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>일정</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
   <div class="fullov on" id="auth"><div class="auth2">
@@ -1382,9 +1381,10 @@
 const COURT='<svg class="court" viewBox="0 0 300 200" preserveAspectRatio="none"><g stroke="#fff" stroke-width="2" fill="none"><rect x="34" y="22" width="232" height="156"/><line x1="34" y1="100" x2="266" y2="100"/><line x1="150" y1="22" x2="150" y2="178"/></g></svg>';
 const TIERS=[
   {n:'프로 / 오픈',d:'입상·선출급 · 최상위',c:'#1b1813',w:200},
-  {n:'챌린저',d:'중상급 · 클럽 대표급',c:'#cf5418',w:260},
-  {n:'아마추어',d:'중급 · 게임 운영 가능',c:'#8a857c',w:320},
-  {n:'루키',d:'입문~초급 · 모두 여기서 시작',c:'#3fa571',w:380},
+  {n:'그랜드슬램',d:'NTRP 4.5+ · 대회 상위권',c:'#1b1813',w:230},
+  {n:'투어',d:'NTRP 3.5~4.0 · 클럽 대표급',c:'#cf5418',w:280},
+  {n:'아마추어',d:'NTRP 2.5~3.0 · 게임 운영 가능',c:'#8a857c',w:330},
+  {n:'퓨처스',d:'NTRP ~2.0 · 모두 여기서 시작',c:'#3fa571',w:380},
 ];
 const GENDERS=[['남성','단식은 남자부로 배정'],['여성','단식은 여자부로 배정']];
 const EXP=[['1년 미만','이제 시작했어요'],['1~3년','게임을 즐겨요'],['3~5년','어느 정도 쳐요'],['5년 이상','오래 쳤어요']];
@@ -1461,7 +1461,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0715-F1';
+const BUILD='v0727-N2';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -1487,8 +1487,16 @@ window.addEventListener('unhandledrejection', e=>{
 const AC=()=>state.activeClub?state.clubData[state.activeClub]:null;
 const placedGames=()=>state.played;
 const OPP={1:1020,2:1000,3:980,4:1010,5:1040};
-function tierByRating(r){return r>=1150?'챌린저 리그':r>=1050?'아마추어 리그':'루키 리그';}
-const myTier=()=>{const n=state.played; return n>=5?{name:tierByRating(state.rating),placing:false}:{name:`루키 · 배치 중 (${n}/5)`,placing:true};};
+function ntrpOf(r){ const v=Math.max(1,Math.min(7, Math.round(((r-800)/200+1.5)*2)/2)); return v.toFixed(1); }
+/* 플랩식 세부 레벨 — 레이팅 밴드 → 레벨명 + NTRP 표기 */
+const LV_BANDS=[
+ ['퓨처스1',-1e9,874,'1.0~1.5'],['퓨처스2',875,949,'1.5~2.0'],['퓨처스3',950,999,'2.0'],
+ ['챌린저1',1000,1049,'2.5'],['챌린저2',1050,1099,'2.5~3.0'],['챌린저3',1100,1149,'3.0'],['챌린저4',1150,1199,'3.0~3.5'],['챌린저5',1200,1249,'3.5'],
+ ['투어1',1250,1319,'3.5~4.0'],['투어2',1320,1389,'4.0'],['투어3',1390,1459,'4.5'],
+ ['그랜드슬램',1460,1e9,'5.0+']];
+function levelOf(r){ const b=LV_BANDS.find(x=>r>=x[1]&&r<=x[2])||LV_BANDS[3]; return {full:b[0], tier:b[0].replace(/\d+$/,''), ntrp:b[3]}; }
+function tierByRating(r){ const l=levelOf(r); return l.full+' · NTRP '+l.ntrp; }
+const myTier=()=>{const n=state.played; return n>=5?{name:tierByRating(state.rating),placing:false}:{name:`러브 · 배치 ${n}/5경기`,placing:true};};
 function expScore(me,opp){return 1/(1+Math.pow(10,(opp-me)/400));}
 function dayGames(m){
   if(!m.games){ m.games=[['이석용',1010],['김영민',990],['정윤희',1030]].map(([opp,oppR])=>({opp,oppR,my:null,opn:null,status:'new',delta:0})); }
@@ -1777,14 +1785,16 @@ function clearClubLogo(name){
   closeOv(); toast('로고를 지웠어요 · 클럽명만 표시돼요'); renderClub();
 }
 const SP_CATL={racket:'라켓 · 대진표',team:'팀 · 매치',record:'개인 · 기록'};
+function ACTIVE_SPORTS(){ return String((CFG&&CFG.active_sports)||'tennis').split(',').map(x=>x.trim()).filter(Boolean); }
 function sportCaps(curId, fn){
-  return `<div class="spcaps">`+SPORTS.map(sp=>{const on=sp.id===curId;
+  return `<div class="spcaps">`+SPORTS.filter(sp=>ACTIVE_SPORTS().includes(sp.id)).map(sp=>{const on=sp.id===curId;
     return `<div class="spcap ${on?'on':''}" role="button" tabindex="0" onclick="${fn}('${sp.id}')">
       <div class="sc-ic">${sp.ic}</div>
       <div class="sc-x"><div class="sc-n">${sp.n}</div><div class="sc-d">${SP_CATL[sp.cat]} · ${sp.fmt}</div></div>
       <div class="sc-ck"></div></div>`;}).join('')+`</div>`;
 }
 function openSportPicker(){
+  if(ACTIVE_SPORTS().length<2) return;   // 단일 종목 운영 — 종목 선택 없음
   let h=`<div class="sh-top"><h3>종목 선택</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">Matsu는 여러 종목을 지원해요. 종목마다 클럽·대진·기록 방식이 달라집니다.</div>
     ${sportCaps(state.sport,'pickSport')}
@@ -1796,11 +1806,13 @@ function updNavLabels(){
   if(el) el.textContent = SP().cat==='record' ? '조편성' : SP().cat==='team' ? '매치업' : '대진';
 }
 function pickSport(id){
+  if(!ACTIVE_SPORTS().includes(id)){ toast('이 종목은 곧 열려요 · 지금은 테니스에 집중하고 있어요'); return; }
   state.sport=id; closeOv();
   // 전환을 서버에 저장하지 않으면, 프로필을 서버 기준으로 다시 세우는 순간(새로고침·재접속)
   // 온보딩 때 종목으로 되돌아간다. 캐시된 프로필과 서버 모두 새 종목으로 맞춰준다.
   if(state.serverUser) state.serverUser.sport=id;
   if(SERVER_OK && authToken()) api('/me',{method:'PATCH',body:JSON.stringify({sport:id})}).catch(()=>{});
+  if(SERVER_OK) loadPublicData().catch(()=>{});      // 이 종목의 회원 풀·클럽으로 갱신 (유령 상대 방지)
   syncActiveClub();                                      // 이 종목의 클럽으로 전환
   // 종목 범위 캐시 초기화 (다른 종목 데이터가 새 화면에 남지 않게)
   try{ SRV_EVENT=null; SRV_EVENTS=null; }catch(e){}
@@ -1913,6 +1925,7 @@ async function loadConfig(){
     const r = await fetch(API_BASE + '/config', { cache:'no-store' });
     if(!r.ok) throw new Error('HTTP '+r.status);
     CFG = await r.json();
+    if(!ACTIVE_SPORTS().includes(state.sport)) state.sport = ACTIVE_SPORTS()[0] || 'tennis';
   }catch(e){
     CFG = {};
     CFG_ERROR = String(e.message||e);
@@ -2186,8 +2199,8 @@ async function loadPublicData(){
       guestFee:c.guest_fee||0, guestReq:c.guest_cap||0, entry:c.entry_fee||0, season:c.season_fee||0 }));
   }catch(e){}
   try{
-    const us = await api('/users');
-    const tierOf = r => r>=1400?'챌린저' : r>=1150?'아마추어' : '루키';
+    const us = await api('/users?sport='+encodeURIComponent(state.sport||''));
+    const tierOf = r => tierByRating(r).split(' · ')[0];
     PEOPLE = (us||[]).map(u=>({ id:u.id, n:u.name, g:'', region:u.region||'', exp:'',
       rating:u.rating||1000, tier:tierOf(u.rating||1000), w:0, l:0, manner:0, grade:'', clubs:[] }));
   }catch(e){}
@@ -3305,17 +3318,6 @@ function openQuickStart(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 /* ===== 알림 ===== */
-async function challengePlayerSrv(uid, name){
-  const today=new Date().toDateString();
-  if(state._chalDay!==today){ state._chalDay=today; state._chalN=0; }
-  if(state._chalN>=CHAL_DAILY){ toast(`도전 신청은 하루 ${CHAL_DAILY}번까지예요`); return; }
-  try{
-    await api('/matches',{method:'POST',body:JSON.stringify({sport:state.sport||'tennis', kind:'singles', away_user_id:uid})});
-    state._chalN++;
-    closeOv(); toast(`${name} 님에게 도전을 신청했어요 · 상대에게 알림이 갔어요`);
-    if(state.view==='match') renderMatch();
-  }catch(e){ toast('신청하지 못했어요 · 잠시 후 다시 시도해 주세요'); }
-}
 async function openCompareSrv(uid, name){
   let me=null, op=null;
   try{ [me, op] = await Promise.all([
@@ -4811,11 +4813,10 @@ function fundState(m){
 function gdClass(gd){return gd==='남자부'?'b-m':gd==='여자부'?'b-w':'b-x';}
 function myRecord(){let w=0,l=0;state.matches.forEach(m=>{(m.games||[]).forEach(g=>{if(g.status==='confirmed'){if(g.my>g.opn)w++;else l++;}});});return {w,l};}
 function tierMeta(r){
-  if(r>=1150) return {name:'챌린저',c1:'#ec6a2e',c2:'#c6892a',sh:'C'};
-  if(r>=1050) return {name:'아마추어',c1:'#3fa571',c2:'#5b3fa8',sh:'A'};
-  return {name:'루키',c1:'#2bd4a8',c2:'#129e7c',sh:'R'};
-}
-function renderRankingTable(){
+  const l=levelOf(r);
+  const C={'그랜드슬램':['#1b1813','#4a3f66','G'],'투어':['#e5493a','#c6892a','T'],'챌린저':['#2f6fed','#5b3fa8','C'],'퓨처스':['#f2b90d','#c98f06','F']}[l.tier]||['#8a8378','#6b655c','L'];
+  return {name:l.full+' · NTRP '+l.ntrp, c1:C[0], c2:C[1], sh:C[2]};
+}function renderRankingTable(){
   const div=state.gender==='여성'?'여자부':'남자부';
   const rec=myRecord();
   const my={n:'곽주영',w:rec.w,l:rec.l,r:state.rating,me:true};
@@ -5190,7 +5191,7 @@ function renderLeague(){
       <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;
   }
   h+=`<div class="info-banner" onclick="openPyramid()"><div class="ic">▲</div>
-    <div class="x"><b>리그는 실력별로 나뉘어요</b><span>루키 · 아마추어 · 챌린저 · 프로 — 자세히 보기</span></div><div class="arr">→</div></div>`;
+    <div class="x"><b>리그는 실력별로 나뉘어요</b><span>러브 · 퓨처스 · 챌린저 · 투어 · 그랜드슬램 — 자세히 보기</span></div><div class="arr">→</div></div>`;
   if(!t.placing){
     h+=`<div class="card" style="background:linear-gradient(135deg,#eef7d6,#e3f0c2);border:none"><div style="font-size:14px;font-weight:800;color:#5f7416">${t.name} · 레이팅 ${state.rating}</div><div style="font-size:12.5px;color:#6f8718;font-weight:600;margin-top:4px">시즌 성적으로 승격·강등돼요.</div></div>`;
     h+=renderRankingTable();
@@ -5230,25 +5231,44 @@ function renderLeague(){
     <div class="note">최소 인원 미달 경기가 자동 취소되는 걸 볼 수 있어요</div></div>`;
   document.getElementById('s-league').innerHTML=h;
 }
-function openPyramid(){
-  const ranges=['레이팅 1450+','레이팅 1200–1449','레이팅 1050–1199','레이팅 ~1049'];
-  const bodies=[
-    '입상·선수 출신급. 최상위 오픈부에서 경쟁해요. 자리를 지키기도 가장 어려워요.',
-    '클럽을 대표해 나가는 중상급. 위로는 오픈, 아래로는 아마추어와 맞물려요.',
-    '게임을 직접 운영할 수 있는 중급. 참가자가 가장 두꺼운 층이에요.',
-    '입문~초급. 누구나 여기서 시작해 자기신고가 아닌 결과로 올라가요.'];
-  const tc=['#fff','#1b1813','#fff','#fff'];
-  const tagbg=['rgba(255,255,255,.20)','rgba(0,0,0,.12)','rgba(255,255,255,.22)','rgba(255,255,255,.22)'];
-  let h=`<div class="sh-top"><h3>실력별 리그</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-  <div class="sd">탭하면 등급 기준이 펼쳐져요. 모두 루키에서 시작해 시즌 성적으로 승격·강등돼요.</div>`;
-  TIERS.forEach((t,i)=>{
-    h+=`<div class="tierband" style="background:${t.c};color:${tc[i]}" onclick="toggleTier(this)">
-      <div class="tb-h"><div class="tb-l"><div class="tb-n">${t.n}</div><div class="tb-r">${ranges[i]}</div></div>
-        <div class="tb-chev">⌄</div></div>
-      <div class="tb-body">${bodies[i]}<br><span class="tb-tag" style="background:${tagbg[i]}">${i===0?'▲ 최상위 · 강등만 가능':i===TIERS.length-1?'● 모두의 시작점':'시즌 성적으로 ▲▼ 이동'}</span></div></div>`;
+const TN_LV={
+ '러브':{c:'#8a8378',intro:'테니스의 0점, 러브에서 시작해요. 5경기 이상 참여하면 레벨이 결정돼요.',subs:[
+  {n:'러브',h:'아직 실력을 알 수 없어요.',d:[['일반','자기신고가 아니라 경기 결과로만 레벨이 정해져요. 5경기 배치 후 퓨처스~그랜드슬램 중 한 레벨을 받아요.']]}]},
+ '퓨처스':{c:'#f2b90d',intro:'입문 서킷 — 테니스와 친해지는 과정이에요. (NTRP ~2.0)',subs:[
+  {n:'퓨처스1',h:'테니스를 처음 시작해요.',d:[['스트로크','공을 라켓 중앙에 맞히는 것 자체가 아직 어려워요.'],['서브','폼을 익히는 중이라 네트를 넘기기 어려워요.'],['랠리','아직 이어지지 않아요.']]},
+  {n:'퓨처스2',h:'짧은 랠리를 시도해요.',d:[['스트로크','느린 공은 넘길 수 있지만 방향 조절이 어려워요.'],['서브','세컨드 서브 위주로 넣어요.'],['랠리','2~3회 이어지면 끊겨요.']]},
+  {n:'퓨처스3',h:'느린 템포의 랠리가 가능해요.',d:[['스트로크','포핸드는 안정적이지만 백핸드가 약해요.'],['서브','더블폴트가 잦아요.'],['랠리','압박이 없으면 느리게 주고받을 수 있어요.'],['경기 운영','점수 규칙과 코트 포지션에 익숙해지는 중이에요.']]}]},
+ '챌린저':{c:'#2f6fed',intro:'중간 서킷 — 게임을 스스로 운영해가는 구간이에요. (NTRP 2.5~3.5)',subs:[
+  {n:'챌린저1',h:'게임 형식의 경기가 가능해요.',d:[['스트로크','중간 속도의 공을 받아넘길 수 있어요.'],['서브','퍼스트 서브 성공률이 아직 낮아요.'],['랠리','방향 예측이 쉬운 공이면 유지돼요.'],['경기 운영','스코어를 관리하며 경기를 완주해요.']]},
+  {n:'챌린저2',h:'안정적으로 랠리를 유지해요.',d:[['스트로크','방향 조절은 되지만 깊이 조절이 어려워요.'],['네트 플레이','쉬운 발리는 처리할 수 있어요.'],['경기 운영','복식 포지션을 이해하고 움직여요.']]},
+  {n:'챌린저3',h:'가벼운 압박 속에서도 플레이해요.',d:[['스트로크','백핸드로도 랠리를 유지해요.'],['서브','코스를 나눠 넣기 시작해요.'],['기회 창출','상대 실수를 유도하는 공을 보낼 수 있어요.'],['활동량','한 경기를 무리 없이 소화해요.']]},
+  {n:'챌린저4',h:'경기를 직접 운영해요.',d:[['스트로크','깊이와 방향을 함께 조절해요.'],['네트 플레이','앞뒤 움직임이 자연스러워요.'],['경기 운영','상대에 따라 템포를 바꿔요.'],['활동량','풀 매치에도 활동량이 유지돼요.']]},
+  {n:'챌린저5',h:'클럽 경기의 주력이에요.',d:[['스트로크','스핀을 활용해 안정성과 공격을 겸해요.'],['서브','퍼스트 서브가 무기가 되기 시작해요.'],['경기 운영','상대 약점을 찾아 공략해요.'],['기타','경기 분위기에 따라 기복이 있어요.']]}]},
+ '투어':{c:'#e5493a',intro:'투어 서킷 — 압박 속에서도 위협적인 기회를 만들어요. (NTRP 3.5~4.5)',subs:[
+  {n:'투어1',h:'강한 압박에도 플레이가 가능해요.',d:[['스트로크','페이스를 조절하고 공격으로 전환해요.'],['서브','스핀·플랫을 구분해 구사해요.'],['수비','수비 상황에서 랠리를 되찾아와요.'],['기타','매치 분위기에 따라 플레이에 기복이 있어요.']]},
+  {n:'투어2',h:'상대의 압박에도 매치를 장악해요.',d:[['스트로크','위닝샷 결정력이 있어요.'],['네트 플레이','네트 접근 타이밍을 판단해요.'],['경기 운영','게임 플랜을 세우고 수행해요.'],['기회 창출','순간적인 코스 변화로 기회를 만들어요.']]},
+  {n:'투어3',h:'선수 출신 수준으로 위협적인 플레이를 해요.',d:[['스트로크','모든 샷을 빠르고 정확하게 구사해요.'],['서브','코스와 구질을 자유롭게 섞어요.'],['수비','상대의 패턴을 예측하고 차단해요.'],['기타','투어 수준의 매치가 아니라면 부족한 점을 찾기 어려워요.']]}]},
+ '그랜드슬램':{c:'#1b1813',intro:'선수 출신 최상위 — 대회를 위해 존재하는 레벨이에요. (NTRP 5.0+)',subs:[
+  {n:'그랜드슬램',h:'선수 출신 또는 프로 수준의 실력이에요.',d:[['압박 대응','강한 압박과 빠른 템포에서도 매치를 장악해요.'],['수비','상대 핵심 패턴을 무력화시켜요.'],['기회 창출','정교하고 창의적인 플레이로 결정적인 기회를 꾸준히 만들어요.'],['기타','일반 매치에서는 실력 차이로 이 레벨을 다 보여주기 어려워요.']]}]}};
+function openPyramid(tab){
+  const my = state.played>=5 ? levelOf(state.rating).tier : '러브';
+  const cur = tab || my;
+  const T=TN_LV[cur];
+  let h=`<div class="sh-top"><h3>실력 레벨</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 14px">`+
+  Object.keys(TN_LV).map(k=>`<span onclick="openPyramid('${k}')" style="cursor:pointer;font-size:16px;font-weight:${k===cur?900:700};color:${k===cur?'var(--ink)':'#b8b2a7'}">${k}</span>`).join('')+`</div>
+  <div class="sd" style="margin-bottom:14px">${T.intro}</div>`;
+  T.subs.forEach((sv,i)=>{
+    h+=`<div style="padding:14px 2px;border-top:${i?'1px solid #ece8e0':'none'}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        ${T.subs.length>1?`<span style="width:26px;height:26px;border-radius:9px;background:${T.c};color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900">${i+1}</span>`:''}
+        <b style="font-size:18px">${sv.n}</b>
+        ${(LV_BANDS.find(b=>b[0]===sv.n)||[])[3]?`<span style="font-size:11.5px;font-weight:800;color:var(--gray)">NTRP ${(LV_BANDS.find(b=>b[0]===sv.n))[3]}</span>`:''}</div>
+      <div style="font-size:15px;font-weight:800;margin-bottom:6px">${sv.h}</div>`+
+      sv.d.map(([k,v])=>`<div style="font-size:13.5px;color:#4a463f;margin:3px 0"><b>${k}:</b> ${v}</div>`).join('')+`</div>`;
   });
-  h+=`<div class="sd" style="margin:14px 0 0">단식은 <b>남자부·여자부</b>로 나뉘고, 복식엔 <b>혼복</b>도 있어요.</div>
-    <button class="btn" style="margin-top:16px" onclick="closeOv()">확인</button>`;
+  h+=`<div class="sd" style="margin-top:8px">테니스 0점 '러브'에서 시작해 경기 결과(레이팅)로만 승급·강등돼요. 단식은 남자부·여자부로 나뉘어요.</div>
+  <button class="btn" style="margin-top:14px" onclick="closeOv()">확인</button>`;
   document.getElementById('sheet').innerHTML=h;document.getElementById('ov').classList.add('on');
 }
 function toggleTier(el){ const wasOpen=el.classList.contains('open');
@@ -6082,6 +6102,14 @@ function togglePhoto(){const el=document.getElementById('postText');if(el)state.
 /* 내가 쓴 글 — 라운지 글, 댓글, 클럽 소식을 한곳에서 */
 /* 폰 분실 대비 — 서버가 token_version 을 올려 옛 토큰을 전부 무효로 만든다.
    지금 쓰는 기기만 새 토큰으로 살아남는다. */
+function openBankSetup(){
+  const cur=(state.serverUser&&state.serverUser.bank_account)||'';
+  const v=prompt('정산 받을 계좌를 입력하세요\n예) 카카오뱅크 3333-01-1234567 홍길동', cur);
+  if(v===null) return;
+  api('/me/bank',{method:'POST',body:JSON.stringify({bank:v.trim()})})
+    .then(u=>{ state.serverUser=u; toast(v.trim()?'정산 계좌를 저장했어요':'정산 계좌를 지웠어요'); })
+    .catch(()=>toast('저장하지 못했어요'));
+}
 /* ═══ 운영자 콘솔 — 신고 처리 (서버 /admin API, x-admin-key 로 인증) ═══ */
 async function adminApi(path, opts){
   const r = await fetch(API_BASE + path, Object.assign({}, opts||{}, {
@@ -6104,6 +6132,7 @@ async function renderAdminPanel(){
     reps = await adminApi('/admin/reports');
     stats = await adminApi('/admin/stats').catch(()=>null);
     clubs = await adminApi('/admin/clubs').catch(()=>[]);
+    window._ADM_PAYOUTS = await adminApi('/admin/payouts').catch(()=>[]);
   }catch(e){
     toast(e.message==='admin_key'?'운영 키가 올바르지 않아요':'불러오지 못했어요');
     return;
@@ -6129,6 +6158,12 @@ async function renderAdminPanel(){
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">${acts}</div></div>`;
     }).join('');
   }
+  const _po=(window._ADM_PAYOUTS||[]);
+  h+= _po.length?`<div class="ch" style="margin-top:16px">매니저 정산 대기 <span style="font-weight:700;font-size:11.5px;color:var(--gray)">이체 후 완료 처리</span></div>`+
+    _po.map(p=>`<div class="card" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="min-width:0"><b style="font-size:14px">${esc(p.name||'회원')}</b> <b style="color:var(--coral-d)">${(p.amount||0).toLocaleString()}원</b>
+        <div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:2px">${esc(p.bank||'계좌 미등록 — 회원에게 등록 요청')}</div></div>
+      <button class="btn sm" style="width:auto;padding:6px 12px;flex-shrink:0" onclick="adminPayoutDone(${p.id})">이체 완료</button></div>`).join('') : '';
   document.getElementById('sheet').innerHTML=h + ((window._ADM_CLUBS||[]).length?`
     <div class="ch" style="margin-top:16px">클럽 관리 <span style="font-weight:700;font-size:11.5px;color:var(--gray)">클럽장 강제 변경 (분쟁·연락 두절 시)</span></div>`+
     window._ADM_CLUBS.slice(0,30).map(c=>`<div class="card" style="padding:12px 14px">
@@ -6152,6 +6187,12 @@ function adminPickOwner(cid){
   adminApi(`/admin/clubs/${cid}/owner`,{method:'POST',body:JSON.stringify({user_id:target.id})})
     .then(()=>{ toast('클럽장을 변경했어요'); renderAdminPanel(); })
     .catch(()=>toast('변경하지 못했어요'));
+}
+function adminPayoutDone(id){
+  if(!confirm('실제 계좌 이체를 마치셨나요? 완료 처리하면 매니저에게 알림이 가요.')) return;
+  adminApi(`/admin/payouts/${id}/paid`,{method:'POST',body:'{}'})
+    .then(()=>{ toast('정산 완료 처리했어요'); renderAdminPanel(); })
+    .catch(()=>toast('처리하지 못했어요'));
 }
 function adminResolve(id, action){
   adminApi(`/admin/reports/${id}/resolve`,{method:'POST',body:JSON.stringify({action})})
@@ -7662,27 +7703,43 @@ function matchCards(list){
     const pct = Math.min(100, Math.round(m.cur/Math.max(m.cap,1)*100));
     const hostName = (m.host && m.host.name) || '알 수 없음';
     const reg = regionText(m);
-    h+=`<div class="card om-c" id="omc${m.id}" style="${closed?'opacity:.6':''}">
-      <div class="om-top">
-        <div style="min-width:0">
-          <div class="om-dt">${fmtRange(m.start_at, m.end_at, m.dt)}</div>
-          <div class="om-loc">${esc(m.loc)}</div>
-          ${reg?`<div class="om-reg">${ic('pin',12)} ${esc(reg)}</div>`:''}
+    const nearFull = !closed && !m.past && m.cap-m.cur>0 && m.cap-m.cur<=3;
+    const stTxt = closed?'종료':m.past?'경기 종료':nearFull?'확정임박':m.confirmed?'성사':'모집중';
+    const stCol = closed||m.past?['#f1eee8','#8a8378']:nearFull?['#fdeee7','#cf5418']:m.confirmed?['#e7f4ec','#1f7d4d']:['#eef2fd','#2f5bd6'];
+    h+=`<div class="card om-c" id="omc${m.id}" style="padding:0;overflow:hidden;${closed?'opacity:.65':''}">
+      ${m.photo?`<div style="height:112px;background:url('${esc(m.photo)}') center/cover"></div>`:''}
+      <div style="padding:16px 18px 12px;background:linear-gradient(135deg,#fdfcfa,#f7f3ec)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:19px;font-weight:900;letter-spacing:-.02em">${fmtRange(m.start_at, m.end_at, m.dt)}</span>
+              <span style="font-size:10.5px;font-weight:900;border-radius:9px;padding:4px 9px;background:${stCol[0]};color:${stCol[1]};flex-shrink:0">${stTxt}</span>
+            </div>
+            <div style="font-size:14.5px;font-weight:800;margin-top:5px">${esc(m.loc)}</div>
+            ${reg?`<div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:2px">${ic('pin',11)} ${esc(reg)}</div>`:''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:19px;font-weight:900;color:var(--coral-d)">${m.price?m.price.toLocaleString()+'원':'무료'}</div>
+            <div style="font-size:10.5px;color:var(--lgray);font-weight:800">인당 참가비</div>
+          </div>
         </div>
-        <span class="rbadge" style="${m.confirmed?'background:#e7f4ec;color:#1f7d4d':'background:#fdf2dd;color:#a5750d'}">
-          ${closed?'마감':m.confirmed?'성사':'모집중'}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
+          ${[m.fmt,m.gd,`${m.cap}명 정원`,`최소 ${m.min_cnt}명 성사`].filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
+        </div>
       </div>
+      <div style="padding:12px 18px 16px">
 
       <div class="om-host">
         <div class="om-hav">${esc(hostName[0])}</div>
         <div style="flex:1;min-width:0">
           <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span>${m.host_fp!=null?`<span onclick="event.stopPropagation();openFairplayInfo()" style="font-size:10px;font-weight:900;border-radius:8px;padding:3px 7px;cursor:pointer;background:${m.host_fp>=85?'#e6f3ec':m.host_fp>=70?'#fdf2dd':'#fceee4'};color:${m.host_fp>=85?'#2f7d4f':m.host_fp>=70?'#a5750d':'#cf5418'}">페어플레이 ${m.host_fp}점${m.host_fp_n?'':' · 신규'}</span>`:''}</div>
-          <div class="om-hd">${m.fmt} · ${m.gd}${m.price?` · 참가비 ${m.price.toLocaleString()}원`:' · 무료'}</div>
+          <div class="om-hd">주최자 · 문의는 대화하기로</div>
         </div>
         ${(!m.is_host && m.host) ? `<button class="om-act ghost"
             onclick="openDM(${m.host.id},'${esc(hostName).replace(/'/g,"\\'")}')">대화하기</button>` : ''}
       </div>
 
+      ${m.manager?`<div class="om-hd" style="margin-top:3px">🎽 운영 ${esc(m.manager.name)} 매니저${m.manager_fee?` · 정산 ${m.manager_fee.toLocaleString()}원`:''}${m.settled?' <b style="color:#2f7d4f">정산요청됨</b>':''}</div>`:''}
       ${m.account?`<div class="om-bank" onclick="copyText('${esc(m.account).replace(/'/g,"\\'")}')">
         ${ic('receipt',13)} <span>${esc(m.account)}</span><em>복사</em></div>`:''}
       ${m.note?`<div class="om-note">${esc(m.note)}</div>`:''}
@@ -7698,8 +7755,18 @@ function matchCards(list){
         ${closed?'':`<button class="om-re" onclick="shareMatch(${m.id})">↗ 공유</button>`}
         <span style="flex:1"></span>
         ${(closed||m.past)&&(m.joined||m.is_host)&&m.players.length>1?`<button class="om-act ghost" onclick="openOmReviews(${m.id})">후기</button>`:''}
+        ${(closed||m.past)&&(m.joined||m.is_host)?`<button class="om-act ${m.my_mreview?'ghost':'primary'}" onclick="openOmMatchReview(${m.id})">${m.my_mreview?'평가 수정':'매치 평가'}</button>`:''}
+        ${(closed||m.past)&&(m.is_host||(m.manager&&m.manager.id===(state.serverUser||{}).id))?`<button class="om-act primary" onclick="openOmAssess(${m.id})">📊 참가자 평가</button>`:''}
+        ${(m.is_host||(m.manager&&m.manager.id===(state.serverUser||{}).id))&&(m.players||[]).length>=4?`<button class="om-act ghost" onclick="omMakeBracket(${m.id})">🎾 대진 짜기</button>`:''}
+        ${m.bracket&&(m.joined||m.is_host)?`<button class="om-act ghost" onclick="openOmBracket(${m.id})">대진 보기</button>`:''}
+        ${!m.is_host&&!closed&&!m.past&&m.joined&&!m.manager?(m.mgr_applied
+          ?`<span style="font-size:11px;font-weight:800;color:var(--gray)">매니저 지원됨</span>`
+          :`<button class="om-act ghost" onclick="omManagerApply(${m.id})">🎽 매니저 지원</button>`):''}
         ${m.is_host
-          ? `${closed?'':`<button class="om-act ghost" onclick="setMatchStatus(${m.id},'closed')">마감</button>`}
+          ? `${(m.mgr_apps&&m.mgr_apps.length&&!m.manager)?`<button class="om-act primary" onclick="omManagerPick(${m.id})">매니저 지정(${m.mgr_apps.length})</button>`:''}
+             ${(closed||m.past)&&m.manager&&m.manager_fee&&!m.settled?`<button class="om-act primary" onclick="omSettle(${m.id})">💰 정산</button>`:''}
+             ${closed?'':`<button class="om-act ghost" onclick="omPhotoPick(${m.id})">📷</button>`}
+             ${closed?'':`<button class="om-act ghost" onclick="setMatchStatus(${m.id},'closed')">마감</button>`}
              <button class="om-act danger" onclick="deleteMatch(${m.id})">삭제</button>`
           : closed ? ''
             : m.joined
@@ -7707,6 +7774,7 @@ function matchCards(list){
               : m.full
                 ? `<button class="om-act" disabled style="opacity:.5">정원 마감</button>`
                 : `<button class="om-act primary" onclick="joinMatch(${m.id})">참가 신청</button>`}
+      </div>
       </div>
     </div>`;
   });
@@ -7716,6 +7784,220 @@ function copyText(t){
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject())
     .then(()=>toast('계좌를 복사했어요'))
     .catch(()=>toast(t));
+}
+/* ═══ 일정 탭 — 내 매치(신청·주최) + 내 대전 + 다이어리 달력 (플랩식) ═══ */
+function renderSched(){
+  const el=document.getElementById('s-sched'); if(!el) return;
+  let h=`<h2 class="t">일정</h2><p class="sub">내 매치와 다이어리를 한곳에서.</p>`;
+  if(SERVER_OK && HOME_OM_ALL===null) homeOpenMatches();          // 캐시 채우기 (콜백이 다시 그림)
+  h+=myMatchesCard();                                             // 내 대전 (도전전)
+  const mine=(HOME_OM_ALL||[]).filter(m=>m.joined||m.is_host)
+    .sort((a,b)=>Date.parse(b.start_at||0)-Date.parse(a.start_at||0));
+  h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px">매치 <b style="color:var(--coral-d)">${mine.length}</b></div>`;
+  if(!mine.length){
+    h+=`<div class="card" style="text-align:center;padding:24px;cursor:pointer" onclick="go('home')">
+      <div style="font-size:24px">🎾</div><b style="display:block;margin-top:6px">신청한 매치가 없어요</b>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">홈에서 오늘의 매치를 둘러보세요 →</div></div>`;
+  }else{
+    h+=mine.slice(0,10).map(m=>{
+      const closed=(m.status&&m.status!=='open')||(m.start_at&&Date.parse(m.start_at)<Date.now());
+      return `<div class="card" style="padding:14px 16px;cursor:pointer" onclick="openMatchCard(${m.id})">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="min-width:0">
+            <b style="font-size:15px">${fmtRange(m.start_at,m.end_at,m.dt)}</b>
+            ${m.is_host?`<span style="font-size:10.5px;font-weight:900;background:#fdeee7;color:var(--coral-d);border-radius:8px;padding:3px 7px;margin-left:6px">주최</span>`:''}
+            ${closed?`<span style="font-size:10.5px;font-weight:900;background:#f1eee8;color:#8a8378;border-radius:8px;padding:3px 7px;margin-left:6px">종료</span>`:''}
+            <div style="font-size:13.5px;font-weight:800;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.loc||'')}</div>
+            <div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:2px">${esc(m.fmt||'')} · ${m.cur||0}/${m.cap||0}명${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</div>
+          </div>
+          ${closed&&(m.joined||m.is_host)?`<button class="btn sm ${m.my_mreview?'ghost':''}" style="width:auto;padding:8px 12px;flex-shrink:0" onclick="event.stopPropagation();openOmMatchReview(${m.id})">${m.my_mreview?'평가 수정':'매치 평가'}</button>`:''}
+        </div></div>`;
+    }).join('');
+  }
+  h+=`<div class="ch" style="font-size:18px;margin:18px 4px 10px">다이어리</div>`;
+  h+=diaryCard();                                                 // 월 달력 · 날짜 탭 → 그날 일지
+  el.innerHTML=h;
+}
+/* 홈 리스트 → 해당 매치 카드로 점프(스크롤+하이라이트) */
+function openMatchCard(id){
+  go('match');
+  let n=0; const t=setInterval(()=>{ const el=document.getElementById('omc'+id);
+    if(el){ clearInterval(t); el.scrollIntoView({behavior:'smooth',block:'start'});
+      el.style.boxShadow='0 0 0 3px var(--coral)'; setTimeout(()=>{ el.style.boxShadow=''; },1600); }
+    else if(++n>24) clearInterval(t); },150);
+}
+/* 주최자·매니저가 코트 사진 업로드 → 홈 리스트·카드 썸네일 */
+function omPhotoPick(id){
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+  inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
+      const cv=document.createElement('canvas'); const sc=Math.min(1,1000/img.width);
+      cv.width=img.width*sc; cv.height=img.height*sc;
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      try{
+        const r=await api('/upload',{method:'POST',body:JSON.stringify({dataUrl:cv.toDataURL('image/jpeg',0.75)})});
+        await api(`/open-matches/${id}/photo`,{method:'POST',body:JSON.stringify({url:r.url})});
+        toast('코트 사진을 올렸어요'); omReload();
+      }catch(e){ toast('업로드에 실패했어요'); }
+    }; img.src=rd.result; };
+    rd.readAsDataURL(f);
+  };
+  inp.click();
+}
+/* ═══ 플랩식 매니저 · 매치 평가 ═══ */
+function omReload(){ OM_TS=0; OM_LIST=[]; if(state.view==='match') renderMatch(); }
+async function omManagerApply(id){
+  try{ await api(`/open-matches/${id}/manager-apply`,{method:'POST',body:'{}'});
+    toast('매니저로 지원했어요 · 주최자 수락을 기다려요'); }
+  catch(e){ toast(String(e.message||'').includes('manager_set')?'이미 매니저가 정해졌어요':'지원하지 못했어요'); }
+  omReload();
+}
+function omManagerPick(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m||!(m.mgr_apps||[]).length) return;
+  const menu=m.mgr_apps.map((a,i)=>`${i+1}. ${a.name}`).join('\n');
+  const pick=prompt(`매니저를 번호로 선택하세요.\n${menu}`);
+  const idx=parseInt(pick)-1; if(isNaN(idx)||!m.mgr_apps[idx]) return;
+  const fee=parseInt(prompt('정산 금액을 입력하세요 (원 · 매치 종료 후 계좌 이체)','20000'))||0;
+  api(`/open-matches/${id}/manager`,{method:'POST',body:JSON.stringify({user_id:m.mgr_apps[idx].id,fee})})
+    .then(()=>{ toast(`${m.mgr_apps[idx].name} 님을 매니저로 지정했어요 · 종료 후 정산 요청`); omReload(); })
+    .catch(()=>toast('지정하지 못했어요'));
+}
+function omSettle(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
+  if(!confirm(`${m.manager?m.manager.name:''} 매니저에게 ${m.manager_fee.toLocaleString()}원 정산을 요청할까요?\n등록된 계좌로 이체 후 운영자 콘솔에서 완료 처리해요.`)) return;
+  api(`/open-matches/${id}/settle`,{method:'POST',body:'{}'})
+    .then(()=>{ toast('정산을 요청했어요 · 이체 후 완료 처리돼요'); omReload(); })
+    .catch(()=>toast('정산하지 못했어요'));
+}
+/* ═══ 등급 추이 — 10경기 이상부터 상하향 그래프 (플랩식) ═══ */
+let RL_CACHE=null, RL_TS=0;
+async function openRatingTrend(){
+  if(!SERVER_OK||!authToken()){ toast('로그인 후 볼 수 있어요'); return; }
+  if(!RL_CACHE || Date.now()-RL_TS>3e4){
+    try{ RL_CACHE=await api('/me/rating-log'); RL_TS=Date.now(); }catch(e){ RL_CACHE=[]; }
+  }
+  const L=RL_CACHE||[];
+  let body='';
+  if(L.length<10){
+    body=`<div class="empty" style="padding:30px 20px"><div class="ei">📈</div>
+      <div class="et">${L.length}/10 경기</div>
+      <div class="es">10경기 이상 참여하면<br>등급 상하향 추이가 표시돼요.</div></div>`;
+  }else{
+    const rs=L.map(x=>x.rating), mn=Math.min(...rs)-20, mx=Math.max(...rs)+20;
+    const Wp=300, Hp=110;
+    const pts=rs.map((r,i)=>`${(i/(rs.length-1)*Wp).toFixed(1)},${(Hp-(r-mn)/(mx-mn)*Hp).toFixed(1)}`).join(' ');
+    const up=rs[rs.length-1]-rs[0];
+    body=`<div style="background:#fdfcfa;border:1.5px solid #ece8e0;border-radius:16px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <b style="font-size:15px">${tierByRating(state.rating||rs[rs.length-1])}</b>
+        <b style="font-size:13px;color:${up>=0?'#2f7d4f':'#cf5418'}">${up>=0?'▲':'▼'} ${Math.abs(up)} (${L.length}경기)</b></div>
+      <svg viewBox="0 0 ${Wp} ${Hp}" style="width:100%;height:120px;margin-top:8px">
+        <polyline points="${pts}" fill="none" stroke="#ec6a2e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg></div>
+      <div class="ch" style="margin-top:14px">최근 변동</div>`+
+      [...L].reverse().slice(0,8).map(x=>`<div style="display:flex;justify-content:space-between;padding:8px 2px;border-top:1px solid #f0efec">
+        <span style="font-size:13px;font-weight:700;color:#5a544b">${esc(x.reason||'경기')}</span>
+        <span style="font-size:13px;font-weight:900;color:${x.delta>=0?'#2f7d4f':'#cf5418'}">${x.delta>=0?'+':''}${x.delta} → ${x.rating}</span></div>`).join('');
+  }
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>등급 추이</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>${body}
+    <button class="btn" style="margin-top:16px" onclick="closeOv()">확인</button>`;
+  document.getElementById('ov').classList.add('on');
+}
+/* ═══ 매니저 대진 편성 — 클럽 매칭엔진 방식(레이팅 스네이크) 을 오픈매치에 ═══ */
+function omMakeBracket(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
+  const ps=[...(m.players||[])].sort((a,b)=>(b.rating||1000)-(a.rating||1000));
+  const courts=Math.max(1, parseInt(prompt(`코트 수를 입력하세요 (참가 ${ps.length}명 · 코트당 4명 복식 기준)`, String(Math.max(1,Math.floor(ps.length/4)))))||1);
+  // 레이팅 스네이크 분배 → 각 코트 안에서 1·4 시드 vs 2·3 시드 (전력 균형)
+  const lanes=Array.from({length:courts},()=>[]);
+  ps.forEach((p,i)=>{ const r=Math.floor(i/courts), c=i%courts; lanes[r%2? courts-1-c : c].push(p); });
+  const bracket={courts:lanes.map((L,i)=>({no:i+1,
+      a:[L[0],L[3]].filter(Boolean).map(p=>p.name),
+      b:[L[1],L[2]].filter(Boolean).map(p=>p.name),
+      rest:L.slice(4).map(p=>p.name)})),
+    made_by:(state.serverUser||{}).name||'', at:new Date().toISOString().slice(0,16).replace('T',' ')};
+  api(`/open-matches/${id}/bracket`,{method:'POST',body:JSON.stringify({bracket})})
+    .then(()=>{ toast('대진을 저장했어요 · 참가자 모두 볼 수 있어요'); omReload(); setTimeout(()=>{ const mm=OM_LIST.find(x=>x.id===id); if(mm){ mm.bracket=bracket; openOmBracket(id); } },300); })
+    .catch(()=>toast('저장하지 못했어요'));
+}
+function openOmBracket(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m||!m.bracket) return;
+  const team=(names,c)=>`<div style="flex:1;background:${c};border-radius:12px;padding:10px 8px;text-align:center">
+      ${names.map(n=>`<div style="font-size:13.5px;font-weight:900;color:#fff;padding:2px 0">${esc(n)}</div>`).join('')||'<div style="color:#fff;opacity:.7;font-size:12px">—</div>'}</div>`;
+  const h=`<div class="sh-top"><h3>대진표</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${esc(m.loc||'')} · ${esc(m.bracket.made_by||'')} 매니저 편성 · 레이팅 균형 배정</div>`+
+    m.bracket.courts.map(ct=>`<div style="background:#c96f4a;border-radius:18px;padding:12px;margin-top:12px">
+      <div style="font-size:12px;font-weight:900;color:#fff;opacity:.9;margin-bottom:8px">코트 ${ct.no}</div>
+      <div style="background:#5b9c6e;border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;border:2px solid #fff3">
+        ${team(ct.a,'#2f6fed')}<div style="width:3px;align-self:stretch;background:#fff;border-radius:2px;opacity:.85"></div>${team(ct.b,'#e5493a')}
+      </div>
+      ${ct.rest&&ct.rest.length?`<div style="font-size:11.5px;font-weight:800;color:#fff;opacity:.9;margin-top:8px">로테이션 대기: ${ct.rest.map(esc).join(', ')}</div>`:''}
+    </div>`).join('')+
+    `<button class="btn" style="margin-top:16px" onclick="closeOv()">확인</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+/* ═══ 매니저 참가자 평가 — 배치·경기력 산정 (소셜 매치의 레벨 주체는 매니저) ═══ */
+function openOmAssess(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
+  const me=(state.serverUser||{}).id;
+  const bands=LV_BANDS.map(b=>b[0]);
+  const rows=(m.players||[]).filter(p=>p.id!==me).map(p=>{
+    const cur=levelOf(p.rating||1000).full;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid #f0efec">
+      <div style="min-width:0"><b style="font-size:14.5px">${esc(p.name)}</b>
+        <div style="font-size:11.5px;color:var(--gray);font-weight:700">현재 ${cur}</div></div>
+      <select id="asv_${p.id}" style="border:1.5px solid #ece8e0;border-radius:12px;padding:8px 10px;font-size:13.5px;font-weight:700;background:#fff">
+        ${bands.map(bn=>`<option ${bn===cur?'selected':''}>${bn}</option>`).join('')}</select></div>`;
+  }).join('');
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>참가자 평가</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">매니저가 오늘 경기력을 보고 레벨을 정해요. 미배치 선수는 바로 배치, 배치된 선수는 보정돼요.</div>
+    ${rows||'<div class="empty" style="padding:22px"><div class="et">평가할 참가자가 없어요</div></div>'}
+    <button class="btn" style="margin-top:16px" onclick="omAssessSubmit(${id})">평가 저장</button>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function omAssessSubmit(id){
+  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
+  const me=(state.serverUser||{}).id;
+  const players=(m.players||[]).filter(p=>p.id!==me).map(p=>{
+    const el=document.getElementById('asv_'+p.id);
+    return el?{user_id:p.id, level:el.value}:null;
+  }).filter(Boolean);
+  try{
+    const r=await api(`/open-matches/${id}/assess`,{method:'POST',body:JSON.stringify({players})});
+    toast(`참가자 ${r.applied||0}명 평가를 반영했어요`); closeOv(); omReload();
+  }catch(e){ toast('저장하지 못했어요'); }
+}
+/* 매치·매니저·구장 3축 평가 시트 (플랩식) */
+let _OMR={};
+function openOmMatchReview(id){
+  const m=OM_LIST.find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
+  _OMR={id, match_r:(m.my_mreview||{}).match_r||null, manager_r:(m.my_mreview||{}).manager_r||null, venue_r:(m.my_mreview||{}).venue_r||null, note:(m.my_mreview||{}).note||''};
+  drawOmMatchReview(m);
+}
+function omrSet(k,v){ _OMR[k]=(_OMR[k]===v?null:v); const m=OM_LIST.find(x=>x.id===_OMR.id); if(m) drawOmMatchReview(m); }
+function drawOmMatchReview(m){
+  const seg=(k,opts)=>`<div style="display:flex;gap:8px;margin:8px 0 16px">`+opts.map(([v,l])=>
+    `<button class="btn sm ${_OMR[k]===v?'':'ghost'}" style="width:auto;padding:9px 16px;border-radius:22px" onclick="omrSet('${k}','${v}')">${l}</button>`).join('')+`</div>`;
+  let h=`<div class="sh-top"><h3>매치 평가</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  <div class="sd">${esc(m.dt||'')} · ${esc(m.loc||'')}</div>
+  <div style="font-size:15.5px;font-weight:900;margin-top:14px">오늘 매치는 어땠나요?</div>
+  ${seg('match_r',[['bad','아쉬워요'],['good','좋았어요']])}
+  ${m.manager?`<div style="font-size:15.5px;font-weight:900">${esc(m.manager.name)} 매니저는 어땠나요?</div>
+  ${seg('manager_r',[['bad','아쉬워요'],['good','좋았어요'],['praise','👏 칭찬해요']])}`:''}
+  <div style="font-size:15.5px;font-weight:900">이용하신 구장은 어땠나요?</div>
+  ${seg('venue_r',[['bad','아쉬워요'],['good','좋았어요']])}
+  <div style="font-size:15.5px;font-weight:900">매치를 뛴 경험을 공유해주세요</div>
+  <textarea id="omrNote" style="width:100%;min-height:90px;border:1.5px solid #ece8e0;border-radius:14px;padding:12px;font-size:14px;margin:8px 0 4px" placeholder="남겨주신 경험은 운영 개선에 참고해요 (안 써도 괜찮아요)">${esc(_OMR.note||'')}</textarea>
+  <button class="btn" style="margin-top:12px" onclick="omrSubmit()">${m.my_mreview?'수정하기':'제출하기'}</button>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function omrSubmit(){
+  _OMR.note=((document.getElementById('omrNote')||{}).value||'').trim();
+  try{
+    await api(`/open-matches/${_OMR.id}/match-review`,{method:'POST',body:JSON.stringify(_OMR)});
+    toast('평가를 남겼어요 · 고마워요!'); closeOv(); omReload();
+  }catch(e){ toast('저장하지 못했어요'); }
 }
 /* 오픈매치 후기 — 함께 친 사람들에게 별점 · 매너 점수가 된다 */
 const OM_TAGS = ['매너 좋아요','시간 약속 정확','실력이 정확해요','또 치고 싶어요'];
@@ -8215,9 +8497,9 @@ function contactWarn(elId, warnId){
 async function openDM(uid, name){
   if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
   closeOv();
+  go('chat');
   state.chatRoom = 'dm:' + uid;
   state._roomName = name;
-  go('chat');
   await loadRoomMsgs();
   if(state.view==='chat') renderChat();
 }
@@ -10619,7 +10901,18 @@ function renderChat(){
   const row=(id)=>{const r=state.chats[id];const last=r.msgs[r.msgs.length-1];const lt=last?(last.me?'나: ':'')+last.t:'';
     return `<div class="chrow" onclick="openRoom('${id}')"><div class="av2" style="background:${r.color}">${r.type==='group'?'#':r.name[0]}</div>
       <div class="ci2"><div class="cn2">${r.name}</div><div class="cl2">${lt}</div></div></div>`;};
-  if(SERVER_OK && clubId()){
+  if(SERVER_OK && SRV_MYCLUBS.length){
+    // 대화는 종목 구분이 없다 — 가입한 모든 클럽의 단체방을 나열 (농구로 전환 안 해도 농구 클럽방이 보인다)
+    const rooms=SRV_MYCLUBS.filter(c=>!c.status||c.status==='active');
+    if(rooms.length){
+      h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;
+      rooms.forEach(c=>{
+        const sn=(SPORTS.find(s=>s.id===c.sport)||{}).n||'';
+        h+=`<div class="chrow" onclick="openClubRoomId(${c.id},'${esc(c.name)}')"><div class="av2" style="background:#1f7d62">#</div>
+      <div class="ci2"><div class="cn2">${esc(c.name)} 단체방${(UNREAD.clubs&&UNREAD.clubs[c.id])?` <span class="dmbadge">${UNREAD.clubs[c.id]}</span>`:''}</div><div class="cl2">${sn?sn+' · ':''}회원 전용 · 탭해서 대화하기</div></div></div>`;
+      });
+    }
+  } else if(SERVER_OK && clubId()){
     h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>
       <div class="chrow" onclick="openClubRoom()"><div class="av2" style="background:#1f7d62">#</div>
       <div class="ci2"><div class="cn2">${esc(state.activeClub)} 단체방${(UNREAD.clubs&&UNREAD.clubs[clubId()])?` <span class="dmbadge">${UNREAD.clubs[clubId()]}</span>`:''}</div><div class="cl2">회원 전용 · 탭해서 대화하기</div></div></div>`;
@@ -10728,17 +11021,26 @@ function renderRoom(){
   }
 }
 function openRoom(id){state.chatRoom=id;renderChat();}
+function openClubRoomId(cid, name){
+  if(!SERVER_OK || !cid){ toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요'); return; }
+  go('chat');                                         // 같은 탭에서 탭하면 go()가 방을 초기화하므로, 이동 '뒤에' 방을 지정한다
+  state.chatRoom='club:'+cid; state._roomName=(name||'클럽')+' 단체방';
+  renderChat();
+  loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); })
+    .catch(()=>{ toast('메시지를 불러오지 못했어요 · 아래로 당겨 새로고침'); });
+}
 function openClubRoom(){
   const cid=clubId();
   if(SERVER_OK && cid){
+    go('chat');
     state.chatRoom='club:'+cid; state._roomName=(state.activeClub||'클럽')+' 단체방';
-    go('chat'); renderChat();                            // 방을 먼저 연다 (낙관적)
+    renderChat();                            // 방을 먼저 연다 (낙관적)
     loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); })
       .catch(()=>{ toast('메시지를 불러오지 못했어요 · 아래로 당겨 새로고침'); });
   } else if(state.chats['grp:'+state.activeClub]) openRoomGo('grp:'+state.activeClub);
   else toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요');
 }
-function openRoomGo(id){ state.chatRoom=id; go('chat'); renderChat(); }
+function openRoomGo(id){ go('chat'); state.chatRoom=id; renderChat(); }
 function backChat(){stopChatPoll();state.chatRoom=null;renderChat();}
 async function sendChat(){
   const inp=document.getElementById('chatIn');if(!inp)return;
@@ -11057,7 +11359,6 @@ function _renderMeCore(){
   ${t.placing&&SP().cat==='racket'?`<div class="card" style="background:var(--violet-s);border:1px solid rgba(124,92,214,.18)"><div style="font-size:15px;font-weight:800;color:var(--violet-d)">배치 진행 ${state.played}/5 · 5경기 후 등급이 정해져요</div>
     <div class="gprog vio"><i style="width:${Math.max(state.played/5*100,4)}%"></i></div>
     <div style="font-size:13px;color:var(--violet-d);opacity:.85;font-weight:600">리그 경기를 치를수록 실제 등급을 찾아가요. 자기신고가 아니라 결과로 정해져 공정해요.</div></div>`:''}
-  ${diaryCard()}
   ${SERVER_OK&&authToken()?`<div class="card" onclick="openFairplayInfo()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
     <div><div style="font-size:13.5px;font-weight:800">페어플레이 <span style="font-size:11px;color:var(--lgray)">경기 매너 점수</span></div>
       <div id="myFpLine" style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">불러오는 중…</div></div>
@@ -11126,13 +11427,14 @@ function _renderMeCore(){
       <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a>
       <a href="mailto:${CFG.support_email||'matsu.help@gmail.com'}?subject=%5B%EB%A7%9E%EC%88%98%5D%20%EB%AC%B8%EC%9D%98" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">문의하기</a></div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>
+    ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;font-size:13px" onclick="openBankSetup()">정산 계좌 등록 · 매니저 정산 받기</button>`:''}
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="openAdminPanel()">운영자 콘솔 (키 필요)</button>`:''}
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="deleteAccount()">계정 탈퇴 (개인정보 삭제)</button>`:''}</div>`;
   document.getElementById('s-me').innerHTML=h;
 }
 
 /* ===== 공통 ===== */
-let HOME_OM=null, HOME_OM_TS=0;
+let HOME_OM=null, HOME_OM_TS=0, HOME_OM_ALL=null;
 function loadRecMine(cb){                                // 기록 종목 캐시
   if(REC_MINE && Date.now()-REC_TS<60e3){ cb&&cb(); return; }
   api(`/records?sport=${SP().id}`).then(r=>{ REC_MINE=r||[]; REC_TS=Date.now(); cb&&cb(); }).catch(()=>{});
@@ -11157,6 +11459,78 @@ function homeRecClubs(){
       <div><b style="font-size:14px">${esc(c.n)}</b><div style="font-size:12px;color:var(--gray);font-weight:700">${esc(c.r||'지역 미정')} · ${c.m||0}명</div></div>
       <span style="font-size:12.5px;font-weight:900;color:var(--coral-d)">둘러보기 ›</span></div>`).join('')+`</div>`;
 }
+/* ═══ 플랩형 홈 — 퀵메뉴 · 날짜 선택 · 필터 · 그날 매치 리스트 ═══ */
+function _ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function selectHomeDay(ymd){ state._homeDay=ymd; renderHome(); }
+function hFlt(k){ if(k===1) state._hHide=(state._hHide===false); else state._hEve=!state._hEve; renderHome(); }
+function homeQuickMenu(){
+  const t=_ymd(new Date());
+  const q=(ic,l,fn)=>`<div onclick="${fn}" style="min-width:84px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:13px 6px;text-align:center;cursor:pointer;flex-shrink:0"><div style="font-size:25px">${ic}</div><div style="font-size:12px;font-weight:800;margin-top:5px">${l}</div></div>`;
+  return `<div style="display:flex;gap:9px;overflow-x:auto;margin:13px -2px 2px;padding:0 2px 4px;-webkit-overflow-scrolling:touch">
+    ${q('🎾','매치',"go('match')")}${q('⚔️','내 대전',"go('match')")}${q('🏆','리그',"go('league')")}${q('🏛️','클럽',"go('club')")}${q('📓','다이어리',`openDayRec('${t}')`)}</div>`;
+}
+function homeMatchList(){
+  if(!SERVER_OK) return '';
+  const HD=state._homeDay||_ymd(new Date());
+  const hideC=state._hHide!==false, eve=!!state._hEve;
+  const all=(HOME_OM_ALL||[]).filter(m=>{
+    if(!m.start_at) return false; const d=new Date(m.start_at); if(isNaN(+d)) return false;
+    if(_ymd(d)!==HD) return false;
+    const closed=(m.status&&m.status!=='open')||(+d<Date.now());
+    if(hideC&&closed) return false;
+    if(eve&&d.getHours()<17) return false;
+    return true;
+  }).sort((x,y)=>Date.parse(x.start_at)-Date.parse(y.start_at));
+  const chip=(l,on,fn)=>`<span onclick="${fn}" style="font-size:12.5px;font-weight:800;border-radius:18px;padding:8px 14px;cursor:pointer;border:1.5px solid ${on?'var(--coral)':'#ece8e0'};color:${on?'var(--coral-d)':'#5a544b'};background:${on?'#fdeee7':'#fff'};flex-shrink:0;white-space:nowrap">${l}</span>`;
+  let h=`<div style="display:flex;gap:8px;overflow-x:auto;margin:12px -2px 2px;padding:0 2px 2px">${chip('마감 가리기',hideC,'hFlt(1)')}${chip('🌙 저녁 매치',eve,'hFlt(2)')}</div>`;
+  if(!all.length){
+    h+=`<div class="card" style="text-align:center;padding:26px 18px;cursor:pointer;margin-top:10px" onclick="go('match')">
+      <div style="font-size:26px">🎾</div><b style="display:block;margin-top:6px">이 날 열린 매치가 없어요</b>
+      <div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">매치 탭에서 직접 열어보세요 →</div></div>`;
+    return h;
+  }
+  h+=all.map(m=>{
+    const d=new Date(m.start_at), t=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const closed=(m.status&&m.status!=='open')||(+d<Date.now());
+    const left=Math.max(0,(m.cap||0)-(m.cur||0)), near=!closed&&left>0&&left<=3;
+    return `<div onclick="openMatchCard(${m.id})" style="display:flex;gap:12px;align-items:center;padding:15px 2px;border-bottom:1.5px solid #f0efec;cursor:pointer;${closed?'opacity:.45':''}">
+      <div style="width:72px;height:72px;border-radius:16px;background:${m.photo?`url('${esc(m.photo)}') center/cover`:'linear-gradient(135deg,#5b9c6e,#3f7d54)'};display:grid;place-items:center;font-size:25px;flex-shrink:0;box-shadow:inset 0 0 0 2px #ffffff2e">${m.photo?'':'🎾'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px"><b style="font-size:19px;letter-spacing:-.02em;color:${closed?'#8a8378':'var(--coral-d)'}">${t}</b>
+          ${closed?`<span style="font-size:10.5px;font-weight:900;background:#f1eee8;color:#8a8378;border-radius:9px;padding:3px 8px">마감</span>`
+            :near?`<span style="font-size:10.5px;font-weight:900;background:#eef2fd;color:#2f5bd6;border-radius:9px;padding:3px 8px">확정임박</span>`
+            :`<span style="font-size:10.5px;font-weight:900;background:#e7f4ec;color:#1f7d4d;border-radius:9px;padding:3px 8px">${left}자리 남음</span>`}</div>
+        <div style="font-size:15.5px;font-weight:900;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.loc||'')}</div>
+        <div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:3px">${esc(m.fmt||'')} · ${m.cur||0}/${m.cap||0}명 · ${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</div>
+      </div>
+      <div style="text-align:center;color:#c9c3b8;flex-shrink:0"><div style="font-size:15px">♥</div><div style="font-size:12px;font-weight:800">${m.likes||0}</div></div>
+    </div>`;
+  }).join('');
+  return h;
+}
+/* 홈 1순위 — 오픈매치 추천 (플랩식 가로 카드) */
+function homeOpenMatches(){
+  if(!SERVER_OK) return '';
+  if(HOME_OM===null || Date.now()-HOME_OM_TS>6e4){
+    HOME_OM=HOME_OM||[]; HOME_OM_TS=Date.now();
+    api(`/open-matches?sport=${SP().id}`).then(r=>{
+      HOME_OM_ALL=r||[];
+      HOME_OM=(r||[]).filter(m=>!(m.status&&m.status!=='open')&&!(m.start_at&&Date.parse(m.start_at)<Date.now())).slice(0,6);
+      HOME_OM_TS=Date.now(); if(state.view==='home') renderHome(); else if(state.view==='sched') renderSched();
+    }).catch(()=>{});
+  }
+  const L=HOME_OM||[];
+  const tm=m=>{ const d=new Date(m.start_at||0); return isNaN(+d)?(m.dt||''):`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  const cards=L.map(m=>{ const left=Math.max(0,(m.cap||0)-(m.cur||0)); const near=left>0&&left<=3;
+    return `<div onclick="openMatchCard(${m.id})" style="min-width:174px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:14px;cursor:pointer;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:7px"><b style="font-size:20px;letter-spacing:-.02em">${tm(m)}</b>${near?`<span style="font-size:10.5px;font-weight:900;color:#2f5bd6">확정임박</span>`:''}</div>
+      <div style="font-size:13px;font-weight:800;margin-top:6px;line-height:1.35;min-height:36px;overflow:hidden">${esc(m.loc||'')}</div>
+      <div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:5px">${m.cur||0}/${m.cap||0}명 · ${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</div></div>`;
+  }).join('');
+  return `<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center"><span>⭐ ${esc(meName())} 님의 추천 매치</span><span onclick="go('match')" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">전체 보기 →</span></div>`+
+    (L.length?`<div style="display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;-webkit-overflow-scrolling:touch">${cards}</div>`
+      :`<div class="card" style="cursor:pointer" onclick="go('match')"><b>지금 모집 중인 매치가 없어요</b><div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">첫 오픈매치를 열어보세요 →</div></div>`);
+}
 let _RH_BUSY=false;
 function renderHome(){
   if(_RH_BUSY) return;
@@ -11172,7 +11546,7 @@ function _renderHomeCore(){
   const cls=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b','#5b3fa8'];
   // ⑤ 인사 헤더
   let h=`<div class="greet"><div class="gv-av" style="${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':(state.userName||'곽주영')[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요,<br>${state.userName||'곽주영'} 님</div><div class="gv-d">오늘은 ${MON}월 ${DAY}일이에요<br>${SP().n}${['swimming','running'].includes(SP().id)?'하기':(SP().cat==='team'?' 하기':' 치기')} 좋은 날이에요</div></div>
-    <div onclick="openSportPicker()" style="display:flex;align-items:center;gap:5px;background:var(--brand);color:#fff;border-radius:20px;padding:8px 14px;cursor:pointer;flex-shrink:0"><span style="font-size:13px;font-weight:800;letter-spacing:-.02em">${SP().n}</span><span style="font-size:10px;opacity:.85">▾</span></div>
+    <div onclick="${ACTIVE_SPORTS().length>1?'openSportPicker()':''}" style="display:flex;align-items:center;gap:5px;background:var(--brand);color:#fff;border-radius:20px;padding:8px 14px;cursor:${ACTIVE_SPORTS().length>1?'pointer':'default'};flex-shrink:0"><span style="font-size:13px;font-weight:800;letter-spacing:-.02em">${SP().n}</span>${ACTIVE_SPORTS().length>1?'<span style="font-size:10px;opacity:.85">▾</span>':''}</div>
 </div>`;
   // ⑤ 히어로 카드 (다음 일정)
   { let title='이번 주<br>클럽 모임', sub='참석을 체크하면 그날 대진에 자동 포함돼요', att=[], goTo='club';
@@ -11183,17 +11557,26 @@ function _renderHomeCore(){
       <div class="yh-n">${title}</div><div class="yh-s">${sub}</div>
       ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}
       <div class="yh-foot">${stack}<span style="font-size:12.5px;font-weight:800;color:#473c69">${att.length?att.length+'명 참여 예정':(hasClub?'일정 확인 →':'클럽 찾아보기 →')}</span></div></div>`;
-  if(!hasClub) h+=homeRecClubs();
+  h+=homeQuickMenu();
   }
   // ⑤ 주간 날짜 핀 — 모임·기록 있는 날 점 표시, 탭하면 그날 일지 시트
   { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
     const evDays=new Set(); evSrc.forEach(e=>{const mm=(e.date||'').match(/(\d+)\/(\d+)/);if(mm)evDays.add((+mm[1])+'/'+(+mm[2]));});
     (REC_MINE||[]).forEach(r=>{ if(r.ymd){ const [,m2,d2]=r.ymd.split('-'); evDays.add((+m2)+'/'+(+d2)); } });
-    let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();const isT=(mo===MON&&da===DAY),has=evDays.has(mo+'/'+da);
+    const HD=state._homeDay||_ymd(new Date());
+    let pins=''; for(let i=0;i<7;i++){const d=new Date(base);d.setDate(base.getDate()+i);const mo=d.getMonth()+1,da=d.getDate();const has=evDays.has(mo+'/'+da);
       const ymd=`${d.getFullYear()}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
-      pins+=`<div class="dpin ${isT?'on':''} ${has?'has':''}" style="cursor:pointer" onclick="openDayRec('${ymd}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
+      const isSel=(ymd===HD);
+      pins+=`<div class="dpin ${isSel?'on':''} ${has?'has':''}" style="cursor:pointer" onclick="selectHomeDay('${ymd}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`;}
     h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`;
   }
+  h+=homeOpenMatches();                                  // 추천 매치
+  if(state._noshow&&state._noshow.count) h+=`<div class="card" style="margin-top:12px;background:#fdf2ee;border-color:#f3d9cf">
+    <div style="font-size:14.5px;font-weight:800">${state._noshow.blocked?'🚫 오픈매치 참가 제한 중':'⚠️ 노쇼 기록'} ${state._noshow.count}/${state._noshow.limit}</div>
+    <div style="font-size:12px;color:#a05a3f;font-weight:700;margin-top:3px">${state._noshow.blocked?'최근 90일 기록이 지나면 자동으로 풀려요':'3회가 되면 90일간 참가가 제한돼요'}</div></div>`;
+  h+=homeMatchList();                                    // 그날 매치 리스트 (필터 칩 포함)
+  // 플랩형 홈 — 여기서 끝. 리그·클럽·다이어리·추천 상대는 각자의 탭에서.
+  document.getElementById('s-home').innerHTML=h; return;
   // 🔥 연속 참여 스트릭
   // ✍️ 운동 다이어리 — 모든 종목에서 홈 최상단급 노출
   { ensureRecs();
@@ -11351,7 +11734,7 @@ function _renderHomeCore(){
     const t=myTier();
     h+=`<div class="card" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="go('me')">
       <div><div style="font-size:12px;color:var(--gray);font-weight:700">내 등급</div><div style="font-size:17px;font-weight:900;margin-top:2px">${(t.name||'루키').split(' ')[0]}</div></div>
-      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700">레이팅</div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${rt!=null?rt:ratingText()}</div>${ratingSub()?`<div style="font-size:10.5px;color:var(--lgray);font-weight:700">${ratingSub()}</div>`:''}</div>
+      <div style="text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);flex:1;margin:0 14px"><div style="font-size:12px;color:var(--gray);font-weight:700" onclick="openRatingTrend()">레이팅 <span style="color:var(--coral-d)">추이 ›</span></div><div style="font-size:17px;font-weight:900;color:var(--coral-d);margin-top:2px">${rt!=null?rt:ratingText()}</div>${ratingSub()?`<div style="font-size:10.5px;color:var(--lgray);font-weight:700">${ratingSub()}</div>`:''}</div>
       <div style="text-align:right"><div style="font-size:12px;color:var(--gray);font-weight:700">전적</div><div style="font-size:17px;font-weight:900;margin-top:2px">${rec.w}승 ${rec.l}패</div></div></div>`;
   }
   // 오픈 예정 경기 peek
@@ -11651,7 +12034,7 @@ function go(v, isBack){
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   try{
-    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
