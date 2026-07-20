@@ -1667,7 +1667,7 @@ app.delete('/om-comments/:id', auth, (req, res) => {
 });
 
 function omView(m, uid) {
-  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating FROM open_match_joins j
+  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
   const host = m.host_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) : null;
   const likes = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(m.id).n;
@@ -1684,7 +1684,7 @@ function omView(m, uid) {
     manager, manager_fee: m.manager_fee || 0, settled: !!m.settled, mgr_applied, mgr_apps, my_mreview,
     bracket: (()=>{ try { return m.bracket ? JSON.parse(m.bracket) : null; } catch (e) { return null; } })(),
     cur: joins.length,
-    players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating })),
+    players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating, gender: j.gender || '' })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
     is_host: uid ? m.host_id === uid : false,
     confirmed: joins.length >= (m.min_cnt || 0),
