@@ -232,6 +232,7 @@ app.get('/config', (_, res) => {
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
     support_email: process.env.SUPPORT_EMAIL || '',
+    active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
     toss_ready: !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY),
     vapid_public: process.env.VAPID_PUBLIC || '',
@@ -347,6 +348,16 @@ app.get('/users/:id/profile', (req, res) => {
 // 데모 매칭용 사용자 목록
 app.get('/users', (req, res) => {
   const q = '%' + (req.query.q || '') + '%';
+  const sp = req.query.sport;
+  if (sp) {
+    // 종목 풀: 그 종목에서 실제 활동(클럽 가입·기록·대전)한 회원만 — 유령 회원이 추천 대진에 뜨는 것 방지
+    return res.json(db.prepare(`SELECT id,name,region,sport,rating FROM users u WHERE name LIKE ? AND (
+      EXISTS(SELECT 1 FROM club_members cm JOIN clubs c ON c.id=cm.club_id
+             WHERE cm.user_id=u.id AND c.sport=? AND (cm.status IS NULL OR cm.status='active'))
+      OR EXISTS(SELECT 1 FROM records r WHERE r.user_id=u.id AND r.sport=?)
+      OR EXISTS(SELECT 1 FROM matches m WHERE m.sport=? AND (m.home_user_id=u.id OR m.away_user_id=u.id))
+    ) ORDER BY id DESC LIMIT 30`).all(q, sp, sp, sp));
+  }
   res.json(db.prepare('SELECT id,name,region,sport,rating FROM users WHERE name LIKE ? ORDER BY id DESC LIMIT 30').all(q));
 });
 
@@ -1641,9 +1652,16 @@ function omView(m, uid) {
   const likes = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(m.id).n;
   const liked = uid ? !!db.prepare('SELECT 1 FROM om_likes WHERE match_id=? AND user_id=?').get(m.id, uid) : false;
   const comments = db.prepare('SELECT COUNT(*) n FROM om_comments WHERE match_id=?').get(m.id).n;
+  const manager = m.manager_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.manager_id) : null;
+  const mgr_applied = uid ? !!db.prepare('SELECT 1 FROM om_manager_apps WHERE match_id=? AND user_id=?').get(m.id, uid) : false;
+  const mgr_apps = (uid && m.host_id === uid && !m.manager_id)
+    ? db.prepare('SELECT a.user_id id, u.name FROM om_manager_apps a JOIN users u ON u.id=a.user_id WHERE a.match_id=? ORDER BY a.id').all(m.id) : [];
+  const my_mreview = uid ? db.prepare('SELECT match_r,manager_r,venue_r,note FROM om_match_reviews WHERE match_id=? AND user_id=?').get(m.id, uid) : null;
   return {
     ...m,
     host, likes, liked, comments,
+    manager, manager_fee: m.manager_fee || 0, settled: !!m.settled, mgr_applied, mgr_apps, my_mreview,
+    bracket: (()=>{ try { return m.bracket ? JSON.parse(m.bracket) : null; } catch (e) { return null; } })(),
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
@@ -1787,6 +1805,8 @@ function applyRating(m) {
   const da = Math.round(K * (sa - ea));
   db.prepare('UPDATE users SET rating=rating+? WHERE id=?').run(da, a.id);
   db.prepare('UPDATE users SET rating=rating-? WHERE id=?').run(da, b.id);
+  logRating(a.id, da, a.rating + da, '도전전');
+  logRating(b.id, -da, b.rating - da, '도전전');
 }
 
 // ── RECORDS (수영/러닝) ──
@@ -2015,6 +2035,7 @@ app.post('/me/result', auth, (req, res) => {
   const delta = Math.round(28 * ((won ? 1 : 0) - ea));
   const nr = u.rating + delta;
   db.prepare('UPDATE users SET rating=?, mmr=mmr+? WHERE id=?').run(nr, won ? 12 : -8, u.id);
+  logRating(u.id, delta, nr, '대진');
   sendPush(u.id, { icon: '🎾', title: won ? '경기 승리' : '경기 패배', body: `레이팅 ${delta >= 0 ? '+' : ''}${delta} → ${nr}` });
   res.json({ ok: true, rating: nr, delta });
 });
@@ -3254,6 +3275,156 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_reviews (
   UNIQUE(match_id, from_user, to_user)
 );`);
 
+/* ═══ 플랩식 매니저 시스템 — 지원 → 호스트 지정 → 매치 종료 후 정산 ═══ */
+try { db.exec('ALTER TABLE open_matches ADD COLUMN manager_id INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN manager_fee INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN settled INTEGER DEFAULT 0'); } catch (e) {}
+db.exec(`CREATE TABLE IF NOT EXISTS om_manager_apps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, user_id INTEGER, created_at TEXT)`);
+db.exec(`CREATE TABLE IF NOT EXISTS om_match_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, user_id INTEGER,
+  match_r TEXT, manager_r TEXT, venue_r TEXT, note TEXT, created_at TEXT)`);
+
+try { db.exec('ALTER TABLE users ADD COLUMN bank_account TEXT'); } catch (e) {}
+db.exec(`CREATE TABLE IF NOT EXISTS om_payouts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, user_id INTEGER,
+  amount INTEGER, bank TEXT, status TEXT DEFAULT 'requested', created_at TEXT, paid_at TEXT)`);
+app.post('/me/bank', auth, (req, res) => {
+  const bank = String((req.body && req.body.bank) || '').trim().slice(0, 80);
+  db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(bank, req.uid);
+  res.json(db.prepare('SELECT * FROM users WHERE id=?').get(req.uid));
+});
+app.get('/admin/payouts', admin, (_req, res) => {
+  res.json(db.prepare(`SELECT p.*, u.name FROM om_payouts p JOIN users u ON u.id=p.user_id
+    WHERE p.status='requested' ORDER BY p.id DESC LIMIT 100`).all()
+    .map(p => ({ ...p, bank: p.bank || (db.prepare('SELECT bank_account FROM users WHERE id=?').get(p.user_id) || {}).bank_account || '' })));
+});
+app.post('/admin/payouts/:id/paid', admin, (req, res) => {
+  const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
+  if (!p || p.status !== 'requested') return res.status(400).json({ error: 'bad_state' });
+  db.prepare("UPDATE om_payouts SET status='paid', paid_at=? WHERE id=?").run(now(), p.id);
+  sendPush(p.user_id, { icon: '✅', title: '정산 이체가 완료됐어요', body: `운영 정산 ${(p.amount || 0).toLocaleString()}원이 입금됐어요` });
+  res.json({ ok: true });
+});
+app.post('/open-matches/:id/manager-apply', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_apply' });
+  if (m.manager_id) return res.status(400).json({ error: 'manager_set' });
+  if (db.prepare('SELECT 1 FROM om_manager_apps WHERE match_id=? AND user_id=?').get(m.id, req.uid))
+    return res.status(400).json({ error: 'already_applied' });
+  db.prepare('INSERT INTO om_manager_apps (match_id,user_id,created_at) VALUES (?,?,?)').run(m.id, req.uid, now());
+  const me = getUser(req.uid);
+  if (m.host_id) sendPush(m.host_id, { icon: '🎽', title: '매니저 지원이 왔어요', body: `${me ? me.name : '회원'} 님이 ${m.dt || ''} 매치 운영을 맡고 싶어해요` });
+  res.json({ ok: true });
+});
+app.post('/open-matches/:id/manager', auth, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  const uid = intOrNull(req.body && req.body.user_id), fee = Math.max(0, +(req.body && req.body.fee) || 0);
+  if (!uid || !getUser(uid)) return res.status(400).json({ error: 'no_user' });
+  db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?').run(uid, fee, m.id);
+  sendPush(uid, { icon: '🎽', title: '매니저로 지정됐어요', body: `${m.dt || ''} 매치 운영을 맡게 됐어요${fee ? ` · 정산 ${fee}캐쉬` : ''}` });
+  res.json({ ok: true, manager_id: uid, manager_fee: fee });
+});
+app.post('/open-matches/:id/settle', auth, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  if (m.settled) return res.status(400).json({ error: 'already_settled' });
+  if (!m.manager_id || !m.manager_fee) return res.status(400).json({ error: 'no_manager_fee' });
+  // 원화 정산: 캐쉬가 아니라 실제 계좌 이체 대상 — 요청을 만들고 운영자가 이체 후 완료 처리한다
+  const mu = getUser(m.manager_id);
+  tx(() => {
+    db.prepare('INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at) VALUES (?,?,?,?,?,?)')
+      .run(m.id, m.manager_id, m.manager_fee, (mu && mu.bank_account) || '', 'requested', now());
+    db.prepare('UPDATE open_matches SET settled=1 WHERE id=?').run(m.id);
+  });
+  sendPush(m.manager_id, { icon: '💰', title: '운영 정산이 요청됐어요', body: `${m.dt || ''} 매치 · ${m.manager_fee.toLocaleString()}원 · ${(mu && mu.bank_account) ? '등록 계좌로 이체 예정이에요' : '내정보에서 정산 계좌를 등록해 주세요'}` });
+  res.json({ ok: true, payout: true });
+});
+/* 등급 추이 — 레이팅이 움직이는 모든 지점을 기록한다 (10경기부터 추이 노출) */
+db.exec(`CREATE TABLE IF NOT EXISTS rating_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, delta INTEGER, rating INTEGER, reason TEXT, created_at TEXT)`);
+function logRating(uid, delta, rating, reason) {
+  try { db.prepare('INSERT INTO rating_log (user_id,delta,rating,reason,created_at) VALUES (?,?,?,?,?)').run(uid, delta|0, rating|0, reason, now()); } catch (e) {}
+}
+app.get('/me/rating-log', auth, (req, res) => {
+  res.json(db.prepare('SELECT delta,rating,reason,created_at FROM rating_log WHERE user_id=? ORDER BY id DESC LIMIT 40').all(req.uid).reverse());
+});
+/* 매니저 배치·경기력 평가 — 소셜 매치의 레벨 산정 주체는 매니저(또는 호스트).
+   미배치 선수는 평가 레벨로 즉시 배치, 기배치 선수는 평가 쪽으로 1/3 가중 보정.
+   개인 도전전 MMR(상호확인 레이팅)은 기존대로 병행된다. */
+db.exec(`CREATE TABLE IF NOT EXISTS om_assessments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, manager_id INTEGER,
+  user_id INTEGER, level TEXT, created_at TEXT)`);
+const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린저1':1025,'챌린저2':1075,'챌린저3':1125,'챌린저4':1175,'챌린저5':1225,'투어1':1285,'투어2':1355,'투어3':1425,'그랜드슬램':1500 };
+try { db.exec('ALTER TABLE open_matches ADD COLUMN bracket TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN photo TEXT'); } catch (e) {}
+app.post('/open-matches/:id/photo', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid && m.manager_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  const url = String((req.body && req.body.url) || '').slice(0, 300);
+  if (url && !url.startsWith('/uploads/')) return res.status(400).json({ error: 'bad_url' });
+  db.prepare('UPDATE open_matches SET photo=? WHERE id=?').run(url, m.id);
+  res.json({ ok: true, photo: url });
+});
+app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.manager_id !== req.uid && m.host_id !== req.uid) return res.status(403).json({ error: 'manager_only' });
+  const br = JSON.stringify(req.body && req.body.bracket || null).slice(0, 8000);
+  db.prepare('UPDATE open_matches SET bracket=? WHERE id=?').run(br, m.id);
+  res.json({ ok: true });
+});
+app.post('/open-matches/:id/assess', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.manager_id !== req.uid && m.host_id !== req.uid) return res.status(403).json({ error: 'manager_only' });
+  const started = m.start_at && Date.parse(m.start_at) < Date.now();
+  if (!(started || (m.status && m.status !== 'open'))) return res.status(400).json({ error: 'not_finished' });
+  let applied = 0;
+  for (const p of (req.body && req.body.players) || []) {
+    const uid = intOrNull(p.user_id), mid = ASSESS_MID[p.level];
+    if (!uid || !mid || uid === req.uid) continue;                       // 본인 평가는 제외
+    if (!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(m.id, uid)) continue;
+    const u = getUser(uid); if (!u) continue;
+    const prior = db.prepare('SELECT COUNT(*) n FROM om_assessments WHERE user_id=?').get(uid).n;
+    const played = db.prepare("SELECT COUNT(*) n FROM matches WHERE status='confirmed' AND (home_user_id=? OR away_user_id=?)").get(uid, uid).n;
+    const placed = prior > 0 || played > 0;
+    const nr = placed ? Math.round(((u.rating || 1000) + mid * 2) / 3) : mid;   // 배치 or 보정
+    tx(() => {
+      db.prepare('INSERT INTO om_assessments (match_id,manager_id,user_id,level,created_at) VALUES (?,?,?,?,?)')
+        .run(m.id, req.uid, uid, p.level, now());
+      db.prepare('UPDATE users SET rating=? WHERE id=?').run(nr, uid);
+    });
+    logRating(uid, nr - (u.rating || 1000), nr, placed ? '매니저 평가' : '매니저 배치');
+    sendPush(uid, { icon: '📊', title: placed ? '경기력 평가가 반영됐어요' : '레벨이 배치됐어요', body: `매니저 평가: ${p.level} · ${m.dt || ''} 매치` });
+    applied++;
+  }
+  res.json({ ok: true, applied });
+});
+/* 플랩식 매치 평가 — 매치·매니저·구장 3축 + 한줄 소감 (1인 1회, 수정 가능) */
+app.post('/open-matches/:id/match-review', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const joined = !!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(m.id, req.uid);
+  if (!joined && m.host_id !== req.uid) return res.status(403).json({ error: 'participants_only' });
+  const started = m.start_at && Date.parse(m.start_at) < Date.now();
+  if (!(started || (m.status && m.status !== 'open'))) return res.status(400).json({ error: 'not_finished' });
+  const ok = v => ['good', 'bad', 'praise'].includes(v) ? v : null;
+  const b = req.body || {};
+  const prev = db.prepare('SELECT id FROM om_match_reviews WHERE match_id=? AND user_id=?').get(m.id, req.uid);
+  if (prev) db.prepare('UPDATE om_match_reviews SET match_r=?, manager_r=?, venue_r=?, note=?, created_at=? WHERE id=?')
+    .run(ok(b.match_r), ok(b.manager_r), ok(b.venue_r), String(b.note || '').slice(0, 300), now(), prev.id);
+  else db.prepare('INSERT INTO om_match_reviews (match_id,user_id,match_r,manager_r,venue_r,note,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(m.id, req.uid, ok(b.match_r), ok(b.manager_r), ok(b.venue_r), String(b.note || '').slice(0, 300), now());
+  if (ok(b.manager_r) === 'praise' && m.manager_id && m.manager_id !== req.uid)
+    sendPush(m.manager_id, { icon: '👏', title: '매니저 칭찬을 받았어요', body: '오늘 매치 운영이 좋았대요!' });
+  res.json({ ok: true });
+});
 app.post('/open-matches/:id/reviews', auth, limitWrite, (req, res) => {
   const mid = +req.params.id;
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
