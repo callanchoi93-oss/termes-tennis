@@ -1683,6 +1683,7 @@ function omView(m, uid) {
     host, likes, liked, comments,
     manager, manager_fee: m.manager_fee || 0, settled: !!m.settled, mgr_applied, mgr_apps, my_mreview,
     bracket: (()=>{ try { return m.bracket ? JSON.parse(m.bracket) : null; } catch (e) { return null; } })(),
+    photos: (()=>{ try { const p = m.photos ? JSON.parse(m.photos) : null; return Array.isArray(p) && p.length ? p : (m.photo ? [m.photo] : []); } catch (e) { return m.photo ? [m.photo] : []; } })(),
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating, gender: j.gender || '' })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
@@ -3388,6 +3389,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_assessments (
 const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린저1':1025,'챌린저2':1075,'챌린저3':1125,'챌린저4':1175,'챌린저5':1225,'투어1':1285,'투어2':1355,'투어3':1425,'그랜드슬램':1500 };
 try { db.exec('ALTER TABLE open_matches ADD COLUMN bracket TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photo TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN photos TEXT'); } catch (e) {}
+app.post('/open-matches/:id/photos', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid && m.manager_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  const urls = (Array.isArray(req.body && req.body.urls) ? req.body.urls : [])
+    .map(u => String(u || '').slice(0, 300)).filter(u => u.startsWith('/uploads/')).slice(0, 6);
+  db.prepare('UPDATE open_matches SET photos=?, photo=? WHERE id=?').run(JSON.stringify(urls), urls[0] || '', m.id);
+  res.json({ ok: true, photos: urls });
+});
 app.post('/open-matches/:id/photo', auth, limitWrite, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
