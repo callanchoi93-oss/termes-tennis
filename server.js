@@ -1053,20 +1053,41 @@ app.delete('/open-matches/:id', auth, (req, res) => {
   db.prepare('DELETE FROM open_matches WHERE id=?').run(m.id);
   res.json({ ok: true });
 });
+try { db.exec('ALTER TABLE open_matches ADD COLUMN courts INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN court_cost INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at TEXT'); } catch (e) {}
+/* 소셜 매치 요금 공식 — 구장 총액 1/n + 운영비(매니저·공·수수료) 9,000원, 500원 올림 */
+function omFee(courtCost, cap) {
+  if (!courtCost || !cap) return 0;
+  return Math.ceil((courtCost / cap + 9000) / 500) * 500;
+}
 app.post('/open-matches', auth, (req, res) => {
+  const _b = req.body || {};
+  const _courts = Math.min(3, Math.max(0, +_b.courts || 0));
+  if (_courts) {                                          // 코트 기반 소셜 매치 규칙
+    _b.cap = _courts * 6;
+    _b.min_cnt = _b.cap;                                  // 전원 모여야 확정
+    _b.price = omFee(+_b.court_cost || 0, _b.cap);        // 가격은 서버가 산정 (신뢰 지점)
+    if (_b.start_at) { const d = new Date(_b.start_at); if (!isNaN(+d)) _b.end_at = new Date(+d + 3 * 3600e3).toISOString(); } // 3시간 고정
+    _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
+    req.body = _b;
+    req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
+  }
   const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong, account } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
   if (start_at && end_at && new Date(end_at) <= new Date(start_at))
     return res.status(400).json({ error: 'end_before_start' });
   const bad = findContact(`${loc} ${note || ''} ${dong || ''}`);   // 공개 모집글이므로 연락처 차단
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
-  const r = db.prepare(`INSERT INTO open_matches
-      (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?)`)
+  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account, courts, court_cost) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?, ?, ?)`)
     .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
          start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
-         String(account || '').trim().slice(0, 60) || null);
+         String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost));
+  if (req._autoManager) {                                 // 매니저 정산액 = 구장비 선지출 + 운영 수고비 20,000원
+    db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
+      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + 20000, rid(r));
+  }
   const mid = rid(r);
   db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
@@ -1683,6 +1704,11 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_leave' });
+  const jr = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if ((m.price || 0) > 0 && jr && jr.joined_at) {         // 결제 매치: 신청 30분 이후엔 확정 — 취소 불가
+    const el = Date.now() - Date.parse(jr.joined_at);
+    if (!isNaN(el) && el > 30 * 60e3) return res.status(403).json({ error: 'join_confirmed' });
+  }
   db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
   if (m.host_id) sendPush(m.host_id, { icon: '🚪', title: '오픈매치 참가 취소', body: `${getUser(req.uid).name} 님이 취소했어요` });
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
