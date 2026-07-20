@@ -3147,6 +3147,35 @@ app.post('/upload', auth, limitUpload, (req, res) => {
   res.json({ url: '/uploads/' + name });
 });
 
+/* ═══ 홈 배너 — 운영자가 이미지+랜딩 링크 등록, 홈 히어로 자리에 노출 ═══ */
+db.exec(`CREATE TABLE IF NOT EXISTS banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
+app.get('/banners', (_req, res) => {
+  res.json(db.prepare('SELECT id,image,link FROM banners ORDER BY id DESC LIMIT 5').all());
+});
+app.get('/admin/banners', admin, (_req, res) => {
+  res.json(db.prepare('SELECT id,image,link,created_at FROM banners ORDER BY id DESC LIMIT 20').all());
+});
+app.post('/admin/banners', admin, (req, res) => {
+  const b = req.body || {};
+  let url = String(b.image || '');
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec(url);
+  if (m) {
+    const buf = Buffer.from(m[3], 'base64');
+    if (buf.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'too_large' });
+    const name = 'bn_' + Date.now() + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]);
+    fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
+    url = '/uploads/' + name;
+  } else if (!url.startsWith('/uploads/')) return res.status(400).json({ error: 'bad_image' });
+  db.prepare('INSERT INTO banners (image,link,created_at) VALUES (?,?,?)')
+    .run(url, String(b.link || '').slice(0, 300), now());
+  res.json({ ok: true });
+});
+app.delete('/admin/banners/:id', admin, (req, res) => {
+  db.prepare('DELETE FROM banners WHERE id=?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
 // ══════════════════════════════════════════════════════════════
 //  대진표 결과 확정 — 개인 전적·레이팅에 반영
 //  대진표는 선수 배정을 클라이언트가 갖고 있어서, 끝난 뒤 한 번에 넘겨받는다.
