@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0731-P1';
+const BUILD='v0801-S2';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -7726,7 +7726,7 @@ function matchCards(list){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
-          ${(()=>{const w=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;return [(m.min_cnt>=m.cap?`${m.cap}명 모이면 확정`:`${m.cap}명 정원`),(m.min_cnt>=m.cap?null:`최소 ${m.min_cnt}명 성사`),`👩 여성 ${w}명`];})().filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
+          ${(()=>{const w=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;return [(m.min_cnt>=m.cap?`${m.cap}명 모이면 확정`:`${m.cap}명 정원`),(m.min_cnt>=m.cap?null:`최소 ${m.min_cnt}명 성사`),`👩 ${w}`];})().filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
         </div>
       </div>
       <div style="padding:12px 18px 16px">
@@ -7810,7 +7810,11 @@ function openOmDetail(id){
   const mgrName=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
   const info=(ic,l)=>`<div style="display:flex;align-items:center;gap:9px;flex:1;min-width:45%"><span style="font-size:17px">${ic}</span><b style="font-size:13.5px">${l}</b></div>`;
   let h=`<div class="sh-top"><h3>매치 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
-  if(m.photo) h+=`<div style="height:140px;border-radius:16px;background:url('${esc(m.photo)}') center/cover;margin-bottom:14px"></div>`;
+  const _ph=(m.photos&&m.photos.length?m.photos:(m.photo?[m.photo]:[]));
+  if(_ph.length) h+=`<div style="position:relative;margin-bottom:14px">
+    <div style="display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:16px;-webkit-overflow-scrolling:touch">
+      ${_ph.map(u=>`<div style="min-width:100%;height:150px;scroll-snap-align:start;background:url('${esc(u)}') center/cover;border-radius:16px"></div>`).join('')}</div>
+    ${_ph.length>1?`<span style="position:absolute;right:10px;bottom:10px;background:#1b1813cc;color:#fff;font-size:11px;font-weight:800;border-radius:12px;padding:4px 10px">${_ph.length}장 · 옆으로 넘겨보세요</span>`:''}</div>`;
   h+=`<div style="font-size:13px;font-weight:800;color:var(--gray)">${fmtRange(m.start_at,m.end_at,m.dt)}</div>
     <div style="font-size:21px;font-weight:900;letter-spacing:-.02em;margin-top:3px">${esc(m.loc||'')}</div>
     ${(m.sido||m.sigungu)?`<div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}</div>`:''}
@@ -7828,10 +7832,19 @@ function openOmDetail(id){
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
         <div style="font-size:11.5px;color:var(--gray);font-weight:700">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
-    ${(m.players||[]).length?(()=>{const c={};m.players.forEach(p=>{const l=levelOf(p.rating||1000);const key=l.tier;c[key]=(c[key]||0)+1;});
-      const col={'그랜드슬램':'#1b1813','투어':'#e5493a','챌린저':'#2f6fed','퓨처스':'#f2b90d'};
-      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 구성</span></div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;padding:4px 0 12px">${Object.entries(c).map(([k,n])=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;background:#f6f4ef;border-radius:16px;padding:6px 12px"><span style="width:9px;height:9px;border-radius:3px;background:${col[k]||'#8a8378'}"></span>${k} ${n}명</span>`).join('')}${m.joined?`<span style="font-size:12.5px;font-weight:900;color:#1f7d4d;background:#e7f4ec;border-radius:16px;padding:6px 12px">나 참가중 ✓</span>`:''}</div>`;})():''}
+    ${(m.players||[]).length?(()=>{
+      const order=['러브','퓨처스','챌린저','투어','그랜드슬램'];
+      const col={'러브':'#8a8378','퓨처스':'#f2b90d','챌린저':'#2f6fed','투어':'#e5493a','그랜드슬램':'#1b1813'};
+      const c={}; m.players.forEach(p=>{ const key=(p.rating||1000)===1000?'러브':levelOf(p.rating).tier; c[key]=(c[key]||0)+1; });
+      const mx=Math.max(1,...order.map(k=>c[k]||0));
+      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 분포</span>${m.joined?` <span style="font-size:11px;font-weight:900;color:#1f7d4d">· 나 참가중 ✓</span>`:''}</div>
+      <div style="display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
+        ${order.map(k=>{const n=c[k]||0;const hpx=n?Math.max(14,Math.round(n/mx*72)):4;
+          return `<div style="flex:1;text-align:center">
+            <div style="font-size:12px;font-weight:900;color:${n?'var(--ink)':'#c9c3b8'}">${n||''}</div>
+            <div style="height:76px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;max-width:38px;height:${hpx}px;border-radius:8px 8px 3px 3px;background:${n?col[k]:'#eee9e0'}"></div></div>
+            <div style="font-size:10.5px;font-weight:800;color:var(--gray);margin-top:4px">${k}</div></div>`;}).join('')}
+      </div>`;})():''}
     ${m.note?`<div class="ch">안내</div><div style="font-size:13.5px;color:#4a463f;font-weight:600;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
   // ── 액션 ──
   const acts=[];
@@ -7843,13 +7856,17 @@ function openOmDetail(id){
   if(m.bracket&&(m.joined||m.is_host)) acts.push(`<button class="btn ghost" onclick="openOmBracket(${m.id})">대진표 보기</button>`);
   if(isMgr){
     acts.push(`<div class="ch" style="margin-top:6px">매니저 메뉴</div>`);
+    const _cc=m.court_cost||0, _sud=Math.max(0,(m.manager_fee||0)-_cc);
+    if(m.manager_fee||m.price) acts.push(`<div style="background:#f6f4ef;border-radius:14px;padding:12px 14px;font-size:12.5px;font-weight:700;color:#5a544b;line-height:1.7">
+      <b style="font-size:13px">💰 정산 미리보기</b> <span style="font-size:10.5px;color:var(--lgray)">매니저에게만 보여요</span><br>
+      ${m.manager_fee?`${_cc?`구장비 회수 ${_cc.toLocaleString()}원 + 수고비 ${_sud.toLocaleString()}원 = `:''}<b style="color:var(--coral-d)">정산 예정 ${(m.manager_fee||0).toLocaleString()}원</b><br>`:''}
+      ${(m.price||0)?`참가비 수입 · 현재 ${m.cur||0}명 × ${(m.price||0).toLocaleString()} = <b>${((m.cur||0)*(m.price||0)).toLocaleString()}원</b> · 전원 확정 시 ${((m.cap||0)*(m.price||0)).toLocaleString()}원`:''}
+    </div>`);
     if((m.players||[]).length>=4) acts.push(`<button class="btn ghost" onclick="omMakeBracket(${m.id})">🎾 대진 짜기</button>`);
     if(closed) acts.push(`<button class="btn ghost" onclick="openOmAssess(${m.id})">📊 참가자 등급 평가</button>`);
     if(closed&&m.manager_fee&&!m.settled) acts.push(`<button class="btn ghost" onclick="omSettle(${m.id})">💰 정산 요청 · ${(m.manager_fee||0).toLocaleString()}원</button>`);
     if(m.settled) acts.push(`<div class="note" style="text-align:left">정산 요청됨 · 운영자 이체 후 완료 처리돼요</div>`);
-    if(!closed) acts.push(`<div style="display:flex;gap:8px">
-      <button class="btn ghost" style="flex:1" onclick="omPhotoPick(${m.id})">📷 코트 사진</button>
-      <button class="btn ghost" style="flex:1" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button></div>`);
+    if(!closed) acts.push(`<button class="btn ghost" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button>`);
     acts.push(`<button class="btn ghost" style="color:#c8452c" onclick="deleteMatch(${m.id});closeOv()">매치 삭제</button>`);
   }
   acts.push(`<button class="btn ghost" onclick="likeMatch(${m.id})">♥ 찜하기</button>`);
@@ -8343,8 +8360,8 @@ function openNewMatch(){
     <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) ${OM_EX().loc}"></div>
 
     <div class="fld"><label>구장 사진 (선택)</label>
-      <input id="omPhotoFile" type="file" accept="image/*" style="font-size:13px">
-      <div class="note" style="text-align:left;margin-top:4px">올리면 홈 매치 리스트에 사진이 함께 보여요</div></div>
+      <input id="omPhotoFile" type="file" accept="image/*" multiple style="font-size:13px">
+      <div class="note" style="text-align:left;margin-top:4px">여러 장 선택 가능 · 상세에서 옆으로 넘겨봐요</div></div>
 
     <div class="fld"><label>안내 (선택)</label>
       <textarea id="omNote" rows="6" placeholder="예) ${OM_EX().note}"></textarea></div>
@@ -8426,15 +8443,19 @@ async function createMatch(){
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
       loc, fmt:'', gd:'남녀 모두',
       courts, court_cost, note })}).then(async cm=>{
-      const f=(document.getElementById('omPhotoFile')||{}).files; const file=f&&f[0];
-      if(cm&&cm.id&&file){
-        await new Promise(done=>{ const rd=new FileReader();
-          rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
-            try{ const cv=document.createElement('canvas'); const sc=Math.min(1,1000/img.width);
-              cv.width=img.width*sc; cv.height=img.height*sc; cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-              const up=await api('/upload',{method:'POST',body:JSON.stringify({dataUrl:cv.toDataURL('image/jpeg',0.75)})});
-              await api(`/open-matches/${cm.id}/photo`,{method:'POST',body:JSON.stringify({url:up.url})});
-            }catch(e){} done(); }; img.src=rd.result; }; rd.readAsDataURL(file); });
+      const fl=Array.from(((document.getElementById('omPhotoFile')||{}).files)||[]).slice(0,6);
+      if(cm&&cm.id&&fl.length){
+        const urls=[];
+        for(const file of fl){
+          await new Promise(done=>{ const rd=new FileReader();
+            rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
+              try{ const cv=document.createElement('canvas'); const sc=Math.min(1,1000/img.width);
+                cv.width=img.width*sc; cv.height=img.height*sc; cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+                const up=await api('/upload',{method:'POST',body:JSON.stringify({dataUrl:cv.toDataURL('image/jpeg',0.75)})});
+                if(up&&up.url) urls.push(up.url);
+              }catch(e){} done(); }; img.src=rd.result; }; rd.readAsDataURL(file); });
+        }
+        if(urls.length) await api(`/open-matches/${cm.id}/photos`,{method:'POST',body:JSON.stringify({urls})}).catch(()=>{});
       }
     });
     toast('오픈매치를 열었어요'); closeOv(); go('match');
@@ -11547,20 +11568,15 @@ function homeMatchList(){
   }).sort((x,y)=>Date.parse(x.start_at)-Date.parse(y.start_at));
   const chip=(l,on,fn)=>`<span onclick="${fn}" style="font-size:12.5px;font-weight:800;border-radius:18px;padding:8px 14px;cursor:pointer;border:1.5px solid ${on?'var(--coral)':'#ece8e0'};color:${on?'var(--coral-d)':'#5a544b'};background:${on?'#fdeee7':'#fff'};flex-shrink:0;white-space:nowrap">${l}</span>`;
   let h=`<div style="display:flex;gap:8px;overflow-x:auto;margin:12px -2px 2px;padding:0 2px 2px">${chip('마감 가리기',hideC,'hFlt(1)')}${chip('🌙 저녁 매치',eve,'hFlt(2)')}</div>`;
-  if(!all.length){
-    h+=`<div class="card" style="text-align:center;padding:26px 18px;cursor:pointer;margin-top:10px" onclick="go('match')">
-      <div style="font-size:26px">🎾</div><b style="display:block;margin-top:6px">이 날 열린 매치가 없어요</b>
-      <div style="font-size:12.5px;color:var(--gray);font-weight:700;margin-top:3px">매치 탭에서 직접 열어보세요 →</div></div>`;
-    return h;
-  }
-  h+=all.map(m=>{
+  const item=(m,showDate)=>{
     const d=new Date(m.start_at), t=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const dl=showDate?`<span style="font-size:12px;font-weight:900;color:var(--gray)">${d.getMonth()+1}/${d.getDate()}</span>`:'';
     const closed=(m.status&&m.status!=='open')||(+d<Date.now());
     const left=Math.max(0,(m.cap||0)-(m.cur||0)), near=!closed&&left>0&&left<=3;
     return `<div onclick="openMatchCard(${m.id})" style="display:flex;gap:12px;align-items:center;padding:15px 2px;border-bottom:1.5px solid #f0efec;cursor:pointer;${closed?'opacity:.45':''}">
       <div style="width:72px;height:72px;border-radius:16px;background:${m.photo?`url('${esc(m.photo)}') center/cover`:'linear-gradient(135deg,#5b9c6e,#3f7d54)'};display:grid;place-items:center;font-size:25px;flex-shrink:0;box-shadow:inset 0 0 0 2px #ffffff2e">${m.photo?'':'🎾'}</div>
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px"><b style="font-size:19px;letter-spacing:-.02em;color:${closed?'#8a8378':'var(--coral-d)'}">${t}</b>
+        <div style="display:flex;align-items:center;gap:8px"><b style="font-size:19px;letter-spacing:-.02em;color:${closed?'#8a8378':'var(--coral-d)'}">${t}</b>${dl}
           ${closed?`<span style="font-size:10.5px;font-weight:900;background:#f1eee8;color:#8a8378;border-radius:9px;padding:3px 8px">마감</span>`
             :near?`<span style="font-size:10.5px;font-weight:900;background:#eef2fd;color:#2f5bd6;border-radius:9px;padding:3px 8px">확정임박</span>`
             :`<span style="font-size:10.5px;font-weight:900;background:#e7f4ec;color:#1f7d4d;border-radius:9px;padding:3px 8px">${left}자리 남음</span>`}</div>
@@ -11569,7 +11585,16 @@ function homeMatchList(){
       </div>
       <div style="text-align:center;color:#c9c3b8;flex-shrink:0"><div style="font-size:15px">♥</div><div style="font-size:12px;font-weight:800">${m.likes||0}</div></div>
     </div>`;
-  }).join('');
+  };
+  if(all.length){ h+=all.map(m=>item(m,false)).join(''); return h; }
+  // 그날 매치가 없으면 — 다가오는 매치를 날짜와 함께 이어서 보여준다
+  const up=(HOME_OM_ALL||[]).filter(m=>m.start_at&&Date.parse(m.start_at)>Date.now()&&!(m.status&&m.status!=='open'))
+    .sort((x,y)=>Date.parse(x.start_at)-Date.parse(y.start_at)).slice(0,5);
+  h+=`<div class="card" style="text-align:center;padding:18px;margin-top:10px">
+    <div style="font-size:22px">🎾</div><b style="display:block;margin-top:4px;font-size:14px">이 날 열린 매치가 없어요</b></div>`;
+  if(up.length){
+    h+=`<div class="ch" style="margin-top:14px">다가오는 매치</div>`+up.map(m=>item(m,true)).join('');
+  }
   return h;
 }
 /* 홈 1순위 — 오픈매치 추천 (플랩식 가로 카드) */
