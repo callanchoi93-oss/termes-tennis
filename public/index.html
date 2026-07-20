@@ -5318,9 +5318,6 @@ function renderClub(){
   const t=state.clubTab;
   let h=`<h2 class="t">클럽</h2><p class="sub">우리 클럽 소식과 일정을 한곳에서.</p>
   <div class="seg"><div class="o ${t==='my'?'on':''}" onclick="setClubTab('my')">내 클럽</div><div class="o ${t==='find'?'on':''}" onclick="setClubTab('find')">클럽 찾기</div></div>`;
-  if(t==='my'&&state.activeClub) h+=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('bracket')">
-    <div><b style="font-size:14.5px">🎾 모임 대진 편성</b><div style="font-size:12px;color:var(--gray);font-weight:700;margin-top:2px">참석자로 코트별 대진을 자동으로 짜요</div></div>
-    <span style="color:var(--coral-d);font-weight:900">›</span></div>`;
   if(t==='my'){
     if(SERVER_OK && state.activeClub && !clubId()){
       h+=`<div class="card" style="background:#fdf4ec;border-color:#eeddc8">
@@ -5421,6 +5418,7 @@ function renderClub(){
       if(c3.dues['곽주영']==='unpaid'){ h+=`<div class="card" style="background:#fff0f1;border-color:#f2d2bd"><div style="font-size:13.5px;font-weight:700;color:#cf5418">${ic('card',14)}이번 시즌 회비가 미납이에요. 클럽 회비를 확인해 주세요.</div></div>`; }
       if(off){
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
+          <div class="toolrow" onclick="go('bracket')"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자로 코트별 대진을 자동으로 짜요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openPromo({tag:'맞수 프리미엄',visual:'👑',title:'총무 일을 절반으로\n줄여보세요',body:'회원 무제한, 회비 장부 자동화, 모임 정산까지 — 우리 클럽 운영을 맞수가 대신해요.',cta:'플랜 살펴보기',onCta:'openClubPremium()'})"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
@@ -5441,6 +5439,7 @@ function renderClub(){
 `;
       } else {
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 정보</div>
+          <div class="toolrow" onclick="go('bracket')"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인</div><div class="tr-d">이번 모임 코트별 대진 보기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="renderClubStats()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 순위·통계</div><div class="tr-d">분기별 승률·득실 랭킹과 명예의 전당</div></div><div class="tr-arr">›</div></div>
           ${SP().cat==='team'?`<div class="toolrow" onclick="openTeamRecord()"><div class="tr-ic" style="background:#efeafc;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록실</div><div class="tr-d">자체전·대외전 · 개인 스탯 아카이브</div></div><div class="tr-arr">›</div></div>`
@@ -5645,7 +5644,15 @@ function renderProfileEditSrv(){
     <div class="ch" style="font-size:15px;margin:0 4px 12px">프로필 사진 <span style="font-size:12px;color:var(--gray);font-weight:600">· ${photos.length}/6</span></div>
     <div class="phgrid">${[0,1,2,3,4,5].map(cell).join('')}</div>
     <input type="file" id="myPhotoFile" accept="image/*" style="display:none" onchange="uploadMyPhoto(this.files[0])">
-    <button class="btn ghost" style="margin-top:14px" onclick="openSportProfile()">${SP().n} 정보 입력 →</button>
+    <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
+      <div><div style="font-size:13.5px;font-weight:800">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
+        <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${myCareerTxt()||'탭해서 시작 시점 입력 (예: 2021-03)'}</div></div>
+      <span style="color:var(--lgray);font-weight:800">›</span></div>
+    <div class="card" onclick="editMyPhone()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
+      <div><div style="font-size:13.5px;font-weight:800">연락처 <span style="font-size:11px;color:var(--lgray)">연명부용 · 임원에게만</span></div>
+        <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${(state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)'}</div></div>
+      <span style="color:var(--lgray);font-weight:800">›</span></div>
+    <button class="btn ghost" style="margin-top:6px" onclick="openSportProfile()">${SP().n} 정보 입력 →</button>
     <button class="btn ghost" style="margin-top:9px" onclick="openEditProfile()">기본 정보(성별·경력·지역) 수정 →</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -7886,9 +7893,8 @@ function openOmDetail(id){
       const c={}; m.players.forEach(p=>{ const key=(p.rating||1000)===1000?'러브':levelOf(p.rating).tier; c[key]=(c[key]||0)+1; });
       const mx=Math.max(1,...order.map(k=>c[k]||0));
       const femN=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
-      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="display:inline-flex;align-items:center;gap:8px"><span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 분포</span>${m.joined?`<span style="font-size:10.5px;font-weight:700;color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:3px 10px;letter-spacing:0">참가 중</span>`:''}</span></div>
-      <div style="position:relative;display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
-        <span style="position:absolute;left:61.8%;top:0;transform:translateX(-50%);font-size:10.5px;font-weight:700;color:var(--lgray);white-space:nowrap">여성 ${femN}명</span>
+      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="display:inline-flex;align-items:center;gap:6px"><span style="font-size:10.5px;font-weight:700;color:#8a7550;background:#f6efe2;border-radius:20px;padding:3px 10px">여성 ${femN}명</span>${m.joined?`<span style="font-size:10.5px;font-weight:700;color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:3px 10px">참가 중</span>`:''}</span></div>
+      <div style="display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
         ${order.map(k=>{const n=c[k]||0;const hpx=n?Math.max(14,Math.round(n/mx*72)):4;
           return `<div style="flex:1;text-align:center">
             <div style="font-size:12px;font-weight:900;color:${n?'var(--ink)':'#c9c3b8'}">${n||''}</div>
@@ -7917,6 +7923,7 @@ function openOmDetail(id){
     if(!closed) acts.push(`<button class="btn ghost" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button>`);
     acts.push(`<button class="btn ghost" style="color:#c8452c" onclick="deleteMatch(${m.id});closeOv()">매치 삭제</button>`);
   }
+  acts.push(`<button class="btn ghost" onclick="openOmInvite(${m.id})">초대장 공유</button>`);
   acts.push(`<button class="btn ghost" onclick="likeMatch(${m.id})">찜하기</button>`);
   h+=`<div style="display:grid;gap:9px;margin-top:6px">${acts.join('')}</div></div>`;
   document.getElementById('sheet').innerHTML=h;
@@ -8178,6 +8185,40 @@ async function submitReview(mid, uid){
   }
 }
 
+/* ── 오픈매치 초대장: 프레첼 패턴 히어로 + 브랜드 컬러 카드 ── */
+function openOmInvite(id){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
+  const region=[m.sido,m.sigungu,m.dong].filter(Boolean).join(' ')||'지역 미지정';
+  const price=(m.price||0)?m.price.toLocaleString()+'원':'무료';
+  const mgr=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
+  const chip='display:inline-block;background:rgba(255,255,255,.94);border-radius:12px;padding:4px 12px;box-shadow:0 2px 8px rgba(60,40,20,.10)';
+  const h=`<div class="sh-top"><h3>오픈매치 초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  <div style="border-radius:22px;overflow:hidden;border:1px solid #f0e6d4;background:#fff">
+    <div style="position:relative">
+      <div style="height:196px;overflow:hidden">${GL_WAVE.replace('class="gl-wave"','style="width:100%;height:196px;display:block" preserveAspectRatio="xMidYMid slice"')}</div>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:0 18px;text-align:center">
+        <span style="${chip};font-size:12px;font-weight:800;color:#cf5418;letter-spacing:.02em">오픈매치 초대장</span>
+        <span style="${chip};font-size:23px;font-weight:900;letter-spacing:-.02em;color:#1c1b18;max-width:100%;padding:7px 16px;line-height:1.25">${esc(m.loc||'오픈매치')}</span>
+        <span style="${chip};font-size:12.5px;font-weight:700;color:#6b6154">함께 칠 사람을 찾고 있어요</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:20px 22px 6px">
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">일시</b><div style="font-size:14.5px;font-weight:700">${fmtRange?fmtRange(m.start_at,m.end_at,m.dt):esc(m.dt||'')}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">지역</b><div style="font-size:14.5px;font-weight:700">${esc(region)}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">참가비</b><div style="font-size:14.5px;font-weight:700;color:var(--coral-d)">${price}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">모집</b><div style="font-size:14.5px;font-weight:700">${m.cur||0}/${m.cap||0}명 · 전원 확정</div></div>
+      ${mgr?`<div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">매니저</b><div style="font-size:14.5px;font-weight:700">${esc(mgr)}</div></div>`:''}
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">레벨</b><div style="font-size:14.5px;font-weight:700">모든 레벨 · 남녀 모두</div></div>
+    </div>
+    <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
+    <div style="padding:16px 18px 18px">
+      <button class="btn" onclick="shareMatch(${m.id})">초대장 링크 공유하기</button>
+      <div class="note" style="text-align:center;margin-top:10px">링크를 받은 분은 이 매치로 바로 들어와요</div>
+    </div>
+  </div>`;
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">${h}</div>`;
+  document.getElementById('ov').classList.add('on');
+}
 /* 오픈매치 공유 — 링크를 받은 사람이 그 매치로 바로 온다 */
 function shareMatch(id){
   const url = location.origin + '/?match=' + id;
@@ -11464,7 +11505,7 @@ async function editMyStart(){
   if(t && !/^\d{4}(-\d{1,2})?$/.test(t)){ toast('예: 2021-03 또는 2021'); return; }
   if(t) map[state.sport]=t.length===4?t+'-01':t; else delete map[state.sport];
   try{ const u=await api('/me',{method:'PATCH',body:JSON.stringify({sport_started:map})});
-    state.serverUser=u; toast(t?'구력을 저장했어요':'구력을 지웠어요'); renderMe();
+    state.serverUser=u; toast(t?'구력을 저장했어요':'구력을 지웠어요'); renderMe(); if(document.getElementById('ov').classList.contains('on')) renderProfileEditSrv();
   }catch(e){ toast('저장하지 못했어요'); }
 }
 function openFairplayInfo(){
@@ -11502,7 +11543,7 @@ async function editMyPhone(){
   if(v===null) return;
   const phone=v.trim().slice(0,20);
   try{ const u=await api('/me',{method:'PATCH',body:JSON.stringify({phone})});
-    state.serverUser=u; toast(phone?'연락처를 저장했어요':'연락처를 지웠어요'); renderMe();
+    state.serverUser=u; toast(phone?'연락처를 저장했어요':'연락처를 지웠어요'); renderMe(); if(document.getElementById('ov').classList.contains('on')) renderProfileEditSrv();
   }catch(e){ toast('저장하지 못했어요'); }
 }
 function meRecordCard(){
@@ -11563,6 +11604,7 @@ function _renderMeCore(){
   const ratingLabel=placing?'배치 중':rating, peakLabel=placing?'—':peak;
   const rel=relRecord(),relKeys=Object.keys(rel);
   const _td=new Date(), _mo=_td.getMonth()+1, _dy=_td.getDate();
+  const _tcol={'러브':'#a89e8e','퓨처스':'#e0a83c','챌린저':'#e07b3c','투어':'#cf5418','그랜드슬램':'#3b2a1a'}[(t.name.split(' · ')[0]||'').replace(/\d+$/,'')]||'#a89e8e';
   let h=`
   <div class="yhero" style="margin:6px 0 16px">
     <div class="yh-deco">${SP().ic}</div>
@@ -11578,22 +11620,18 @@ function _renderMeCore(){
       <div id="myFpLine" style="font-size:10.5px;color:var(--lgray);font-weight:700;margin-top:5px;line-height:1.4">불러오는 중…</div></div>
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
       <div style="font-size:12px;color:var(--gray);font-weight:800">레벨</div>
-      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:#2f6fed;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:900">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:15px">${esc(t.name.split(' · ')[0])}</b></div>
-      <div style="font-size:10.5px;color:var(--lgray);font-weight:700;margin-top:5px;line-height:1.5" onclick="event.stopPropagation();openRatingTrend()">${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')} · ${t.placing?esc(t.name.split(' · ')[1]||'배치 진행 중'):esc(t.name.split(' · ')[1]||'')} · <span style="color:var(--coral-d)">추이 ›</span></div></div></div>
-  <div class="card" style="background:linear-gradient(135deg,#2f6fed,#2456c8);border:none;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:12px;font-weight:800;color:#cfe0ff">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()} 캐시</b></div>
-    <button class="btn sm" style="width:auto;padding:10px 18px;background:#f2b90d;color:#3a2c00;border:none" onclick="openStore()">충전하기</button></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:900">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:15px">${esc(t.name.split(' · ')[0])}</b></div>
+      <div style="font-size:10.5px;color:var(--lgray);font-weight:700;margin-top:6px;line-height:1.7">
+        <div>${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')}</div>
+        <div>${t.placing?esc(t.name.split(' · ')[1]||'배치 진행 중'):esc(t.name.split(' · ')[1]||'')}</div>
+        <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
+      </div></div></div>
+  <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
+    <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()} 캐시</b></div>
+    <button class="btn sm" style="width:auto;padding:10px 18px;background:#fff;color:#cf5418;border:none" onclick="openStore()">충전하기</button></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
   ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()'],['정산 계좌 · 매니저 정산','openBankSetup()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
     <b style="flex:1;font-size:14.5px">${x[0]}</b><span style="color:var(--lgray);font-weight:900">›</span></div>`).join('')}`:''}
-  ${SERVER_OK&&authToken()?`<div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:13.5px;font-weight:800">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
-      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${myCareerTxt()||'탭해서 시작 시점 입력 (예: 2021-03)'}</div></div>
-    <span style="color:var(--lgray);font-weight:800">›</span></div>`:''}
-  ${SERVER_OK&&authToken()?`<div class="card" onclick="editMyPhone()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:13.5px;font-weight:800">연락처 <span style="font-size:11px;color:var(--lgray)">연명부용 · 임원에게만</span></div>
-      <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">${(state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)'}</div></div>
-    <span style="color:var(--lgray);font-weight:800">›</span></div>`:''}
   ${myAppsCard()}
   <div style="text-align:center;font-size:10.5px;color:#c9c4ba;font-weight:700;margin:18px 0 6px">MATSU ${BUILD} — 이 코드가 안 보이면 index.html이 아직 반영 전이에요</div>
   ${SP().cat==='record'?meRecordCard():SP().cat==='team'?meTeamCard():`<div class="card"><div class="ch">전적</div>
