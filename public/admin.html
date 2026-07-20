@@ -1,187 +1,192 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>맞수 관리자</title>
 <style>
-  *{box-sizing:border-box;margin:0}
-  body{font-family:Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;background:#f4f2ee;color:#1c1b18;padding:18px;max-width:760px;margin:0 auto}
-  h1{font-size:22px;margin:4px 0 2px}
-  .sub{font-size:12.5px;color:#7d7870;margin-bottom:14px}
-  .card{background:#fff;border:1px solid #ececea;border-radius:16px;padding:15px;margin-bottom:12px}
-  .ch{font-size:14px;font-weight:800;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
-  input,select{border:1.5px solid #e2ded6;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px}
-  button{border:none;border-radius:10px;padding:9px 13px;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;background:#efece6}
-  .btn{background:#1c1b18;color:#fff}
-  .danger{background:#fceee4;color:#cf5418}
-  .ok{background:#e6f3ec;color:#2f7d4f}
-  .row{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid #f2f0ec;font-size:13px;flex-wrap:wrap}
-  .row:last-child{border-bottom:none}
-  .row b{flex:1;font-weight:700;min-width:120px}
-  .meta{color:#8a857c;font-size:11.5px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
-  .stat{background:#faf8f4;border-radius:12px;padding:12px;text-align:center}
-  .stat b{font-size:19px;display:block}
-  .stat span{font-size:11px;color:#8a857c;font-weight:700}
-  .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
-  .tab{padding:8px 13px;border-radius:18px;background:#fff;border:1.5px solid #e2ded6;font-size:12.5px;font-weight:800;cursor:pointer}
-  .tab.on{background:#1c1b18;color:#fff;border-color:#1c1b18}
-  .sec{display:none}.sec.on{display:block}
-  #out{white-space:pre-wrap;font-size:11.5px;color:#5a554c;background:#faf8f4;border-radius:11px;padding:10px;margin-top:8px;display:none;max-height:180px;overflow:auto}
-  .warn{background:#fdf2dd;border-radius:11px;padding:10px 12px;font-size:12px;color:#7a5c12;font-weight:600;line-height:1.55}
+  :root{--bg:#f2f0ea;--card:#fff;--ink:#1b1813;--gray:#8a8378;--lgray:#b8b2a7;--coral:#ec6a2e;--coral-d:#cf5418;--line:#ece8e0;--green:#2f7d4f;--red:#c8452c;}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;}
+  body{background:var(--bg);color:var(--ink);padding:22px 16px 60px;max-width:760px;margin:0 auto;}
+  h1{font-size:26px;font-weight:900;letter-spacing:-.02em}
+  .sub{font-size:13.5px;color:var(--gray);font-weight:600;margin:6px 0 16px}
+  .card{background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:15px 16px;margin-bottom:10px}
+  .row{display:flex;gap:8px;align-items:center}
+  input,select,textarea{width:100%;border:1.5px solid var(--line);border-radius:13px;padding:11px 13px;font-size:14px;font-weight:600;background:#fff}
+  button{border:none;border-radius:13px;padding:11px 16px;font-size:13.5px;font-weight:800;cursor:pointer;background:var(--ink);color:#fff;flex-shrink:0}
+  button.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+  button.danger{background:#fff;color:var(--red);border:1.5px solid #f0d4cc}
+  button.sm{padding:7px 12px;font-size:12px;border-radius:10px}
+  .tabs{display:flex;gap:7px;overflow-x:auto;margin:14px 0;-webkit-overflow-scrolling:touch}
+  .tab{flex-shrink:0;border-radius:20px;padding:9px 16px;font-size:13.5px;font-weight:800;background:#fff;border:1.5px solid var(--line);cursor:pointer}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .stat{background:#f6f4ef;border-radius:15px;padding:16px 10px;text-align:center}
+  .stat b{font-size:24px;display:block}
+  .stat span{font-size:11.5px;color:var(--gray);font-weight:700}
+  .item{display:flex;align-items:center;gap:10px;padding:11px 2px;border-top:1px solid #f0efec}
+  .item:first-of-type{border-top:none}
+  .item .tx{flex:1;min-width:0}
+  .item b{font-size:14px}
+  .item .d{font-size:11.5px;color:var(--gray);font-weight:700;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+  .ch{font-size:15px;font-weight:900;margin:14px 2px 8px}
+  .pill{display:inline-block;font-size:10.5px;font-weight:900;border-radius:8px;padding:3px 7px;background:#f1eee8;color:var(--gray)}
+  .pill.g{background:#e7f4ec;color:var(--green)} .pill.r{background:#fceee4;color:var(--coral-d)}
+  .note{font-size:12px;color:var(--gray);font-weight:600;line-height:1.5}
+  img.bn{width:92px;height:36px;object-fit:cover;border-radius:8px;flex-shrink:0;border:1px solid var(--line)}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1b1813;color:#fff;font-size:13px;font-weight:700;border-radius:14px;padding:11px 18px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
 </style>
 </head>
 <body>
 <h1>맞수 관리자</h1>
 <div class="sub">운영 도구 — 키를 아는 사람만 사용할 수 있어요.</div>
 
-<div class="card">
-  <div style="display:flex;gap:8px">
-    <input id="key" type="password" placeholder="ADMIN_KEY" style="flex:1">
-    <button class="btn" onclick="boot()">접속</button>
-  </div>
-</div>
+<div class="card"><div class="row">
+  <input id="key" type="password" placeholder="관리자 키">
+  <button onclick="enter()">접속</button>
+</div></div>
 
-<div id="app" style="display:none">
-  <div class="tabs">
-    <div class="tab on" data-s="stats" onclick="tab(this)">현황</div>
-    <div class="tab" data-s="users" onclick="tab(this)">회원</div>
-    <div class="tab" data-s="clubs" onclick="tab(this)">클럽</div>
-    <div class="tab" data-s="reports" onclick="tab(this)">신고</div>
-    <div class="tab" data-s="tools" onclick="tab(this)">도구</div>
-  </div>
-
-  <div class="sec on" id="sec-stats"><div class="card"><div class="ch">서비스 현황</div><div class="grid" id="stats"></div></div></div>
-
-  <div class="sec" id="sec-users">
-    <div class="card"><div class="ch">회원 <span class="meta" id="uCnt"></span></div><div id="users"></div></div>
-    <div class="card"><div class="ch">탈퇴(정지) 계정 — 영구 삭제 <span class="meta" id="suCnt"></span></div><div id="susUsers"></div></div>
-  </div>
-
-  <div class="sec" id="sec-clubs">
-    <div class="card"><div class="ch">클럽 <span class="meta" id="cCnt"></span></div><div id="clubs"></div>
-      <div class="warn" style="margin-top:10px">영구 삭제는 회원 명단·일정·대진·공지·피드·회비 장부까지 전부 지웁니다. 이름을 그대로 입력해야 실행돼요.</div></div>
-    <div class="card"><div class="ch">프리미엄 부여</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input id="pmId" placeholder="클럽 id" style="width:90px">
-        <select id="pmMonths"><option value="1">1개월</option><option value="3">3개월</option><option value="12">12개월</option></select>
-        <button class="ok" onclick="premium()">부여</button></div></div>
-  </div>
-
-  <div class="sec" id="sec-reports">
-    <div class="card"><div class="ch">신고 목록 <span class="meta" id="rCnt"></span></div><div id="reports"></div></div>
-  </div>
-
-  <div class="sec" id="sec-tools">
-    <div class="card"><div class="ch">백업</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" onclick="call('POST','/admin/backup')">지금 백업</button>
-        <button onclick="dlBackup()">최근 백업 내려받기</button></div></div>
-    <div class="card"><div class="ch">리마인더</div>
-      <button onclick="call('POST','/admin/run-reminders')">모임 리마인더 지금 실행</button></div>
-  </div>
-
-  <div id="out"></div>
-</div>
+<div class="tabs" id="tabs"></div>
+<div id="body"></div>
+<div id="toast"></div>
 
 <script>
+const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['reports','신고'],['payouts','정산'],['banners','배너'],['orders','결제'],['tools','도구']];
+let TAB='stats';
 const $=id=>document.getElementById(id);
-const H=()=>({ 'x-admin-key': $('key').value.trim() });
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-function say(t){ $('out').style.display='block'; $('out').textContent=typeof t==='string'?t:JSON.stringify(t,null,1); }
-function tab(el){ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===el));
-  document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('on', s.id==='sec-'+el.dataset.s)); }
-
-async function J(method, url, body){
-  const r=await fetch(url,{method,headers:{...H(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
-  const d=await r.json().catch(()=>({}));
-  if(r.status===403) throw new Error('키가 틀렸어요');
-  if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-  return d;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){const t=$('toast');t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2200);}
+const KEY=()=>localStorage.getItem('matsu_admin_key')||'';
+async function api(p,opt={}){
+  const r=await fetch(p,{...opt,headers:{'Content-Type':'application/json','x-admin-key':KEY(),...(opt.headers||{})}});
+  if(r.status===401||r.status===403) throw new Error('key');
+  if(!r.ok) throw new Error('http'+r.status);
+  const ct=r.headers.get('content-type')||'';
+  return ct.includes('json')?r.json():r;
 }
-async function call(m,u,b){ try{ say(await J(m,u,b)); }catch(e){ say('실패: '+e.message); } }
+function enter(){ localStorage.setItem('matsu_admin_key',$('key').value.trim()); render(); }
+function setTab(t){ TAB=t; render(); }
+function tabsHtml(){ $('tabs').innerHTML=TABS.map(([k,l])=>`<div class="tab ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</div>`).join(''); }
 
-async function boot(){
+async function render(){
+  tabsHtml();
+  const el=$('body'); el.innerHTML='<div class="card note">불러오는 중…</div>';
+  if(!KEY()){ el.innerHTML='<div class="card note">관리자 키를 입력하고 접속을 누르세요.</div>'; return; }
   try{
-    const s=await J('GET','/admin/stats');
-    $('app').style.display='block';
-    $('stats').innerHTML=Object.entries(s).map(([k,v])=>`<div class="stat"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('');
-    loadUsers(); loadClubs(); loadReports();
-  }catch(e){ alert(e.message.includes('키')?'키가 틀렸어요':'접속 실패 — server.js가 최신인지 확인 ('+e.message+')'); }
+    if(TAB==='stats'){
+      const s=await api('/admin/stats');
+      const cells=[['users','회원'],['clubs','클럽'],['posts','게시글'],['hidden','숨김 글'],['openReports','미처리 신고'],['matches','대전'],['paidOrders','결제 건수'],['revenueWon','매출(원)'],['cashIssued','발행 캐시']];
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">서비스 현황</div>
+        <div class="grid">${cells.map(([k,l])=>`<div class="stat"><b>${(s[k]??0).toLocaleString()}</b><span>${l}</span></div>`).join('')}</div></div>`;
+    }
+    if(TAB==='users'){
+      const us=await api('/admin/users');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">회원 ${us.length}명 <span class="pill">최근 200명</span></div>`+
+        us.map(u=>`<div class="item"><div class="tx"><b>${esc(u.name)}</b> <span class="pill">${esc(u.provider||'local')}</span>${u.premium?' <span class="pill g">프리미엄</span>':''}
+          <div class="d">#${u.id} · ${esc(u.region||'-')} · 레이팅 ${u.rating||1000} · 캐시 ${u.cash||0} · ${esc((u.created_at||'').slice(0,10))}</div></div>
+          <button class="sm ghost" onclick="act('/admin/users/${u.id}/suspend','POST','정지/해제')">정지·해제</button>
+          <button class="sm danger" onclick="if(confirm('회원 #${u.id} ${esc(u.name)} 를 삭제할까요? 되돌릴 수 없어요.'))act('/admin/users/${u.id}','DELETE','삭제')">삭제</button></div>`).join('')+`</div>`;
+    }
+    if(TAB==='clubs'){
+      const cs=await api('/admin/clubs');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">클럽 ${cs.length}개</div>`+
+        cs.map(c=>`<div class="item"><div class="tx"><b>${esc(c.name)}</b> <span class="pill">${esc(c.sport||'')}</span>${c.premium?' <span class="pill g">프리미엄</span>':''}
+          <div class="d">#${c.id} · 회원 ${c.member_count??'-'}명 · 소유 ${esc(c.owner_name||c.owner_id||'-')}</div></div>
+          <button class="sm ghost" onclick="act('/admin/clubs/${c.id}/premium','POST','프리미엄 토글',{premium:${c.premium?0:1}})">프리미엄</button>
+          <button class="sm danger" onclick="if(confirm('클럽 ${esc(c.name)} 삭제?'))act('/admin/clubs/${c.id}','DELETE','삭제')">삭제</button></div>`).join('')+`</div>`;
+    }
+    if(TAB==='reports'){
+      const rs=await api('/admin/reports');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">미처리 신고 ${rs.length}건</div>`+
+        (rs.length?rs.map(r=>`<div class="item"><div class="tx"><b>${esc(r.reason||'사유 없음')}</b> <span class="pill">${esc(r.target_type||'')}#${r.target_id||''}</span>
+          <div class="d">${esc(r.target&&r.target.title||'')} · 신고자 #${r.reporter_id||'-'} · ${esc((r.created_at||'').slice(0,16))}</div></div>
+          ${r.target_type==='post'?`<button class="sm danger" onclick="delAndResolve(${r.id},'/admin/posts/${r.target_id}')">글 삭제</button>`:''}
+          <button class="sm ghost" onclick="act('/admin/reports/${r.id}/resolve','POST','검토 완료',{action:'reviewed'})">검토</button>
+          <button class="sm ghost" onclick="act('/admin/reports/${r.id}/resolve','POST','기각',{action:'rejected'})">기각</button></div>`).join('')
+        :`<div class="note">쌓인 신고가 없어요 🙌</div>`)+`</div>`;
+    }
+    if(TAB==='payouts'){
+      const ps=await api('/admin/payouts');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">매니저 정산 대기 ${ps.length}건</div>
+        <div class="note" style="margin-bottom:8px">실제 계좌 이체 후 [이체 완료]를 누르면 매니저에게 알림이 가요. 정책: 경기 종료 후 3일 내 지급.</div>`+
+        (ps.length?ps.map(p=>`<div class="item"><div class="tx"><b>${esc(p.name||'회원')}</b> <b style="color:var(--coral-d)">${(p.amount||0).toLocaleString()}원</b>
+          <div class="d">${esc(p.bank||'계좌 미등록 — 회원에게 등록 요청')} · 요청 ${esc((p.created_at||'').slice(0,16))}</div></div>
+          <button class="sm" onclick="if(confirm('이체를 마치셨나요?'))act('/admin/payouts/${p.id}/paid','POST','완료 처리')">이체 완료</button></div>`).join('')
+        :`<div class="note">대기 중인 정산이 없어요.</div>`)+`</div>`;
+    }
+    if(TAB==='banners'){
+      const bs=await api('/admin/banners');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">홈 배너</div>
+        <div class="note" style="margin-bottom:8px">등록하면 앱 홈 첫 화면 히어로 자리에 노출돼요. 탭하면 랜딩 링크가 열려요.</div>
+        <input id="bnFile" type="file" accept="image/*" style="margin-bottom:8px">
+        <input id="bnLink" placeholder="랜딩 링크 예) https://… 또는 mailto:…" style="margin-bottom:10px">
+        <button onclick="bannerAdd()">배너 등록</button></div>
+        <div class="card">`+
+        (bs.length?bs.map(b=>`<div class="item"><img class="bn" src="${esc(b.image)}">
+          <div class="tx"><div class="d">${esc(b.link||'링크 없음')} · ${esc((b.created_at||'').slice(0,16))}</div></div>
+          <button class="sm danger" onclick="if(confirm('배너를 내릴까요?'))act('/admin/banners/${b.id}','DELETE','삭제')">삭제</button></div>`).join('')
+        :`<div class="note">등록된 배너가 없어요 — 없으면 인사 히어로가 보여요.</div>`)+`</div>`;
+    }
+    if(TAB==='orders'){
+      const os=await api('/admin/orders');
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">결제 ${os.length}건 <span class="pill">최근 200건</span></div>`+
+        (os.length?os.map(o=>`<div class="item"><div class="tx"><b>${(o.amount||0).toLocaleString()}원</b>
+          <span class="pill ${o.status==='paid'?'g':o.status==='refunded'?'r':''}">${esc(o.status||'')}</span>
+          <div class="d">${esc(o.name||'회원')} · ${esc(o.order_id||'')} · 캐시 ${o.cash||0} · ${esc((o.created_at||'').slice(0,16))}</div></div>
+          ${o.status==='paid'?`<button class="sm danger" onclick="if(confirm('이 결제를 환불할까요?'))act('/admin/orders/${encodeURIComponent(o.order_id)}/refund','POST','환불 요청')">환불</button>`:''}</div>`).join('')
+        :`<div class="note">결제 내역이 없어요.</div>`)+`</div>`;
+    }
+    if(TAB==='tools'){
+      const purge=await api('/admin/purge-list').catch(()=>[]);
+      el.innerHTML=`<div class="card"><div class="ch" style="margin-top:0">도구</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px">
+          <button class="ghost" onclick="act('/admin/backup','POST','백업 실행')">DB 백업 실행</button>
+          <button class="ghost" onclick="dlBackup()">최신 백업 내려받기</button>
+          <button class="ghost" onclick="act('/admin/run-reminders','POST','리마인더 발송')">모임 리마인더 발송</button>
+        </div></div>
+        <div class="card"><div class="ch" style="margin-top:0">탈퇴 예정(퍼지 대기) ${purge.length}명</div>`+
+        (purge.length?purge.map(u=>`<div class="item"><div class="tx"><b>${esc(u.name||('#'+u.id))}</b><div class="d">${esc((u.deleted_at||u.created_at||'').slice(0,16))}</div></div></div>`).join('')
+        :`<div class="note">대기 중인 계정이 없어요.</div>`)+`</div>`;
+    }
+  }catch(e){
+    el.innerHTML=`<div class="card note">${e.message==='key'?'키가 올바르지 않아요. 다시 입력해 주세요.':'불러오지 못했어요 ('+esc(e.message)+')'}</div>`;
+  }
 }
-
-async function loadUsers(){
-  try{
-    const us=await J('GET','/admin/users');
-    $('uCnt').textContent=us.length+'명';
-    $('users').innerHTML=us.slice(0,120).map(u=>`
-      <div class="row"><b>#${u.id} ${esc(u.name)}</b>
-        <span class="meta">${esc(u.provider||'')} · ${esc(u.sport||'')} ${u.suspended?'· <b style="color:#cf5418">정지</b>':''}</span>
-        <button onclick="call('POST','/admin/users/${u.id}/suspend').then(loadUsers)">${u.suspended?'해제':'정지'}</button></div>`).join('');
-  }catch(e){ $('users').innerHTML='<div class="meta">'+esc(e.message)+'</div>'; }
-  try{
-    const d=await J('GET','/admin/purge-list');
-    const su=d.suspended_users||[];
-    $('suCnt').textContent=su.length+'건';
-    $('susUsers').innerHTML=su.length?su.map(u=>`
-      <div class="row"><b>#${u.id} ${esc(u.name||'탈퇴한 회원')}</b>
-        <button class="danger" onclick="delUser(${u.id})">영구 삭제</button></div>`).join('')
-      :'<div class="meta" style="padding:6px 2px">정리할 계정이 없어요</div>';
-  }catch(e){ $('susUsers').innerHTML='<div class="meta">'+esc(e.message)+'</div>'; }
+async function act(p,method,label,body){
+  try{ await api(p,{method,body:body?JSON.stringify(body):undefined}); toast(label+' 완료'); render(); }
+  catch(e){ toast(label+' 실패'); }
 }
-
-async function loadClubs(){
-  try{
-    const d=await J('GET','/admin/purge-list');
-    const cs=d.clubs||[];
-    $('cCnt').textContent=cs.length+'개';
-    $('clubs').innerHTML=cs.length?cs.map(c=>`
-      <div class="row"><b>#${c.id} ${esc(c.name)}</b>
-        <span class="meta">${esc(c.sport||'')} · ${c.members}명</span>
-        <button class="danger" onclick="delClub(${c.id},'${esc(c.name)}')">영구 삭제</button></div>`).join('')
-      :'<div class="meta">클럽이 없어요</div>';
-  }catch(e){ $('clubs').innerHTML='<div class="meta">'+esc(e.message)+'</div>'; }
+async function delAndResolve(repId,delPath){
+  if(!confirm('신고된 글을 삭제하고 처리할까요?')) return;
+  try{ await api(delPath,{method:'DELETE'}); await api(`/admin/reports/${repId}/resolve`,{method:'POST',body:JSON.stringify({action:'removed'})});
+    toast('글 삭제 + 신고 처리 완료'); render(); }catch(e){ toast('처리 실패'); }
 }
-
-async function loadReports(){
-  try{
-    const rs=await J('GET','/admin/reports');
-    $('rCnt').textContent=rs.length+'건';
-    $('reports').innerHTML=rs.length?rs.map(r=>`
-      <div class="row"><b>#${r.id} ${esc(r.kind||'')} · ${esc(r.target||'')}</b>
-        <span class="meta">${esc(r.reason||'')}${r.resolved?' · 처리됨':''}</span>
-        ${r.resolved?'':`<button class="ok" onclick="call('POST','/admin/reports/${r.id}/resolve').then(loadReports)">처리</button>`}</div>`).join('')
-      :'<div class="meta">신고가 없어요</div>';
-  }catch(e){ $('reports').innerHTML='<div class="meta">'+esc(e.message)+'</div>'; }
-}
-
-async function delUser(id){
-  if(!confirm(`#${id} 계정을 영구 삭제할까요?\n관련 데이터가 모두 지워지고 복구할 수 없어요.`)) return;
-  try{ const d=await J('DELETE','/admin/users/'+id); say(`삭제됨: ${d.deleted}\n정리: ${(d.wiped||[]).join(', ')||'없음'}`); loadUsers(); }
-  catch(e){ say('실패: '+e.message); }
-}
-async function delClub(id,name){
-  const typed=prompt(`정말 삭제하려면 클럽 이름을 그대로 입력하세요:\n${name}`);
-  if(typed!==name){ if(typed!==null) alert('이름이 달라 취소했어요'); return; }
-  try{ const d=await J('DELETE','/admin/clubs/'+id); say(`삭제됨: ${d.deleted}\n정리: ${(d.wiped||[]).join(', ')||'없음'}`); loadClubs(); }
-  catch(e){ say('실패: '+e.message); }
-}
-async function premium(){
-  const id=+$('pmId').value; if(!id){ alert('클럽 id를 입력하세요'); return; }
-  try{ const d=await J('POST',`/admin/clubs/${id}/premium`,{months:+$('pmMonths').value});
-    say(`프리미엄 부여: 클럽 #${d.club_id} · ${new Date(d.premium_until).toLocaleDateString()}까지`); }
-  catch(e){ say('실패: '+e.message); }
+function bannerAdd(){
+  const f=$('bnFile').files&&$('bnFile').files[0];
+  const link=($('bnLink').value||'').trim();
+  if(!f){ toast('배너 이미지를 선택해 주세요'); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
+    try{
+      const cv=document.createElement('canvas'); const sc=Math.min(1,1400/img.width);
+      cv.width=img.width*sc; cv.height=img.height*sc;
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      await api('/admin/banners',{method:'POST',body:JSON.stringify({image:cv.toDataURL('image/jpeg',0.82),link})});
+      toast('배너를 등록했어요 · 홈에 바로 노출돼요'); render();
+    }catch(e){ toast('등록하지 못했어요'); }
+  }; img.src=rd.result; };
+  rd.readAsDataURL(f);
 }
 async function dlBackup(){
   try{
-    const r=await fetch('/admin/backup/latest',{headers:H()});
-    if(!r.ok) throw new Error('백업이 아직 없어요');
-    const b=await r.blob(); const a=document.createElement('a');
-    a.href=URL.createObjectURL(b); a.download='matsu-backup.db'; a.click();
-  }catch(e){ say('실패: '+e.message); }
+    const r=await fetch('/admin/backup/latest',{headers:{'x-admin-key':KEY()}});
+    if(!r.ok) throw 0;
+    const blob=await r.blob(); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='matsu-backup.db'; a.click();
+  }catch(e){ toast('백업 파일이 없어요'); }
 }
+$('key').value=KEY();
+render();
 </script>
 </body>
 </html>
