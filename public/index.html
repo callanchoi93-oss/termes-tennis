@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0730-M3';
+const BUILD='v0731-P1';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -7726,7 +7726,7 @@ function matchCards(list){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
-          ${[m.fmt,m.gd,(m.min_cnt>=m.cap?`${m.cap}명 모이면 확정`:`${m.cap}명 정원`),(m.min_cnt>=m.cap?null:`최소 ${m.min_cnt}명 성사`)].filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
+          ${(()=>{const w=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;return [(m.min_cnt>=m.cap?`${m.cap}명 모이면 확정`:`${m.cap}명 정원`),(m.min_cnt>=m.cap?null:`최소 ${m.min_cnt}명 성사`),`👩 여성 ${w}명`];})().filter(Boolean).map(c=>`<span style="font-size:11.5px;font-weight:800;color:#5a544b;background:#fff;border:1.5px solid #ece8e0;border-radius:11px;padding:4px 10px">${esc(String(c))}</span>`).join('')}
         </div>
       </div>
       <div style="padding:12px 18px 16px">
@@ -7820,8 +7820,8 @@ function openOmDetail(id){
       <span style="font-size:12px;font-weight:800;color:#8a7550">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
     <div class="ch">매치 정보</div>
     <div style="display:flex;flex-wrap:wrap;gap:12px 8px;padding:6px 2px 12px">
-      ${info('⭐','모든 레벨')}${info('⚧',m.gd?esc(m.gd):'남녀 모두')}
-      ${info('⏱','3시간')}${info('🎾',esc(m.fmt||'복식'))}
+      ${info('⭐','모든 레벨')}${info('⚧','남녀 모두')}
+      ${info('⏱','3시간')}${info('👩',`여성 ${(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length}명 참여`)}
       ${info('👥',`${m.cur||0}/${m.cap||0}명 · 전원 모이면 확정`)}${info('💳','신청 시 결제 · 30분 내 취소')}
     </div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
@@ -8342,8 +8342,9 @@ function openNewMatch(){
     <div class="fld"><label>읍/면/동 (선택)</label><input id="omDong" placeholder="예) 구갈동"></div>
     <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) ${OM_EX().loc}"></div>
 
-    <div class="fld"><label>형식</label>
-      <select id="omFmt">${SM().formats.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
+    <div class="fld"><label>구장 사진 (선택)</label>
+      <input id="omPhotoFile" type="file" accept="image/*" style="font-size:13px">
+      <div class="note" style="text-align:left;margin-top:4px">올리면 홈 매치 리스트에 사진이 함께 보여요</div></div>
 
     <div class="fld"><label>안내 (선택)</label>
       <textarea id="omNote" rows="6" placeholder="예) ${OM_EX().note}"></textarea></div>
@@ -8423,8 +8424,19 @@ async function createMatch(){
     await api('/open-matches',{method:'POST',body:JSON.stringify({
       sport:state.sport, dt:fmtMatchDate(start), start_at:start,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
-      loc, fmt:v('omFmt')||SM().formats[0], gd:gdFromFmt(v('omFmt')),
-      courts, court_cost, note })});
+      loc, fmt:'', gd:'남녀 모두',
+      courts, court_cost, note })}).then(async cm=>{
+      const f=(document.getElementById('omPhotoFile')||{}).files; const file=f&&f[0];
+      if(cm&&cm.id&&file){
+        await new Promise(done=>{ const rd=new FileReader();
+          rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
+            try{ const cv=document.createElement('canvas'); const sc=Math.min(1,1000/img.width);
+              cv.width=img.width*sc; cv.height=img.height*sc; cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+              const up=await api('/upload',{method:'POST',body:JSON.stringify({dataUrl:cv.toDataURL('image/jpeg',0.75)})});
+              await api(`/open-matches/${cm.id}/photo`,{method:'POST',body:JSON.stringify({url:up.url})});
+            }catch(e){} done(); }; img.src=rd.result; }; rd.readAsDataURL(file); });
+      }
+    });
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
     const m = String(e.message||'');
@@ -11514,7 +11526,7 @@ function homeRecClubs(){
 /* ═══ 플랩형 홈 — 퀵메뉴 · 날짜 선택 · 필터 · 그날 매치 리스트 ═══ */
 function _ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function selectHomeDay(ymd){ state._homeDay=ymd; renderHome(); }
-function hFlt(k){ if(k===1) state._hHide=(state._hHide===false); else state._hEve=!state._hEve; renderHome(); }
+function hFlt(k){ if(k===1) state._hHide=!(state._hHide===true); else state._hEve=!state._hEve; renderHome(); }
 function homeQuickMenu(){
   const t=_ymd(new Date());
   const q=(ic,l,fn)=>`<div onclick="${fn}" style="min-width:84px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:13px 6px;text-align:center;cursor:pointer;flex-shrink:0"><div style="font-size:25px">${ic}</div><div style="font-size:12px;font-weight:800;margin-top:5px">${l}</div></div>`;
@@ -11524,7 +11536,7 @@ function homeQuickMenu(){
 function homeMatchList(){
   if(!SERVER_OK) return '';
   const HD=state._homeDay||_ymd(new Date());
-  const hideC=state._hHide!==false, eve=!!state._hEve;
+  const hideC=state._hHide===true, eve=!!state._hEve;   // 기본: 지난 매치도 흐리게 보여준다
   const all=(HOME_OM_ALL||[]).filter(m=>{
     if(!m.start_at) return false; const d=new Date(m.start_at); if(isNaN(+d)) return false;
     if(_ymd(d)!==HD) return false;
@@ -11574,10 +11586,13 @@ function homeOpenMatches(){
   const L=HOME_OM||[];
   const tm=m=>{ const d=new Date(m.start_at||0); return isNaN(+d)?(m.dt||''):`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
   const cards=L.map(m=>{ const left=Math.max(0,(m.cap||0)-(m.cur||0)); const near=left>0&&left<=3;
-    return `<div onclick="openMatchCard(${m.id})" style="min-width:174px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:14px;cursor:pointer;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:7px"><b style="font-size:20px;letter-spacing:-.02em">${tm(m)}</b>${near?`<span style="font-size:10.5px;font-weight:900;color:#2f5bd6">확정임박</span>`:''}</div>
+    const dlab=(x=>{const d=new Date(x.start_at||0);return isNaN(+d)?'':`${d.getMonth()+1}/${d.getDate()}`})(m);
+    return `<div onclick="openMatchCard(${m.id})" style="min-width:174px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:0;overflow:hidden;cursor:pointer;flex-shrink:0">
+      ${m.photo?`<div style="height:52px;background:url('${esc(m.photo)}') center/cover"></div>`:''}
+      <div style="padding:${m.photo?'10px':'14px'} 14px 14px">
+      <div style="display:flex;align-items:center;gap:7px"><b style="font-size:20px;letter-spacing:-.02em">${tm(m)}</b><span style="font-size:11px;font-weight:900;color:var(--gray)">${dlab}</span>${near?`<span style="font-size:10.5px;font-weight:900;color:#2f5bd6">확정임박</span>`:''}</div>
       <div style="font-size:13px;font-weight:800;margin-top:6px;line-height:1.35;min-height:36px;overflow:hidden">${esc(m.loc||'')}</div>
-      <div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:5px">${m.cur||0}/${m.cap||0}명 · ${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</div></div>`;
+      <div style="font-size:11.5px;color:var(--gray);font-weight:700;margin-top:5px">${m.cur||0}/${m.cap||0}명 · ${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</div></div></div>`;
   }).join('');
   return `<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center"><span>⭐ ${esc(meName())} 님의 추천 매치</span><span onclick="go('match')" style="font-size:12.5px;color:var(--coral-d);font-weight:800;cursor:pointer">전체 보기 →</span></div>`+
     (L.length?`<div style="display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;-webkit-overflow-scrolling:touch">${cards}</div>`
