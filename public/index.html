@@ -1460,7 +1460,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0730-M2';
+const BUILD='v0730-M3';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -7736,17 +7736,18 @@ function matchCards(list){
         <div style="flex:1;min-width:0">
           <div class="om-hn">${esc(hostName)} <span class="om-htag">주최</span>${m.host_fp!=null?`<span onclick="event.stopPropagation();openFairplayInfo()" style="font-size:10px;font-weight:900;border-radius:8px;padding:3px 7px;cursor:pointer;background:${m.host_fp>=85?'#e6f3ec':m.host_fp>=70?'#fdf2dd':'#fceee4'};color:${m.host_fp>=85?'#2f7d4f':m.host_fp>=70?'#a5750d':'#cf5418'}">페어플레이 ${m.host_fp}점${m.host_fp_n?'':' · 신규'}</span>`:''}</div>
           <div class="om-hd">매니저 · 개설부터 운영까지 진행해요</div>
+        </div>
       </div>
 
-      ${m.manager?`<div class="om-hd" style="margin-top:3px">🎽 ${esc(m.manager.name)} 매니저가 진행해요</div>`:''}
       ${m.account?`<div class="om-bank" onclick="copyText('${esc(m.account).replace(/'/g,"\\'")}')">
         ${ic('receipt',13)} <span>${esc(m.account)}</span><em>복사</em></div>`:''}
       ${m.note?`<div class="om-note">${esc(m.note)}</div>`:''}
       <div class="rp-track" style="margin-top:10px"><i style="width:${pct}%"></i></div>
       <div class="rp-cap">${m.cur}/${m.cap}명 · ${m.min_cnt>=m.cap?`전원 모이면 확정`:`최소 ${m.min_cnt}명이면 성사`}${m.confirmed?' ✓':''}</div>
 
-      <div class="om-ppl">${m.players.map(p=>
-        `<span class="om-p ${m.host&&p.id===m.host.id?'host':''} ${p.id===myId?'me':''}">${esc(p.name)}</span>`).join('')}</div>
+      <div class="om-ppl">${(()=>{const c={};(m.players||[]).forEach(p=>{const f=levelOf(p.rating||1000).full;c[f]=(c[f]||0)+1;});
+        return Object.entries(c).map(([k,n])=>`<span class="om-p">${k}${n>1?` ×${n}`:''}</span>`).join('');})()}
+        ${m.joined?`<span class="om-p me">나 ✓</span>`:''}</div>
 
       <div class="om-foot" onclick="event.stopPropagation();openOmDetail(${m.id})" style="cursor:pointer">
         <span class="om-re">♥ <b>${m.likes||0}</b></span>
@@ -7827,8 +7828,10 @@ function openOmDetail(id){
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
         <div style="font-size:11.5px;color:var(--gray);font-weight:700">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
-    ${(m.players||[]).length?`<div class="ch">참가자 ${m.cur||m.players.length}명</div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;padding:4px 0 12px">${m.players.map(p=>`<span style="font-size:12.5px;font-weight:800;background:${p.id===(m.host&&m.host.id)?'#fdeee7':'#f1eee8'};color:${p.id===(m.host&&m.host.id)?'var(--coral-d)':'#5a544b'};border-radius:16px;padding:6px 12px">${esc(p.name)}</span>`).join('')}</div>`:''}
+    ${(m.players||[]).length?(()=>{const c={};m.players.forEach(p=>{const l=levelOf(p.rating||1000);const key=l.tier;c[key]=(c[key]||0)+1;});
+      const col={'그랜드슬램':'#1b1813','투어':'#e5493a','챌린저':'#2f6fed','퓨처스':'#f2b90d'};
+      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="font-size:11px;font-weight:700;color:var(--lgray)">레벨 구성</span></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;padding:4px 0 12px">${Object.entries(c).map(([k,n])=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;background:#f6f4ef;border-radius:16px;padding:6px 12px"><span style="width:9px;height:9px;border-radius:3px;background:${col[k]||'#8a8378'}"></span>${k} ${n}명</span>`).join('')}${m.joined?`<span style="font-size:12.5px;font-weight:900;color:#1f7d4d;background:#e7f4ec;border-radius:16px;padding:6px 12px">나 참가중 ✓</span>`:''}</div>`;})():''}
     ${m.note?`<div class="ch">안내</div><div style="font-size:13.5px;color:#4a463f;font-weight:600;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
   // ── 액션 ──
   const acts=[];
