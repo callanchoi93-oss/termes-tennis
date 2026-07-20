@@ -8186,20 +8186,35 @@ async function submitReview(mid, uid){
 }
 
 /* ── 오픈매치 초대장: 프레첼 패턴 히어로 + 브랜드 컬러 카드 ── */
+const OM_PAT = (()=>{                      // 여백 없이 꽉 채운 프레첼 패턴
+  const W=900, H=420, tw=96, gx=22, gy=15, th=96;
+  let tiles='', col=0;
+  for(let x=-tw; x<W+tw; x+=tw+gx, col++){
+    const y0 = (col%2===0) ? -th/2 : -th/2 + (th+gy)/2;
+    let row=0;
+    for(let y=y0; y<H+th; y+=th+gy, row++){
+      const deg = ((col+row)%2===0) ? 12 : -12;
+      const cx=x+tw/2, cy=y+th/2;
+      tiles+=`<image href="${PZ_ORIG}" x="${x}" y="${y}" width="${tw}" transform="rotate(${deg} ${cx} ${cy})"/>`;
+    }
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+    <rect width="${W}" height="${H}" fill="#f7dfad"/>${tiles}</svg>`;
+})();
 function openOmInvite(id){
   const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
   const region=[m.sido,m.sigungu,m.dong].filter(Boolean).join(' ')||'지역 미지정';
   const price=(m.price||0)?m.price.toLocaleString()+'원':'무료';
   const mgr=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
-  const chip='display:inline-block;background:rgba(255,255,255,.94);border-radius:12px;padding:4px 12px;box-shadow:0 2px 8px rgba(60,40,20,.10)';
+  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(60,40,20,.18)';
   const h=`<div class="sh-top"><h3>오픈매치 초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
   <div style="border-radius:22px;overflow:hidden;border:1px solid #f0e6d4;background:#fff">
-    <div style="position:relative">
-      <div style="height:196px;overflow:hidden">${GL_WAVE.replace('class="gl-wave"','style="width:100%;height:196px;display:block" preserveAspectRatio="xMidYMid slice"')}</div>
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:0 18px;text-align:center">
-        <span style="${chip};font-size:12px;font-weight:800;color:#cf5418;letter-spacing:.02em">오픈매치 초대장</span>
-        <span style="${chip};font-size:23px;font-weight:900;letter-spacing:-.02em;color:#1c1b18;max-width:100%;padding:7px 16px;line-height:1.25">${esc(m.loc||'오픈매치')}</span>
-        <span style="${chip};font-size:12.5px;font-weight:700;color:#6b6154">함께 칠 사람을 찾고 있어요</span>
+    <div style="position:relative;height:210px">
+      ${OM_PAT}
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 20px;text-align:center">
+        <span style="font-size:13px;font-weight:900;color:#cf5418;letter-spacing:.03em;${OL}">오픈매치 초대장</span>
+        <span style="font-size:26px;font-weight:900;letter-spacing:-.02em;color:#1c1b18;line-height:1.25;${OL}">${esc(m.loc||'오픈매치')}</span>
+        <span style="font-size:13px;font-weight:800;color:#6b5138;${OL}">함께 칠 사람을 찾고 있어요</span>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:20px 22px 6px">
@@ -8213,11 +8228,45 @@ function openOmInvite(id){
     <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
     <div style="padding:16px 18px 18px">
       <button class="btn" onclick="shareMatch(${m.id})">초대장 링크 공유하기</button>
-      <div class="note" style="text-align:center;margin-top:10px">링크를 받은 분은 이 매치로 바로 들어와요</div>
+      <div class="note" style="text-align:center;margin-top:10px">링크를 받은 분에게 이 초대장이 먼저 보이고, 참석하기를 누르면 매치로 들어와요</div>
     </div>
   </div>`;
   document.getElementById('sheet').innerHTML=`<div class="om-detail">${h}</div>`;
   document.getElementById('ov').classList.add('on');
+}
+/* 링크로 들어온 사람에게 보이는 랜딩 초대장 — 참석하기 → 해당 매치 상세 */
+function showOmInviteLanding(id){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return false;
+  const region=[m.sido,m.sigungu,m.dong].filter(Boolean).join(' ')||'지역 미지정';
+  const price=(m.price||0)?m.price.toLocaleString()+'원':'무료';
+  const mgr=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
+  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(60,40,20,.18)';
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+  <div style="border-radius:22px;overflow:hidden;border:1px solid #f0e6d4;background:#fff;margin-top:6px">
+    <div style="position:relative;height:220px">
+      ${OM_PAT}
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 20px;text-align:center">
+        <span style="font-size:13px;font-weight:900;color:#cf5418;letter-spacing:.03em;${OL}">오픈매치 초대장</span>
+        <span style="font-size:26px;font-weight:900;letter-spacing:-.02em;color:#1c1b18;line-height:1.25;${OL}">${esc(m.loc||'오픈매치')}</span>
+        <span style="font-size:13px;font-weight:800;color:#6b5138;${OL}">함께 칠 사람을 찾고 있어요</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:20px 22px 6px">
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">일시</b><div style="font-size:14.5px;font-weight:700">${fmtRange?fmtRange(m.start_at,m.end_at,m.dt):esc(m.dt||'')}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">지역</b><div style="font-size:14.5px;font-weight:700">${esc(region)}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">참가비</b><div style="font-size:14.5px;font-weight:700;color:var(--coral-d)">${price}</div></div>
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">모집</b><div style="font-size:14.5px;font-weight:700">${m.cur||0}/${m.cap||0}명 · 전원 확정</div></div>
+      ${mgr?`<div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">매니저</b><div style="font-size:14.5px;font-weight:700">${esc(mgr)}</div></div>`:''}
+      <div><b style="display:block;font-size:12.5px;color:var(--gray);font-weight:800;margin-bottom:4px">레벨</b><div style="font-size:14.5px;font-weight:700">모든 레벨 · 남녀 모두</div></div>
+    </div>
+    <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
+    <div style="padding:16px 18px 18px">
+      <button class="btn" onclick="closeOv();openOmDetail(${m.id})">참석하기</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="closeOv()">둘러보기만 할게요</button>
+    </div>
+  </div></div>`;
+  document.getElementById('ov').classList.add('on');
+  return true;
 }
 /* 오픈매치 공유 — 링크를 받은 사람이 그 매치로 바로 온다 */
 function shareMatch(id){
@@ -8231,8 +8280,9 @@ function shareMatch(id){
 }
 async function handleMatchLink(id){
   go('match');
-  // 목록이 로드될 때까지 잠깐 기다렸다가 해당 카드로 스크롤
+  // 목록이 로드되면: ① 초대장을 먼저 보여주고 ② 참석하기 → 매치 상세, 실패 시 카드로 스크롤
   for(let i=0;i<20;i++){
+    if(showOmInviteLanding(id)) return;
     const el=document.getElementById('omc'+id);
     if(el){
       el.scrollIntoView({behavior:'smooth', block:'center'});
@@ -11627,7 +11677,7 @@ function _renderMeCore(){
         <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
       </div></div></div>
   <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
-    <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()} 캐시</b></div>
+    <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
     <button class="btn sm" style="width:auto;padding:10px 18px;background:#fff;color:#cf5418;border:none" onclick="openStore()">충전하기</button></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
   ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()'],['정산 계좌 · 매니저 정산','openBankSetup()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
