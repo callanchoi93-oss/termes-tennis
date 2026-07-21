@@ -617,7 +617,7 @@ app.patch('/clubs/:id/grades', auth, (req, res) => {
   const g = (req.body && req.body.grades) || {};
   const st = db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?');
   Object.entries(g).forEach(([uid, v]) => {
-    const gv = ['A', 'B', 'C'].includes(String(v)) ? String(v) : null;
+    const gv = ['S', 'A', 'B', 'C'].includes(String(v)) ? String(v) : null;
     st.run(gv, cid, intOrNull(uid));
   });
   res.json({ ok: true, n: Object.keys(g).length });
