@@ -735,6 +735,14 @@ app.get('/clubs/:id/bracket2', auth, (req, res) => {
   const row = db.prepare('SELECT data, updated_at FROM club_brackets WHERE club_id=?').get(cid);
   res.json(row ? { ...JSON.parse(row.data), updated_at: row.updated_at } : null);
 });
+try { db.exec(`CREATE TABLE IF NOT EXISTS club_bracket_logs (
+  id INTEGER PRIMARY KEY, club_id INTEGER, date TEXT, data TEXT, updated_at INTEGER,
+  UNIQUE(club_id, date))`); } catch (e) {}
+function cbLog(cid, data) {                                    // 같은 날짜는 최신으로 덮어써 시즌 기록에 쌓인다
+  try { db.prepare(`INSERT INTO club_bracket_logs (club_id,date,data,updated_at) VALUES (?,?,?,?)
+    ON CONFLICT(club_id,date) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+    .run(cid, String(data.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10), JSON.stringify(data), now()); } catch (e) {}
+}
 app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원만
   const cid = +req.params.id;
   const role = cbRole(cid, req.uid);
@@ -743,7 +751,14 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
   db.prepare(`INSERT INTO club_brackets (club_id,data,updated_at) VALUES (?,?,?)
     ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
     .run(cid, JSON.stringify(data), now());
+  cbLog(cid, data);
   res.json({ ok: true });
+});
+app.get('/clubs/:id/bracket2/logs', auth, (req, res) => {     // 시즌 기록 — 클럽 멤버
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=? ORDER BY date DESC LIMIT 60').all(cid);
+  res.json(rows.map(r => ({ date: r.date, data: JSON.parse(r.data) })));
 });
 app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — 당사자 또는 임원
   const cid = +req.params.id;
@@ -761,6 +776,7 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
   g.by = req.uid; g.at = now();
   db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
+  cbLog(cid, data);
   res.json({ ok: true, game: g });
 });
 app.get('/clubs/:id/roster', (req, res) => {
