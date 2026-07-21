@@ -7907,6 +7907,7 @@ function openOmDetail(id){
   const closed=(m.status&&m.status!=='open')||m.past||(m.start_at&&Date.parse(m.start_at)<Date.now());
   const mgrName=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
   const info=(ic,l)=>`<div class="om-info" style="display:flex;align-items:center;gap:9px;min-width:0"><span style="font-size:17px;display:inline-flex;align-items:center;flex-shrink:0">${ic}</span><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</b></div>`;
+  const _durH=(m.start_at&&m.end_at)?Math.max(2,Math.min(3,Math.round((new Date(m.end_at)-new Date(m.start_at))/3600e3))):3;
   let h=`<div class="om-detail"><div class="sh-top"><h3>매치 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   const _ph=(m.photos&&m.photos.length?m.photos:(m.photo?[m.photo]:[]));
   if(_ph.length) h+=`<div style="position:relative;margin-bottom:14px">
@@ -7923,8 +7924,9 @@ function openOmDetail(id){
     <div class="ch">매치 정보</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:6px 2px 14px;align-items:center">
       ${info(im('star'),'모든 레벨')}${info(`<span style="display:inline-flex;align-items:center">${im('tennisM',20)}<span style="margin-left:-6px;display:inline-flex">${im('girl',20)}</span></span>`,'남녀 모두')}
-      ${info(im('clock'),'3시간')}${info(im('group'),`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
+      ${info(im('clock'),`${_durH}시간`)}${info(im('group'),`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
     </div>
+    <div class="om-note" style="margin:-2px 0 12px">경기 룰 · ${_durH===2?'5:5는 동점으로 종료해요 (노 매치포인트)':'5:5가 되면 6게임째로 승부를 가려요'}</div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
@@ -7956,7 +7958,7 @@ function openOmDetail(id){
     acts.push(`<div class="ch" style="margin-top:6px">매니저 메뉴</div>`);
     if(m.manager_fee) acts.push(`<div style="background:#f6f4ef;border-radius:14px;padding:13px 15px;font-size:13px;font-weight:800;color:#5a544b;display:flex;justify-content:space-between;align-items:center">
       <span>내 정산 <span style="font-size:10.5px;font-weight:700;color:var(--lgray)">매니저에게만</span></span>
-      <span style="text-align:right"><b style="color:var(--coral-d);font-size:16px">${(m.manager_fee||0).toLocaleString()}원</b><br><span style="font-size:10.5px;color:var(--lgray)">경기 종료 후 3일 내 지급</span></span></div>`);
+      <span style="text-align:right"><b style="color:var(--coral-d);font-size:16px">${(m.manager_fee||0).toLocaleString()}원</b><br><span style="font-size:10.5px;color:var(--lgray)">코트·캔볼 당일 · 수고비 3일 내 지급</span></span></div>`);
     acts.push(`<button class="btn ghost" onclick="omMakeBracket(${m.id})">대진 짜기 <span style="font-weight:700;font-size:11px;color:var(--lgray)">· 4명부터</span></button>`);
     if(closed) acts.push(`<button class="btn ghost" onclick="openOmAssess(${m.id})">참가자 등급 평가</button>`);
     if(closed&&m.manager_fee&&!m.settled) acts.push(`<button class="btn ghost" onclick="omSettle(${m.id})">정산 요청</button>`);
@@ -7965,7 +7967,6 @@ function openOmDetail(id){
     if(!closed) acts.push(`<button class="btn ghost" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button>`);
     acts.push(`<button class="btn ghost" style="color:#c8452c" onclick="deleteMatch(${m.id});closeOv()">매치 삭제</button>`);
   }
-  if(localStorage.getItem('matsu_admin_key')) acts.push(`<button class="btn ghost" onclick="omAddBots(${m.id})">봇 참가자 추가 · 운영자</button>`);
   acts.push(`<button class="btn ghost" onclick="openOmInvite(${m.id})">초대장 공유</button>`);
   acts.push(`<button class="btn ghost" onclick="likeMatch(${m.id})">찜하기</button>`);
   h+=`<div style="display:grid;gap:9px;margin-top:6px">${acts.join('')}</div></div>`;
@@ -8095,7 +8096,7 @@ function openOmBracket(id){
   const team=(names,c)=>`<div style="flex:1;background:${c};border-radius:10px;padding:7px 6px;text-align:center">
       ${(names||[]).map(n=>`<div style="font-size:12.5px;font-weight:800;color:#fff;padding:1px 0;letter-spacing:-.01em">${esc(n)}</div>`).join('')||'<div style="color:#fff;opacity:.7;font-size:11px">—</div>'}</div>`;
   const h=`<div class="sh-top"><h3>대진표</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">${esc(m.loc||'')} · ${esc(m.bracket.made_by||'')} 매니저 편성 · 전원 4게임 · 인접 등급 매칭</div>`+
+    <div class="sd">${esc(m.loc||'')} · ${esc(m.bracket.made_by||'')} 매니저 편성 · 인접 등급 매칭<br>${(()=>{const dh=(m.start_at&&m.end_at)?Math.round((new Date(m.end_at)-new Date(m.start_at))/3600e3):3;return dh===2?'2시간 룰 — 5:5는 동점으로 종료 (노 매치포인트)':'3시간 룰 — 5:5가 되면 6게임째로 승부';})()}</div>`+
     (m.bracket.courts||[]).map(ct=>{
       const rounds=ct.rounds||(ct.a?[{a:ct.a,b:ct.b}]:[]);
       return `<div style="background:#fff;border:1px solid var(--line);border-radius:18px;padding:13px;margin-top:12px;box-shadow:0 1px 2px rgba(20,18,12,.03)">
@@ -8228,19 +8229,6 @@ async function submitReview(mid, uid){
   }
 }
 
-/* 운영자: 외부 인원(봇)으로 오픈매치 채우기 — 서버에 /admin 라우트 필요 */
-async function omAddBots(id){
-  const key=localStorage.getItem('matsu_admin_key');
-  if(!key){ toast('admin.html에서 관리자 키로 먼저 접속해 주세요'); return; }
-  const v=prompt('추가할 참가자 이름을 쉼표로 구분해 입력하세요\n예: 김철수, 이영희, 박민수');
-  if(!v) return;
-  const names=v.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20);
-  if(!names.length) return;
-  try{
-    const r=await api(`/admin/open-matches/${id}/bots`,{method:'POST',headers:{'x-admin-key':key},body:JSON.stringify({names})});
-    toast(`${(r&&r.added)||0}명을 추가했어요`); omReload();
-  }catch(e){ toast(String(e.message||'').includes('admin_only')?'관리자 키가 달라요':'서버에 봇 라우트를 추가해 주세요 (admin.html 하단 참고)'); }
-}
 /* ── 오픈매치 초대장: 프레첼 패턴 히어로 + 브랜드 컬러 카드 ── */
 const OM_PAT = (()=>{                      // 여백 없이 꽉 채운 프레첼 패턴
   const W=900, H=420, tw=96, gx=22, gy=15, th=96;
@@ -8599,12 +8587,20 @@ async function openMatches(){
 }
 function omCalc(){
   const box=document.getElementById('omCalcBox'); if(!box) return;
-  const c=+((document.getElementById('omCourts')||{}).value||3);
-  const cost=parseInt((((document.getElementById('omCourtCost')||{}).value)||'').replace(/[^0-9]/g,''),10)||0;
-  const cap=c*6;
-  if(!cost){ box.innerHTML=`정원 <b>${cap}명</b> · 전원 모이면 확정 · 예약 금액을 넣으면 인당 참가비가 계산돼요`; return; }
-  const per=Math.ceil((cost/cap+9000)/500)*500;
-  box.innerHTML=`인당 <b style="color:var(--coral-d);font-size:15px">${per.toLocaleString()}원</b> = 구장 1/${cap} ${Math.round(cost/cap).toLocaleString()}원 + 운영·공 9,000원<br><span style="color:var(--lgray)">정원 ${cap}명 전원 모이면 확정 · 3시간</span>`;
+  const c=3;
+  const h=+((document.getElementById('omHours')||{}).value||3);
+  const num=id=>parseInt((((document.getElementById(id)||{}).value)||'').replace(/[^0-9]/g,''),10)||0;
+  const hourCost=num('omHourCost'), ballCost=num('omBallCost');
+  const cap=c*(h===2?4:6);
+  const cost = hourCost*c*h + ballCost*c;               // 총원가 = 코트비 + 캔볼(코트당 1캔)
+  const per=Math.ceil(cost/cap/500)*500 + 11000;
+  const fee=10320*h;                                    // 일반 매니저 수고비 = 시간당 10,320원 (최저시급 연동)
+  const rule=h===2?'5:5는 동점 종료 (노 매치포인트)':'5:5면 6게임째로 승부';
+  box.innerHTML=`인당 <b style="color:var(--coral-d);font-size:15px">${per.toLocaleString()}원</b>
+    <span style="color:var(--lgray)">= (코트 ${(hourCost*c*h).toLocaleString()} + 캔볼 ${(ballCost*c).toLocaleString()}) ÷ ${cap}명 + 서비스요금 11,000원</span><br>
+    <span style="color:var(--lgray)">정원 ${cap}명 · ${h}시간 · ${rule}</span><br>
+    예측 정산액 <b style="color:var(--coral-d)">${(cost+fee).toLocaleString()}원</b>
+    <span style="color:var(--lgray)">= 코트·캔볼 환급 ${cost.toLocaleString()} (경기 당일) + 수고비 ${fee.toLocaleString()} (시간당 10,320원 · 3일 내)</span>`;
 }
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
@@ -8614,17 +8610,23 @@ function openNewMatch(){
     <div style="background:#fdf6ec;border:1.5px solid #f0e2c8;border-radius:16px;padding:13px 14px;margin:2px 0 12px">
       <b style="font-size:13.5px">🎽 매니저 가이드</b>
       <div style="font-size:12.5px;color:#6b5b3f;font-weight:700;margin-top:6px;line-height:1.55">
-        · 구장을 예약하고 <b>예약 금액만</b> 적으세요 — 인당 참가비가 자동 계산돼요<br>
-        · 매치는 <b>시작부터 3시간</b>, 코트당 6명이 <b>전원 모여야 확정</b>돼요<br>
+        · <b>3코트 전용</b> — 2시간 12명 · 3시간 18명, 전원 모여야 확정돼요<br>
+        · 코트 시간당 비용·캔볼 가격만 넣으면 <b>참가비와 예측 정산액이 자동 계산</b>돼요<br>
+        · 매니저는 <b>경기에 참여하지 않고 운영만</b> 해요 (개설자 = 매니저 1명)<br>
+        · 정산 = 코트·캔볼 <b>당일 환급</b> + 수고비 시간당 10,320원 (종료 후 3일 내)<br>
+        · 경기 룰: <b>2시간은 5:5 동점 종료</b>(노 매치포인트) · <b>3시간은 5:5면 6게임째 승부</b><br>
         · 참가비는 신청 시 결제 · <b>30분 안에 취소하지 않으면 확정</b>이에요<br>
         · 종료 후 <b>참가자 등급 평가</b>는 매니저 몫 — 미배치 선수는 바로 배치돼요</div></div>
 
-    <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 자동 +3시간</span></label><input id="omStart" type="datetime-local" step="900"></div>
+    <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 선택한 시간만큼 자동</span></label><input id="omStart" type="datetime-local" step="900"></div>
 
     <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>예약 코트 수</label>
-        <select id="omCourts" onchange="omCalc()"><option value="1">1코트 · 6명</option><option value="2">2코트 · 12명</option><option value="3" selected>3코트 · 18명</option></select></div>
-      <div class="fld" style="flex:1.3"><label>구장 예약 금액 (원)</label><input id="omCourtCost" inputmode="numeric" placeholder="예) 252000" oninput="omCalc()"></div>
+      <div class="fld" style="flex:1"><label>진행 시간 <span style="font-weight:600;color:var(--lgray)">· 3코트 고정</span></label>
+        <select id="omHours" onchange="omCalc()"><option value="2">2시간 · 12명</option><option value="3" selected>3시간 · 18명</option></select></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>코트 시간당 비용 (원)</label><input id="omHourCost" inputmode="numeric" placeholder="예) 30000 · 무료면 0" oninput="omCalc()"></div>
+      <div class="fld" style="flex:1"><label>캔볼 가격 (원/캔)</label><input id="omBallCost" inputmode="numeric" value="9000" oninput="omCalc()"></div>
     </div>
     <div id="omCalcBox" style="background:#f6f4ef;border-radius:14px;padding:11px 13px;font-size:13px;font-weight:700;color:#5a544b;margin:-2px 0 12px"></div>
 
@@ -8713,7 +8715,8 @@ async function createMatch(){
   const bad = findContact(`${loc} ${note} ${dong}`);
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
-  const courts = num('omCourts')||3, court_cost = num('omCourtCost');
+  const courts = 3, hours = num('omHours')||3;
+  const court_cost = num('omHourCost')*3*hours + num('omBallCost')*3;   // 캔볼 포함 총원가
   try{
     try{
       const fp=await api('/me/fairplay');
@@ -8723,7 +8726,7 @@ async function createMatch(){
       sport:state.sport, dt:fmtMatchDate(start), start_at:start,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
       loc, fmt:'', gd:'남녀 모두',
-      courts, court_cost, note })}).then(async cm=>{
+      courts, court_cost, hours, note })}).then(async cm=>{
       const fl=Array.from(((document.getElementById('omPhotoFile')||{}).files)||[]).slice(0,6);
       if(cm&&cm.id&&fl.length){
         const urls=[];
