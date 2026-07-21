@@ -7907,8 +7907,8 @@ function openOmDetail(id){
   const isMgr=m.is_host||(m.manager&&m.manager.id===me);
   const closed=(m.status&&m.status!=='open')||m.past||(m.start_at&&Date.parse(m.start_at)<Date.now());
   const mgrName=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
-  const info=(ic,l)=>`<div class="om-info" style="display:flex;align-items:center;gap:9px;min-width:0"><span style="font-size:17px;display:inline-flex;align-items:center;flex-shrink:0">${ic}</span><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l}</b></div>`;
-  const _durH=(m.start_at&&m.end_at)?Math.max(2,Math.min(3,Math.round((new Date(m.end_at)-new Date(m.start_at))/3600e3))):3;
+  const info=(k,l)=>`<div class="om-info" style="min-width:0"><i style="display:block;font-style:normal;font-size:10.5px;font-weight:800;color:var(--lgray);margin-bottom:3px;letter-spacing:.01em">${k}</i><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px">${l}</b></div>`;
+  const _durH=(m.start_at&&m.end_at)?(Math.round((new Date(m.end_at)-new Date(m.start_at))/3600e3)||3):3;
   let h=`<div class="om-detail"><div class="sh-top"><h3>매치 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   const _ph=(m.photos&&m.photos.length?m.photos:(m.photo?[m.photo]:[]));
   if(_ph.length) h+=`<div style="position:relative;margin-bottom:14px">
@@ -7917,15 +7917,15 @@ function openOmDetail(id){
     ${_ph.length>1?`<span style="position:absolute;right:10px;bottom:10px;background:#1b1813cc;color:#fff;font-size:11px;font-weight:800;border-radius:12px;padding:4px 10px">${_ph.length}장 · 옆으로 넘겨보세요</span>`:''}</div>`;
   h+=`<div class="om-date">${fmtRange(m.start_at,m.end_at,m.dt)}</div>
     <div class="om-title">${esc(m.loc||'')}</div>
-    ${(m.sido||m.sigungu)?`<div class="om-meta">${im('location',13)} ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}</div>`:''}
-    <div class="om-react">${im('heart',12)} ${m.likes||0} &nbsp; ${im('msg',12)} ${m.comments||0}</div>
+    ${(m.sido||m.sigungu)?`<div class="om-meta">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}</div>`:''}
+    <div class="om-react">❤️ ${m.likes||0} &nbsp; 💬 ${m.comments||0}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
       <b class="om-price">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
       <span class="om-pricenote">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
     <div class="ch">매치 정보</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:6px 2px 14px;align-items:center">
-      ${info(im('star'),'모든 레벨')}${info(`<span style="display:inline-flex;align-items:center">${im('tennisM',20)}<span style="margin-left:-6px;display:inline-flex">${im('girl',20)}</span></span>`,'남녀 모두')}
-      ${info(im('clock'),`${_durH}시간`)}${info(im('group'),`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
+      ${info('레벨','모든 레벨')}${info('구성','남녀 모두')}
+      ${info('시간',`${_durH}시간`)}${info('모집',`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
     </div>
     <div class="om-note" style="margin:-2px 0 12px">경기 룰 · ${_durH===2?'5:5는 동점으로 종료해요 (노 매치포인트)':'5:5가 되면 6게임째로 승부를 가려요'}</div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
