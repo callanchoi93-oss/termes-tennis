@@ -299,6 +299,8 @@ app.post('/auth/kakao/code', limitLogin, async (req, res) => {
 try { db.exec("ALTER TABLE users ADD COLUMN sport_profile TEXT"); } catch (e) {}
 try { db.exec('ALTER TABLE users ADD COLUMN phone TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE users ADD COLUMN sport_started TEXT'); } catch (e) {}   // 종목별 시작 시점 {"tennis":"2019-05"}
+try { db.exec('ALTER TABLE users ADD COLUMN photos TEXT'); } catch (e) {}          // 프로필 사진 (JSON 배열)
+try { db.exec('ALTER TABLE users ADD COLUMN exp TEXT'); } catch (e) {}             // 구력 표기
 db.exec(`CREATE TABLE IF NOT EXISTS member_exits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
   reason TEXT, left_at INTEGER)`);
@@ -330,9 +332,12 @@ app.put('/me/sport-profile/:sport', auth, (req, res) => {
   all[sport] = clean;
   db.prepare('UPDATE users SET sport_profile=? WHERE id=?').run(JSON.stringify(all), req.uid);
   // 라켓 종목의 공통 항목은 users 컬럼에도 반영해 선수 비교에서 바로 쓴다
-  if (clean.handed)   db.prepare('UPDATE users SET handed=? WHERE id=?').run(clean.handed, req.uid);
-  if (clean.backhand) db.prepare('UPDATE users SET backhand=? WHERE id=?').run(clean.backhand, req.uid);
-  if (clean.style)    db.prepare('UPDATE users SET style=? WHERE id=?').run(clean.style, req.uid);
+  for (const k of ['handed', 'backhand', 'style', 'birth_year']) {
+    const v = k === 'birth_year' ? (parseInt(clean.birth, 10) || null) : clean[k];
+    if (!v) continue;
+    try { db.prepare(`UPDATE users SET ${k}=? WHERE id=?`).run(v, req.uid); }
+    catch (e) { try { db.exec(`ALTER TABLE users ADD COLUMN ${k} ${k === 'birth_year' ? 'INTEGER' : 'TEXT'}`); db.prepare(`UPDATE users SET ${k}=? WHERE id=?`).run(v, req.uid); } catch (_) {} }
+  }
   res.json({ ok: true, sport, profile: clean });
 });
 
@@ -537,7 +542,13 @@ app.patch('/me', auth, (req, res) => {
     vals.push(nums.includes(k) ? intOrNull(req.body[k])
       : typeof req.body[k]==='object' ? JSON.stringify(req.body[k]) : req.body[k]);
   }
-  if (sets.length) { db.prepare(`UPDATE users SET ${sets.join(',')} WHERE id=?`).run(...vals, req.uid); }
+  if (sets.length) {
+    try { db.prepare(`UPDATE users SET ${sets.join(',')} WHERE id=?`).run(...vals, req.uid); }
+    catch (e) {                                            // 옛 DB에 컬럼이 없으면 보강 후 재시도 (자가 복구)
+      allow.forEach(k => { try { db.exec(`ALTER TABLE users ADD COLUMN ${k} ${nums.includes(k) ? 'INTEGER' : 'TEXT'}`); } catch (_) {} });
+      db.prepare(`UPDATE users SET ${sets.join(',')} WHERE id=?`).run(...vals, req.uid);
+    }
+  }
   res.json(getUser(req.uid));
 });
 
@@ -1057,21 +1068,31 @@ try { db.exec('ALTER TABLE open_matches ADD COLUMN courts INTEGER'); } catch (e)
 try { db.exec('ALTER TABLE open_matches ADD COLUMN court_cost INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at TEXT'); } catch (e) {}
 /* 소셜 매치 요금 공식 — 구장 총액 1/n + 운영비(매니저·공·수수료) 9,000원, 500원 올림 */
+const OM_SVC = 11000;                                     // 인당 서비스요금 (쉐어 기준가의 원천)
 function omFee(courtCost, cap) {
-  if (!courtCost || !cap) return 0;
-  return Math.ceil((courtCost / cap + 9000) / 500) * 500;
+  if (!cap) return 0;
+  // 참가비 = 코트비 1/N + 서비스요금 11,000원
+  // 쉐어 기준가 S = 11,000 × 정원 → 플랫폼 30% 이상 · 일반 매니저 15% · 파트너 45%(≈9만) · 볼값·PG 실비
+  return Math.ceil((+courtCost || 0) / cap / 500) * 500 + OM_SVC;
 }
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
-  const _courts = Math.min(3, Math.max(0, +_b.courts || 0));
+  let _courts = Math.min(3, Math.max(0, +_b.courts || 0));
   if (_courts) {                                          // 코트 기반 소셜 매치 규칙
-    _b.cap = _courts * 6;
+    _courts = 3;                                          // 3코트 전용 (2h 12명 · 3h 18명)
+    const _hours = (+_b.hours === 2) ? 2 : 3;             // 2·3시간만
+    _b.courts = _courts;
+    _b.cap = _courts * (_hours === 2 ? 4 : 6);            // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
     _b.min_cnt = _b.cap;                                  // 전원 모여야 확정
     _b.price = omFee(+_b.court_cost || 0, _b.cap);        // 가격은 서버가 산정 (신뢰 지점)
-    if (_b.start_at) { const d = new Date(_b.start_at); if (!isNaN(+d)) _b.end_at = new Date(+d + 3 * 3600e3).toISOString(); } // 3시간 고정
+    if (_b.start_at) { const d = new Date(_b.start_at); if (!isNaN(+d)) _b.end_at = new Date(+d + _hours * 3600e3).toISOString(); }
     _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
     req.body = _b;
     req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
+    // 일반 매니저 수고비 = 시간당 10,320원(최저시급 연동, 쉐어 기준가의 약 15.6%) · 파트너 40%는 다음 업데이트
+    // 캔볼값은 클라이언트가 코트비에 합산해 보내므로 court_cost 환급에 포함된다
+    // 매니저 = 이 매치의 개설자 1명뿐 · 다른 매치에 참가자로 들어가면 그 매치 정산과는 무관하다
+    req._mgrPay = 10320 * _hours;
   }
   const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong, account } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
@@ -1084,12 +1105,12 @@ app.post('/open-matches', auth, (req, res) => {
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
          start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
          String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost));
-  if (req._autoManager) {                                 // 매니저 정산액 = 구장비 선지출 + 운영 수고비 20,000원
+  if (req._autoManager) {                                 // 매니저 정산액 = 구장·볼값 환급(당일) + 수고비(시간당 10,320원)
     db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
-      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + 20000, rid(r));
+      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 20000), rid(r));
   }
   const mid = rid(r);
-  db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+  // 매니저는 운영만 하고 경기에 참여하지 않는다 — 자동 참가 없음
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
 app.post('/open-matches/:id/join', auth, (req, res) => {
@@ -2049,8 +2070,8 @@ app.get('/matches', (req, res) => {
 // 개인 레이팅 랭킹 (리그 화면)
 app.get('/rankings', (req, res) => {
   const { sport } = req.query;
-  let sql = 'SELECT id,name,region,sport,rating,(wins+losses) AS games FROM users', p = [];
-  if (sport) { sql += ' WHERE sport=?'; p.push(sport); }
+  let sql = "SELECT id,name,region,sport,rating,(wins+losses) AS games FROM users WHERE provider!='bot'", p = [];
+  if (sport) { sql += ' AND sport=?'; p.push(sport); }
   res.json(db.prepare(sql + ' ORDER BY rating DESC LIMIT 50').all(...p));
 });
 // 대진 결과 → 내 레이팅 Elo 반영 (봇 상대 포함)
@@ -4070,17 +4091,24 @@ app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
   const mid = +req.params.id;
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
-  const names = ((req.body || {}).names || []).map(s => String(s).trim()).filter(Boolean).slice(0, 20);
+  const body = req.body || {};
+  const bots = (body.bots || (body.names || []).map(n => ({ name: n })))
+    .map(b => ({ name: String(b.name || '').trim(),
+                 gender: b.gender === '여성' ? '여성' : '남성',
+                 rating: Math.max(600, Math.min(1700, +b.rating || 1000)) }))
+    .filter(b => b.name).slice(0, 20);
   let added = 0;
-  for (const name of names) {
+  for (const b of bots) {
     const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
     if (cur >= (m.cap || 8)) break;                                   // 정원 초과 방지
-    const pid = 'bot:' + name;
+    const pid = 'bot:' + b.name;
     let u = db.prepare("SELECT id FROM users WHERE provider='bot' AND provider_id=?").get(pid);
     if (!u) {
-      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at)
-        VALUES ('bot',?,?,?,?)`).run(pid, name, name, now());
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,rating,sport,anon_nick,created_at)
+        VALUES ('bot',?,?,?,?,?,?,?)`).run(pid, b.name, b.gender, b.rating, m.sport || 'tennis', b.name, now());
       u = { id: r.lastInsertRowid };
+    } else {
+      db.prepare('UPDATE users SET gender=?, rating=? WHERE id=?').run(b.gender, b.rating, u.id);
     }
     const r2 = db.prepare(`INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at)
       VALUES (?,?,?)`).run(mid, u.id, now());
