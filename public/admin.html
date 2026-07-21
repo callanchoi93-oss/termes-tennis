@@ -140,12 +140,13 @@ async function render(){
       </div>
       <div class="card" id="botCard">
         <b style="font-size:14px">② 봇 참가자 추가</b>
-        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람의 이름을 넣으면 정원이 채워져요. 이름 옆 ×로 제거할 수 있어요.</div>
-        <textarea id="botNames" rows="2" placeholder="이름을 쉼표로 구분 · 예: 김철수, 이영희, 박민수"></textarea>
+        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람을 넣어요. 성별·레벨은 참가자 분포 차트와 대진 편성에 반영돼요.</div>
+        <div id="botRows"></div>
+        <button class="btn ghost xs" style="width:100%;margin-top:4px" onclick="addRow()">+ 인원 추가</button>
         <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBots()">추가하기</button>
         <div id="parts" style="margin-top:11px"></div>
       </div>`;
-      drawParts();
+      drawParts(); if(!document.querySelector('#botRows > div')) addRow();
     }
     else if(TAB==='reports'){
       const rows=await api('/admin/reports');
@@ -178,8 +179,8 @@ async function render(){
 }
 
 /* ── 액션들 ── */
-async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요? 되돌릴 수 없어요.`))return;
-  try{ await api('/admin/users/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
+async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`))return;
+  try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요 ('+String(e.message).slice(0,60)+')'); } }
 async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`))return;
   try{ await api('/admin/clubs/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
 async function resolveRep(id,action){ try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
@@ -206,13 +207,31 @@ function drawParts(){
     (ps.length? ps.map(p=>`<span class="pill ${p.provider==='bot'?'warn':'ok'}">${esc(p.name)}${p.provider==='bot'?' 🤖':''}
       <a style="cursor:pointer;font-weight:900;margin-left:3px" onclick="rmBot(${p.id})">×</a></span>`).join('') : '<div class="meta">아직 참가자가 없어요</div>');
 }
+const LV=[['러브 (배치 전)',1000],['퓨처스1 · 1.0~1.5',850],['퓨처스2 · 1.5~2.0',900],['퓨처스3 · 2.0',975],
+  ['챌린저1 · 2.5',1025],['챌린저2 · 2.5~3.0',1075],['챌린저3 · 3.0',1125],['챌린저4 · 3.0~3.5',1175],['챌린저5 · 3.5',1225],
+  ['투어1 · 3.5~4.0',1285],['투어2 · 4.0',1355],['투어3 · 4.5',1425],['그랜드슬램 · 5.0+',1500]];
+function addRow(){
+  const box=$('botRows'); if(!box) return;
+  const div=document.createElement('div');
+  div.style.cssText='display:flex;gap:6px;margin-bottom:7px';
+  div.innerHTML=`<input class="bn" placeholder="이름" style="flex:1.2">
+    <select class="bg" style="flex:.8;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:13px;background:#fff">
+      <option>남성</option><option>여성</option></select>
+    <select class="br" style="flex:1.4;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:12px;background:#fff">
+      ${LV.map(l=>`<option value="${l[1]}">${l[0]}</option>`).join('')}</select>
+    <a style="align-self:center;font-weight:900;color:#b3aea4;cursor:pointer;padding:0 3px" onclick="this.parentNode.remove()">×</a>`;
+  box.appendChild(div);
+}
 async function addBots(){
   if(!SEL){ toast('매치를 먼저 선택해 주세요'); return; }
-  const names=$('botNames').value.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20);
-  if(!names.length){ toast('이름을 입력해 주세요'); return; }
-  try{ const r=await api(`/admin/open-matches/${SEL}/bots`,{method:'POST',body:JSON.stringify({names})});
-    toast(`${r.added||0}명을 추가했어요`); $('botNames').value=''; render(); }
-  catch(e){ toast('추가하지 못했어요 · 하단 주석의 서버 코드를 확인해 주세요'); }
+  const bots=[...document.querySelectorAll('#botRows > div')].map(d=>({
+    name:d.querySelector('.bn').value.trim(),
+    gender:d.querySelector('.bg').value,
+    rating:+d.querySelector('.br').value })).filter(b=>b.name).slice(0,20);
+  if(!bots.length){ toast('인원 추가를 눌러 이름을 입력해 주세요'); return; }
+  try{ const r=await api(`/admin/open-matches/${SEL}/bots`,{method:'POST',body:JSON.stringify({bots})});
+    toast(`${r.added||0}명을 추가했어요`); $('botRows').innerHTML=''; addRow(); render(); }
+  catch(e){ toast('추가하지 못했어요 · 서버 배포를 확인해 주세요'); }
 }
 async function rmBot(uid){
   if(!SEL) return;

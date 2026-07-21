@@ -570,6 +570,7 @@
   .greet .gv-d{ font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px;line-height:1.5; }
   .greet .gv-s{ width:42px;height:42px;border-radius:50%;background:#ffffff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:var(--shadow-s);flex-shrink:0;cursor:pointer; }
 
+  #bnTrack::-webkit-scrollbar{ display:none; }
   .yhero{ position:relative; border-radius:28px; padding:22px; overflow:hidden; margin-bottom:16px;
     background:linear-gradient(135deg,#fde3cf,#f6ae76); box-shadow:0 16px 32px rgba(236,106,46,.22); }
   .yhero .yh-n{ font-size:30px; font-weight:900; letter-spacing:-.04em; line-height:1.05; color:var(--ink); max-width:62%; }
@@ -11824,6 +11825,15 @@ function homeRecClubs(){
 function _ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function selectHomeDay(ymd){ state._homeDay=ymd; renderHome(); }
 function hFlt(k){ if(k===1) state._hHide=!(state._hHide===true); else state._hEve=!state._hEve; renderHome(); }
+function bnGo(dir){ const t=document.getElementById('bnTrack'); if(!t) return;
+  const w=t.clientWidth, n=Math.round(t.scrollLeft/w), last=t.children.length-1;
+  let nx=n+dir; if(nx<0) nx=last; if(nx>last) nx=0;
+  t.scrollTo({left:nx*w, behavior:'smooth'});
+}
+function bnSync(){ const t=document.getElementById('bnTrack'), d=document.getElementById('bnDots'); if(!t||!d) return;
+  const n=Math.round(t.scrollLeft/t.clientWidth);
+  [...d.children].forEach((s,i)=>{ s.style.background = i===n ? '#fff' : 'rgba(255,255,255,.55)'; });
+}
 function homeQuickMenu(){
   const t=_ymd(new Date());
   const q=(ic,l,fn)=>`<div onclick="${fn}" style="min-width:84px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:13px 6px;text-align:center;cursor:pointer;flex-shrink:0"><div style="font-size:25px">${ic}</div><div style="font-size:12px;font-weight:800;margin-top:5px">${l}</div></div>`;
@@ -11917,9 +11927,25 @@ function _renderHomeCore(){
     HOME_BANNERS=[]; api('/banners').then(r=>{ HOME_BANNERS=r||[]; if(state.view==='home') renderHome(); }).catch(()=>{});
   }
   let h='';
-  { const bn=(HOME_BANNERS||[])[0]||null;
-    if(bn&&bn.image) h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
+  { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
+    if(bns.length===1){ const bn=bns[0];
+      h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
       <img src="${esc(bn.image)}" style="width:100%;display:block" alt="배너"></div>`;
+    } else if(bns.length>1){
+      h+=`<div style="position:relative;margin:4px 0 12px">
+        <div id="bnTrack" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:20px;-webkit-overflow-scrolling:touch;scrollbar-width:none" onscroll="bnSync()">
+          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
+        </div>
+        <div onclick="bnGo(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:900;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">‹</div>
+        <div onclick="bnGo(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:900;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">›</div>
+        <div id="bnDots" style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);display:flex;gap:5px">
+          ${bns.map((_,i)=>`<span data-i="${i}" style="width:6px;height:6px;border-radius:50%;background:${i?'rgba(255,255,255,.55)':'#fff'};box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>`).join('')}
+        </div></div>`;
+      clearInterval(window._bnTimer);
+      window._bnTimer=setInterval(()=>{ const t=document.getElementById('bnTrack'); if(!t){ clearInterval(window._bnTimer); return; }
+        const w=t.clientWidth, n=Math.round(t.scrollLeft/w), last=(t.children.length-1);
+        t.scrollTo({left: (n>=last?0:(n+1))*w, behavior:'smooth'}); }, 4000);
+    }
 
   h+=homeQuickMenu();
   }
