@@ -166,13 +166,19 @@ async function render(){
     }
     else if(TAB==='banners'){
       const rows=await api('/admin/banners');
+      window._BN=rows;
       v.innerHTML=`<div class="card"><b style="font-size:14px">배너 추가</b>
           <input type="file" id="bnFile" accept="image/*" style="margin-top:8px">
           <input id="bnLink" placeholder="탭했을 때 열릴 링크 (선택)" style="margin-top:8px">
           <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBanner()">올리기</button></div>
-        <div class="card">`+ (rows.length? rows.map(b=>`
-        <div class="row"><img src="${esc(b.image)}" style="width:110px;border-radius:10px;flex:none" alt="">
+        <div class="card"><b style="font-size:14px">노출 순서</b>
+        <div class="meta" style="margin:4px 0 6px">▲▼로 순서를 바꾸면 홈 캐러셀에 그 순서로 나와요 · 위가 1번</div>`+ (rows.length? rows.map((b,i)=>`
+        <div class="row"><b style="width:20px;text-align:center;color:${i===0?'var(--coral)':'var(--lgray)'}">${i+1}</b>
+          <img src="${esc(b.image)}" style="width:100px;border-radius:10px;flex:none" alt="">
           <div style="flex:1;min-width:0" class="meta">#${b.id} · ${fdate(b.created_at)}<br>${esc(b.link||'링크 없음')}</div>
+          <div style="display:flex;flex-direction:column;gap:4px;flex:none">
+            <button class="btn xs ghost" ${i===0?'disabled style="opacity:.3"':''} onclick="bnMove(${i},-1)">▲</button>
+            <button class="btn xs ghost" ${i===rows.length-1?'disabled style="opacity:.3"':''} onclick="bnMove(${i},1)">▼</button></div>
           <button class="btn xs ghost" onclick="delBanner(${b.id})">삭제</button></div>`).join('') : '<div class="meta">배너가 없어요</div>') + '</div>';
     }
   }catch(e){ v.innerHTML=`<div class="card meta">불러오지 못했어요 (${esc(e.message).slice(0,120)})</div>`; }
@@ -186,6 +192,14 @@ async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요?
 async function resolveRep(id,action){ try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
 async function paidPayout(id){ if(!confirm('이체를 완료 처리할까요? 매니저에게 완료 알림이 가요.'))return;
   try{ await api('/admin/payouts/'+id+'/paid',{method:'POST',body:'{}'}); toast('완료 처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
+async function bnMove(i,dir){
+  const rows=window._BN||[]; const j=i+dir;
+  if(j<0||j>=rows.length) return;
+  [rows[i],rows[j]]=[rows[j],rows[i]];
+  try{ await api('/admin/banners/order',{method:'PATCH',body:JSON.stringify({ids:rows.map(b=>b.id)})});
+    toast('순서를 저장했어요'); render(); }
+  catch(e){ toast('순서 저장 실패 · server.js 배포를 확인해 주세요'); }
+}
 async function delBanner(id){ try{ await api('/admin/banners/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
 async function addBanner(){
   const f=$('bnFile').files[0]; if(!f){ toast('이미지를 선택해 주세요'); return; }
