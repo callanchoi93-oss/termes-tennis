@@ -494,6 +494,7 @@
   .tierband .tb-tag{ display:inline-block; background:rgba(255,255,255,.22); border-radius:7px; padding:3px 9px; font-size:11.5px; font-weight:800; margin-top:8px; }
 
   /* ⑦ Drop Manager → category TOOL ROWS (운영 도구) */
+  .tgrp{ font-size:11.5px; font-weight:800; color:var(--lgray); letter-spacing:.03em; margin:14px 6px 7px; }
   .toolrow{ display:flex; align-items:center; gap:14px; padding:13px 15px; background:#ffffff;
     border:1px solid var(--line2); border-radius:18px; margin-bottom:9px; cursor:pointer; box-shadow:var(--shadow-s);
     transition:transform .12s ease; }
@@ -1974,6 +1975,7 @@ let SERVER_OK = false;
 
 function authToken(){ try{ return localStorage.getItem(TOKEN_KEY); }catch(e){ return null; } }
 async function api(path, opts){
+  if(TRIAL && !authToken()) return trialApi(path, opts);    // 체험: 현재 버전 UI 그대로, 데이터만 시드
   const t = authToken();
   const ctl = new AbortController();
   const kill = setTimeout(()=>ctl.abort(), (opts&&opts.timeoutMs)||12000);   // 모바일 무한 대기 방지
@@ -2207,17 +2209,51 @@ setTimeout(hideBoot, 3500);                                // 실패해도 3.5�
 const TRIAL_ROSTER = [['김민준',1180],['이서준',1150],['박도윤',1120],['정시우',1090],['강지훈',1060],['한지민',1030,'여성'],
   ['임현우',1000],['윤서연',980,'여성'],['김하늘',950,'여성'],['박서연',930,'여성'],['최유진',910,'여성'],['이수아',890,'여성']]
   .map((x,i)=>({user_id:100+i, id:100+i, name:x[0], rating:x[1], gender:x[2]||'남성'}));
+const TRIAL_CLUB = { id:9001, name:'용인 맞수 클럽', region:'경기 용인', sport:'tennis',
+  member_count:12, entry_fee:100000, season_fee:240000, guest_fee:25000, guest_cap:4, role:'owner', status:'active' };
+async function trialApi(path, opts){
+  const m = ((opts||{}).method||'GET').toUpperCase();
+  const p = String(path);
+  // 공개 데이터는 실서버 그대로 (배너 등)
+  if(m==='GET' && p.startsWith('/banners')){
+    try{ const r=await fetch(API_BASE+p); return await r.json(); }catch(e){ return []; } }
+  if(m==='GET' && p==='/clubs') return [ {id:TRIAL_CLUB.id, name:TRIAL_CLUB.name, region:TRIAL_CLUB.region, sport:'tennis',
+      member_count:12, entry_fee:100000, guest_fee:25000, guest_cap:4},
+    ...state.clubs.filter(c=>c.n!==TRIAL_CLUB.name).map((c,i)=>({id:9002+i, name:c.n, region:c.r, sport:'tennis',
+      member_count:c.m, entry_fee:c.entry, guest_fee:c.guestFee, guest_cap:c.guestReq})) ];
+  if(m==='GET' && p==='/me/clubs') return [TRIAL_CLUB];
+  if(m==='GET' && /\/clubs\/\d+\/roster/.test(p))
+    return TRIAL_ROSTER.map((x,i)=>({user_id:x.user_id, name:x.name, gender:x.gender, rating:x.rating,
+      grade:['A','A','B','B','B','B','C','C','C','C','C','C'][i], role:i===0?'owner':i<3?'officer':'member', is_captain:i===0?1:0}));
+  if(m==='GET' && /\/clubs\/\d+\/members/.test(p))
+    return TRIAL_ROSTER.map((x,i)=>({id:x.user_id, user_id:x.user_id, name:x.name, gender:x.gender, rating:x.rating,
+      grade:['A','A','B','B','B','B','C','C','C','C','C','C'][i], role:i===0?'owner':i<3?'officer':'member'}));
+  if(/\/clubs\/\d+\/bracket2$/.test(p)){
+    if(m==='GET'){ seedTrialBracket(); return CB2; }
+    if(m==='PUT'){ CB2={...JSON.parse((opts||{}).body||'{}'), _trial:true, updated_at:Date.now()}; return {ok:true}; }
+  }
+  if(/\/clubs\/\d+\/bracket2\/logs/.test(p)){ seedTrialBracket(); return [{date:CB2.date, data:CB2}]; }
+  if(m==='GET' && /\/open-matches\/\d+$/.test(p)){
+    const id=+p.split('/').pop(); return (OM_LIST||[]).find(x=>x.id===id)||null; }
+  if(m==='GET' && p.startsWith('/open-matches')) return OM_LIST||[];
+  if(m==='GET' && p.startsWith('/rankings'))
+    return TRIAL_ROSTER.map(x=>({id:x.user_id, name:x.name, rating:x.rating, games:6}));
+  if(m==='GET') return [];                                   // 알림·공지·일정 등은 비어 있는 상태로
+  return {ok:true};                                          // 쓰기 계열은 성공 처리 (체험)
+}
 function startTrial(){ try{ localStorage.setItem('matsu_trial','1'); }catch(e){} TRIAL=true; enterTrial(); }
 function exitTrial(){ try{ localStorage.removeItem('matsu_trial'); }catch(e){} location.reload(); }
 function enterTrial(){
-  TRIAL=true; DEMO=true; SERVER_OK=false;                    // 서버 대신 데모 데이터로 전체 체험
+  TRIAL=true; DEMO=false; SERVER_OK=true;                    // 현재(서버) 버전 화면 그대로 · 데이터는 trialApi 시드
   state.userName='체험 게스트'; if(!state.sport) state.sport='tennis';
   const a=document.getElementById('auth'); if(a) a.classList.remove('on');
   const o=document.getElementById('onboard'); if(o) o.classList.remove('on');
   const db=document.getElementById('demobar');
   if(db){ db.style.display='block';
     db.innerHTML='체험 모드예요 · 로그인 없이 모든 기능을 둘러볼 수 있어요 · <b style="cursor:pointer;text-decoration:underline" onclick="exitTrial()">로그인하러 가기</b>'; }
-  seedTrialData(); go('home'); hideBoot();
+  seedTrialData();
+  loadClubIds().then(()=>{ renderClub(); });                 // 체험 클럽(임원)을 서버 방식으로 채택
+  go('home'); hideBoot();
 }
 function seedTrialData(){
   if(window._trialSeeded) return; window._trialSeeded=true;
@@ -2296,6 +2332,11 @@ async function loadPublicData(){
 }
 
 async function checkServer(){
+  if(TRIAL && !authToken()){                                 // 체험: 서버 확인 대신 시드로 즉시 시작
+    SERVER_OK=true; DEMO=false;
+    try{ enterTrial(); }catch(e){}
+    return true;
+  }
   if(!API_BASE){ SERVER_OK=false; DEMO=true; applyAuthUI();
     const db0=document.getElementById('demobar'); if(db0) db0.style.display='block';
     return false; }
@@ -3452,7 +3493,7 @@ function openDues(){
   mem.forEach(nm=>{ if(!c.dues[nm]) c.dues[nm]= (nm.charCodeAt(0)%3===0?'unpaid':'paid'); });
   const paid=mem.filter(nm=>c.dues[nm]==='paid').length, unpaid=mem.length-paid;
   let h=`<div class="sh-top"><h3>회비 정산</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">${state.activeClub} · 하반기 회비 ${fee.toLocaleString()}원<br>납부 여부를 탭으로 바꿔요. <b>프리미엄</b>은 미납 회원에게 납부 요청 알림까지 보내줘요.</div>
+    <div class="sd">${state.activeClub} · 하반기 회비 ${fee.toLocaleString()}원<br>납부 여부를 탭으로 바꿔요. 미납 회원에게는 납부 요청 알림을 보낼 수 있어요.</div>
     <div style="display:flex;gap:10px;margin-bottom:12px">
       <div class="card" style="flex:1;margin:0;padding:13px;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--green)">${paid}</div><div style="font-size:12px;color:var(--gray);font-weight:600">납부</div></div>
       <div class="card" style="flex:1;margin:0;padding:13px;text-align:center;border-color:#f2d2bd"><div style="font-size:22px;font-weight:900;color:#cf5418">${unpaid}</div><div style="font-size:12px;color:var(--gray);font-weight:600">미납</div></div></div>`;
@@ -3964,7 +4005,7 @@ function openGuestSettle(){
     <div class="ex-ic">🎟️</div>
     <div class="ex-x"><div class="ex-cat">${g.host} 초대 · ${g.date}</div><div class="ex-n">${g.name}</div></div>
     <div class="ex-meta"><div class="ex-day" style="font-weight:800;color:${g.paid?'#2f9159':'#cf5418'}">${g.paid?'정산 완료':'미정산'}</div><div class="ex-v">${g.fee.toLocaleString()}<span style="font-size:11px;font-weight:700">원</span></div></div></div>`; });
-  h+=`<div class="note" style="text-align:left;margin-top:12px">게스트비는 클럽 운영비로 들어가요. <b>프리미엄</b>은 월별 리포트로 자동 정리해줘요.</div>
+  h+=`<div class="note" style="text-align:left;margin-top:12px">게스트비는 클럽 운영비로 들어가요.</div>
     <button class="btn ghost" style="margin-top:10px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -4453,19 +4494,9 @@ async function openClubReport(){
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
     return;
   }
-  const c=AC();
-  if(!state.premium){
-    let h=`<div class="sh-top"><h3>클럽 리포트</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-      <div class="card" style="background:linear-gradient(140deg,#8c6fd6,#6f86e2);border:none;color:#fff;text-align:center;padding:26px 18px">
-        <span style="color:var(--lgray)">${ic('chart',36)}</span>
-        <div style="font-size:19px;font-weight:900;margin-top:8px">프리미엄 전용 기능</div>
-        <div style="font-size:13px;font-weight:600;opacity:.92;margin-top:6px;line-height:1.5">모든 종목·모든 클럽에서 구독하면<br>참여·수익·인기시간 리포트를 뽑을 수 있어요.</div></div>
-      <div class="card"><div class="ch" style="font-size:14px">리포트에 담기는 것</div>
-        <div style="font-size:13.5px;color:var(--gray);font-weight:600;line-height:1.8;margin-top:6px">· 월별 참여율·노쇼율 추이<br>· 회비·게스트비 <b>수입 요약</b><br>· 인기 시간대·요일 히트맵<br>· 회원 실력분포·이탈 위험 회원</div></div>
-      <button class="btn" style="margin-top:14px" onclick="subscribePremium()">프리미엄 구독하기 (데모)</button>
-      <div class="note" style="text-align:left;margin-top:8px">데모라 구독 시 즉시 리포트가 열리고, 잠금(🔒)이 풀립니다.</div>`;
-    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on'); return;
-  }
+  toast('클럽 리포트는 출석·회비 데이터가 쌓이면 열려요');
+  return;
+  /* (구) 데모 프리미엄 게이트 제거됨 */
   // 구독됨 — 리포트 표시
   const bar=(label,pct,col)=>`<div style="margin:9px 0"><div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700"><span>${label}</span><span style="color:${col}">${pct}%</span></div><div style="height:8px;border-radius:5px;background:var(--cream2);margin-top:5px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${col}"></div></div></div>`;
   const heat=['월','화','수','목','금','토','일'].map((d,i)=>{const v=[30,45,55,40,70,95,80][i];return `<div style="flex:1;text-align:center"><div style="height:${v}px;border-radius:6px 6px 0 0;background:${v>80?'var(--coral)':v>50?'#eeb98c':'#f4dcc4'}"></div><div style="font-size:10.5px;color:var(--gray);font-weight:700;margin-top:4px">${d}</div></div>`;}).join('');
@@ -4486,7 +4517,7 @@ async function openClubReport(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
-  if(SERVER_OK && PAY_PENDING_FN()){ toast('M캐쉬 충전은 준비 중이에요'); setTimeout(openEarn,650); return; }
+  if(SERVER_OK && PAY_PENDING_FN()){ toast('캐시 충전은 준비 중이에요'); return; }
   if(!canSellDigital()){
     // 안내 문구에 '웹에서 구매하세요' 를 쓰면 안 된다 (3.1.1 안티 스티어링).
     toast('지금은 M캐쉬를 충전할 수 없어요');
@@ -4524,8 +4555,7 @@ async function buyCash(n){
     }
     // 실제 결제(PG/IAP)가 붙기 전에는 캐시를 지급하지 않는다.
     // 서버도 402 payments_not_ready 로 막고 있다.
-    toast('M캐쉬 충전은 준비 중이에요 · 광고나 초대로 모을 수 있어요');
-    setTimeout(openEarn, 700);
+    toast('캐시 충전은 준비 중이에요');
     return;
   }
   state.cash+=n; toast(`M캐쉬 ${n}개 충전 완료 (데모)`); openStore();
@@ -5487,10 +5517,9 @@ function renderClub(){
       }
       // ⑤ 바로가기 (소셜 카드 위치)
       h+=`<div class="qlinks">
-        <div class="qlink" onclick="openClubRoom()"><div class="ql-ic">${im('msg',24)}</div><div class="ql-l">채팅</div></div>
-        <div class="qlink" onclick="openGallery()"><div class="ql-ic">📸</div><div class="ql-l">갤러리</div></div>
         <div class="qlink" onclick="openNotices()"><div class="ql-ic">📢</div><div class="ql-l">공지</div></div>
-        <div class="qlink" onclick="openClubRank()"><div class="ql-ic">🏆</div><div class="ql-l">랭킹</div></div></div>`;
+        <div class="qlink" onclick="openClubBracket2()"><div class="ql-ic">🎾</div><div class="ql-l">대진</div></div>
+        </div>`;
     }
     // 클럽 운영 도구 (임원) / 회원 공지·회비 안내
     { const c3=AC(); c3.notices=c3.notices||[]; c3.dues=c3.dues||{}; c3.premiumFeat=c3.premiumFeat||{dues:true,notice:true,attend:true,bulk:true};
@@ -5503,36 +5532,27 @@ function renderClub(){
       if(c3.dues['곽주영']==='unpaid'){ h+=`<div class="card" style="background:#fff0f1;border-color:#f2d2bd"><div style="font-size:13.5px;font-weight:700;color:#cf5418">${ic('card',14)}이번 시즌 회비가 미납이에요. 클럽 회비를 확인해 주세요.</div></div>`; }
       if(off){
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
-          <div class="toolrow" onclick="openClubBracket2()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
+          <div class="tgrp">경기 운영</div>
+          <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubBracket2()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
+          <div class="tgrp">회원 · 가입</div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">클럽 초대장 공유</div><div class="tr-d">링크 하나로 가입 신청 · 7일 유효</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비·게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
-          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 리포트</div><div class="tr-d">참여·수익·인기시간 분석</div></div><div class="tr-arr">›</div></div>`
-          : `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 리포트</div><div class="tr-d">월별 참석률 · 회비 수납 · 노쇼</div></div><div class="tr-arr">›</div></div>`}
+          <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
+          <div class="tgrp">클럽 설정</div>
+          <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비 · 게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석·노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
-          ${SP().cat==='team'?`<div class="toolrow" onclick="openTeamRecord()"><div class="tr-ic" style="background:#efeafc;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록실</div><div class="tr-d">자체전·대외전 · 개인 스탯 아카이브</div></div><div class="tr-arr">›</div></div>`
-          :`<div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>`}
-          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 관리</div></div><div class="tr-arr">›</div></div>
-          ${DEMO ? `<div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>` : ``}
-          ${DEMO ? `<div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>` : ``}
-`;
+          <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
+          `;
       } else {
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 정보</div>
           <div class="toolrow" onclick="openClubBracket2()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="renderClubStats()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 순위·통계</div><div class="tr-d">분기별 승률·득실 랭킹과 명예의 전당</div></div><div class="tr-arr">›</div></div>
-          ${SP().cat==='team'?`<div class="toolrow" onclick="openTeamRecord()"><div class="tr-ic" style="background:#efeafc;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록실</div><div class="tr-d">자체전·대외전 · 개인 스탯 아카이브</div></div><div class="tr-arr">›</div></div>`
-          :`<div class="toolrow" onclick="openHistory()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('note',19)}</div><div class="tr-x"><div class="tr-n">경기 기록</div><div class="tr-d">지난 모임 결과와 누적 전적</div></div><div class="tr-arr">›</div></div>`}
-          <div class="toolrow" onclick="openGallery()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">${ic('camera',19)}</div><div class="tr-x"><div class="tr-n">사진 갤러리</div><div class="tr-d">모임 사진 모아보기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubRank()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">클럽 랭킹</div><div class="tr-d">회원 레이팅·디비전 순위</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openCourtBook()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('pin',19)}</div><div class="tr-x"><div class="tr-n">코트 예약</div><div class="tr-d">슬롯별 예약 상태 보기</div></div><div class="tr-arr">›</div></div>
-`;
+          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>`;
       }
     }
     // 서버에 모임이 있으면 참석/불참/미정 3단계 카드, 없으면 기존 데모 UI
@@ -6101,10 +6121,7 @@ function openAdmin(){
   const c=AC(); if(!c)return; const pend=c.pending||[];
   let h=`<div class="sh-top"><h3>가입 신청 관리</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">${state.activeClub} 임원진 전용 · 신청 ${pend.length}건<br>승인하면 회원으로 추가돼요.</div>`;
-  h+=`<div class="card" style="background:${(AC()&&AC().premium)?'#f0f8e8':'#f6f4ef'};border-color:${(AC()&&AC().premium)?'#cfe2b8':'#ece1ca'};display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div><div style="font-size:14px;font-weight:800;color:${(AC()&&AC().premium)?'#5f7416':'var(--coral-d)'}">클럽 프리미엄 ${(AC()&&AC().premium)?'· 구독 중 ✓':'⭐'}</div>
-        <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${(AC()&&AC().premium)?'자동 정산·통계·대량공지 켜짐':'총무 일 자동화 · 회장이 켜요'}</div></div>
-      <button class="btn sm ${(AC()&&AC().premium)?'ghost':'felt'}" style="width:auto;padding:9px 14px" onclick="${(AC()&&AC().premium)?'manageClubPremium()':'subscribePremium()'}">${(AC()&&AC().premium)?'관리':'구독'}</button></div>`;
+
   if(!pend.length){ h+=`<div class="empty"><div class="et">대기 중인 신청이 없어요</div></div>`; }
   pend.forEach((a,i)=>{
     const tag=a.type==='member'?'<span class="statc" style="background:#e9f4ee;color:#5b3fa8">정회원 신청</span>':'<span class="statc" style="background:#e9f4ee;color:#5b3fa8">게스트 신청</span>';
@@ -7651,6 +7668,46 @@ async function cb2Score(gi){
   try{ await api(`/clubs/${clubId()}/bracket2/score`,{method:'PATCH',body:JSON.stringify({gi,sa:+m[1],sb:+m[2]})});
     const d=await api(`/clubs/${clubId()}/bracket2`); CB2=d; drawCB2(); toast('스코어를 기록했어요');
   }catch(e){ toast(String(e.message||'').includes('player_only')?'그 경기를 뛴 당사자나 임원만 입력할 수 있어요':'기록하지 못했어요'); }
+}
+/* ═══ 클럽 기록 · 시즌 — 대진 로그 집계 (승60 · 무30 · 패10 + 득실) ═══ */
+async function openClubRecords(){
+  const cid=clubId(); if(!cid){ toast('클럽에 먼저 들어가 주세요'); return; }
+  let logs=[]; try{ logs=await api(`/clubs/${cid}/bracket2/logs`)||[]; }catch(e){}
+  const st={};
+  logs.forEach(l=>{ ((l.data||{}).games||[]).forEach(g=>{
+    if(g.sa==null||g.sb==null) return;
+    const win=g.sa>g.sb?'A':g.sa<g.sb?'B':'D';
+    [['A','B'],['B','A']].forEach(([me,op])=>{
+      (g['team'+me]||[]).forEach(p=>{ if(!p)return;
+        const s=st[p.id]=st[p.id]||{name:p.name,w:0,d:0,l:0,gf:0,ga:0,days:new Set()};
+        s.gf+=g['s'+me.toLowerCase()]; s.ga+=g['s'+op.toLowerCase()]; s.days.add(l.date);
+        if(win==='D')s.d++; else if(win===me)s.w++; else s.l++; }); }); }); });
+  const rank=Object.values(st).map(s=>({...s,gd:s.gf-s.ga,g:s.w+s.d+s.l,p:s.w*60+s.d*30+s.l*10+(s.gf-s.ga)}))
+    .sort((a,b)=>b.p-a.p||b.gd-a.gd);
+  let h=`<div class="om-detail"><div class="sh-top"><h3>클럽 기록 · 시즌</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">모임 대진의 확정 스코어가 자동으로 쌓여요 · 승 60P, 무 30P, 패 10P + 득실 보정</div>`;
+  if(!rank.length){
+    h+=`<div class="empty" style="padding:28px 20px"><div class="et">아직 쌓인 기록이 없어요</div>
+      <div class="es">모임 대진에서 스코어가 확정되면 여기 시즌 랭킹이 생겨요.</div></div>`;
+  }else{
+    h+=`<div class="ch" style="font-size:15px;margin-top:12px">시즌 랭킹 <span style="font-size:11px;color:var(--lgray);font-weight:700">모임 ${logs.length}회 누적</span></div>
+      <div style="display:grid;grid-template-columns:24px 1fr 40px 52px 44px 54px;gap:4px;font-size:10.5px;font-weight:800;color:var(--lgray);padding:6px 2px;border-bottom:1px solid #f0efec">
+        <span>#</span><span>선수</span><span>경기</span><span>승-무-패</span><span>득실</span><span style="text-align:right">P</span></div>`;
+    rank.slice(0,12).forEach((s,i)=>{
+      h+=`<div style="display:grid;grid-template-columns:24px 1fr 40px 52px 44px 54px;gap:4px;align-items:center;padding:9px 2px;border-bottom:1px solid #f4f2ed;font-size:12.5px;font-weight:700">
+        <b style="color:${i===0?'var(--coral-d)':i<3?'#cd8e5a':'var(--lgray)'}">${i+1}</b>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</span>
+        <span>${s.g}</span><span>${s.w}-${s.d}-${s.l}</span>
+        <span style="color:${s.gd>=0?'#3f8f5f':'#cf5418'}">${s.gd>=0?'+':''}${s.gd}</span>
+        <b style="text-align:right;color:var(--ink)">${s.p.toLocaleString()}</b></div>`; });
+    h+=`<div class="ch" style="font-size:15px;margin-top:16px">지난 모임</div>`;
+    logs.slice(0,8).forEach(l=>{ const gs=(l.data||{}).games||[]; const done=gs.filter(g=>g.sa!=null).length;
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid #f4f2ed;font-size:13px;font-weight:700">
+        <span>${esc(l.date||'')}</span>
+        <span style="font-size:11.5px;color:var(--gray)">경기 ${gs.length} · 확정 ${done}</span></div>`; });
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 async function makeInvite(){
   const cid=clubId(); if(!cid) return;
@@ -11595,17 +11652,8 @@ function renderChat(){
     // 대화는 종목 구분이 없다 — 가입한 모든 클럽의 단체방을 나열 (농구로 전환 안 해도 농구 클럽방이 보인다)
     const rooms=SRV_MYCLUBS.filter(c=>!c.status||c.status==='active');
     if(rooms.length){
-      h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;
-      rooms.forEach(c=>{
-        const sn=(SPORTS.find(s=>s.id===c.sport)||{}).n||'';
-        h+=`<div class="chrow" onclick="openClubRoomId(${c.id},'${esc(c.name)}')"><div class="av2" style="background:#1f7d62">#</div>
-      <div class="ci2"><div class="cn2">${esc(c.name)} 단체방${(UNREAD.clubs&&UNREAD.clubs[c.id])?` <span class="dmbadge">${UNREAD.clubs[c.id]}</span>`:''}</div><div class="cl2">${sn?sn+' · ':''}회원 전용 · 탭해서 대화하기</div></div></div>`;
-      });
+      
     }
-  } else if(SERVER_OK && clubId()){
-    h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>
-      <div class="chrow" onclick="openClubRoom()"><div class="av2" style="background:#1f7d62">#</div>
-      <div class="ci2"><div class="cn2">${esc(state.activeClub)} 단체방${(UNREAD.clubs&&UNREAD.clubs[clubId()])?` <span class="dmbadge">${UNREAD.clubs[clubId()]}</span>`:''}</div><div class="cl2">회원 전용 · 탭해서 대화하기</div></div></div>`;
   }
   if(groups.length){h+=`<div style="font-size:13px;font-weight:800;color:var(--gray);margin:6px 4px 4px">클럽 단체방</div>`;groups.forEach(id=>h+=row(id));}
 
@@ -11803,7 +11851,7 @@ function openPremium(){
   h+=sec('개인','#d9920c','개인 프리미엄 (선택·소액)',['상세 전적 분석 (상대별·약점·시간대별 승률)','레이팅/포인트 추이 심화 그래프','인기 경기 우선 예약 · 광고 제거']);
   h+=`<div class="card" style="background:#1b1813;border:none;margin-top:16px"><div style="font-size:15px;font-weight:800;color:#fff">총무 한 명 일을 통째로 덜어줘요</div><div style="font-size:12.5px;color:#cbb8a6;font-weight:600;margin-top:5px;line-height:1.5">기능 몇 개가 아니라, 매달 5~10시간 쓰던 정산·납부 요청·공지·통계를 자동화. 클럽 프리미엄 <b>월 3만원(예시)</b> · 개인은 월 소액.</div></div>`;
   h+=`<div class="note">※ 회비·통장 관리는 전자금융·정산 규제가 따라요 — 시작 전 전문가 확인 필수. (구상·가정치)</div>
-    ${state.premium?`<div class="card" style="background:#eef7ee;border-color:#cfe2b8;text-align:center"><b style="color:#3f7a3f">✓ 프리미엄 구독 중</b><div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:3px">리포트·자동화 도구가 열려 있어요</div></div>`:`<button class="btn" style="margin-top:8px" onclick="subscribePremium()">프리미엄 구독하기 (데모)</button>`}
+
     <button class="btn ghost" style="margin-top:9px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -12064,7 +12112,7 @@ function _renderMeCore(){
       </div></div></div>
   <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
     <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
-    <button class="btn sm" style="width:auto;padding:10px 18px;background:#fff;color:#cf5418;border:none" onclick="openStore()">충전하기</button></div>
+    <div style="font-size:11px;font-weight:800;color:#ffe0cb">환불·정산이 여기 쌓여요</div></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
   ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
     <b style="flex:1;font-size:14.5px">${x[0]}</b><span style="color:var(--lgray);font-weight:900">›</span></div>`).join('')}`:''}
@@ -12374,7 +12422,7 @@ function _renderHomeCore(){
       <div class="qlink" onclick="go('league')"><div class="ql-ic">${SP().ic}</div><div class="ql-l">리그</div></div>
       <div class="qlink" onclick="go('club')"><div class="ql-ic">🏠</div><div class="ql-l">클럽</div></div>
       <div class="qlink" onclick="go('bracket')"><div class="ql-ic">🏆</div><div class="ql-l">${SP().cat==='record'?'조편성':SP().cat==='team'?'매치업':'대진'}</div></div>
-      <div class="qlink" onclick="openClubRoom()"><div class="ql-ic">${im('msg',24)}</div><div class="ql-l">채팅</div></div></div>`;
+      <div class="qlink" onclick="go('sched')"><div class="ql-ic">📅</div><div class="ql-l">일정</div></div></div>`;
   // 클럽 대항전 진입 (실서비스: 등록 클럽 대상)
   if(SRV && state.activeClub && state.bcfg.role==='officer'){
     h+=`<div class="card" style="margin-top:11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openTeamChallenge()">
