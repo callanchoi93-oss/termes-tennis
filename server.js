@@ -4055,6 +4055,45 @@ app.get('/admin/stats', admin, (_req, res) => {
     cashIssued: db.prepare("SELECT COALESCE(SUM(cash),0) n FROM orders WHERE status='paid'").get().n,
   });
 });
+// ── 오픈매치 봇 (admin.html 오픈매치·봇 탭) ──────────────────────
+// 목록 + 참가자
+app.get('/admin/open-matches', admin, (_req, res) => {
+  const ms = db.prepare(`SELECT id,loc,dt,price,cap,status,sport FROM open_matches
+    ORDER BY id DESC LIMIT 100`).all();
+  res.json(ms.map(m => ({ ...m,
+    players: db.prepare(`SELECT u.id, u.name, u.provider
+      FROM open_match_joins j JOIN users u ON u.id = j.user_id
+      WHERE j.match_id = ? ORDER BY j.joined_at`).all(m.id) })));
+});
+// 봇 참가자 추가 — 이름만으로 provider='bot' 유저를 만들어 참가시킨다
+app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const names = ((req.body || {}).names || []).map(s => String(s).trim()).filter(Boolean).slice(0, 20);
+  let added = 0;
+  for (const name of names) {
+    const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+    if (cur >= (m.cap || 8)) break;                                   // 정원 초과 방지
+    const pid = 'bot:' + name;
+    let u = db.prepare("SELECT id FROM users WHERE provider='bot' AND provider_id=?").get(pid);
+    if (!u) {
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at)
+        VALUES ('bot',?,?,?,?)`).run(pid, name, name, now());
+      u = { id: r.lastInsertRowid };
+    }
+    const r2 = db.prepare(`INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at)
+      VALUES (?,?,?)`).run(mid, u.id, now());
+    if (r2.changes) added++;
+  }
+  res.json({ ok: true, added });
+});
+// 봇(또는 참가자) 제거
+app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?')
+    .run(+req.params.id, +req.params.uid);
+  res.json({ ok: true });
+});
 app.get('/admin/users', admin, (_req, res) => {
   res.json(db.prepare('SELECT id,name,provider,region,sport,rating,cash,premium,created_at FROM users ORDER BY id DESC LIMIT 200').all());
 });
