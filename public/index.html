@@ -4251,7 +4251,7 @@ function openTeamLive(){
 // ── 친구 초대·추천 보상 ──
 function openInvite(){
   const inv=state.invited||0;
-  const tiers=[{n:1,e:'medal',r:'친구 초대 배지'},{n:3,e:'star',r:'클럽 프리미엄 7일 무료'},{n:5,e:'crown',r:'클럽 프리미엄 1개월 무료'}];
+  const tiers=[{n:1,e:'medal',r:'친구 초대 배지'},{n:3,e:'star',r:'스페셜 배지'},{n:5,e:'crown',r:'명예의 전당 배지'}];
   let h=`<div class="sh-top"><h3>친구 초대</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">친구가 내 코드로 가입하고 첫 경기를 치르면 둘 다 보상을 받아요.</div>
     <div class="card" style="background:var(--purple);border:none;text-align:center;margin-bottom:14px">
@@ -4301,7 +4301,6 @@ function openPitch(){
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid #f0efec"><span style="font-weight:800;font-size:13.5px">무료</span><span style="font-size:12.5px;color:var(--gray);font-weight:600;text-align:right">클럽 운영·대진·채팅·랭킹</span></div>
       <div style="display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid #f0efec"><span style="font-weight:800;font-size:13.5px;color:var(--coral-d)">경기당 결제</span><span style="font-size:12.5px;color:var(--gray);font-weight:600;text-align:right">코트·진행비 정산 수수료</span></div>
-      <div style="display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid #f0efec"><span style="font-weight:800;font-size:13.5px;color:var(--coral-d)">클럽 프리미엄</span><span style="font-size:12.5px;color:var(--gray);font-weight:600;text-align:right">총무 자동화·구독</span></div>
       <div style="display:flex;justify-content:space-between;padding:8px 2px"><span style="font-weight:800;font-size:13.5px;color:var(--coral-d)">진행자 매칭</span><span style="font-size:12.5px;color:var(--gray);font-weight:600;text-align:right">경기 운영 인력 중개</span></div></div>
 
     <h4>경쟁 루프</h4>
@@ -5194,40 +5193,6 @@ let REC_MINE=null, REC_BOARD=null, REC_TS=0;
 let TEAMM=null, TEAMM_TS=0;
 function renderLeague(){
   if(SERVER_OK && authToken() && SP().cat==='record'){ renderRecordLeague(); return; }
-  if(SERVER_OK && authToken()){
-    // 실서비스: 정식 리그는 준비 중 — 대신 실제 회원 레이팅 랭킹을 보여준다
-    let h=`<h2 class="t">리그</h2><p class="sub">개인 레이팅 랭킹 · 정식 리그는 준비 중이에요.</p>`;
-    if(SP().cat==='team'){
-      h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openTeamRecord()">
-        <div style="display:flex;align-items:center;gap:11px"><span style="font-size:21px">🏆</span>
-          <div><div style="font-size:15px;font-weight:800">클럽 기록실</div>
-          <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">자체전·대외전 아카이브 · 개인 승률</div></div></div>
-        <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;
-    }
-    h+=`<div class="card" style="background:linear-gradient(135deg,#3fa571,#5b3fa8);border:none;color:#fff;padding:18px 17px">
-      <div style="font-size:11px;font-weight:800;opacity:.85;letter-spacing:.02em">COMING SOON</div>
-      <div style="font-size:20px;font-weight:900;margin-top:5px">승강제 리그 · 시즌 배지</div>
-      <div style="font-size:12.5px;font-weight:600;opacity:.9;margin-top:6px;line-height:1.55">부별 리그와 승격·강등, 시즌 결산은 준비 중이에요.<br>지금은 <b>경기 결과를 확정</b>할 때마다 레이팅이 쌓여요.</div></div>`;
-    if(!LG_RANKS || Date.now()-LG_TS>60e3){
-      api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`)
-        .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
-        .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
-      h+=skelCards(3);
-    } else {
-      const myId=(state.serverUser||{}).id;
-      h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:700">상위 ${LG_RANKS.length}명</span></div>`;
-      if(!LG_RANKS.length) h+=`<div class="note" style="text-align:left;margin-top:6px">아직 랭킹이 없어요. 첫 경기를 치러보세요.</div>`;
-      LG_RANKS.slice(0,30).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
-        h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
-          <div style="width:24px;text-align:center;font-weight:900;color:${medal}">${i+1}</div>
-          <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}<span style="font-size:11.5px;color:var(--lgray);font-weight:600"> · ${esc(p.region||'')}</span></div>
-          <div style="font-weight:900;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:'배치 중'}</div></div>`; });
-      h+=`</div>`;
-      h+=`<div class="note" style="text-align:left">순위를 올리려면 <b>매치 탭</b>에서 실력이 비슷한 상대에게 도전하거나, 클럽 대진 결과를 확정하세요.</div>`;
-    }
-    document.getElementById('s-league').innerHTML=h;
-    return;
-  }
   const cat=SP().cat;
   if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague(); return; }
   if(cat==='record'){ renderRecordLeague(); return; }
@@ -5243,6 +5208,22 @@ function renderLeague(){
     h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(140deg,#8c6fd6,#6f86e2);border:none;color:#fff" onclick="openMMR()">
       <div><div style="font-size:15px;font-weight:900">1:1 랭크 · MMR ${state.mmr}</div><div style="font-size:12px;font-weight:700;opacity:.9;margin-top:2px">${unlocked?'개인리그 도전 자격 획득 🎉':'캐주얼로 MMR 올려 개인리그 언락'}</div></div>
       <div style="font-weight:900;font-size:18px">→</div></div>`;
+    if(SERVER_OK && authToken()){
+      if(!LG_RANKS || Date.now()-LG_TS>60e3){
+        api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`)
+          .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
+          .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
+      } else if(LG_RANKS.length){
+        const myId=(state.serverUser||{}).id;
+        h+=`<div class="card"><div class="ch" style="font-size:15px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:700">상위 ${Math.min(LG_RANKS.length,10)}명</span></div>`;
+        LG_RANKS.slice(0,10).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
+          h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
+            <div style="width:24px;text-align:center;font-weight:900;color:${medal}">${i+1}</div>
+            <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}</div>
+            <div style="font-weight:900;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:'배치 중'}</div></div>`; });
+        h+=`</div>`;
+      }
+    }
     h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMatchArrange('스마트 매칭 상대')">
       <div style="display:flex;align-items:center;gap:11px"><span class="rowic">${ic('pin',19)}</span><div><div style="font-size:14.5px;font-weight:800">1:1 경기 잡기 · 코트 예약</div><div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:1px">위치·일시 정하고 둘 중 한 명이 예약</div></div></div>
       <div style="color:var(--coral-d);font-weight:800;font-size:18px">→</div></div>`;
@@ -5460,16 +5441,15 @@ function renderClub(){
       if(c3.dues['곽주영']==='unpaid'){ h+=`<div class="card" style="background:#fff0f1;border-color:#f2d2bd"><div style="font-size:13.5px;font-weight:700;color:#cf5418">${ic('card',14)}이번 시즌 회비가 미납이에요. 클럽 회비를 확인해 주세요.</div></div>`; }
       if(off){
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
-          <div class="toolrow" onclick="go('bracket')"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자로 코트별 대진을 자동으로 짜요</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubBracket2()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openPromo({tag:'맞수 프리미엄',visual:'👑',title:'총무 일을 절반으로\n줄여보세요',body:'회원 무제한, 회비 장부 자동화, 모임 정산까지 — 우리 클럽 운영을 맞수가 대신해요.',cta:'플랜 살펴보기',onCta:'openClubPremium()'})"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">클럽 프리미엄</div><div class="tr-d">회원 무제한 · 회비 장부</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">클럽 초대장 공유</div><div class="tr-d">링크 하나로 가입 신청 · 7일 유효</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비·게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
-          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n" style="display:flex;align-items:center;gap:5px">클럽 리포트 ${state.premium?'':ic('lock',14)}</div><div class="tr-d">${state.premium?'참여·수익·인기시간 분석':'프리미엄 전용 · 구독하면 열려요'}</div></div><div class="tr-arr">›</div></div>`
+          ${DEMO ? `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 리포트</div><div class="tr-d">참여·수익·인기시간 분석</div></div><div class="tr-arr">›</div></div>`
           : `<div class="toolrow" onclick="openClubReport()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 리포트</div><div class="tr-d">월별 참석률 · 회비 수납 · 노쇼</div></div><div class="tr-arr">›</div></div>`}
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
@@ -5482,7 +5462,7 @@ function renderClub(){
 `;
       } else {
         h+=`<div class="ch" style="font-size:15px;margin:6px 4px 10px">클럽 정보</div>
-          <div class="toolrow" onclick="go('bracket')"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인</div><div class="tr-d">이번 모임 코트별 대진 보기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubBracket2()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="renderClubStats()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 순위·통계</div><div class="tr-d">분기별 승률·득실 랭킹과 명예의 전당</div></div><div class="tr-arr">›</div></div>
           ${SP().cat==='team'?`<div class="toolrow" onclick="openTeamRecord()"><div class="tr-ic" style="background:#efeafc;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록실</div><div class="tr-d">자체전·대외전 · 개인 스탯 아카이브</div></div><div class="tr-arr">›</div></div>`
@@ -5557,7 +5537,7 @@ function renderClub(){
     if(!list.length) h+=`<div class="empty"><div class="ei">${ic('search',34)}</div><div class="et">조건에 맞는 클럽이 없어요</div><div class="es">검색어나 지역을 바꿔보거나<br>새 클럽을 직접 만들어보세요.</div></div>`;
     const cg=['linear-gradient(135deg,#3fa571,#5b3fa8)','linear-gradient(135deg,#f1a55c,#e07f3a)','linear-gradient(135deg,#3fa571,#3f9e6e)','linear-gradient(135deg,#8a857c,#55514a)'];
     list.forEach((c,i)=>{const joined=state.myClubs.includes(c.n),gv=state.guestVisits[c.n]||0;
-      h+=`<div class="listing" onclick="openClubDetail('${c.n}')">
+      h+=`<div class="listing" onclick="openClubPreview('${c.n}')">
         <div class="ls-top">${clubLogoOf(c.n)?`<span class="clogo ls-ic" style="background:${clubLogoOf(c.n).bg};font-size:24px">${clubLogoOf(c.n).ic}</span>`:''}
           <div class="ls-x"><div class="ls-n">${c.n}</div><div class="ls-r">${ic('pin',13)}${c.r}</div></div>
           ${joined?`<span class="badge b-double" style="white-space:nowrap">가입됨 ✓</span>`:''}</div>
@@ -5936,6 +5916,36 @@ async function createClub(){
   state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'시스템',t:'클럽 단체방이 만들어졌어요.'}]};
   closeOv(); state.clubTab='my'; renderClub(); renderChat(); go('club');
   toast(n+' 클럽을 만들었어요! 회장이 되셨어요');
+}
+async function openClubPreview(n){
+  const c=state.clubs.find(x=>x.n===n); if(!c) return;
+  const st=state.clubStatus[n]||'none';
+  const cid=CLUB_IDS[n];
+  let roster=[];
+  if(SERVER_OK&&cid){ try{ roster=await api(`/clubs/${cid}/roster`)||[]; }catch(e){} }
+  const chips = roster.slice(0,8).map(r=>{
+    const col = r.role==='owner'?'background:#fceee4;color:#cf5418':r.role==='officer'?'background:#edf2ec;color:#4c7a5c':'background:#f2f0ea;color:#6b6357';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;${col};border-radius:20px;padding:5px 11px;font-size:11.5px;font-weight:700;margin:0 5px 6px 0">${esc(r.name)}${r.role==='owner'?' · 회장':r.role==='officer'?' · 임원':''}</span>`;
+  }).join('');
+  const more = roster.length>8?`<span style="font-size:11.5px;font-weight:700;color:var(--lgray)">외 ${roster.length-8}명</span>`:'';
+  let h=`<div class="sh-top"><h3>${esc(n)}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${esc(c.r)} · 회원 ${roster.length||c.m}명 · 둘러보는 중이에요</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;margin:12px 2px 4px">
+      <div><i style="display:block;font-style:normal;font-size:10.5px;font-weight:800;color:var(--lgray);margin-bottom:3px">지역</i><b style="font-size:14px">${esc(c.r)}</b></div>
+      <div><i style="display:block;font-style:normal;font-size:10.5px;font-weight:800;color:var(--lgray);margin-bottom:3px">정기모임</i><b style="font-size:14px">주말</b></div>
+      <div><i style="display:block;font-style:normal;font-size:10.5px;font-weight:800;color:var(--lgray);margin-bottom:3px">게스트</i><b style="font-size:14px">${(state.guestVisits[n]||0)>0?(state.guestVisits[n])+'회 방문':'가능'}</b></div>
+      <div><i style="display:block;font-style:normal;font-size:10.5px;font-weight:800;color:var(--lgray);margin-bottom:3px">입회비</i><b style="font-size:14px;color:var(--coral-d)">${c.entry?c.entry.toLocaleString()+'원':'없음'}</b></div>
+    </div>
+    ${(chips||more)?`<div class="ch" style="font-size:14px;margin-top:12px">구성원</div><div style="margin-top:2px">${chips}${more}</div>`:''}
+    <div class="note" style="text-align:left;margin-top:12px">가입 조건과 회비는 다음 단계에서 자세히 볼 수 있어요.</div>`;
+  if(st==='member'){
+    h+=`<button class="btn done" style="margin-top:14px">가입된 클럽이에요 ✓</button>`;
+  }else if(st==='pending'||st==='memberPending'||st==='guestPending'){
+    h+=`<div class="card" style="margin-top:14px;background:#fff3e0;border:none"><div style="font-size:14px;font-weight:800;color:#c47d10">가입 승인 대기 중</div><div style="font-size:12.5px;color:#c47d10;font-weight:600;margin-top:4px">임원진이 확인 후 정회원 또는 게스트로 승인해요.</div></div>`;
+  }else{
+    h+=`<button class="btn" style="margin-top:14px" onclick="openClubDetail('${esc(n)}')">가입 신청하기</button>`;
+  }
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openClubDetail(n){
   const c=state.clubs.find(x=>x.n===n);if(!c)return;
@@ -7408,6 +7418,153 @@ async function openClubStats(){
 }
 
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
+/* ═══ 클럽 대진 v2 — 테르메스 이식 v1 (엔진·스코어 권한·데일리 순위·진행 추천) ═══ */
+let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null;
+function cb2Officer(){ const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return c&&(c.role==='owner'||c.role==='officer'); }
+async function openClubBracket2(){
+  const cid=clubId(); if(!SERVER_OK||!cid){ toast('서버 연결이 필요해요'); return; }
+  try{ CB2=await api(`/clubs/${cid}/bracket2`); }catch(e){ CB2=null; }
+  drawCB2();
+  clearInterval(CB2_TIMER);
+  CB2_TIMER=setInterval(async()=>{ const ov=document.getElementById('ov');
+    if(!ov||!ov.classList.contains('on')||!document.getElementById('cb2')){ clearInterval(CB2_TIMER); return; }
+    try{ const d=await api(`/clubs/${cid}/bracket2`);
+      if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; drawCB2(); } }catch(e){} }, 12000);
+}
+function cb2Pairs(four, r){          // 코트 내 4명 파트너 로테이션 (라운드별)
+  const [a,b,c,d]=four, p=r%3;
+  return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]];
+}
+function cb2Label(t1,t2){
+  const g=x=>String(x.gender||'').startsWith('여');
+  const all=[...t1,...t2];
+  const f=all.filter(g).length;
+  return f===0?'남복':f===all.length?'여복':'혼복';
+}
+async function cb2Gen(){
+  const cid=clubId();
+  let roster=[]; try{ roster=await api(`/clubs/${cid}/roster`)||[]; }catch(e){}
+  const sel=[...CB2_SEL].map(id=>roster.find(r=>String(r.user_id)===String(id))).filter(Boolean);
+  const courts=+(document.getElementById('cb2Courts')||{}).value||3;
+  const rounds=+(document.getElementById('cb2Rounds')||{}).value||4;
+  if(sel.length<4){ toast('참석자를 4명 이상 선택해 주세요'); return; }
+  // 레이팅 인접 정렬 → 라운드별 휴식 로테이션 + 코트당 4명 + 파트너 로테이션
+  const ps=sel.map(p=>({id:p.user_id,name:p.name,gender:p.gender,rating:p.rating||1000}))
+    .sort((a,b)=>(b.rating||0)-(a.rating||0));
+  const perR=Math.min(courts*4, Math.floor(ps.length/4)*4);
+  const games=[];
+  for(let r=0;r<rounds;r++){
+    const off=(r*(ps.length-perR||1))%ps.length;
+    const act=[]; for(let i=0;i<ps.length&&act.length<perR;i++){ act.push(ps[(off+i)%ps.length]); }
+    act.sort((a,b)=>(b.rating||0)-(a.rating||0));
+    for(let c=0;c<perR/4;c++){
+      const four=act.slice(c*4,c*4+4);
+      const [t1,t2]=cb2Pairs(four,r+c);
+      games.push({r:r+1,c:c+1,label:cb2Label(t1,t2),
+        teamA:t1.map(p=>({id:p.id,name:p.name,gender:p.gender})),
+        teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender})), sa:null, sb:null});
+    }
+  }
+  const data={date:new Date().toISOString().slice(0,10), courts, rounds,
+    made_by:state.userName, games};
+  try{ await api(`/clubs/${cid}/bracket2`,{method:'PUT',body:JSON.stringify(data)});
+    toast('대진표를 발행했어요 · 회원들에게 실시간으로 보여요'); CB2={...data,updated_at:Date.now()}; drawCB2();
+  }catch(e){ toast('임원만 발행할 수 있어요'); }
+}
+function cb2Stats(){                 // 데일리 순위 + 라운드 상태 + 진행 추천
+  const gs=(CB2&&CB2.games)||[];
+  const st={}, done=g=>g.sa!=null&&g.sb!=null;
+  gs.forEach(g=>{ if(!done(g))return;
+    const win=g.sa>g.sb?'A':g.sa<g.sb?'B':'D';
+    [['A','B'],['B','A']].forEach(([me,op])=>{
+      (g['team'+me]||[]).forEach(p=>{ if(!p)return;
+        const s=st[p.id]=st[p.id]||{name:p.name,w:0,d:0,l:0,gf:0,ga:0};
+        s.gf+=g['s'+me.toLowerCase()]; s.ga+=g['s'+op.toLowerCase()];
+        if(win==='D')s.d++; else if(win===me)s.w++; else s.l++; }); }); });
+  const rank=Object.values(st).map(s=>({...s,gd:s.gf-s.ga,p:s.w*60+s.d*30+s.l*10+(s.gf-s.ga)}))
+    .sort((a,b)=>b.p-a.p||b.gd-a.gd);
+  const rounds=CB2?CB2.rounds:0;
+  const rstat=[]; let live=0;
+  for(let r=1;r<=rounds;r++){ const rg=gs.filter(g=>g.r===r);
+    const c=rg.length&&rg.every(done); rstat.push(c?'done':'open'); if(!live&&!c&&rg.length) live=r; }
+  // 진행 추천: 미완료 경기 중, 그 선수 4명이 '더 이른 미완료 경기'에 안 묶인 첫 경기
+  let rec=null;
+  const undone=gs.map((g,i)=>({...g,gi:i})).filter(g=>!done(g)).sort((a,b)=>a.r-b.r||a.c-b.c);
+  for(const g of undone){
+    const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p&&p.id);
+    const blocked=undone.some(h=>h!==g&&(h.r<g.r)&&[...(h.teamA||[]),...(h.teamB||[])].some(p=>p&&ids.includes(p.id)));
+    if(!blocked){ rec=g; break; }
+  }
+  return {rank, rstat, live, rec, done};
+}
+function drawCB2(){
+  const off=cb2Officer();
+  const cid=clubId();
+  let h=`<div class="om-detail" id="cb2"><div class="sh-top"><h3>클럽 대진 · 실시간</h3><div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
+  if(!CB2||!(CB2.games||[]).length){
+    h+=`<div class="empty" style="padding:30px 20px"><div class="et">아직 발행된 대진이 없어요</div>
+      <div class="es">${off?'아래에서 참석자를 선택하고 발행해 보세요':'경기이사가 대진을 발행하면 여기 실시간으로 보여요'}</div></div>`;
+  }else{
+    const {rank,rstat,live,rec,done}=cb2Stats();
+    h+=`<div class="sd">${esc(CB2.date||'')} · ${esc(CB2.made_by||'')} 발행 · 코트 ${CB2.courts} · ${CB2.rounds}라운드</div>
+      <div style="display:flex;gap:6px;margin:10px 0 6px">${rstat.map((s,i)=>{
+        const r=i+1, on=r===live;
+        return `<span style="flex:1;text-align:center;font-size:11px;font-weight:800;padding:7px 4px;border-radius:10px;${
+          s==='done'?'background:#f2f0ea;color:#8b95a1':on?'background:var(--coral);color:#fff':'background:#fff;border:1.5px solid #ececea;color:#b3aea4'}">R${r}${s==='done'?' 완료':on?' 진행 중':''}</span>`;}).join('')}</div>`;
+    if(rec) h+=`<div class="om-note" style="margin:4px 0 8px"><b>지금 진행 가능</b> — R${rec.r} · ${rec.c}코트 ${esc(rec.label||'')} (${esc((rec.teamA||[]).map(p=>p.name).join('·'))} vs ${esc((rec.teamB||[]).map(p=>p.name).join('·'))}) · 네 명 모두 대기 중이에요</div>`;
+    (CB2.games||[]).forEach((g,gi)=>{
+      const sc=done(g)?`<b style="color:${g.sa>g.sb?'#3f8f5f':g.sa<g.sb?'#cf5418':'var(--gray)'}">${g.sa} : ${g.sb}</b>`
+        :`<span onclick="cb2Score(${gi})" style="border:1.5px solid #e9dfcf;border-radius:9px;padding:3px 10px;color:#8a7550;font-weight:800;font-size:11.5px;cursor:pointer">스코어 입력</span>`;
+      h+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 2px;border-top:1px solid #f0efec;font-size:12.5px;font-weight:600;flex-wrap:wrap">
+        <span style="color:var(--lgray);font-weight:800;width:22px">R${g.r}</span>
+        <span>${g.c}코트 ${esc(g.label||'')}</span>
+        <span style="flex:1"></span>
+        <span>${esc((g.teamA||[]).map(p=>p.name).join('·'))}</span>${sc}<span>${esc((g.teamB||[]).map(p=>p.name).join('·'))}</span>
+        ${off&&done(g)?`<span onclick="cb2Score(${gi})" style="font-size:10.5px;color:var(--lgray);font-weight:800;cursor:pointer">수정</span>`:''}</div>`;
+    });
+    h+=`<div class="note" style="text-align:left;margin-top:8px">스코어는 그 경기를 뛴 <b>당사자만</b> 입력하고, <b>임원은 언제든 수정</b>할 수 있어요.</div>`;
+    if(rank.length){
+      h+=`<div class="ch" style="font-size:15px;margin-top:16px">오늘의 순위 <span style="font-size:11px;color:var(--lgray);font-weight:700">경기 끝날 때마다 갱신</span></div>`;
+      rank.slice(0,8).forEach((s,i)=>{
+        h+=`<div style="display:flex;align-items:center;gap:9px;padding:8px 2px;border-top:1px solid #f0efec;font-size:13px;font-weight:700">
+          <b style="width:22px;text-align:center;color:${i===0?'var(--coral-d)':'var(--lgray)'}">${i+1}</b>
+          <span style="flex:1">${esc(s.name)}</span>
+          <span style="font-size:11.5px;color:var(--gray)">${s.w}승${s.d?` ${s.d}무`:''} ${s.l}패 · ${s.gd>=0?'+':''}${s.gd}</span>
+          <b style="color:var(--coral-d)">${s.p}P</b></div>`; });
+    }
+  }
+  if(off){
+    h+=`<div class="ch" style="font-size:15px;margin-top:18px">대진 만들기 <span style="font-size:11px;color:var(--lgray);font-weight:700">임원 전용 · 발행하면 즉시 교체</span></div>
+      <div id="cb2Roster" style="margin:6px 0"><span class="note">참석자 불러오는 중…</span></div>
+      <div style="display:flex;gap:10px">
+        <div class="fld" style="flex:1"><label>코트</label><select id="cb2Courts"><option value="2">2코트</option><option value="3" selected>3코트</option></select></div>
+        <div class="fld" style="flex:1"><label>라운드</label><select id="cb2Rounds"><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option></select></div></div>
+      <button class="btn" onclick="cb2Gen()">일반 대진 생성 · 발행</button>
+      <div class="note" style="text-align:left;margin-top:8px">레이팅 인접 배정 + 파트너 로테이션 + 남는 인원 휴식 순환. 한울·성비·청백전은 다음 업데이트로 들어와요.</div>`;
+    setTimeout(async()=>{
+      let roster=[]; try{ roster=await api(`/clubs/${cid}/roster`)||[]; }catch(e){}
+      const box=document.getElementById('cb2Roster'); if(!box) return;
+      if(!roster.length){ box.innerHTML='<span class="note">참석자가 없어요 · 이번 모임 참석 체크를 먼저 받아주세요</span>'; return; }
+      box.innerHTML=roster.filter(p=>p.user_id).map(p=>{
+        const on=CB2_SEL.has(String(p.user_id));
+        return `<span onclick="cb2Tog('${p.user_id}')" style="display:inline-block;margin:0 6px 7px 0;padding:7px 13px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;${on?'background:var(--coral);color:#fff':'background:#f2f0ea;color:#6b6357'}">${esc(p.name)}</span>`;
+      }).join('')+`<div style="font-size:11px;font-weight:800;color:var(--lgray);margin-top:2px">선택 ${CB2_SEL.size}명 · 코트당 4명 기준</div>`;
+    },0);
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+function cb2Tog(id){ id=String(id); CB2_SEL.has(id)?CB2_SEL.delete(id):CB2_SEL.add(id); drawCB2(); }
+async function cb2Score(gi){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  const v=prompt(`R${g.r} · ${g.c}코트 스코어 (예 6:4)\n${(g.teamA||[]).map(p=>p.name).join('·')} vs ${(g.teamB||[]).map(p=>p.name).join('·')}`, g.sa!=null?`${g.sa}:${g.sb}`:'');
+  if(!v) return;
+  const m=v.match(/(\d)\s*[:대-]\s*(\d)/); if(!m){ toast('6:4 형식으로 입력해 주세요'); return; }
+  try{ await api(`/clubs/${clubId()}/bracket2/score`,{method:'PATCH',body:JSON.stringify({gi,sa:+m[1],sb:+m[2]})});
+    const d=await api(`/clubs/${clubId()}/bracket2`); CB2=d; drawCB2(); toast('스코어를 기록했어요');
+  }catch(e){ toast(String(e.message||'').includes('player_only')?'그 경기를 뛴 당사자나 임원만 입력할 수 있어요':'기록하지 못했어요'); }
+}
 async function makeInvite(){
   const cid=clubId(); if(!cid) return;
   try{
@@ -7917,8 +8074,8 @@ function openOmDetail(id){
     ${_ph.length>1?`<span style="position:absolute;right:10px;bottom:10px;background:#1b1813cc;color:#fff;font-size:11px;font-weight:800;border-radius:12px;padding:4px 10px">${_ph.length}장 · 옆으로 넘겨보세요</span>`:''}</div>`;
   h+=`<div class="om-date">${fmtRange(m.start_at,m.end_at,m.dt)}</div>
     <div class="om-title">${esc(m.loc||'')}</div>
-    ${(m.sido||m.sigungu)?`<div class="om-meta">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}</div>`:''}
-    <div class="om-react">❤️ ${m.likes||0} &nbsp; 💬 ${m.comments||0}</div>
+    ${(m.sido||m.sigungu)?`<div class="om-meta" style="cursor:pointer" onclick="copyAddr('${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}')">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))} <span style="font-size:10.5px;color:var(--coral-d);font-weight:800">복사</span></div>`:''}
+    <div class="om-react">${im('heart',12)} ${m.likes||0} &nbsp; ${im('msg',12)} ${m.comments||0}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
       <b class="om-price">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
       <span class="om-pricenote">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
@@ -7950,7 +8107,8 @@ function openOmDetail(id){
   // ── 액션 ──
   const acts=[];
   if(!closed&&!m.is_host&&!m.joined&&!m.full) acts.push(`<button class="btn" onclick="joinMatch(${m.id});closeOv()">신청하기${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</button>`);
-  if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소 <span style="font-weight:700;font-size:11.5px">· 신청 30분 안에만</span></button>`);
+  if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소</button>
+    <div class="note" style="text-align:center;cursor:pointer" onclick="openRefundPolicy()">취소/환불 정책 보기 ›</div>`);
   if(m.full&&!m.joined&&!m.is_host&&!closed) acts.push(`<button class="btn" disabled style="opacity:.5">정원 마감</button>`);
   if(closed&&(m.joined||m.is_host)) acts.push(`<button class="btn ${m.my_mreview?'ghost':''}" onclick="openOmMatchReview(${m.id})">${m.my_mreview?'리뷰/칭찬 수정':(m.is_host?'매치 평가 남기기':'매치·매니저 평가 남기기')}</button>`);
   if((closed)&&(m.joined||m.is_host)&&(m.players||[]).length>1) acts.push(`<button class="btn ghost" onclick="openOmReviews(${m.id})">함께 뛴 사람 후기</button>`);
@@ -8757,7 +8915,7 @@ async function createMatch(){
 async function joinMatch(id){
   const mm=(OM_LIST||[]).find(x=>x.id===id);
   if(mm&&mm.price){
-    if(!confirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n30분 안에는 취소할 수 있고, 이후엔 확정돼요.\n\n신청할까요?`)) return;
+    if(!confirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n취소 시 시점에 따라 100·80·20% 환불돼요 (상세: 취소/환불 정책).\n\n신청할까요?`)) return;
   }
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
     const pay = m.price?` · 인당 ${m.price.toLocaleString()}원, 30분 안에 취소하지 않으면 확정돼요`:'';
@@ -8766,10 +8924,37 @@ async function joinMatch(id){
   }catch(e){ const s=String(e.message);
     toast(s.includes('full')?'정원이 찼어요':s.includes('not_open')?'모집이 끝났어요':'참가하지 못했어요'); }
 }
+function refundPct(m){                  // 서버와 동일한 단계 환불 계산 (표시용)
+  const price=m.price||0; if(!price) return {pct:100, refund:0};
+  const startMs=Date.parse(String(m.start_at||'').slice(0,16)+':00+09:00');
+  if(isNaN(startMs)) return {pct:100, refund:price};
+  const minLeft=(startMs-Date.now())/60000;
+  if(minLeft<=90) return {pct:0, refund:0, blocked:true};
+  const kd=ms=>Math.floor((ms+9*3600e3)/86400e3);
+  const d=kd(startMs)-kd(Date.now());
+  const pct=d>=2?100:d===1?80:20;
+  return {pct, refund:Math.round(price*pct/100)};
+}
 async function leaveMatch(id){
-  if(!confirm('참가를 취소할까요? 주최자에게 알림이 가요.')) return;
-  try{ await api(`/open-matches/${id}/join`,{method:'DELETE'}); toast('참가를 취소했어요'); renderMatch(); }
-  catch(e){ toast(String(e.message||'').includes('join_confirmed')?'확정된 참가예요 · 신청 후 30분이 지나 취소할 수 없어요':'취소하지 못했어요'); }
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id)||{};
+  const r=refundPct(m);
+  if(r.blocked){ toast('매치 시작 90분 이내에는 취소할 수 없어요'); return; }
+  const msg=(m.price||0)>0
+    ? `지금 취소하면 ${r.refund.toLocaleString()}원(${r.pct}%)이 캐시로 환불돼요.\n신청 30분 안이면 하루 1회 전액 환불이 적용될 수 있어요.\n\n취소할까요?`
+    : '참가를 취소할까요? 주최자에게 알림이 가요.';
+  if(!confirm(msg)) return;
+  try{ const res=await api(`/open-matches/${id}/join`,{method:'DELETE'});
+    toast(res.refund>0?`취소 완료 · ${res.refund.toLocaleString()}원이 캐시로 환불됐어요`:'참가를 취소했어요'); renderMatch(); }
+  catch(e){ toast(String(e.message||'').includes('too_late')?'매치 시작 90분 이내에는 취소할 수 없어요':'취소하지 못했어요'); }
+}
+function openRefundPolicy(){
+  document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top"><h3>취소/환불 정책</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  <div class="ch" style="font-size:15px">신청 취소 시 환불 기준</div>
+  ${[['매치 2일 전','무료 취소'],['매치 1일 전','80% 환불'],['당일 ~ 시작 90분 전','20% 환불'],['매치 시작 90분 이내','환불 불가']].map(r=>`
+    <div style="display:flex;justify-content:space-between;padding:11px 4px;border-bottom:1px solid #f0efec;font-size:13.5px;font-weight:600"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('')}
+  <div class="note" style="text-align:left;margin-top:12px">신청 후 30분 이내에는 하루 1회에 한해 전액 취소할 수 있어요 (시작 90분 이내 제외).<br>환불액은 캐시로 즉시 지급되고, 매치 시간에 가까울수록 취소 수수료가 커져요.</div>
+  <button class="btn ghost" style="margin-top:14px" onclick="closeOv()">확인</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function setMatchStatus(id, st){
   const msg = st==='closed' ? '모집을 마감할까요?' : '오픈매치를 취소할까요? 참가자에게 알림이 가요.';
@@ -11740,7 +11925,7 @@ function _renderMeCore(){
     <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
     <button class="btn sm" style="width:auto;padding:10px 18px;background:#fff;color:#cf5418;border:none" onclick="openStore()">충전하기</button></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
-  ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()'],['정산 계좌 · 매니저 정산','openBankSetup()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
+  ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
     <b style="flex:1;font-size:14.5px">${x[0]}</b><span style="color:var(--lgray);font-weight:900">›</span></div>`).join('')}`:''}
   ${myAppsCard()}
   <div style="text-align:center;font-size:10.5px;color:#c9c4ba;font-weight:700;margin:18px 0 6px">MATSU ${BUILD} — 이 코드가 안 보이면 index.html이 아직 반영 전이에요</div>
@@ -11790,7 +11975,7 @@ function _renderMeCore(){
       <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">개인정보처리방침</a>
       <a href="mailto:${CFG.support_email||'matsu.help@gmail.com'}?subject=%5B%EB%A7%9E%EC%88%98%5D%20%EB%AC%B8%EC%9D%98" style="font-size:12px;color:var(--gray);font-weight:700;text-decoration:underline">문의하기</a></div>
     <button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>
-    ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;font-size:13px" onclick="openBankSetup()">정산 계좌 등록 · 매니저 정산 받기</button>`:''}
+
     ${SERVER_OK?`<button class="btn ghost" style="margin-top:9px;color:#8a8378;font-size:13px" onclick="deleteAccount()">계정 탈퇴 (개인정보 삭제)</button>`:''}</div>`;
   document.getElementById('s-me').innerHTML=h;
 }
@@ -11825,6 +12010,12 @@ function homeRecClubs(){
 function _ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function selectHomeDay(ymd){ state._homeDay=ymd; renderHome(); }
 function hFlt(k){ if(k===1) state._hHide=!(state._hHide===true); else state._hEve=!state._hEve; renderHome(); }
+function copyAddr(t){
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
+    .then(()=>toast('주소를 복사했어요'))
+    .catch(()=>{ const i=document.createElement('input'); i.value=t; document.body.appendChild(i); i.select();
+      try{ document.execCommand('copy'); toast('주소를 복사했어요'); }catch(e){ toast('복사하지 못했어요'); } i.remove(); });
+}
 function bnGo(dir){ const t=document.getElementById('bnTrack'); if(!t) return;
   const w=t.clientWidth, n=Math.round(t.scrollLeft/w), last=t.children.length-1;
   let nx=n+dir; if(nx<0) nx=last; if(nx>last) nx=0;
@@ -11930,11 +12121,11 @@ function _renderHomeCore(){
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
     if(bns.length===1){ const bn=bns[0];
       h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
-      <img src="${esc(bn.image)}" style="width:100%;display:block" alt="배너"></div>`;
+      <img src="${esc(bn.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
     } else if(bns.length>1){
       h+=`<div style="position:relative;margin:4px 0 12px">
         <div id="bnTrack" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:20px;-webkit-overflow-scrolling:touch;scrollbar-width:none" onscroll="bnSync()">
-          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
+          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
         </div>
         <div onclick="bnGo(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:900;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">‹</div>
         <div onclick="bnGo(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:900;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">›</div>
