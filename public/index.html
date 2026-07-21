@@ -712,18 +712,19 @@
   .tchip.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
   .ph-x{ position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,.5); color:#fff; font-size:13px; font-weight:900; display:flex; align-items:center; justify-content:center; }
   .msg-meta{ font-size:10.5px; font-weight:700; color:var(--lgray); text-align:right; margin:-5px 4px 8px; }
-  #notifDrop{ position:fixed; top:74px; right:14px; z-index:340; width:min(330px, calc(100vw - 28px));
-    background:rgba(255,253,247,.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
-    border:1px solid var(--line); border-radius:18px; box-shadow:0 14px 40px rgba(50,38,20,.16);
-    padding:8px 4px; max-height:min(430px, 62vh); overflow-y:auto; }
-  .nd-ic{ width:36px; height:36px; border-radius:11px; background:var(--coral); display:flex;
-    align-items:center; justify-content:center; font-size:17px; flex:none;
-    box-shadow:0 2px 6px rgba(236,106,46,.25); }
-  .nd-h{ font-size:13px; font-weight:900; color:var(--gray); padding:8px 14px 6px; }
-  .nd-row{ padding:9px 14px; border-top:1px solid rgba(0,0,0,.045); }
+  #notifDrop{ position:fixed; top:74px; right:14px; z-index:340; width:min(340px, calc(100vw - 28px));
+    background:#ffffff; border:1px solid var(--line); border-radius:20px;
+    box-shadow:0 18px 48px rgba(40,32,20,.14); padding:6px 0 4px; max-height:min(440px, 64vh); overflow-y:auto; }
+  .nd-h{ font-size:14.5px; font-weight:800; color:var(--ink); letter-spacing:-.02em; padding:12px 18px 9px; }
+  .nd-row{ padding:12px 18px 13px; border-top:1px solid #f4f2ed; transition:background .12s; }
   .nd-row:first-of-type{ border-top:none; }
-  .nd-t{ font-size:13.5px; font-weight:800; line-height:1.4; }
-  .nd-s{ font-size:12px; font-weight:600; color:var(--gray); margin-top:2px; }
+  .nd-row:active{ background:#faf8f4; }
+  .nd-top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .nd-t{ font-size:13.5px; font-weight:700; line-height:1.45; letter-spacing:-.01em; color:var(--ink); flex:1; min-width:0; }
+  .nd-w{ font-size:11px; font-weight:600; color:var(--lgray); flex:none; }
+  .nd-s{ font-size:12.5px; font-weight:500; color:var(--gray); margin-top:3px; line-height:1.5; }
+  .nd-dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--coral); margin-right:7px; vertical-align:2px; }
+  .nd-empty{ padding:26px 18px 30px; text-align:center; font-size:13px; color:var(--lgray); font-weight:600; }
   .wait-chip{ background:#ffffff; border:1px solid var(--line2); border-radius:7px; padding:4px 10px; font-size:12.5px; color:var(--gray); font-weight:600; }
   /* ── 한울 · TERMES 스타일 ── */
   .hn-head{ display:flex; align-items:flex-end; justify-content:space-between; margin:18px 4px 14px; }
@@ -4787,7 +4788,7 @@ async function toggleNotif(ev){
   const d=document.createElement('div');
   d.id='notifDrop';
   d.onclick=e=>e.stopPropagation();
-  d.innerHTML=`<div class="nd-h">알림</div><div class="nd-row" style="color:var(--lgray)">불러오는 중…</div>`;
+  d.innerHTML=`<div class="nd-h">알림</div><div class="nd-empty">불러오는 중…</div>`;
   document.body.appendChild(d);
   setTimeout(()=>document.addEventListener('click', closeNotifDrop, {once:true}), 0);
 
@@ -4828,15 +4829,13 @@ async function toggleNotif(ev){
   }
   const el=document.getElementById('notifDrop'); if(!el) return;
   if(!rows.length){
-    el.innerHTML=`<div class="nd-h">알림</div><div class="nd-row" style="color:var(--lgray);padding:18px 14px">새 알림이 없어요</div>`;
+    el.innerHTML=`<div class="nd-h">알림</div><div class="nd-empty">새 알림이 없어요</div>`;
     return;
   }
-  el.innerHTML=`<div class="nd-h">알림</div>` + rows.map(r=>
-    `<div class="nd-row" style="display:flex;gap:11px;align-items:flex-start;cursor:pointer" onclick="${r.js?r.js:(r.link?`notifGo('${esc(r.link)}')`:`notifGuess('${esc((r.t||'').slice(0,30))}')`)}">
-       <div class="nd-ic">${r.ic||'🔔'}</div>
-       <div style="flex:1;min-width:0">
-         <div class="nd-t">${esc(r.t)}</div>
-         <div class="nd-s">${esc(r.s||'')}${r.w?` · ${r.w}`:''}${r.link?' <span style="color:var(--coral-d);font-weight:800">›</span>':''}</div></div></div>`).join('');
+  el.innerHTML=`<div class="nd-h">알림</div>` + rows.map((r,i)=>
+    `<div class="nd-row" style="cursor:pointer" onclick="${r.js?r.js:(r.link?`notifGo('${esc(r.link)}')`:`notifGuess('${esc((r.t||'').slice(0,30))}')`)}">
+       <div class="nd-top"><div class="nd-t">${i<3?'<span class="nd-dot"></span>':''}${esc(r.t)}</div>${r.w?`<span class="nd-w">${r.w}</span>`:''}</div>
+       ${r.s?`<div class="nd-s">${esc(r.s)}</div>`:''}</div>`).join('');
 }
 function closeNotifDrop(){ const d=document.getElementById('notifDrop'); if(d) d.remove(); }
 let _DOT_TS=0;
@@ -7272,7 +7271,7 @@ function openMinModal(){
       : sp.cat==='record'
       ? `참석 ${min}명부터 기록 기반으로 ${what}을 만들어드려요.`
       : `복식 ${what}은 참석 ${min}명부터 자동으로 짜드려요. 초대장으로 회원을 모아보세요.`,
-    cta:'초대장으로 모으기', onCta:"closeOv();go('club')" });
+    cta:'초대장으로 모으기', onCta:"closeOv();makeInvite()" });
 }
 function openPromo(o){
   document.getElementById('sheet').innerHTML=`
@@ -7966,7 +7965,7 @@ function openOmDetail(id){
     if(!closed) acts.push(`<button class="btn ghost" onclick="setMatchStatus(${m.id},'closed');closeOv()">모집 마감</button>`);
     acts.push(`<button class="btn ghost" style="color:#c8452c" onclick="deleteMatch(${m.id});closeOv()">매치 삭제</button>`);
   }
-  if(state.serverUser&&state.serverUser.is_admin) acts.push(`<button class="btn ghost" onclick="omAddBots(${m.id})">봇 참가자 추가 · 운영자</button>`);
+  if(localStorage.getItem('matsu_admin_key')) acts.push(`<button class="btn ghost" onclick="omAddBots(${m.id})">봇 참가자 추가 · 운영자</button>`);
   acts.push(`<button class="btn ghost" onclick="openOmInvite(${m.id})">초대장 공유</button>`);
   acts.push(`<button class="btn ghost" onclick="likeMatch(${m.id})">찜하기</button>`);
   h+=`<div style="display:grid;gap:9px;margin-top:6px">${acts.join('')}</div></div>`;
@@ -8231,14 +8230,16 @@ async function submitReview(mid, uid){
 
 /* 운영자: 외부 인원(봇)으로 오픈매치 채우기 — 서버에 /admin 라우트 필요 */
 async function omAddBots(id){
+  const key=localStorage.getItem('matsu_admin_key');
+  if(!key){ toast('admin.html에서 관리자 키로 먼저 접속해 주세요'); return; }
   const v=prompt('추가할 참가자 이름을 쉼표로 구분해 입력하세요\n예: 김철수, 이영희, 박민수');
   if(!v) return;
   const names=v.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20);
   if(!names.length) return;
   try{
-    const r=await api(`/admin/open-matches/${id}/bots`,{method:'POST',body:JSON.stringify({names})});
-    toast(`${(r&&r.added)||names.length}명을 추가했어요`); omReload();
-  }catch(e){ toast('서버에 운영자 봇 기능이 아직 없어요 · admin-tools.js를 적용해 주세요'); }
+    const r=await api(`/admin/open-matches/${id}/bots`,{method:'POST',headers:{'x-admin-key':key},body:JSON.stringify({names})});
+    toast(`${(r&&r.added)||0}명을 추가했어요`); omReload();
+  }catch(e){ toast(String(e.message||'').includes('admin_only')?'관리자 키가 달라요':'서버에 봇 라우트를 추가해 주세요 (admin.html 하단 참고)'); }
 }
 /* ── 오픈매치 초대장: 프레첼 패턴 히어로 + 브랜드 컬러 카드 ── */
 const OM_PAT = (()=>{                      // 여백 없이 꽉 채운 프레첼 패턴
