@@ -1085,7 +1085,13 @@ app.post('/open-matches', auth, (req, res) => {
     _b.cap = _courts * (_hours === 2 ? 4 : 6);            // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
     _b.min_cnt = _b.cap;                                  // 전원 모여야 확정
     _b.price = omFee(+_b.court_cost || 0, _b.cap);        // 가격은 서버가 산정 (신뢰 지점)
-    if (_b.start_at) { const d = new Date(_b.start_at); if (!isNaN(+d)) _b.end_at = new Date(+d + _hours * 3600e3).toISOString(); }
+    if (_b.start_at) {                                    // 로컬 벽시계 그대로 +N시간 (서버 TZ 영향 제거)
+      const mm = String(_b.start_at).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      if (mm) {
+        const d0 = new Date(Date.UTC(+mm[1], +mm[2] - 1, +mm[3], +mm[4] + _hours, +mm[5]));
+        _b.end_at = d0.toISOString().slice(0, 16);        // "YYYY-MM-DDTHH:mm" — start_at과 같은 나이브 포맷
+      }
+    }
     _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
     req.body = _b;
     req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
