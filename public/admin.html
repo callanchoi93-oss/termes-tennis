@@ -3,213 +3,272 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MATSU 운영자 콘솔</title>
+<title>맞수 관리자</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <style>
-  :root{ --ink:#1c1b18; --coral:#ec6a2e; --coral-d:#cf5418; --felt:#f2f1ec; --gray:#7d7870; --lgray:#b3aea4; --line:#ececea; }
+  :root{ --ink:#1c1b18; --coral:#ec6a2e; --coral-d:#cf5418; --gray:#7d7870; --lgray:#b3aea4; --line:#ececea; }
   *{ box-sizing:border-box; margin:0; padding:0; }
   body{ background:#edecea; font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;
-    color:var(--ink); letter-spacing:-.012em; line-height:1.55; padding:20px 14px 60px; }
-  .wrap{ max-width:560px; margin:0 auto; }
-  h1{ font-size:24px; font-weight:900; letter-spacing:-.03em; margin:6px 2px 2px; }
-  .sub{ font-size:13px; color:var(--gray); font-weight:600; margin:0 2px 16px; }
-  .card{ background:#fff; border:1px solid var(--line); border-radius:18px; padding:16px; margin-bottom:12px; }
-  .ch{ font-size:15px; font-weight:800; margin-bottom:10px; }
-  .btn{ width:100%; padding:13px; border:none; border-radius:14px; font-size:14.5px; font-weight:800;
-    font-family:inherit; cursor:pointer; background:var(--coral); color:#fff; }
+    color:var(--ink); letter-spacing:-.012em; line-height:1.55; padding:22px 14px 70px; }
+  .wrap{ max-width:620px; margin:0 auto; }
+  h1{ font-size:25px; font-weight:900; letter-spacing:-.03em; }
+  .sub{ font-size:13px; color:var(--gray); font-weight:600; margin:3px 0 16px; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:18px; padding:15px; margin-bottom:11px; }
+  .btn{ padding:12px 16px; border:none; border-radius:13px; font-size:13.5px; font-weight:800; font-family:inherit;
+    cursor:pointer; background:var(--ink); color:#fff; }
+  .btn.coral{ background:var(--coral); }
   .btn.ghost{ background:#fff; border:1.5px solid #e9dfcf; color:#5a544b; }
-  .btn.sm{ width:auto; padding:9px 14px; font-size:12.5px; border-radius:11px; }
-  input, textarea{ width:100%; border:1.5px solid #ece8e0; border-radius:12px; padding:11px 12px;
-    font-size:14px; font-family:inherit; font-weight:600; background:#fff; }
-  .note{ font-size:12px; color:#8a7550; font-weight:700; background:#faf6ee; border-radius:12px; padding:10px 12px; }
-  .pill{ display:inline-block; font-size:11px; font-weight:800; border-radius:20px; padding:3px 10px; }
-  .pill.ok{ background:#edf2ec; color:#4c7a5c; } .pill.no{ background:#fceee4; color:#cf5418; }
-  .mrow{ display:flex; align-items:center; gap:10px; padding:12px 2px; border-top:1px solid #f0efec; cursor:pointer; }
-  .mrow:first-of-type{ border-top:none; }
-  .mrow b{ font-size:14px; } .mrow .meta{ font-size:11.5px; color:var(--gray); font-weight:700; margin-top:2px; }
-  .badge{ font-size:11px; font-weight:800; color:#cf5418; background:#fceee4; border-radius:8px; padding:2px 8px; flex:none; }
-  .toast{ position:fixed; left:50%; bottom:30px; transform:translateX(-50%); background:var(--ink); color:#fff;
-    padding:12px 18px; border-radius:14px; font-size:13.5px; font-weight:700; opacity:0; transition:.3s; pointer-events:none; z-index:9; }
+  .btn.xs{ padding:7px 11px; font-size:11.5px; border-radius:10px; }
+  input, textarea{ border:1.5px solid #ece8e0; border-radius:12px; padding:11px 12px; font-size:14px;
+    font-family:inherit; font-weight:600; background:#fff; width:100%; }
+  .tabs{ display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; -webkit-overflow-scrolling:touch; }
+  .tab{ flex:none; padding:9px 16px; border-radius:22px; background:#fff; border:1px solid var(--line);
+    font-size:13px; font-weight:800; cursor:pointer; }
+  .tab.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .meta{ font-size:11.5px; color:var(--gray); font-weight:700; }
+  .row{ display:flex; align-items:center; gap:10px; padding:11px 2px; border-top:1px solid #f0efec; }
+  .row:first-child{ border-top:none; }
+  .row b{ font-size:13.5px; }
+  .pill{ display:inline-block; font-size:10.5px; font-weight:800; border-radius:20px; padding:3px 9px; margin:0 4px 4px 0; }
+  .pill.ok{ background:#edf2ec; color:#4c7a5c; } .pill.warn{ background:#fceee4; color:#cf5418; }
+  .pill.gray{ background:#f2f0ea; color:#6b6357; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .stat{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:13px 14px; }
+  .stat b{ font-size:20px; font-weight:900; } .stat span{ display:block; font-size:11px; color:var(--gray); font-weight:800; margin-bottom:3px; }
+  .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--ink); color:#fff;
+    padding:12px 18px; border-radius:14px; font-size:13px; font-weight:700; opacity:0; transition:.3s; pointer-events:none; z-index:9; max-width:88%; text-align:center; }
   .toast.on{ opacity:1; }
+  .sel{ outline:2.5px solid var(--coral); border-radius:14px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>MATSU 운영자 콘솔</h1>
-  <p class="sub">오픈매치 봇 참가자 관리 · 이 파일은 서버 public 폴더에 admin.html로 두세요</p>
+  <h1>맞수 관리자</h1>
+  <p class="sub">운영 도구 — 키를 아는 사람만 사용할 수 있어요.</p>
 
-  <!-- ① 로그인 상태 -->
-  <div class="card">
-    <div class="ch">운영자 계정 <span id="whoami" class="pill no">확인 중…</span></div>
-    <div id="authArea">
-      <div class="note" style="margin-bottom:10px">
-        앱과 같은 브라우저면 로그인이 자동으로 이어져요.
-        운영자 지정은 Railway 환경변수 <b>ADMIN_EMAILS</b>에 이메일을 쉼표로 넣으면 돼요.
-      </div>
-      <div style="display:flex; gap:8px;">
-        <input id="devName" placeholder="이름 로그인 (dev-login)">
-        <button class="btn sm" onclick="devLogin()" style="flex:none">로그인</button>
-      </div>
-    </div>
+  <div class="card" style="display:flex;gap:8px">
+    <input id="key" type="password" placeholder="관리자 키 (ADMIN_KEY)">
+    <button class="btn" style="flex:none" onclick="connect()">접속</button>
   </div>
 
-  <!-- ② 오픈매치 목록 -->
-  <div class="card">
-    <div class="ch" style="display:flex;justify-content:space-between;align-items:center">오픈매치
-      <button class="btn sm ghost" onclick="loadMatches()">새로고침</button></div>
-    <div id="mlist" style="margin-top:4px"><div class="meta" style="padding:8px 2px">불러오는 중…</div></div>
-  </div>
-
-  <!-- ③ 봇 참가자 추가 -->
-  <div class="card">
-    <div class="ch">봇 참가자 추가 <span id="selName" class="badge" style="display:none"></span></div>
-    <div class="note" style="margin-bottom:10px">위 목록에서 매치를 먼저 탭하세요. 외부 클럽 인원 등 <b>실제로 올 사람</b>의 이름을 넣으면 그 수만큼 정원이 채워져요.</div>
-    <textarea id="botNames" rows="3" placeholder="이름을 쉼표로 구분해 입력&#10;예: 김철수, 이영희, 박민수"></textarea>
-    <button class="btn" style="margin-top:10px" onclick="addBots()">참가자 추가하기</button>
-    <div id="parts" style="margin-top:12px"></div>
-  </div>
+  <div class="tabs" id="tabs"></div>
+  <div id="view"><div class="card meta">관리자 키로 접속하면 내용이 보여요.</div></div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-/* ─── 앱과 동일한 규약: 같은 오리진 API + localStorage 'matsu_jwt' 토큰 ─── */
-const API = location.origin;
-const TOKEN_KEY = 'matsu_jwt';
-let SEL = null;          // 선택된 매치
-let MATCHES = [];
-
-const $ = id => document.getElementById(id);
-const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'), 2400); }
-function token(){ try{ return localStorage.getItem(TOKEN_KEY); }catch(e){ return null; } }
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const won=n=>Number(n||0).toLocaleString()+'원';
+/* created_at이 숫자(ms)든 문자든 안전하게 날짜로 — 기존 회원 탭 오류 수정 지점 */
+const fdate=v=>{ if(v==null||v==='') return '—';
+  const d=new Date(typeof v==='number'?v:(/^\d+$/.test(String(v))?+v:v));
+  return isNaN(d)?'—':`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
+function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),2600); }
+function key(){ return localStorage.getItem('matsu_admin_key')||''; }
 
 async function api(path, opts){
-  const r = await fetch(API+path, { ...opts,
-    headers:{ 'Content-Type':'application/json', ...(token()?{Authorization:'Bearer '+token()}:{}) , ...((opts&&opts.headers)||{}) } });
-  if(!r.ok) throw new Error(await r.text().catch(()=>String(r.status)));
+  const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json','x-admin-key':key(),...((opts&&opts.headers)||{})}});
+  if(!r.ok){ const t=await r.text().catch(()=>String(r.status)); throw new Error(t); }
   return r.json();
 }
 
-/* ── 로그인 / 운영자 확인 ── */
-async function devLogin(){
-  const name = $('devName').value.trim();
-  if(!name){ toast('이름을 입력해 주세요'); return; }
-  try{
-    const d = await api('/auth/dev-login', { method:'POST',
-      body: JSON.stringify({ name, provider:'kakao', gender:'남성', region:'경기 용인', sport:'tennis' }) });
-    localStorage.setItem(TOKEN_KEY, d.token);
-    toast('로그인했어요'); checkAdmin(); loadMatches();
-  }catch(e){ toast('로그인하지 못했어요'); }
+const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['reports','신고'],['payouts','정산'],['banners','배너']];
+let TAB='stats', OMS=[], SEL=null;
+
+function drawTabs(){
+  $('tabs').innerHTML=TABS.map(([k,l])=>`<div class="tab ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</div>`).join('');
+}
+function setTab(k){ TAB=k; drawTabs(); render(); }
+
+async function connect(){
+  const v=$('key').value.trim();
+  if(v) localStorage.setItem('matsu_admin_key', v);
+  if(!key()){ toast('키를 입력해 주세요'); return; }
+  try{ await api('/admin/stats'); toast('접속했어요 · 앱의 봇 추가 버튼도 함께 열려요'); render(); }
+  catch(e){ toast('키가 달라요'); }
 }
 
-async function checkAdmin(){
-  const el = $('whoami');
-  if(!token()){ el.textContent='로그인 필요'; el.className='pill no'; return; }
+async function render(){
+  const v=$('view');
+  if(!key()){ v.innerHTML='<div class="card meta">관리자 키로 접속하면 내용이 보여요.</div>'; return; }
+  v.innerHTML='<div class="card meta">불러오는 중…</div>';
   try{
-    const w = await api('/admin/whoami');           // admin-tools 라우트 (하단 서버 코드 참고)
-    el.textContent = w.is_admin ? `운영자 · ${w.email||''}` : '운영자 아님 (ADMIN_EMAILS 확인)';
-    el.className = 'pill ' + (w.is_admin ? 'ok' : 'no');
-  }catch(e){
-    el.textContent='서버에 /admin 라우트 없음 — 하단 주석의 코드를 server.js에 넣어주세요';
-    el.className='pill no';
-  }
-}
-
-/* ── 매치 목록 ── */
-async function loadMatches(){
-  const box = $('mlist');
-  try{
-    MATCHES = await api('/open-matches?sport=tennis');
-  }catch(e){ box.innerHTML = '<div class="meta">목록을 불러오지 못했어요</div>'; return; }
-  if(!MATCHES.length){ box.innerHTML='<div class="meta" style="padding:8px 2px">오픈매치가 없어요</div>'; return; }
-  box.innerHTML = MATCHES.map(m => `
-    <div class="mrow" onclick="pick(${m.id})" id="mr${m.id}">
-      <div style="flex:1;min-width:0">
-        <b>${esc(m.loc||'오픈매치')}</b>
-        <div class="meta">${esc(m.dt||'')} · ${m.cur||0}/${m.cap||0}명 · ${m.price?Number(m.price).toLocaleString()+'원':'무료'} · ${esc(m.status||'open')}</div>
+    if(TAB==='stats'){
+      const s=await api('/admin/stats');
+      v.innerHTML=`<div class="grid">
+        <div class="stat"><span>회원</span><b>${s.users||0}</b></div>
+        <div class="stat"><span>클럽</span><b>${s.clubs||0}</b></div>
+        <div class="stat"><span>오픈매치(누적)</span><b>${s.matches||0}</b></div>
+        <div class="stat"><span>미처리 신고</span><b>${s.openReports||0}</b></div>
+        <div class="stat"><span>결제 건수</span><b>${s.paidOrders||0}</b></div>
+        <div class="stat"><span>결제 금액</span><b>${won(s.revenueWon)}</b></div>
+      </div>`;
+    }
+    else if(TAB==='users'){
+      const rows=await api('/admin/users');
+      v.innerHTML='<div class="card">'+ (rows.length? rows.map(u=>`
+        <div class="row"><div style="flex:1;min-width:0"><b>${esc(u.name)}</b>
+          <span class="pill gray">${esc(u.provider||'')}</span>${u.premium?'<span class="pill warn">프리미엄</span>':''}
+          <div class="meta">#${u.id} · ${esc(u.region||'지역 없음')} · ${esc(u.sport||'')} · 레이팅 ${u.rating??'—'} · 캐시 ${won(u.cash)} · 가입 ${fdate(u.created_at)}</div></div>
+          <button class="btn xs ghost" onclick="delUser(${u.id},'${esc(u.name)}')">삭제</button></div>`).join('') : '<div class="meta">회원이 없어요</div>') + '</div>';
+    }
+    else if(TAB==='clubs'){
+      const rows=await api('/admin/clubs');
+      v.innerHTML='<div class="card">'+ (rows.length? rows.map(c=>`
+        <div class="row"><div style="flex:1;min-width:0"><b>${esc(c.name)}</b>
+          <div class="meta">#${c.id} · ${esc(c.region||'')} · ${esc(c.sport||'')} · 회원 ${c.members||0}명 · 클럽장 ${esc((c.owner||{}).name||'—')}</div>
+          <div style="margin-top:5px">${(c.roster||[]).slice(0,8).map(r=>`<span class="pill ${r.role==='owner'?'warn':r.role==='officer'?'ok':'gray'}">${esc(r.name)}</span>`).join('')}</div></div>
+          <button class="btn xs ghost" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('') : '<div class="meta">클럽이 없어요</div>') + '</div>';
+    }
+    else if(TAB==='oms'){
+      let rows;
+      try{ rows=await api('/admin/open-matches'); }
+      catch(e){
+        v.innerHTML=`<div class="card"><b style="font-size:14px">서버에 봇 라우트가 아직 없어요</b>
+          <div class="meta" style="margin-top:6px;line-height:1.7">이 파일 하단 주석의 코드 3개(<b>/admin/open-matches</b> 목록,
+          <b>bots</b> 추가, 제거)를 server.js의 다른 /admin 라우트 옆에 붙여넣고 배포하면 이 탭이 살아나요.</div></div>`;
+        return;
+      }
+      OMS=rows;
+      v.innerHTML=`
+      <div class="card"><b style="font-size:14px">① 매치 선택</b>
+        ${rows.length? rows.map(m=>`
+        <div class="row" id="om${m.id}" style="cursor:pointer" onclick="pick(${m.id})">
+          <div style="flex:1;min-width:0"><b>${esc(m.loc||'오픈매치')}</b> ${SEL===m.id?'<span class="pill warn">선택됨</span>':''}
+            <div class="meta">#${m.id} · ${esc(m.dt||'')} · ${(m.players||[]).length}/${m.cap||0}명 · ${m.price?won(m.price):'무료'} · ${esc(m.status||'open')}</div></div></div>`).join('') : '<div class="meta">오픈매치가 없어요</div>'}
       </div>
-      ${SEL===m.id?'<span class="badge">선택됨</span>':''}
-    </div>`).join('');
+      <div class="card" id="botCard">
+        <b style="font-size:14px">② 봇 참가자 추가</b>
+        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람의 이름을 넣으면 정원이 채워져요. 이름 옆 ×로 제거할 수 있어요.</div>
+        <textarea id="botNames" rows="2" placeholder="이름을 쉼표로 구분 · 예: 김철수, 이영희, 박민수"></textarea>
+        <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBots()">추가하기</button>
+        <div id="parts" style="margin-top:11px"></div>
+      </div>`;
+      drawParts();
+    }
+    else if(TAB==='reports'){
+      const rows=await api('/admin/reports');
+      v.innerHTML='<div class="card">'+ (rows.length? rows.map(r=>`
+        <div class="row"><div style="flex:1;min-width:0"><b>${esc(r.reason||'신고')}</b>
+          <div class="meta">#${r.id} · ${esc(r.target_type||'')} ${r.target?('· '+esc(r.target.title||'')):''} · ${fdate(r.created_at)}</div></div>
+          <div style="display:flex;gap:5px;flex:none">
+            <button class="btn xs coral" onclick="resolveRep(${r.id},'removed')">삭제 조치</button>
+            <button class="btn xs ghost" onclick="resolveRep(${r.id},'rejected')">기각</button></div></div>`).join('') : '<div class="meta">미처리 신고가 없어요</div>') + '</div>';
+    }
+    else if(TAB==='payouts'){
+      const rows=await api('/admin/payouts');
+      v.innerHTML='<div class="card">'+ (rows.length? rows.map(p=>`
+        <div class="row"><div style="flex:1;min-width:0"><b>${esc(p.name)}</b> · ${won(p.amount)}
+          <div class="meta">#${p.id} · ${esc(p.bank||'계좌 미등록')} · 요청 ${fdate(p.created_at||p.requested_at)}</div></div>
+          <button class="btn xs coral" onclick="paidPayout(${p.id})">이체 완료</button></div>`).join('') : '<div class="meta">대기 중인 정산이 없어요</div>') + '</div>';
+    }
+    else if(TAB==='banners'){
+      const rows=await api('/admin/banners');
+      v.innerHTML=`<div class="card"><b style="font-size:14px">배너 추가</b>
+          <input type="file" id="bnFile" accept="image/*" style="margin-top:8px">
+          <input id="bnLink" placeholder="탭했을 때 열릴 링크 (선택)" style="margin-top:8px">
+          <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBanner()">올리기</button></div>
+        <div class="card">`+ (rows.length? rows.map(b=>`
+        <div class="row"><img src="${esc(b.image)}" style="width:110px;border-radius:10px;flex:none" alt="">
+          <div style="flex:1;min-width:0" class="meta">#${b.id} · ${fdate(b.created_at)}<br>${esc(b.link||'링크 없음')}</div>
+          <button class="btn xs ghost" onclick="delBanner(${b.id})">삭제</button></div>`).join('') : '<div class="meta">배너가 없어요</div>') + '</div>';
+    }
+  }catch(e){ v.innerHTML=`<div class="card meta">불러오지 못했어요 (${esc(e.message).slice(0,120)})</div>`; }
 }
 
-function pick(id){
-  SEL = id;
-  const m = MATCHES.find(x=>x.id===id) || {};
-  $('selName').style.display='inline-block';
-  $('selName').textContent = m.loc || ('매치 #'+id);
-  loadMatches(); loadParts();
-  toast('매치를 선택했어요');
+/* ── 액션들 ── */
+async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요? 되돌릴 수 없어요.`))return;
+  try{ await api('/admin/users/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
+async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`))return;
+  try{ await api('/admin/clubs/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
+async function resolveRep(id,action){ try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
+async function paidPayout(id){ if(!confirm('이체를 완료 처리할까요? 매니저에게 완료 알림이 가요.'))return;
+  try{ await api('/admin/payouts/'+id+'/paid',{method:'POST',body:'{}'}); toast('완료 처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
+async function delBanner(id){ try{ await api('/admin/banners/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
+async function addBanner(){
+  const f=$('bnFile').files[0]; if(!f){ toast('이미지를 선택해 주세요'); return; }
+  const data=await new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); });
+  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({image:data,link:$('bnLink').value.trim()})}); toast('배너를 올렸어요'); render(); }
+  catch(e){ toast(String(e.message).includes('too_large')?'이미지는 3MB 이하로 해주세요':'올리지 못했어요'); }
 }
 
-/* ── 봇 추가 / 참가자 보기 ── */
+/* ── 오픈매치 봇 ── */
+function pick(id){ SEL=id; render(); }
+function drawParts(){
+  const box=$('parts'); if(!box) return;
+  if(!SEL){ box.innerHTML='<div class="meta">위에서 매치를 먼저 선택해 주세요</div>'; return; }
+  const m=OMS.find(x=>x.id===SEL)||{};
+  const ps=m.players||[];
+  document.querySelectorAll('#view .row').forEach(el=>el.classList.remove('sel'));
+  const row=$('om'+SEL); if(row) row.classList.add('sel');
+  box.innerHTML = `<div class="meta" style="margin-bottom:6px">${esc(m.loc||'')} · 참가자 ${ps.length}/${m.cap||0}명</div>` +
+    (ps.length? ps.map(p=>`<span class="pill ${p.provider==='bot'?'warn':'ok'}">${esc(p.name)}${p.provider==='bot'?' 🤖':''}
+      <a style="cursor:pointer;font-weight:900;margin-left:3px" onclick="rmBot(${p.id})">×</a></span>`).join('') : '<div class="meta">아직 참가자가 없어요</div>');
+}
 async function addBots(){
-  if(!SEL){ toast('먼저 매치를 선택해 주세요'); return; }
-  const names = $('botNames').value.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20);
+  if(!SEL){ toast('매치를 먼저 선택해 주세요'); return; }
+  const names=$('botNames').value.split(',').map(s=>s.trim()).filter(Boolean).slice(0,20);
   if(!names.length){ toast('이름을 입력해 주세요'); return; }
-  try{
-    const r = await api(`/admin/open-matches/${SEL}/bots`, { method:'POST', body: JSON.stringify({ names }) });
-    toast(`${r.added||0}명을 추가했어요`);
-    $('botNames').value=''; loadMatches(); loadParts();
-  }catch(e){
-    toast(String(e.message).includes('admin_only') ? '운영자 계정이 아니에요' : '서버에 /admin 라우트가 필요해요 (하단 주석 참고)');
-  }
+  try{ const r=await api(`/admin/open-matches/${SEL}/bots`,{method:'POST',body:JSON.stringify({names})});
+    toast(`${r.added||0}명을 추가했어요`); $('botNames').value=''; render(); }
+  catch(e){ toast('추가하지 못했어요 · 하단 주석의 서버 코드를 확인해 주세요'); }
 }
-
-async function loadParts(){
+async function rmBot(uid){
   if(!SEL) return;
-  const box = $('parts');
-  try{
-    const m = MATCHES.find(x=>x.id===SEL);
-    const players = (m && m.players) || [];
-    box.innerHTML = players.length
-      ? '<div class="meta" style="margin-bottom:6px">참가자 '+players.length+'명</div>' +
-        players.map(p=>`<span class="pill ok" style="margin:0 6px 6px 0">${esc(p.name)}${p.is_bot?' 🤖':''}</span>`).join('')
-      : '<div class="meta">아직 참가자가 없어요</div>';
-  }catch(e){ box.innerHTML=''; }
+  if(!confirm('이 참가자를 매치에서 뺄까요?')) return;
+  try{ await api(`/admin/open-matches/${SEL}/bots/${uid}`,{method:'DELETE'}); toast('제거했어요'); render(); }
+  catch(e){ toast('제거하지 못했어요'); }
 }
 
-checkAdmin(); loadMatches();
+drawTabs();
+if(key()){ $('key').value='●●●●●●●●'; render(); }
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
-  ▼▼ 서버 코드 (server.js에 붙여넣기) — 이 페이지가 쓰는 /admin 라우트 ▼▼
+  ▼ server.js에 추가할 라우트 3개 — 기존 /admin 라우트들 옆에 붙여넣으세요.
+    (admin 미들웨어·db·now()는 이미 server.js에 있는 것을 그대로 씁니다)
 
-  ① Railway 환경변수:  ADMIN_EMAILS=you@gmail.com,partner@gmail.com
-  ② /me·로그인 응답에 한 줄:  user.is_admin = isAdmin(user.email);
-     → 앱(index.html)의 「봇 참가자 추가 · 운영자」 버튼이 자동 표시돼요.
+// 오픈매치 목록 + 참가자 (관리자용)
+app.get('/admin/open-matches', admin, (_req, res) => {
+  const ms = db.prepare(`SELECT id,loc,dt,price,cap,status,sport FROM open_matches
+    ORDER BY id DESC LIMIT 100`).all();
+  res.json(ms.map(m => ({ ...m,
+    players: db.prepare(`SELECT u.id, u.name, u.provider
+      FROM open_match_joins j JOIN users u ON u.id = j.user_id
+      WHERE j.match_id = ? ORDER BY j.joined_at`).all(m.id) })));
+});
 
-  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS||'').split(',')
-    .map(s=>s.trim().toLowerCase()).filter(Boolean);
-  const isAdmin = email => ADMIN_EMAILS.includes(String(email||'').toLowerCase());
-  const requireAdmin = (req,res,next)=>
-    (req.user && isAdmin(req.user.email)) ? next() : res.status(403).json({error:'admin_only'});
-
-  app.get('/admin/whoami', requireAuth, (req,res)=>
-    res.json({ email:req.user.email, is_admin:isAdmin(req.user.email) }));
-
-  app.post('/admin/open-matches/:id/bots', requireAuth, requireAdmin, async (req,res)=>{
-    const matchId = Number(req.params.id);
-    const names = (req.body.names||[]).map(s=>String(s).trim()).filter(Boolean).slice(0,20);
-    if(!names.length) return res.status(400).json({error:'no_names'});
-    const m = await db.getOpenMatch(matchId);
-    if(!m) return res.status(404).json({error:'not_found'});
-    let added = 0;
-    for(const name of names){
-      if((m.cur||0)+added >= (m.cap||0)) break;                      // 정원 초과 방지
-      const botEmail = 'bot+'+Buffer.from(name).toString('hex').slice(0,12)+'@matsu.local';
-      let bot = await db.findUserByEmail(botEmail);
-      if(!bot) bot = await db.createUser({ email:botEmail, name, is_bot:true, rating:1000 });
-      if(!(await db.isParticipant(matchId, bot.id))){
-        await db.addParticipant(matchId, bot.id, { paid:true });     // 봇은 결제 스킵
-        added++;
-      }
+// 봇 참가자 추가 — 이름만으로 provider='bot' 유저를 만들어 참가시킨다
+app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const names = ((req.body || {}).names || []).map(s => String(s).trim()).filter(Boolean).slice(0, 20);
+  let added = 0;
+  for (const name of names) {
+    const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+    if (cur >= (m.cap || 8)) break;                                   // 정원 초과 방지
+    const pid = 'bot:' + name;
+    let u = db.prepare("SELECT id FROM users WHERE provider='bot' AND provider_id=?").get(pid);
+    if (!u) {
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at)
+        VALUES ('bot',?,?,?,?)`).run(pid, name, name, now());
+      u = { id: r.lastInsertRowid };
     }
-    res.json({ ok:true, added });
-  });
+    const r2 = db.prepare(`INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at)
+      VALUES (?,?,?)`).run(mid, u.id, now());
+    if (r2.changes) added++;
+  }
+  res.json({ ok: true, added });
+});
 
-  ※ db.getOpenMatch / findUserByEmail / createUser / isParticipant / addParticipant
-     다섯 곳만 실제 스키마의 쿼리로 바꾸면 끝. users에 is_bot 컬럼이 없으면:
-     ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0;
+// 봇(또는 참가자) 제거
+app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?')
+    .run(+req.params.id, +req.params.uid);
+  res.json({ ok: true });
+});
 ═══════════════════════════════════════════════════════════════ -->
 </body>
 </html>
