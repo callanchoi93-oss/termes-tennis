@@ -3249,11 +3249,18 @@ app.post('/upload', auth, limitUpload, (req, res) => {
 /* ═══ 홈 배너 — 운영자가 이미지+랜딩 링크 등록, 홈 히어로 자리에 노출 ═══ */
 db.exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
+try { db.exec('ALTER TABLE banners ADD COLUMN sort INTEGER DEFAULT 0'); } catch (e) {}
 app.get('/banners', (_req, res) => {
-  res.json(db.prepare('SELECT id,image,link FROM banners ORDER BY id DESC LIMIT 5').all());
+  res.json(db.prepare('SELECT id,image,link FROM banners ORDER BY sort ASC, id DESC LIMIT 5').all());
 });
 app.get('/admin/banners', admin, (_req, res) => {
-  res.json(db.prepare('SELECT id,image,link,created_at FROM banners ORDER BY id DESC LIMIT 20').all());
+  res.json(db.prepare('SELECT id,image,link,sort,created_at FROM banners ORDER BY sort ASC, id DESC LIMIT 20').all());
+});
+// 배너 순서 저장 — ids 배열 순서 = 노출 순서
+app.patch('/admin/banners/order', admin, (req, res) => {
+  const ids = ((req.body || {}).ids || []).map(Number).filter(Boolean);
+  ids.forEach((id, i) => db.prepare('UPDATE banners SET sort=? WHERE id=?').run(i, id));
+  res.json({ ok: true, count: ids.length });
 });
 app.post('/admin/banners', admin, (req, res) => {
   const b = req.body || {};
