@@ -192,6 +192,7 @@ app.post('/auth/dev-login', limitLogin, (req, res) => {
     const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,region,sport,anon_nick,created_at,dev_pin)
       VALUES (?,?,?,?,?,?,?,?,?)`).run(provider, pid, cleanName(name, '게스트'), gender, region, sport, nick, now(), pin ? pinHash(pid, pin) : null);
     u = getUser(rid(r));
+    db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
   } else if (u.dev_pin && pin && u.dev_pin !== pinHash(pid, pin)) {
     return res.status(403).json({ error: 'wrong_pin', message: '간편 비밀번호가 달라요' });
   }
@@ -211,6 +212,7 @@ async function kakaoIssue(access_token, res) {
     const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('kakao',?,?,?,?)`)
       .run(pid, name, anonNick(pid), now());
     u = getUser(rid(r));
+    db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
   }
   res.json({ token: sign(u), user: u });
 }
@@ -268,6 +270,7 @@ app.post('/auth/naver', async (req, res) => {
       const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('naver',?,?,?,?)`)
         .run(pid, name, anonNick(pid), now());
       u = getUser(rid(r));
+    db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
     }
     res.json({ token: sign(u), user: u });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
@@ -300,6 +303,7 @@ try { db.exec("ALTER TABLE users ADD COLUMN sport_profile TEXT"); } catch (e) {}
 try { db.exec('ALTER TABLE users ADD COLUMN phone TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE users ADD COLUMN sport_started TEXT'); } catch (e) {}   // 종목별 시작 시점 {"tennis":"2019-05"}
 try { db.exec('ALTER TABLE users ADD COLUMN photos TEXT'); } catch (e) {}          // 프로필 사진 (JSON 배열)
+try { db.exec('UPDATE users SET cash=0 WHERE cash BETWEEN 1 AND 6'); } catch (e) {} // 구 기본값(5원) 정리 — 캐시는 0원부터
 try { db.exec('ALTER TABLE users ADD COLUMN exp TEXT'); } catch (e) {}             // 구력 표기
 db.exec(`CREATE TABLE IF NOT EXISTS member_exits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
@@ -717,6 +721,48 @@ app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
 });
 
 // 이번 모임 참석자 (대진 편성 대상). 일정이 있으면 그 참석자, 없으면 활성 회원 전원.
+/* ═══ 클럽 대진 v2 (테르메스 이식 v1) — JSON 블롭 + 권한 ═══
+   data = { date, courts, rounds, games:[{r,c,label,teamA:[{id,name}],teamB:[...],sa,sb}], made_by } */
+try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets (
+  club_id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)`); } catch (e) {}
+function cbRole(cid, uid) {
+  const m = db.prepare(`SELECT role FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')`).get(cid, uid);
+  return m ? (m.role || 'member') : null;
+}
+app.get('/clubs/:id/bracket2', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const row = db.prepare('SELECT data, updated_at FROM club_brackets WHERE club_id=?').get(cid);
+  res.json(row ? { ...JSON.parse(row.data), updated_at: row.updated_at } : null);
+});
+app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원만
+  const cid = +req.params.id;
+  const role = cbRole(cid, req.uid);
+  if (role !== 'owner' && role !== 'officer') return res.status(403).json({ error: 'officer_only' });
+  const data = req.body || {};
+  db.prepare(`INSERT INTO club_brackets (club_id,data,updated_at) VALUES (?,?,?)
+    ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+    .run(cid, JSON.stringify(data), now());
+  res.json({ ok: true });
+});
+app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — 당사자 또는 임원
+  const cid = +req.params.id;
+  const role = cbRole(cid, req.uid);
+  if (!role) return res.status(403).json({ error: 'member_only' });
+  const { gi, sa, sb } = req.body || {};
+  const row = db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  if (!row) return res.status(404).json({ error: 'no_bracket' });
+  const data = JSON.parse(row.data);
+  const g = (data.games || [])[gi];
+  if (!g) return res.status(404).json({ error: 'no_game' });
+  const officer = role === 'owner' || role === 'officer';
+  const inGame = [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === req.uid);
+  if (!officer && !inGame) return res.status(403).json({ error: 'player_only', message: '그 경기를 뛴 당사자나 임원만 입력할 수 있어요' });
+  g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
+  g.by = req.uid; g.at = now();
+  db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
+  res.json({ ok: true, game: g });
+});
 app.get('/clubs/:id/roster', (req, res) => {
   const cid = +req.params.id;
   const ev = db.prepare('SELECT id FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 1').get(cid);
@@ -1733,16 +1779,42 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_leave' });
   const jr = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
-  if ((m.price || 0) > 0 && jr && jr.joined_at) {         // 결제 매치: 신청 30분 이후엔 확정 — 취소 불가
-    const el = Date.now() - Date.parse(jr.joined_at);
-    if (!isNaN(el) && el > 30 * 60e3) return res.status(403).json({ error: 'join_confirmed' });
-  }
-  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
-  if (m.host_id) sendPush(m.host_id, { icon: '🚪', title: '오픈매치 참가 취소', body: `${getUser(req.uid).name} 님이 취소했어요` });
-  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
-});
+  if (!jr) return res.status(404).json({ error: 'not_joined' });
 
-// 주최자가 모집 마감/취소
+  /* ── 단계 환불 정책 (매치 시각은 KST 벽시계) ─────────────────
+     2일 전 100% · 1일 전 80% · 당일~90분 전 20% · 90분 이내 불가
+     + 신청 후 30분 이내는 하루 1회 무료 취소 (90분 이내 제외)     */
+  try { db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
+    id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`); } catch (e) {}
+
+  const price = m.price || 0;
+  let pct = 100, freeGrace = 0;
+  const startMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (price > 0 && !isNaN(startMs)) {
+    const minLeft = (startMs - Date.now()) / 60000;
+    if (minLeft <= 90) return res.status(400).json({ error: 'too_late', message: '매치 시작 90분 이내에는 취소할 수 없어요' });
+    const grace = jr.joined_at && (Date.now() - jr.joined_at) <= 30 * 60e3;
+    const kstDay = ms => Math.floor((ms + 9 * 3600e3) / 86400e3);
+    const dDiff = kstDay(startMs) - kstDay(Date.now());
+    const usedFree = db.prepare('SELECT COUNT(*) n FROM cancel_logs WHERE user_id=? AND free=1 AND created_at>?')
+      .get(req.uid, Date.now() - 86400e3).n;
+    if (grace && usedFree < 1) { pct = 100; freeGrace = 1; }
+    else if (dDiff >= 2) pct = 100;
+    else if (dDiff === 1) pct = 80;
+    else pct = 20;
+  }
+  const refund = Math.round(price * pct / 100);
+  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  if (refund > 0) {                                       // 환불은 캐시로 (PG 연동 전)
+    const u = getUser(req.uid);
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run((u.cash || 0) + refund, req.uid);
+  }
+  db.prepare('INSERT INTO cancel_logs (user_id,match_id,free,refund,created_at) VALUES (?,?,?,?,?)')
+    .run(req.uid, mid, freeGrace, refund, Date.now());
+  const me = getUser(req.uid);
+  sendPush(m.host_id, { icon: '📣', title: '참가 취소', body: `${me.name} 님이 참가를 취소했어요 · ${m.dt || ''}` });
+  res.json({ ok: true, refund, pct, cash: me.cash });
+});
 app.patch('/open-matches/:id', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
@@ -4113,6 +4185,7 @@ app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
       const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,rating,sport,anon_nick,created_at)
         VALUES ('bot',?,?,?,?,?,?,?)`).run(pid, b.name, b.gender, b.rating, m.sport || 'tennis', b.name, now());
       u = { id: r.lastInsertRowid };
+      db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);
     } else {
       db.prepare('UPDATE users SET gender=?, rating=? WHERE id=?').run(b.gender, b.rating, u.id);
     }
