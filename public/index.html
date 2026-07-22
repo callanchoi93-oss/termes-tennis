@@ -1401,6 +1401,7 @@
     </div>
   </div></div>
   <div class="fullov" id="onboard"><div class="ob" id="obBody"></div><div class="ob-foot" id="obFoot"></div></div>
+  <div class="fullov" id="evPage" style="overflow-y:auto"></div>
   <div id="guestOv"></div>
   <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
   <div id="bootveil" style="position:fixed;inset:0;z-index:500;background:#fdf6ec;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .28s">
@@ -3152,12 +3153,10 @@ function renderNewEvent(){
             style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:11px;font-size:13.5px;font-weight:${NE.tag===t[0]?'700':'500'};${locked?'background:#f5f3ee;color:#c3bdb2':NE.tag===t[0]?`background:${t[2]};color:#fff`:`background:${t[1]};color:${t[2]}`}">${t[0]} 모임${locked?' 🔒':''}</span>`;}).join('')}
       </div>
       ${!_off?`<div style="font-size:11.5px;font-weight:400;color:#8a857c;margin-top:7px;line-height:1.6">정기 모임은 임원만 만들 수 있어요. 번개는 회원 누구나 열 수 있어요.</div>`:''}</div>
-    <div style="display:flex;gap:10px;margin-top:12px">
-      <div class="fld" style="flex:1;min-width:0"><label>시작 시간</label>
-        <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
-      <div class="fld" style="flex:1;min-width:0"><label>종료 시간 <span style="font-weight:600;color:var(--lgray)">· 선택</span></label>
-        <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
-    </div>
+    <div class="fld" style="margin-top:12px"><label>시작 시간</label>
+      <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
+    <div class="fld" style="margin-top:12px"><label>종료 시간 <span style="font-weight:500;color:var(--lgray)">· 선택</span></label>
+      <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
@@ -8320,9 +8319,13 @@ function drawEventDetail(){
   const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f7f5f0;border-radius:22px;padding:5px 12px 5px 5px;margin:0 6px 7px 0;cursor:pointer">
       ${evAvatar(n,ph,26)}<span style="font-size:13px;font-weight:500;color:#3a352e">${esc(n)}</span></span>`;
 
-  let h=`<div class="om-detail">
-    <div class="sh-top"><h3 style="font-weight:700">${esc(e.title)}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+  let h=`<div style="position:sticky;top:0;z-index:5;background:var(--cream);padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0ede6">
+      <span onclick="closeEventPage()" style="cursor:pointer;font-size:22px;color:#8a857c;line-height:1">‹</span>
+      <span style="font-size:16px;font-weight:600">모임 정보</span></div>
+    <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
       <span style="font-size:11.5px;font-weight:700;border-radius:8px;padding:4px 10px;background:${accentBg};color:${accent}">${esc(e.tag||'정기')}</span>
       <span style="font-size:13.5px;font-weight:400;color:#6b6357">${esc(e.date||'')}</span></div>
 
@@ -8375,13 +8378,18 @@ function drawEventDetail(){
     ${rp?`<div style="display:flex;align-items:center;gap:7px;background:${accentBg};border-radius:11px;padding:8px 12px;margin-bottom:7px">
       <span style="font-size:12px;font-weight:500;color:${accent}">${esc(rp.name)} 님에게 답글</span>
       <span onclick="EVD.replyTo=null;drawEventDetail()" style="margin-left:auto;font-size:12px;color:#8a857c;cursor:pointer;font-weight:500">취소</span></div>`:''}
-    <div style="display:flex;gap:7px">
-      <input id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300"
-        style="flex:1;min-width:0;font-weight:400;font-size:14px" onkeydown="if(event.key==='Enter')evAddComment()">
-      <button class="btn sm" style="width:auto;padding:0 18px;font-weight:600;background:${accent}" onclick="evAddComment()">등록</button></div>
+    <div style="display:flex;gap:8px;align-items:flex-end">
+      <textarea id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300" rows="2"
+        style="flex:1;min-width:0;font-weight:400;font-size:14.5px;line-height:1.6;padding:12px 14px;border:1.5px solid #e9dfcf;border-radius:14px;font-family:inherit;resize:none;background:#fff"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();evAddComment();}"></textarea>
+      <button class="btn sm" style="width:auto;padding:0 20px;height:48px;font-weight:600;font-size:14px;background:${accent};flex:none" onclick="evAddComment()">등록</button></div>
+    <div style="font-size:11px;font-weight:400;color:#b3aea4;margin-top:6px">엔터로 등록 · Shift+엔터 줄바꿈</div>
   </div></div>`;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  const pg=document.getElementById('evPage');
+  pg.innerHTML=h; pg.classList.add('on');
+  document.getElementById('ov').classList.remove('on');       // 시트는 닫고 전체 페이지로
 }
+function closeEventPage(){ const pg=document.getElementById('evPage'); if(pg){ pg.classList.remove('on'); pg.innerHTML=''; } EVD=null; }
 function evReply(id,name){ EVD.replyTo={id,name}; drawEventDetail();
   setTimeout(()=>{ const el=document.getElementById('evCmt'); if(el) el.focus(); },50); }
 const EV_EMOJI=['👍','🎾','🔥','😂','🙌','🙏'];
@@ -8447,7 +8455,7 @@ async function openMemberCard(name){
   const me=(state.serverUser||{}).id;
   const yr=new Date().getFullYear();
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
-    <div class="sh-top"><h3 style="font-weight:700">회원 정보</h3><div class="cl" role="button" tabindex="0" onclick="${EVD?'drawEventDetail()':'closeOv()'}">×</div></div>
+    <div class="sh-top"><h3 style="font-weight:700">회원 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv();${EVD?'drawEventDetail()':''}">×</div></div>
     <div style="display:flex;align-items:center;gap:13px;margin-top:10px">
       ${evAvatar(mem.name, mem.photos, 56)}
       <div style="min-width:0">
@@ -13568,7 +13576,7 @@ function openDiag(){
     <div class="note">로고를 빠르게 5번 탭하면 언제든 이 화면이 열려요. 스크린샷을 개발에 보내주세요.</div>`;
   document.getElementById('ov').classList.add('on');
 }
-function go(v, isBack){
+function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(!isBack && state.view && state.view!==v){
     NAV_HIST.push(state.view);
     if(NAV_HIST.length>10) NAV_HIST.shift();
