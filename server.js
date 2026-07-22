@@ -26,7 +26,23 @@ import { db, initSchema, now, rid } from './db.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 4000;
 
-initSchema();
+// ── 부팅 진단: 스키마 초기화 실패를 조용히 죽지 않게 (Railway 로그에 원인 남김) ──
+try {
+  initSchema();
+  console.log('[boot] initSchema OK');
+} catch (e) {
+  console.error('[boot] initSchema FAILED:', e && e.message);
+  console.error(e && e.stack);
+  throw e;                                   // 원인을 로그에 남기고 종료
+}
+process.on('uncaughtException', (e) => {
+  console.error('[fatal] uncaughtException:', e && e.message);
+  console.error(e && e.stack);
+});
+process.on('unhandledRejection', (e) => {
+  console.error('[fatal] unhandledRejection:', (e && e.message) || e);
+  console.error((e && e.stack) || '');
+});
 const app = express();
 app.set('trust proxy', 1);   // Railway 프록시 뒤 — req.ip 가 실제 클라이언트 IP 가 되게
 /* CORS — APP_ORIGIN 이 있으면 그 도메인과 네이티브 앱만 허용한다.
@@ -927,6 +943,28 @@ function eventGuard(eid, uid) {
 const goingCount = (eid) => db.prepare("SELECT COUNT(*) n FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").get(eid).n;
 
 // 참석 응답 — going | absent | undecided
+// 모임 댓글
+try { db.exec(`CREATE TABLE IF NOT EXISTS event_comments (
+  id INTEGER PRIMARY KEY, event_id INTEGER, user_id INTEGER, body TEXT, created_at INTEGER)`); } catch (e) {}
+app.get('/events/:id/comments', auth, (req, res) => {
+  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, u.name
+    FROM event_comments c JOIN users u ON u.id=c.user_id WHERE c.event_id=? ORDER BY c.id ASC LIMIT 200`).all(+req.params.id);
+  res.json(rows);
+});
+app.post('/events/:id/comments', auth, limitWrite, (req, res) => {
+  const body = String((req.body || {}).body || '').trim().slice(0, 300);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const r = db.prepare('INSERT INTO event_comments (event_id,user_id,body,created_at) VALUES (?,?,?,?)')
+    .run(+req.params.id, req.uid, body, now());
+  res.json({ ok: true, id: rid(r) });
+});
+app.delete('/events/:id/comments/:cid', auth, (req, res) => {
+  const c = db.prepare('SELECT * FROM event_comments WHERE id=?').get(+req.params.cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  if (c.user_id !== req.uid) return res.status(403).json({ error: 'mine_only' });
+  db.prepare('DELETE FROM event_comments WHERE id=?').run(c.id);
+  res.json({ ok: true });
+});
 app.post('/events/:id/rsvp', auth, (req, res) => {
   const eid = +req.params.id;
   const g = eventGuard(eid, req.uid);
@@ -2369,6 +2407,7 @@ function findContact(text) {
 //  · bracket_timers: 코트별 시작 시각 (라이브 운영)
 //  db.js를 건드리지 않도록 여기서 자체 마이그레이션합니다.
 // ══════════════════════════════════════════════════════════════
+try {
 db.exec(`
 CREATE TABLE IF NOT EXISTS brackets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2402,6 +2441,7 @@ CREATE TABLE IF NOT EXISTS bracket_timers (
   PRIMARY KEY (bracket_id, court_key)
 );
 `);
+} catch (e) { console.error('[boot] brackets 마이그레이션 실패:', e && e.message); }
 
 // 선수 프로필 (선수 비교 화면용)
 ['birth_year INTEGER', 'handed TEXT', 'backhand TEXT', 'style TEXT', 'peak_mmr INTEGER', 'wins INTEGER DEFAULT 0', 'losses INTEGER DEFAULT 0']
@@ -2676,6 +2716,7 @@ app.delete('/clubs/:id/premium', auth, (req, res) => {
 //     B. 오픈뱅킹 거래내역 조회 — 입금자명으로 매칭. 저렴. 동명이인 주의
 //  아래 /deposits 는 그 웹훅/폴링이 호출할 자리다.
 // ══════════════════════════════════════════════════════════════
+try {
 db.exec(`
 CREATE TABLE IF NOT EXISTS club_accounts (
   club_id INTEGER PRIMARY KEY, bank TEXT, number TEXT, holder TEXT, updated_at INTEGER
@@ -2694,6 +2735,7 @@ CREATE TABLE IF NOT EXISTS deposits (
 );
 CREATE INDEX IF NOT EXISTS ix_dues_club ON dues(club_id, period);
 CREATE INDEX IF NOT EXISTS ix_dep_club ON deposits(club_id, id DESC);`);
+} catch (e) { console.error('[boot] club_accounts 마이그레이션 실패:', e && e.message); }
 
 function premiumGate(cid, res) {
   if (!isPremium(cid)) { res.status(402).json({ error: 'premium_required', upgrade: 'club_premium', price: PREMIUM_WON }); return false; }
@@ -3230,7 +3272,13 @@ async function backupNow() {
     fs.mkdirSync(BK_DIR, { recursive: true });
     const stamp = new Date().toISOString().slice(0, 10);
     const dest = path.join(BK_DIR, `matsu-${stamp}.db`);
-    await db.backup(dest);                              // WAL 안전 스냅샷
+    // node:sqlite(DatabaseSync)에는 .backup()이 없다 → SQLite 표준 VACUUM INTO 로 스냅샷
+    if (typeof db.backup === 'function') {
+      await db.backup(dest);                            // better-sqlite3 경로
+    } else {
+      try { fs.unlinkSync(dest); } catch (e) {}         // VACUUM INTO 는 기존 파일이 있으면 실패
+      db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);   // WAL 포함 일관된 스냅샷
+    }
     const files = fs.readdirSync(BK_DIR).filter(f => f.startsWith('matsu-')).sort();
     while (files.length > 14) fs.unlinkSync(path.join(BK_DIR, files.shift()));
     console.log('[backup] 완료 →', dest);
