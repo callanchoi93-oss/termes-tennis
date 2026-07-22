@@ -38,7 +38,7 @@
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%}
-  body{background:#edecea;font-size:15px;font-family:'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;display:flex;justify-content:center;color:var(--ink);letter-spacing:-0.012em;line-height:1.55;word-break:keep-all}
+  body{background:#edecea;font-size:16px;font-family:'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;display:flex;justify-content:center;color:var(--ink);letter-spacing:-0.012em;line-height:1.55;word-break:keep-all}
   .app{width:100%;max-width:440px;min-height:100vh;background:var(--cream);position:relative;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 60px rgba(0,0,0,.18)}
   @media(min-width:480px){.app{margin:24px 0;min-height:auto;height:calc(100vh - 48px);border-radius:34px}}
   .demo-tag.live{background:#d8f0e2;color:#1f5c40}
@@ -50,16 +50,16 @@
   .scroll{flex:1;overflow-y:auto;padding:4px 16px 100px;-webkit-overflow-scrolling:touch}
   .screen{display:none;animation:fade .25s ease}.screen.on{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  h2.t{font-size:25px;font-weight:800;margin:10px 4px 2px}
-  p.sub{font-size:14px;color:var(--gray);margin:0 4px 16px;font-weight:500}
+  h2.t{font-size:26px;font-weight:800;margin:10px 4px 2px;letter-spacing:-.02em}
+  p.sub{font-size:15px;color:var(--gray);margin:0 4px 16px;font-weight:500}
   .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(20,18,12,.03)}
-  .ch{font-size:17px;font-weight:800;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
-  .btn{width:100%;padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;background:var(--coral);color:#fff;transition:.15s}
+  .ch{font-size:18px;font-weight:800;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;background:var(--coral);color:#fff;transition:.15s}
   .btn:active{transform:scale(.99)}
   .btn.done{background:#eef7d6;color:#6f8718}.btn.cancel{background:#f1f0ee;color:#998a7c}
   .btn.felt{background:var(--felt);color:var(--ink)}.btn.ghost{background:#fff;border:1.5px solid var(--coral);color:var(--coral-d)}
   .btn.sm{width:auto;padding:9px 16px;font-size:14px;border-radius:10px}
-  .note{font-size:12px;color:var(--lgray);font-weight:600;margin-top:9px;text-align:center;line-height:1.5}
+  .note{font-size:12.4px;color:var(--lgray);font-weight:600;margin-top:9px;text-align:center;line-height:1.5}
   .info-banner{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#262019,#17130d);color:#fff;border-radius:16px;padding:15px;margin-bottom:14px;cursor:pointer}
   .info-banner .ic{width:38px;height:38px;border-radius:11px;background:var(--felt);color:var(--ink);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0}
   .info-banner .x{flex:1}.info-banner .x b{font-size:15px;font-weight:800}.info-banner .x span{display:block;font-size:12.5px;color:#cbb8a6;margin-top:2px;font-weight:500}
@@ -317,7 +317,7 @@
   .note{ background:#faf6f1; border-radius:12px; padding:10px 13px; margin-top:10px; text-align:left; }
   /* 시트 손잡이 */
   #ov #sheet, .sheet{ border-top-left-radius:22px; border-top-right-radius:22px; }
-  .sh-top h3{ font-size:19px; letter-spacing:-0.02em; }
+  .sh-top h3{ font-size:20px; letter-spacing:-0.02em; }
   .miniseg div{ transition:.12s; }
   .opsbtn{ box-shadow:var(--shadow-s); border-color:var(--line2); }
 
@@ -5501,7 +5501,12 @@ function renderClub(){
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
       const evList = ((SERVER_OK && clubId()) ? SRV_EVENTS : (c2&&c2.events)) || [];
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>이번 주 일정</span>${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#ffffff;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
-      if(!evList.length){ h+=`<div class="note" style="text-align:left">아직 등록된 모임이 없어요.${off?' 일정을 만들어 회원을 모아보세요.':' 임원진이 일정을 올리면 여기서 참여할 수 있어요.'}</div>`; }
+      if(!evList.length){
+        h+=`<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
+          <div style="font-size:26px">📅</div>
+          <b style="display:block;margin-top:6px;font-size:14.5px">이번 주 모임이 아직 없어요</b>
+          <div style="font-size:12.5px;color:var(--gray);font-weight:600;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
+          ${off?`<button class="btn" style="max-width:220px;margin:13px auto 0" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">＋ 첫 모임 만들기</button>`:''}</div>`; }
       else {
         const pc=['#ffe9db','#e3f5ec','#efeafc','#fff1dc'], tags=['정기','추가','번개','이벤트'];
         h+=`<div class="plan2">`;
@@ -5516,10 +5521,12 @@ function renderClub(){
         h+=`</div>`;
         if(off && evList[0]) h+=`<button class="btn ghost" style="margin-top:11px" onclick="useEventForBracket('${evList[0].id}')">이번 주 참석자로 대진 편성 →</button>`;
       }
-      // ⑤ 바로가기 (소셜 카드 위치)
+      // ⑤ 바로가기
       h+=`<div class="qlinks">
-        <div class="qlink" onclick="openNotices()"><div class="ql-ic">📢</div><div class="ql-l">공지</div></div>
         <div class="qlink" onclick="openClubBracketView()"><div class="ql-ic">🎾</div><div class="ql-l">대진</div></div>
+        <div class="qlink" onclick="openClubRecords()"><div class="ql-ic">📊</div><div class="ql-l">기록</div></div>
+        <div class="qlink" onclick="openNotices()"><div class="ql-ic">📢</div><div class="ql-l">공지</div></div>
+        <div class="qlink" onclick="${off?'openMembers()':'go(\'sched\')'}"><div class="ql-ic">${off?'👥':'📅'}</div><div class="ql-l">${off?'회원':'일정'}</div></div>
         </div>`;
     }
     // 클럽 운영 도구 (임원) / 회원 공지·회비 안내
@@ -6006,7 +6013,7 @@ async function openClubPreview(n){
   const cid=CLUB_IDS[n];
   let roster=[];
   if(TRIAL) roster=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'}));
-  else if(SERVER_OK&&cid){ try{ roster=await api(`/clubs/${cid}/roster`)||[]; }catch(e){} }
+  else if(SERVER_OK&&cid){ try{ roster=cb2Roster(await api(`/clubs/${cid}/roster`)); }catch(e){} }
   const chips = roster.slice(0,8).map(r=>{
     const col = r.role==='owner'?'background:#fceee4;color:#cf5418':r.role==='officer'?'background:#edf2ec;color:#4c7a5c':'background:#f2f0ea;color:#6b6357';
     return `<span style="display:inline-flex;align-items:center;gap:5px;${col};border-radius:20px;padding:5px 11px;font-size:11.5px;font-weight:700;margin:0 5px 6px 0">${esc(r.name)}${r.role==='owner'?' · 회장':r.role==='officer'?' · 임원':''}</span>`;
@@ -7522,6 +7529,8 @@ function seedTrialBracket(){
   CB2={_trial:true, date:new Date().toISOString().slice(0,10), courts:3, rounds:4, mode:'normal', made_by:'체험 게스트', games, updated_at:Date.now()};
   TRIAL_ROSTER.forEach(p=>CB2_SEL.add(String(p.user_id)));
 }
+function cb2Roster(r){ const a = Array.isArray(r)?r:(r&&r.members)||[];
+  return a.filter(p=>p&&(p.user_id||p.id)).map(p=>({...p, user_id:p.user_id||p.id})); }
 async function cb2Load(){
   if(TRIAL){ seedTrialBracket(); return CB2; }
   try{ CB2=await api(`/clubs/${clubId()}/bracket2`); }catch(e){ CB2=null; }
@@ -7647,9 +7656,11 @@ async function openClubBracketBuild(){
   const cid=clubId(); if(!TRIAL&&(!SERVER_OK||!cid)){ toast('클럽에 먼저 들어가 주세요'); return; }
   clearInterval(CB2_TIMER);
   let roster=[];
-  if(TRIAL) roster=TRIAL_ROSTER;
-  else try{ roster=await api(`/clubs/${cid}/roster`)||[]; }catch(e){}
-  roster=roster.filter(p=>p.user_id);
+  if(TRIAL) roster=TRIAL_ROSTER.slice();
+  else{
+    try{ roster=cb2Roster(await api(`/clubs/${cid}/roster`)); }catch(e){ roster=[]; }
+    if(!roster.length){ try{ roster=cb2Roster(await api(`/clubs/${cid}/members`)); }catch(e){} }  // 참석자 없으면 회원 전체
+  }
   if(!CB2_SEL.size) roster.forEach(p=>CB2_SEL.add(String(p.user_id)));   // 기본 전원 선택
   window._cb2Roster=roster;
   drawCB2Build();
@@ -7753,7 +7764,7 @@ async function cb2Gen(mode){
   const sel=[...CB2_SEL].map(id=>all.find(r=>String(r.user_id)===String(id))).filter(Boolean);
   const courts=+((document.getElementById('cb2Courts')||{}).value||3);
   const rounds=+((document.getElementById('cb2Rounds')||{}).value||4);
-  if(sel.length<4){ toast('참석자를 4명 이상 선택해 주세요'); return; }
+  if(sel.length<4){ toast('대진은 최소 4명이 필요해요 · 게스트를 추가해 채워보세요'); return; }
   if(mode==='hanul' && sel.length!==courts*4){ toast(`한울 방식은 코트당 딱 4명 — ${courts*4}명을 선택해 주세요 (지금 ${sel.length}명)`); return; }
   if(mode==='cheongbaek'){
     if(sel.length%2){ toast('청백전은 짝수 인원이어야 해요'); return; }
