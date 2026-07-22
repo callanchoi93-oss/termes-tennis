@@ -3120,6 +3120,7 @@ function openNewEvent(){
 function neMonth(d){ NE.m+=d; if(NE.m<0){NE.m=11;NE.y--;} if(NE.m>11){NE.m=0;NE.y++;} NE.day=null; renderNewEvent(); }
 function nePick(day){ NE.day=day; renderNewEvent(); }
 function neTime(t){ NE.time=t; renderNewEvent(); }
+function drawNewEvent(){ renderNewEvent(); }
 function renderNewEvent(){
   const today=new Date(); today.setHours(0,0,0,0);
   const first=new Date(NE.y, NE.m, 1);
@@ -3132,8 +3133,8 @@ function renderNewEvent(){
     grid+=`<div class="cal-d ${on?'on':''} ${past?'off':''}" ${past?'':`onclick="nePick(${d})"`}>${d}</div>`;
   }
   grid+=`</div>`;
-  const times=['07:00','09:00','10:00','14:00','16:00','19:00','20:00'];
   NE.end = NE.end || '';
+  NE.tag = NE.tag || '정기';
   const sel = NE.day ? `${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${NE.time}${NE.end?`~${NE.end}`:''}` : null;
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${NE.editId?'모임 수정':'새 모임 만들기'}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">모임을 만들면 클럽 회원 모두에게 알림이 가요. 참석 체크한 회원으로 대진이 편성됩니다.</div>
@@ -3141,13 +3142,17 @@ function renderNewEvent(){
     <div class="fld" style="margin-bottom:8px"><label>날짜</label></div>
     <div class="cal-nav"><span onclick="neMonth(-1)">‹</span><b>${NE.y}년 ${NE.m+1}월</b><span onclick="neMonth(1)">›</span></div>
     ${grid}
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <div class="fld" style="flex:1"><label>시작 시간</label>
-        <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)"></div>
-      <div class="fld" style="flex:1"><label>종료 시간 <span style="font-weight:600;color:var(--lgray)">· 선택</span></label>
-        <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value"></div>
+    <div class="fld" style="margin:16px 0 8px"><label>모임 종류</label>
+      <div style="display:flex;gap:8px">
+        ${[['정기','#fceee4','#cf5418'],['번개','#eef4ff','#2b62c9']].map(t=>`
+          <span onclick="NE.tag='${t[0]}';drawNewEvent()" style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:11px;font-size:13.5px;font-weight:800;${NE.tag===t[0]?`background:${t[2]};color:#fff`:`background:${t[1]};color:${t[2]}`}">${t[0]} 모임</span>`).join('')}
+      </div></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <div class="fld" style="flex:1;min-width:0"><label>시작 시간</label>
+        <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
+      <div class="fld" style="flex:1;min-width:0"><label>종료 시간 <span style="font-weight:600;color:var(--lgray)">· 선택</span></label>
+        <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
     </div>
-    <div class="tchips" style="margin-top:-2px">${times.map(x=>`<span class="tchip ${NE.time===x?'on':''}" onclick="neTime('${x}')">${x}</span>`).join('')}</div>
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
@@ -3299,7 +3304,7 @@ async function createClubEvent(){
       await api(`/clubs/${clubId()}/events/${NE.editId}`, {method:'PATCH', body: JSON.stringify({title:t, date:d})});
       closeOv(); await loadClubServer(); renderClub(); toast('모임을 수정했어요 · 참석자들에게 알림이 갔어요'); return;
     }
-    await api(`/clubs/${clubId()}/events`, {method:'POST', body: JSON.stringify({title:t, date:d, tag:'정기'})});
+    await api(`/clubs/${clubId()}/events`, {method:'POST', body: JSON.stringify({title:t, date:d, tag:NE.tag||'정기'})});
     closeOv(); await loadClubServer(); renderClub(); toast('모임을 만들었어요 · 회원들에게 알림이 갔어요');
   }catch(e){ toast(String(e.message).includes('officer_only')?'모임 생성은 임원진만 가능해요':'모임 생성에 실패했어요'); }
 }
@@ -3331,6 +3336,7 @@ async function openJoinRequests(){
         <div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px">${r.name}</div>
           <div style="font-size:12px;color:var(--gray);font-weight:600;margin-top:2px">${r.region||'지역 미설정'} · 레이팅 ${r.rating||1000}</div></div>
         <div style="display:flex;flex-direction:column;gap:6px;flex:none">
+          <button class="btn sm" style="width:auto;padding:8px 12px;font-size:12px;background:#f2f0ea;color:#5a544b" onclick="openDM(${r.user_id},'${esc(r.name)})">💬 대화</button>
           <button class="btn sm" style="width:auto;padding:8px 12px;font-size:12px" onclick="decideJoin(${r.user_id},true,'member',${c.id})">정회원 승인</button>
           <button class="btn sm" style="width:auto;padding:8px 12px;font-size:12px;background:#efe9dd;color:#6b6357" onclick="decideJoin(${r.user_id},true,'guest',${c.id})">게스트 승인</button>
           <button class="btn sm ghost" style="width:auto;padding:7px 12px;font-size:12px" onclick="decideJoin(${r.user_id},false,null,${c.id})">거절</button></div></div>`;
@@ -5499,11 +5505,16 @@ function renderClub(){
     // ⑤ 주간 날짜 핀 (이번 주 일~토 · 오늘 강조 · 모임 있는 날 점)
     { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
       const evList0 = ((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]));
-      const evDays=new Set(); evList0.forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); if(mm) evDays.add(+mm[1]+'/'+ +mm[2]); });
+      const evDays=new Map(); evList0.forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/);
+        if(mm){ const k=+mm[1]+'/'+ +mm[2]; const t=e.tag==='번개'?'b':'r'; evDays.set(k, evDays.has(k)&&evDays.get(k)!==t?'m':t); } });
       let pins=''; for(let i=0;i<7;i++){ const d=new Date(base); d.setDate(base.getDate()+i); const mo=d.getMonth()+1,da=d.getDate();
-        const key=mo+'/'+da, isSel=(state._clubDay===key)||(!state._clubDay&&mo===MON&&da===DAY), has=evDays.has(key);
-        pins+=`<div class="dpin ${isSel?'on':''} ${has?'has':''}" onclick="clubDay('${key}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
-      h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`; }
+        const key=mo+'/'+da, isSel=(state._clubDay===key)||(!state._clubDay&&mo===MON&&da===DAY), tp=evDays.get(key);
+        const dots = tp==='m' ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--coral);display:inline-block"></span><span style="width:5px;height:5px;border-radius:50%;background:#3182f6;display:inline-block;margin-left:3px"></span>`
+          : tp ? `<span style="width:5px;height:5px;border-radius:50%;background:${tp==='b'?'#3182f6':'var(--coral)'};display:inline-block"></span>` : '';
+        pins+=`<div class="dpin ${isSel?'on':''}" onclick="clubDay('${key}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div style="height:9px;margin-top:4px;line-height:0">${dots}</div></div>`; }
+      h+=`<div class="dpin-row" style="margin-bottom:2px">${pins}</div>
+        <div style="display:flex;gap:12px;font-size:10.5px;font-weight:800;margin:0 4px 8px">
+          <span style="color:var(--coral-d)">● 정기</span><span style="color:#2b62c9">● 번개</span></div>`; }
     // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
@@ -5513,7 +5524,7 @@ function renderClub(){
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:700;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
-        ${off?`<span onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;background:var(--coral);color:#fff;font-weight:800;font-size:12px;border-radius:14px;padding:6px 13px">＋ 만들기</span>`:''}</div>`;
+        ${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#ffffff;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
       if(dayF && !evShow.length){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
@@ -5527,12 +5538,12 @@ function renderClub(){
         h+=`<div class="plan2">`;
         evShow.slice(0,4).forEach((ev,i)=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const parts=(ev.date||'').split(' '); const dpart=parts.slice(0,2).join(' ')||'날짜 미정', tpart=parts.slice(2).join(' ')||'시간 미정';
-          h+=`<div class="psess" style="background:${pc[i%4]}" onclick="joinEvent('${ev.id}')">
+          h+=`<div class="psess" style="background:${pc[i%4]}" onclick="openEventDetail('${ev.id}')">
             ${joined?'<div class="ps-chk">참여중 ✓</div>':''}
-            <span class="ps-tag">${esc(ev.tag||tags[i%4])}</span>
+            <span class="ps-tag" style="${(ev.tag==='번개')?'background:#eef4ff;color:#2b62c9':''}">${esc(ev.tag||'정기')}</span>
             <div class="ps-n">${esc(ev.title)}</div>
             <div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div>
-            <div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>${joined?'탭하면 취소':'탭하면 참여'}</div></div></div>`; });
+            <div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>탭하면 상세</div></div></div>`; });
         h+=`</div>`;
         if(off && evShow.length) h+=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:11px">
           ${evShow.slice(0,4).map(ev=>`<span onclick="useEventForBracket('${ev.id}')" style="cursor:pointer;background:#fff;border:1.5px solid #e9dfcf;color:#5a544b;font-weight:800;font-size:12px;border-radius:20px;padding:8px 14px">${esc(ev.title)} 대진 짜기 →</span>`).join('')}</div>`;
@@ -5542,7 +5553,7 @@ function renderClub(){
         <div class="qlink" onclick="openClubBracketView()"><div class="ql-ic">🎾</div><div class="ql-l">대진</div></div>
         <div class="qlink" onclick="openClubRecords()"><div class="ql-ic">📊</div><div class="ql-l">기록</div></div>
         <div class="qlink" onclick="openNotices()"><div class="ql-ic">📢</div><div class="ql-l">공지</div></div>
-        <div class="qlink" onclick="${off?'openMembers()':'go(\'sched\')'}"><div class="ql-ic">${off?'👥':'📅'}</div><div class="ql-l">${off?'회원':'일정'}</div></div>
+        <div class="qlink" onclick="openDMList()"><div class="ql-ic">💬</div><div class="ql-l">대화</div></div>
         </div>`;
     }
     // 클럽 운영 도구 (임원) / 회원 공지·회비 안내
@@ -5561,15 +5572,12 @@ function renderClub(){
           <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
           ${(CB2&&CB2.mode==='cheongbaek'&&!cb2Finished())?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#3182f6">📋</div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
           <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">회원 · 가입</div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">클럽 초대장 공유</div><div class="tr-d">링크 하나로 가입 신청 · 7일 유효</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">클럽 설정</div>
-          <div class="toolrow" onclick="openDuesLedger()"><div class="tr-ic" style="background:#e7f4ec;color:#1f7d4d">${ic('card',19)}</div><div class="tr-x"><div class="tr-n">회비</div><div class="tr-d">클럽 계좌 · 납부 현황</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openFeeEdit()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('receipt',19)}</div><div class="tr-x"><div class="tr-n">입회비 · 게스트비 설정</div><div class="tr-d">클럽장이 회비·게스트비를 수정</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           `;
@@ -8272,6 +8280,113 @@ async function openClubRecords(){
   }
   h+=`</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+/* ═══ 모임 상세 — 참석/불참/미정 · 참석자 · 댓글 ═══ */
+let EVD=null;
+async function openEventDetail(id){
+  const cid=clubId(); if(!cid){ toast('클럽에 먼저 들어가 주세요'); return; }
+  let ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id));
+  if(!ev){ try{ const list=await api(`/clubs/${cid}/events`); SRV_EVENTS=list; ev=list.find(e=>String(e.id)===String(id)); }catch(e){} }
+  if(!ev){ toast('모임을 찾지 못했어요'); return; }
+  EVD={ev, comments:[]};
+  drawEventDetail();
+  try{ EVD.comments=await api(`/events/${id}/comments`)||[]; drawEventDetail(); }catch(e){}
+}
+function drawEventDetail(){
+  if(!EVD) return;
+  const e=EVD.ev, off=(AC()||{}).officer;
+  const tagB = e.tag==='번개' ? 'background:#eef4ff;color:#2b62c9' : 'background:#fceee4;color:#cf5418';
+  const st=e.my_status||null;
+  const btn=(v,l,col,bg)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:12px;font-size:13.5px;font-weight:800;${st===v?`background:${col};color:#fff`:`background:${bg};color:${col}`}">${l}</span>`;
+  const chip=n=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-block;background:#f2f0ea;color:#5a544b;border-radius:20px;padding:7px 12px;font-size:12.5px;font-weight:700;margin:0 6px 6px 0;cursor:pointer">${esc(n)}</span>`;
+  let h=`<div class="om-detail"><div class="sh-top"><h3>${esc(e.title)}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:2px">
+      <span style="font-size:11px;font-weight:800;border-radius:8px;padding:3px 9px;${tagB}">${esc(e.tag||'정기')}</span>
+      <span style="font-size:13px;font-weight:600;color:var(--gray)">${esc(e.date||'')}</span></div>
+    <div style="display:flex;gap:7px;margin-top:14px">
+      ${btn('going','참석','#2f9159','#e9f5ef')}${btn('absent','불참','#cf5418','#fdeee6')}${btn('undecided','미정','#8a7550','#f6f4ef')}</div>
+    <div class="note" style="text-align:left;margin-top:9px">참석을 누르면 <b>그날 대진 명단에 자동으로 들어가요.</b></div>
+    <div class="ch" style="font-size:15px;margin-top:16px">참석 <b style="color:var(--coral-d)">${(e.attendees||[]).length}</b>명</div>
+    <div style="margin-top:4px">${(e.attendees||[]).map(chip).join('')||'<span class="note">아직 참석자가 없어요</span>'}</div>
+    ${(e.guests||[]).length?`<div style="font-size:11.5px;font-weight:800;color:var(--lgray);margin-top:8px">게스트 ${(e.guests||[]).length}명 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
+    ${(e.absent||[]).length?`<div style="font-size:12px;font-weight:700;color:var(--gray);margin-top:10px">불참 ${(e.absent||[]).length}명 · ${(e.absent||[]).map(esc).join(' · ')}</div>`:''}
+    ${(e.undecided||[]).length?`<div style="font-size:12px;font-weight:700;color:var(--lgray);margin-top:4px">미정 ${(e.undecided||[]).length}명 · ${(e.undecided||[]).map(esc).join(' · ')}</div>`:''}
+    ${off?`<button class="btn ghost" style="margin-top:14px" onclick="closeOv();useEventForBracket('${e.id}')">이 모임 참석자로 대진 짜기 →</button>`:''}
+    <div class="ch" style="font-size:15px;margin-top:18px">댓글 <b style="color:var(--lgray)">${EVD.comments.length}</b></div>`;
+  if(!EVD.comments.length) h+=`<div class="note" style="text-align:left">첫 댓글을 남겨보세요 · 준비물이나 카풀 이야기 어때요?</div>`;
+  EVD.comments.forEach(c=>{
+    const mine=(state.serverUser||{}).id===c.user_id;
+    h+=`<div style="padding:10px 2px;border-top:1px solid #f0efec">
+      <div style="display:flex;align-items:center;gap:7px">
+        <b onclick="openMemberCard('${esc(c.name)}')" style="font-size:12.5px;cursor:pointer">${esc(c.name)}</b>
+        <span style="font-size:10.5px;color:var(--lgray);font-weight:700">${fmtAgo(c.created_at)}</span>
+        ${mine?`<span onclick="evDelComment(${c.id})" style="margin-left:auto;font-size:10.5px;color:var(--lgray);font-weight:800;cursor:pointer">삭제</span>`:''}</div>
+      <div style="font-size:13px;font-weight:500;color:#4a453e;margin-top:3px;line-height:1.5">${esc(c.body)}</div></div>`;
+  });
+  h+=`<div style="display:flex;gap:7px;margin-top:12px">
+      <input id="evCmt" placeholder="댓글 남기기" maxlength="300" style="flex:1;min-width:0">
+      <button class="btn sm" style="width:auto;padding:0 16px" onclick="evAddComment()">등록</button></div></div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+function fmtAgo(ts){ const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60) return '방금'; if(s<3600) return Math.floor(s/60)+'분 전';
+  if(s<86400) return Math.floor(s/3600)+'시간 전'; return Math.floor(s/86400)+'일 전'; }
+async function evRsvp(status){
+  if(!EVD) return;
+  try{ await api(`/events/${EVD.ev.id}/rsvp`,{method:'POST',body:JSON.stringify({status})});
+    const list=await api(`/clubs/${clubId()}/events`); SRV_EVENTS=list;
+    EVD.ev=list.find(x=>String(x.id)===String(EVD.ev.id))||EVD.ev;
+    drawEventDetail(); renderClub();
+    toast(status==='going'?'참석으로 표시했어요 · 대진 명단에 들어가요':status==='absent'?'불참으로 표시했어요':'미정으로 표시했어요');
+  }catch(e){ toast('저장하지 못했어요'); }
+}
+async function evAddComment(){
+  const el=document.getElementById('evCmt'); const v=(el&&el.value||'').trim();
+  if(!v){ toast('댓글을 입력해 주세요'); return; }
+  try{ await api(`/events/${EVD.ev.id}/comments`,{method:'POST',body:JSON.stringify({body:v})});
+    EVD.comments=await api(`/events/${EVD.ev.id}/comments`)||[]; drawEventDetail();
+  }catch(e){ toast('등록하지 못했어요'); }
+}
+async function evDelComment(cid){
+  try{ await api(`/events/${EVD.ev.id}/comments/${cid}`,{method:'DELETE'});
+    EVD.comments=EVD.comments.filter(c=>c.id!==cid); drawEventDetail();
+  }catch(e){ toast('삭제하지 못했어요'); }
+}
+/* ═══ 회원 카드 — 클럽 성적 · 가입일 · 대화 걸기 ═══ */
+async function openMemberCard(name){
+  const cid=clubId(); if(!cid) return;
+  let mem=null;
+  try{ const list=await api(`/clubs/${cid}/members`); mem=(list||[]).find(m=>m.name===name); }catch(e){}
+  if(!mem){ toast('회원 정보를 찾지 못했어요'); return; }
+  // 시즌 기록에서 성적 집계
+  let rec={w:0,d:0,l:0,gf:0,ga:0,g:0};
+  try{ const logs=await api(`/clubs/${cid}/bracket2/logs`)||[];
+    logs.forEach(l=>((l.data||{}).games||[]).forEach(g=>{
+      if(g.sa==null) return;
+      const inA=(g.teamA||[]).some(p=>p.id===mem.user_id), inB=(g.teamB||[]).some(p=>p.id===mem.user_id);
+      if(!inA&&!inB) return;
+      const mf=inA?g.sa:g.sb, ma=inA?g.sb:g.sa;
+      rec.g++; rec.gf+=mf; rec.ga+=ma;
+      if(mf>ma)rec.w++; else if(mf<ma)rec.l++; else rec.d++; }));
+  }catch(e){}
+  const gd=rec.gf-rec.ga, wr=rec.g?Math.round(rec.w/rec.g*100):0;
+  const roleL={owner:'회장',officer:'임원'}[mem.role]||'회원';
+  const jd=mem.joined_at?new Date(mem.joined_at).toISOString().slice(0,10):'-';
+  const me=(state.serverUser||{}).id;
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3>${esc(mem.name)}</h3><div class="cl" role="button" tabindex="0" onclick="${EVD?'drawEventDetail()':'closeOv()'}">×</div></div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:2px">
+      <span style="font-size:11px;font-weight:800;background:#f2f0ea;color:#6b6357;border-radius:8px;padding:3px 9px">${roleL}</span>
+      ${mem.grade?`<span style="font-size:11px;font-weight:800;border-radius:8px;padding:3px 9px;${cb2GradeColor(mem.grade)}">${mem.grade}급</span>`:''}
+      <span style="font-size:12px;font-weight:600;color:var(--gray)">가입 ${jd}</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px">
+      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px">${rec.g}</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">클럽 경기</div></div>
+      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px;color:#2f9159">${wr}%</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">승률</div></div>
+      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px;color:${gd>=0?'#2f9159':'#cf5418'}">${gd>=0?'+':''}${gd}</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">득실</div></div></div>
+    <div style="font-size:12.5px;font-weight:700;color:var(--gray);margin-top:10px">${rec.w}승 ${rec.d?rec.d+'무 ':''}${rec.l}패 · 득점 ${rec.gf} · 실점 ${rec.ga}</div>
+    ${(mem.user_id&&mem.user_id!==me)?`<button class="btn" style="margin-top:16px" onclick="openDM(${mem.user_id},'${esc(mem.name)}')">💬 대화 걸기</button>`:''}
+    <button class="btn ghost" style="margin-top:9px" onclick="${EVD?'drawEventDetail()':'closeOv()'}">닫기</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function makeInvite(){
   const cid=clubId(); if(!cid) return;
