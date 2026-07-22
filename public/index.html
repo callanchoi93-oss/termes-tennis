@@ -3114,7 +3114,7 @@ function openNewEvent(){
   const cid = clubId();
   if(!SERVER_OK || !cid){ toast('서버에 연결되어야 일정을 만들 수 있어요'); return; }
   const t=new Date();
-  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00' };
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', tag:((AC()||{}).officer?'정기':'번개') };
   renderNewEvent();
 }
 function neMonth(d){ NE.m+=d; if(NE.m<0){NE.m=11;NE.y--;} if(NE.m>11){NE.m=0;NE.y++;} NE.day=null; renderNewEvent(); }
@@ -3134,6 +3134,8 @@ function renderNewEvent(){
   }
   grid+=`</div>`;
   NE.end = NE.end || '';
+  const _off = (AC()||{}).officer;
+  if(!_off) NE.tag='번개';                              // 회원은 번개만
   NE.tag = NE.tag || '정기';
   const sel = NE.day ? `${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${NE.time}${NE.end?`~${NE.end}`:''}` : null;
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${NE.editId?'모임 수정':'새 모임 만들기'}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
@@ -3144,9 +3146,12 @@ function renderNewEvent(){
     ${grid}
     <div class="fld" style="margin:16px 0 8px"><label>모임 종류</label>
       <div style="display:flex;gap:8px">
-        ${[['정기','#fceee4','#cf5418'],['번개','#eef4ff','#2b62c9']].map(t=>`
-          <span onclick="NE.tag='${t[0]}';drawNewEvent()" style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:11px;font-size:13.5px;font-weight:800;${NE.tag===t[0]?`background:${t[2]};color:#fff`:`background:${t[1]};color:${t[2]}`}">${t[0]} 모임</span>`).join('')}
-      </div></div>
+        ${[['정기','#fceee4','#cf5418'],['번개','#eef4ff','#2b62c9']].map(t=>{
+          const locked = t[0]==='정기' && !_off;
+          return `<span onclick="${locked?`toast('정기 모임은 임원만 만들 수 있어요 · 번개는 누구나 열 수 있어요')`:`NE.tag='${t[0]}';drawNewEvent()`}"
+            style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:11px;font-size:13.5px;font-weight:${NE.tag===t[0]?'700':'500'};${locked?'background:#f5f3ee;color:#c3bdb2':NE.tag===t[0]?`background:${t[2]};color:#fff`:`background:${t[1]};color:${t[2]}`}">${t[0]} 모임${locked?' 🔒':''}</span>`;}).join('')}
+      </div>
+      ${!_off?`<div style="font-size:11.5px;font-weight:400;color:#8a857c;margin-top:7px;line-height:1.6">정기 모임은 임원만 만들 수 있어요. 번개는 회원 누구나 열 수 있어요.</div>`:''}</div>
     <div style="display:flex;gap:10px;margin-top:12px">
       <div class="fld" style="flex:1;min-width:0"><label>시작 시간</label>
         <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
@@ -3305,7 +3310,8 @@ async function createClubEvent(){
       closeOv(); await loadClubServer(); renderClub(); toast('모임을 수정했어요 · 참석자들에게 알림이 갔어요'); return;
     }
     await api(`/clubs/${clubId()}/events`, {method:'POST', body: JSON.stringify({title:t, date:d, tag:NE.tag||'정기'})});
-    closeOv(); await loadClubServer(); renderClub(); toast('모임을 만들었어요 · 회원들에게 알림이 갔어요');
+    closeOv(); await loadClubServer(); renderClub();
+    toast(NE.tag==='번개'?'번개를 열었어요 · 회원들에게 알림이 갔어요':'정기 모임을 만들었어요 · 회원들에게 알림이 갔어요');
   }catch(e){ toast(String(e.message).includes('officer_only')?'모임 생성은 임원진만 가능해요':'모임 생성에 실패했어요'); }
 }
 
@@ -5524,7 +5530,7 @@ function renderClub(){
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:700;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
-        ${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#ffffff;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
+        <button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid ${off?'var(--coral)':'#c3d2f0'};background:#ffffff;color:${off?'var(--coral-d)':'#2b62c9'};font-weight:700;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">${off?'＋ 만들기':'⚡ 번개 열기'}</button></div>`;
       if(dayF && !evShow.length){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
@@ -5545,8 +5551,7 @@ function renderClub(){
             <div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div>
             <div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>탭하면 상세</div></div></div>`; });
         h+=`</div>`;
-        if(off && evShow.length) h+=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:11px">
-          ${evShow.slice(0,4).map(ev=>`<span onclick="useEventForBracket('${ev.id}')" style="cursor:pointer;background:#fff;border:1.5px solid #e9dfcf;color:#5a544b;font-weight:800;font-size:12px;border-radius:20px;padding:8px 14px">${esc(ev.title)} 대진 짜기 →</span>`).join('')}</div>`;
+
       }
       // ⑤ 바로가기
       h+=`<div class="qlinks">
@@ -5750,7 +5755,7 @@ async function openProfileEdit(){
     // 실서비스: 갤러리에서 골라 서버에 올리고, 대표(첫 사진)가 아바타로 보인다
     let photos=[];
     try{ const raw=state.serverUser.photos; photos = typeof raw==='string' ? JSON.parse(raw||'[]') : (raw||[]); }catch(e){ photos=[]; }
-    state._myPhotos = photos.slice(0,6);
+    state._myPhotos = photos.slice(0,1);
     renderProfileEditSrv();
     return;
   }
@@ -5778,9 +5783,9 @@ function renderProfileEditSrv(){
            ${main?`<span class="ph-main">대표</span>`:''}<span class="ph-x">×</span></div>`
       : `<div class="phc" onclick="pickMyPhoto()" role="button" aria-label="사진 추가"><span class="ph-plus">＋</span></div>`; };
   let h=`<div class="sh-top"><h3>프로필 수정</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">첫 사진이 <b>대표</b>로 아바타에 보여요. 사진을 탭하면 삭제, 빈 칸을 탭하면 추가돼요.</div>
-    <div class="ch" style="font-size:15px;margin:0 4px 12px">프로필 사진 <span style="font-size:12px;color:var(--gray);font-weight:600">· ${photos.length}/6</span></div>
-    <div class="phgrid">${[0,1,2,3,4,5].map(cell).join('')}</div>
+    <div class="sd">프로필 사진 한 장이 앱 전체의 내 아바타로 쓰여요. 사진을 탭하면 바꾸거나 지울 수 있어요.</div>
+    <div class="ch" style="font-size:15px;margin:0 4px 12px">프로필 사진</div>
+    <div class="phgrid" style="grid-template-columns:repeat(3,1fr)">${[0].map(cell).join('')}</div>
     <input type="file" id="myPhotoFile" accept="image/*" style="display:none" onchange="uploadMyPhoto(this.files[0])">
     <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
       <div><div style="font-size:13.5px;font-weight:800">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
@@ -5795,7 +5800,7 @@ function renderProfileEditSrv(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function pickMyPhoto(){
-  if((state._myPhotos||[]).length>=6){ toast('사진은 6장까지예요'); return; }
+  if((state._myPhotos||[]).length>=1){ toast('사진은 한 장만 등록할 수 있어요 · 기존 사진을 지우고 올려주세요'); return; }
   const f=document.getElementById('myPhotoFile'); if(f) f.click();
 }
 async function uploadMyPhoto(file){
@@ -8288,46 +8293,111 @@ async function openEventDetail(id){
   let ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id));
   if(!ev){ try{ const list=await api(`/clubs/${cid}/events`); SRV_EVENTS=list; ev=list.find(e=>String(e.id)===String(id)); }catch(e){} }
   if(!ev){ toast('모임을 찾지 못했어요'); return; }
-  EVD={ev, comments:[]};
+  EVD={ev, comments:[], photoMap:{}, replyTo:null, reactions:[], pickFor:null};
   drawEventDetail();
-  try{ EVD.comments=await api(`/events/${id}/comments`)||[]; drawEventDetail(); }catch(e){}
+  try{ const ms=await api(`/clubs/${cid}/members`)||[]; const pm={}; ms.forEach(m=>{ pm[m.name]=m.photos; }); EVD.photoMap=pm; }catch(e){}
+  try{ EVD.comments=await api(`/events/${id}/comments`)||[]; }catch(e){}
+  try{ EVD.reactions=await api(`/events/${id}/reactions`)||[]; }catch(e){}
+  drawEventDetail();
+}
+function evAvatar(name, photos, size){
+  let url='';
+  try{ const a = typeof photos==='string' ? JSON.parse(photos||'[]') : (photos||[]); url=a[0]||''; }catch(e){}
+  if(url && !url.startsWith('http')) url=API_BASE+url;
+  const s=size||32;
+  return url
+    ? `<span style="width:${s}px;height:${s}px;border-radius:50%;background:url('${url}') center/cover;flex:none;display:inline-block"></span>`
+    : `<span style="width:${s}px;height:${s}px;border-radius:50%;background:#efe9e0;color:#8a8378;flex:none;display:grid;place-items:center;font-size:${Math.round(s*0.42)}px;font-weight:600">${esc((name||'?')[0])}</span>`;
 }
 function drawEventDetail(){
   if(!EVD) return;
   const e=EVD.ev, off=(AC()||{}).officer;
-  const tagB = e.tag==='번개' ? 'background:#eef4ff;color:#2b62c9' : 'background:#fceee4;color:#cf5418';
+  const isFlash = e.tag==='번개';
+  const accent = isFlash ? '#2b62c9' : '#cf5418';
+  const accentBg = isFlash ? '#eef3fb' : '#fdf1e8';
   const st=e.my_status||null;
-  const btn=(v,l,col,bg)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:12px;font-size:13.5px;font-weight:800;${st===v?`background:${col};color:#fff`:`background:${bg};color:${col}`}">${l}</span>`;
-  const chip=n=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-block;background:#f2f0ea;color:#5a544b;border-radius:20px;padding:7px 12px;font-size:12.5px;font-weight:700;margin:0 6px 6px 0;cursor:pointer">${esc(n)}</span>`;
-  let h=`<div class="om-detail"><div class="sh-top"><h3>${esc(e.title)}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div style="display:flex;align-items:center;gap:7px;margin-top:2px">
-      <span style="font-size:11px;font-weight:800;border-radius:8px;padding:3px 9px;${tagB}">${esc(e.tag||'정기')}</span>
-      <span style="font-size:13px;font-weight:600;color:var(--gray)">${esc(e.date||'')}</span></div>
-    <div style="display:flex;gap:7px;margin-top:14px">
-      ${btn('going','참석','#2f9159','#e9f5ef')}${btn('absent','불참','#cf5418','#fdeee6')}${btn('undecided','미정','#8a7550','#f6f4ef')}</div>
-    <div class="note" style="text-align:left;margin-top:9px">참석을 누르면 <b>그날 대진 명단에 자동으로 들어가요.</b></div>
-    <div class="ch" style="font-size:15px;margin-top:16px">참석 <b style="color:var(--coral-d)">${(e.attendees||[]).length}</b>명</div>
-    <div style="margin-top:4px">${(e.attendees||[]).map(chip).join('')||'<span class="note">아직 참석자가 없어요</span>'}</div>
-    ${(e.guests||[]).length?`<div style="font-size:11.5px;font-weight:800;color:var(--lgray);margin-top:8px">게스트 ${(e.guests||[]).length}명 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
-    ${(e.absent||[]).length?`<div style="font-size:12px;font-weight:700;color:var(--gray);margin-top:10px">불참 ${(e.absent||[]).length}명 · ${(e.absent||[]).map(esc).join(' · ')}</div>`:''}
-    ${(e.undecided||[]).length?`<div style="font-size:12px;font-weight:700;color:var(--lgray);margin-top:4px">미정 ${(e.undecided||[]).length}명 · ${(e.undecided||[]).map(esc).join(' · ')}</div>`:''}
-    ${off?`<button class="btn ghost" style="margin-top:14px" onclick="closeOv();useEventForBracket('${e.id}')">이 모임 참석자로 대진 짜기 →</button>`:''}
-    <div class="ch" style="font-size:15px;margin-top:18px">댓글 <b style="color:var(--lgray)">${EVD.comments.length}</b></div>`;
-  if(!EVD.comments.length) h+=`<div class="note" style="text-align:left">첫 댓글을 남겨보세요 · 준비물이나 카풀 이야기 어때요?</div>`;
-  EVD.comments.forEach(c=>{
+  const btn=(v,l)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:11px;padding:9px 0;font-size:13px;font-weight:${st===v?'700':'500'};${st===v?`background:${accent};color:#fff`:'background:#f5f3ee;color:#6b6357'}">${l}</span>`;
+  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f7f5f0;border-radius:22px;padding:5px 12px 5px 5px;margin:0 6px 7px 0;cursor:pointer">
+      ${evAvatar(n,ph,26)}<span style="font-size:13px;font-weight:500;color:#3a352e">${esc(n)}</span></span>`;
+
+  let h=`<div class="om-detail">
+    <div class="sh-top"><h3 style="font-weight:700">${esc(e.title)}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <span style="font-size:11.5px;font-weight:700;border-radius:8px;padding:4px 10px;background:${accentBg};color:${accent}">${esc(e.tag||'정기')}</span>
+      <span style="font-size:13.5px;font-weight:400;color:#6b6357">${esc(e.date||'')}</span></div>
+
+    <div style="display:flex;gap:7px;margin-top:16px">${btn('going','참석')}${btn('absent','불참')}${btn('undecided','미정')}</div>
+    <div style="font-size:12px;font-weight:400;color:#8a857c;margin-top:9px;line-height:1.6">참석을 누르면 그날 대진 명단에 자동으로 들어가요.</div>
+
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:22px">
+      <span style="font-size:16px;font-weight:700">참석</span>
+      <span style="font-size:16px;font-weight:700;color:${accent}">${(e.attendees||[]).length}명</span>
+      ${(e.guests||[]).length?`<span style="font-size:12.5px;font-weight:400;color:#8a857c">· 게스트 ${(e.guests||[]).length}명</span>`:''}</div>
+    <div style="margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="font-size:13px;color:#a8a29a;font-weight:400">아직 참석자가 없어요</span>'}</div>
+    ${(e.guests||[]).length?`<div style="font-size:12.5px;font-weight:400;color:#8a857c;margin-top:2px">게스트 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
+    ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:12.5px;font-weight:400;color:#a8a29a;margin-top:10px;line-height:1.7">
+      ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(esc).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(esc).join(' · ')}`:''}</div>`:''}
+
+    <div style="height:1px;background:#f0ede6;margin:22px 0 0"></div>
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:18px">
+      <span style="font-size:16px;font-weight:700">댓글</span>
+      <span style="font-size:14px;font-weight:500;color:#a8a29a">${EVD.comments.length}</span></div>`;
+
+  const roots=EVD.comments.filter(c=>!c.parent_id);
+  if(!roots.length) h+=`<div style="font-size:13px;font-weight:400;color:#a8a29a;margin-top:12px;line-height:1.6">첫 댓글을 남겨보세요 · 준비물이나 카풀 이야기 어때요?</div>`;
+  const line=(c,depth)=>{
     const mine=(state.serverUser||{}).id===c.user_id;
-    h+=`<div style="padding:10px 2px;border-top:1px solid #f0efec">
-      <div style="display:flex;align-items:center;gap:7px">
-        <b onclick="openMemberCard('${esc(c.name)}')" style="font-size:12.5px;cursor:pointer">${esc(c.name)}</b>
-        <span style="font-size:10.5px;color:var(--lgray);font-weight:700">${fmtAgo(c.created_at)}</span>
-        ${mine?`<span onclick="evDelComment(${c.id})" style="margin-left:auto;font-size:10.5px;color:var(--lgray);font-weight:800;cursor:pointer">삭제</span>`:''}</div>
-      <div style="font-size:13px;font-weight:500;color:#4a453e;margin-top:3px;line-height:1.5">${esc(c.body)}</div></div>`;
-  });
-  h+=`<div style="display:flex;gap:7px;margin-top:12px">
-      <input id="evCmt" placeholder="댓글 남기기" maxlength="300" style="flex:1;min-width:0">
-      <button class="btn sm" style="width:auto;padding:0 16px" onclick="evAddComment()">등록</button></div></div>`;
+    const kids=EVD.comments.filter(x=>x.parent_id===c.id);
+    let s=`<div style="display:flex;gap:10px;padding:13px 0 0;${depth?'margin-left:26px':''}">
+      ${evAvatar(c.name,c.photos,depth?26:32)}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span onclick="openMemberCard('${esc(c.name)}')" style="font-size:13px;font-weight:600;cursor:pointer">${esc(c.name)}</span>
+          <span style="font-size:11px;font-weight:400;color:#b3aea4">${fmtAgo(c.created_at)}</span></div>
+        <div style="font-size:13.5px;font-weight:400;color:#4a453e;margin-top:4px;line-height:1.65;word-break:break-word">${esc(c.body)}</div>
+        ${(()=>{ const rc=evReactCounts(c.id); const keys=Object.keys(rc);
+          return keys.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
+            ${keys.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:12px;font-weight:500;${rc[em].mine?`background:${accentBg};border:1px solid ${accent}44;color:${accent}`:'background:#f5f3ee;border:1px solid transparent;color:#6b6357'}">${em}<span style="font-size:11px">${rc[em].n}</span></span>`).join('')}</div>`:''; })()}
+        <div style="display:flex;gap:12px;margin-top:6px;align-items:center">
+          <span onclick="evPick(${c.id})" style="font-size:11.5px;font-weight:500;color:#8a857c;cursor:pointer">반응</span>
+          <span onclick="evReply(${c.id},'${esc(c.name)}')" style="font-size:11.5px;font-weight:500;color:#8a857c;cursor:pointer">답글</span>
+          ${mine?`<span onclick="evDelComment(${c.id})" style="font-size:11.5px;font-weight:500;color:#b3aea4;cursor:pointer">삭제</span>`:''}</div>
+        ${EVD.pickFor===c.id?`<div style="display:flex;gap:6px;margin-top:7px;background:#f9f7f3;border-radius:12px;padding:7px 9px;width:fit-content">
+          ${EV_EMOJI.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;font-size:19px;line-height:1">${em}</span>`).join('')}</div>`:''}
+      </div></div>`;
+    kids.forEach(k=>{ s+=line(k,1); });
+    return s;
+  };
+  roots.forEach(c=>{ h+=line(c,0); });
+
+  const rp=EVD.replyTo;
+  h+=`<div style="margin-top:16px">
+    ${rp?`<div style="display:flex;align-items:center;gap:7px;background:${accentBg};border-radius:11px;padding:8px 12px;margin-bottom:7px">
+      <span style="font-size:12px;font-weight:500;color:${accent}">${esc(rp.name)} 님에게 답글</span>
+      <span onclick="EVD.replyTo=null;drawEventDetail()" style="margin-left:auto;font-size:12px;color:#8a857c;cursor:pointer;font-weight:500">취소</span></div>`:''}
+    <div style="display:flex;gap:7px">
+      <input id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300"
+        style="flex:1;min-width:0;font-weight:400;font-size:14px" onkeydown="if(event.key==='Enter')evAddComment()">
+      <button class="btn sm" style="width:auto;padding:0 18px;font-weight:600;background:${accent}" onclick="evAddComment()">등록</button></div>
+  </div></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+function evReply(id,name){ EVD.replyTo={id,name}; drawEventDetail();
+  setTimeout(()=>{ const el=document.getElementById('evCmt'); if(el) el.focus(); },50); }
+const EV_EMOJI=['👍','🎾','🔥','😂','🙌','🙏'];
+function evReactCounts(cid){
+  const list=(EVD.reactions||[]).filter(r=>r.comment_id===cid);
+  const me=(state.serverUser||{}).id, out={};
+  list.forEach(r=>{ out[r.emoji]=out[r.emoji]||{n:0,mine:false}; out[r.emoji].n++; if(r.user_id===me) out[r.emoji].mine=true; });
+  return out;
+}
+async function evReact(cid, em){
+  try{ await api(`/comments/${cid}/react`,{method:'POST',body:JSON.stringify({emoji:em})});
+    EVD.reactions=await api(`/events/${EVD.ev.id}/reactions`)||[];
+    EVD.pickFor=null; drawEventDetail();
+  }catch(e){ toast('반응을 남기지 못했어요'); }
+}
+function evPick(cid){ EVD.pickFor = (EVD.pickFor===cid) ? null : cid; drawEventDetail(); }
 function fmtAgo(ts){ const s=Math.floor((Date.now()-ts)/1000);
   if(s<60) return '방금'; if(s<3600) return Math.floor(s/60)+'분 전';
   if(s<86400) return Math.floor(s/3600)+'시간 전'; return Math.floor(s/86400)+'일 전'; }
@@ -8343,7 +8413,8 @@ async function evRsvp(status){
 async function evAddComment(){
   const el=document.getElementById('evCmt'); const v=(el&&el.value||'').trim();
   if(!v){ toast('댓글을 입력해 주세요'); return; }
-  try{ await api(`/events/${EVD.ev.id}/comments`,{method:'POST',body:JSON.stringify({body:v})});
+  try{ await api(`/events/${EVD.ev.id}/comments`,{method:'POST',body:JSON.stringify({body:v, parent_id:(EVD.replyTo||{}).id||null})});
+    EVD.replyTo=null;
     EVD.comments=await api(`/events/${EVD.ev.id}/comments`)||[]; drawEventDetail();
   }catch(e){ toast('등록하지 못했어요'); }
 }
@@ -8371,21 +8442,36 @@ async function openMemberCard(name){
   }catch(e){}
   const gd=rec.gf-rec.ga, wr=rec.g?Math.round(rec.w/rec.g*100):0;
   const roleL={owner:'회장',officer:'임원'}[mem.role]||'회원';
-  const jd=mem.joined_at?new Date(mem.joined_at).toISOString().slice(0,10):'-';
+  const jts = mem.joined_at || mem.user_created || null;                 // 가입 승인일 없으면 계정 생성일
+  const jd = jts ? new Date(+jts).toISOString().slice(0,10).replace(/-/g,'.') : '기록 없음';
   const me=(state.serverUser||{}).id;
+  const yr=new Date().getFullYear();
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
-    <div class="sh-top"><h3>${esc(mem.name)}</h3><div class="cl" role="button" tabindex="0" onclick="${EVD?'drawEventDetail()':'closeOv()'}">×</div></div>
-    <div style="display:flex;align-items:center;gap:7px;margin-top:2px">
-      <span style="font-size:11px;font-weight:800;background:#f2f0ea;color:#6b6357;border-radius:8px;padding:3px 9px">${roleL}</span>
-      ${mem.grade?`<span style="font-size:11px;font-weight:800;border-radius:8px;padding:3px 9px;${cb2GradeColor(mem.grade)}">${mem.grade}급</span>`:''}
-      <span style="font-size:12px;font-weight:600;color:var(--gray)">가입 ${jd}</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px">
-      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px">${rec.g}</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">클럽 경기</div></div>
-      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px;color:#2f9159">${wr}%</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">승률</div></div>
-      <div style="background:#faf8f4;border-radius:13px;padding:12px;text-align:center"><b style="font-size:17px;color:${gd>=0?'#2f9159':'#cf5418'}">${gd>=0?'+':''}${gd}</b><div style="font-size:10px;font-weight:800;color:var(--lgray)">득실</div></div></div>
-    <div style="font-size:12.5px;font-weight:700;color:var(--gray);margin-top:10px">${rec.w}승 ${rec.d?rec.d+'무 ':''}${rec.l}패 · 득점 ${rec.gf} · 실점 ${rec.ga}</div>
-    ${(mem.user_id&&mem.user_id!==me)?`<button class="btn" style="margin-top:16px" onclick="openDM(${mem.user_id},'${esc(mem.name)}')">💬 대화 걸기</button>`:''}
-    <button class="btn ghost" style="margin-top:9px" onclick="${EVD?'drawEventDetail()':'closeOv()'}">닫기</button></div>`;
+    <div class="sh-top"><h3 style="font-weight:700">회원 정보</h3><div class="cl" role="button" tabindex="0" onclick="${EVD?'drawEventDetail()':'closeOv()'}">×</div></div>
+    <div style="display:flex;align-items:center;gap:13px;margin-top:10px">
+      ${evAvatar(mem.name, mem.photos, 56)}
+      <div style="min-width:0">
+        <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">${esc(mem.name)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+          <span style="font-size:11.5px;font-weight:600;background:#f5f3ee;color:#6b6357;border-radius:8px;padding:3px 9px">${roleL}</span>
+          ${mem.grade?`<span style="font-size:11.5px;font-weight:600;border-radius:8px;padding:3px 9px;${cb2GradeColor(mem.grade)}">${mem.grade}급</span>`:''}
+        </div></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;background:#f9f7f3;border-radius:12px;padding:11px 14px;margin-top:14px">
+      <span style="font-size:12.5px;font-weight:400;color:#8a857c">클럽 가입일</span>
+      <span style="font-size:13px;font-weight:600">${jd}</span></div>
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:20px">
+      <span style="font-size:16px;font-weight:700">${yr}년 클럽 성적</span>
+      <span style="font-size:12px;font-weight:400;color:#a8a29a">해마다 새로 쌓여요</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:11px">
+      <div style="background:#f9f7f3;border-radius:14px;padding:14px 8px;text-align:center">
+        <div style="font-size:20px;font-weight:700">${rec.g}</div><div style="font-size:11px;font-weight:400;color:#8a857c;margin-top:3px">경기</div></div>
+      <div style="background:#f9f7f3;border-radius:14px;padding:14px 8px;text-align:center">
+        <div style="font-size:20px;font-weight:700;color:#2f9159">${wr}<span style="font-size:13px">%</span></div><div style="font-size:11px;font-weight:400;color:#8a857c;margin-top:3px">승률</div></div>
+      <div style="background:#f9f7f3;border-radius:14px;padding:14px 8px;text-align:center">
+        <div style="font-size:20px;font-weight:700;color:${gd>=0?'#2f9159':'#cf5418'}">${gd>=0?'+':''}${gd}</div><div style="font-size:11px;font-weight:400;color:#8a857c;margin-top:3px">득실</div></div></div>
+    <div style="font-size:13px;font-weight:400;color:#6b6357;margin-top:11px;line-height:1.6">${rec.w}승 ${rec.d?rec.d+'무 ':''}${rec.l}패 · 득점 ${rec.gf} · 실점 ${rec.ga}</div>
+    ${(mem.user_id&&mem.user_id!==me)?`<button class="btn" style="margin-top:18px;font-weight:600" onclick="openDM(${mem.user_id},'${esc(mem.name)}')">대화 걸기</button>`:''}
+    <button class="btn ghost" style="margin-top:9px;font-weight:500" onclick="${EVD?'drawEventDetail()':'closeOv()'}">닫기</button></div>`;
   document.getElementById('ov').classList.add('on');
 }
 async function makeInvite(){
