@@ -5446,6 +5446,7 @@ async function repairClubServer(){
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
 function renderClub(){
+  if((SERVER_OK||TRIAL) && clubId() && PROMOS===null && !window._promoOnce){ window._promoOnce=true; cb2LoadPromos().then(()=>renderClub()).catch(()=>{}); }
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
     cb2Load().then(()=>{
       const today=new Date().toISOString().slice(0,10);
@@ -7543,7 +7544,8 @@ async function openClubStats(){
 
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
 /* ═══ 클럽 대진 v2.1 — 테르메스 스타일 · 만들기/보기 분리 · 한울 포함 ═══ */
-let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null;
+let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null, CB2_EVENT=0, CB2_LIST=null;
+const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
 function cb2Officer(){ if(TRIAL) return true; const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return c&&(c.role==='owner'||c.role==='officer'); }
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
   return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]]; }
@@ -7578,7 +7580,7 @@ function cb2Roster(r){ const a = Array.isArray(r)?r:(r&&r.members)||[];
   return a.filter(p=>p&&(p.user_id||p.id)).map(p=>({...p, user_id:p.user_id||p.id})); }
 async function cb2Load(){
   if(TRIAL){ seedTrialBracket(); return CB2; }
-  try{ CB2=await api(`/clubs/${clubId()}/bracket2`); }catch(e){ CB2=null; }
+  try{ CB2=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); }catch(e){ CB2=null; }
   return CB2;
 }
 function cb2Stats(){
@@ -7611,13 +7613,53 @@ function cb2Stats(){
 
 /* ── 회원·공용: 대진 확인(실시간) ── */
 async function openClubBracket2(){ return openClubBracketView(); }
+async function openClubBracketList(){
+  const cid=clubId(); if(!cid){ toast('클럽에 먼저 들어가 주세요'); return; }
+  let list=[]; try{ list=await api(`/clubs/${cid}/brackets`)||[]; }catch(e){}
+  CB2_LIST=list;
+  const off=cb2Officer();
+  let h=`<div class="om-detail"><div class="sh-top"><h3>발행된 대진</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">모임별로 대진이 따로 저장돼요 · 진행 중인 대진이 위에 보여요</div>`;
+  const card=b=>{
+    const pct=b.games?Math.round(b.done/b.games*100):0;
+    const md={hanul:'한울',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[b.mode]||'일반';
+    const tagC=b.tag==='번개'?['#eef4ff','#2b62c9']:['#fceee4','#cf5418'];
+    const live=b.active&&b.done>0;
+    return `<div onclick="cb2Open(${b.event_id})" style="border:1px solid ${b.active?'#e9dfcf':'#f0ede6'};border-radius:16px;padding:14px;margin-top:9px;cursor:pointer;${b.active?'':'opacity:.72'}">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:600;border-radius:8px;padding:3px 9px;background:${tagC[0]};color:${tagC[1]}">${esc(b.tag)}</span>
+        <b style="font-size:15px;font-weight:700">${esc(b.title)}</b>
+        ${live?`<span style="font-size:10.5px;font-weight:700;color:#cf5418">● 진행 중</span>`:''}
+        <span style="margin-left:auto;font-size:11.5px;font-weight:400;color:var(--lgray)">${esc(b.date||'')}</span></div>
+      <div style="font-size:12.5px;font-weight:400;color:#6b6357;margin-top:6px">${md} · ${b.courts}코트 · ${b.done}/${b.games}게임 완료</div>
+      <div style="height:5px;background:#f2f0ea;border-radius:3px;margin-top:8px"><div style="width:${pct}%;height:100%;border-radius:3px;background:${b.active?'var(--coral)':'#c3bdb2'}"></div></div></div>`;
+  };
+  const act=list.filter(b=>b.active), fin=list.filter(b=>!b.active);
+  if(!list.length){
+    h+=`<div class="empty" style="padding:28px 20px"><div class="et">발행된 대진이 없어요</div>
+      <div class="es">${off?'모임 상세에서 “이 모임 참석자로 대진 짜기”를 눌러 만들어 보세요.':'경기이사가 대진을 발행하면 여기 보여요.'}</div></div>`;
+  } else {
+    if(act.length) h+=`<div style="display:flex;align-items:baseline;gap:7px;margin-top:16px">
+      <span style="font-size:15px;font-weight:700">진행 중</span><span style="font-size:13px;font-weight:500;color:var(--coral-d)">${act.length}</span></div>`+act.map(card).join('');
+    if(fin.length) h+=`<div style="display:flex;align-items:baseline;gap:7px;margin-top:20px">
+      <span style="font-size:15px;font-weight:700">종료</span><span style="font-size:13px;font-weight:500;color:var(--lgray)">${fin.length}</span></div>`+fin.map(card).join('');
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function cb2Open(eid){ CB2_EVENT=+eid||0; CB2=null; await openClubBracketView(); }
 async function openClubBracketView(){
   const cid=clubId(); if(!TRIAL&&(!SERVER_OK||!cid)){ toast('클럽에 먼저 들어가 주세요'); return; }
+  if(!TRIAL && !CB2_EVENT && !CB2){                          // 모임을 아직 안 골랐으면 목록부터
+    let list=[]; try{ list=await api(`/clubs/${cid}/brackets`)||[]; }catch(e){}
+    if(list.length>1){ return openClubBracketList(); }
+    if(list.length===1){ CB2_EVENT=list[0].event_id||0; }
+  }
   await cb2Load(); drawCB2View();
   clearInterval(CB2_TIMER);
   if(!TRIAL) CB2_TIMER=setInterval(async()=>{ const ov=document.getElementById('ov');
     if(!ov||!ov.classList.contains('on')||!document.getElementById('cb2v')){ clearInterval(CB2_TIMER); return; }
-    try{ const d=await api(`/clubs/${cid}/bracket2`);
+    try{ const d=await api(`/clubs/${cid}/bracket2${cbQ()}`);
       if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; drawCB2View(); } }catch(e){} }, 12000);
 }
 function drawCB2View(){
@@ -7625,7 +7667,7 @@ function drawCB2View(){
   let h=`<div class="om-detail" id="cb2v"><div class="sh-top"><h3>클럽 대진 · 실시간</h3><div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
   // 예전 날짜 대진은 자동으로 감춘다 (오늘 것만 실시간 화면에 노출)
   const _today=new Date().toISOString().slice(0,10);
-  if(CB2 && CB2.date && CB2.date!==_today){
+  if(CB2 && CB2.date && CB2.date!==_today && !CB2_EVENT){
     h+=`<div class="empty" style="padding:28px 20px"><div class="et">오늘 발행된 대진이 없어요</div>
       <div class="es">${esc(CB2.date)} 대진은 <b>클럽 기록 · 시즌</b>에서 볼 수 있어요.</div></div>
       <button class="btn ghost" onclick="closeOv();openClubRecords()">지난 대진 보기</button>
@@ -7659,8 +7701,10 @@ function drawCB2View(){
   }else{
     const {rank,rstat,live,rec,done}=cb2Stats();
     h+=`<div class="sd" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-      <span>${esc(CB2.date||'')} · ${esc(CB2.made_by||'')} 발행 · ${CB2.mode==='cheongbaek'?'청백전':CB2.mode==='hanul'?'한울(코트별 조)':'일반'} · 코트 ${CB2.courts} · ${CB2.rounds}라운드${CB2.late?` · 늦참 ${CB2.late.names.length}명 ${CB2.late.from}게임~`:''}${CB2.guests?` · 게스트 ${CB2.guests.length}`:''}</span>
-      ${off?`<b style="color:var(--coral-d);cursor:pointer;white-space:nowrap" onclick="openClubBracketBuild()">대진 만들기 ›</b>`:''}</div>
+      <span>${esc(CB2.date||'')} · ${esc(CB2.made_by||'')} 발행 · ${{cheongbaek:'청백전',hanul:'한울 AB',gender:'성비',monthly:'월례대회'}[CB2.mode]||'일반'} · 코트 ${CB2.courts} · ${CB2.rounds}라운드${CB2.late?` · 늦참 ${CB2.late.names.length}명 ${CB2.late.from}게임~`:''}${CB2.guests?` · 게스트 ${CB2.guests.length}`:''}</span>
+      <span style="display:flex;gap:10px;white-space:nowrap">
+        <b style="color:#6b6357;cursor:pointer" onclick="openClubBracketList()">다른 모임 ›</b>
+        ${off?`<b style="color:var(--coral-d);cursor:pointer" onclick="openClubBracketBuild()">대진 만들기 ›</b>`:''}</span></div>
       <div style="display:flex;gap:6px;margin:8px 0 2px">
         ${cb2OrderOpen()?`<span onclick="cb2OrderSheet()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:${cb2MySide()==='blue'?'#3182f6':'#f04452'};color:#fff;cursor:pointer">오더 수정</span>`:''}
         <span onclick="cb2SheetView()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">수기 방식 보기</span>
@@ -7743,6 +7787,10 @@ function drawCB2View(){
       h+=`</div>`;
     }
     h+=`<div class="note" style="text-align:left;margin-top:10px">스코어는 그 경기를 뛴 <b>당사자만</b> 입력하고, <b>임원은 언제든 수정</b>(점수 탭)할 수 있어요.</div>`;
+    if(CB2.mode==='monthly' && off){
+      const allDone=(CB2.games||[]).every(g=>g.sa!=null);
+      h+=`<button class="btn" style="margin-top:12px;background:${allDone?'#5b3fa8':'#d9d3c7'}" onclick="${allDone?'cb2PromoSheet()':`toast('모든 경기 스코어가 확정되면 승강을 정할 수 있어요')`}">월례대회 승강 정하기${allDone?'':' (경기 진행 중)'}</button>`;
+    }
     if(rank.length){
       h+=`<div class="ch" style="font-size:15px;margin-top:16px">오늘의 순위 <span style="font-size:11px;color:var(--lgray);font-weight:700">경기 끝날 때마다 갱신</span></div>`;
       rank.slice(0,8).forEach((s,i)=>{
@@ -7789,7 +7837,7 @@ function drawCB2Build(){
     const gb=p.grade?`<span style="font-size:9px;font-weight:900;border-radius:6px;padding:1px 5px;margin-left:5px;${cb2GradeColor(p.grade)}">${p.grade}</span>`:'';
     const guest=p.is_guest?`<span style="font-size:9px;font-weight:900;margin-left:4px;opacity:.75">G</span>`:'';
     const sty = on ? `background:${base};color:#fff` : `background:${soft};color:${base}`;
-    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;${p.is_guest?`border:1.5px dashed ${on?base:'#d9d3c7'};`:''}${sty}">${esc(p.name)}${gb}${guest}</span>`;
+    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;${p.is_guest?`border:1.5px dashed ${on?base:'#d9d3c7'};`:''}${sty}">${esc(p.name)}${gb}${guest}${promoBadge(p.user_id)}</span>`;
   };
   const selArr=[...CB2_SEL].map(id=>all.find(p=>String(p.user_id)===id)).filter(Boolean);
   const lateChips=selArr.map(p=>{
@@ -7834,6 +7882,7 @@ function drawCB2Build(){
       <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:13px;font-weight:800;background:#faf8f4">1인 4경기 보장</div></div></div>
     <button class="btn" onclick="cb2Gen('normal')">일반 대진 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.85">· 등급 인접 + 휴식 순환</span></button>
     <button class="btn" style="margin-top:9px;background:var(--coral-s);color:var(--coral-d);box-shadow:none" onclick="cb2Gen('hanul')">한울 방식 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.75">· AB 수기표 · 8~16명 · 코트만큼 동시</span></button>
+    <button class="btn" style="margin-top:9px;background:#f3f0fb;color:#5b3fa8;box-shadow:none" onclick="cb2Gen('monthly')">월례대회 생성 · 발행 <span style="font-weight:400;font-size:11px;opacity:.75">· 등급별 리그 + 승강제</span></button>
     <button class="btn" style="margin-top:9px;background:#fdf6ec;color:#8a5230;border:1.5px solid #f0e2c8;box-shadow:none" onclick="cb2Gen('gender')">성비 대진 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.7">· 남 남복3+혼복1 / 여 혼복3+여복1</span></button>
     <button class="btn" style="margin-top:9px;background:#fff;color:#3b2a1a;border:1.5px solid #e9dfcf;box-shadow:none" onclick="cb2Gen('cheongbaek')"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3182f6;margin-right:5px"></span>청백전 생성 · 발행<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f04452;margin-left:5px"></span> <span style="font-weight:700;font-size:11px;opacity:.7">· 밸런스 팀 + 팀장 랜덤</span></button>
   </div>`;
@@ -7905,8 +7954,34 @@ async function cb2Gen(mode){
   if(mode==='hanul'){
     // 한울 AB 수기표: 한 시트 최대 16명 · 예약 코트 수만큼 동시 진행
     const n=sel.length;
-    if(n%2){ toast(`한울 AB는 짝수 인원이에요 (지금 ${n}명) · 한 명을 빼거나 게스트를 추가해 주세요`); return; }
-    if(n<8){ toast('한울 AB는 8명부터예요'); return; }
+    if(n<5){ toast('한울 방식은 5명부터예요'); return; }
+    if(n<8 || n%2 || n>16){
+      // AB 시트(8·10·12·14·16명) 밖 인원 — 회전식으로 전원 4게임을 맞춘다
+      const need={}; ps.forEach(p=>need[p.id]=GPP);
+      const pc={};
+      for(let gi2=0; gi2<n; gi2++){
+        const pool=ps.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||(pc[a.id]||0)-(pc[b.id]||0));
+        if(pool.length<4) break;
+        const four=pool.slice(0,4);
+        four.forEach(p=>{ need[p.id]--; pc[p.id]=(pc[p.id]||0)+1; });
+        const [t1,t2]=cb2Pairs(four, gi2);
+        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2);
+      }
+      groups=[{name:`참석 ${n}명 · 회전 편성`, members:ps.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))}];
+      if(n>16) toast(`${n}명은 AB 시트(최대 16명)를 넘어 회전식으로 편성했어요`);
+      else toast(`${n}명 · 회전식으로 전원 4게임씩 편성했어요`);
+      games.sort((a,b)=>a.r-b.r||a.c-b.c);
+      const rounds0=games.length?Math.max(...games.map(g=>g.r)):0;
+      const data0={date:new Date().toISOString().slice(0,10), courts, rounds:rounds0, mode, gpp:GPP,
+        made_by:state.userName, games, captains:null, groups,
+        late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
+        guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
+      if(TRIAL){ CB2={...data0,_trial:true,updated_at:Date.now()}; openClubBracketView(); return; }
+      try{ await api(`/clubs/${clubId()}/bracket2${CB2_EVENT?`?event=${CB2_EVENT}`:''}`,{method:'PUT',body:JSON.stringify(data0)});
+        CB2={...data0,updated_at:Date.now()}; openClubBracketView();
+      }catch(e){ toast('임원만 발행할 수 있어요'); }
+      return;
+    }
     // 16명 초과면 8~16명 시트로 나눠서 전원 4게임을 보장한다
     const chunks=[]; let rest=n;
     while(rest>0){
@@ -7937,6 +8012,27 @@ async function cb2Gen(mode){
 
     // 숫자조(1~) = 등급 상위 · 문자조(A~) = 하위 → A그룹은 B그룹과만 파트너
 
+  } else if(mode==='monthly'){
+    // 월례대회 — 같은 등급(조)끼리만 경기 · 조별 리그
+    const tiers={}; ps.forEach(p=>{ const t=p.grade||'C'; (tiers[t]=tiers[t]||[]).push(p); });
+    const order=['S','A','B','C'].filter(t=>tiers[t]&&tiers[t].length);
+    const thin=order.filter(t=>tiers[t].length<4);
+    if(!order.length){ toast('참석자 등급을 먼저 지정해 주세요 (등급 편집)'); return; }
+    if(thin.length) toast(`${thin.join('·')}조가 4명 미만이라 대진에서 빠졌어요`);
+    groups=[];
+    order.forEach(t=>{
+      const g=tiers[t]; if(g.length<4) return;
+      groups.push({name:`${t}조`, tier:t, members:g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:t}))});
+      const need={}; g.forEach(p=>need[p.id]=GPP); const pc={};
+      for(let k=0;k<g.length;k++){
+        const pool=g.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||(pc[a.id]||0)-(pc[b.id]||0));
+        if(pool.length<4) break;
+        const four=pool.slice(0,4);
+        four.forEach(p=>{ need[p.id]--; pc[p.id]=(pc[p.id]||0)+1; });
+        const [t1,t2]=cb2Pairs(four,k);
+        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2,`${t}조`);
+      }
+    });
   } else if(mode==='gender'){
     // 성비 대진 — 전원 정확히 4게임 보장 · 남 남복3+혼복1 / 여 혼복3+여복1 지향
     const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
@@ -8018,11 +8114,11 @@ async function cb2Gen(mode){
     groups: groups?groups.map(g=>g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))):null,
     late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
     guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
-  const nm={hanul:'한울', gender:'성비', cheongbaek:'청백전'}[mode]||'일반';
+  const nm={hanul:'한울', gender:'성비', cheongbaek:'청백전', monthly:'월례대회'}[mode]||'일반';
   if(TRIAL){ CB2={...data,_trial:true,updated_at:Date.now()};
     toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 (체험)`);
     openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(data)});
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(data)});
     CB2={...data,updated_at:Date.now()};
     toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 · 1인 ${GPP}경기`);
     openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400);
@@ -8204,11 +8300,101 @@ async function cb2OrderSave(){
     CB2.games=games; CB2.rounds=Math.max(...games.map(g=>g.r));
   }
   if(TRIAL){ CB2.updated_at=Date.now(); toast('오더를 저장했어요 (체험)'); drawCB2View(); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)});
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)});
     CB2.updated_at=Date.now();
     toast(cb2OrderDone()?'오더 저장 · 대진이 만들어졌어요':'오더를 저장했어요 · 상대 팀 오더를 기다려요');
     drawCB2View();
   }catch(e){ toast('저장하지 못했어요'); }
+}
+/* ── 월례대회 승강 처리 ── */
+function cb2TierRank(){
+  // 조별 순위 (승 100 · 무 50 + 득실)
+  const gs=(CB2&&CB2.games)||[]; const byT={};
+  gs.forEach(g=>{
+    if(g.sa==null||g.sb==null) return;
+    const t=(g.label||'').replace('조','')||'C';
+    byT[t]=byT[t]||{};
+    const win=g.sa>g.sb?'A':g.sa<g.sb?'B':'D';
+    [['A','B'],['B','A']].forEach(([me,op])=>{
+      (g['team'+me]||[]).forEach(p=>{ if(!p)return;
+        const s=byT[t][p.id]=byT[t][p.id]||{id:p.id,name:p.name,w:0,d:0,l:0,gf:0,ga:0};
+        s.gf+=g['s'+me.toLowerCase()]; s.ga+=g['s'+op.toLowerCase()];
+        if(win==='D')s.d++; else if(win===me)s.w++; else s.l++; }); });
+  });
+  const out={};
+  Object.entries(byT).forEach(([t,m])=>{
+    out[t]=Object.values(m).map(s=>({...s,gd:s.gf-s.ga,p:s.w*100+s.d*50+(s.gf-s.ga)}))
+      .sort((a,b)=>b.p-a.p||b.gd-a.gd);
+  });
+  return out;
+}
+function cb2PromoPlan(){
+  const rank=cb2TierRank();
+  const A=rank.A||[], B=rank.B||[], C=rank.C||[];
+  const aDown=A.length?Math.max(1,Math.round(A.length*0.2)):0;
+  const bUp=Math.min(aDown,B.length);
+  const bDown=B.length?Math.max(1,Math.round(B.length*0.2)):0;
+  const cUp=Math.min(bDown,C.length);
+  const ch=[];
+  A.slice(-aDown).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'A',to:'B',dir:'down'}));
+  B.slice(0,bUp).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'B',to:'A',dir:'up'}));
+  B.slice(-bDown).forEach(s=>{ if(!ch.some(c=>c.user_id===s.id)) ch.push({user_id:s.id,name:s.name,from:'B',to:'C',dir:'down'}); });
+  C.slice(0,cUp).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'C',to:'B',dir:'up'}));
+  return {rank, ch, counts:{aDown,bUp,bDown,cUp}};
+}
+function cb2PromoSheet(){
+  if(!CB2||CB2.mode!=='monthly'){ toast('월례대회에서만 쓸 수 있어요'); return; }
+  const {rank,ch,counts}=cb2PromoPlan();
+  const tierC={S:['#f9e7b8','#8a6a1f'],A:['#fceee4','#cf5418'],B:['#e7f4ec','#1f7d4d'],C:['#f2f0ea','#6b6357']};
+  let h=`<div class="om-detail"><div class="sh-top"><h3>월례대회 승강</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
+    <div class="sd">조별 순위에 따라 인원 비율을 유지하며 승격·강등돼요<br>A조 ↓${counts.aDown} · B조 ↑${counts.bUp} ↓${counts.bDown} · C조 ↑${counts.cUp}</div>`;
+  ['S','A','B','C'].forEach(t=>{
+    const list=rank[t]; if(!list||!list.length) return;
+    const c=tierC[t]||tierC.C;
+    h+=`<div style="margin-top:16px"><div style="display:flex;align-items:baseline;gap:7px">
+      <span style="font-size:12px;font-weight:700;border-radius:8px;padding:3px 10px;background:${c[0]};color:${c[1]}">${t}조</span>
+      <span style="font-size:12px;font-weight:400;color:#a8a29a">${list.length}명</span></div>`;
+    list.forEach((s,i)=>{
+      const mv=ch.find(x=>x.user_id===s.id);
+      const badge = mv ? (mv.dir==='up'
+        ? `<span style="font-size:11px;font-weight:700;color:#2f7d4f;background:#eef7f1;border-radius:8px;padding:3px 8px">▲ ${mv.to}조 승격</span>`
+        : `<span style="font-size:11px;font-weight:700;color:#cf5418;background:#fdf0ea;border-radius:8px;padding:3px 8px">▼ ${mv.to}조</span>`) : '';
+      h+=`<div style="display:flex;align-items:center;gap:9px;padding:9px 2px;border-top:1px solid #f4f2ed">
+        <b style="width:20px;text-align:center;font-size:12.5px;color:${i===0?'#cf5418':'#b3aea4'}">${i+1}</b>
+        <span style="flex:1;font-size:13.5px;font-weight:500">${esc(s.name)}</span>
+        <span style="font-size:11.5px;font-weight:400;color:#8a857c">${s.w}승 ${s.l}패 · ${s.gd>=0?'+':''}${s.gd}</span>
+        ${badge}</div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`<div class="note" style="text-align:left;margin-top:16px">확정하면 회원 등급이 바뀌고, <b>일주일 동안</b> 이름 옆에 ▲▼ 배지가 보여요.</div>
+    <button class="btn" style="margin-top:12px" onclick="cb2PromoApply()">승강 확정하기 (${ch.length}명)</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">나중에</button></div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function cb2PromoApply(){
+  const {ch}=cb2PromoPlan();
+  if(!ch.length){ toast('승강 대상이 없어요'); return; }
+  if(!confirm(`${ch.length}명의 등급을 조정할까요?\n확정하면 되돌릴 수 없어요.`)) return;
+  if(TRIAL){ toast(`승강을 확정했어요 (체험) · ${ch.length}명`); drawCB2View(); return; }
+  try{ await api(`/clubs/${clubId()}/promote`,{method:'POST',body:JSON.stringify({changes:ch})});
+    PROMOS=null; await cb2LoadPromos();
+    toast(`승강을 확정했어요 · ${ch.length}명`); drawCB2View(); renderClub();
+  }catch(e){ toast('임원만 확정할 수 있어요'); }
+}
+/* ── 승강 배지 (최근 7일) ── */
+let PROMOS=null;
+async function cb2LoadPromos(){
+  const cid=clubId(); if(!cid){ PROMOS=[]; return; }
+  try{ PROMOS=await api(`/clubs/${cid}/promotions`)||[]; }catch(e){ PROMOS=[]; }
+}
+function promoBadge(nameOrId){
+  if(!PROMOS||!PROMOS.length) return '';
+  const p=PROMOS.find(x=>x.user_id===nameOrId||x.name===nameOrId);
+  if(!p) return '';
+  return p.dir==='up'
+    ? `<span title="${esc(p.from_grade)}→${esc(p.to_grade)} 승격" style="font-size:10px;font-weight:700;color:#2f7d4f;background:#eef7f1;border-radius:6px;padding:1px 5px;margin-left:4px">▲${esc(p.to_grade)}</span>`
+    : `<span title="${esc(p.from_grade)}→${esc(p.to_grade)}" style="font-size:10px;font-weight:700;color:#cf5418;background:#fdf0ea;border-radius:6px;padding:1px 5px;margin-left:4px">▼${esc(p.to_grade)}</span>`;
 }
 async function cb2Swap(gi){
   if(!cb2Officer()){ toast('임원만 순서를 바꿀 수 있어요'); return; }
@@ -8222,7 +8408,7 @@ async function cb2Swap(gi){
   const t=g.r; g.r=other.r; other.r=t;
   CB2.games.sort((a,b)=>a.r-b.r||a.c-b.c);
   if(TRIAL){ CB2.updated_at=Date.now(); drawCB2View(); toast('순서를 바꿨어요 (체험)'); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)});
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)});
     CB2.updated_at=Date.now(); drawCB2View(); toast('순서를 바꿨어요 · 회원 화면에 바로 반영돼요');
   }catch(e){ toast('저장하지 못했어요'); }
 }
@@ -8232,7 +8418,7 @@ async function cb2CancelStart(gi){
   delete g.startedAt;
   drawCB2View(); toast('시작을 취소했어요');
   if(TRIAL){ CB2.updated_at=Date.now(); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)}); CB2.updated_at=Date.now(); }catch(e){}
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); CB2.updated_at=Date.now(); }catch(e){}
 }
 async function cb2StartGame(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||g.startedAt||g.sa!=null) return;
@@ -8246,7 +8432,7 @@ async function cb2StartGame(gi){
   drawCB2View();
   toast(`${g.r}게임 · ${g.c}코트 경기를 시작했어요 · 타이머가 돌아가요`);
   if(TRIAL){ CB2.updated_at=Date.now(); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)}); CB2.updated_at=Date.now(); }catch(e){}
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); CB2.updated_at=Date.now(); }catch(e){}
 }
 async function cb2Score(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
@@ -8254,9 +8440,125 @@ async function cb2Score(gi){
   if(!v) return;
   const m=v.match(/(\d)\s*[:대-]\s*(\d)/); if(!m){ toast('6:4 형식으로 입력해 주세요'); return; }
   if(TRIAL){ g.sa=+m[1]; g.sb=+m[2]; CB2.updated_at=Date.now(); drawCB2View(); toast('스코어를 기록했어요 (체험)'); return; }
-  try{ await api(`/clubs/${clubId()}/bracket2/score`,{method:'PATCH',body:JSON.stringify({gi,sa:+m[1],sb:+m[2]})});
-    const d=await api(`/clubs/${clubId()}/bracket2`); CB2=d; drawCB2View(); toast('스코어를 기록했어요');
+  try{ await api(`/clubs/${clubId()}/bracket2/score${cbQ()}`,{method:'PATCH',body:JSON.stringify({gi,sa:+m[1],sb:+m[2]})});
+    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); CB2=d; drawCB2View(); toast('스코어를 기록했어요');
   }catch(e){ toast(String(e.message||'').includes('player_only')?'그 경기를 뛴 당사자나 임원만 입력할 수 있어요':'기록하지 못했어요'); }
+}
+/* ═══ 선수 리포트 — 종료된 경기 데이터 분석 (실력 향상용) ═══ */
+async function cbAllGames(){
+  const cid=clubId(); if(!cid) return [];
+  let logs=[]; try{ logs=await api(`/clubs/${cid}/bracket2/logs`)||[]; }catch(e){}
+  const out=[];
+  logs.forEach(l=>((l.data||{}).games||[]).forEach(g=>{
+    if(g.sa==null||g.sb==null) return;                 // 종료된 경기만 분석
+    out.push({...g, date:l.date, mode:(l.data||{}).mode});
+  }));
+  return out;
+}
+async function openPlayerReport(uid, name){
+  const games=await cbAllGames();
+  const mine=games.filter(g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&p.id===uid));
+  if(!mine.length){ toast(`${name} 님의 종료된 경기 기록이 아직 없어요`); return; }
+  const S={g:0,w:0,d:0,l:0,gf:0,ga:0,close:0,closeW:0,days:new Set()};
+  const partner={}, rival={}, byMonth={}, byLabel={}; const recent=[];
+  mine.forEach(g=>{
+    const inA=(g.teamA||[]).some(p=>p.id===uid);
+    const me=inA?(g.teamA||[]):(g.teamB||[]), op=inA?(g.teamB||[]):(g.teamA||[]);
+    const mf=inA?g.sa:g.sb, ma=inA?g.sb:g.sa;
+    const win=mf>ma, draw=mf===ma;
+    S.g++; S.gf+=mf; S.ga+=ma; S.days.add(g.date);
+    if(draw)S.d++; else if(win)S.w++; else S.l++;
+    if(Math.abs(mf-ma)<=1){ S.close++; if(win)S.closeW++; }
+    me.forEach(p=>{ if(p.id===uid) return; const k=p.id;
+      partner[k]=partner[k]||{name:p.name,g:0,w:0}; partner[k].g++; if(win)partner[k].w++; });
+    op.forEach(p=>{ const k=p.id; rival[k]=rival[k]||{name:p.name,g:0,w:0,l:0};
+      rival[k].g++; if(win)rival[k].w++; else if(!draw)rival[k].l++; });
+    const mo=(g.date||'').slice(0,7);
+    byMonth[mo]=byMonth[mo]||{g:0,w:0}; byMonth[mo].g++; if(win)byMonth[mo].w++;
+    const lb=g.label||'기타'; byLabel[lb]=byLabel[lb]||{g:0,w:0}; byLabel[lb].g++; if(win)byLabel[lb].w++;
+    recent.push({date:g.date, win, draw, mf, ma, op:op.map(p=>p.name).join('·')});
+  });
+  recent.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const last5=recent.slice(0,5);
+  const wr=S.g?Math.round(S.w/S.g*100):0;
+  const closeWr=S.close?Math.round(S.closeW/S.close*100):0;
+  const avgF=S.g?(S.gf/S.g).toFixed(1):'0.0', avgA=S.g?(S.ga/S.g).toFixed(1):'0.0';
+  const l5w=last5.filter(x=>x.win).length;
+  const allP={};
+  games.forEach(g=>{ [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(!p)return;
+    const inA=(g.teamA||[]).some(x=>x.id===p.id);
+    const mf=inA?g.sa:g.sb, ma=inA?g.sb:g.sa;
+    allP[p.id]=allP[p.id]||{g:0,w:0}; allP[p.id].g++; if(mf>ma)allP[p.id].w++; }); });
+  const clubWr=(()=>{ const v=Object.values(allP).filter(x=>x.g>=3);
+    return v.length?Math.round(v.reduce((s,x)=>s+x.w/x.g,0)/v.length*100):50; })();
+  const bestP=Object.values(partner).filter(p=>p.g>=2).sort((a,b)=>(b.w/b.g)-(a.w/a.g)||b.g-a.g)[0];
+  const worstR=Object.values(rival).filter(r=>r.g>=2).sort((a,b)=>(a.w/a.g)-(b.w/b.g)||b.g-a.g)[0];
+  const months=Object.keys(byMonth).sort().slice(-6);
+  const vals=[Math.min(1,wr/100), Math.min(1,(+avgF)/7), Math.min(1,closeWr/100),
+              Math.min(1,l5w/5), Math.min(1,S.days.size/8), Math.min(1,(bestP?bestP.w/bestP.g:0.4))];
+  const R=64, cx=110, cy=98;
+  const hp=(i,r)=>{ const a=Math.PI/2 - i*Math.PI/3; return [cx+r*Math.cos(a), cy-r*Math.sin(a)]; };
+  const poly=(s,f)=>[0,1,2,3,4,5].map(i=>hp(i,R*s*(f?f[i]:1)).map(n=>n.toFixed(1)).join(',')).join(' ');
+  const labels=['승률','평균득점','접전','폼','출석','파트너십'];
+  const svg=`<svg viewBox="0 0 220 190" style="width:210px;display:block;margin:6px auto 0">
+    ${[1,.66,.33].map(s=>`<polygon points="${poly(s)}" fill="none" stroke="#eae6df" stroke-width="1"/>`).join('')}
+    ${[0,1,2,3,4,5].map(i=>{const p=hp(i,R);return `<line x1="${cx}" y1="${cy}" x2="${p[0].toFixed(1)}" y2="${p[1].toFixed(1)}" stroke="#eae6df"/>`;}).join('')}
+    <polygon points="${poly(1,vals)}" fill="rgba(236,106,46,.26)" stroke="#ec6a2e" stroke-width="2" stroke-linejoin="round"/>
+    ${labels.map((t,i)=>{const p=hp(i,R+17);return `<text x="${p[0].toFixed(0)}" y="${(p[1]+3).toFixed(0)}" font-size="10" font-weight="500" fill="#8a857c" text-anchor="middle">${t}</text>`;}).join('')}
+  </svg>`;
+  const stat=(l,v,c)=>`<div style="background:#f9f7f3;border-radius:14px;padding:13px 8px;text-align:center">
+    <div style="font-size:19px;font-weight:700;color:${c||'#1c1b18'}">${v}</div>
+    <div style="font-size:10.5px;font-weight:400;color:#8a857c;margin-top:3px">${l}</div></div>`;
+  let h=`<div style="position:sticky;top:0;z-index:5;background:var(--cream);padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0ede6">
+      <span onclick="closeEventPage()" style="cursor:pointer;font-size:22px;color:#8a857c;line-height:1">‹</span>
+      <span style="font-size:16px;font-weight:600">${esc(name)} 리포트</span></div>
+    <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
+    <div style="font-size:12.5px;font-weight:400;color:#8a857c">종료된 경기 <b style="font-weight:600;color:#1c1b18">${S.g}게임</b> · 참여 모임 ${S.days.size}회 분석</div>
+    <div style="background:#fff;border:1px solid #f0ede6;border-radius:18px;padding:14px;margin-top:14px">${svg}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
+      ${stat('승률', wr+'%', wr>=clubWr?'#2f9159':'#cf5418')}${stat('평균 득점', avgF)}${stat('평균 실점', avgA)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+      ${stat('접전 승률', closeWr+'%', '#2f9159')}${stat('최근 5경기', l5w+'승')}${stat('클럽 평균 대비', (wr-clubWr>=0?'+':'')+(wr-clubWr)+'%p', wr>=clubWr?'#2f9159':'#cf5418')}</div>
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:22px">
+      <span style="font-size:16px;font-weight:700">파트너 · 상성</span>
+      <span style="font-size:11.5px;font-weight:400;color:#a8a29a">2경기 이상</span></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="flex:1;background:#eef7f1;border-radius:15px;padding:13px">
+        <div style="font-size:10.5px;font-weight:500;color:#4d8a68">최고의 파트너</div>
+        <div style="font-size:15px;font-weight:700;margin-top:3px">${bestP?esc(bestP.name):'-'}</div>
+        <div style="font-size:11.5px;font-weight:500;color:#2f7d4f;margin-top:2px">${bestP?`${bestP.g}회 · ${bestP.w}승 (${Math.round(bestP.w/bestP.g*100)}%)`:'데이터 부족'}</div></div>
+      <div style="flex:1;background:#fdf0ea;border-radius:15px;padding:13px">
+        <div style="font-size:10.5px;font-weight:500;color:#b3714c">천적</div>
+        <div style="font-size:15px;font-weight:700;margin-top:3px">${worstR?esc(worstR.name):'-'}</div>
+        <div style="font-size:11.5px;font-weight:500;color:#cf5418;margin-top:2px">${worstR?`${worstR.g}회 만나 ${worstR.w}승 ${worstR.l}패`:'데이터 부족'}</div></div></div>
+    <div style="font-size:16px;font-weight:700;margin-top:22px">종목별 승률</div>
+    <div style="margin-top:10px">${Object.entries(byLabel).map(([k,v])=>{ const p=Math.round(v.w/v.g*100);
+      const c={'남복':'#2b62c9','여복':'#c94378','혼복':'#6a4cc4','청백':'#3182f6'}[k]||'#8a857c';
+      return `<div style="margin-top:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:500">
+        <span style="color:${c}">${esc(k)} <span style="color:#a8a29a;font-weight:400">${v.g}경기</span></span><span style="font-weight:600">${p}%</span></div>
+        <div style="height:6px;background:#f2f0ea;border-radius:3px;margin-top:4px"><div style="width:${p}%;height:100%;border-radius:3px;background:${c}"></div></div></div>`;}).join('')}</div>
+    ${months.length>1?`<div style="font-size:16px;font-weight:700;margin-top:22px">월별 승률 추이</div>
+    <div style="display:flex;align-items:flex-end;gap:8px;height:96px;margin-top:12px">
+      ${months.map(m=>{ const v=byMonth[m]; const p=Math.round(v.w/v.g*100);
+        return `<div style="flex:1;text-align:center">
+          <div style="font-size:10.5px;font-weight:600;color:#6b6357;margin-bottom:4px">${p}%</div>
+          <div style="height:${Math.max(6,Math.round(p*0.6))}px;background:${p>=clubWr?'#ec6a2e':'#e4ddd2'};border-radius:5px 5px 0 0"></div>
+          <div style="font-size:10px;font-weight:400;color:#a8a29a;margin-top:5px">${m.slice(5)}월</div></div>`;}).join('')}</div>`:''}
+    <div style="font-size:16px;font-weight:700;margin-top:22px">최근 경기</div>
+    ${last5.map(r=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #f4f2ed">
+      <span style="width:34px;text-align:center;font-size:11.5px;font-weight:700;border-radius:8px;padding:3px 0;${r.win?'background:#eef7f1;color:#2f7d4f':r.draw?'background:#f5f3ee;color:#8a857c':'background:#fdf0ea;color:#cf5418'}">${r.win?'승':r.draw?'무':'패'}</span>
+      <span style="flex:1;font-size:13px;font-weight:400;color:#4a453e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">vs ${esc(r.op)}</span>
+      <span style="font-size:13px;font-weight:600">${r.mf} : ${r.ma}</span>
+      <span style="font-size:11px;font-weight:400;color:#b3aea4">${esc((r.date||'').slice(5))}</span></div>`).join('')}
+    <div style="background:#f9f7f3;border-radius:14px;padding:13px 15px;margin-top:20px">
+      <div style="font-size:12.5px;font-weight:600;color:#5a544b">이 리포트는 이렇게 읽어요</div>
+      <div style="font-size:11.5px;font-weight:400;color:#8a857c;margin-top:5px;line-height:1.7">
+        · <b style="font-weight:600">접전 승률</b>이 낮으면 마무리 집중력을, <b style="font-weight:600">평균 실점</b>이 높으면 리턴·수비를 보완해 보세요<br>
+        · <b style="font-weight:600">천적</b>과의 경기를 복기하면 약점 패턴이 보여요<br>
+        · 종료된 경기만 반영되고, 스코어가 확정될 때마다 갱신돼요</div></div>
+    </div>`;
+  const pg=document.getElementById('evPage'); pg.innerHTML=h; pg.classList.add('on');
+  document.getElementById('ov').classList.remove('on');
 }
 /* ═══ 클럽 기록 · 시즌 — 대진 로그 집계 (승60 · 무30 · 패10 + 득실) ═══ */
 async function openClubRecords(){
@@ -8274,7 +8576,8 @@ async function openClubRecords(){
   const rank=Object.values(st).map(s=>({...s,gd:s.gf-s.ga,g:s.w+s.d+s.l,p:s.w*100+s.d*50+(s.gf-s.ga)}))
     .sort((a,b)=>b.p-a.p||b.gd-a.gd);
   let h=`<div class="om-detail"><div class="sh-top"><h3>클럽 기록 · 시즌</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">모임 대진의 확정 스코어가 자동으로 쌓여요 · 승 100P · 무 50P · 패 0P + 득실 보정</div>`;
+    <div class="sd">종료된 경기가 자동으로 쌓여요 · 승 100P · 무 50P · 패 0P + 득실 보정</div>
+    ${(state.serverUser||{}).id?`<button class="btn ghost" style="margin-top:12px;font-weight:600" onclick="closeOv();openPlayerReport(${(state.serverUser||{}).id},'${esc(state.userName||'내')}')">내 경기 리포트 보기</button>`:''}`;
   if(!rank.length){
     h+=`<div class="empty" style="padding:28px 20px"><div class="et">아직 쌓인 기록이 없어요</div>
       <div class="es">모임 대진에서 스코어가 확정되면 여기 시즌 랭킹이 생겨요.</div></div>`;
@@ -8413,6 +8716,7 @@ function closeEventPage(){ const pg=document.getElementById('evPage'); if(pg){ p
 function evToBracket(id){
   closeEventPage();
   CB2_SEL=new Set(); CB2_GUESTS=[]; CB2_LATE=new Set();     // 이 모임 참석자로 새로 시작
+  CB2_EVENT=+id; CB2=null;                                   // 이 모임 전용 대진으로 전환
   useEventForBracket(id);
 }
 function evReply(id,name){ EVD.replyTo={id,name}; drawEventDetail();
@@ -8503,7 +8807,8 @@ async function openMemberCard(name){
       <div style="background:#f9f7f3;border-radius:14px;padding:14px 8px;text-align:center">
         <div style="font-size:20px;font-weight:700;color:${gd>=0?'#2f9159':'#cf5418'}">${gd>=0?'+':''}${gd}</div><div style="font-size:11px;font-weight:400;color:#8a857c;margin-top:3px">득실</div></div></div>
     <div style="font-size:13px;font-weight:400;color:#6b6357;margin-top:11px;line-height:1.6">${rec.w}승 ${rec.d?rec.d+'무 ':''}${rec.l}패 · 득점 ${rec.gf} · 실점 ${rec.ga}</div>
-    ${(mem.user_id&&mem.user_id!==me)?`<button class="btn" style="margin-top:18px;font-weight:600" onclick="openDM(${mem.user_id},'${esc(mem.name)}')">대화 걸기</button>`:''}
+    <button class="btn" style="margin-top:18px;font-weight:600" onclick="closeOv();openPlayerReport(${mem.user_id},'${esc(mem.name)}')">경기 리포트 보기</button>
+    ${(mem.user_id&&mem.user_id!==me)?`<button class="btn ghost" style="margin-top:9px;font-weight:600" onclick="openDM(${mem.user_id},'${esc(mem.name)}')">대화 걸기</button>`:''}
     <button class="btn ghost" style="margin-top:9px;font-weight:500" onclick="${EVD?'drawEventDetail()':'closeOv()'}">닫기</button></div>`;
   document.getElementById('ov').classList.add('on');
 }
