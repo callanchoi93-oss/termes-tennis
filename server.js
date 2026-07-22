@@ -764,6 +764,39 @@ app.get('/clubs/:id/bracket2', auth, (req, res) => {
 try { db.exec(`CREATE TABLE IF NOT EXISTS grade_changes (
   id INTEGER PRIMARY KEY, club_id INTEGER, user_id INTEGER, name TEXT,
   from_grade TEXT, to_grade TEXT, dir TEXT, created_at INTEGER)`); } catch (e) {}
+// ── MVP (오픈매치 1위) ──
+try { db.exec(`CREATE TABLE IF NOT EXISTS mvps (
+  id INTEGER PRIMARY KEY, match_id INTEGER, user_id INTEGER, name TEXT,
+  score TEXT, created_at INTEGER, UNIQUE(match_id, user_id))`); } catch (e) {}
+app.post('/open-matches/:id/mvp', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only', message: '매니저만 확정할 수 있어요' });
+  const { user_id, name, score } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_required' });
+  db.prepare('DELETE FROM mvps WHERE match_id=?').run(mid);
+  db.prepare('INSERT INTO mvps (match_id,user_id,name,score,created_at) VALUES (?,?,?,?,?)')
+    .run(mid, +user_id, String(name || ''), String(score || ''), now());
+  const n = db.prepare('SELECT COUNT(*) c FROM mvps WHERE user_id=?').get(+user_id).c;
+  sendPush(+user_id, { icon: '🏆', title: '오늘의 MVP예요', body: `${m.loc || ''} · 통산 ${n}회` });
+  res.json({ ok: true, count: n });
+});
+app.get('/me/mvp', auth, (req, res) => {
+  const rows = db.prepare(`SELECT v.match_id, v.score, v.created_at, o.loc, o.dt
+    FROM mvps v LEFT JOIN open_matches o ON o.id=v.match_id
+    WHERE v.user_id=? ORDER BY v.id DESC LIMIT 30`).all(req.uid);
+  res.json({ count: rows.length, list: rows });
+});
+// 매치 참가자 중 MVP 보유자 집계 (상세 화면용)
+app.get('/open-matches/:id/mvp-guests', (req, res) => {
+  const mid = +req.params.id;
+  const min = Math.max(1, +(req.query.min || 3));
+  const rows = db.prepare(`SELECT u.id, u.name, (SELECT COUNT(*) FROM mvps v WHERE v.user_id=u.id) c
+    FROM open_match_joins j JOIN users u ON u.id=j.user_id WHERE j.match_id=?`).all(mid);
+  const holders = rows.filter(r => r.c >= min).sort((a, b) => b.c - a.c);
+  res.json({ min, total: holders.length, top: holders.slice(0, 3).map(h => ({ name: h.name, count: h.c })) });
+});
 app.post('/clubs/:id/promote', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
@@ -3414,11 +3447,13 @@ app.post('/upload', auth, limitUpload, (req, res) => {
 db.exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
 try { db.exec('ALTER TABLE banners ADD COLUMN sort INTEGER DEFAULT 0'); } catch (e) {}
-app.get('/banners', (_req, res) => {
-  res.json(db.prepare('SELECT id,image,link FROM banners ORDER BY sort ASC, id DESC LIMIT 5').all());
+try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catch (e) {}   // home | bracket
+app.get('/banners', (req, res) => {
+  const slot = String(req.query.slot || 'home');
+  res.json(db.prepare("SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? ORDER BY sort ASC, id DESC LIMIT 5").all(slot));
 });
 app.get('/admin/banners', admin, (_req, res) => {
-  res.json(db.prepare('SELECT id,image,link,sort,created_at FROM banners ORDER BY sort ASC, id DESC LIMIT 20').all());
+  res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all());
 });
 // 배너 순서 저장 — ids 배열 순서 = 노출 순서
 app.patch('/admin/banners/order', admin, (req, res) => {
@@ -3437,8 +3472,8 @@ app.post('/admin/banners', admin, (req, res) => {
     fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
     url = '/uploads/' + name;
   } else if (!url.startsWith('/uploads/')) return res.status(400).json({ error: 'bad_image' });
-  db.prepare('INSERT INTO banners (image,link,created_at) VALUES (?,?,?)')
-    .run(url, String(b.link || '').slice(0, 300), now());
+  db.prepare('INSERT INTO banners (image,link,slot,created_at) VALUES (?,?,?,?)')
+    .run(url, String(b.link || '').slice(0, 300), (b.slot === 'bracket' ? 'bracket' : 'home'), now());
   res.json({ ok: true });
 });
 app.delete('/admin/banners/:id', admin, (req, res) => {
