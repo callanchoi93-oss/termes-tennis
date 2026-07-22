@@ -3133,17 +3133,21 @@ function renderNewEvent(){
   }
   grid+=`</div>`;
   const times=['07:00','09:00','10:00','14:00','16:00','19:00','20:00'];
-  const sel = NE.day ? `${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${NE.time}` : null;
+  NE.end = NE.end || '';
+  const sel = NE.day ? `${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${NE.time}${NE.end?`~${NE.end}`:''}` : null;
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${NE.editId?'모임 수정':'새 모임 만들기'}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">모임을 만들면 클럽 회원 모두에게 알림이 가요. 참석 체크한 회원으로 대진이 편성됩니다.</div>
     <div class="fld"><label>모임 이름</label><input id="evTitle" placeholder="예) 주말 정기모임" maxlength="24" value="${esc(NE.title||'')}" oninput="NE.title=this.value"></div>
     <div class="fld" style="margin-bottom:8px"><label>날짜</label></div>
     <div class="cal-nav"><span onclick="neMonth(-1)">‹</span><b>${NE.y}년 ${NE.m+1}월</b><span onclick="neMonth(1)">›</span></div>
     ${grid}
-    <div class="fld" style="margin:14px 0 8px"><label>시간</label></div>
-    <div class="tchips">${times.map(x=>`<span class="tchip ${NE.time===x?'on':''}" onclick="neTime('${x}')">${x}</span>`).join('')}
-      <input id="evTimeCustom" placeholder="직접" maxlength="5" value="${times.includes(NE.time)?'':NE.time}" style="width:64px;border:1.5px solid var(--line);border-radius:11px;padding:8px;font-family:inherit;font-size:13px;text-align:center;font-weight:700" onchange="if(this.value.trim())neTime(this.value.trim())">
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <div class="fld" style="flex:1"><label>시작 시간</label>
+        <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)"></div>
+      <div class="fld" style="flex:1"><label>종료 시간 <span style="font-weight:600;color:var(--lgray)">· 선택</span></label>
+        <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value"></div>
     </div>
+    <div class="tchips" style="margin-top:-2px">${times.map(x=>`<span class="tchip ${NE.time===x?'on':''}" onclick="neTime('${x}')">${x}</span>`).join('')}</div>
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
@@ -3288,7 +3292,8 @@ async function createClubEvent(){
   if(!t){ toast('모임 이름을 입력해 주세요'); return; }
   if(!NE.day){ toast('날짜를 선택해 주세요'); return; }
   const WD=['일','월','화','수','목','금','토'];
-  const d=`${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${NE.time}${NE.place?` · ${NE.place.trim()}`:''}`;
+  const tRange = NE.end ? `${NE.time}~${NE.end}` : NE.time;
+  const d=`${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${tRange}${NE.place?` · ${NE.place.trim()}`:''}`;
   try{
     if(NE.editId){
       await api(`/clubs/${clubId()}/events/${NE.editId}`, {method:'PATCH', body: JSON.stringify({title:t, date:d})});
@@ -5428,6 +5433,7 @@ async function repairClubServer(){
   else toast('등록하지 못했어요 · 이름이 이미 사용 중일 수 있어요');
 }
 let _NPOP_DONE=false;
+function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
 function renderClub(){
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true; cb2Load().then(()=>{ if(CB2&&CB2.mode==='cheongbaek') renderClub(); }).catch(()=>{}); }
   if(!_NPOP_DONE && state.clubTab==='my' && SERVER_OK && clubId()){ _NPOP_DONE=true; setTimeout(maybeNoticePopup, 600); }
@@ -5492,17 +5498,25 @@ function renderClub(){
     } else if(!SERVER_OK && c.officer && (c.pending||[]).length){ h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openAdmin()"><div><div style="font-size:14px;font-weight:800;color:#fff">임원진 · 가입 신청 ${c.pending.length}건</div><div style="font-size:12.5px;color:#cbb8a6;font-weight:600;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--felt);font-weight:800;font-size:18px">→</div></div>`; }
     // ⑤ 주간 날짜 핀 (이번 주 일~토 · 오늘 강조 · 모임 있는 날 점)
     { const W=['일','월','화','수','목','금','토']; const base=new Date(today); base.setDate(today.getDate()-today.getDay());
-      const evDays=new Set(); (c.events||[]).forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); if(mm) evDays.add(mm[1]+'/'+mm[2]); });
+      const evList0 = ((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]));
+      const evDays=new Set(); evList0.forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); if(mm) evDays.add(+mm[1]+'/'+ +mm[2]); });
       let pins=''; for(let i=0;i<7;i++){ const d=new Date(base); d.setDate(base.getDate()+i); const mo=d.getMonth()+1,da=d.getDate();
-        const isToday=(mo===MON&&da===DAY), has=evDays.has(mo+'/'+da);
-        pins+=`<div class="dpin ${isToday?'on':''} ${has?'has':''}"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
+        const key=mo+'/'+da, isSel=(state._clubDay===key)||(!state._clubDay&&mo===MON&&da===DAY), has=evDays.has(key);
+        pins+=`<div class="dpin ${isSel?'on':''} ${has?'has':''}" onclick="clubDay('${key}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
       h+=`<div class="dpin-row" style="margin-bottom:4px">${pins}</div>`; }
     // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
       const evList = ((SERVER_OK && clubId()) ? SRV_EVENTS : (c2&&c2.events)) || [];
-      h+=`<div class="ch" style="font-size:18px;margin:16px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>이번 주 일정</span>${off?`<button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid var(--coral);background:#ffffff;color:var(--coral-d);font-weight:800;font-size:12.5px;border-radius:11px;padding:7px 12px;font-family:inherit">＋ 만들기</button>`:''}</div>`;
-      if(!evList.length){
+      const dayF=state._clubDay;
+      const evAll=evList;
+      const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
+      h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
+        <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:700;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
+        ${off?`<span onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;background:var(--coral);color:#fff;font-weight:800;font-size:12px;border-radius:14px;padding:6px 13px">＋ 만들기</span>`:''}</div>`;
+      if(dayF && !evShow.length){
+        h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
+      } else if(!evShow.length){
         h+=`<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
           <div style="font-size:26px">📅</div>
           <b style="display:block;margin-top:6px;font-size:14.5px">이번 주 모임이 아직 없어요</b>
@@ -5511,7 +5525,7 @@ function renderClub(){
       else {
         const pc=['#ffe9db','#e3f5ec','#efeafc','#fff1dc'], tags=['정기','추가','번개','이벤트'];
         h+=`<div class="plan2">`;
-        evList.slice(0,4).forEach((ev,i)=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
+        evShow.slice(0,4).forEach((ev,i)=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const parts=(ev.date||'').split(' '); const dpart=parts.slice(0,2).join(' ')||'날짜 미정', tpart=parts.slice(2).join(' ')||'시간 미정';
           h+=`<div class="psess" style="background:${pc[i%4]}" onclick="joinEvent('${ev.id}')">
             ${joined?'<div class="ps-chk">참여중 ✓</div>':''}
@@ -5520,7 +5534,8 @@ function renderClub(){
             <div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div>
             <div class="ps-foot"><div class="ps-av">${(ev.attendees[0]||'?')[0]}</div><div class="ps-who">참여 ${ev.attendees.length}명<br>${joined?'탭하면 취소':'탭하면 참여'}</div></div></div>`; });
         h+=`</div>`;
-        if(off && evList[0]) h+=`<button class="btn ghost" style="margin-top:11px" onclick="useEventForBracket('${evList[0].id}')">이번 주 참석자로 대진 편성 →</button>`;
+        if(off && evShow.length) h+=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:11px">
+          ${evShow.slice(0,4).map(ev=>`<span onclick="useEventForBracket('${ev.id}')" style="cursor:pointer;background:#fff;border:1.5px solid #e9dfcf;color:#5a544b;font-weight:800;font-size:12px;border-radius:20px;padding:8px 14px">${esc(ev.title)} 대진 짜기 →</span>`).join('')}</div>`;
       }
       // ⑤ 바로가기
       h+=`<div class="qlinks">
@@ -5566,7 +5581,7 @@ function renderClub(){
       }
     }
     // 서버에 모임이 있으면 참석/불참/미정 3단계 카드, 없으면 기존 데모 UI
-    h+= ((SERVER_OK && SRV_EVENT) ? rsvpCard()
+    h+= ((SERVER_OK && SRV_EVENT) ? ''
       : SERVER_OK ? `<div class="note" style="text-align:left;margin-bottom:12px">아직 예정된 모임이 없어요. ${c.officer?'아래 <b>＋만들기</b>로 첫 모임을 열어보세요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.'}</div>` : `
     <div class="sched"><div class="dt">이번 모임</div><div class="loc">${sch.dt}</div>
       <div class="going">● ${going}명 참석 예정${sch.attend===true?' (나 포함)':''}</div>
@@ -6250,8 +6265,9 @@ async function joinEvent(id){
 }
 async function useEventForBracket(id){
   if(SERVER_OK && clubId()){
-    // 서버 모임: 참석 응답자를 대진 명단으로 다시 불러온다
-    toast('참석자 명단으로 대진을 준비할게요');
+    const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id));
+    if(ev){ try{ SRV_EVENT = await api(`/clubs/${clubId()}/events/${id}`); }catch(e){} }
+    toast(ev?`${ev.title} 참석자로 대진을 준비할게요`:'참석자 명단으로 대진을 준비할게요');
     const key=state.activeClub||'_';
     if(state._attSel) delete state._attSel[key];
     await loadRoster();
@@ -7590,6 +7606,15 @@ async function openClubBracketView(){
 function drawCB2View(){
   const off=cb2Officer();
   let h=`<div class="om-detail" id="cb2v"><div class="sh-top"><h3>클럽 대진 · 실시간</h3><div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
+  // 예전 날짜 대진은 자동으로 감춘다 (오늘 것만 실시간 화면에 노출)
+  const _today=new Date().toISOString().slice(0,10);
+  if(CB2 && CB2.date && CB2.date!==_today){
+    h+=`<div class="empty" style="padding:28px 20px"><div class="et">오늘 발행된 대진이 없어요</div>
+      <div class="es">${esc(CB2.date)} 대진은 <b>클럽 기록 · 시즌</b>에서 볼 수 있어요.</div></div>
+      <button class="btn ghost" onclick="closeOv();openClubRecords()">지난 대진 보기</button>
+      ${off?`<button class="btn" style="margin-top:9px" onclick="openClubBracketBuild()">오늘 대진 만들기</button>`:''}</div>`;
+    document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on'); return;
+  }
   if(CB2 && CB2.mode==='cheongbaek' && !(CB2.games||[]).length){
     const cap=CB2.captains||{}, side=cb2MySide(), o=CB2.orders||{};
     h+=`<div class="sd">${esc(CB2.date||'')} · 청백전 · 코트 ${CB2.courts} · 캡틴이 오더를 작성 중이에요</div>
