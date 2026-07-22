@@ -170,12 +170,16 @@ async function render(){
       v.innerHTML=`<div class="card"><b style="font-size:14px">배너 추가</b>
           <input type="file" id="bnFile" accept="image/*" style="margin-top:8px">
           <input id="bnLink" placeholder="탭했을 때 열릴 링크 (선택)" style="margin-top:8px">
+          <select id="bnSlot" style="margin-top:8px">
+            <option value="home">홈 배너 (앱 첫 화면)</option>
+            <option value="bracket">대진 배너 (대진 만들기 화면)</option>
+          </select>
           <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBanner()">올리기</button></div>
         <div class="card"><b style="font-size:14px">노출 순서</b>
         <div class="meta" style="margin:4px 0 6px">▲▼로 순서를 바꾸면 홈 캐러셀에 그 순서로 나와요 · 위가 1번</div>`+ (rows.length? rows.map((b,i)=>`
         <div class="row"><b style="width:20px;text-align:center;color:${i===0?'var(--coral)':'var(--lgray)'}">${i+1}</b>
           <img src="${esc(b.image)}" style="width:100px;border-radius:10px;flex:none" alt="">
-          <div style="flex:1;min-width:0" class="meta">#${b.id} · ${fdate(b.created_at)}<br>${esc(b.link||'링크 없음')}</div>
+          <div style="flex:1;min-width:0" class="meta"><span style="display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;background:${b.slot==='bracket'?'#eef4ff':'#fceee4'};color:${b.slot==='bracket'?'#2b62c9':'#cf5418'}">${b.slot==='bracket'?'대진':'홈'}</span> #${b.id} · ${fdate(b.created_at)}<br>${esc(b.link||'링크 없음')}</div>
           <div style="display:flex;flex-direction:column;gap:4px;flex:none">
             <button class="btn xs ghost" ${i===0?'disabled style="opacity:.3"':''} onclick="bnMove(${i},-1)">▲</button>
             <button class="btn xs ghost" ${i===rows.length-1?'disabled style="opacity:.3"':''} onclick="bnMove(${i},1)">▼</button></div>
@@ -204,7 +208,7 @@ async function delBanner(id){ try{ await api('/admin/banners/'+id,{method:'DELET
 async function addBanner(){
   const f=$('bnFile').files[0]; if(!f){ toast('이미지를 선택해 주세요'); return; }
   const data=await new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); });
-  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({image:data,link:$('bnLink').value.trim()})}); toast('배너를 올렸어요'); render(); }
+  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({image:data,link:$('bnLink').value.trim(), slot:((document.getElementById('bnSlot')||{}).value||'home')})}); toast('배너를 올렸어요'); render(); }
   catch(e){ toast(String(e.message).includes('too_large')?'이미지는 3MB 이하로 해주세요':'올리지 못했어요'); }
 }
 

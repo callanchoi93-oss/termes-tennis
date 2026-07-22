@@ -7818,7 +7818,7 @@ async function openClubBracketBuild(){
   }
   if(!CB2_SEL.size) roster.forEach(p=>CB2_SEL.add(String(p.user_id)));   // 기본 전원 선택
   window._cb2Roster=roster;
-  drawCB2Build();
+  drawCB2Build(); cbLoadBanner();
 }
 let CB2_GUESTS=[], CB2_LATE=new Set(), CB2_GRADEMODE=false, CB2_LATEAFTER=2;
 const CB2_GRADES=['S','A','B','C'];
@@ -7880,7 +7880,8 @@ function drawCB2Build(){
       <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
         <option value="1" ${courts===1?'selected':''}>1코트</option><option value="2" ${courts===2?'selected':''}>2코트</option><option value="3" ${courts===3?'selected':''}>3코트</option></select></div>
       <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:13px;font-weight:800;background:#faf8f4">1인 4경기 보장</div></div></div>
-    <button class="btn" onclick="cb2Gen('normal')">일반 대진 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.85">· 등급 인접 + 휴식 순환</span></button>
+    ${cbBannerHTML()}
+    <button class="btn" style="margin-top:10px" onclick="cb2Gen('normal')">일반 대진 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.85">· 등급 인접 + 휴식 순환</span></button>
     <button class="btn" style="margin-top:9px;background:var(--coral-s);color:var(--coral-d);box-shadow:none" onclick="cb2Gen('hanul')">한울 방식 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.75">· AB 수기표 · 8~16명 · 코트만큼 동시</span></button>
     <button class="btn" style="margin-top:9px;background:#f3f0fb;color:#5b3fa8;box-shadow:none" onclick="cb2Gen('monthly')">월례대회 생성 · 발행 <span style="font-weight:400;font-size:11px;opacity:.75">· 등급별 리그 + 승강제</span></button>
     <button class="btn" style="margin-top:9px;background:#fdf6ec;color:#8a5230;border:1.5px solid #f0e2c8;box-shadow:none" onclick="cb2Gen('gender')">성비 대진 생성 · 발행 <span style="font-weight:700;font-size:11px;opacity:.7">· 남 남복3+혼복1 / 여 혼복3+여복1</span></button>
@@ -7912,6 +7913,25 @@ function cb2AddGuest(){
   CB2_SEL.add(gid);
   toast(`게스트 ${name} 추가 · 스코어는 임원이 입력해요`);
   drawCB2Build();
+}
+let CB_BANNER=null;
+function cbBannerHTML(){
+  const b=(CB_BANNER&&CB_BANNER[0])||null;
+  const link=(b&&b.link)||'/bracketguide.html';
+  if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
+      <img src="${esc(b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
+    <div style="font-size:10.5px;font-weight:400;color:var(--lgray);text-align:center;margin-top:7px">탭하면 대진 방식 설명이 열려요</div>`;
+  return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
+      <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:16px;flex:none">📖</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">어떤 방식을 고를까요?</div>
+        <div style="font-size:11.5px;font-weight:400;color:#8a857c;margin-top:1px">5가지 대진 방식 설명 보기</div></div>
+      <span style="color:#b3aea4;font-weight:600">›</span></div>`;
+}
+async function cbLoadBanner(){
+  if(CB_BANNER!==null) return;
+  try{ CB_BANNER=await api('/banners?slot=bracket')||[]; }catch(e){ CB_BANNER=[]; }
+  if(document.getElementById('cb2b')) drawCB2Build();
 }
 function cb2Tog(id){ id=String(id);
   if(CB2_GRADEMODE){                                  // 등급 편집 모드: 탭 = S→A→B→C 순환
@@ -9368,6 +9388,7 @@ function openOmDetail(id){
       ${info('시간',`${_durH}시간`)}${info('모집',`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
     </div>
     <div class="om-note" style="margin:-2px 0 12px">경기 룰 · ${_durH===2?'5:5는 동점으로 종료해요 (노 매치포인트)':'5:5가 되면 6게임째로 승부를 가려요'}</div>
+    <div id="omMvpBox"></div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900">${esc(mgrName[0]||'')}</div>
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
@@ -9414,6 +9435,20 @@ function openOmDetail(id){
   h+=`<div style="display:grid;gap:9px;margin-top:6px">${acts.join('')}</div></div>`;
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
+  omLoadMvp(m.id);
+}
+async function omLoadMvp(mid){
+  const box=document.getElementById('omMvpBox'); if(!box) return;
+  try{
+    const r=await api(`/open-matches/${mid}/mvp-guests`);
+    if(!r||!r.total){ box.innerHTML=''; return; }
+    const names=(r.top||[]).map(t=>`${esc(t.name)} <b style="color:#8a6a1f">${t.count}회</b>`).join(' · ');
+    box.innerHTML=`<div style="display:flex;align-items:center;gap:11px;background:linear-gradient(135deg,#fdf6e4,#f9edd2);border-radius:14px;padding:12px 14px;margin-bottom:12px">
+      <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:17px;flex:none">🏆</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#7a5f12">MVP ${r.min}회 이상 <b style="font-weight:700">${r.total}명</b> 참석 중</div>
+        <div style="font-size:11.5px;font-weight:400;color:#9a8340;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${names}</div></div></div>`;
+  }catch(e){ box.innerHTML=''; }
 }
 /* 주최자·매니저가 코트 사진 업로드 → 홈 리스트·카드 썸네일 */
 function omPhotoPick(id){
@@ -9461,6 +9496,30 @@ function omSettle(id){
 }
 /* ═══ 등급 추이 — 10경기 이상부터 상하향 그래프 (플랩식) ═══ */
 let RL_CACHE=null, RL_TS=0;
+async function openMyMvp(){
+  let r={count:0,list:[]};
+  try{ r=await api('/me/mvp'); }catch(e){}
+  let h=`<div class="om-detail"><div class="sh-top"><h3>MVP 기록</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">오픈매치에서 그날 1위를 하면 받아요</div>
+    <div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#fdf6e4,#f9edd2);border-radius:18px;padding:20px;margin-top:14px">
+      <span style="width:54px;height:54px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:26px;flex:none">🏆</span>
+      <div><div style="font-size:28px;font-weight:700;color:#7a5f12;line-height:1">${r.count}<span style="font-size:15px;font-weight:500">회</span></div>
+        <div style="font-size:12.5px;font-weight:400;color:#9a8340;margin-top:4px">${r.count?'매치에서 가장 좋은 성적을 냈어요':'아직 받은 MVP가 없어요'}</div></div></div>`;
+  if(r.list&&r.list.length){
+    h+=`<div style="font-size:15px;font-weight:700;margin-top:20px">받은 기록</div>`;
+    r.list.forEach(x=>{
+      h+=`<div style="display:flex;align-items:center;gap:10px;padding:11px 2px;border-top:1px solid #f4f2ed">
+        <span style="font-size:15px">🏆</span>
+        <span style="flex:1;font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.loc||'오픈매치')}</span>
+        ${x.score?`<span style="font-size:11.5px;font-weight:400;color:#8a857c">${esc(x.score)}</span>`:''}
+        <span style="font-size:11px;font-weight:400;color:#b3aea4">${esc(String(x.dt||'').slice(0,5))}</span></div>`;
+    });
+  } else {
+    h+=`<div class="note" style="text-align:left;margin-top:14px">오픈매치에 참가해 그날 순위 1위를 하면 매니저가 MVP로 확정해요.</div>`;
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
 async function openRatingTrend(){
   if(!SERVER_OK||!authToken()){ toast('로그인 후 볼 수 있어요'); return; }
   if(!RL_CACHE || Date.now()-RL_TS>3e4){
@@ -9532,6 +9591,12 @@ function omMakeBracket(id){
     .then(()=>{ toast('대진을 저장했어요 · 전원 4게임씩이에요'); omReload();
       setTimeout(()=>{ const mm=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(mm){ mm.bracket=bracket; openOmBracket(id); } },300); })
     .catch(()=>toast('저장하지 못했어요'));
+}
+async function omPickMvp(mid, uid, name, score){
+  if(!confirm(`${name} 님을 오늘의 MVP로 확정할까요?`)) return;
+  try{ const r=await api(`/open-matches/${mid}/mvp`,{method:'POST',body:JSON.stringify({user_id:uid,name,score})});
+    toast(`${name} 님이 오늘의 MVP예요 · 통산 ${r.count}회`); closeOv();
+  }catch(e){ toast('매니저만 확정할 수 있어요'); }
 }
 function openOmBracket(id){
   const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m||!m.bracket) return;
@@ -13232,7 +13297,7 @@ function _renderMeCore(){
     <div><div style="font-size:12px;font-weight:800;color:#ffe0cb">나의 캐시</div><b style="font-size:22px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
     <div style="font-size:11px;font-weight:800;color:#ffe0cb">환불·정산이 여기 쌓여요</div></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
-  ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
+  ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()'],['MVP 기록','openMyMvp()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
     <b style="flex:1;font-size:14.5px">${x[0]}</b><span style="color:var(--lgray);font-weight:900">›</span></div>`).join('')}`:''}
   ${myAppsCard()}
   <div style="text-align:center;font-size:10.5px;color:#c9c4ba;font-weight:700;margin:18px 0 6px">MATSU ${BUILD} — 이 코드가 안 보이면 index.html이 아직 반영 전이에요</div>
