@@ -7562,11 +7562,14 @@ function cb2Stats(){
   for(let r=1;r<=rounds;r++){ const rg=gs.filter(g=>g.r===r);
     const c=rg.length&&rg.every(done); rstat.push(c?'done':'open'); if(!live&&!c&&rg.length) live=r; }
   let rec=null;
-  const undone=gs.map((g,i)=>({...g,gi:i})).filter(g=>!done(g)).sort((a,b)=>a.r-b.r||a.c-b.c);
-  for(const g of undone){
+  const runG=gs.filter(g=>g.startedAt&&!done(g));
+  const busy=new Set(runG.flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>p&&p.id)));
+  const free=(CB2?CB2.courts:0)-runG.length;
+  const undone=gs.map((g,i)=>({...g,gi:i})).filter(g=>!done(g)&&!g.startedAt).sort((a,b)=>a.r-b.r||a.c-b.c);
+  if(free>0) for(const g of undone){
     const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p&&p.id);
-    const blocked=undone.some(h=>h!==g&&h.r<g.r&&[...(h.teamA||[]),...(h.teamB||[])].some(p=>p&&ids.includes(p.id)));
-    if(!blocked){ rec=g; break; }
+    if(ids.some(i=>busy.has(i))) continue;             // 뛰고 있는 선수가 끼면 제외
+    rec=g; break;                                       // 라운드 순서와 무관하게 먼저 시작 가능
   }
   return {rank, rstat, live, rec, done};
 }
@@ -7596,7 +7599,7 @@ function drawCB2View(){
       ${off?`<b style="color:var(--coral-d);cursor:pointer;white-space:nowrap" onclick="openClubBracketBuild()">대진 만들기 ›</b>`:''}</div>
       <div style="display:flex;gap:6px;margin:8px 0 2px">
         <span onclick="cb2SheetView()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">수기 방식 보기</span>
-        ${CB2.groups?`<span onclick="cb2Groups()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#f2f0ea;color:#6b6357;cursor:pointer">코트별 조 명단</span>`:''}
+        ${CB2.groups?`<span onclick="cb2Groups()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#f2f0ea;color:#6b6357;cursor:pointer">${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</span>`:''}
       </div>
       <div style="display:flex;gap:6px;margin:10px 0 6px">${rstat.map((s,i)=>{ const r=i+1, on=r===live;
         return `<span style="flex:1;text-align:center;font-size:11px;font-weight:800;padding:7px 4px;border-radius:10px;${
@@ -7617,32 +7620,51 @@ function drawCB2View(){
           <div style="font-size:12px;font-weight:800;color:#b91c1c;margin-top:2px">${ww}승 · 득 ${wg}</div></div></div>`;
     }
     if(rec && !rec.startedAt) h+=`<div style="background:#e9f5ef;border-radius:12px;padding:10px 12px;margin:4px 0 10px;font-size:12px;font-weight:800;color:#2f7d4f">
-      다음 추천 — ${rec.r}게임 · ${rec.c}코트 ${esc(rec.label||'')} (${esc((rec.teamA||[]).map(p=>p.name).join('·'))} vs ${esc((rec.teamB||[]).map(p=>p.name).join('·'))}) · 네 명 모두 대기 중이라 지금 시작해도 돼요
+      다음 추천 — ${rec.r}게임 · ${esc(rec.label||'')} (${esc((rec.teamA||[]).map(p=>p.name).join('·'))} vs ${esc((rec.teamB||[]).map(p=>p.name).join('·'))})<br>네 명 모두 대기 중이라 비어 있는 코트에서 바로 시작할 수 있어요
       ${off?`<span onclick="cb2StartGame(${rec.gi})" style="display:inline-block;margin-top:6px;background:#2f9159;color:#fff;border-radius:9px;padding:5px 12px;font-weight:800;cursor:pointer">이 경기 시작 ▶</span>`:''}</div>`;
+    // 진행 중 경기·선수 집계 → 시작 게이팅
+    const runG=(CB2.games||[]).filter(g=>g.startedAt&&!done(g));
+    const RUN={n:runG.length, ids:new Set(runG.flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.id)))};
+    // 대기 명단 (지금 뛰지 않는 사람 · 남은 경기 수)
+    { const need={}, played={};
+      (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
+        need[p.id]=need[p.id]||{name:p.name,total:0,done:0};
+        need[p.id].total++; if(done(g)) need[p.id].done++; }));
+      const wait=Object.entries(need).filter(([id,v])=>!RUN.ids.has(+id)&&v.done<v.total)
+        .map(([id,v])=>`${v.name} <b style="color:var(--lgray)">${v.total-v.done}</b>`);
+      h+=`<div style="background:#f8f6f1;border-radius:12px;padding:10px 12px;margin:2px 0 10px">
+        <div style="font-size:11px;font-weight:800;color:var(--gray)">코트 ${RUN.n}/${CB2.courts} 사용 중 · 대기 ${wait.length}명 <span style="color:var(--lgray);font-weight:700">(이름 옆 숫자 = 남은 경기)</span></div>
+        ${wait.length?`<div style="font-size:11.5px;font-weight:700;color:#5a544b;margin-top:5px;line-height:1.6">${wait.join(' · ')}</div>`:''}</div>`;
+    }
     // 코트별 카드 (테르메스 스타일)
     for(let c=1;c<=(CB2.courts||0);c++){
       const cg=(CB2.games||[]).map((g,gi)=>({...g,gi})).filter(g=>g.c===c);
       if(!cg.length) continue;
       h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <b style="font-size:13px">${c}코트${CB2.mode==='hanul'?` · ${String.fromCharCode(64+c)}조`:''}${cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:9.5px;font-weight:800;color:#cf5418">● 진행 중</span>':''}</b>
+          <b style="font-size:13px">${c}코트${cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:9.5px;font-weight:800;color:#cf5418">● 진행 중</span>':''}</b>
           <span style="font-size:10px;font-weight:800;color:var(--lgray)">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
         let sc;
+        const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],'청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
         if(done(g)){
           sc=`<b onclick="${off?`cb2Score(${g.gi})`:''}" style="font-size:13px;color:${g.sa>g.sb?'#3f8f5f':g.sa<g.sb?'#cf5418':'var(--gray)'};${off?'cursor:pointer':''}">${g.sa} : ${g.sb}</b>`;
         } else if(g.startedAt){
           const min=Math.max(0,Math.floor((Date.now()-g.startedAt)/60000));
           sc=`<span onclick="cb2Score(${g.gi})" style="cursor:pointer;font-size:10.5px;font-weight:800;color:#cf5418">▶ ${min}분 진행 · 스코어</span>`;
         } else {
-          sc=`<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:800;font-size:10.5px;cursor:pointer">시작 ▶</span>`;
+          const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.id);
+          const busy=ids.some(i=>RUN.ids.has(i));
+          if(RUN.n>=(CB2.courts||1)) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:800;font-size:10.5px">대기 · 코트 만석</span>`;
+          else if(busy) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:800;font-size:10.5px">대기 · 선수 경기 중</span>`;
+          else sc=`<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:800;font-size:10.5px;cursor:pointer">시작 ▶</span>`;
         }
         const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#cf5418', cB=CB2.mode==='cheongbaek'?'#f04452':'#3b2a1a';
         h+=`<div style="background:#f8f6f1;border-radius:11px;padding:8px 10px;margin-top:6px">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-size:10px;font-weight:800;color:${g.r===live?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
-            <span style="font-size:9.5px;font-weight:800;color:var(--lgray)">${esc(g.label||'')}</span>
+            <span style="font-size:9.5px;font-weight:900;border-radius:6px;padding:2px 7px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
             <span style="flex:1"></span>${sc}
             ${off&&!done(g)?`<span onclick="cb2Swap(${g.gi})" style="font-size:12px;font-weight:900;color:var(--lgray);cursor:pointer;padding-left:4px" title="순서 변경">↕</span>`:''}
           </div>
@@ -7695,10 +7717,13 @@ function drawCB2Build(){
   const rounds=4;
   CB2_LATEAFTER=Math.min(CB2_LATEAFTER, rounds);
   const chip=p=>{
-    const id=String(p.user_id), on=CB2_SEL.has(id);
+    const id=String(p.user_id), on=CB2_SEL.has(id), fem=String(p.gender||'').startsWith('여');
+    const base = fem ? '#e0618c' : '#3182f6';                       // 여성 핑크 · 남성 블루
+    const soft = fem ? '#fdeef4' : '#eaf2ff';
     const gb=p.grade?`<span style="font-size:9px;font-weight:900;border-radius:6px;padding:1px 5px;margin-left:5px;${cb2GradeColor(p.grade)}">${p.grade}</span>`:'';
-    const guest=p.is_guest?`<span style="font-size:9px;font-weight:900;margin-left:4px;opacity:.8">G</span>`:'';
-    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;${p.is_guest?'border:1.5px dashed '+(on?'var(--coral)':'#d9d3c7')+';':''}${on?(p.is_guest?'background:#fceee4;color:var(--coral-d)':'background:var(--coral);color:#fff'):'background:#f2f0ea;color:#6b6357'}">${esc(p.name)}${gb}${guest}</span>`;
+    const guest=p.is_guest?`<span style="font-size:9px;font-weight:900;margin-left:4px;opacity:.75">G</span>`:'';
+    const sty = on ? `background:${base};color:#fff` : `background:${soft};color:${base}`;
+    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12.5px;font-weight:700;cursor:pointer;${p.is_guest?`border:1.5px dashed ${on?base:'#d9d3c7'};`:''}${sty}">${esc(p.name)}${gb}${guest}</span>`;
   };
   const selArr=[...CB2_SEL].map(id=>all.find(p=>String(p.user_id)===id)).filter(Boolean);
   const lateChips=selArr.map(p=>{
@@ -7720,6 +7745,9 @@ function drawCB2Build(){
     ${CB2_GRADEMODE?`<div class="note" style="text-align:left;margin:4px 0 6px">칩을 탭하면 S → A → B → C 순환<br>
       <b>S</b> 금배부·코치급 · <b>A</b> 상급(은배부) · <b>B</b> 중급 · <b>C</b> 입문·초급<br>
       대진은 S·A↔B, B↔C 인접 매칭으로 짜여요.</div>`:''}
+    <div style="display:flex;gap:12px;margin:2px 0 6px;font-size:10.5px;font-weight:800">
+      <span style="color:#3182f6">● 남성</span><span style="color:#e0618c">● 여성</span>
+      <span style="color:var(--lgray)">선택하면 진하게 · G = 게스트</span></div>
     <div style="margin:6px 0 2px">${all.map(chip).join('')||'<span class="note">이번 모임 참석자가 없어요 · 출석 체크를 먼저 받아주세요</span>'}</div>
 
     <div class="ch" style="font-size:14px;margin-top:12px">게스트 추가 <span style="font-size:11px;color:var(--lgray);font-weight:700">· 회원이 아니어도 대진에 넣어요</span></div>
@@ -7822,7 +7850,8 @@ async function cb2Gen(mode){
     const NUM=use.filter((_,i)=>i%2===0), LET=use.filter((_,i)=>i%2===1);
     const at=tok=>{ const k=tok[0];
       return /[0-9]/.test(k) ? NUM[+k-1] : LET[k.charCodeAt(0)-65]; };
-    groups=[NUM.map((p,i)=>({...p,tag:String(i+1)})), LET.map((p,i)=>({...p,tag:String.fromCharCode(65+i)}))];
+    groups=[{name:'숫자조 (1~'+half+')', members:NUM.map((p,i)=>({...p,tag:String(i+1)}))},
+            {name:'문자조 (A~'+String.fromCharCode(64+half)+')', members:LET.map((p,i)=>({...p,tag:String.fromCharCode(65+i)}))}];
     tbl.forEach((g,i)=>{
       const [A,B]=g.split(':');
       const t1=[at(A[0]), at(A[1])].filter(Boolean);
@@ -7958,14 +7987,16 @@ function cb2SheetView(){
 function cb2Groups(){
   if(!CB2||!CB2.groups){ toast('한울 대진에서만 볼 수 있어요'); return; }
   const cols=['#efeafc','#e6f8f0','#fdf3dd'];
-  let h=`<div class="om-detail"><div class="sh-top"><h3>코트별 조 명단</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
-    <div class="sd">HANUL · 코트별 조 편성</div>`;
+  let h=`<div class="om-detail"><div class="sh-top"><h3>${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
+    <div class="sd">${CB2.mode==='hanul'?'한울 AB · 한 시트 16명 · 코트는 동시 진행용':'조 편성'}</div>`;
   CB2.groups.forEach((g,i)=>{
-    const m=g.filter(p=>!String(p.gender||'').startsWith('여')), f=g.filter(p=>String(p.gender||'').startsWith('여'));
+    const mem=Array.isArray(g)?g:(g.members||[]);
+    const gname=Array.isArray(g)?`코트 ${i+1}`:(g.name||`${i+1}조`);
+    const m=mem.filter(p=>!String(p.gender||'').startsWith('여')), f=mem.filter(p=>String(p.gender||'').startsWith('여'));
     h+=`<div style="background:${cols[i%3]};border-radius:18px;padding:14px;margin-top:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">코트 ${i+1}</b><span style="font-size:12px;font-weight:800;color:var(--gray)">${g.length}명</span></div>
-      ${m.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px"><span style="font-size:11px;font-weight:900;background:#dfe6ff;color:#3b53a8;border-radius:9px;padding:4px 9px">남 ${m.length}</span>${m.map(p=>`<span style="background:#fff;border-radius:11px;padding:7px 12px;font-size:12.5px;font-weight:800">${esc(p.name)}</span>`).join('')}</div>`:''}
-      ${f.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px"><span style="font-size:11px;font-weight:900;background:#f6dfe6;color:#a8395f;border-radius:9px;padding:4px 9px">여 ${f.length}</span>${f.map(p=>`<span style="background:#fff;border-radius:11px;padding:7px 12px;font-size:12.5px;font-weight:800">${esc(p.name)}</span>`).join('')}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">${esc(gname)}</b><span style="font-size:12px;font-weight:800;color:var(--gray)">${mem.length}명</span></div>
+      ${m.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px"><span style="font-size:11px;font-weight:900;background:#dfe6ff;color:#3b53a8;border-radius:9px;padding:4px 9px">남 ${m.length}</span>${m.map(p=>`<span style="background:#fff;border-radius:11px;padding:7px 12px;font-size:12.5px;font-weight:700">${p.tag?`<b style="color:#3b53a8;margin-right:4px">${esc(p.tag)}</b>`:''}${esc(p.name)}</span>`).join('')}</div>`:''}
+      ${f.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px"><span style="font-size:11px;font-weight:900;background:#f6dfe6;color:#a8395f;border-radius:9px;padding:4px 9px">여 ${f.length}</span>${f.map(p=>`<span style="background:#fff;border-radius:11px;padding:7px 12px;font-size:12.5px;font-weight:700">${p.tag?`<b style="color:#a8395f;margin-right:4px">${esc(p.tag)}</b>`:''}${esc(p.name)}</span>`).join('')}</div>`:''}
     </div>`;
   });
   h+=`<button class="btn ghost" style="margin-top:12px" onclick="drawCB2View()">대진표로 돌아가기</button></div>`;
@@ -7989,6 +8020,10 @@ async function cb2Swap(gi){
 }
 async function cb2StartGame(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||g.startedAt||g.sa!=null) return;
+  const runG=(CB2.games||[]).filter(x=>x.startedAt&&x.sa==null);
+  if(runG.length>=(CB2.courts||1)){ toast(`코트 ${CB2.courts}개가 모두 사용 중이에요 · 끝난 경기 스코어를 먼저 입력해 주세요`); return; }
+  const busy=new Set(runG.flatMap(x=>[...(x.teamA||[]),...(x.teamB||[])].map(p=>p.id)));
+  if([...(g.teamA||[]),...(g.teamB||[])].some(p=>busy.has(p.id))){ toast('이 경기 선수 중에 지금 뛰고 있는 사람이 있어요'); return; }
   g.startedAt=Date.now();
   // 1분마다 경과 시간 갱신 (보기 화면 열려 있는 동안)
   if(!window._cb2Tick) window._cb2Tick=setInterval(()=>{ if(document.getElementById('cb2v')&&CB2&&(CB2.games||[]).some(x=>x.startedAt&&x.sa==null)) drawCB2View(); else { clearInterval(window._cb2Tick); window._cb2Tick=null; } }, 60000);
