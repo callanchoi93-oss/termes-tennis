@@ -5429,6 +5429,7 @@ async function repairClubServer(){
 }
 let _NPOP_DONE=false;
 function renderClub(){
+  if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true; cb2Load().then(()=>{ if(CB2&&CB2.mode==='cheongbaek') renderClub(); }).catch(()=>{}); }
   if(!_NPOP_DONE && state.clubTab==='my' && SERVER_OK && clubId()){ _NPOP_DONE=true; setTimeout(maybeNoticePopup, 600); }
   if(state.clubTab==='my' && SERVER_OK && clubId()) setTimeout(syncClubGameDiary, 900);
   const t=state.clubTab;
@@ -5543,6 +5544,7 @@ function renderClub(){
           <div class="tgrp">경기 운영</div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
+          ${(CB2&&CB2.mode==='cheongbaek'&&!cb2Finished())?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#3182f6">📋</div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
           <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openGuests()"><div class="tr-ic" style="background:#f4ecdd;color:#a5750d">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">게스트 정산</div><div class="tr-d">게스트비 받았는지 체크</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
@@ -7588,7 +7590,27 @@ async function openClubBracketView(){
 function drawCB2View(){
   const off=cb2Officer();
   let h=`<div class="om-detail" id="cb2v"><div class="sh-top"><h3>클럽 대진 · 실시간</h3><div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
-  if(!CB2||!(CB2.games||[]).length){
+  if(CB2 && CB2.mode==='cheongbaek' && !(CB2.games||[]).length){
+    const cap=CB2.captains||{}, side=cb2MySide(), o=CB2.orders||{};
+    h+=`<div class="sd">${esc(CB2.date||'')} · 청백전 · 코트 ${CB2.courts} · 캡틴이 오더를 작성 중이에요</div>
+      <div style="display:flex;gap:8px;margin:12px 0">
+        <div style="flex:1;background:#eef4ff;border-radius:14px;padding:12px;text-align:center">
+          <span style="font-size:10px;font-weight:800;color:#fff;background:#3182f6;border-radius:8px;padding:2px 8px">청팀 캡틴 C</span>
+          <div style="font-weight:900;margin-top:5px">${esc((cap.blue||{}).name||'-')}</div>
+          <div style="font-size:11px;font-weight:800;color:${o.blue?'#2f7d4f':'var(--lgray)'};margin-top:3px">${o.blue?'오더 완료 ✓':'작성 중…'}</div></div>
+        <div style="flex:1;background:#fff1f2;border-radius:14px;padding:12px;text-align:center">
+          <span style="font-size:10px;font-weight:800;color:#fff;background:#f04452;border-radius:8px;padding:2px 8px">백팀 캡틴 C</span>
+          <div style="font-weight:900;margin-top:5px">${esc((cap.white||{}).name||'-')}</div>
+          <div style="font-size:11px;font-weight:800;color:${o.white?'#2f7d4f':'var(--lgray)'};margin-top:3px">${o.white?'오더 완료 ✓':'작성 중…'}</div></div></div>`;
+    (CB2.groups||[]).forEach(g=>{
+      const c=g.side==='blue'?['#eef4ff','#1e3a8a']:['#fff1f2','#b91c1c'];
+      h+=`<div style="background:${c[0]};border-radius:16px;padding:12px;margin-top:8px">
+        <b style="font-size:13px;color:${c[1]}">${esc(g.name)} ${(g.members||[]).length}명</b>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">${(g.members||[]).map(p=>`<span style="background:#fff;border-radius:10px;padding:6px 11px;font-size:12px;font-weight:700">${esc(p.name)}</span>`).join('')}</div></div>`;
+    });
+    if(side) h+=`<button class="btn" style="margin-top:14px;background:${side==='blue'?'#3182f6':'#f04452'}" onclick="cb2OrderSheet()">${side==='blue'?'청팀':'백팀'} 오더 시트 작성하기</button>`;
+    else h+=`<div class="note" style="margin-top:12px">양 팀 캡틴이 오더를 저장하면 대진이 만들어져요.</div>`;
+  } else if(!CB2||!(CB2.games||[]).length){
     h+=`<div class="empty" style="padding:30px 20px"><div class="et">아직 발행된 대진이 없어요</div>
       <div class="es">경기이사가 대진을 발행하면 여기 실시간으로 보여요.</div></div>`;
     if(off) h+=`<button class="btn" onclick="openClubBracketBuild()">대진 만들러 가기</button>`;
@@ -7598,6 +7620,7 @@ function drawCB2View(){
       <span>${esc(CB2.date||'')} · ${esc(CB2.made_by||'')} 발행 · ${CB2.mode==='cheongbaek'?'청백전':CB2.mode==='hanul'?'한울(코트별 조)':'일반'} · 코트 ${CB2.courts} · ${CB2.rounds}라운드${CB2.late?` · 늦참 ${CB2.late.names.length}명 ${CB2.late.from}게임~`:''}${CB2.guests?` · 게스트 ${CB2.guests.length}`:''}</span>
       ${off?`<b style="color:var(--coral-d);cursor:pointer;white-space:nowrap" onclick="openClubBracketBuild()">대진 만들기 ›</b>`:''}</div>
       <div style="display:flex;gap:6px;margin:8px 0 2px">
+        ${(CB2.mode==='cheongbaek'&&cb2MySide()&&!cb2Finished())?`<span onclick="cb2OrderSheet()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:${cb2MySide()==='blue'?'#3182f6':'#f04452'};color:#fff;cursor:pointer">오더 수정</span>`:''}
         <span onclick="cb2SheetView()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">수기 방식 보기</span>
         ${CB2.groups?`<span onclick="cb2Groups()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#f2f0ea;color:#6b6357;cursor:pointer">${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</span>`:''}
       </div>
@@ -7651,7 +7674,8 @@ function drawCB2View(){
           sc=`<b onclick="${off?`cb2Score(${g.gi})`:''}" style="font-size:13px;color:${g.sa>g.sb?'#3f8f5f':g.sa<g.sb?'#cf5418':'var(--gray)'};${off?'cursor:pointer':''}">${g.sa} : ${g.sb}</b>`;
         } else if(g.startedAt){
           const min=Math.max(0,Math.floor((Date.now()-g.startedAt)/60000));
-          sc=`<span onclick="cb2Score(${g.gi})" style="cursor:pointer;font-size:10.5px;font-weight:800;color:#cf5418">▶ ${min}분 진행 · 스코어</span>`;
+          sc=`<span onclick="cb2Score(${g.gi})" style="cursor:pointer;font-size:10.5px;font-weight:800;color:#cf5418">▶ ${min}분 진행 · 스코어</span>
+            <span onclick="cb2CancelStart(${g.gi})" style="cursor:pointer;font-size:10px;font-weight:800;color:var(--lgray);margin-left:6px" title="시작 취소">■ 취소</span>`;
         } else {
           const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.id);
           const busy=ids.some(i=>RUN.ids.has(i));
@@ -7839,66 +7863,77 @@ async function cb2Gen(mode){
   if(mode==='hanul'){
     // 한울 AB 수기표: 한 시트 최대 16명 · 예약 코트 수만큼 동시 진행
     const n=sel.length;
-    const nn=Math.min(16, n - (n%2));                          // 짝수 8~16명
-    if(nn<8){ toast('한울 AB는 8명부터예요 (최대 16명 · 짝수)'); return; }
-    if(n>16) toast('한울 AB 시트는 16명까지예요 · 상위 16명으로 편성했어요');
-    const tbl=HANUL_AB[nn];
-    if(!tbl){ toast('한울 AB는 8·10·12·14·16명만 지원해요'); return; }
-    const use=ps.slice(0,nn);
-    const half=nn/2;
-    // 숫자조(1~) = 등급 상위 · 문자조(A~) = 하위 → A그룹은 B그룹과만 파트너
-    const NUM=use.filter((_,i)=>i%2===0), LET=use.filter((_,i)=>i%2===1);
-    const at=tok=>{ const k=tok[0];
-      return /[0-9]/.test(k) ? NUM[+k-1] : LET[k.charCodeAt(0)-65]; };
-    groups=[{name:'숫자조 (1~'+half+')', members:NUM.map((p,i)=>({...p,tag:String(i+1)}))},
-            {name:'문자조 (A~'+String.fromCharCode(64+half)+')', members:LET.map((p,i)=>({...p,tag:String.fromCharCode(65+i)}))}];
-    tbl.forEach((g,i)=>{
-      const [A,B]=g.split(':');
-      const t1=[at(A[0]), at(A[1])].filter(Boolean);
-      const t2=[at(B[0]), at(B[1])].filter(Boolean);
-      if(t1.length<2||t2.length<2) return;
-      const pos=place(t1,t2); push(pos.r, pos.c, t1, t2);      // 겹치는 선수 없이 코트 채우기
-    });
-  } else if(mode==='gender'){
-    // 성비 대진 — 남자: 남복 3 + 혼복 1 / 여자: 혼복 3 + 여복 1 (이상적 비율 남 12 : 여 4)
-    const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
-    if(F.length<4){ toast(`성비 대진은 여성 4명부터예요 (지금 ${F.length}명) · 이상적 구성은 남 12 · 여 4`); return; }
-    if(M.length<4){ toast('성비 대진은 남성 4명 이상이 필요해요'); return; }
-    if(M.length < F.length*3) toast(`남 ${M.length} · 여 ${F.length} — 이상적 비율은 남 ${F.length*3}명이에요. 가능한 만큼 맞춰 편성했어요`);
-    const q=new Map();
-    M.forEach(p=>q.set(p.id,{p,md:3,mx:1}));                   // 남: 남복3 · 혼복1
-    F.forEach(p=>q.set(p.id,{p,mx:3,wd:1}));                   // 여: 혼복3 · 여복1
-    const left=(k,arr)=>arr.map(p=>q.get(p.id)).filter(x=>(x[k]||0)>0).sort((a,b)=>(b[k]||0)-(a[k]||0));
-    const order=[]; let guard=0;
-    while(guard++<200){
-      const mixM=left('mx',M), mixF=left('mx',F), md=left('md',M), wd=left('wd',F);
-      if(mixM.length>=2&&mixF.length>=2){
-        const m=mixM.slice(0,2), f=mixF.slice(0,2);
-        m.forEach(x=>x.mx--); f.forEach(x=>x.mx--);
-        order.push({label:'혼복', t1:[m[0].p,f[0].p], t2:[m[1].p,f[1].p]}); continue;
-      }
-      if(md.length>=4){ const m=md.slice(0,4); m.forEach(x=>x.md--);
-        order.push({label:'남복', t1:[m[0].p,m[3].p], t2:[m[1].p,m[2].p]}); continue; }
-      if(wd.length>=4){ const f=wd.slice(0,4); f.forEach(x=>x.wd--);
-        order.push({label:'여복', t1:[f[0].p,f[3].p], t2:[f[1].p,f[2].p]}); continue; }
-      break;
+    if(n%2){ toast(`한울 AB는 짝수 인원이에요 (지금 ${n}명) · 한 명을 빼거나 게스트를 추가해 주세요`); return; }
+    if(n<8){ toast('한울 AB는 8명부터예요'); return; }
+    // 16명 초과면 8~16명 시트로 나눠서 전원 4게임을 보장한다
+    const chunks=[]; let rest=n;
+    while(rest>0){
+      let take=Math.min(16,rest);
+      if(rest-take>0 && rest-take<8) take=rest-8>=8?rest-8:Math.max(8,rest-8);
+      if(take%2) take--;
+      if(take<8){ take=rest; }
+      chunks.push(take); rest-=take;
+      if(chunks.length>6) break;
     }
-    order.forEach(g=>{ const pos=place(g.t1,g.t2); push(pos.r,pos.c,g.t1,g.t2,g.label); });
+    if(chunks.some(k=>!HANUL_AB[k])){ toast(`${n}명은 한울 AB 시트로 나눌 수 없어요 · 8·10·12·14·16명 단위로 맞춰주세요`); return; }
+    if(chunks.length>1) toast(`${n}명 → ${chunks.join('+')}명 시트 ${chunks.length}개로 나눠 편성했어요`);
+    let off0=0;
+    chunks.forEach((nn,ci)=>{
+      const tbl=HANUL_AB[nn], use=ps.slice(off0,off0+nn), half=nn/2; off0+=nn;
+      const NUM=use.filter((_,i)=>i%2===0), LET=use.filter((_,i)=>i%2===1);
+      const at=tok=>{ const k=tok[0]; return /[0-9]/.test(k)?NUM[+k-1]:LET[k.charCodeAt(0)-65]; };
+      if(ci===0) groups=[];
+      groups.push({name:`시트 ${ci+1} · 숫자조 (1~${half})`, members:NUM.map((p,i)=>({...p,tag:String(i+1)}))});
+      groups.push({name:`시트 ${ci+1} · 문자조 (A~${String.fromCharCode(64+half)})`, members:LET.map((p,i)=>({...p,tag:String.fromCharCode(65+i)}))});
+      tbl.forEach(g=>{
+        const [A,B]=g.split(':');
+        const t1=[at(A[0]),at(A[1])].filter(Boolean), t2=[at(B[0]),at(B[1])].filter(Boolean);
+        if(t1.length<2||t2.length<2) return;
+        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2);
+      });
+    });
+
+    // 숫자조(1~) = 등급 상위 · 문자조(A~) = 하위 → A그룹은 B그룹과만 파트너
+
+  } else if(mode==='gender'){
+    // 성비 대진 — 전원 정확히 4게임 보장 · 남 남복3+혼복1 / 여 혼복3+여복1 지향
+    const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
+    if(M.length+F.length<4){ toast('4명 이상이 필요해요'); return; }
+    if(F.length&&F.length<4) toast(`여성 ${F.length}명 — 여복은 4명부터예요. 가능한 만큼 혼복으로 채웠어요`);
+    const need={}, mq={}, wq={};
+    M.forEach(p=>{ need[p.id]=GPP; mq[p.id]=1; });          // 남: 혼복 1회 목표
+    F.forEach(p=>{ need[p.id]=GPP; wq[p.id]=3; });          // 여: 혼복 3회 목표
+    const total=ps.length;                                  // 총 게임 = 인원수 (4슬롯 × N게임 = 4N)
+    for(let gi2=0; gi2<total; gi2++){
+      const sM=M.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||mq[b.id]-mq[a.id]);
+      const sF=F.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||wq[b.id]-wq[a.id]);
+      let four=null, label='';
+      const mixM=sM.filter(p=>mq[p.id]>0), mixF=sF.filter(p=>wq[p.id]>0);
+      if(mixM.length>=2 && mixF.length>=2){
+        const m=mixM.slice(0,2), f=mixF.slice(0,2);
+        four=[m[0],f[0],m[1],f[1]]; label='혼복';
+        m.forEach(p=>mq[p.id]--); f.forEach(p=>wq[p.id]--);
+      } else if(sM.length>=4){ four=sM.slice(0,4); label='남복'; }
+      else if(sF.length>=4){ four=sF.slice(0,4); label='여복'; }
+      else {
+        const all=ps.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]);
+        if(all.length<4) break;
+        four=all.slice(0,4); label=cb2Label([four[0],four[1]],[four[2],four[3]]);
+      }
+      four.forEach(p=>need[p.id]--);
+      const t1=label==='혼복'?[four[0],four[1]]:[four[0],four[3]];
+      const t2=label==='혼복'?[four[2],four[3]]:[four[1],four[2]];
+      const pos=place(t1,t2); push(pos.r,pos.c,t1,t2,label);
+    }
   } else if(mode==='cheongbaek'){
     if(sel.length%2){ toast('청백전은 짝수 인원이어야 해요'); return; }
+    if(sel.length<8){ toast('청백전은 8명 이상이 좋아요'); return; }
     const blue=[], white=[];
-    ps.forEach((p,i)=>{ ((i%4===0||i%4===3)?blue:white).push(p); });
+    ps.forEach((p,i)=>{ ((i%4===0||i%4===3)?blue:white).push(p); });   // 스네이크 = 전력 균형
     captains={ blue:blue[Math.floor(Math.random()*blue.length)], white:white[Math.floor(Math.random()*white.length)] };
-    const rot=(arr,r)=>arr.slice(r%arr.length).concat(arr.slice(0,r%arr.length));
-    for(let r=0;r<GPP;r++){
-      const act=p=>!p.late||r+1>=lateAfter;
-      const B=rot(blue.filter(act),r), W=rot(white.filter(act),r+1);
-      for(let c=0;c<courts;c++){
-        const t1=B.slice(c*2,c*2+2), t2=W.slice(c*2,c*2+2);
-        if(t1.length<2||t2.length<2) break;
-        push(r+1,c+1,t1,t2,'청백');
-      }
-    }
+    groups=[{name:'청팀', side:'blue', members:blue.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))},
+            {name:'백팀', side:'white', members:white.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))}];
+    // 게임은 만들지 않는다 — 양 팀 캡틴이 오더 시트를 작성하면 그때 생성
   } else {
     // 일반: 1인 4경기가 되도록 라운드를 자동 계산 · 등급 인접 + 휴식 순환
     const perR=Math.min(courts*4, Math.floor(ps.length/4)*4);
@@ -7932,20 +7967,23 @@ async function cb2Gen(mode){
       }
     }
   }
-  if(!games.length){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
+  if(!games.length && mode!=='cheongbaek'){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
   games.sort((a,b)=>a.r-b.r||a.c-b.c);
-  const rounds=Math.max(...games.map(g=>g.r));
+  const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
   const data={date:new Date().toISOString().slice(0,10), courts, rounds, mode, gpp:GPP,
     made_by:state.userName, games, captains,
+    orders: mode==='cheongbaek' ? {blue:null, white:null} : null,
     groups: groups?groups.map(g=>g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))):null,
     late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
     guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
   const nm={hanul:'한울', gender:'성비', cheongbaek:'청백전'}[mode]||'일반';
-  if(TRIAL){ CB2={...data,_trial:true,updated_at:Date.now()}; toast(`${nm} 대진을 발행했어요 (체험)`); openClubBracketView(); return; }
+  if(TRIAL){ CB2={...data,_trial:true,updated_at:Date.now()};
+    toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 (체험)`);
+    openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400); return; }
   try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(data)});
     CB2={...data,updated_at:Date.now()};
-    toast(`${nm} 대진을 발행했어요 · 1인 ${GPP}경기`);
-    openClubBracketView();
+    toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 · 1인 ${GPP}경기`);
+    openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400);
   }catch(e){ toast('임원만 발행할 수 있어요'); }
 }
 function cb2SheetView(){
@@ -8002,6 +8040,126 @@ function cb2Groups(){
   h+=`<button class="btn ghost" style="margin-top:12px" onclick="drawCB2View()">대진표로 돌아가기</button></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+/* ── 청백전 오더 시트 ── */
+function cb2MySide(){                                   // 내가 어느 팀 캡틴인가
+  const cap=(CB2&&CB2.captains)||{}; const me=(state.serverUser||{}).id;
+  if(TRIAL) return window._trialSide||'blue';           // 체험: 청팀 캡틴으로
+  if(cap.blue&&cap.blue.id===me) return 'blue';
+  if(cap.white&&cap.white.id===me) return 'white';
+  return cb2Officer()?'blue':null;                      // 임원은 대행 작성 가능
+}
+function cb2OrderDone(){
+  const o=(CB2&&CB2.orders)||{}; return !!(o.blue&&o.white&&o.blue.length&&o.white.length);
+}
+function cb2Finished(){
+  const gs=(CB2&&CB2.games)||[]; return gs.length>0 && gs.every(g=>g.sa!=null&&g.sb!=null);
+}
+function cb2CaptainPopup(){
+  if(!CB2||CB2.mode!=='cheongbaek') return;
+  const side=cb2MySide(); if(!side) return;
+  if(cb2OrderDone()) return;
+  const nm=side==='blue'?'청팀':'백팀', col=side==='blue'?'#3182f6':'#f04452';
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div style="text-align:center;padding:8px 4px 4px">
+      <div style="width:64px;height:64px;border-radius:50%;background:${col};color:#fff;display:grid;place-items:center;font-size:26px;font-weight:900;margin:0 auto">C</div>
+      <div style="font-size:19px;font-weight:900;margin-top:12px">${nm} 캡틴이 되었어요</div>
+      <div style="font-size:13.5px;color:var(--gray);font-weight:600;margin-top:6px;line-height:1.6">
+        우리 팀 출전 순서를 직접 짜주세요.<br>경기 중에도 아직 시작 안 한 경기는 언제든 바꿀 수 있어요.</div>
+    </div>
+    <button class="btn" style="margin-top:16px;background:${col}" onclick="cb2OrderSheet()">오더 시트 작성하러 가기</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">나중에 하기</button></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+function cb2Team(side){
+  const g=(CB2&&CB2.groups||[]).find(x=>x.side===side); return (g&&g.members)||[];
+}
+function cb2OrderSheet(){
+  if(!CB2||CB2.mode!=='cheongbaek'){ toast('청백전에서만 쓸 수 있어요'); return; }
+  const side=cb2MySide(); if(!side){ toast('캡틴만 오더를 작성할 수 있어요'); return; }
+  const team=cb2Team(side), T=team.length;
+  const slots=T*2;                                       // 1인 4게임 → 팀 슬롯 수
+  CB2.orders=CB2.orders||{blue:null,white:null};
+  let cur=(CB2.orders[side]||[]).slice();
+  while(cur.length<slots) cur.push([null,null]);
+  cur=cur.slice(0,slots);
+  window._cb2Order={side,team,cur,slots};
+  drawOrderSheet();
+}
+function drawOrderSheet(){
+  const {side,team,cur,slots}=window._cb2Order;
+  const col=side==='blue'?'#3182f6':'#f04452', soft=side==='blue'?'#eef4ff':'#fff1f2';
+  const nm=side==='blue'?'청팀':'백팀';
+  const cnt={}; team.forEach(p=>cnt[p.id]=0);
+  cur.forEach(pair=>pair.forEach(id=>{ if(id!=null) cnt[id]=(cnt[id]||0)+1; }));
+  const started=new Set(((CB2.games||[]).filter(g=>g.startedAt||g.sa!=null)).map(g=>g.gi!=null?g.gi:-1));
+  let h=`<div class="om-detail"><div class="sh-top"><h3>${nm} 오더 시트</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
+    <div class="sd">각 게임에 우리 팀 2명씩 배치해요 · <b>1인 4게임</b>이 되면 저장할 수 있어요</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px">
+      ${team.map(p=>{ const n=cnt[p.id]||0, ok=n===4;
+        return `<span style="font-size:11.5px;font-weight:800;border-radius:20px;padding:6px 11px;background:${ok?soft:'#f6f4ef'};color:${ok?col:'var(--lgray)'}">${esc(p.name)} ${n}/4</span>`; }).join('')}</div>
+    <button class="btn ghost" style="margin-top:6px" onclick="cb2OrderAuto()">자동으로 채우기 <span style="font-weight:700;font-size:11px">· 파트너 골고루</span></button>`;
+  cur.forEach((pair,i)=>{
+    const locked=(CB2.games||[])[i] && ((CB2.games||[])[i].startedAt || (CB2.games||[])[i].sa!=null);
+    h+=`<div style="background:#f8f6f1;border-radius:12px;padding:10px 12px;margin-top:8px;${locked?'opacity:.55':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b style="font-size:12px;color:${col}">${i+1}게임</b>
+        ${locked?`<span style="font-size:10px;font-weight:800;color:var(--lgray)">진행·종료 — 수정 불가</span>`:''}</div>
+      <div style="display:flex;gap:7px;margin-top:6px">
+        ${[0,1].map(k=>`<select ${locked?'disabled':''} onchange="cb2OrderSet(${i},${k},this.value)" style="flex:1;min-width:0;border:1.5px solid #e9dfcf;border-radius:10px;padding:8px;font-size:12.5px;font-weight:700;font-family:inherit;background:#fff">
+          <option value="">선수 ${k+1}</option>
+          ${team.map(p=>`<option value="${p.id}" ${String(pair[k])===String(p.id)?'selected':''}>${esc(p.name)}${(cnt[p.id]||0)>=4&&String(pair[k])!==String(p.id)?' (4/4)':''}</option>`).join('')}
+        </select>`).join('')}
+      </div></div>`;
+  });
+  const ready=team.every(p=>(cnt[p.id]||0)===4) && cur.every(pr=>pr[0]&&pr[1]&&pr[0]!==pr[1]);
+  h+=`<button class="btn" style="margin-top:14px;background:${ready?col:'#d9d3c7'}" onclick="${ready?'cb2OrderSave()':`toast('모든 게임에 2명씩 · 전원 4게임을 채워주세요')`}">오더 저장${ready?'':' (미완성)'}</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">대진표로</button></div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+function cb2OrderSet(i,k,v){
+  const o=window._cb2Order; o.cur[i][k]=v?+v:null; drawOrderSheet();
+}
+function cb2OrderAuto(){
+  const o=window._cb2Order, T=o.team.length;
+  const seq=[];                                          // 각자 4번씩 · 파트너가 겹치지 않게 회전
+  for(let r=0;r<4;r++) o.team.forEach((p,idx)=>seq.push(o.team[(idx+r)%T]));
+  const used={}; o.team.forEach(p=>used[p.id]=0);
+  const pool=o.team.flatMap(p=>[p,p,p,p]);                // 4장씩
+  const cur=[];
+  for(let i=0;i<o.slots;i++){
+    const avail=pool.filter(p=>used[p.id]<4).sort((a,b)=>used[a.id]-used[b.id]);
+    const a=avail[0]; const b=avail.find(x=>x.id!==a.id);
+    if(!a||!b) break;
+    used[a.id]++; used[b.id]++; cur.push([a.id,b.id]);
+  }
+  o.cur=cur; drawOrderSheet(); toast('자동으로 채웠어요 · 필요하면 바꿔주세요');
+}
+async function cb2OrderSave(){
+  const o=window._cb2Order;
+  CB2.orders=CB2.orders||{blue:null,white:null};
+  CB2.orders[o.side]=o.cur;
+  const B=CB2.orders.blue, W=CB2.orders.white;
+  if(B&&W&&B.length&&W.length){                          // 양 팀 오더 완성 → 경기 생성
+    const nameOf=(side,id)=>{ const p=cb2Team(side).find(x=>String(x.id)===String(id)); return p||{id,name:'?'}; };
+    const n=Math.min(B.length,W.length);
+    const old=(CB2.games||[]);
+    const games=[];
+    for(let i=0;i<n;i++){
+      const prev=old[i]||{};
+      games.push({ r:Math.floor(i/(CB2.courts||1))+1, c:(i%(CB2.courts||1))+1, label:'청백',
+        teamA:B[i].map(id=>{const p=nameOf('blue',id);return {id:p.id,name:p.name,gender:p.gender};}),
+        teamB:W[i].map(id=>{const p=nameOf('white',id);return {id:p.id,name:p.name,gender:p.gender};}),
+        sa:prev.sa!=null?prev.sa:null, sb:prev.sb!=null?prev.sb:null, startedAt:prev.startedAt||null });
+    }
+    CB2.games=games; CB2.rounds=Math.max(...games.map(g=>g.r));
+  }
+  if(TRIAL){ CB2.updated_at=Date.now(); toast('오더를 저장했어요 (체험)'); drawCB2View(); return; }
+  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)});
+    CB2.updated_at=Date.now();
+    toast(cb2OrderDone()?'오더 저장 · 대진이 만들어졌어요':'오더를 저장했어요 · 상대 팀 오더를 기다려요');
+    drawCB2View();
+  }catch(e){ toast('저장하지 못했어요'); }
+}
 async function cb2Swap(gi){
   if(!cb2Officer()){ toast('임원만 순서를 바꿀 수 있어요'); return; }
   const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
@@ -8017,6 +8175,14 @@ async function cb2Swap(gi){
   try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)});
     CB2.updated_at=Date.now(); drawCB2View(); toast('순서를 바꿨어요 · 회원 화면에 바로 반영돼요');
   }catch(e){ toast('저장하지 못했어요'); }
+}
+async function cb2CancelStart(gi){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g||!g.startedAt) return;
+  if(!confirm('이 경기 시작을 취소할까요?\n시작 전 상태로 되돌아가요.')) return;
+  delete g.startedAt;
+  drawCB2View(); toast('시작을 취소했어요');
+  if(TRIAL){ CB2.updated_at=Date.now(); return; }
+  try{ await api(`/clubs/${clubId()}/bracket2`,{method:'PUT',body:JSON.stringify(CB2)}); CB2.updated_at=Date.now(); }catch(e){}
 }
 async function cb2StartGame(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||g.startedAt||g.sa!=null) return;
