@@ -620,7 +620,7 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.joined_at, u.name, u.gender, u.rating, u.sport_started${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.joined_at, u.name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
   res.json(rows);
@@ -895,8 +895,15 @@ app.get('/clubs/:id/events', (req, res) => {
 });
 app.post('/clubs/:id/events', auth, (req, res) => {
   const cid = +req.params.id;
-  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
   const { title, date, tag } = req.body || {};
+  const isFlash = String(tag || '정기') === '번개';
+  // 정기 모임은 임원만 · 번개 모임은 클럽 회원 누구나
+  if (isFlash) {
+    const mem = db.prepare(`SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')`).get(cid, req.uid);
+    if (!mem) return res.status(403).json({ error: 'member_only', message: '클럽 회원만 번개를 열 수 있어요' });
+  } else if (!isOfficer(cid, req.uid)) {
+    return res.status(403).json({ error: 'officer_only', message: '정기 모임은 임원만 만들 수 있어요' });
+  }
   if (!title) return res.status(400).json({ error: 'title_required' });
   const r = db.prepare('INSERT INTO club_events (club_id,title,date,tag,created_by,created_at) VALUES (?,?,?,?,?,?)')
     .run(cid, String(title), String(date || ''), String(tag || '정기'), req.uid, now());
@@ -906,9 +913,11 @@ app.post('/clubs/:id/events', auth, (req, res) => {
 
 app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
   const cid = +req.params.id, eid = +req.params.eid;
-  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
   const ev = db.prepare('SELECT * FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
   if (!ev) return res.status(404).json({ error: 'no_event' });
+  // 임원이거나, 내가 만든 번개면 수정 가능
+  if (!isOfficer(cid, req.uid) && !(ev.tag === '번개' && ev.created_by === req.uid))
+    return res.status(403).json({ error: 'officer_only' });
   const title = String((req.body || {}).title || ev.title);
   const date = String((req.body || {}).date != null ? (req.body || {}).date : ev.date);
   db.prepare('UPDATE club_events SET title=?, date=? WHERE id=?').run(title, date, eid);
@@ -921,9 +930,10 @@ app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
 
 app.delete('/clubs/:id/events/:eid', auth, (req, res) => {
   const cid = +req.params.id, eid = +req.params.eid;
-  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
   const ev = db.prepare('SELECT * FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
   if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(cid, req.uid) && !(ev.tag === '번개' && ev.created_by === req.uid))
+    return res.status(403).json({ error: 'officer_only' });
   // 참석자에게 취소 알림 후 정리
   db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
     .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
@@ -946,17 +956,37 @@ const goingCount = (eid) => db.prepare("SELECT COUNT(*) n FROM event_attendees W
 // 모임 댓글
 try { db.exec(`CREATE TABLE IF NOT EXISTS event_comments (
   id INTEGER PRIMARY KEY, event_id INTEGER, user_id INTEGER, body TEXT, created_at INTEGER)`); } catch (e) {}
+try { db.exec('ALTER TABLE event_comments ADD COLUMN parent_id INTEGER'); } catch (e) {}   // 대댓글
 app.get('/events/:id/comments', auth, (req, res) => {
-  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, u.name
+  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, c.parent_id, u.name, u.photos
     FROM event_comments c JOIN users u ON u.id=c.user_id WHERE c.event_id=? ORDER BY c.id ASC LIMIT 200`).all(+req.params.id);
   res.json(rows);
 });
 app.post('/events/:id/comments', auth, limitWrite, (req, res) => {
   const body = String((req.body || {}).body || '').trim().slice(0, 300);
   if (!body) return res.status(400).json({ error: 'empty' });
-  const r = db.prepare('INSERT INTO event_comments (event_id,user_id,body,created_at) VALUES (?,?,?,?)')
-    .run(+req.params.id, req.uid, body, now());
+  const parent = (req.body || {}).parent_id ? +req.body.parent_id : null;
+  const r = db.prepare('INSERT INTO event_comments (event_id,user_id,body,created_at,parent_id) VALUES (?,?,?,?,?)')
+    .run(+req.params.id, req.uid, body, now(), parent);
   res.json({ ok: true, id: rid(r) });
+});
+// 댓글 반응 (이모지 리액션)
+try { db.exec(`CREATE TABLE IF NOT EXISTS comment_reactions (
+  id INTEGER PRIMARY KEY, comment_id INTEGER, user_id INTEGER, emoji TEXT, created_at INTEGER,
+  UNIQUE(comment_id, user_id, emoji))`); } catch (e) {}
+app.get('/events/:id/reactions', auth, (req, res) => {
+  const rows = db.prepare(`SELECT r.comment_id, r.emoji, r.user_id FROM comment_reactions r
+    JOIN event_comments c ON c.id=r.comment_id WHERE c.event_id=?`).all(+req.params.id);
+  res.json(rows);
+});
+app.post('/comments/:cid/react', auth, (req, res) => {
+  const cid = +req.params.cid;
+  const emoji = String((req.body || {}).emoji || '').slice(0, 8);
+  if (!emoji) return res.status(400).json({ error: 'emoji_required' });
+  const ex = db.prepare('SELECT id FROM comment_reactions WHERE comment_id=? AND user_id=? AND emoji=?').get(cid, req.uid, emoji);
+  if (ex) { db.prepare('DELETE FROM comment_reactions WHERE id=?').run(ex.id); return res.json({ ok: true, on: false }); }
+  db.prepare('INSERT INTO comment_reactions (comment_id,user_id,emoji,created_at) VALUES (?,?,?,?)').run(cid, req.uid, emoji, now());
+  res.json({ ok: true, on: true });
 });
 app.delete('/events/:id/comments/:cid', auth, (req, res) => {
   const c = db.prepare('SELECT * FROM event_comments WHERE id=?').get(+req.params.cid);
