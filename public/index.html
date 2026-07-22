@@ -5446,7 +5446,12 @@ async function repairClubServer(){
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
 function renderClub(){
-  if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true; cb2Load().then(()=>{ if(CB2&&CB2.mode==='cheongbaek') renderClub(); }).catch(()=>{}); }
+  if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
+    cb2Load().then(()=>{
+      const today=new Date().toISOString().slice(0,10);
+      if(CB2 && CB2.date && CB2.date!==today) CB2=null;    // 지난 대진은 들고 있지 않는다
+      if(CB2 && CB2.mode==='cheongbaek') renderClub();
+    }).catch(()=>{}); }
   if(!_NPOP_DONE && state.clubTab==='my' && SERVER_OK && clubId()){ _NPOP_DONE=true; setTimeout(maybeNoticePopup, 600); }
   if(state.clubTab==='my' && SERVER_OK && clubId()) setTimeout(syncClubGameDiary, 900);
   const t=state.clubTab;
@@ -5574,7 +5579,7 @@ function renderClub(){
           <div class="tgrp">경기 운영</div>
           <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
-          ${(CB2&&CB2.mode==='cheongbaek'&&!cb2Finished())?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#3182f6">📋</div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
+          ${cb2OrderOpen()?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#3182f6">📋</div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
           <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">회원 · 가입</div>
@@ -7657,7 +7662,7 @@ function drawCB2View(){
       <span>${esc(CB2.date||'')} · ${esc(CB2.made_by||'')} 발행 · ${CB2.mode==='cheongbaek'?'청백전':CB2.mode==='hanul'?'한울(코트별 조)':'일반'} · 코트 ${CB2.courts} · ${CB2.rounds}라운드${CB2.late?` · 늦참 ${CB2.late.names.length}명 ${CB2.late.from}게임~`:''}${CB2.guests?` · 게스트 ${CB2.guests.length}`:''}</span>
       ${off?`<b style="color:var(--coral-d);cursor:pointer;white-space:nowrap" onclick="openClubBracketBuild()">대진 만들기 ›</b>`:''}</div>
       <div style="display:flex;gap:6px;margin:8px 0 2px">
-        ${(CB2.mode==='cheongbaek'&&cb2MySide()&&!cb2Finished())?`<span onclick="cb2OrderSheet()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:${cb2MySide()==='blue'?'#3182f6':'#f04452'};color:#fff;cursor:pointer">오더 수정</span>`:''}
+        ${cb2OrderOpen()?`<span onclick="cb2OrderSheet()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:${cb2MySide()==='blue'?'#3182f6':'#f04452'};color:#fff;cursor:pointer">오더 수정</span>`:''}
         <span onclick="cb2SheetView()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">수기 방식 보기</span>
         ${CB2.groups?`<span onclick="cb2Groups()" style="flex:1;text-align:center;font-size:11.5px;font-weight:800;padding:8px;border-radius:11px;background:#f2f0ea;color:#6b6357;cursor:pointer">${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</span>`:''}
       </div>
@@ -8091,6 +8096,14 @@ function cb2OrderDone(){
 function cb2Finished(){
   const gs=(CB2&&CB2.games)||[]; return gs.length>0 && gs.every(g=>g.sa!=null&&g.sb!=null);
 }
+/* 오더 시트를 지금 보여줄지 — ①오늘 발행 ②청백전 ③아직 안 끝남 ④내가 캡틴(또는 임원) */
+function cb2OrderOpen(){
+  if(!CB2 || CB2.mode!=='cheongbaek') return false;
+  const today=new Date().toISOString().slice(0,10);
+  if(CB2.date && CB2.date!==today) return false;          // 지난 날짜 대진이면 숨김
+  if(cb2Finished()) return false;                         // 전 경기 종료면 숨김
+  return !!cb2MySide();                                   // 캡틴(또는 임원 대행)만
+}
 function cb2CaptainPopup(){
   if(!CB2||CB2.mode!=='cheongbaek') return;
   const side=cb2MySide(); if(!side) return;
@@ -8341,6 +8354,14 @@ function drawEventDetail(){
     ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:12.5px;font-weight:400;color:#a8a29a;margin-top:10px;line-height:1.7">
       ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(esc).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(esc).join(' · ')}`:''}</div>`:''}
 
+    ${off?`<div style="margin-top:18px">
+      <div onclick="evToBracket('${e.id}')" style="display:flex;align-items:center;gap:12px;background:${accentBg};border-radius:15px;padding:14px 16px;cursor:pointer">
+        <span style="width:38px;height:38px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:18px;flex:none">🎾</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:${accent}">이 모임 참석자로 대진 짜기</div>
+          <div style="font-size:11.5px;font-weight:400;color:#8a857c;margin-top:2px">참석 ${(e.attendees||[]).length}명${(e.guests||[]).length?` · 게스트 ${(e.guests||[]).length}명`:''}이 명단에 들어가요</div></div>
+        <span style="color:${accent};font-weight:600">›</span></div></div>`:''}
+
     <div style="height:1px;background:#f0ede6;margin:22px 0 0"></div>
     <div style="display:flex;align-items:baseline;gap:7px;margin-top:18px">
       <span style="font-size:16px;font-weight:700">댓글</span>
@@ -8378,18 +8399,22 @@ function drawEventDetail(){
     ${rp?`<div style="display:flex;align-items:center;gap:7px;background:${accentBg};border-radius:11px;padding:8px 12px;margin-bottom:7px">
       <span style="font-size:12px;font-weight:500;color:${accent}">${esc(rp.name)} 님에게 답글</span>
       <span onclick="EVD.replyTo=null;drawEventDetail()" style="margin-left:auto;font-size:12px;color:#8a857c;cursor:pointer;font-weight:500">취소</span></div>`:''}
-    <div style="display:flex;gap:8px;align-items:flex-end">
-      <textarea id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300" rows="2"
-        style="flex:1;min-width:0;font-weight:400;font-size:14.5px;line-height:1.6;padding:12px 14px;border:1.5px solid #e9dfcf;border-radius:14px;font-family:inherit;resize:none;background:#fff"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();evAddComment();}"></textarea>
-      <button class="btn sm" style="width:auto;padding:0 20px;height:48px;font-weight:600;font-size:14px;background:${accent};flex:none" onclick="evAddComment()">등록</button></div>
-    <div style="font-size:11px;font-weight:400;color:#b3aea4;margin-top:6px">엔터로 등록 · Shift+엔터 줄바꿈</div>
+    <div style="display:flex;gap:7px;align-items:center">
+      <input id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300"
+        style="flex:1;min-width:0;height:38px;box-sizing:border-box;font-weight:400;font-size:13px;padding:0 13px;border:1.5px solid #e9dfcf;border-radius:11px;font-family:inherit;background:#fff"
+        onkeydown="if(event.key==='Enter')evAddComment()">
+      <button class="btn sm" style="width:auto;height:38px;padding:0 18px;font-weight:600;font-size:13px;background:${accent};flex:none;border-radius:11px" onclick="evAddComment()">등록</button></div>
   </div></div>`;
   const pg=document.getElementById('evPage');
   pg.innerHTML=h; pg.classList.add('on');
   document.getElementById('ov').classList.remove('on');       // 시트는 닫고 전체 페이지로
 }
 function closeEventPage(){ const pg=document.getElementById('evPage'); if(pg){ pg.classList.remove('on'); pg.innerHTML=''; } EVD=null; }
+function evToBracket(id){
+  closeEventPage();
+  CB2_SEL=new Set(); CB2_GUESTS=[]; CB2_LATE=new Set();     // 이 모임 참석자로 새로 시작
+  useEventForBracket(id);
+}
 function evReply(id,name){ EVD.replyTo={id,name}; drawEventDetail();
   setTimeout(()=>{ const el=document.getElementById('evCmt'); if(el) el.focus(); },50); }
 const EV_EMOJI=['👍','🎾','🔥','😂','🙌','🙏'];
