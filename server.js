@@ -741,6 +741,11 @@ app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
    data = { date, courts, rounds, games:[{r,c,label,teamA:[{id,name}],teamB:[...],sa,sb}], made_by } */
 try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets (
   club_id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)`); } catch (e) {}
+// 모임(이벤트)별로 대진을 따로 보관한다 — 같은 날 여러 모임이 있을 수 있다
+try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets_ev (
+  id INTEGER PRIMARY KEY, club_id INTEGER, event_id INTEGER, data TEXT, updated_at INTEGER,
+  UNIQUE(club_id, event_id))`); } catch (e) {}
+const evOf = (req) => { const v = +(req.query.event || (req.body || {}).event_id || 0); return v > 0 ? v : 0; };
 function cbRole(cid, uid) {
   const m = db.prepare(`SELECT role FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')`).get(cid, uid);
   return m ? (m.role || 'member') : null;
@@ -748,8 +753,62 @@ function cbRole(cid, uid) {
 app.get('/clubs/:id/bracket2', auth, (req, res) => {
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const row = db.prepare('SELECT data, updated_at FROM club_brackets WHERE club_id=?').get(cid);
+  const eid = evOf(req);
+  const row = eid
+    ? db.prepare('SELECT data, updated_at FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data, updated_at FROM club_brackets WHERE club_id=?').get(cid);
   res.json(row ? { ...JSON.parse(row.data), updated_at: row.updated_at } : null);
+});
+// 발행된 대진 목록 — 모임별로 골라 들어갈 수 있게
+// ── 월례대회 승강 기록 (1주일간 배지 노출) ──
+try { db.exec(`CREATE TABLE IF NOT EXISTS grade_changes (
+  id INTEGER PRIMARY KEY, club_id INTEGER, user_id INTEGER, name TEXT,
+  from_grade TEXT, to_grade TEXT, dir TEXT, created_at INTEGER)`); } catch (e) {}
+app.post('/clubs/:id/promote', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const list = ((req.body || {}).changes || []).filter(c => c && c.user_id && c.to);
+  const up = db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?');
+  const ins = db.prepare(`INSERT INTO grade_changes (club_id,user_id,name,from_grade,to_grade,dir,created_at)
+    VALUES (?,?,?,?,?,?,?)`);
+  const order = { S: 4, A: 3, B: 2, C: 1 };
+  list.forEach(c => {
+    up.run(String(c.to), cid, +c.user_id);
+    const dir = (order[c.to] || 0) > (order[c.from] || 0) ? 'up' : 'down';
+    ins.run(cid, +c.user_id, String(c.name || ''), String(c.from || ''), String(c.to), dir, now());
+    sendPush(+c.user_id, { icon: dir === 'up' ? '🎉' : '📉',
+      title: dir === 'up' ? `${c.to}조로 승격했어요` : `${c.to}조로 조정됐어요`,
+      body: '월례대회 결과가 반영됐어요' });
+  });
+  res.json({ ok: true, n: list.length });
+});
+app.get('/clubs/:id/promotions', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const since = now() - 7 * 86400e3;                    // 최근 7일치만
+  res.json(db.prepare('SELECT user_id,name,from_grade,to_grade,dir,created_at FROM grade_changes WHERE club_id=? AND created_at>? ORDER BY id DESC').all(cid, since));
+});
+app.get('/clubs/:id/brackets', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT b.event_id, b.data, b.updated_at, e.title, e.date, e.tag
+    FROM club_brackets_ev b LEFT JOIN club_events e ON e.id=b.event_id
+    WHERE b.club_id=? ORDER BY b.updated_at DESC LIMIT 300`).all(cid);
+  const out = rows.map(r => { let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
+    const gs = d.games || [];
+    const done = gs.filter(g => g.sa != null).length;
+    return { event_id: r.event_id, title: r.title || '모임', date: r.date || d.date, tag: r.tag || '정기',
+      mode: d.mode, courts: d.courts, games: gs.length,
+      done, active: !(gs.length > 0 && done === gs.length), updated_at: r.updated_at }; });
+  const legacy = db.prepare('SELECT data, updated_at FROM club_brackets WHERE club_id=?').get(cid);
+  if (legacy) { let d = {}; try { d = JSON.parse(legacy.data); } catch (e) {}
+    const gs = d.games || [];
+    const dn = gs.filter(g => g.sa != null).length;
+    out.push({ event_id: 0, title: '모임 미지정', date: d.date, tag: '정기', mode: d.mode,
+      courts: d.courts, games: gs.length, done: dn, active: !(gs.length > 0 && dn === gs.length), updated_at: legacy.updated_at }); }
+  // 진행 중인 대진을 먼저, 그 다음 최신순
+  out.sort((a, b) => (b.active - a.active) || (b.updated_at - a.updated_at));
+  res.json(out);
 });
 try { db.exec(`CREATE TABLE IF NOT EXISTS club_bracket_logs (
   id INTEGER PRIMARY KEY, club_id INTEGER, date TEXT, data TEXT, updated_at INTEGER,
@@ -764,16 +823,23 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
   const role = cbRole(cid, req.uid);
   if (role !== 'owner' && role !== 'officer') return res.status(403).json({ error: 'officer_only' });
   const data = req.body || {};
-  db.prepare(`INSERT INTO club_brackets (club_id,data,updated_at) VALUES (?,?,?)
-    ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
-    .run(cid, JSON.stringify(data), now());
+  const eid = evOf(req);
+  if (eid) {
+    db.prepare(`INSERT INTO club_brackets_ev (club_id,event_id,data,updated_at) VALUES (?,?,?,?)
+      ON CONFLICT(club_id,event_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+      .run(cid, eid, JSON.stringify(data), now());
+  } else {
+    db.prepare(`INSERT INTO club_brackets (club_id,data,updated_at) VALUES (?,?,?)
+      ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+      .run(cid, JSON.stringify(data), now());
+  }
   cbLog(cid, data);
   res.json({ ok: true });
 });
 app.get('/clubs/:id/bracket2/logs', auth, (req, res) => {     // 시즌 기록 — 클럽 멤버
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=? ORDER BY date DESC LIMIT 60').all(cid);
+  const rows = db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=? ORDER BY date DESC LIMIT 400').all(cid);
   res.json(rows.map(r => ({ date: r.date, data: JSON.parse(r.data) })));
 });
 app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — 당사자 또는 임원
@@ -781,7 +847,10 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   const role = cbRole(cid, req.uid);
   if (!role) return res.status(403).json({ error: 'member_only' });
   const { gi, sa, sb } = req.body || {};
-  const row = db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  const eid = evOf(req);
+  const row = eid
+    ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
   if (!row) return res.status(404).json({ error: 'no_bracket' });
   const data = JSON.parse(row.data);
   const g = (data.games || [])[gi];
@@ -791,7 +860,8 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   if (!officer && !inGame) return res.status(403).json({ error: 'player_only', message: '그 경기를 뛴 당사자나 임원만 입력할 수 있어요' });
   g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
   g.by = req.uid; g.at = now();
-  db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
+  if (eid) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?').run(JSON.stringify(data), now(), cid, eid);
+  else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
   cbLog(cid, data);
   res.json({ ok: true, game: g });
 });
