@@ -4593,6 +4593,7 @@ async function openClubReport(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function openStore(){
+  return;   // M캐쉬 미사용 — 전 기능 무료. 되살릴 때 이 줄만 지운다.
   if(SERVER_OK && PAY_PENDING_FN()){ toast('캐시 충전은 준비 중이에요'); return; }
   if(!canSellDigital()){
     // 안내 문구에 '웹에서 구매하세요' 를 쓰면 안 된다 (3.1.1 안티 스티어링).
@@ -4609,7 +4610,7 @@ function openStore(){
       <div style="display:flex;align-items:center;gap:11px">${coin(26)}<div style="font-size:18px;font-weight:600;color:var(--ink)">${p.n}${p.dc?`<span style="font-size:12px;color:var(--gray);font-weight:500"> (-${p.dc}%)</span>`:''}</div></div>
       <div style="position:relative">${p.tag?`<span style="position:absolute;top:-19px;right:2px;background:#3fa571;color:#fff;font-size:11px;font-weight:500;border-radius:6px;padding:2px 8px">${p.tag}</span>`:''}<div style="background:var(--felt);border-radius:11px;padding:10px 15px;font-size:14px;font-weight:500;color:var(--ink)">${p.won.toLocaleString()}원</div></div></div>`;
   });
-  h+=`<div class="note" style="text-align:left;margin-top:8px">M캐쉬는 개인 리그 <b>추가 대진</b>, <b>대화하기</b> 등에 사용돼요. 무료 제공분을 다 쓰면 M캐쉬가 필요해요. (데모 — 실제 결제 없음)</div>`;
+  h+=`<div class="note" style="text-align:left;margin-top:8px">현재 모든 기능을 무료로 이용할 수 있어요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 async function buyCash(n){
@@ -4634,7 +4635,7 @@ async function buyCash(n){
     toast('캐시 충전은 준비 중이에요');
     return;
   }
-  state.cash+=n; toast(`M캐쉬 ${n}개 충전 완료 (데모)`); openStore();
+  state.cash+=n; toast('현재 모든 기능이 무료예요'); openStore();
   if(state.view==='home')renderHome(); if(state.view==='me')renderMe(); }
 function openLeaderboard(){
   state._lbTab=state._lbTab||'region';
@@ -6046,6 +6047,10 @@ async function saveSportProfile(){
   const body = { birth: val('birth') };
   meta.fields.forEach(f => { body[f.k] = val(f.k); });
   if(body.birth && !/^(19|20)\d{2}$/.test(body.birth)){ toast('출생 연도를 네 자리로 입력해 주세요'); return; }
+  if(body.birth){                                  // 만 14세 미만은 가입할 수 없다 (정보통신망법)
+    const age = new Date().getFullYear() - parseInt(body.birth,10);
+    if(age < 14){ toast('만 14세 이상만 가입할 수 있어요'); return; }
+  }
 
   if(SERVER_OK){
     try{ await api(`/me/sport-profile/${sp.id}`,{method:'PUT',body:JSON.stringify(body)}); }
@@ -7433,12 +7438,13 @@ async function iapPurchase(productId){
 
 /* ═══════════ 캐시 획득 (친구초대 · 광고) ═══════════ */
 async function openEarn(){
+  return;   // 광고·충전 화면 봉인 — 실제 광고가 붙기 전까지 열지 않는다.
   if(!SERVER_OK){ toast('서버 연결이 필요해요'); return; }
   let ref={}, ad={};
   try{ [ref, ad] = await Promise.all([api('/me/referral'), api('/cash/ad-status')]); }catch(e){ toast('불러오지 못했어요'); return; }
   state.cash = ad.cash;
   let h=`<div class="sh-top"><h3>M캐쉬 받기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">현재 <b>${ad.cash}M캐쉬</b> · 1:1 대화를 새로 열 때 5M캐쉬가 쓰여요.</div>
+    <div class="sd">1:1 대화를 비롯한 모든 기능을 무료로 이용할 수 있어요.</div>
 
     <div class="card"><div class="ch" style="font-size:14px">친구 초대</div>
       <div class="ern-code" onclick="copyCode('${ref.code}')">${ref.code}<span>${ic('link',14,'var(--gray)')} 복사</span></div>
@@ -14578,7 +14584,14 @@ async function doSearch(q){
 }
 // ── 라운지 모더레이션 (신고·차단) ──
 function reportPost(i){ closeOv(); toast('신고가 접수됐어요 · 운영팀이 검토해요'); }
-function blockPostAuthor(i){ const p=LOUNGE_POSTS[i]; if(p)p._blocked=true; closeOv(); toast('작성자를 차단했어요 · 글이 숨겨져요'); renderLounge(); }
+function blockPostAuthor(i){ const p=LOUNGE_POSTS[i]; if(!p) return;
+  p._blocked=true; closeOv(); renderLounge();
+  if(p.user_id){                                   // 서버에도 남겨 새로고침 후에도 유지
+    api('/block',{method:'POST',body:JSON.stringify({user_id:p.user_id})})
+      .then(()=>toast('작성자를 차단했어요 · 글과 댓글이 숨겨져요'))
+      .catch(()=>toast('작성자를 차단했어요 (이 기기에서만)'));
+  } else toast('작성자를 차단했어요 · 글이 숨겨져요');
+}
 function genC(g){ return g==='♀'?{c:'#e0468a',bg:'#fbe7f2'}:{c:'#5b3fa8',bg:'#e9f4ee'}; }
 function renderLounge(){
   state.loungeCat=state.loungeCat||'전체';
