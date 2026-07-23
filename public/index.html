@@ -2502,7 +2502,8 @@ let BK_ID = null;           // 현재 대진 id
 let BK_POLL = null, BK_SEEN = 0;
 const _scoreDebounce = {};
 
-function resetClubCache(){ SRV_EVENTS=null; SRV_EVENT=null; CB2=null; CB2_EVENT=0; window._cb2Once=false; window._evLoading=false; }
+function resetClubCache(){ SRV_EVENTS=null; SRV_EVENT=null; CB2=null; CB2_EVENT=0;
+  window._cb2Once=false; window._evLoading=null; window._evFor=null; }
 function clubId(){ return CLUB_IDS[state.activeClub] || null; }
 let SRV_MYCLUBS=[];
 // 클럽은 만든 종목에 속한다: 종목을 바꾸면 그 종목의 클럽으로 전환 (없으면 무소속)
@@ -2978,12 +2979,17 @@ async function setMemberRole(uid, role){
 
 /* ═══════════ 클럽 일정 · 참석 · 가입 승인 (서버) ═══════════ */
 let SRV_EVENT = null;       // 최신 일정 {id,title,date,count,attendees,joined}
-let SRV_EVENTS = [];        // 전체 일정 목록 (이번 주 일정 카드용)
+let SRV_EVENTS = null;      // null = 아직 안 불러옴 · [] = 불러왔는데 없음
 let SRV_MYSTATUS = null;    // {role,status}
 
 async function loadClubServer(){
   const cid = clubId();
   if(!SERVER_OK || !cid){ SRV_EVENT=null; SRV_MYSTATUS=null; return false; }
+  // 클럽 데이터 골격이 아직 없어도 일정은 불러온다 (일반 회원 첫 진입)
+  if(!AC() && state.activeClub){
+    state.clubData[state.activeClub] = { region:'', m:0, officer:false,
+      grades:{}, genders:{}, feed:[], events:[], schedule:{dt:'',attendees:[],attend:null} };
+  }
   const c = AC(); if(!c) return false;
   try{
     const [evs, ms] = await Promise.all([
@@ -5459,16 +5465,27 @@ async function repairClubServer(){
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
 /* 서버 클럽인데 일정이 아직 안 실렸으면 한 번 더 불러온다 (임원·회원 공통) */
+function reloadClubEvents(){
+  window._evFor=null; window._evLoading=null; SRV_EVENTS=null;
+  ensureClubEvents(); toast('일정을 다시 불러올게요');
+}
 function ensureClubEvents(){
-  if(!(SERVER_OK && clubId())) return;
-  if(SRV_EVENTS!==null && SRV_EVENTS!==undefined) return;
-  if(window._evLoading) return; window._evLoading=true;
-  api(`/clubs/${clubId()}/events`)
-    .then(list=>{ SRV_EVENTS=list||[]; SRV_EVENT=SRV_EVENTS[0]||null; window._evLoading=false; renderClub(); })
-    .catch(()=>{ SRV_EVENTS=[]; window._evLoading=false; });
+  const cid=clubId();
+  if(!(SERVER_OK && cid)) return;
+  if(window._evFor===cid && SRV_EVENTS!==null) return;      // 이 클럽 것은 이미 불러옴
+  if(window._evLoading===cid) return;
+  window._evLoading=cid;
+  api(`/clubs/${cid}/events`)
+    .then(list=>{
+      if(clubId()!==cid){ window._evLoading=null; return; }  // 그 사이 클럽이 바뀌면 버림
+      SRV_EVENTS=list||[]; SRV_EVENT=SRV_EVENTS[0]||null;
+      window._evFor=cid; window._evLoading=null; renderClub();
+    })
+    .catch(()=>{ SRV_EVENTS=[]; window._evFor=cid; window._evLoading=null; });
 }
 function renderClub(){
   ensureClubEvents();
+  if(SERVER_OK && clubId() && SRV_MYSTATUS===undefined) { /* noop */ }
   if((SERVER_OK||TRIAL) && clubId() && PROMOS===null && !window._promoOnce){ window._promoOnce=true; cb2LoadPromos().then(()=>renderClub()).catch(()=>{}); }
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
     cb2Load().then(()=>{
@@ -5559,10 +5576,13 @@ function renderClub(){
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
         <button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid ${off?'var(--coral)':'#c3d2f0'};background:#ffffff;color:${off?'var(--coral-d)':'#2b62c9'};font-weight:500;font-size:12px;border-radius:11px;padding:7px 12px;font-family:inherit">${off?'＋ 만들기':'⚡ 번개 열기'}</button></div>`;
-      if(dayF && !evShow.length){
+      if(SERVER_OK && clubId() && SRV_EVENTS===null){
+        h+=`<div class="note" style="text-align:left">일정을 불러오는 중이에요…</div>`;
+      } else if(dayF && !evShow.length){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
         h+=`<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
+          ${SERVER_OK&&clubId()?`<div onclick="reloadClubEvents()" style="font-size:11px;font-weight:500;color:var(--lgray);cursor:pointer;margin-bottom:8px">다시 불러오기</div>`:''}
           <div style="font-size:29px">📅</div>
           <b style="display:block;margin-top:6px;font-size:14px">이번 주 모임이 아직 없어요</b>
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
@@ -14686,6 +14706,7 @@ function openDiag(){
   document.getElementById('ov').classList.add('on');
 }
 function go(v, isBack){ try{ closeEventPage(); }catch(e){}
+  if(v==='club'){ try{ ensureClubEvents(); }catch(e){} }
   if(!isBack && state.view && state.view!==v){
     NAV_HIST.push(state.view);
     if(NAV_HIST.length>10) NAV_HIST.shift();
