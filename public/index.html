@@ -1980,7 +1980,13 @@ async function loadConfig(){
   }
   return CFG;
 }
-const API_BASE = (location.protocol==='http:'||location.protocol==='https:') ? location.origin : '';
+const REMOTE_API = 'https://matsu.up.railway.app';
+const API_BASE = (()=>{
+  const p = location.protocol;
+  if (p !== 'http:' && p !== 'https:') return REMOTE_API;   // iOS 앱: capacitor://localhost
+  if (window.Capacitor) return REMOTE_API;                  // Android 앱: https://localhost 껍데기
+  return location.origin;                                   // 웹 · 로컬 개발
+})();
 const TOKEN_KEY = 'matsu_jwt';
 let SERVER_OK = false;
 
