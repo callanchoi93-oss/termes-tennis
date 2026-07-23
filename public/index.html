@@ -1418,6 +1418,8 @@
     <img id="bootpz" alt="" style="width:64px;animation:bootpulse 1.1s ease-in-out infinite">
     <div style="font-size:12px;font-weight:500;color:#b3927a;letter-spacing:.02em">맞수를 불러오는 중…</div>
   </div>
+  <script>setTimeout(function(){ try{ window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen
+    && Capacitor.Plugins.SplashScreen.hide({ fadeOutDuration: 350 }); }catch(e){} }, 6000);</script>
   <div class="toast" id="toast"></div>
   <div id="offline">오프라인이에요 · 연결되면 자동으로 이어져요</div>
   <div id="demobar" style="display:none;position:fixed;bottom:calc(64px + env(safe-area-inset-bottom,0px));left:12px;right:12px;z-index:120;background:#fdf2dd;color:#7a5a0d;border:1px solid #eeD9a8;border-radius:12px;font-size:12px;font-weight:500;text-align:center;padding:8px 12px">
@@ -2219,7 +2221,11 @@ let DEMO = true;      // checkServer() 가 서버를 찾으면 false 로 바뀐�
 /* ═══ 체험 모드 (앱 심사·둘러보기) — 로그인·권한 없이 전체 기능 ═══ */
 let TRIAL = false; try{ TRIAL = localStorage.getItem('matsu_trial')==='1'; }catch(e){}
 /* 부팅 베일: 서버 확인 전 옛 데이터·데모 화면이 비치지 않게 가린다 */
-function hideBoot(){ const v=document.getElementById('bootveil'); if(!v) return;
+function hideBoot(){ const v=document.getElementById('bootveil');
+  try{ window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen
+       && Capacitor.Plugins.SplashScreen.hide({ fadeOutDuration: 350 }); }catch(e){}
+  if(!v) return;
+  if(window.Capacitor){ try{ v.remove(); }catch(e){ v.style.display='none'; } return; }  // 네이티브: 스플래시가 대신 페이드
   v.style.opacity='0'; v.style.pointerEvents='none'; setTimeout(()=>{ try{ v.remove(); }catch(e){} }, 300); }
 
 setTimeout(hideBoot, 3500);                                // 실패해도 3.5초 뒤엔 무조건 화면
@@ -14808,6 +14814,7 @@ setTimeout(()=>{ if(state.loggedIn){ syncMe(); checkMyDues(); afterLoginNative()
 } }, 1500);
 renderHome();renderLeague();renderClub();renderBracket();renderLounge();renderChat();renderMe();renderAuthReviews();
 if(_restored){ go(state.view||'home'); } else { populateAuthSaved(); }
+hideBoot();   // 캐시로 그린 화면을 곧바로 연다. 서버 응답은 뒤에서 따라와 조용히 갱신한다.
 window.addEventListener('beforeunload',saveMatsu);
 setInterval(saveMatsu,2500);
 
