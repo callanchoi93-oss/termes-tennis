@@ -1459,11 +1459,14 @@ app.get('/me/applications', auth, (req, res) => {
     FROM event_guests g JOIN club_events e ON e.id=g.event_id JOIN clubs c ON c.id=e.club_id
     WHERE g.user_id=? OR (g.user_id IS NULL AND g.name=?)
     ORDER BY g.id DESC LIMIT 20`).all(req.uid, me ? me.name : '');
-  const hosted = db.prepare(`SELECT id, title, date, place, joined, cap, status
+  const hosted = db.prepare(`SELECT id, dt AS date, loc AS place, cap, status,
+      COALESCE(NULLIF(loc,''),'오픈매치') || ' · ' || COALESCE(fmt,'') AS title,
+      (SELECT COUNT(*) FROM open_match_joins j WHERE j.match_id=open_matches.id) AS joined
     FROM open_matches WHERE host_id=? ORDER BY id DESC LIMIT 20`).all(req.uid);
   let joined = [];
   try {
-    joined = db.prepare(`SELECT m.id, m.title, m.date, m.place, m.status
+    joined = db.prepare(`SELECT m.id, m.dt AS date, m.loc AS place, m.status,
+        COALESCE(NULLIF(m.loc,''),'오픈매치') || ' · ' || COALESCE(m.fmt,'') AS title
       FROM open_match_joins j JOIN open_matches m ON m.id=j.match_id
       WHERE j.user_id=? ORDER BY j.id DESC LIMIT 20`).all(req.uid);
   } catch (e) { /* joins 테이블 없으면 생략 */ }
@@ -1870,6 +1873,8 @@ app.delete('/notices/:id', auth, (req, res) => {
   try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {}
 });
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } catch (e) {}
+db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
+  id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`);
 
 
 // ── 오픈매치 좋아요 · 댓글 ──
@@ -2590,7 +2595,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS event_guests (
 );
 CREATE INDEX IF NOT EXISTS ix_guests_event ON event_guests(event_id);`);
 // 게스트비: 데려온 회원(added_by)이 책임지고, 임원이 받으면 체크한다.
-['fee INTEGER DEFAULT 0', 'paid INTEGER DEFAULT 0', 'paid_at BIGINT'].forEach(c => {
+['fee INTEGER DEFAULT 0', 'paid INTEGER DEFAULT 0', 'paid_at BIGINT',
+ 'phone TEXT', "source TEXT DEFAULT 'manual'", 'user_id INTEGER'].forEach(c => {
   try { db.exec(`ALTER TABLE event_guests ADD COLUMN ${c}`); } catch (e) {}
 });
 
