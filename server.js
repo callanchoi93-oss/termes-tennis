@@ -148,6 +148,7 @@ function auth(req, res, next) {
   } catch { return res.status(401).json({ error: 'bad_token' }); }
 }
 // 토큰이 있으면 uid, 없거나 무효면 null (공개 엔드포인트에서 joined 여부 판단용)
+const MIN_AGE = 14;   // 만 14세 미만 가입 제한
 function tryUid(req) {
   const h = req.headers.authorization || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -349,6 +350,12 @@ app.put('/me/sport-profile/:sport', auth, (req, res) => {
     if (v === '' || v == null) return;
     clean[String(k).slice(0, 20)] = String(v).slice(0, 40);
   });
+  // 만 14세 미만은 법정대리인 동의 없이 가입할 수 없다 (정보통신망법)
+  if (clean.birth) {
+    const by = parseInt(clean.birth, 10);
+    if (by && (new Date().getFullYear() - by) < MIN_AGE)
+      return res.status(403).json({ error: 'under_age', min_age: MIN_AGE });
+  }
   all[sport] = clean;
   db.prepare('UPDATE users SET sport_profile=? WHERE id=?').run(JSON.stringify(all), req.uid);
   // 라켓 종목의 공통 항목은 users 컬럼에도 반영해 선수 비교에서 바로 쓴다
@@ -2139,7 +2146,12 @@ app.get('/records/leaderboard', (req, res) => {
 // ── LOUNGE (익명 커뮤니티) + 모더레이션 ──
 app.get('/posts', (req, res) => {
   const { category, sport, q } = req.query;
+  const me = tryUid(req);
   let sql = 'SELECT *, (SELECT COUNT(*) FROM comments WHERE post_id=posts.id AND hidden=0) AS comments FROM posts WHERE hidden=0', p = [];
+  if (me) {                                          // 차단한 사람의 글은 안 보인다
+    sql += ' AND (user_id IS NULL OR user_id NOT IN (SELECT blocked_user_id FROM blocks WHERE user_id=?))';
+    p.push(me);
+  }
   if (category && category !== '전체') { sql += ' AND category=?'; p.push(category); }
   if (sport) { sql += ' AND sport=?'; p.push(sport); }
   if (q) { sql += ' AND (title LIKE ? OR body LIKE ?)'; p.push('%'+q+'%','%'+q+'%'); }
@@ -2147,9 +2159,13 @@ app.get('/posts', (req, res) => {
 });
 // 댓글
 app.get('/posts/:id/comments', (req, res) => {
+  const me = tryUid(req);
   res.json(db.prepare(`SELECT c.id, c.body, c.created_at, COALESCE(c.anon_nick,u.anon_nick) AS anon_nick, u.gender
     FROM comments c LEFT JOIN users u ON u.id=c.user_id
-    WHERE c.post_id=? AND c.hidden=0 ORDER BY c.id`).all(+req.params.id));
+    WHERE c.post_id=? AND c.hidden=0
+      AND (? IS NULL OR c.user_id IS NULL
+           OR c.user_id NOT IN (SELECT blocked_user_id FROM blocks WHERE user_id=?))
+    ORDER BY c.id`).all(+req.params.id, me, me));
 });
 app.post('/posts/:id/comments', auth, (req, res) => {
   const body = (req.body && req.body.body || '').trim();
@@ -2194,8 +2210,19 @@ app.post('/report', auth, (req, res) => {
   res.json({ ok: true });
 });
 app.post('/block', auth, (req, res) => {
-  db.prepare('INSERT OR IGNORE INTO blocks (user_id,blocked_user_id) VALUES (?,?)').run(req.uid, req.body.user_id);
+  const t = +(req.body && req.body.user_id);
+  if (!t || t === req.uid) return res.status(400).json({ error: 'bad_target' });
+  db.prepare('INSERT OR IGNORE INTO blocks (user_id,blocked_user_id) VALUES (?,?)').run(req.uid, t);
   res.json({ ok: true });
+});
+app.post('/unblock', auth, (req, res) => {
+  db.prepare('DELETE FROM blocks WHERE user_id=? AND blocked_user_id=?').run(req.uid, +(req.body && req.body.user_id));
+  res.json({ ok: true });
+});
+app.get('/blocks', auth, (req, res) => {
+  res.json(db.prepare(`SELECT b.blocked_user_id AS user_id, u.name, u.anon_nick
+    FROM blocks b LEFT JOIN users u ON u.id=b.blocked_user_id
+    WHERE b.user_id=? ORDER BY b.id DESC`).all(req.uid));
 });
 
 // ── M캐쉬 지갑 ──
@@ -3343,16 +3370,31 @@ const LEGAL_CSS = `<style>body{font-family:-apple-system,'Apple SD Gothic Neo',s
 h1{font-size:22px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:13.5px;color:#4a4237}ul{padding-left:18px}
 .sub{font-size:12px;color:#8a7f70}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:12.5px;color:#8a7f70;margin-top:30px}</style>`;
 
+// 법률 문서에 들어갈 운영자 정보. Railway Variables 에서 채운다.
+const OP_NAME  = process.env.OP_NAME  || '';          // 예: 최민혁
+const OP_EMAIL = process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || '';
+const OP_BIZ   = process.env.OP_BIZ   || '';          // 예: 상호 · 사업자등록번호 · 주소
+const opBox = (label) => {
+  const rows = [];
+  if (OP_NAME)  rows.push(`${label}: ${OP_NAME}`);
+  if (OP_EMAIL) rows.push(`문의: <a href="mailto:${OP_EMAIL}">${OP_EMAIL}</a> · 앱 내 신고 기능`);
+  else          rows.push('문의: 앱 내 신고 기능');
+  if (OP_BIZ)   rows.push(OP_BIZ);
+  return `<div class="box">${rows.join('<br>')}</div>`;
+};
+
 app.get('/terms', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 이용약관</title>${LEGAL_CSS}</head><body>
 <h1>맞수(MATSU) 이용약관</h1><p class="sub">시행일: 2026-07-15</p>
 <h2>제1조 (목적)</h2><p>이 약관은 맞수(이하 "서비스")가 제공하는 스포츠 동호회 운영·매칭 서비스의 이용 조건과 절차, 회원과 서비스의 권리·의무를 정합니다.</p>
-<h2>제2조 (서비스 내용)</h2><p>서비스는 클럽 운영(모임·대진·회비·출석), 회원 간 매칭·대화, 커뮤니티 기능을 제공합니다. 일부 기능은 유료(M캐쉬·프리미엄)로 제공될 수 있으며, 요금과 조건은 앱 내에 표시합니다.</p>
-<h2>제3조 (회원의 의무)</h2><ul><li>타인의 정보를 도용하거나 허위 정보를 등록하지 않습니다.</li><li>다른 회원을 비방·희롱하거나 연락처를 무단 수집하지 않습니다.</li><li>경기 결과·평점을 조작하지 않습니다. 위반 시 이용이 제한될 수 있습니다.</li></ul>
-<h2>제4조 (결제와 환불)</h2><p>유료 결제는 결제 대행사를 통해 처리되며, 미사용 M캐쉬는 관련 법령과 앱 내 고지에 따라 환불됩니다. 참가비 등 회원 간 금전 거래는 당사자 간 책임입니다.</p>
-<h2>제5조 (서비스 변경·중단)</h2><p>서비스는 운영상 필요에 따라 기능을 변경할 수 있으며, 중대한 변경은 사전에 공지합니다.</p>
-<h2>제6조 (면책)</h2><p>서비스는 회원 간 경기·모임 중 발생한 사고, 회원 간 분쟁에 대해 고의·중과실이 없는 한 책임을 지지 않습니다.</p>
-<h2>제7조 (탈퇴)</h2><p>회원은 언제든 앱 내에서 탈퇴할 수 있습니다. 탈퇴 시 개인정보는 지체 없이 파기되며, 클럽 장부·경기 기록은 무결성을 위해 익명 처리되어 보존됩니다.</p>
-<div class="box">문의: 앱 내 신고·문의 기능 이용<br>사업자 정보: (등록 후 기재)</div></body></html>`));
+<h2>제2조 (서비스 내용)</h2><p>서비스는 클럽 운영(모임·대진·회비·출석), 회원 간 매칭·대화, 커뮤니티 기능을 제공합니다. 현재 앱 내 기능은 무료로 제공됩니다. 유료 기능을 도입하는 경우 요금과 조건을 앱 내에 미리 표시합니다.</p>
+<h2>제3조 (가입 자격)</h2><p>만 14세 이상만 가입할 수 있습니다. 만 14세 미만은 관련 법령에 따라 가입이 제한됩니다. 가입 시 입력한 출생 연도가 사실과 다른 경우 이용이 제한될 수 있습니다.</p>
+<h2>제4조 (회원의 의무)</h2><ul><li>타인의 정보를 도용하거나 허위 정보를 등록하지 않습니다.</li><li>다른 회원을 비방·희롱하거나 연락처를 무단 수집하지 않습니다.</li><li>경기 결과·평점을 조작하지 않습니다. 위반 시 이용이 제한될 수 있습니다.</li></ul>
+<h2>제5조 (결제와 환불)</h2><p>현재 서비스는 회원에게 이용료를 받지 않습니다. 회비·참가비 등 회원 간 금전 거래는 당사자 간 책임이며 서비스는 이를 대행하지 않습니다.</p>
+<h2>제6조 (서비스 변경·중단)</h2><p>서비스는 운영상 필요에 따라 기능을 변경할 수 있으며, 중대한 변경은 사전에 공지합니다.</p>
+<h2>제7조 (면책)</h2><p>서비스는 회원 간 경기·모임 중 발생한 사고, 회원 간 분쟁에 대해 고의·중과실이 없는 한 책임을 지지 않습니다.</p>
+<h2>제8조 (게시물의 권리)</h2><ul><li>회원이 작성한 게시물의 저작권은 작성한 회원에게 있습니다.</li><li>회원은 서비스가 해당 게시물을 서비스 운영·노출에 필요한 범위에서 사용하는 것을 허락합니다.</li><li>서비스는 법령이나 이 약관을 위반한 게시물을 삭제하거나 노출을 제한할 수 있습니다.</li><li>회원은 다른 회원을 차단할 수 있으며, 차단한 회원의 게시물과 대화는 표시되지 않습니다.</li></ul>
+<h2>제9조 (탈퇴)</h2><p>회원은 언제든 앱 내에서 탈퇴할 수 있습니다. 탈퇴 시 개인정보는 지체 없이 파기되며, 클럽 장부·경기 기록은 무결성을 위해 익명 처리되어 보존됩니다.</p>
+${opBox('운영자')}</body></html>`));
 
 app.get('/privacy', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 개인정보처리방침</title>${LEGAL_CSS}</head><body>
 <h1>개인정보처리방침</h1><p class="sub">시행일: 2026-07-15</p>
@@ -3364,9 +3406,9 @@ app.get('/privacy', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><hea
 <h2>3. 보관과 파기</h2><p>회원 탈퇴 시 개인정보는 지체 없이 파기합니다. 클럽 회비 장부와 경기 기록은 장부 무결성을 위해 <b>누구인지 알 수 없도록 익명화</b>하여 보존합니다. 법령이 보존을 요구하는 정보는 해당 기간 동안 보관합니다.</p>
 <h2>4. 제3자 제공</h2><p>법령에 근거한 경우를 제외하고 개인정보를 제3자에게 제공하지 않습니다. 결제 처리를 위해 결제 대행사에 최소한의 정보가 전달될 수 있습니다.</p>
 <h2>5. 처리 위탁</h2><p>서버 호스팅(Railway), 푸시 발송(웹 푸시/APNs)에 한하여 처리를 위탁하며, 수탁자가 개인정보를 다른 목적으로 이용하지 않도록 관리합니다.</p>
-<h2>6. 이용자의 권리</h2><p>이용자는 언제든 자신의 정보를 열람·수정·삭제(탈퇴)할 수 있습니다. 앱 내 [내정보]에서 직접 처리하거나 문의 기능으로 요청할 수 있습니다.</p>
+<h2>6. 이용자의 권리</h2><p>이용자는 언제든 자신의 정보를 열람·수정·삭제(탈퇴)할 수 있습니다. 앱 내 [내정보]에서 직접 처리하거나 아래 이메일로 요청할 수 있습니다.</p>
 <h2>7. 안전성 확보 조치</h2><p>비밀 키 기반 인증 토큰, 전송 구간 암호화(HTTPS), 접근 통제, 일일 백업을 시행합니다.</p>
-<div class="box">개인정보 보호책임자: (등록 후 기재)<br>문의: 앱 내 신고·문의 기능 이용</div></body></html>`));
+${opBox('개인정보 보호책임자')}</body></html>`));
 
 const START_TS = Date.now();
 app.get('/health', (_, res) => res.json({ ok: true, ts: now() }));
