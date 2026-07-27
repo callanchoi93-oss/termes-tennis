@@ -218,9 +218,9 @@ app.post('/auth/dev-login', limitLogin, (req, res) => {
 
 // ── 카카오 로그인 (실연동) ──
 // 준비: https://developers.kakao.com → 앱 생성 → JavaScript 키 발급 → 플랫폼에 도메인 등록
-async function kakaoIssue(access_token, res) {
+async function kakaoIssueData(access_token) {
   const kr = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: 'Bearer ' + access_token } });
-  if (!kr.ok) return res.status(401).json({ error: 'kakao_verify_failed' });
+  if (!kr.ok) { const e = new Error('kakao_verify_failed'); e.code = 401; throw e; }
   const k = await kr.json();                         // { id, kakao_account, properties }
   const pid = 'kakao-' + k.id;
   const name = cleanName((k.properties && k.properties.nickname), '카카오' + String(k.id).slice(-4));
@@ -231,7 +231,22 @@ async function kakaoIssue(access_token, res) {
     u = getUser(rid(r));
     db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
   }
-  res.json({ token: sign(u), user: u });
+  return { token: sign(u), user: u };
+}
+async function kakaoIssue(access_token, res) {
+  try { res.json(await kakaoIssueData(access_token)); }
+  catch (e) { res.status(e.code || 500).json({ error: String(e.message || e) }); }
+}
+// 카카오 인가코드 → 액세스 토큰
+async function kakaoExchange(code, redirect_uri) {
+  const key = process.env.KAKAO_REST_KEY;
+  const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri, code });
+  if (process.env.KAKAO_CLIENT_SECRET) body.set('client_secret', process.env.KAKAO_CLIENT_SECRET);
+  const tk = await fetch('https://kauth.kakao.com/oauth/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
+  }).then(r => r.json());
+  if (!tk.access_token) { const e = new Error(JSON.stringify(tk)); e.kakao = tk; throw e; }
+  return tk.access_token;
 }
 // 클라이언트가 Kakao SDK로 받은 access_token을 보내는 방식 (SPA 권장)
 // ══════════════════════════════════════════════════════════════
@@ -321,35 +336,70 @@ const KAKAO_NATIVE_REDIRECT_URI =
 app.get('/auth/kakao/native-start', (req, res) => {
   const key = process.env.KAKAO_REST_KEY;
   if (!key) return res.status(500).send('KAKAO_REST_KEY 가 설정되지 않았습니다');
+  const st = String(req.query.state || '').slice(0, 64);
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(st)) return res.status(400).send('bad state');
   const q = new URLSearchParams({
     client_id: key,
     redirect_uri: KAKAO_NATIVE_REDIRECT_URI,
     response_type: 'code',
+    state: st,                  // 앱이 결과를 찾아갈 때 쓰는 표
     prompt: 'login',            // 이전 세션이 남아 조용히 통과하는 것을 막는다
   });
   res.set('Cache-Control', 'no-store');
   res.redirect('https://kauth.kakao.com/oauth/authorize?' + q);
 });
 
-app.get('/auth/kakao/native-callback', (req, res) => {
-  const code  = String(req.query.code  || '');
-  const error = String(req.query.error || '');
-  const q = code ? ('code=' + encodeURIComponent(code))
-                 : ('error=' + encodeURIComponent(error || 'cancelled'));
-  const target = APP_SCHEME + '://kakao?' + q;
+// 앱이 찾아갈 때까지 결과를 잠깐 들고 있는다 (5분)
+const NATIVE_AUTH = new Map();
+const _naTimer = setInterval(() => {
+  const t = Date.now();
+  for (const [k, v] of NATIVE_AUTH) if (t - v.at > 5 * 60 * 1000) NATIVE_AUTH.delete(k);
+}, 60 * 1000);
+if (_naTimer.unref) _naTimer.unref();
+
+function nativeDonePage(msg, ok) {
+  return '<!doctype html><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>' + msg + '</title>'
+    + '<body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;text-align:center;'
+    + 'padding:72px 24px;color:#2b2620">'
+    + '<div style="font-size:44px;margin-bottom:18px">' + (ok ? '&#10003;' : '&#9888;') + '</div>'
+    + '<p style="font-size:17px;font-weight:600;margin:0 0 8px">' + msg + '</p>'
+    + '<p style="font-size:14px;color:#8a857c;margin:0">잠시 후 앱으로 돌아갑니다</p>'
+    + '</body>';
+}
+
+app.get('/auth/kakao/native-callback', async (req, res) => {
+  const code = String(req.query.code || '');
+  const st   = String(req.query.state || '');
   res.set('Cache-Control', 'no-store');
   res.set('Content-Type', 'text/html; charset=utf-8');
-  // 자동 이동이 막히는 기기가 있어 버튼도 함께 둔다
-  res.send('<!doctype html><meta charset="utf-8">'
-    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
-    + '<title>로그인 완료</title>'
-    + '<body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;text-align:center;padding:64px 24px;color:#2b2620">'
-    + '<p style="font-size:15px">앱으로 돌아가는 중이에요…</p>'
-    + '<p style="margin-top:24px"><a href="' + target + '" '
-    + 'style="display:inline-block;background:#ec6a2e;color:#fff;text-decoration:none;'
-    + 'padding:13px 22px;border-radius:12px;font-size:15px;font-weight:600">앱으로 돌아가기</a></p>'
-    + '<script>location.replace(' + JSON.stringify(target) + ');<\/script>'
-    + '</body>');
+  if (!st) return res.send(nativeDonePage('로그인을 확인할 수 없어요', false));
+  if (!code) {
+    NATIVE_AUTH.set(st, { at: Date.now(), error: 'cancelled' });
+    return res.send(nativeDonePage('로그인이 취소됐어요', false));
+  }
+  try {
+    const at = await kakaoExchange(code, KAKAO_NATIVE_REDIRECT_URI);
+    const d  = await kakaoIssueData(at);
+    NATIVE_AUTH.set(st, { at: Date.now(), data: d });
+    res.send(nativeDonePage('로그인됐어요', true));
+  } catch (e) {
+    console.error('[kakao-native] 실패:', e && e.message);
+    NATIVE_AUTH.set(st, { at: Date.now(), error: String((e && e.message) || e) });
+    res.send(nativeDonePage('로그인에 실패했어요', false));
+  }
+});
+
+// 앱이 결과를 찾아간다. 한 번 가져가면 지운다.
+app.get('/auth/kakao/native-poll', (req, res) => {
+  const st = String(req.query.state || '');
+  res.set('Cache-Control', 'no-store');
+  const v = NATIVE_AUTH.get(st);
+  if (!v) return res.json({ ready: false });
+  NATIVE_AUTH.delete(st);
+  if (v.error) return res.status(401).json({ ready: true, error: v.error });
+  res.json({ ready: true, token: v.data.token, user: v.data.user });
 });
 
 app.post('/auth/kakao/code', limitLogin, async (req, res) => {
@@ -359,13 +409,8 @@ app.post('/auth/kakao/code', limitLogin, async (req, res) => {
   const redirect = native ? KAKAO_NATIVE_REDIRECT_URI : process.env.KAKAO_REDIRECT_URI;
   if (!code || !key || !redirect) return res.status(400).json({ error: 'missing_code_or_env' });
   try {
-    const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri: redirect, code });
-    if (process.env.KAKAO_CLIENT_SECRET) body.set('client_secret', process.env.KAKAO_CLIENT_SECRET);
-    const tk = await fetch('https://kauth.kakao.com/oauth/token', {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
-    }).then(r => r.json());
-    if (!tk.access_token) return res.status(401).json({ error: 'token_exchange_failed', detail: tk });
-    await kakaoIssue(tk.access_token, res);
+    const at = await kakaoExchange(code, redirect);
+    await kakaoIssue(at, res);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
