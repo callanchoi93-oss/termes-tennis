@@ -2498,49 +2498,69 @@ async function syncMe(){
 /* ── 네이티브 앱(iOS/Android)용 카카오 로그인 ────────────────────────
    앱을 벗어나지 않고 인앱 브라우저(iOS = SFSafariViewController)에서
    로그인한다. 애플 가이드라인 4 대응.
-     1) 서버의 /auth/kakao/native-start 를 인앱 브라우저로 연다
-     2) 카카오 로그인 → 서버 /auth/kakao/native-callback 로 돌아옴
-     3) 그 페이지가 matsu://kakao?code=... 로 앱을 깨운다
-     4) 아래 appUrlOpen 리스너가 code 를 받아 로그인을 마친다          */
+
+   ⚠ iOS 제약: SFSafariViewController 는 자기를 띄운 앱의 커스텀 주소
+      (matsu://) 를 열지 못한다. 그래서 딥링크로 돌아오지 않고,
+      서버가 결과를 잠깐 보관하면 앱이 그것을 물어보는 방식을 쓴다.
+
+     1) 앱이 임의의 표(state)를 만들어 /auth/kakao/native-start?state=.. 를 연다
+     2) 카카오 로그인 → 서버 /auth/kakao/native-callback 이 토큰까지 발급해 보관
+     3) 앱은 /auth/kakao/native-poll?state=.. 를 반복해서 물어본다
+     4) 결과가 오면 인앱 브라우저를 닫고 로그인을 마친다                */
 function _capBrowser(){
   try{ return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser; }catch(e){ return null; }
 }
+function _randState(){
+  try{
+    const a=new Uint8Array(16); crypto.getRandomValues(a);
+    return Array.from(a, b=>('0'+b.toString(16)).slice(-2)).join('');
+  }catch(e){ return 'k'+Date.now()+Math.random().toString(36).slice(2,10); }
+}
+let _kakaoPolling = false;
 async function kakaoLoginNative(){
-  if(!SERVER_OK) throw new Error('server_down');
+  if(!SERVER_OK){ toast('로그인은 서버 연결이 필요해요'); return; }
+  if(_kakaoPolling) return;                 // 중복 실행 방지
   const B = _capBrowser();
-  const url = API_BASE + '/auth/kakao/native-start';
-  try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
-  if(B && B.open){ await B.open({ url, presentationStyle:'popover' }); }
-  else { location.href = url; }
-}
-/* 앱이 matsu://kakao?code=... 로 깨어났을 때 */
-function _initKakaoDeepLink(){
-  const App = (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App) || null;
-  if(!App || !App.addListener) return;
-  App.addListener('appUrlOpen', async (ev)=>{
-    const raw = String((ev && ev.url) || '');
-    if(raw.indexOf('kakao') < 0) return;
-    const qs = raw.split('?')[1] || '';
-    const p  = new URLSearchParams(qs);
-    const code = p.get('code'), err = p.get('error');
-    const B = _capBrowser();
-    try{ if(B && B.close) await B.close(); }catch(e){}
-    if(err || !code){ toast('카카오 로그인이 취소됐어요'); return; }
-    try{
-      saveSession(await api('/auth/kakao/code', {method:'POST', body: JSON.stringify({ code, native:true })}));
-      toast('카카오로 로그인했어요');
-      const _a=document.getElementById('auth'); if(_a) _a.classList.remove('on');
-      if(typeof afterLoginNative==='function') afterLoginNative();
-      await loadClubIds();
-      if(clubId()){ await loadClubServer(); await loadRoster(); }
-      if(state.loggedIn){ go(state.view||'home'); } else resumeOrOnboard();
-    }catch(e){
-      console.error('[MATSU] 카카오(네이티브) 로그인 실패:', e && e.message);
-      toast('카카오 로그인에 실패했어요 · 다시 시도해 주세요');
+  if(!B || !B.open){ toast('로그인 창을 열 수 없어요'); return; }
+
+  const st = _randState();
+  _kakaoPolling = true;
+  try{
+    await B.open({ url: API_BASE + '/auth/kakao/native-start?state=' + encodeURIComponent(st),
+                   presentationStyle: 'popover' });
+  }catch(e){ _kakaoPolling = false; toast('로그인 창을 열 수 없어요'); return; }
+
+  // 사용자가 직접 창을 닫으면 폴링도 멈춘다
+  let closed = false;
+  try{ B.addListener && B.addListener('browserFinished', ()=>{ closed = true; }); }catch(e){}
+
+  const t0 = Date.now();
+  const tick = async ()=>{
+    if(!_kakaoPolling) return;
+    if(Date.now() - t0 > 180000){ _kakaoPolling = false; return; }   // 3분이면 포기
+    let r = null;
+    try{ r = await fetch(API_BASE + '/auth/kakao/native-poll?state=' + encodeURIComponent(st),
+                         { cache:'no-store' }).then(x=>x.json()); }catch(e){}
+    if(r && r.ready){
+      _kakaoPolling = false;
+      try{ if(B.close) await B.close(); }catch(e){}
+      if(r.error || !r.token){ toast('카카오 로그인에 실패했어요'); return; }
+      try{
+        saveSession(r);
+        toast('카카오로 로그인했어요');
+        const _a=document.getElementById('auth'); if(_a) _a.classList.remove('on');
+        if(typeof afterLoginNative==='function') afterLoginNative();
+        await loadClubIds();
+        if(clubId()){ await loadClubServer(); await loadRoster(); }
+        if(state.loggedIn){ go(state.view||'home'); } else resumeOrOnboard();
+      }catch(e){ console.error('[MATSU] 로그인 마무리 실패:', e && e.message); }
+      return;
     }
-  });
+    if(closed && Date.now() - t0 > 4000){ _kakaoPolling = false; return; }
+    setTimeout(tick, 1200);
+  };
+  setTimeout(tick, 1500);
 }
-try{ _initKakaoDeepLink(); }catch(e){}
 
 function kakaoLogin(){
   /* 네이티브 앱이면 인앱 브라우저 방식으로 넘긴다 */
@@ -2554,7 +2574,7 @@ function kakaoLogin(){
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
   if(!Kakao.isInitialized()) Kakao.init(CFG.kakao_js_key);
   try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
-  Kakao.Auth.authorize({ redirectUri: CFG.kakao_redirect_uri || (location.origin + '/') });
+  Kakao.Auth.authorize({ redirectUri: CFG.kakao_redirect_uri || (location.origin + '/'), state: 'kakao' });
 }
 /* 카카오가 ?code=... 를 달고 돌려보냈을 때 */
 async function handleKakaoCallback(code){
@@ -14929,8 +14949,14 @@ checkServer().then(async ok=>{
     // 로그인 전이면 로그인 뒤에 처리된다 (아래 저장분 확인)
   }
   if(new URL(location.href).searchParams.get('code')){
-    let provider = 'naver';
-    try{ provider = sessionStorage.getItem('oauth_provider') || 'naver'; }catch(e){}
+    /* 어떤 로그인이었는지 판별.
+       sessionStorage 는 다른 오리진을 거쳐 오면 비어 있을 수 있으므로
+       주소의 state 를 먼저 본다. */
+    let provider = '';
+    const _st = new URL(location.href).searchParams.get('state') || '';
+    if(_st === 'kakao') provider = 'kakao';
+    if(!provider){ try{ provider = sessionStorage.getItem('oauth_provider') || ''; }catch(e){} }
+    if(!provider) provider = CFG.naver_client_id ? 'naver' : 'kakao';
     try{ sessionStorage.removeItem('oauth_provider'); }catch(e){}
     const code = new URL(location.href).searchParams.get('code');
     const done = provider==='kakao' ? await handleKakaoCallback(code) : await handleNaverCallback();
