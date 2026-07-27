@@ -247,6 +247,9 @@ app.get('/config', (_, res) => {
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
+    kakao_native_redirect_uri: KAKAO_NATIVE_REDIRECT_URI,        // 앱 전용 콜백 (https)
+    kakao_native_ready: !!(process.env.KAKAO_REST_KEY && KAKAO_NATIVE_REDIRECT_URI),
+    app_scheme: APP_SCHEME,                                      // 앱을 여는 주소 (matsu://)
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
@@ -299,9 +302,61 @@ app.post('/auth/kakao', limitLogin, async (req, res) => {
   try { await kakaoIssue(access_token, res); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // (대안) 인가코드 방식: 서버가 code→token 교환. env: KAKAO_REST_KEY, KAKAO_REDIRECT_URI (, KAKAO_CLIENT_SECRET)
+//
+// ── iOS/Android 앱(Capacitor)용 콜백 중계 ────────────────────────────
+//  카카오는 리다이렉트 주소로 https 만 허용한다 (matsu:// 같은 앱 주소 불가).
+//  그래서 카카오 → 이 서버 페이지 → 앱(matsu://) 순서로 한 번 거쳐 간다.
+//  앱은 돌아온 code 를 그대로 POST /auth/kakao/code {code, native:true} 로 보낸다.
+//
+//  Railway Variables:
+//    KAKAO_NATIVE_REDIRECT_URI = https://matsu.up.railway.app/auth/kakao/native-callback
+//    APP_SCHEME                = matsu
+//  (없으면 아래 기본값을 쓴다)
+const APP_SCHEME = process.env.APP_SCHEME || 'matsu';
+const KAKAO_NATIVE_REDIRECT_URI =
+  process.env.KAKAO_NATIVE_REDIRECT_URI ||
+  ((process.env.APP_ORIGIN || 'https://matsu.up.railway.app') + '/auth/kakao/native-callback');
+
+// 앱은 이 주소만 열면 된다. REST 키는 서버 밖으로 나가지 않는다.
+app.get('/auth/kakao/native-start', (req, res) => {
+  const key = process.env.KAKAO_REST_KEY;
+  if (!key) return res.status(500).send('KAKAO_REST_KEY 가 설정되지 않았습니다');
+  const q = new URLSearchParams({
+    client_id: key,
+    redirect_uri: KAKAO_NATIVE_REDIRECT_URI,
+    response_type: 'code',
+    prompt: 'login',            // 이전 세션이 남아 조용히 통과하는 것을 막는다
+  });
+  res.set('Cache-Control', 'no-store');
+  res.redirect('https://kauth.kakao.com/oauth/authorize?' + q);
+});
+
+app.get('/auth/kakao/native-callback', (req, res) => {
+  const code  = String(req.query.code  || '');
+  const error = String(req.query.error || '');
+  const q = code ? ('code=' + encodeURIComponent(code))
+                 : ('error=' + encodeURIComponent(error || 'cancelled'));
+  const target = APP_SCHEME + '://kakao?' + q;
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  // 자동 이동이 막히는 기기가 있어 버튼도 함께 둔다
+  res.send('<!doctype html><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>로그인 완료</title>'
+    + '<body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;text-align:center;padding:64px 24px;color:#2b2620">'
+    + '<p style="font-size:15px">앱으로 돌아가는 중이에요…</p>'
+    + '<p style="margin-top:24px"><a href="' + target + '" '
+    + 'style="display:inline-block;background:#ec6a2e;color:#fff;text-decoration:none;'
+    + 'padding:13px 22px;border-radius:12px;font-size:15px;font-weight:600">앱으로 돌아가기</a></p>'
+    + '<script>location.replace(' + JSON.stringify(target) + ');<\/script>'
+    + '</body>');
+});
+
 app.post('/auth/kakao/code', limitLogin, async (req, res) => {
-  const { code } = req.body || {};
-  const key = process.env.KAKAO_REST_KEY, redirect = process.env.KAKAO_REDIRECT_URI;
+  const { code, native } = req.body || {};
+  const key = process.env.KAKAO_REST_KEY;
+  // 토큰 교환 시 redirect_uri 는 인증을 요청할 때 쓴 주소와 반드시 같아야 한다
+  const redirect = native ? KAKAO_NATIVE_REDIRECT_URI : process.env.KAKAO_REDIRECT_URI;
   if (!code || !key || !redirect) return res.status(400).json({ error: 'missing_code_or_env' });
   try {
     const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri: redirect, code });
