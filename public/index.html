@@ -2002,6 +2002,42 @@ const API_BASE = (()=>{
   if (window.Capacitor) return REMOTE_API;                  // Android 앱: https://localhost 껍데기
   return location.origin;                                   // 웹 · 로컬 개발
 })();
+/* ── 업로드 이미지 경로 보정 ──────────────────────────────────
+   서버는 배너·사진을 상대 경로(/uploads/..)로 내려준다.
+   iOS 앱의 오리진은 capacitor://localhost 라서 상대 경로가
+   capacitor://localhost/uploads/.. 로 해석돼 404(물음표)가 난다.
+   → 상대 경로면 API_BASE 를 붙여 절대 URL 로 만든다. */
+function mediaURL(u){
+  u = String(u==null?'':u);
+  if(!u) return '';
+  if(/^(https?:|data:|blob:)/i.test(u)) return u;
+  return API_BASE + (u.charAt(0)==='/' ? u : '/'+u);
+}
+/* ── 링크 열기 (심사 가이드라인 4 대응) ──────────────────────
+   네이티브 앱에서 window.open(url,'_blank') 은 시스템 Safari 로
+   튕겨 "기본 브라우저로 이동" 반려 사유가 된다.
+   · 네이티브 + https 링크: Capacitor Browser 플러그인(iOS 는
+     SFSafariViewController — 애플이 반려 메일에서 직접 허용한 방식)
+   · 네이티브 + 상대 링크(번들 페이지): 같은 WebView 에서 이동
+   · 웹: 기존처럼 새 탭
+   사용법: onclick="openExternal('...')" 또는 <a onclick="return openExternal(this.href)"> */
+function openExternal(url){
+  if(!url) return false;
+  url = String(url);
+  const absHttp = /^https?:/i.test(url);
+  try{
+    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+      if(absHttp){
+        const B = Capacitor.Plugins && Capacitor.Plugins.Browser;
+        if(B && B.open){ B.open({ url }); return false; }
+      }
+      location.href = url;               // 플러그인 없으면 같은 WebView 에서 이동
+      return false;
+    }
+  }catch(e){}
+  window.open(url, '_blank');
+  return false;
+}
 const TOKEN_KEY = 'matsu_jwt';
 let SERVER_OK = false;
 
@@ -2059,6 +2095,10 @@ function gsiReady(){
    한 번 보고 없다고 포기하면 버튼이 영영 안 뜬다. 최대 10초간 기다린다. */
 let _gsiTries = 0;
 function initGoogleWhenReady(){
+  /* 네이티브 iOS: 구글은 임베디드 WebView 의 GSI 를 차단한다
+     (disallowed_useragent). 버튼을 아예 노출하지 않는다.
+     Apple·카카오 로그인만 표시된다. */
+  try{ if(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform()==='ios') return; }catch(e){}
   if(_gsiDone || !SERVER_OK || !CFG.google_client_id) return;
   if(gsiReady()){ initGoogle(); return; }
   if(_gsiTries++ > 50){                        // 200ms × 50 = 10초
@@ -2125,16 +2165,26 @@ function loadAppleSdk(){
 }
 async function appleLogin(){
   if(!SERVER_OK){ toast('애플 로그인은 서버 연결이 필요해요'); return; }
-  if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
   try{
-    await loadAppleSdk();
-    AppleID.auth.init({ clientId:CFG.apple_client_id, scope:'name email',
-      redirectURI: location.origin, usePopup:true });
-    const resp = await AppleID.auth.signIn();
-    const idt = resp && resp.authorization && resp.authorization.id_token;
-    if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
-    // 이름은 최초 1회만 내려온다 — 있으면 함께 보낸다
-    const nm = resp.user && resp.user.name ? `${resp.user.name.lastName||''}${resp.user.name.firstName||''}`.trim() : '';
+    let idt='', nm='';
+    // iOS 앱: 네이티브 Sign in with Apple (Apple 정책 4.8 — 웹 팝업 불가)
+    if(IS_IOS_APP && window.Capacitor?.Plugins?.SignInWithApple){
+      const r = await Capacitor.Plugins.SignInWithApple.authorize({ scopes:'name email' });
+      const rp = r && r.response ? r.response : r;
+      idt = rp && rp.identityToken;
+      if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
+      nm = rp && rp.givenName ? `${rp.familyName||''}${rp.givenName||''}`.trim() : '';
+    } else {
+      // 웹 / PWA: Apple JS SDK 팝업
+      if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
+      await loadAppleSdk();
+      AppleID.auth.init({ clientId:CFG.apple_client_id, scope:'name email',
+        redirectURI: location.origin, usePopup:true });
+      const resp = await AppleID.auth.signIn();
+      idt = resp && resp.authorization && resp.authorization.id_token;
+      if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
+      nm = resp.user && resp.user.name ? `${resp.user.name.lastName||''}${resp.user.name.firstName||''}`.trim() : '';
+    }
     saveSession(await api('/auth/apple',{method:'POST',body:JSON.stringify({id_token:idt, name:nm})}));
     toast('Apple로 로그인했어요');
     document.getElementById('auth').classList.remove('on');
@@ -2202,8 +2252,8 @@ function applyAuthUI(){
         <label style="display:flex;align-items:flex-start;gap:8px;margin:2px 2px 10px;cursor:pointer">
           <input type="checkbox" id="nlAgree" style="margin-top:2px;accent-color:var(--coral)">
           <span style="font-size:12px;color:var(--gray);font-weight:500;line-height:1.5;text-align:left">(필수)
-            <a href="${API_BASE}/terms" target="_blank" style="color:var(--coral-d)">이용약관</a>과
-            <a href="${API_BASE}/privacy" target="_blank" style="color:var(--coral-d)">개인정보처리방침</a>에 동의합니다</span></label>
+            <a href="${API_BASE}/terms" target="_blank" onclick="return openExternal(this.href)" style="color:var(--coral-d)">이용약관</a>과
+            <a href="${API_BASE}/privacy" target="_blank" onclick="return openExternal(this.href)" style="color:var(--coral-d)">개인정보처리방침</a>에 동의합니다</span></label>
         <button class="btn" onclick="if(!document.getElementById('nlAgree').checked){toast('약관 동의가 필요해요');return;}nameLoginSrv()">시작하기</button>
         <div class="note" style="margin-top:10px;text-align:left">이름으로 바로 시작해요. 카카오 로그인이 열리면 자동으로 전환됩니다.</div>`;
     } else {
@@ -2445,7 +2495,60 @@ async function syncMe(){
 /* 카카오 JS SDK v2 에는 Kakao.Auth.login(팝업) 이 없다. v1 에서 삭제됐다.
    v2 는 authorize() 로 페이지를 이동시키고, redirectUri 로 ?code=... 를 돌려준다.
    그 code 를 서버가 REST 키로 토큰과 교환한다 (POST /auth/kakao/code). */
+/* ── 네이티브 앱(iOS/Android)용 카카오 로그인 ────────────────────────
+   앱을 벗어나지 않고 인앱 브라우저(iOS = SFSafariViewController)에서
+   로그인한다. 애플 가이드라인 4 대응.
+     1) 서버의 /auth/kakao/native-start 를 인앱 브라우저로 연다
+     2) 카카오 로그인 → 서버 /auth/kakao/native-callback 로 돌아옴
+     3) 그 페이지가 matsu://kakao?code=... 로 앱을 깨운다
+     4) 아래 appUrlOpen 리스너가 code 를 받아 로그인을 마친다          */
+function _capBrowser(){
+  try{ return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser; }catch(e){ return null; }
+}
+async function kakaoLoginNative(){
+  if(!SERVER_OK) throw new Error('server_down');
+  const B = _capBrowser();
+  const url = API_BASE + '/auth/kakao/native-start';
+  try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
+  if(B && B.open){ await B.open({ url, presentationStyle:'popover' }); }
+  else { location.href = url; }
+}
+/* 앱이 matsu://kakao?code=... 로 깨어났을 때 */
+function _initKakaoDeepLink(){
+  const App = (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App) || null;
+  if(!App || !App.addListener) return;
+  App.addListener('appUrlOpen', async (ev)=>{
+    const raw = String((ev && ev.url) || '');
+    if(raw.indexOf('kakao') < 0) return;
+    const qs = raw.split('?')[1] || '';
+    const p  = new URLSearchParams(qs);
+    const code = p.get('code'), err = p.get('error');
+    const B = _capBrowser();
+    try{ if(B && B.close) await B.close(); }catch(e){}
+    if(err || !code){ toast('카카오 로그인이 취소됐어요'); return; }
+    try{
+      saveSession(await api('/auth/kakao/code', {method:'POST', body: JSON.stringify({ code, native:true })}));
+      toast('카카오로 로그인했어요');
+      const _a=document.getElementById('auth'); if(_a) _a.classList.remove('on');
+      if(typeof afterLoginNative==='function') afterLoginNative();
+      await loadClubIds();
+      if(clubId()){ await loadClubServer(); await loadRoster(); }
+      if(state.loggedIn){ go(state.view||'home'); } else resumeOrOnboard();
+    }catch(e){
+      console.error('[MATSU] 카카오(네이티브) 로그인 실패:', e && e.message);
+      toast('카카오 로그인에 실패했어요 · 다시 시도해 주세요');
+    }
+  });
+}
+try{ _initKakaoDeepLink(); }catch(e){}
+
 function kakaoLogin(){
+  /* 네이티브 앱이면 인앱 브라우저 방식으로 넘긴다 */
+  try{
+    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+      return kakaoLoginNative();
+    }
+  }catch(e){}
   if(!SERVER_OK) throw new Error('server_down');
   if(!CFG.kakao_js_key) throw new Error('no_kakao_key');
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
@@ -4154,7 +4257,7 @@ function cycleCourt(i){ const c=AC(); const order=['open','requested','booked'];
 function openPhotoView(url, who){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>${esc(who||'사진')}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <img src="${esc(url)}" style="width:100%;border-radius:16px" loading="lazy">`;
+    <img src="${esc(mediaURL(url))}" style="width:100%;border-radius:16px" loading="lazy">`;
   document.getElementById('ov').classList.add('on');
 }
 
@@ -4173,7 +4276,7 @@ async function openGallery(){
     }else{
       h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
       photos.forEach(p=>{ h+=`<div style="border-radius:14px;overflow:hidden;background:#eee7db;aspect-ratio:1">
-        <img src="${esc(p.photo)}" style="width:100%;height:100%;object-fit:cover" loading="lazy"
+        <img src="${esc(mediaURL(p.photo))}" style="width:100%;height:100%;object-fit:cover" loading="lazy"
              onclick="openPhotoView('${esc(p.photo)}','${esc(p.name||'')}')"></div>`; });
       h+=`</div>`;
     }
@@ -4622,7 +4725,7 @@ async function buyCash(n){
         const pkg=CASH_PKGS.find(p=>p.n===n); if(!pkg){ toast('패키지를 찾을 수 없어요'); return; }
         const o=await api('/pay/order',{method:'POST',body:JSON.stringify({amount:pkg.won})});
         closeOv();
-        window.open(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`,'_blank');
+        openExternal(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`);
         toast('결제창을 열었어요 · 완료 후 돌아오면 잔액이 갱신돼요');
       }catch(e){
         const m=String(e.message||'');
@@ -6458,7 +6561,7 @@ async function renderAdminPanel(){
       <input id="admBnLink" placeholder="랜딩 링크 예) https://..." style="width:100%;border:1.5px solid #ece8e0;border-radius:12px;padding:10px 12px;font-size:14px;margin-top:8px">
       <button class="btn sm" style="margin-top:10px" onclick="adminBannerAdd()">배너 등록</button></div>`+
     _bn.map(b=>`<div class="card" style="padding:10px 12px;display:flex;align-items:center;gap:10px">
-      <img src="${esc(b.image)}" style="width:86px;height:34px;object-fit:cover;border-radius:8px;flex-shrink:0">
+      <img src="${esc(mediaURL(b.image))}" style="width:86px;height:34px;object-fit:cover;border-radius:8px;flex-shrink:0">
       <div style="flex:1;min-width:0;font-size:11px;color:var(--gray);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.link||'링크 없음')}</div>
       <button class="btn sm ghost" style="width:auto;padding:6px 11px;flex-shrink:0" onclick="adminBannerDel(${b.id})">삭제</button></div>`).join('');
   const _po=(window._ADM_PAYOUTS||[]);
@@ -6596,7 +6699,7 @@ async function openMyPosts(){
     d.club_feed.forEach(p=>{ h+=`<div class="card" style="padding:13px 15px;cursor:pointer" onclick="closeOv();go('club')">
       <div style="font-size:11px;font-weight:500;color:var(--lgray)">${esc(p.club_name)} · ${timeAgo(p.created_at)}</div>
       ${p.body?`<div style="font-size:14px;font-weight:500;margin-top:4px;line-height:1.5">${esc(p.body)}</div>`:''}
-      ${p.photo?`<div class="photo" style="margin-top:8px"><img src="${esc(p.photo)}" alt="내가 올린 사진" loading="lazy"></div>`:''}</div>`; });
+      ${p.photo?`<div class="photo" style="margin-top:8px"><img src="${esc(mediaURL(p.photo))}" alt="내가 올린 사진" loading="lazy"></div>`:''}</div>`; });
   }
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
@@ -6752,7 +6855,7 @@ async function openFeedPost(id){
       <div style="flex:1"><b style="font-size:14px">${esc(p.author||'')}</b><div style="font-size:11px;color:var(--lgray);font-weight:500">${timeAgo(p.created_at)}</div></div>
       ${(p.mine||officer)?`<span onclick="delClubPost(${p.id});" style="font-size:12px;font-weight:500;color:#cf5418;cursor:pointer;border:1.5px solid #e5b5ae;border-radius:11px;padding:6px 11px">삭제</span>`:''}</div>
     ${p.body?`<div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.65;margin-top:14px;white-space:pre-wrap">${esc(p.body)}</div>`:``}`;
-  phs.forEach(u=>{ const full=u.startsWith('http')?u:API_BASE+u;
+  phs.forEach(u=>{ const full=mediaURL(u);
     h+=`<div style="border-radius:16px;overflow:hidden;margin-top:10px"><img src="${esc(full)}" alt="사진" loading="lazy" style="width:100%;display:block"></div>`; });
   h+=`<div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
     <button class="btn ${p.liked?'':'ghost'} sm" style="flex:1;${p.liked?'background:var(--coral)':''}" onclick="likeFeedPost(${p.id})">♥ 좋아요 ${p.likes||0}</button></div>
@@ -8064,10 +8167,10 @@ let CB_BANNER=null;
 function cbBannerHTML(){
   const b=(CB_BANNER&&CB_BANNER[0])||null;
   const link=(b&&b.link)||'/bracketguide.html';
-  if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
-      <img src="${esc(b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
+  if(b&&b.image) return `<div onclick="openExternal('${esc(link)}')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
+      <img src="${esc(mediaURL(b.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너" onerror="this.parentNode.style.display='none'"></div>
     <div style="font-size:11px;font-weight:500;color:var(--lgray);text-align:center;margin-top:7px">탭하면 대진 방식 설명이 열려요</div>`;
-  return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
+  return `<div onclick="openExternal('${esc(link)}')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
       <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:14px;flex:none">📖</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:500">어떤 방식을 고를까요?</div>
@@ -14123,8 +14226,8 @@ function _renderMeCore(){
   <div class="card"><div class="ch">계정</div>
     <div style="font-size:12px;color:var(--gray);font-weight:500;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
     <div style="display:flex;justify-content:center;gap:14px;margin-bottom:13px">
-      <a href="${API_BASE}/terms" target="_blank" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">이용약관</a>
-      <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">개인정보처리방침</a>
+      <a href="${API_BASE}/terms" target="_blank" onclick="return openExternal(this.href)" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">이용약관</a>
+      <a href="${API_BASE}/privacy" target="_blank" onclick="return openExternal(this.href)" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">개인정보처리방침</a>
       <a href="mailto:${CFG.support_email||'matsu.help@gmail.com'}?subject=%5B%EB%A7%9E%EC%88%98%5D%20%EB%AC%B8%EC%9D%98" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">문의하기</a></div>
     ${TRIAL&&!authToken()?`<button class="btn" onclick="exitTrial()">체험 종료 · 로그인하러 가기</button>`
       :`<button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>`}
@@ -14276,12 +14379,12 @@ function _renderHomeCore(){
   let h='';
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
     if(bns.length===1){ const bn=bns[0];
-      h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
-      <img src="${esc(bn.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
+      h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`openExternal('${esc(bn.link)}')`:''}">
+      <img src="${esc(mediaURL(bn.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너" onerror="this.parentNode.style.display='none'"></div>`;
     } else if(bns.length>1){
       h+=`<div style="position:relative;margin:4px 0 12px">
         <div id="bnTrack" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:20px;-webkit-overflow-scrolling:touch;scrollbar-width:none" onscroll="bnSync()">
-          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
+          ${bns.map(b=>`<img src="${esc(mediaURL(b.image))}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`openExternal('${esc(b.link)}')`:''}" onerror="this.style.display='none'">`).join('')}
         </div>
         <div onclick="bnGo(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">‹</div>
         <div onclick="bnGo(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">›</div>
