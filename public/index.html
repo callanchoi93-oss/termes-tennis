@@ -1016,6 +1016,40 @@
   .om-p.me{ outline:1.5px solid var(--coral) }
   #sheet select{ border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px;
                  font-family:inherit;font-weight:700;background:#fff;box-sizing:border-box }
+  /* 게스트 추가 등 — select와 동일한 룩의 인라인 인풋 */
+  #sheet .sel-in{ border:1.5px solid var(--line);border-radius:12px;padding:12px 12px;font-size:14px;
+                  font-family:inherit;font-weight:500;background:#fff;box-sizing:border-box;outline:none;color:var(--ink) }
+  #sheet .sel-in:focus{ border-color:var(--coral) }
+  /* ── 영수증 컨셉 견적 ── */
+  .rcp-wrap{ background:#efedea;border-radius:14px;padding:20px 22px;margin:-2px 0 12px }
+  .rcp-paper{ filter:drop-shadow(0 10px 20px rgba(60,55,45,.20)) drop-shadow(0 2px 5px rgba(60,55,45,.12)) }
+  .rcp{ background:linear-gradient(180deg,#f4f2ee 0,#fff 26px,#fff calc(100% - 26px),#f2f0ec 100%);
+        color:#3b342a;font-variant-numeric:tabular-nums }
+  .rcp-lip{ height:10px;background:linear-gradient(180deg,rgba(60,55,45,.07),transparent) }
+  .rcp-lip.b{ background:linear-gradient(0deg,rgba(60,55,45,.07),transparent) }
+  .rcp-body{ padding:9px 17px 8px }
+  .rcp-star{ text-align:center;font-size:11px;color:#b9b09a;letter-spacing:.42em;text-indent:.42em;
+             white-space:nowrap;overflow:hidden }
+  .rcp-row{ display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:2px 0 }
+  .rcp-k{ font-size:13px;font-weight:400;color:#57503f;letter-spacing:-.012em }
+  .rcp-d{ font-size:11px;font-weight:400;color:#a49b86;letter-spacing:-.008em }
+  .rcp-v{ font-size:13px;font-weight:400;color:#3b342a }
+  .rcp-bar{ height:32px;width:62%;margin:12px auto 2px;
+    background:repeating-linear-gradient(90deg,#3b342a 0 2px,transparent 2px 4px,#3b342a 4px 7px,
+      transparent 7px 9px,#3b342a 9px 10px,transparent 10px 14px,#3b342a 14px 16px,transparent 16px 17px) }
+  /* ── 매니저 가이드 배너 · 랜딩 ── */
+  .mgb{ display:flex;align-items:center;gap:13px;background:#faf3e4;border:1px solid #f0e2c8;
+        border-radius:16px;padding:13px 15px;margin:2px 0 12px;cursor:pointer }
+  .mgb-t{ font-size:14px;font-weight:600;color:#3b342a;letter-spacing:-.02em }
+  .mgb-d{ font-size:12px;font-weight:400;color:#8a7a5c;margin-top:3px;line-height:1.5 }
+  .mgl-hero{ background:#faf3e4;border-radius:16px;padding:20px 18px 4px;text-align:center;margin-bottom:12px }
+  .mgl-kick{ font-size:11px;font-weight:600;color:var(--coral-d);letter-spacing:.24em;text-indent:.24em }
+  .mgl-h{ font-size:21px;font-weight:600;color:#3b342a;letter-spacing:-.03em;margin-top:6px }
+  .mgl-s{ font-size:12.5px;font-weight:400;color:#8a7a5c;margin-top:5px;line-height:1.6 }
+  .mgl-c{ display:flex;gap:13px;align-items:center;background:#f7f5f0;border-radius:12px;
+          padding:12px 13px;margin-bottom:10px }
+  .mgl-ct{ font-size:13.5px;font-weight:600;color:#3b342a;letter-spacing:-.02em }
+  .mgl-cd{ font-size:12px;font-weight:400;color:#8d8471;margin-top:2px;line-height:1.5 }
   #s-match select{ border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px;
                    font-family:inherit;font-weight:700;background:#fff;box-sizing:border-box }
   #sheet textarea{ width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;
@@ -6218,27 +6252,26 @@ async function openSportProfile(){
         placeholder="${f.placeholder||''}" value="${esc(saved[f.k]||'')}"></div>`;
   };
 
+  /* 출생 연도·신장·주손·백핸드는 프로필 편집(서버 프로필)에서 한 번만 받는다 — 여기서 다시 묻지 않는다 */
+  const isDupField = f => f.label==='주손' || f.label==='백핸드' || f.k==='height';
+  const ownFields = meta.fields.filter(f=>!isDupField(f));
+
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>${sp.ic} ${sp.n} 정보</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${meta.duel
       ? '입력하면 <b>선수 비교</b>와 매칭에 쓰여요.'
       : '입력하면 팀 편성과 모임 추천에 쓰여요.'}</div>
-    <div class="fld"><label>출생 연도</label>
-      <input id="sp_birth" inputmode="numeric" maxlength="4" placeholder="예) 1994" value="${esc(saved.birth||'')}"></div>
-    ${meta.fields.map(row).join('')}
-    <button class="btn" style="margin-top:6px" onclick="saveSportProfile()">저장</button>`;
+    ${ownFields.map(row).join('')||'<div class="note" style="text-align:left">이 종목은 따로 입력할 정보가 없어요.</div>'}
+    <div class="note" style="text-align:left;margin:4px 2px 0">출생 연도·신장·주손·백핸드는 <b onclick="openEditProfile()" style="color:var(--coral-d);cursor:pointer;text-decoration:underline">프로필 편집</b>에서 한 번만 입력하면 돼요.</div>
+    <button class="btn" style="margin-top:12px" onclick="saveSportProfile()">저장</button>`;
   document.getElementById('ov').classList.add('on');
 }
 async function saveSportProfile(){
   const sp = SP(), meta = SM();
+  const isDupField = f => f.label==='주손' || f.label==='백핸드' || f.k==='height';
   const val = k => ((document.getElementById('sp_'+k)||{}).value||'').trim();
-  const body = { birth: val('birth') };
-  meta.fields.forEach(f => { body[f.k] = val(f.k); });
-  if(body.birth && !/^(19|20)\d{2}$/.test(body.birth)){ toast('출생 연도를 네 자리로 입력해 주세요'); return; }
-  if(body.birth){                                  // 만 14세 미만은 가입할 수 없다 (정보통신망법)
-    const age = new Date().getFullYear() - parseInt(body.birth,10);
-    if(age < 14){ toast('만 14세 이상만 가입할 수 있어요'); return; }
-  }
+  const body = {};
+  meta.fields.filter(f=>!isDupField(f)).forEach(f => { body[f.k] = val(f.k); });
 
   if(SERVER_OK){
     try{ await api(`/me/sport-profile/${sp.id}`,{method:'PUT',body:JSON.stringify(body)}); }
@@ -6254,6 +6287,7 @@ function togglePhotoCell(i){ state.photos=state.photos||[1,1,1,0,1,0]; if(i===0&
 function openEditProfile(){
   const GEN=['남성','여성'], EXP=['1년 미만','1~3년','3~5년','5~10년','10년+'];
   const REG=['경기 용인','서울 강남','경기 성남','인천 연수','경기 수원','부산 해운대'];
+  const d=state._pfDraft||{};   // 저장 전 임시값 — 칩 탭·미리보기로 재렌더돼도 입력이 안 날아간다
   let h=`<div class="sh-top"><h3>프로필 편집</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">내 정보를 바꿔요. 리그·클럽 매칭에 쓰여요.</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:8px 2px 7px">성별</div>
@@ -6261,10 +6295,10 @@ function openEditProfile(){
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">구력</div>
     <div style="display:flex;flex-wrap:wrap;gap:7px">${EXP.map(x=>`<div onclick="setEdit('exp','${x}')" class="ptag" style="cursor:pointer;border:1.5px solid ${state.exp===x?'var(--coral)':'#ece2d6'};background:${state.exp===x?'var(--coral-s)':'#fff'};color:${state.exp===x?'var(--coral-d)':'var(--ink)'};font-weight:700">${x}</div>`).join('')}</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">출생 연도</div>
-    <input id="pfBirth" type="number" inputmode="numeric" min="1930" max="2020" value="${(state.serverUser||{}).birth_year||''}"
+    <input id="pfBirth" class="sel-in" type="number" inputmode="numeric" min="1930" max="2020" value="${d.birth!=null?d.birth:((state.serverUser||{}).birth_year||'')}"
       placeholder="예) 1990" style="width:100%;box-sizing:border-box">
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">신장 (cm)</div>
-    <input id="pfHeight" type="number" inputmode="numeric" min="120" max="220" value="${(state.serverUser||{}).height||''}"
+    <input id="pfHeight" class="sel-in" type="number" inputmode="numeric" min="120" max="220" value="${d.height!=null?d.height:((state.serverUser||{}).height||'')}"
       placeholder="예) 175" style="width:100%;box-sizing:border-box">
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">주 손</div>
     <div class="miniseg">${['오른손','왼손'].map(x=>`<div class="${((state.serverUser||{}).handed)===x?'on':''}" onclick="setEditSrv('handed','${x}')">${x}</div>`).join('')}</div>
@@ -6272,17 +6306,50 @@ function openEditProfile(){
     <div class="miniseg">${['원핸드','투핸드'].map(x=>`<div class="${((state.serverUser||{}).backhand)===x?'on':''}" onclick="setEditSrv('backhand','${x}')">${x}</div>`).join('')}</div>
     <div class="note" style="text-align:left;margin:16px 2px 0">
       나이·신장·주손·백핸드·통산성적은 <b>개인리그에서만</b> 상대에게 보여요 · 클럽 명단이나 오픈매치에는 표시되지 않아요.</div>
-    <button class="btn" style="margin-top:18px" onclick="saveProfile()">저장</button>`;
+    <button class="btn ghost" style="margin-top:14px" onclick="previewMyCard()">상대에게 보이는 내 카드 미리보기</button>
+    <button class="btn" style="margin-top:9px" onclick="saveProfile()">저장</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function setEdit(k,v){ state[k]=v; openEditProfile(); }
+/* 재렌더 전에 입력 중인 값을 임시 저장 — 성별·주손 칩을 탭해도 출생 연도·신장이 유지된다 */
+function pfStash(){
+  const g=id=>((document.getElementById(id)||{}).value||'');
+  if(document.getElementById('pfBirth')) state._pfDraft={birth:g('pfBirth'), height:g('pfHeight')};
+}
+function setEdit(k,v){ pfStash(); state[k]=v; openEditProfile(); }
 /* 서버 프로필 필드(주손·백핸드)를 즉시 화면에 반영 — 저장은 '저장' 버튼에서 */
 function setEditSrv(k,v){
+  pfStash();
   state.serverUser = state.serverUser || {};
   state.serverUser[k] = (state.serverUser[k]===v) ? null : v;
   openEditProfile();
 }
+/* 저장 전 입력값 그대로 개인리그 선수 카드를 렌더링 — 상대에게 보이는 모습을 확인한다 */
+function previewMyCard(){
+  pfStash();
+  const d=state._pfDraft||{}, su=state.serverUser||{};
+  const u=Object.assign({}, su, {
+    name: su.name || meName(),
+    gender: state.gender || su.gender,
+    birth_year: parseInt(d.birth,10)||null,
+    height: parseInt(d.height,10)||null,
+  });
+  const h=`<div class="sh-top">
+      <span onclick="openEditProfile()" style="cursor:pointer;font-size:21px;color:#8a857c;margin-right:9px;line-height:1">‹</span>
+      <h3>내 카드 미리보기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd">개인리그에서 상대에게 <b>이렇게 보여요</b> · 지금 입력 중인 값 기준이에요 (아직 저장 전).</div>
+    ${leaguePlayerCard(u)}
+    <div class="note" style="text-align:left;margin:14px 2px 0">값이 없는 칸(나이·신장·주손·백핸드)은 카드에 아예 표시되지 않아요.</div>
+    <button class="btn" style="margin-top:14px" onclick="openEditProfile()">계속 편집하기</button>`;
+  document.getElementById('sheet').innerHTML=h;
+}
 async function saveProfile(){
+  // 만 14세 미만은 가입할 수 없다 (정보통신망법) — 출생 연도는 이제 여기서만 받는다
+  const rawBirth=((document.getElementById('pfBirth')||{}).value||'').trim();
+  if(rawBirth){
+    if(!/^(19|20)\d{2}$/.test(rawBirth)){ toast('출생 연도를 네 자리로 입력해 주세요'); return; }
+    if(new Date().getFullYear() - parseInt(rawBirth,10) < 14){ toast('만 14세 이상만 가입할 수 있어요'); return; }
+  }
+  state._pfDraft=null;
   closeOv(); renderMe();
   if(SERVER_OK && authToken()){
     try{
@@ -7256,10 +7323,10 @@ function drawArchiveOne(){
           </div>
           ${off?`<div style="display:flex;gap:7px;align-items:center;margin-top:10px">
             <input id="ar_a_${g.key}" type="number" inputmode="numeric" min="0" max="99" value="${g.sa==null?'':g.sa}"
-              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px">
+              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px;border:1.5px solid var(--line);border-radius:12px;padding:10px 0;background:#fff;box-sizing:border-box;outline:none">
             <span class="t-lbl">:</span>
             <input id="ar_b_${g.key}" type="number" inputmode="numeric" min="0" max="99" value="${g.sb==null?'':g.sb}"
-              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px">
+              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px;border:1.5px solid var(--line);border-radius:12px;padding:10px 0;background:#fff;box-sizing:border-box;outline:none">
             <button class="btn sm t-bdy" style="width:auto;padding:0 15px;font-weight:800" onclick="archSaveScore('${g.key}')">저장</button>
           </div>`:''}
         </div>`;
@@ -8893,10 +8960,10 @@ function drawCB2Build(){
 
     <div class="ch" style="font-size:14px;margin-top:12px">게스트 추가 <span style="font-size:11px;color:var(--lgray);font-weight:600">· 구력을 넣으면 등급·순번이 자동으로 정해져요</span></div>
     <div style="display:flex;gap:7px;margin-top:6px">
-      <input id="cb2Gname" placeholder="이름" style="flex:1.4;min-width:0">
+      <input id="cb2Gname" class="sel-in" placeholder="이름" style="flex:1.4;min-width:0">
       <select id="cb2Ggender" style="flex:1"><option value="남성">남</option><option value="여성">여</option></select>
-      <input id="cb2Gyears" type="number" inputmode="numeric" min="0" max="60" placeholder="년" style="flex:.8;min-width:0">
-      <input id="cb2Gmonths" type="number" inputmode="numeric" min="0" max="11" placeholder="개월" style="flex:.8;min-width:0">
+      <input id="cb2Gyears" class="sel-in" type="number" inputmode="numeric" min="0" max="60" placeholder="년" style="flex:.8;min-width:0">
+      <input id="cb2Gmonths" class="sel-in" type="number" inputmode="numeric" min="0" max="11" placeholder="개월" style="flex:.8;min-width:0">
       <button class="btn sm" style="width:auto;padding:0 16px" onclick="cb2AddGuest()">추가</button></div>
 
     <div class="ch" style="font-size:14px;margin-top:12px">늦참자 <span style="font-size:11px;color:var(--lgray);font-weight:500">· 탭해서 지정</span></div>
@@ -12057,43 +12124,124 @@ function omCalc(){
   const q=omQuote(num('omHourCost'), num('omBallCost'), c, h);
   const rule=h===2?'5:5는 동점 종료 (노 매치포인트)':'5:5면 6게임째로 승부';
   const won=n=>n.toLocaleString();
-  box.innerHTML=`<div style="display:flex;align-items:baseline;gap:7px">
-      <span class="t-lbl">1인 참가비</span>
-      <b class="t-num" style="font-size:19px;color:var(--coral-d)">${won(q.per)}원</b>
-      <span class="t-lbl">정원 ${q.cap}명 · ${c}코트 ${h}시간</span></div>
-    <div style="margin-top:8px;border-top:1px solid #ece8e0;padding-top:8px;display:flex;flex-direction:column;gap:3px">
-      ${[['코트비', `${won(q.court)}원`, `시간당 ${won(num('omHourCost'))} × ${c}면 × ${h}h`],
-         ['캔볼',   `${won(q.ball)}원`,  `코트당 1캔 × ${c}면 · 1인 ${won(q.ballPer)}원 (실비)`],
-         ['매니저 수고비', `${won(q.mgr)}원`, `시간당 ${won(omManagerFee(c,1))}`],
-         ['맞수 운영비',   `${won(q.matsu)}원`, `${q.pct.toFixed(0)}% · 1인 ${won(Math.round(q.matsu/q.cap))}원`],
-         ['파트너 배정 시', `${won(q.partnerFee)}원`, `수고비 + 보너스 ${won(q.partnerBonus)} · 참가비 변동 없음`]]
-        .map(([k,v,d])=>`<div style="display:flex;align-items:baseline;gap:6px">
-          <span class="t-lbl" style="width:76px;flex:none">${k}</span>
-          <b class="t-num" style="font-size:12px;width:76px;flex:none;text-align:right">${v}</b>
-          <span class="t-lbl" style="flex:1;font-weight:500">${d}</span></div>`).join('')}
-    </div>
-    <div style="margin-top:8px;border-top:1px solid #ece8e0;padding-top:8px">
-      <div style="display:flex;align-items:baseline;gap:6px">
-        <span class="t-lbl" style="width:76px;flex:none">매니저 정산</span>
-        <b class="t-num" style="font-size:13px;width:76px;flex:none;text-align:right;color:#2c7a53">${won(q.payout)}원</b>
-        <span class="t-lbl" style="flex:1;font-weight:500">코트·캔볼 당일 환급 + 수고비 3일 내</span></div>
-      <div class="t-lbl" style="font-weight:500;margin-top:5px">${rule}</div></div>`;
+  const stars='****************';
+  box.innerHTML=`<div class="rcp-paper"><div class="rcp"><div class="rcp-lip"></div><div class="rcp-body">
+      <div style="text-align:center;font-size:19px;font-weight:600;letter-spacing:.5em;text-indent:.5em">맞수</div>
+      <div style="text-align:center;font-size:11.5px;font-weight:400;color:#8d8471;margin-top:4px">오픈매치 · ${c}코트 · ${h}시간</div>
+      <div style="text-align:center;font-size:11.5px;font-weight:400;color:#8d8471">정원 ${q.cap}명 · 코트당 6명</div>
+      <div class="rcp-star" style="margin:11px 0 9px">${stars}</div>
+      <div style="text-align:center;font-size:14px;font-weight:400;letter-spacing:.3em;text-indent:.3em">참가비 영수증</div>
+      <div class="rcp-star" style="margin:9px 0 10px">${stars}</div>
+      <div class="rcp-row" style="font-size:12px;font-weight:500;color:#8d8471;padding-bottom:5px">
+        <span>내역</span><span>금액</span></div>
+      ${[['코트비', `시간당 ${won(num('omHourCost'))} × ${c}면 × ${h}h`, won(q.court)],
+         ['캔볼',   `코트당 1캔 · 1인 ${won(q.ballPer)}`, won(q.ball)],
+         ['매니저 수고비', `시간당 ${won(omManagerFee(c,1))}`, won(q.mgr)]]
+        .map(([k,d,v])=>`<div class="rcp-row">
+          <span class="rcp-k">${k} <span class="rcp-d">${d}</span></span>
+          <span class="rcp-v t-num">${v}</span></div>`).join('')}
+      <div class="rcp-star" style="margin:10px 0 9px">${stars}</div>
+      <div class="rcp-row">
+        <span style="font-size:16px;font-weight:600">합계 <span style="font-size:11.5px;font-weight:400;color:#8d8471">1인 참가비</span></span>
+        <span class="t-num" style="font-size:22px;font-weight:700;color:var(--coral-d);letter-spacing:-.02em">${won(q.per)}원</span></div>
+      <div class="rcp-row" style="margin-top:5px">
+        <span class="rcp-k" style="font-size:12.5px">결제</span>
+        <span class="rcp-k" style="font-size:12.5px">신청 시 · 500원 단위</span></div>
+      <div class="rcp-star" style="margin:10px 0 9px">${stars}</div>
+      <div class="rcp-row">
+        <span class="rcp-k" style="font-size:12.5px">매니저 정산</span>
+        <span class="rcp-v t-num" style="font-size:14px;color:#2c7a53">${won(q.payout)}원</span></div>
+      <div class="rcp-row" style="padding-top:3px">
+        <span class="rcp-k" style="font-size:12.5px">환급</span>
+        <span class="rcp-d" style="font-size:11.5px">코트·캔볼 당일 + 수고비 3일 내</span></div>
+      <div class="rcp-row" style="padding-top:3px">
+        <span class="rcp-k" style="font-size:12.5px">경기 룰</span>
+        <span class="rcp-d" style="font-size:11.5px">${rule}</span></div>
+      <div class="rcp-star" style="margin:10px 0 12px">${stars}</div>
+      <div style="text-align:center;font-size:13px;font-weight:600;letter-spacing:.2em;text-indent:.2em">감사합니다!</div>
+      <div class="rcp-bar"></div>
+    </div><div class="rcp-lip b"></div></div></div>`;
+}
+/* 매니저 가이드 — 배너 → 일러스트 랜딩. 아이콘은 외부 이미지 없이 전부 인라인 SVG. */
+const OM_COURT_SVG = (n=52) => `<svg width="${n}" height="${n}" viewBox="0 0 52 52" aria-hidden="true" style="flex:none">
+  <rect x="3" y="8" width="46" height="36" rx="4" fill="#3aa17e"/>
+  <rect x="8" y="13" width="36" height="26" fill="none" stroke="#eaf5ef" stroke-width="1.6"/>
+  <line x1="26" y1="13" x2="26" y2="39" stroke="#eaf5ef" stroke-width="1.6"/>
+  <circle cx="17" cy="21" r="3" fill="#ffd9a8"/><circle cx="17" cy="32" r="3" fill="#ffd9a8"/>
+  <circle cx="35" cy="21" r="3" fill="#fff"/><circle cx="35" cy="32" r="3" fill="#fff"/>
+  <circle cx="44" cy="9" r="5.5" fill="#ec6a2e"/><path d="M41 9h6M44 6v6" stroke="#fff" stroke-width="1.4"/></svg>`;
+const MGL_ICONS = {
+  crowd:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <rect x="4" y="7" width="32" height="26" rx="4" fill="#e1f5ee"/>
+    <circle cx="14" cy="16" r="3.4" fill="#1D9E75"/><circle cx="26" cy="16" r="3.4" fill="#1D9E75"/>
+    <circle cx="14" cy="26" r="3.4" fill="#5DCAA5"/><circle cx="26" cy="26" r="3.4" fill="#5DCAA5"/>
+    <circle cx="20" cy="21" r="3.4" fill="#0F6E56"/><circle cx="32" cy="21" r="3.4" fill="#9FE1CB"/></svg>`,
+  receipt:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <rect x="9" y="4" width="22" height="32" fill="#fff" stroke="#e5ddca" stroke-width="1.5"/>
+    <line x1="13" y1="11" x2="27" y2="11" stroke="#b9b09a" stroke-width="1.6"/>
+    <line x1="13" y1="16" x2="27" y2="16" stroke="#d8d0bc" stroke-width="1.4"/>
+    <line x1="13" y1="20" x2="22" y2="20" stroke="#d8d0bc" stroke-width="1.4"/>
+    <text x="20" y="31" text-anchor="middle" font-size="9" fill="#cf5418" font-weight="600">₩</text></svg>`,
+  mgr:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <circle cx="20" cy="14" r="6" fill="#3b342a"/><rect x="13" y="22" width="14" height="13" rx="6" fill="#ec6a2e"/>
+    <rect x="27" y="24" width="8" height="10" rx="2" fill="#fff" stroke="#3b342a" stroke-width="1.3"/>
+    <line x1="29" y1="27" x2="33" y2="27" stroke="#3b342a" stroke-width="1.1"/>
+    <line x1="29" y1="30" x2="33" y2="30" stroke="#3b342a" stroke-width="1.1"/></svg>`,
+  payout:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <circle cx="17" cy="20" r="10" fill="#eaf3de"/>
+    <text x="17" y="24" text-anchor="middle" font-size="11" fill="#3B6D11" font-weight="600">₩</text>
+    <path d="M28 15l6 5-6 5" fill="none" stroke="#639922" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  rule:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <circle cx="20" cy="20" r="13" fill="#e6f1fb"/>
+    <text x="20" y="24" text-anchor="middle" font-size="11" fill="#185FA5" font-weight="600">5:5</text></svg>`,
+  clock:`<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" style="flex:none">
+    <circle cx="20" cy="20" r="13" fill="#faece7"/>
+    <path d="M20 13v7l5 3" fill="none" stroke="#993C1D" stroke-width="2" stroke-linecap="round"/></svg>`,
+};
+function openManagerGuide(){
+  const cards=[
+    [MGL_ICONS.crowd,  '코트당 6명이 모이면 확정', '2코트 12명 · 3코트 18명, 전원 모여야 열려요'],
+    [MGL_ICONS.receipt,'비용 두 칸이면 견적 완성', '코트비·캔볼값만 넣으면 참가비가 자동 계산돼요 · 캔볼은 코트당 1캔을 참가자가 분담해요'],
+    [MGL_ICONS.mgr,    '매니저는 경기를 뛰지 않아요', '개설자 = 매니저 1명, 운영과 등급 평가만 맡아요'],
+    [MGL_ICONS.payout, '정산은 당일 + 3일', '코트·캔볼은 당일 환급, 수고비는 시간당 10,320원으로 3일 내 입금돼요'],
+    [MGL_ICONS.rule,   '경기 룰', '2시간은 5:5 동점 종료(노 매치포인트) · 3시간은 5:5면 6게임째로 승부'],
+    [MGL_ICONS.clock,  '결제와 취소', '참가비는 신청 시 결제 · 30분 안에 취소하지 않으면 확정이에요'],
+  ];
+  document.getElementById('sheet').innerHTML=`<div class="sh-top">
+      <span onclick="openNewMatch()" style="cursor:pointer;font-size:21px;color:#8a857c;margin-right:9px;line-height:1">‹</span>
+      <h3>매니저 가이드</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="mgl-hero">
+      <div class="mgl-kick">MANAGER GUIDE</div>
+      <div class="mgl-h">모으고, 열고, 정산까지</div>
+      <div class="mgl-s">매니저는 운영만 해요 — 나머지는 맞수가 계산합니다</div>
+      <svg width="220" height="96" viewBox="0 0 220 96" style="display:block;margin:10px auto 0;max-width:100%" aria-hidden="true">
+        <rect x="30" y="26" width="160" height="70" rx="6" fill="#3aa17e"/>
+        <rect x="44" y="38" width="132" height="52" fill="none" stroke="#eaf5ef" stroke-width="2"/>
+        <line x1="110" y1="38" x2="110" y2="90" stroke="#eaf5ef" stroke-width="2"/>
+        <circle cx="72" cy="52" r="6" fill="#ffd9a8"/><circle cx="72" cy="76" r="6" fill="#ffd9a8"/>
+        <circle cx="148" cy="52" r="6" fill="#fff"/><circle cx="148" cy="76" r="6" fill="#fff"/>
+        <circle cx="14" cy="40" r="8" fill="#3b342a"/><rect x="8" y="50" width="12" height="18" rx="5" fill="#ec6a2e"/>
+        <rect x="22" y="52" width="10" height="13" rx="2" fill="#fff" stroke="#3b342a" stroke-width="1.4"/>
+        <line x1="24.5" y1="56" x2="29.5" y2="56" stroke="#3b342a" stroke-width="1.2"/>
+        <line x1="24.5" y1="59" x2="29.5" y2="59" stroke="#3b342a" stroke-width="1.2"/>
+        <circle cx="196" cy="18" r="8" fill="#d8e84a"/>
+        <path d="M190 12c4 4 4 8 0 12M202 12c-4 4-4 8 0 12" stroke="#fff" stroke-width="1.4" fill="none"/></svg></div>
+    ${cards.map(([ic,t,d])=>`<div class="mgl-c">${ic}
+      <div style="flex:1;min-width:0"><div class="mgl-ct">${t}</div><div class="mgl-cd">${d}</div></div></div>`).join('')}
+    <button class="btn" style="margin-top:6px" onclick="openNewMatch()">오픈매치 열러 가기</button>`;
+  document.getElementById('ov').classList.add('on');
 }
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
 
-    <div style="background:#fdf6ec;border:1.5px solid #f0e2c8;border-radius:16px;padding:13px 14px;margin:2px 0 12px">
-      <b style="font-size:14px">🎽 매니저 가이드</b>
-      <div style="font-size:12px;color:#6b5b3f;font-weight:500;margin-top:6px;line-height:1.55">
-        · <b>코트당 6명</b> — 2코트 12명 · 3코트 18명, 전원 모여야 확정돼요<br>
-        · 코트비·캔볼값만 넣으면 <b>참가비와 정산액이 자동 계산</b>돼요 · 캔볼은 <b>코트당 1캔을 참가자가 분담</b><br>
-        · 매니저는 <b>경기에 참여하지 않고 운영만</b> 해요 (개설자 = 매니저 1명)<br>
-        · 정산 = 코트·캔볼 <b>당일 환급</b> + 수고비 시간당 10,320원 (종료 후 3일 내)<br>
-        · 경기 룰: <b>2시간은 5:5 동점 종료</b>(노 매치포인트) · <b>3시간은 5:5면 6게임째 승부</b><br>
-        · 참가비는 신청 시 결제 · <b>30분 안에 취소하지 않으면 확정</b>이에요<br>
-        · 종료 후 <b>참가자 등급 평가</b>는 매니저 몫 — 미배치 선수는 바로 배치돼요</div></div>
+    <div class="mgb" onclick="openManagerGuide()">
+      ${OM_COURT_SVG(52)}
+      <div style="flex:1;min-width:0">
+        <div class="mgb-t">처음 여는 매니저이신가요?</div>
+        <div class="mgb-d">모집부터 정산까지, 그림으로 3분이면 파악돼요</div></div>
+      <span style="font-size:12px;font-weight:600;color:var(--coral-d);white-space:nowrap">가이드 →</span></div>
 
     <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 선택한 시간만큼 자동</span></label><input id="omStart" type="datetime-local" step="900"></div>
 
@@ -12108,7 +12256,7 @@ function openNewMatch(){
       <div class="fld" style="flex:1"><label>코트 시간당 비용 (원)</label><input id="omHourCost" inputmode="numeric" placeholder="예) 30000 · 무료면 0" oninput="omCalc()"></div>
       <div class="fld" style="flex:1"><label>캔볼 가격 (원/캔)</label><input id="omBallCost" inputmode="numeric" value="7000" oninput="omCalc()"></div>
     </div>
-    <div id="omCalcBox" style="background:#f6f4ef;border-radius:14px;padding:11px 13px;font-size:12px;font-weight:500;color:#5a544b;margin:-2px 0 12px"></div>
+    <div id="omCalcBox" class="rcp-wrap"></div>
 
     <div class="fld"><label>지역</label>
       <div style="display:flex;gap:8px">
