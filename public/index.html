@@ -493,6 +493,17 @@
   .tierband.open .tb-body{ max-height:160px; opacity:1; margin-top:11px; }
   .tierband .tb-tag{ display:inline-block; background:rgba(255,255,255,.22); border-radius:7px; padding:3px 9px; font-size:11px; font-weight:600; margin-top:8px; }
 
+  /* ── 타이포 스케일 (√φ = 1.272 · 본문 13px) ────────────────
+     8 / 10 / 13 / 16.5 / 21 / 27 · 행간은 황금비 1.618 → 1.272 로 조여간다 */
+  .t-dsp{ font-size:21px;   font-weight:800; letter-spacing:-.035em; line-height:1.272; }
+  .t-ttl{ font-size:16.5px; font-weight:800; letter-spacing:-.03em;  line-height:1.3; }
+  .t-bdy{ font-size:13px;   font-weight:600; letter-spacing:-.02em;  line-height:1.45; }
+  .t-bdy-r{ font-size:13px; font-weight:500; letter-spacing:-.01em;  line-height:1.618; }
+  .t-lbl{ font-size:10px;   font-weight:700; letter-spacing:.01em;   line-height:1.4; color:var(--lgray); }
+  .t-mcr{ font-size:8px;    font-weight:700; letter-spacing:.02em;   line-height:1.4; }
+  .t-num{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+          font-variant-numeric:tabular-nums; font-weight:800; letter-spacing:-.02em; }
+
   /* ⑦ Drop Manager → category TOOL ROWS (운영 도구) */
   .tgrp{ font-size:11px; font-weight:600; color:var(--lgray); letter-spacing:.03em; margin:14px 6px 7px; }
   .toolrow{ display:flex; align-items:center; gap:14px; padding:13px 15px; background:#ffffff;
@@ -1830,6 +1841,11 @@ const CLUB_LOGO_BGS=['#ec6a2e','#5b3fa8','#3f9e6e','#55514a','#1b1813','#c47d10'
 function clubLogoOf(name){ return (state.clubLogos||{})[name]||null; }
 function clubAvatar(name, size){
   const L=clubLogoOf(name); if(!L) return '';
+  if(L.img){
+    const u = L.img.startsWith('http') ? L.img : API_BASE + L.img;
+    return `<span class="clogo" style="width:${size}px;height:${size}px;background:url('${u}') center/cover"></span>`;
+  }
+  if(!L.ic) return '';
   return `<span class="clogo" style="width:${size}px;height:${size}px;background:${L.bg};font-size:${Math.round(size*0.52)}px">${L.ic}</span>`;
 }
 function clubLabel(name, size){
@@ -1841,9 +1857,19 @@ function openClubLogoEdit(name){
   let h=`<div class="sh-top"><h3>클럽 로고</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd"><b>${name}</b>의 로고를 정해요. 로고가 없으면 어디에서든 <b>클럽명만</b> 표시돼요.</div>
     <div style="display:flex;justify-content:center;margin:6px 0 18px">
-      ${cur.ic?`<span class="clogo" style="width:76px;height:76px;background:${cur.bg};font-size:29px">${cur.ic}</span>`
-              :`<span style="font-size:18px;font-weight:600;color:var(--ink);padding:22px 0">${name}</span>`}</div>
-    <div class="ch" style="font-size:14px;margin:0 4px 10px">아이콘</div>
+      ${cur.img?`<span style="width:76px;height:76px;border-radius:22px;background:url('${cur.img.startsWith('http')?cur.img:API_BASE+cur.img}') center/cover;display:inline-block"></span>`
+              :cur.ic?`<span class="clogo" style="width:76px;height:76px;background:${cur.bg};font-size:29px">${cur.ic}</span>`
+              :`<span style="font-size:17px;font-weight:700;color:var(--ink);padding:22px 0;letter-spacing:-.02em">${name}</span>`}</div>
+    <div class="ch" style="font-size:13.5px;font-weight:800;margin:0 4px 9px">이미지 올리기</div>
+    <input type="file" id="clubLogoFile" accept="image/*" style="display:none" onchange="uploadClubLogo('${name}', this.files[0])">
+    <div onclick="document.getElementById('clubLogoFile').click()" style="cursor:pointer;display:flex;align-items:center;gap:11px;
+        border:1.5px dashed #ddd6c8;border-radius:14px;padding:13px 14px;background:#fbfaf7">
+      <span style="flex:none;width:38px;height:38px;border-radius:11px;background:#f2efe9;display:grid;place-items:center;font-size:17px">🖼️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;letter-spacing:-.02em">사진으로 로고 만들기</div>
+        <div style="font-size:11px;font-weight:500;color:var(--lgray);margin-top:2px">정사각형 이미지가 가장 잘 나와요</div></div>
+      <span style="color:var(--lgray);font-weight:700">›</span></div>
+    <div class="ch" style="font-size:13.5px;font-weight:800;margin:17px 4px 9px">또는 아이콘 고르기</div>
     <div class="lgrid">${CLUB_LOGO_OPTS.map(ic=>`<div class="lopt ${cur.ic===ic?'on':''}" onclick="setClubLogo('${name}','${ic}',null)">${ic}</div>`).join('')}</div>
     <div class="ch" style="font-size:14px;margin:16px 4px 10px">배경색</div>
     <div class="lgrid">${CLUB_LOGO_BGS.map(bg=>`<div class="lopt bgopt ${cur.bg===bg?'on':''}" style="background:${bg}" onclick="setClubLogo('${name}',null,'${bg}')"></div>`).join('')}</div>
@@ -1851,10 +1877,31 @@ function openClubLogoEdit(name){
     <button class="btn ghost" style="margin-top:9px" onclick="clearClubLogo('${name}')">로고 없이 클럽명만 쓰기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+async function uploadClubLogo(name, file){
+  if(!file) return;
+  if(!SERVER_OK || !authToken()){ toast('로그인 후 이미지를 올릴 수 있어요'); return; }
+  try{
+    toast('이미지를 올리는 중…');
+    const dataUrl = await shrinkImage(file, 512, 0.9);
+    const r = await api('/upload',{method:'POST', body: JSON.stringify({dataUrl})});
+    if(!r || !r.url) throw new Error('no_url');
+    state.clubLogos = state.clubLogos || {};
+    const cur = state.clubLogos[name] || {};
+    state.clubLogos[name] = { ic:null, bg:cur.bg||CLUB_LOGO_BGS[0], img:r.url };
+    saveMatsu();
+    openClubLogoEdit(name);
+    toast('로고 이미지를 올렸어요');
+  }catch(e){
+    const k=(()=>{ try{ return JSON.parse(e.message).error; }catch(_){ return ''; } })();
+    toast(k==='too_large' ? '이미지가 너무 커요 · 3MB 이하로 올려주세요'
+        : k==='bad_image' ? 'png · jpg · webp 만 올릴 수 있어요'
+        : '이미지를 올리지 못했어요');
+  }
+}
 function setClubLogo(name, ic, bg){
   state.clubLogos=state.clubLogos||{};
   const cur=state.clubLogos[name]||{ic:CLUB_LOGO_OPTS[0],bg:CLUB_LOGO_BGS[0]};
-  state.clubLogos[name]={ic: ic||cur.ic, bg: bg||cur.bg};
+  state.clubLogos[name]={ic: ic||cur.ic, bg: bg||cur.bg, img: ic?null:cur.img};   // 아이콘 고르면 이미지 해제
   openClubLogoEdit(name);
 }
 function clearClubLogo(name){
@@ -4581,8 +4628,8 @@ function openCareerPolicy(){
         border:${on?'1.6px solid var(--coral-d)':'1px solid #f0ece4'};background:${on?'#fdf6ec':'#fff'}">
       <div style="display:flex;align-items:center;gap:9px">
         <div style="flex:none;width:17px;height:17px;border-radius:50%;border:${on?'5px solid var(--coral-d)':'1.6px solid #ddd6c8'};background:#fff"></div>
-        <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${p.n}</div>
-          <div style="font-size:11.5px;font-weight:500;color:var(--lgray);margin-top:2px">${p.d}</div></div>
+        <div style="flex:1"><div style="font-size:14px;font-weight:800;letter-spacing:-.02em">${p.n}</div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--lgray);margin-top:3px">${p.d}</div></div>
       </div></div>`;
   });
   h+=`</div>
@@ -5376,7 +5423,7 @@ function renderTeamLeague(){
     ${['singles','doubles'].map(m=>{
       const on=LG_MODE===m, nm=m==='singles'?'단식':'복식';
       return `<div onclick="setLeagueMode('${m}')" style="flex:1;text-align:center;cursor:pointer;
-        border-radius:11px;padding:10px 0;font-size:13.5px;font-weight:${on?800:600};
+        border-radius:11px;padding:11px 0;font-size:14px;font-weight:${on?800:600};letter-spacing:-.02em;
         background:${on?'var(--ink)':'#fff'};color:${on?'#fff':'var(--lgray)'};
         border:1.4px solid ${on?'var(--ink)':'#e8e4dc'}">${nm}</div>`;
     }).join('')}
@@ -5485,10 +5532,11 @@ function renderLeague(){
           .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
           .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
       } else if(LG_RANKS.length){
+        h+=`<div class="note" style="text-align:left;margin:0 2px 6px">선수를 탭하면 나이·신장·주손·통산성적을 볼 수 있어요 (개인리그에서만)</div>`;
         const myId=(state.serverUser||{}).id;
         h+=`<div class="card"><div class="ch" style="font-size:14px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:500">상위 ${Math.min(LG_RANKS.length,10)}명</span></div>`;
         LG_RANKS.slice(0,10).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
-          h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
+          h+=`<div ${me?'':`onclick="openLeagueMatchup(${p.id})"`} style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
             <div style="width:24px;text-align:center;font-weight:700;color:${medal}">${i+1}</div>
             <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}</div>
             <div style="font-weight:700;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:'배치 중'}</div></div>`; });
@@ -5564,15 +5612,24 @@ function openPyramid(tab){
   const cur = tab || my;
   const T=TN_LV[cur];
   let h=`<div class="sh-top"><h3>티어</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-  <div style="background:#eef4fd;border:1px solid #d3e0f5;border-radius:12px;padding:12px 13px;margin:0 0 13px">
-    <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#2c4a7a">
-      <span style="font-size:14px">🏆</span> 티어는 개인리그에만 쓰여요</div>
+  <div style="background:#eef4fd;border:1px solid #d3e0f5;border-radius:12px;padding:13px;margin:0 0 13px">
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#2c4a7a">
+      <span style="font-size:14px">🏆</span> 티어 — 개인리그 성적</div>
     <div style="font-size:11.5px;font-weight:500;line-height:1.65;color:#2c4a7a;margin-top:7px">
-      개인리그 경기 결과로 오르내려요 · 2경기를 뛰어야 배치돼요<br>
-      <b>단식과 복식이 따로예요</b> — 1대1 결과는 단식 티어, 2대2 결과는 복식 티어로 쌓여요<br>
-      <span style="color:#5b7fb8">대진 편성에는 안 쓰여요 · 클럽리그는 부(1·2·3부)로 나뉘어요</span></div>
+      경기 결과로 오르내려요 · 2경기를 뛰어야 배치돼요<br>
+      <b>단식·복식이 따로예요</b> — 1대1 결과는 단식 티어, 2대2 결과는 복식 티어로 쌓여요</div>
+    <div style="height:1px;background:#d3e0f5;margin:11px 0"></div>
+    <div style="font-size:11.5px;font-weight:800;color:#2c4a7a;margin-bottom:7px">등급과는 다른 거예요</div>
+    ${[['티어','러브 ~ 프로','개인리그 성적','개인리그 순위·매칭',true],
+       ['등급','SS ~ C','프로필 구력','오픈매치 대진 · 클럽 대진',false],
+       ['부','1 · 2 · 3부','클럽 성적','클럽리그',false]]
+      .map(([n,r,by,use,on])=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;${on?'':'opacity:.7'}">
+        <div style="flex:none;width:34px;font-size:11px;font-weight:800;color:#2c4a7a">${n}</div>
+        <div style="flex:none;width:66px;font-size:10px;font-weight:600;color:#5b7fb8">${r}</div>
+        <div style="flex:1;font-size:10.5px;font-weight:500;color:#2c4a7a">${by} → <b>${use}</b></div>
+      </div>`).join('')}
     <div onclick="closeOv();setTimeout(openGradeGuide,180)" style="margin-top:9px;font-size:11.5px;font-weight:700;color:#2c4a7a;text-decoration:underline;cursor:pointer">
-      대진에 쓰이는 등급(SS~C) 보기 ›</div></div>
+      대진에 쓰이는 등급(SS~C) 자세히 ›</div></div>
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 14px">`+
   Object.keys(TN_LV).map(k=>`<span onclick="openPyramid('${k}')" style="cursor:pointer;font-size:14px;font-weight:${k===cur?900:700};color:${k===cur?'var(--ink)':'#b8b2a7'}">${k}</span>`).join('')+`</div>
   <div class="sd" style="margin-bottom:14px">${T.intro}</div>`;
@@ -5780,6 +5837,7 @@ function renderClub(){
           ${cb2OrderOpen()?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#8b8478"><span class="emo">📋</span></div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
           <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위 · 발행한 대진 보기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openArchive()"><div class="tr-ic" style="background:#f2efe9;color:#8b8478">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">모임 기록</div><div class="tr-d">날짜별 대진·스코어·그날 순위 · 지난 모임도 수정 가능</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">회원 · 가입</div>
           <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
@@ -5793,6 +5851,7 @@ function renderClub(){
         h+=`<div class="ch" style="font-size:14px;margin:6px 4px 10px">클럽 정보</div>
           <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#fbe8d7;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#8b8478">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openArchive()"><div class="tr-ic" style="background:#f2efe9;color:#8b8478">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">모임 기록</div><div class="tr-d">날짜별 대진·스코어·그날 순위 · 지난 모임도 수정 가능</div></div><div class="tr-arr">›</div></div>
           <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>`;
       }
     }
@@ -6201,19 +6260,42 @@ function openEditProfile(){
     <div class="miniseg">${GEN.map(x=>`<div class="${state.gender===x?'on':''}" onclick="setEdit('gender','${x}')">${x}</div>`).join('')}</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">구력</div>
     <div style="display:flex;flex-wrap:wrap;gap:7px">${EXP.map(x=>`<div onclick="setEdit('exp','${x}')" class="ptag" style="cursor:pointer;border:1.5px solid ${state.exp===x?'var(--coral)':'#ece2d6'};background:${state.exp===x?'var(--coral-s)':'#fff'};color:${state.exp===x?'var(--coral-d)':'var(--ink)'};font-weight:700">${x}</div>`).join('')}</div>
-    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">활동 지역</div>
-    <div style="display:flex;flex-wrap:wrap;gap:7px">${REG.map(x=>`<div onclick="setEdit('region2','${x}')" class="ptag" style="cursor:pointer;border:1.5px solid ${(state.region2||'경기 용인')===x?'var(--blue)':'#ece2d6'};background:${(state.region2||'경기 용인')===x?'#e9f4ee':'#fff'};color:${(state.region2||'경기 용인')===x?'var(--blue)':'var(--ink)'};font-weight:700">${x}</div>`).join('')}</div>
+    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">출생 연도</div>
+    <input id="pfBirth" type="number" inputmode="numeric" min="1930" max="2020" value="${(state.serverUser||{}).birth_year||''}"
+      placeholder="예) 1990" style="width:100%;box-sizing:border-box">
+    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">신장 (cm)</div>
+    <input id="pfHeight" type="number" inputmode="numeric" min="120" max="220" value="${(state.serverUser||{}).height||''}"
+      placeholder="예) 175" style="width:100%;box-sizing:border-box">
+    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">주 손</div>
+    <div class="miniseg">${['오른손','왼손'].map(x=>`<div class="${((state.serverUser||{}).handed)===x?'on':''}" onclick="setEditSrv('handed','${x}')">${x}</div>`).join('')}</div>
+    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">백핸드</div>
+    <div class="miniseg">${['원핸드','투핸드'].map(x=>`<div class="${((state.serverUser||{}).backhand)===x?'on':''}" onclick="setEditSrv('backhand','${x}')">${x}</div>`).join('')}</div>
+    <div class="note" style="text-align:left;margin:16px 2px 0">
+      나이·신장·주손·백핸드·통산성적은 <b>개인리그에서만</b> 상대에게 보여요 · 클럽 명단이나 오픈매치에는 표시되지 않아요.</div>
     <button class="btn" style="margin-top:18px" onclick="saveProfile()">저장</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function setEdit(k,v){ state[k]=v; openEditProfile(); }
+/* 서버 프로필 필드(주손·백핸드)를 즉시 화면에 반영 — 저장은 '저장' 버튼에서 */
+function setEditSrv(k,v){
+  state.serverUser = state.serverUser || {};
+  state.serverUser[k] = (state.serverUser[k]===v) ? null : v;
+  openEditProfile();
+}
 async function saveProfile(){
   closeOv(); renderMe();
   if(SERVER_OK && authToken()){
     try{
+      const num=(id,lo,hi)=>{ const v=parseInt(((document.getElementById(id)||{}).value||''),10);
+        return (isNaN(v)||v<lo||v>hi) ? null : v; };
       await api('/me',{method:'PATCH', body: JSON.stringify({
         gender: (state.gender==='여성'||state.gender==='F')?'F':'M',
-        exp: state.exp||'', region: state.region2||'' })});
+        exp: state.exp||'',
+        birth_year: num('pfBirth',1930,2020),
+        height: num('pfHeight',120,220),
+        handed: (state.serverUser||{}).handed || null,
+        backhand: (state.serverUser||{}).backhand || null })});
+      try{ const me=await api('/me'); state.serverUser=me; }catch(e){}
       toast('프로필을 저장했어요');
     }catch(e){ toast('저장하지 못했어요 · 네트워크를 확인해 주세요'); }
   } else toast('프로필을 저장했어요');
@@ -7034,6 +7116,173 @@ function clubSeasonStats(players,q){
   });
 }
 function setStatQ(q){state.statQ=q;renderClubStats();}
+/* ═══ 모임 기록 아카이브 — 지난 모임의 대진·스코어·그날 순위를 언제든 본다 ═══
+   임원은 여기서 스코어를 수정할 수 있다(서버는 회원 누구나 허용하지만 화면은 임원에게만 연다). */
+let ARCH=null, ARCH_ONE=null;
+async function openArchive(){
+  const cid=clubId();
+  if(!SERVER_OK || !cid){ toast('클럽 기록은 서버 연결이 필요해요'); return; }
+  document.getElementById('sheet').innerHTML=
+    `<div class="sh-top"><h3>모임 기록</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>${skelCards(3)}`;
+  document.getElementById('ov').classList.add('on');
+  try{ ARCH = await api(`/clubs/${cid}/brackets/history?limit=60`); }
+  catch(e){ ARCH=[]; }
+  drawArchive();
+}
+function drawArchive(){
+  const rows=(ARCH||[]).slice().reverse();            // 최신 모임부터
+  let h=`<div class="sh-top"><h3>모임 기록</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>
+    <div class="t-bdy-r" style="color:var(--lgray);margin:0 2px 13px">지난 모임의 대진·스코어·그날 순위를 언제든 볼 수 있어요</div>`;
+  if(!rows.length){
+    h+=`<div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:27px;line-height:1">📋</div>
+      <div class="t-ttl" style="margin-top:9px">아직 발행된 대진이 없어요</div>
+      <div class="t-bdy-r" style="color:var(--gray);margin-top:5px">대진을 발행하면 여기에 쌓여요</div></div>`;
+  } else {
+    h+=rows.map(b=>{
+      const st=archStats(b);
+      const done=st.games&&st.done===st.games;
+      return `<div class="card" style="padding:14px 16px;cursor:pointer" onclick="openArchiveOne(${b.id})">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div class="t-ttl">${esc(b.date||'날짜 미정')}</div>
+            <div class="t-bdy" style="color:var(--gray);font-weight:500;margin-top:4px">
+              ${esc(b.fmt||'대진')}<span style="color:#d8d2c6"> · </span>${st.players}명<span style="color:#d8d2c6"> · </span>${st.games}경기${st.done<st.games?`<span style="color:#d8d2c6"> · </span><span style="color:#a5750d;font-weight:700">미입력 ${st.games-st.done}</span>`:''}</div></div>
+          <span class="t-mcr" style="flex:none;border-radius:11px;padding:5px 9px;
+            ${done?'background:#e8f5ee;color:#2c7a53':'background:#fdf2dd;color:#a5750d'}">
+            ${st.games?(done?'완료':'진행'):'대진만'}</span>
+        </div></div>`;
+    }).join('');
+  }
+  document.getElementById('sheet').innerHTML=h;
+}
+/* 한 모임의 경기 목록을 뽑는다 — reg 는 [{court, A:[..], B:[..]}] 형태 */
+function archGames(b){
+  const out=[];
+  (b.reg||[]).forEach((r,ri)=>{
+    const key=r.key || r.court_key || String(ri);
+    const sc=(b.scores||{})[key];
+    out.push({ key, court:r.court||r.c||(ri+1), A:r.A||r.a||[], B:r.B||r.b||[],
+               sa: sc?sc.a:null, sb: sc?sc.b:null });
+  });
+  return out;
+}
+function archStats(b){
+  const gs=archGames(b);
+  const names=new Set();
+  gs.forEach(g=>[...(g.A||[]),...(g.B||[])].forEach(n=>names.add(n)));
+  return { games:gs.length, done:gs.filter(g=>g.sa!=null&&g.sb!=null).length, players:names.size };
+}
+/* 그날 순위 — 획득점수·득실차·승률 */
+function archRank(b){
+  const P={};
+  archGames(b).forEach(g=>{
+    if(g.sa==null||g.sb==null) return;
+    const A=g.A||[], B=g.B||[];
+    [...A,...B].forEach(n=>{ P[n]=P[n]||{nm:n,w:0,l:0,gf:0,ga:0}; });
+    const aWin=g.sa>g.sb;
+    A.forEach(n=>{ aWin?P[n].w++:P[n].l++; P[n].gf+=g.sa; P[n].ga+=g.sb; });
+    B.forEach(n=>{ !aWin?P[n].w++:P[n].l++; P[n].gf+=g.sb; P[n].ga+=g.sa; });
+  });
+  return Object.values(P).map(p=>({ ...p, tot:p.w+p.l, gd:p.gf-p.ga,
+      wr:(p.w+p.l)?Math.round(p.w/(p.w+p.l)*100):0, pts:p.w*3 }))
+    .sort((a,b2)=>(b2.pts-a.pts)||(b2.gd-a.gd)||(b2.wr-a.wr)||String(a.nm).localeCompare(String(b2.nm)));
+}
+async function openArchiveOne(bid){
+  ARCH_ONE=(ARCH||[]).find(x=>x.id===bid) || null;
+  if(!ARCH_ONE){ toast('기록을 찾을 수 없어요'); return; }
+  state._archTab='rank';
+  drawArchiveOne();
+}
+function setArchTab(t){ state._archTab=t; drawArchiveOne(); }
+function drawArchiveOne(){
+  const b=ARCH_ONE; if(!b) return;
+  const off=cb2Officer();
+  const tab=state._archTab||'rank';
+  const gs=archGames(b), rk=archRank(b);
+  let h=`<div class="sh-top">
+      <span onclick="drawArchive()" style="cursor:pointer;font-size:21px;color:#8a857c;margin-right:9px;line-height:1">‹</span>
+      <h3>${esc(b.date||'모임')}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>
+    <div class="t-bdy-r" style="color:var(--lgray);margin:0 2px 12px">${esc(b.fmt||'대진')}<span style="color:#d8d2c6"> · </span>${archStats(b).players}명 참가</div>
+    <div style="display:flex;gap:7px;margin:0 0 14px">
+      ${[['rank','순위'],['games','경기·스코어']].map(([k,nm])=>{
+        const on=tab===k;
+        return `<div onclick="setArchTab('${k}')" class="t-bdy" style="flex:1;text-align:center;cursor:pointer;border-radius:11px;padding:11px 0;
+          font-weight:${on?800:600};background:${on?'var(--ink)':'#fff'};color:${on?'#fff':'var(--lgray)'};
+          border:1.4px solid ${on?'var(--ink)':'#e8e4dc'}">${nm}</div>`;
+      }).join('')}
+    </div>`;
+
+  if(tab==='rank'){
+    if(!rk.length){
+      h+=`<div class="t-bdy-r" style="color:var(--lgray);text-align:left;margin:0 2px">아직 입력된 스코어가 없어요 · <b style="color:var(--coral-d)">경기·스코어</b> 탭에서 넣어주세요</div>`;
+    } else {
+      h+=`<div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;padding:11px 14px;background:var(--felt)">
+          <div class="t-lbl" style="width:24px">#</div>
+          <div class="t-lbl" style="flex:1">이름</div>
+          <div class="t-lbl" style="width:48px;text-align:right">승점</div>
+          <div class="t-lbl" style="width:48px;text-align:right">득실</div>
+          <div class="t-lbl" style="width:44px;text-align:right">승률</div></div>
+        ${rk.map((p,i)=>{
+          const med=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':null;
+          return `<div style="display:flex;align-items:center;padding:12px 14px;border-top:1px solid #f4f1ea">
+          <div class="t-num" style="width:24px;font-size:13px;color:${med||'var(--lgray)'}">${i+1}</div>
+          <div style="flex:1;min-width:0">
+            <div class="t-bdy" style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nm)}</div>
+            <div class="t-lbl" style="font-weight:600;margin-top:2px">${p.w}승 ${p.l}패</div></div>
+          <div class="t-num" style="width:48px;text-align:right;font-size:16.5px;color:var(--coral-d)">${p.pts}</div>
+          <div class="t-num" style="width:48px;text-align:right;font-size:13px;font-weight:700;color:${p.gd>0?'#2c7a53':p.gd<0?'#c14545':'var(--lgray)'}">${p.gd>0?'+':''}${p.gd}</div>
+          <div class="t-num" style="width:44px;text-align:right;font-size:13px;font-weight:700">${p.wr}<span class="t-mcr" style="color:var(--lgray)">%</span></div></div>`;
+        }).join('')}
+      </div>
+      <div class="t-bdy-r" style="color:var(--lgray);text-align:left;margin-top:11px">승점 = 승리 <b style="color:var(--ink)">3점</b> · 동점이면 <b style="color:var(--ink)">득실차 → 승률</b> 순으로 가려요</div>`;
+    }
+  } else {
+    if(!gs.length){
+      h+=`<div class="t-bdy-r" style="color:var(--lgray);text-align:left;margin:0 2px">이 모임에는 저장된 경기가 없어요</div>`;
+    } else {
+      h+=gs.map(g=>{
+        const done=g.sa!=null&&g.sb!=null;
+        const aWin=done&&g.sa>g.sb, bWin=done&&g.sb>g.sa;
+        return `<div class="card" style="padding:13px 15px">
+          <div class="t-lbl">${esc(String(g.court))}코트</div>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
+            <div class="t-bdy" style="flex:1;min-width:0;font-weight:${aWin?800:500};color:${done&&!aWin?'var(--lgray)':'var(--ink)'}">${(g.A||[]).map(esc).join(' + ')||'—'}</div>
+            <div style="flex:none;text-align:center;min-width:56px">
+              ${done?`<span class="t-num" style="font-size:16.5px">${g.sa}</span><span class="t-lbl" style="margin:0 3px">:</span><span class="t-num" style="font-size:16.5px">${g.sb}</span>`
+                    :`<span class="t-lbl">미입력</span>`}</div>
+            <div class="t-bdy" style="flex:1;min-width:0;text-align:right;font-weight:${bWin?800:500};color:${done&&!bWin?'var(--lgray)':'var(--ink)'}">${(g.B||[]).map(esc).join(' + ')||'—'}</div>
+          </div>
+          ${off?`<div style="display:flex;gap:7px;align-items:center;margin-top:10px">
+            <input id="ar_a_${g.key}" type="number" inputmode="numeric" min="0" max="99" value="${g.sa==null?'':g.sa}"
+              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px">
+            <span class="t-lbl">:</span>
+            <input id="ar_b_${g.key}" type="number" inputmode="numeric" min="0" max="99" value="${g.sb==null?'':g.sb}"
+              placeholder="0" class="t-num" style="flex:1;min-width:0;text-align:center;font-size:13px">
+            <button class="btn sm t-bdy" style="width:auto;padding:0 15px;font-weight:800" onclick="archSaveScore('${g.key}')">저장</button>
+          </div>`:''}
+        </div>`;
+      }).join('');
+      if(off) h+=`<div class="t-bdy-r" style="color:var(--lgray);text-align:left;margin-top:11px">임원은 <b style="color:var(--ink)">지난 모임 스코어도 수정</b>할 수 있어요 · 저장하면 순위와 클럽 통계에 바로 반영돼요</div>`;
+    }
+  }
+  document.getElementById('sheet').innerHTML=h;
+}
+async function archSaveScore(key){
+  const b=ARCH_ONE; if(!b) return;
+  const gv=id=>{ const v=(document.getElementById(id)||{}).value; return v===''||v==null ? null : Math.max(0,Math.min(99,parseInt(v,10)||0)); };
+  const a=gv('ar_a_'+key), bb=gv('ar_b_'+key);
+  if((a==null)!==(bb==null)){ toast('양쪽 점수를 모두 넣어주세요'); return; }
+  try{
+    await api(`/brackets/${b.id}/scores/${encodeURIComponent(key)}`,{method:'PUT',body:JSON.stringify({a,b:bb})});
+    b.scores=b.scores||{};
+    if(a==null) delete b.scores[key]; else b.scores[key]={a,b:bb};
+    toast(a==null?'점수를 지웠어요':'점수를 저장했어요');
+    drawArchiveOne();
+  }catch(e){ toast('저장하지 못했어요 · 클럽 회원만 입력할 수 있어요'); }
+}
+
 /* 클럽 순위·통계 — 발행된 대진 + 확정 점수 실데이터 (분기별) */
 async function renderClubStatsSrv(){
   let rows=[];
@@ -7798,8 +8047,8 @@ function seedTrialBracket(){
     const four=TRIAL_ROSTER.slice(c*4,c*4+4);
     const [t1,t2]=cb2Pairs(four,r+c);
     games.push({r:r+1,c:c+1,label:cb2Label(t1,t2),
-      teamA:t1.map(p=>({id:p.id,name:p.name,gender:p.gender})),
-      teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender})), sa:null, sb:null});
+      teamA:t1.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade,glabel:p.glabel})),
+      teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade,glabel:p.glabel})), sa:null, sb:null});
   }
   games.filter(g=>g.r===1).forEach((g,i)=>{ g.sa=[6,5,3][i]; g.sb=[4,5,6][i]; });
   const g21=games.find(g=>g.r===2&&g.c===1); if(g21){ g21.sa=6; g21.sb=4; }
@@ -8047,6 +8296,8 @@ function drawCB2View(){
           else sc=`<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`;
         }
         const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
+    const gA=esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
+    const gB=esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#cf5418', cB=CB2.mode==='cheongbaek'?'#f04452':'#3b2a1a';
         h+=`<div style="background:#f8f6f1;border-radius:11px;padding:8px 10px;margin-top:6px">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -8055,10 +8306,16 @@ function drawCB2View(){
             <span style="flex:1"></span>${sc}
             ${off&&!done(g)?`<span onclick="cb2Swap(${g.gi})" style="font-size:12px;font-weight:500;color:var(--lgray);cursor:pointer;padding-left:4px" title="순서 변경">↕</span>`:''}
           </div>
-          <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
-            <b style="flex:1;font-size:var(--t2);font-weight:500;color:${cA};line-height:1.4;word-break:keep-all">${A}</b>
-            <span style="font-size:11px;font-weight:500;color:var(--lgray);flex:none">vs</span>
-            <b style="flex:1;text-align:right;font-size:var(--t2);font-weight:500;color:${cB};line-height:1.4;word-break:keep-all">${B}</b>
+          <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
+            <div style="flex:1;min-width:0">
+              <b style="display:block;font-size:var(--t2);font-weight:700;color:${cA};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${A}</b>
+              ${gA?`<span style="display:block;font-size:10px;font-weight:700;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gA}</span>`:''}
+            </div>
+            <span style="font-size:11px;font-weight:600;color:var(--lgray);flex:none;padding-top:2px">vs</span>
+            <div style="flex:1;min-width:0;text-align:right">
+              <b style="display:block;font-size:var(--t2);font-weight:700;color:${cB};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
+              ${gB?`<span style="display:block;font-size:10px;font-weight:700;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gB}</span>`:''}
+            </div>
           </div></div>`;
       });
       h+=`</div>`;
@@ -8126,17 +8383,33 @@ function gradeFromCareer(years){
 }
 /* 등급 내 순위용 — 구력을 개월로. 테린이 클럽처럼 전원 같은 등급일 때 이게 순위를 만든다 */
 function careerMonthsOf(p){
+  if(p && p.months!=null) return Math.max(0, p.months);        // 게스트는 구력을 개월로 직접 받는다
+  if(p && p.years!=null) return Math.max(0, p.years*12);
   try{
     const ym=JSON.parse(p.sport_started||'{}')[state.sport];
     const m=careerMonthsFrom(ym);
     return m==null?-1:m;
   }catch(e){ return -1; }
 }
+/* 등급 판정용 — '완료된 연수'. 표시용 careerYearsFrom() 은 '몇 년차'라 +1 이 붙는데,
+   등급에 그걸 쓰면 1년/4년/9년 구간이 한 칸씩 부풀려진다. */
 function careerYearsOf(p){
   const m=careerMonthsOf(p);
-  return m<0 ? null : Math.max(1, Math.floor(m/12)+1);
+  return m<0 ? null : Math.floor(m/12);
 }
 /* 명단에 등급이 비어 있으면 구력으로 채운다 */
+/* 등급 내 순번 — 같은 등급끼리 구력 개월 순으로 1,2,3… 을 매긴다.
+   테린이 클럽처럼 전원 C 여도 C1~C12 로 갈려서 대진 밸런스가 맞는다. */
+function assignGradeRanks(list){
+  const by={};
+  (list||[]).forEach(p=>{ const g=p.grade||'C'; (by[g]=by[g]||[]).push(p); });
+  Object.keys(by).forEach(g=>{
+    by[g].sort((a,b)=>(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0))
+                     ||String(a.name||'').localeCompare(String(b.name||'')));
+    by[g].forEach((p,i)=>{ p.gnum=i+1; p.glabel=g+(i+1); });
+  });
+  return list;
+}
 function fillGradesByCareer(list){
   (list||[]).forEach(p=>{
     if(p.grade || p.is_guest) return;
@@ -8144,6 +8417,158 @@ function fillGradesByCareer(list){
     if(g){ p.grade=g; p._byCareer=true; }
   });
   return list;
+}
+
+/* 리그 선수 카드 — 개인리그에서 경기 전 상대를 확인한다.
+   나이·신장·주손·백핸드·통산성적은 여기서만 보인다(클럽 명단·오픈매치엔 안 나옴). */
+function leaguePlayerCard(u, opts){
+  if(!u) return '';
+  const o=opts||{};
+  const age = u.birth_year ? (new Date().getFullYear()-u.birth_year+1) : null;
+  const w=u.wins||0, l=u.losses||0, tot=w+l, wr=tot?Math.round(w/tot*100):null;
+  const dbl = o.mode==='doubles';
+  const rt = dbl ? (u.rating_doubles==null?1000:u.rating_doubles) : (u.rating||1000);
+  const rk = dbl ? u.rank_doubles : u.rank;
+  const tier = String(tierByRating(rt)).split(' · ')[0];
+  const fem = String(u.gender||'').startsWith('여') || u.gender==='F';
+  const ac  = fem ? '#c9457e' : '#3d6fd6';
+  const bg  = fem ? '#fdeef4' : '#eef4fd';
+
+  // 프로필 사진이 있으면 아바타로, 없으면 이름 첫 글자
+  let ph='';
+  try{ const a = typeof u.photos==='string' ? JSON.parse(u.photos||'[]') : (u.photos||[]); ph=a[0]||''; }catch(e){}
+  if(ph && !ph.startsWith('http')) ph = API_BASE + ph;
+  const avatar = ph
+    ? `<span style="flex:none;width:46px;height:46px;border-radius:50%;background:url('${ph}') center/cover;box-shadow:0 0 0 2px #fff"></span>`
+    : `<span style="flex:none;width:46px;height:46px;border-radius:50%;background:${ac};color:#fff;
+         display:grid;place-items:center;font-size:17px;font-weight:800;letter-spacing:-.02em">${esc((u.name||'?').slice(0,1))}</span>`;
+
+  // 정보 셀 — 값이 없는 칸은 아예 만들지 않는다
+  const cells = [
+    ['나이',   age?age+'세':null],
+    ['신장',   u.height?u.height+'cm':null],
+    ['주 손',  u.handed||null],
+    ['백핸드', u.backhand||null],
+  ].filter(x=>x[1]);
+  const stats = [
+    ['통산', tot?`${w}승 ${l}패`:null],
+    ['승률', wr==null?null:wr+'%'],
+    ['최고', u.peak_mmr?u.peak_mmr:null],
+  ].filter(x=>x[1]);
+
+  const grid = arr => arr.map(([k,v],idx)=>
+    `<div style="flex:1;min-width:0;text-align:center;padding:0 4px;
+        ${idx?'border-left:1px solid #f0ece4':''}">
+       <div style="font-size:9.5px;font-weight:600;color:var(--lgray);letter-spacing:.01em">${k}</div>
+       <div style="font-size:14px;font-weight:800;margin-top:4px;letter-spacing:-.03em;white-space:nowrap">${v}</div></div>`
+  ).join('');
+
+  return `<div style="border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;
+      box-shadow:0 2px 10px rgba(120,100,60,.05)">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 15px;background:${bg}">
+      ${avatar}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:800;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.name||'선수')}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+          <span style="font-size:9.5px;font-weight:700;color:#fff;background:${ac};border-radius:5px;padding:2px 6px;letter-spacing:.01em">${dbl?'복식':'단식'}</span>
+          <span style="font-size:12px;font-weight:700;color:${ac};letter-spacing:-.02em">${esc(tier)}</span>
+          <span style="font-size:11px;font-weight:600;color:${ac};opacity:.7">${rt}${rk?` · ${rk}위`:''}</span>
+        </div></div>
+      ${o.badge?`<span style="flex:none;font-size:10px;font-weight:800;background:#fff;color:${ac};border-radius:11px;padding:5px 10px">${o.badge}</span>`:''}
+    </div>
+    ${cells.length?`<div style="display:flex;padding:13px 8px">${grid(cells)}</div>`:''}
+    ${stats.length?`<div style="display:flex;padding:13px 8px;border-top:1px solid #f4f1ea;background:#fbfaf7">${grid(stats)}</div>`:''}
+    ${(!cells.length && !stats.length)?`<div style="padding:15px;text-align:center;font-size:11.5px;font-weight:500;color:var(--lgray)">
+      아직 상세 정보를 넣지 않은 선수예요</div>`:''}
+  </div>`;
+}
+
+/* 경기 전 선수 비교 — 개인리그 전용 */
+async function openLeagueMatchup(uid, mode){
+  const m = mode || LG_MODE;
+  let me=null, op=null;
+  try{ me = state.serverUser ? {...state.serverUser, rank:(ME_PROF||{}).rank} : null; }catch(e){}
+  try{ op = await api(`/users/${uid}/profile`); }catch(e){ toast('상대 정보를 불러오지 못했어요'); return; }
+  const h = `<div class="sh-top"><h3>경기 전 확인</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>
+    <div class="note" style="text-align:left;margin:0 2px 12px">
+      아래 정보는 <b>개인리그에서만</b> 보여요 · 오픈매치·클럽 명단에는 표시되지 않아요</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${leaguePlayerCard(me,{mode:m,badge:'나'})}
+      <div style="text-align:center;font-size:12px;font-weight:800;color:var(--lgray)">VS</div>
+      ${leaguePlayerCard(op,{mode:m,badge:'상대'})}
+    </div>
+    <div class="note" style="text-align:left;margin-top:12px">
+      ${m==='doubles'?'복식':'단식'} 티어와 레이팅이에요 · 결과는 ${m==='doubles'?'복식':'단식'} 티어에만 반영돼요</div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+
+/* ── 참여자 등급 분포 ─────────────────────────────
+   오픈매치 상세에서 "어떤 사람들이 모였는지"를 한눈에 보여준다.
+   평균 등급은 등급을 점수(SS 5 … C 1)로 환산해 소수 첫째까지 낸다. */
+function omGradeMix(players){
+  const list=(players||[]).map(p=>{
+    const g = p.grade || p.assessed || gradeFromCareer(careerYearsOf(p));
+    return g || null;
+  }).filter(Boolean);
+  const cnt={}; GRADE_INFO.forEach(t=>cnt[t.g]=0);
+  list.forEach(g=>{ if(cnt[g]!=null) cnt[g]++; });
+  const val=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };
+  const sum=list.reduce((a,g)=>a+val(g),0);
+  const avg=list.length? sum/list.length : 0;
+  // 평균값에 가장 가까운 등급을 대표로 (5→SS … 1→C)
+  // 거리가 같으면 낮은 등급을 쓴다 — 실제보다 높게 보이면 초급자가 위축된다
+  const near=GRADE_INFO.slice().reverse().reduce((best,t)=>{
+    const d=Math.abs(val(t.g)-avg);
+    return (best==null || d<best.d-1e-9) ? {g:t.g,d} : best; }, null);
+  return { cnt, total:list.length, avg, avgGrade: near?near.g:null, unknown:(players||[]).length-list.length };
+}
+function omGradeMixHTML(players, opts){
+  const o=opts||{};
+  const m=omGradeMix(players);
+  if(!m.total) return '';
+  const max=Math.max(...GRADE_INFO.map(t=>m.cnt[t.g]));
+  const gi=m.avgGrade?gradeInfo(m.avgGrade):null;
+
+  // 평균 등급 히어로
+  let h=`<div style="border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff">
+    <div style="display:flex;align-items:center;gap:13px;padding:14px 16px;background:${gi?gi.bg:'var(--felt)'}">
+      <div style="flex:none;width:52px;height:52px;border-radius:50%;background:#fff;border:2.5px solid ${gi?gi.c:'#ddd6c8'};
+        display:grid;place-items:center;font-weight:800;letter-spacing:-.04em;color:${gi?gi.c:'var(--lgray)'};
+        font-size:${m.avgGrade&&m.avgGrade.length>1?17:21}px">${m.avgGrade||'—'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="t-lbl" style="color:${gi?gi.c:'var(--lgray)'};font-weight:700">참여자 평균 등급</div>
+        <div class="t-ttl" style="margin-top:2px">${gi?gi.desc:'—'}</div>
+        <div class="t-lbl" style="font-weight:600;margin-top:3px;color:${gi?gi.c:'var(--lgray)'}">
+          ${m.total}명 참여${gi?` · 예상 NTRP ${gi.ntrp}`:''}</div></div>
+    </div>`;
+
+  // 분포 막대 — 인원 수는 보여주지 않는다.
+  // 색은 등급 고유색 대신 한 계열의 농담을 쓴다. 다섯 색이 제각각이면
+  // 막대 길이보다 색이 먼저 눈에 들어와 분포를 못 읽는다.
+  // 평균 등급 막대만 브랜드색으로 띄워 가장 중요한 정보를 도드라지게 한다.
+  const RAMP=['#4a443c','#6b6357','#8b8478','#b0a99c','#cfc9bd'];
+  h+=`<div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px">`;
+  GRADE_INFO.forEach((t,idx)=>{
+    const n=m.cnt[t.g], w=max? Math.round(n/max*100) : 0;
+    const isAvg = t.g===m.avgGrade;
+    const bar = isAvg ? 'var(--coral)' : RAMP[idx];
+    h+=`<div style="display:flex;align-items:center;gap:10px">
+      <span style="flex:none;display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+        font-size:${t.g.length>1?9.5:11.5}px;font-weight:800;letter-spacing:-.02em;
+        background:${isAvg?'#fdf2e6':'#f2efe9'};color:${isAvg?'#b3591a':'#8b8478'};
+        ${n?'':'opacity:.4'}">${t.g}</span>
+      <div style="flex:1;min-width:0;height:22px;border-radius:7px;background:#eae6de;overflow:hidden;position:relative">
+        ${n?`<div style="position:absolute;left:0;top:0;bottom:0;width:${Math.max(w,8)}%;background:${bar};border-radius:7px"></div>`:''}
+      </div>
+    </div>`;
+  });
+  h+=`</div>`;
+
+  if(m.unknown) h+=`<div class="t-lbl" style="font-weight:500;padding:0 16px 13px">구력 미입력 ${m.unknown}명은 집계에서 빠졌어요</div>`;
+  else if(o.note!==false) h+=`<div class="t-lbl" style="font-weight:500;padding:0 16px 13px">등급은 프로필 구력으로 자동 계산돼요 · 대진은 앞번호+뒷번호로 팀을 맞춰요</div>`;
+  h+=`</div>`;
+  return h;
 }
 
 /* ═══════════ 오픈매치 소셜 로테이션 ═══════════
@@ -8304,7 +8729,16 @@ function openGradeGuide(){
   const meId = String((state.me&&state.me.id)||'');
   const mine = roster.find(p=>String(p.user_id)===meId);
   const myMo = mine ? careerMonthsOf(mine) : careerMonthsOf({sport_started: JSON.stringify(sportStartedMap())});
-  const myG  = mine && mine.grade ? mine.grade : gradeFromCareer(myMo!=null&&myMo>=0?Math.max(1,Math.floor(myMo/12)+1):null);
+  const myG  = mine && mine.grade ? mine.grade : gradeFromCareer(myMo!=null&&myMo>=0?Math.floor(myMo/12):null);
+  // 등급 안 순번 — 클럽 명단이 있으면 계산해서 B2 처럼 보여준다
+  let myLabel = myG;
+  try{
+    if(myG && roster.length){
+      const filled=assignGradeRanks(fillGradesByCareer(roster.slice()));
+      const me2=filled.find(p=>String(p.user_id)===meId);
+      if(me2 && me2.glabel) myLabel=me2.glabel;
+    }
+  }catch(e){}
   const myYr = (myMo!=null && myMo>=0) ? myMo : null;
 
   let h = `<div class="sh-top"><h3>등급 안내</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>`;
@@ -8314,11 +8748,12 @@ function openGradeGuide(){
     const gi=gradeInfo(myG);
     h += `<div style="border-radius:16px;padding:16px;margin-bottom:12px;background:${gi.bg};border:1.5px solid ${gi.c}22">
       <div style="display:flex;align-items:center;gap:13px">
-        <div style="flex:none;width:52px;height:52px;border-radius:14px;background:#fff;border:2px solid ${gi.c};
-          display:flex;align-items:center;justify-content:center;font-size:${myG.length>1?17:21}px;font-weight:800;color:${gi.c}">${myG}</div>
+        <div style="flex:none;width:56px;height:56px;border-radius:50%;background:#fff;border:2.5px solid ${gi.c};
+          display:flex;align-items:center;justify-content:center;font-weight:800;color:${gi.c};
+          font-size:${String(myLabel).length>2?16:String(myLabel).length>1?19:22}px;letter-spacing:-.04em">${myLabel}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:10.5px;font-weight:700;color:${gi.c};letter-spacing:.03em">내 등급</div>
-          <div style="font-size:16px;font-weight:800;letter-spacing:-.03em;margin-top:1px">${gi.desc}</div>
+          <div style="font-size:17px;font-weight:800;letter-spacing:-.035em;margin-top:1px">${gi.desc}</div>
           <div style="font-size:11.5px;font-weight:600;color:${gi.c};margin-top:3px">예상 NTRP ${gi.ntrp}${myYr!=null?` · 구력 ${Math.floor(myYr/12)}년 ${myYr%12}개월`:''}</div>
         </div></div></div>`;
   } else {
@@ -8335,8 +8770,8 @@ function openGradeGuide(){
     h += `<div style="position:relative;display:flex;align-items:center;gap:11px;border-radius:12px;padding:10px 12px;
         background:${on?t.bg:'#fff'};border:${on?`1.5px solid ${t.c}`:'1px solid #f0ece4'};overflow:hidden">
       <div style="position:absolute;left:0;top:0;bottom:0;width:${w}%;background:${t.c};opacity:${on?.10:.045}"></div>
-      <div style="position:relative;flex:none;width:34px;height:34px;border-radius:9px;${cb2GradeColor(t.g)};
-        display:flex;align-items:center;justify-content:center;font-size:${t.g.length>1?12:15}px;font-weight:800">${t.g}</div>
+      <div style="position:relative;flex:none;width:36px;height:36px;border-radius:50%;${cb2GradeColor(t.g)};
+        display:flex;align-items:center;justify-content:center;font-size:${t.g.length>1?12.5:15.5}px;font-weight:800;letter-spacing:-.03em">${t.g}</div>
       <div style="position:relative;flex:1;min-width:0">
         <div style="font-size:12.5px;font-weight:700;letter-spacing:-.02em">${t.label}
           <span style="font-size:10.5px;font-weight:500;color:var(--lgray)"> · ${t.desc}</span></div>
@@ -8352,7 +8787,7 @@ function openGradeGuide(){
     <div style="font-size:11.5px;font-weight:800;margin-bottom:7px">대진은 인접 등급끼리</div>
     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10px;font-weight:700">`;
   GRADE_INFO.forEach((t,i)=>{
-    h += `<span style="border-radius:6px;padding:3px 7px;${cb2GradeColor(t.g)}">${t.g}</span>`;
+    h += `<span style="display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;font-size:${t.g.length>1?9.5:11}px;letter-spacing:-.02em;${cb2GradeColor(t.g)}">${t.g}</span>`;
     if(i<GRADE_INFO.length-1) h += `<span style="color:var(--lgray)">↔</span>`;
   });
   h += `</div>
@@ -8372,16 +8807,33 @@ function openGradeGuide(){
       </div>`).join('')}
     <div style="font-size:10.5px;font-weight:500;color:#5b7fb8;margin-top:6px;line-height:1.5">
       대진은 <b>등급</b>만 봐요. 티어가 높아도 대진이 바뀌지 않아요.</div></div>
-    <div class="note" style="text-align:left;margin-top:11px">등급은 <b>프로필 구력</b>으로 자동 정해져요 · 같은 등급 안에서는 <b>개월 수</b>로 순서가 갈려요<br>
-    NTRP는 미국테니스협회 실력 지표예요. 구력에서 추정한 값이라 실제와 다를 수 있어요.<br>
-    실력이 구력과 다르면 임원이 조정할 수 있어요.</div>`;
+    <div style="background:var(--felt);border-radius:12px;padding:13px;margin-top:10px">
+      <div class="t-bdy" style="font-weight:800">모든 등급이 똑같이 세분화돼요</div>
+      <div class="t-bdy-r" style="color:var(--lgray);margin-top:6px">
+        같은 등급끼리 <b style="color:var(--ink)">구력 개월 수</b>로 순번이 붙어요 · SS·S·A·B·C 전부요</div>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-top:9px">
+        ${[['A','A1 9년 4개월','A2 7년 0개월','A3 5년 2개월'],
+           ['B','B1 4년 11개월','B2 3년 8개월','B3 2년 0개월'],
+           ['C','C1 1년 9개월','C2 0년 7개월','C3 0년 2개월']]
+          .map(([g,...ex])=>{ const gi=gradeInfo(g);
+            return `<div style="display:flex;align-items:center;gap:8px">
+              <span style="flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+                font-size:10px;font-weight:800;${cb2GradeColor(g)}">${g}</span>
+              <span class="t-num" style="flex:1;min-width:0;font-size:10.5px;font-weight:700;color:${gi.c};
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.join('  ·  ')}</span></div>`;
+          }).join('')}
+      </div>
+      <div class="t-lbl" style="font-weight:500;margin-top:9px;line-height:1.55">
+        구력이 길수록 <b style="color:var(--ink)">앞 번호</b>예요 · 대진은
+        <b style="color:var(--ink)">앞번호 + 뒷번호</b>로 팀을 짜서 전력을 맞춰요<br>
+        입문자만 모인 클럽처럼 전원 C 여도 <b style="color:var(--ink)">C1~C12</b> 로 갈려서 대진이 돌아가요</div></div>`;
 
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
 }
 
-function cb2All(){ return [ ...fillGradesByCareer(window._cb2Roster||[]),
-  ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, is_guest:true})) ]; }
+function cb2All(){ return assignGradeRanks([ ...fillGradesByCareer(window._cb2Roster||[]),
+  ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, months:g.months, is_guest:true})) ]); }
 function drawCB2Build(){
   const all=cb2All();
   const courts=+((document.getElementById('cb2Courts')||{}).value||3);
@@ -8391,7 +8843,7 @@ function drawCB2Build(){
     const id=String(p.user_id), on=CB2_SEL.has(id), fem=String(p.gender||'').startsWith('여');
     const base = fem ? '#e0618c' : '#3182f6';                       // 여성 핑크 · 남성 블루
     const soft = fem ? '#fdeef4' : '#eaf2ff';
-    const gb=p.grade?`<span style="font-size:11px;font-weight:500;border-radius:6px;padding:1px 5px;margin-left:5px;${cb2GradeColor(p.grade)}">${p.grade}</span>`:'';
+    const gb=p.grade?`<span style="font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 6px;margin-left:5px;letter-spacing:-.01em;${cb2GradeColor(p.grade)}">${CB2_GRADEMODE?p.grade:(p.glabel||p.grade)}</span>`:'';
     const guest=p.is_guest?`<span style="font-size:11px;font-weight:500;margin-left:4px;opacity:.75">G</span>`:'';
     const sty = on ? `background:${base};color:#fff` : `background:${soft};color:${base}`;
     return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;${p.is_guest?`border:1.5px dashed ${on?base:'#d9d3c7'};`:''}${sty}">${esc(p.name)}${gb}${guest}${promoBadge(p.user_id)}</span>`;
@@ -8421,7 +8873,13 @@ function drawCB2Build(){
       <span onclick="cb2GradeMode()" style="font-size:11px;font-weight:500;cursor:pointer;border-radius:14px;padding:5px 11px;${CB2_GRADEMODE?'background:var(--ink);color:#fff':'background:#f2f0ea;color:#6b6357'}">${CB2_GRADEMODE?'등급 편집 중 · 칩을 탭 → 저장':'등급 편집'}</span></div>
     ${CB2_GRADEMODE?`<div class="note" style="text-align:left;margin:4px 0 6px">등급은 <b>프로필 구력</b>으로 자동 정해져요 · <span onclick="openGradeGuide()" style="color:var(--coral-d);font-weight:700;cursor:pointer;text-decoration:underline">등급표 보기</span><br>
       20년+ <b>SS</b> · 10~19년 <b>S</b> · 5~9년 <b>A</b> · 2~4년 <b>B</b> · 1년 이하 <b>C</b><br>
-      실력이 구력과 다르면 칩을 탭해 직접 바꿀 수 있어요</div>`:''}
+      실력이 구력과 다르면 칩을 탭해 직접 바꿀 수 있어요
+      ${(()=>{ const odd=(window._cb2Roster||[]).filter(p=>{
+          if(!p.grade || p._byCareer) return false;
+          const g=gradeFromCareer(careerYearsOf(p));
+          return g && g!==p.grade; });
+        return odd.length? `<br><b style="color:var(--coral-d)">${odd.length}명은 구력으로 계산한 등급과 달라요</b> — ${odd.slice(0,3).map(p=>`${esc(p.name)} ${p.grade}→${gradeFromCareer(careerYearsOf(p))}`).join(', ')}${odd.length>3?` 외 ${odd.length-3}명`:''}
+          <br><span onclick="resetGradesToCareer()" style="color:var(--coral-d);font-weight:700;text-decoration:underline;cursor:pointer">구력 기준으로 되돌리기</span>` : ''; })()}</div>`:''}
     ${(()=>{ const no=(window._cb2Roster||[]).filter(p=>!p.grade && careerMonthsOf(p)<0);
       return no.length? `<div style="display:flex;align-items:center;gap:8px;background:#fdf6ec;border:1px solid #f1e3cd;border-radius:10px;padding:9px 11px;margin:4px 0 6px">
         <span style="font-size:14px">📋</span>
@@ -8433,11 +8891,12 @@ function drawCB2Build(){
       <span style="color:var(--lgray)">선택하면 진하게 · G = 게스트</span></div>
     <div style="margin:6px 0 2px">${all.map(chip).join('')||'<span class="note">이번 모임 참석자가 없어요 · 출석 체크를 먼저 받아주세요</span>'}</div>
 
-    <div class="ch" style="font-size:14px;margin-top:12px">게스트 추가 <span style="font-size:11px;color:var(--lgray);font-weight:500">· 회원이 아니어도 대진에 넣어요</span></div>
+    <div class="ch" style="font-size:14px;margin-top:12px">게스트 추가 <span style="font-size:11px;color:var(--lgray);font-weight:600">· 구력을 넣으면 등급·순번이 자동으로 정해져요</span></div>
     <div style="display:flex;gap:7px;margin-top:6px">
       <input id="cb2Gname" placeholder="이름" style="flex:1.4;min-width:0">
       <select id="cb2Ggender" style="flex:1"><option value="남성">남</option><option value="여성">여</option></select>
-      <select id="cb2Ggrade" style="flex:1"><option value="">등급</option><option>S</option><option>A</option><option>B</option><option>C</option></select>
+      <input id="cb2Gyears" type="number" inputmode="numeric" min="0" max="60" placeholder="년" style="flex:.8;min-width:0">
+      <input id="cb2Gmonths" type="number" inputmode="numeric" min="0" max="11" placeholder="개월" style="flex:.8;min-width:0">
       <button class="btn sm" style="width:auto;padding:0 16px" onclick="cb2AddGuest()">추가</button></div>
 
     <div class="ch" style="font-size:14px;margin-top:12px">늦참자 <span style="font-size:11px;color:var(--lgray);font-weight:500">· 탭해서 지정</span></div>
@@ -8478,15 +8937,25 @@ async function cb2SaveGrades(){
   catch(e){ toast('등급 저장은 임원만 할 수 있어요'); }
 }
 function cb2LateTog(id){ id=String(id); CB2_LATE.has(id)?CB2_LATE.delete(id):CB2_LATE.add(id); drawCB2Build(); }
+/* 게스트는 프로필이 없으니 구력(년)만 받는다. 등급·레이팅은 회원과 같은 규칙으로 계산. */
 function cb2AddGuest(){
   const name=((document.getElementById('cb2Gname')||{}).value||'').trim();
   if(!name){ toast('게스트 이름을 입력해 주세요'); return; }
   const gender=((document.getElementById('cb2Ggender')||{}).value)||'남성';
-  const grade=((document.getElementById('cb2Ggrade')||{}).value)||'';
+  const rawY=(document.getElementById('cb2Gyears')||{}).value;
+  const rawM=(document.getElementById('cb2Gmonths')||{}).value;
+  if((rawY===''||rawY==null) && (rawM===''||rawM==null)){
+    toast('구력을 넣어주세요 · 모르면 0년을 넣으면 C등급이에요'); return; }
+  const yrs = Math.max(0, Math.min(60, parseInt(rawY,10)||0));
+  const mos = Math.max(0, Math.min(11, parseInt(rawM,10)||0));
+  const total = yrs*12 + mos;                       // 개월까지 받아 등급 내 순번이 갈린다
+  const grade=gradeFromCareer(Math.floor(total/12)) || 'C';
   const gid='g'+Date.now()%1e7;
-  CB2_GUESTS.push({gid, name, gender, grade, rating: ({SS:1350,S:1250,A:1150,B:1050,C:950})[grade] || 1000});
+  CB2_GUESTS.push({gid, name, gender, grade, months:total, _byCareer:true,
+    rating: ({SS:1350,S:1250,A:1150,B:1050,C:950})[grade] || 1000});
   CB2_SEL.add(gid);
-  toast(`게스트 ${name} 추가 · 스코어는 임원이 입력해요`);
+  const gi=gradeInfo(grade);
+  toast(`${name} 추가 · 구력 ${yrs}년${mos?' '+mos+'개월':''} → ${grade}등급 (${gi.desc})`);
   drawCB2Build();
 }
 let CB_BANNER=null;
@@ -8507,6 +8976,25 @@ async function cbLoadBanner(){
   if(CB_BANNER!==null) return;
   try{ CB_BANNER=await api('/banners?slot=bracket')||[]; }catch(e){ CB_BANNER=[]; }
   if(document.getElementById('cb2b')) drawCB2Build();
+}
+/* 저장된 등급을 구력 기준으로 되돌린다 — 잘못 지정된 등급을 한 번에 정리 */
+async function resetGradesToCareer(){
+  const list=(window._cb2Roster||[]).filter(p=>{
+    if(!p.grade) return false;
+    const g=gradeFromCareer(careerYearsOf(p));
+    return g && g!==p.grade;
+  });
+  if(!list.length){ toast('되돌릴 등급이 없어요'); return; }
+  const names=list.slice(0,5).map(p=>p.name).join(', ');
+  if(!await appConfirm(`${list.length}명의 등급을 구력 기준으로 되돌릴까요?\n\n${names}${list.length>5?' 외':''}\n\n임원이 직접 지정한 값도 함께 바뀌어요.`,'되돌리기')) return;
+  const grades={};
+  list.forEach(p=>{ const g=gradeFromCareer(careerYearsOf(p)); p.grade=g; grades[p.user_id]=g; });
+  drawCB2Build();
+  if(!SERVER_OK || !clubId()){ toast('등급을 되돌렸어요'); return; }
+  try{
+    await api(`/clubs/${clubId()}/grades`,{method:'PATCH',body:JSON.stringify({grades})});
+    toast(`${list.length}명의 등급을 구력 기준으로 맞췄어요`);
+  }catch(e){ toast('저장에 실패했어요 · 임원만 바꿀 수 있어요'); }
 }
 function cb2Tog(id){ id=String(id);
   if(CB2_GRADEMODE){                                  // 등급 편집 모드: 탭 = S→A→B→C 순환
@@ -8567,7 +9055,7 @@ async function cb2Gen(mode){
   };
   const push=(r,c,t1,t2,label)=>games.push({r,c,label:label||cb2Label(t1,t2),
     teamA:t1.map(p=>({id:p.id,name:p.name,gender:p.gender})),
-    teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender})), sa:null, sb:null});
+    teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade,glabel:p.glabel})), sa:null, sb:null});
 
   if(mode==='hanul'){
     // 한울 AB 수기표: 한 시트 최대 16명 · 예약 코트 수만큼 동시 진행
@@ -9111,9 +9599,11 @@ function drawStage(){
         <span style="font-size:14px;font-weight:500;color:#8a8272">${g.c}코트 · ${esc(g.label||'')}</span>
         <span style="font-size:14px;font-weight:500;color:#ec6a2e">● ${min}분</span></div>
       <div style="text-align:center;margin-top:14px">
-        <div style="font-size:29px;font-weight:700">${esc((g.teamA||[]).map(p=>p.name).join(' · '))}</div>
-        <div style="font-size:12px;color:#8a8272;margin:8px 0">vs</div>
-        <div style="font-size:29px;font-weight:700">${esc((g.teamB||[]).map(p=>p.name).join(' · '))}</div></div></div>`;
+        <div style="font-size:29px;font-weight:800;letter-spacing:-.03em">${esc((g.teamA||[]).map(p=>p.name).join(' · '))}</div>
+        <div style="font-size:13px;font-weight:700;color:#8a8272;margin-top:4px;letter-spacing:.02em">${esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '))}</div>
+        <div style="font-size:12px;color:#8a8272;margin:10px 0">vs</div>
+        <div style="font-size:29px;font-weight:800;letter-spacing:-.03em">${esc((g.teamB||[]).map(p=>p.name).join(' · '))}</div>
+        <div style="font-size:13px;font-weight:700;color:#8a8272;margin-top:4px;letter-spacing:.02em">${esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '))}</div></div></div>`;
   };
   document.getElementById('evPage').innerHTML=`<div id="cbStage" style="min-height:100vh;background:#17150f;color:#f2efe6;padding:22px 20px 40px;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -9128,6 +9618,155 @@ function drawStage(){
   const pg=document.getElementById('evPage'); pg.classList.add('on');
   document.getElementById('ov').classList.remove('on');
 }
+/* ── 대진표 이미지 만들기 ──────────────────────────────
+   단톡방에 텍스트를 붙이면 줄이 밀려 읽기 어렵다. 카드 이미지로 만들어
+   한눈에 보이게 한다. 폭 1080px · 라운드마다 구역을 나눈다.
+   글자 크기는 √φ 스케일(본문 32px 기준)을 캔버스에 맞춰 3배로 키운 값. */
+async function cb2ShareImage(){
+  if(!CB2 || !(CB2.games||[]).length){ toast('공유할 대진이 없어요'); return; }
+  toast('이미지를 만드는 중…');
+  try{
+    const games=(CB2.games||[]).slice();
+    const rounds=[...new Set(games.map(g=>g.r))].sort((a,b)=>a-b);
+    const modeNm={hanul:'한울 AB',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[CB2.mode]||'일반';
+
+    // ── 레이아웃 (√φ 스케일 · 캔버스 3배) ──────────────
+    // 팀을 좌우로 놓으면 2열에서 이름칸이 117px 밖에 안 나와 이름이 잘린다.
+    // 그래서 카드 안에서 팀을 위아래로 쌓는다. 이러면 이름칸이 294px 로 늘어
+    // 네 글자 이름도 32px 로 온전히 들어간다.
+    const W=1080, PAD=56;
+    const T={ dsp:62, ttl:44, bdy:32, sub:29, lbl:24 };
+    const ROW=138, RHEAD=58, RGAP=26, HEAD=290, FOOT=96;
+    const COLS = rounds.length<=2 ? 1 : 2;
+    const CW = (W - PAD*2 - (COLS-1)*28) / COLS;
+    const perCol = Math.ceil(rounds.length/COLS);
+    const colH = r => RHEAD + games.filter(g=>g.r===r).length*ROW + RGAP;
+    let tallest=0;
+    for(let c=0;c<COLS;c++){
+      const h=rounds.slice(c*perCol,(c+1)*perCol).reduce((a,r)=>a+colH(r),0);
+      if(h>tallest) tallest=h;
+    }
+    const H = HEAD + tallest + FOOT;
+
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+    const x=cv.getContext('2d');
+    const FAM="Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif";
+    const F=(w,sz)=>{ x.font=`${w} ${sz}px ${FAM}`; };
+    const MONO=(w,sz)=>{ x.font=`${w} ${sz}px ui-monospace,'SF Mono',Menlo,monospace`; };
+    const rr=(X,Y,w,h,r)=>{ x.beginPath(); x.moveTo(X+r,Y); x.arcTo(X+w,Y,X+w,Y+h,r);
+      x.arcTo(X+w,Y+h,X,Y+h,r); x.arcTo(X,Y+h,X,Y,r); x.arcTo(X,Y,X+w,Y,r); x.closePath(); };
+
+    // 배경
+    x.fillStyle='#faf8f4'; x.fillRect(0,0,W,H);
+
+    // 헤더
+    x.fillStyle='#1c1b18'; x.fillRect(0,0,W,HEAD-34);
+    try{
+      if(!window._pzImgO){ window._pzImgO=new Image(); window._pzImgO.src=PZ_ORIG;
+        await new Promise(r=>{ window._pzImgO.onload=r; window._pzImgO.onerror=r; }); }
+      const pz=window._pzImgO;
+      if(pz && pz.width) x.drawImage(pz, W-PAD-88, 48, 88, 88);
+    }catch(e){}
+    F(700,T.lbl); x.fillStyle='#ed7c30';
+    try{ x.letterSpacing='4px'; }catch(e){}
+    x.fillText('MATSU · 오늘의 대진', PAD, 74);
+    try{ x.letterSpacing='0px'; }catch(e){}
+    F(800,T.dsp); x.fillStyle='#ffffff';
+    x.fillText(state.activeClub||'클럽', PAD, 142);
+    F(600,T.bdy); x.fillStyle='#b9b3a7';
+    x.fillText(`${CB2.date||''}  ·  ${modeNm}  ·  ${CB2.courts}코트  ·  ${games.length}경기`, PAD, 200);
+
+    // ── 이름이 잘리지 않도록 폰트를 먼저 정한다 ──
+    const courtW=56, scoreW=72, padIn=18;
+    const nameW = CW - courtW - scoreW - padIn*2 - 12;
+    const teamStr = t => (t||[]).map(p=>p.name).join(' · ');
+    const gradeStr = t => (t||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · ');
+    let NF = T.bdy;
+    for(; NF>=20; NF-=1){
+      F(800, NF);
+      if(games.every(g => x.measureText(teamStr(g.teamA)).width<=nameW
+                       && x.measureText(teamStr(g.teamB)).width<=nameW)) break;
+    }
+    const GF = Math.max(15, Math.round(NF*0.6));
+
+    // 라운드 블록
+    const drawRound=(r, ox, oy, cw)=>{
+      const gs=games.filter(g=>g.r===r);
+      let y=oy;
+      F(800,T.ttl); x.fillStyle='#1c1b18';
+      x.fillText(`${r}게임`, ox, y+32);
+      const tw=x.measureText(`${r}게임`).width;
+      F(600,T.lbl); x.fillStyle='#a8a29a';
+      x.fillText(`${gs.length}코트`, ox+tw+18, y+29);
+      y += RHEAD;
+
+      gs.forEach(g=>{
+        x.fillStyle='#ffffff'; rr(ox, y, cw, ROW-14, 20); x.fill();
+        x.strokeStyle='#ece8e0'; x.lineWidth=2; x.stroke();
+
+        const done = g.sa!=null && g.sb!=null;
+        const aWin = done && +g.sa > +g.sb, bWin = done && +g.sb > +g.sa;
+        const ga=gradeStr(g.teamA), gb=gradeStr(g.teamB);
+
+        // 코트 번호 — 왼쪽 세로 가운데
+        x.fillStyle='#f4f1ea'; rr(ox+padIn, y+34, 44, 52, 14); x.fill();
+        F(800,T.sub); x.fillStyle='#8b8478'; x.textAlign='center';
+        x.fillText(String(g.c), ox+padIn+22, y+68);
+
+        // 팀 A (위) · 팀 B (아래)
+        const nx = ox+padIn+courtW;
+        x.textAlign='left';
+        [[g.teamA, ga, aWin, y+50], [g.teamB, gb, bWin, y+108]].forEach(([tm, gs2, win, ty])=>{
+          F(win?800:600, NF); x.fillStyle = done&&!win ? '#a8a29a' : '#1c1b18';
+          x.fillText(teamStr(tm), nx, ty);
+          if(gs2){ F(700,GF); x.fillStyle='#bdb6aa';
+            x.fillText(gs2, nx + x.measureText('').width, ty+22); }
+        });
+
+        // 스코어 — 오른쪽 세로 가운데
+        x.textAlign='right';
+        if(done){
+          MONO(800,T.ttl); x.fillStyle='#1c1b18';
+          x.fillText(String(g.sa), ox+cw-padIn, y+54);
+          x.fillText(String(g.sb), ox+cw-padIn, y+112);
+          x.strokeStyle='#ece8e0'; x.lineWidth=2;
+          x.beginPath(); x.moveTo(ox+cw-padIn-46, y+70); x.lineTo(ox+cw-padIn, y+70); x.stroke();
+        } else {
+          F(700,T.sub); x.fillStyle='#cfc9bd'; x.fillText('vs', ox+cw-padIn, y+78);
+        }
+        x.textAlign='left';
+        y += ROW;
+      });
+      return y + RGAP;
+    };
+
+    for(let c=0;c<COLS;c++){
+      const ox = PAD + c*(CW+28);
+      let oy = HEAD - 10;
+      rounds.slice(c*perCol,(c+1)*perCol).forEach(r=>{ oy = drawRound(r, ox, oy, CW); });
+    }
+
+    // 푸터
+    F(600,T.lbl); x.fillStyle='#a8a29a'; x.textAlign='center';
+    x.fillText('맞수 · matsu.up.railway.app', W/2, H-46);
+    x.textAlign='left';
+
+    // 공유 · 저장
+    const blob = await new Promise(res=>cv.toBlob(res,'image/png',0.95));
+    if(!blob) throw new Error('blob');
+    const fname = `matsu-대진-${(CB2.date||'').replace(/[^0-9]/g,'')||'today'}.png`;
+    const file = new File([blob], fname, {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:'오늘 대진표'}); return; }
+      catch(e){ if(e && e.name==='AbortError') return; }
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=fname; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    toast('대진표 이미지를 저장했어요 · 단톡방에 올려주세요');
+  }catch(e){ toast('이미지를 만들지 못했어요'); }
+}
+
 /* ── 대진표 공유 ── */
 function cb2ShareText(){
   if(!CB2) return '';
@@ -9141,7 +9780,8 @@ function cb2Share(){
     <div class="sh-top"><h3>오늘 대진 공유</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
     <div style="background:#faf8f4;border:1px solid #ece8e0;border-radius:12px;padding:12px;margin-top:12px;max-height:240px;overflow-y:auto">
       <pre style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#5a544b;white-space:pre-wrap;margin:0;line-height:1.8">${esc(txt)}</pre></div>
-    <button class="btn" style="margin-top:12px" onclick="cb2Copy()">텍스트 복사</button>
+    <button class="btn" style="margin-top:12px" onclick="cb2ShareImage()">이미지로 공유하기</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="cb2Copy()">텍스트 복사</button>
     <button class="btn ghost" style="margin-top:9px" onclick="cb2ShareNative()">공유하기</button>
     <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">닫기</button></div>`;
   document.getElementById('ov').classList.add('on');
@@ -9592,8 +10232,8 @@ function drawEventDetail(){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3>
       ${off?`<div style="display:flex;gap:6px;flex:none">
-        <span onclick="editEvent(${e.id})" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
-        <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
+        <span onclick="editEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
+        <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
       </div>`:''}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
       <span style="font-size:11px;font-weight:500;border-radius:8px;padding:4px 10px;background:${accentBg};color:${accent}">${esc(e.tag||'정기')}</span>
@@ -9614,7 +10254,7 @@ function drawEventDetail(){
     ${off?(evIsPast(e)?`<div style="margin-top:18px;display:flex;align-items:center;gap:12px;background:#f4f2ee;border-radius:15px;padding:14px 16px">
       <span style="width:38px;height:38px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:18px;flex:none">🏁</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:500;color:#8a857c">끝난 모임이에요</div>
+        <div style="font-size:14px;font-weight:700;color:#8a857c;letter-spacing:-.02em">끝난 모임이에요</div>
         <div style="font-size:11px;font-weight:500;color:#a8a29a;margin-top:2px">대진은 새로 짤 수 없어요 · 기록은 그대로 남아요</div></div></div>`
     :`<div style="margin-top:18px">
       <div onclick="evToBracket('${e.id}')" style="display:flex;align-items:center;gap:12px;background:${accentBg};border-radius:15px;padding:14px 16px;cursor:pointer">
@@ -10333,19 +10973,12 @@ function openOmDetail(id){
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
         <div style="font-size:11px;color:var(--gray);font-weight:500">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
     ${(m.players||[]).length?(()=>{
-      const order=['러브','퓨처스','챌린저','투어','그랜드슬램'];
-      const col={'러브':'#e9e2d3','퓨처스':'#f5d9a0','챌린저':'#f2b27e','투어':'#ec6a2e','그랜드슬램':'#8a6a4a'};
-      const c={}; m.players.forEach(p=>{ const key=(p.rating||1000)===1000?'러브':levelOf(p.rating).tier; c[key]=(c[key]||0)+1; });
-      const mx=Math.max(1,...order.map(k=>c[k]||0));
       const femN=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
-      return `<div class="ch">참가자 ${m.cur||m.players.length}명 <span style="display:inline-flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:500;color:#8a7550;background:#f6efe2;border-radius:20px;padding:3px 10px">여성 ${femN}명</span>${m.joined?`<span style="font-size:11px;font-weight:500;color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:3px 10px">참가 중</span>`:''}</span></div>
-      <div style="display:flex;gap:9px;align-items:flex-end;height:118px;padding:6px 2px 14px">
-        ${order.map(k=>{const n=c[k]||0;const hpx=n?Math.max(14,Math.round(n/mx*72)):4;
-          return `<div style="flex:1;text-align:center">
-            <div style="font-size:12px;font-weight:500;color:${n?'var(--ink)':'#c9c3b8'}">${n||''}</div>
-            <div style="height:76px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;max-width:38px;height:${hpx}px;border-radius:8px 8px 3px 3px;background:${n?col[k]:'#f3efe7'}"></div></div>
-            <div style="font-size:11px;font-weight:500;color:var(--gray);margin-top:4px">${k}</div></div>`;}).join('')}
-      </div>`;})():''}
+      return `<div class="ch" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <span>참가자 ${m.cur||m.players.length}명</span>
+        <span class="t-mcr" style="color:#8a7550;background:#f6efe2;border-radius:20px;padding:4px 9px">여성 ${femN}명</span>
+        ${m.joined?`<span class="t-mcr" style="color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:4px 9px">참가 중</span>`:''}</div>
+      ${omGradeMixHTML(m.players)}`;})():''}
     ${m.note?`<div class="ch">안내</div><div style="font-size:14px;color:#4a463f;font-weight:500;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
   // ── 액션 ──
   const acts=[];
@@ -11279,8 +11912,8 @@ function renderApps(){
   const row=(t,sub,badge,bc,onclick)=>`<div class="card" style="padding:13px 15px;${onclick?'cursor:pointer':''}"${onclick?` onclick="${onclick}"`:''}>
       <div style="display:flex;align-items:center;gap:9px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</div>
-          <div style="font-size:11.5px;font-weight:500;color:var(--gray);margin-top:3px">${sub}</div></div>
+          <div style="font-size:14px;font-weight:800;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--gray);margin-top:3px">${sub}</div></div>
         <span style="flex:none;font-size:10.5px;font-weight:700;border-radius:11px;padding:4px 9px;${bc}">${badge}</span>
       </div></div>`;
 
@@ -11336,8 +11969,8 @@ async function renderMatch(){
   const sd = state._omSido||'', sg = state._omSigungu||'';
   const loading = typeof OM_LIST==='undefined' || (OM_LIST._pending && !OM_LIST.length);
   h+=`<div class="ch" style="font-size:17px;margin:18px 4px 10px;display:flex;align-items:center;gap:7px">
-    <span>🎾</span><span>오픈매치 찾기</span>
-    <span style="font-weight:500;font-size:11px;color:var(--gray)">누구나 참여하는 모임</span></div>`;
+    <span>🎾</span><span style="font-weight:800;letter-spacing:-.03em">오픈매치 찾기</span>
+    <span style="font-weight:600;font-size:11.5px;color:var(--gray)">누구나 참여하는 모임</span></div>`;
   h+=`<button class="btn ghost" style="margin-bottom:12px" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <select onchange="setOmSido(this.value)" style="flex:1;min-width:0">
@@ -11372,22 +12005,79 @@ async function openMatches(){
   if(state.view==='match'){ renderMatch(); return; }
   go('match');
 }
+/* 오픈매치 참가비 계산 ─────────────────────────────
+   원가(코트비 + 캔볼 + 매니저 수고비) 위에 맞수 운영비를 얹는다.
+   운영비는 목표 37.5% 로 잡되 1인당 상한(5,833원)을 둔다.
+   그래서 공립 코트에선 37%, 실내 고가 코트에선 14% 로 알아서 내려간다.
+   캔볼은 플랫폼이 대주지 않는다 — 코트당 1캔을 참가자가 나눈다. */
+// 맞수 운영비 — 목표 마진 37.5% 에 1인당 상한을 둔다.
+// 상한이 없으면 비싼 코트에서 참가비가 시세를 넘어 앱을 우회하게 되고,
+// 상한이 너무 낮으면 파트너 매니저 보너스·결제 수수료를 빼고 남는 게 얇아진다.
+// 10,000원은 '직접 나눠 내는 것 대비 최대 추가 부담'을 12,000원대로 묶는 값.
+const OM_MARGIN=0.375, OM_CAP_PP=10000;
+/* 일반 매니저 수고비 — 시간당 정액. 참가비에 직접 들어가므로 코트값과 무관하게 둔다.
+   (여기를 규모에 연동하면 참가비가 같이 올라 참가자가 부담하게 된다) */
+function omManagerFee(courts, hours){
+  const base = courts<=2 ? 12000 : 15000;     // 시간당 (최저임금 1.2~1.5배)
+  return base*hours;
+}
+/* 파트너 매니저 보너스 — 맞수 몫의 20%.
+   정액으로 두면 싼 매치에선 맞수가 얇아지고, 비싼 매치에선 매니저가 손해라고 느낀다.
+   맞수 몫에 연동하면 코트 단가·코트 수·시간이 자동으로 반영되고,
+   참가비는 1원도 오르지 않는다(맞수 몫에서 나가므로). */
+const OM_PARTNER_RATE = 0.20;
+function omPartnerBonus(matsuShare){
+  return Math.round(Math.max(0, matsuShare) * OM_PARTNER_RATE / 500) * 500;
+}
+function omQuote(hourCost, ballCost, courts, hours){
+  const cap = courts*(hours===2?4:6);
+  const court = hourCost*courts*hours;
+  const ball  = ballCost*courts;              // 코트당 1캔 — 참가자가 그대로 나눈다
+  const mgr   = omManagerFee(courts, hours);
+  // 캔볼은 마진 계산에서 제외한다. 실비 그대로 넘기지 않으면
+  // 캔볼값에까지 운영비가 붙어 참가자가 더 내게 된다.
+  const base  = court+mgr;
+  const raw   = base/(1-OM_MARGIN)-base;
+  const matsu = Math.min(raw, OM_CAP_PP*cap);
+  const cost  = base+ball;
+  const per   = Math.round((cost+matsu)/cap/500)*500;
+  const rev   = per*cap;
+  const matsuShare = rev-cost;
+  const pBonus = omPartnerBonus(matsuShare);
+  return { cap, court, ball, mgr, cost, per, rev, matsu: matsuShare,
+           ballPer: Math.round(ball/cap),
+           partnerBonus: pBonus, partnerFee: mgr+pBonus, matsuAfterPartner: matsuShare-pBonus,
+           pct: rev? matsuShare/rev*100 : 0, payout: court+ball+mgr };
+}
 function omCalc(){
   const box=document.getElementById('omCalcBox'); if(!box) return;
-  const c=3;
-  const h=+((document.getElementById('omHours')||{}).value||3);
   const num=id=>parseInt((((document.getElementById(id)||{}).value)||'').replace(/[^0-9]/g,''),10)||0;
-  const hourCost=num('omHourCost'), ballCost=num('omBallCost');
-  const cap=c*(h===2?4:6);
-  const cost = hourCost*c*h + ballCost*c;               // 총원가 = 코트비 + 캔볼(코트당 1캔)
-  const per=Math.ceil(cost/cap/500)*500 + 11000;
-  const fee=10320*h;                                    // 일반 매니저 수고비 = 시간당 10,320원 (최저시급 연동)
+  const c=+((document.getElementById('omCourts')||{}).value||3);
+  const h=+((document.getElementById('omHours')||{}).value||3);
+  const q=omQuote(num('omHourCost'), num('omBallCost'), c, h);
   const rule=h===2?'5:5는 동점 종료 (노 매치포인트)':'5:5면 6게임째로 승부';
-  box.innerHTML=`인당 <b style="color:var(--coral-d);font-size:14px">${per.toLocaleString()}원</b>
-    <span style="color:var(--lgray)">= (코트 ${(hourCost*c*h).toLocaleString()} + 캔볼 ${(ballCost*c).toLocaleString()}) ÷ ${cap}명 + 서비스요금 11,000원</span><br>
-    <span style="color:var(--lgray)">정원 ${cap}명 · ${h}시간 · ${rule}</span><br>
-    예측 정산액 <b style="color:var(--coral-d)">${(cost+fee).toLocaleString()}원</b>
-    <span style="color:var(--lgray)">= 코트·캔볼 환급 ${cost.toLocaleString()} (경기 당일) + 수고비 ${fee.toLocaleString()} (시간당 10,320원 · 3일 내)</span>`;
+  const won=n=>n.toLocaleString();
+  box.innerHTML=`<div style="display:flex;align-items:baseline;gap:7px">
+      <span class="t-lbl">1인 참가비</span>
+      <b class="t-num" style="font-size:19px;color:var(--coral-d)">${won(q.per)}원</b>
+      <span class="t-lbl">정원 ${q.cap}명 · ${c}코트 ${h}시간</span></div>
+    <div style="margin-top:8px;border-top:1px solid #ece8e0;padding-top:8px;display:flex;flex-direction:column;gap:3px">
+      ${[['코트비', `${won(q.court)}원`, `시간당 ${won(num('omHourCost'))} × ${c}면 × ${h}h`],
+         ['캔볼',   `${won(q.ball)}원`,  `코트당 1캔 × ${c}면 · 1인 ${won(q.ballPer)}원 (실비)`],
+         ['매니저 수고비', `${won(q.mgr)}원`, `시간당 ${won(omManagerFee(c,1))}`],
+         ['맞수 운영비',   `${won(q.matsu)}원`, `${q.pct.toFixed(0)}% · 1인 ${won(Math.round(q.matsu/q.cap))}원`],
+         ['파트너 배정 시', `${won(q.partnerFee)}원`, `수고비 + 보너스 ${won(q.partnerBonus)} · 참가비 변동 없음`]]
+        .map(([k,v,d])=>`<div style="display:flex;align-items:baseline;gap:6px">
+          <span class="t-lbl" style="width:76px;flex:none">${k}</span>
+          <b class="t-num" style="font-size:12px;width:76px;flex:none;text-align:right">${v}</b>
+          <span class="t-lbl" style="flex:1;font-weight:500">${d}</span></div>`).join('')}
+    </div>
+    <div style="margin-top:8px;border-top:1px solid #ece8e0;padding-top:8px">
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <span class="t-lbl" style="width:76px;flex:none">매니저 정산</span>
+        <b class="t-num" style="font-size:13px;width:76px;flex:none;text-align:right;color:#2c7a53">${won(q.payout)}원</b>
+        <span class="t-lbl" style="flex:1;font-weight:500">코트·캔볼 당일 환급 + 수고비 3일 내</span></div>
+      <div class="t-lbl" style="font-weight:500;margin-top:5px">${rule}</div></div>`;
 }
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
@@ -11397,8 +12087,8 @@ function openNewMatch(){
     <div style="background:#fdf6ec;border:1.5px solid #f0e2c8;border-radius:16px;padding:13px 14px;margin:2px 0 12px">
       <b style="font-size:14px">🎽 매니저 가이드</b>
       <div style="font-size:12px;color:#6b5b3f;font-weight:500;margin-top:6px;line-height:1.55">
-        · <b>3코트 전용</b> — 2시간 12명 · 3시간 18명, 전원 모여야 확정돼요<br>
-        · 코트 시간당 비용·캔볼 가격만 넣으면 <b>참가비와 예측 정산액이 자동 계산</b>돼요<br>
+        · <b>코트당 6명</b> — 2코트 12명 · 3코트 18명, 전원 모여야 확정돼요<br>
+        · 코트비·캔볼값만 넣으면 <b>참가비와 정산액이 자동 계산</b>돼요 · 캔볼은 <b>코트당 1캔을 참가자가 분담</b><br>
         · 매니저는 <b>경기에 참여하지 않고 운영만</b> 해요 (개설자 = 매니저 1명)<br>
         · 정산 = 코트·캔볼 <b>당일 환급</b> + 수고비 시간당 10,320원 (종료 후 3일 내)<br>
         · 경기 룰: <b>2시간은 5:5 동점 종료</b>(노 매치포인트) · <b>3시간은 5:5면 6게임째 승부</b><br>
@@ -11408,12 +12098,15 @@ function openNewMatch(){
     <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 선택한 시간만큼 자동</span></label><input id="omStart" type="datetime-local" step="900"></div>
 
     <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>진행 시간 <span style="font-weight:600;color:var(--lgray)">· 3코트 고정</span></label>
-        <select id="omHours" onchange="omCalc()"><option value="2">2시간 · 12명</option><option value="3" selected>3시간 · 18명</option></select></div>
+      <div class="fld" style="flex:1"><label>코트 수</label>
+        <select id="omCourts" onchange="omCalc()">
+          <option value="2">2코트</option><option value="3" selected>3코트</option></select></div>
+      <div class="fld" style="flex:1"><label>진행 시간</label>
+        <select id="omHours" onchange="omCalc()"><option value="2">2시간</option><option value="3" selected>3시간</option></select></div>
     </div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>코트 시간당 비용 (원)</label><input id="omHourCost" inputmode="numeric" placeholder="예) 30000 · 무료면 0" oninput="omCalc()"></div>
-      <div class="fld" style="flex:1"><label>캔볼 가격 (원/캔)</label><input id="omBallCost" inputmode="numeric" value="9000" oninput="omCalc()"></div>
+      <div class="fld" style="flex:1"><label>캔볼 가격 (원/캔)</label><input id="omBallCost" inputmode="numeric" value="7000" oninput="omCalc()"></div>
     </div>
     <div id="omCalcBox" style="background:#f6f4ef;border-radius:14px;padding:11px 13px;font-size:12px;font-weight:500;color:#5a544b;margin:-2px 0 12px"></div>
 
@@ -11500,7 +12193,8 @@ async function createMatch(){
   if(!loc){ toast('장소를 입력해 주세요'); return; }
   if(TRIAL){
     const num=id=>parseInt((v(id)||'').replace(/[^0-9]/g,''),10)||0;
-    const hours=num('omHours')||3, cost=num('omHourCost')*3*hours+num('omBallCost')*3;
+    const hours=num('omHours')||3, courts=+((document.getElementById('omCourts')||{}).value||3);
+  const cost=num('omHourCost')*courts*hours+num('omBallCost')*courts;
     const cap=3*(hours===2?4:6), per=Math.ceil(cost/cap/500)*500+11000;
     const end=new Date(Date.UTC(+start.slice(0,4),+start.slice(5,7)-1,+start.slice(8,10),+start.slice(11,13)+hours,+start.slice(14,16))).toISOString().slice(0,16);
     OM_LIST.unshift({id:Date.now()%1e6, loc, dt:start.slice(5,10).replace('-','.')+' '+start.slice(11,16),
@@ -11512,7 +12206,7 @@ async function createMatch(){
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
   const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
   const courts = 3, hours = num('omHours')||3;
-  const court_cost = num('omHourCost')*3*hours + num('omBallCost')*3;   // 캔볼 포함 총원가
+  const court_cost = num('omHourCost')*courts*hours + num('omBallCost')*courts;   // 코트비 + 캔볼(코트당 1캔)
   try{
     try{
       const fp=await api('/me/fairplay');
@@ -14427,8 +15121,14 @@ function myAppsCard(){
 function sportStartedMap(){ try{ return JSON.parse((state.serverUser&&state.serverUser.sport_started)||'{}'); }catch(e){ return {}; } }
 function careerMonthsFrom(ym){
   if(!ym) return null;
-  const [y,m]=ym.split('-').map(Number); if(!y) return null;
-  return Math.max(0,(new Date().getFullYear()-y)*12+(new Date().getMonth()+1-(m||1)));
+  // '2023-06' 이 기본이지만 2023.06 · 2023/06 · 2023년 6월 도 받아준다
+  const nums=String(ym).match(/\d+/g);
+  if(!nums || !nums.length) return null;
+  const y=+nums[0], m=nums.length>1 ? +nums[1] : 1;
+  if(!y || y<1900 || y>2200) return null;
+  if(!(m>=1 && m<=12)) return null;
+  const now=new Date();
+  return Math.max(0,(now.getFullYear()-y)*12+(now.getMonth()+1-m));
 }
 function careerTextFrom(ym){
   const t=careerMonthsFrom(ym); if(t==null) return null;
@@ -14592,19 +15292,30 @@ function _renderMeCore(){
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
       <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div></div>
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
-      <div style="font-size:12px;color:var(--gray);font-weight:500">티어</div>
-      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:500">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:14px">${esc(t.name.split(' · ')[0])}</b></div>
+      <div style="font-size:12px;color:var(--gray);font-weight:600">티어 · 등급</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:50%;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:500">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:14px">${esc(t.name.split(' · ')[0])}</b></div>
       <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.7">
-        <div>${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')}</div>
+        
         <div>${(()=>{
                 const ts=myTierFor('singles'), td=myTierFor('doubles');
                 const nm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
                 return `단식 <b>${nm(ts)}</b> · 복식 <b>${nm(td)}</b>`;
               })()}</div>
-        <div style="display:flex;gap:10px">
-                <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
-                <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openGradeGuide()">등급 ›</div>
-              </div>
+        <div style="color:var(--lgray)">개인리그 성적</div>
+        <div style="height:1px;background:#f0ece4;margin:6px 0"></div>
+        <div>${(()=>{
+                const ym=sportStartedMap()[state.sport];
+                const mo=careerMonthsFrom(ym);
+                const g=(mo==null)?null:gradeFromCareer(Math.floor(mo/12));
+                if(!g) return '등급 <span style="color:var(--coral-d);font-weight:700">구력 입력 필요</span>';
+                const gi=gradeInfo(g);
+                return `등급 <b style="color:${gi.c}">${g}</b> <span style="color:var(--lgray)">${gi.desc}</span>`;
+              })()}</div>
+        <div style="color:var(--lgray)">오픈매치 대진 · 클럽 대진에 쓰여요</div>
+              <div style="display:flex;gap:11px;margin-top:2px">
+          <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
+          <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openGradeGuide()">내 등급 보기 ›</div>
+        </div>
       </div></div></div>
   <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
     <div><div style="font-size:12px;font-weight:500;color:#ffe0cb">나의 캐시</div><b style="font-size:23px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
