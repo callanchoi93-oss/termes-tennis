@@ -1363,7 +1363,7 @@
 12 0 57 13 101 29 106 38 451 46 559 12z"/></g><circle cx="357" cy="539" r="71" fill="#fff"/><circle cx="490" cy="539" r="71" fill="#fff"/><circle cx="379" cy="533" r="47" fill="#12100E"/><circle cx="513" cy="532" r="47" fill="#12100E"/></symbol>
 </svg>
 <div class="app">
-  <div class="demo-tag" id="srvTag">데모 · 실제 결제·예약은 작동하지 않습니다</div>
+  <div class="demo-tag" id="srvTag" style="display:none"></div>
   <div class="appbar">
     <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:18px;font-weight:600;color:var(--ink);flex:none;margin-right:10px">‹</div>
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
@@ -1378,6 +1378,7 @@
     <section class="screen" id="s-club"></section>
     <section class="screen" id="s-bracket"></section>
     <section class="screen" id="s-match"></section>
+    <section class="screen" id="s-duel"></section>
     <section class="screen" id="s-sched"></section>
     <section class="screen" id="s-lounge"></section>
     <section class="screen" id="s-chat"></section>
@@ -1416,7 +1417,6 @@
       </div>
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
       <button class="sbtn2" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:18px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
-      <button class="sbtn2" onclick="startTrial()" style="background:transparent;border-style:dashed"><span class="ic" style="background:#f2f0ea">👀</span><span class="lbl">로그인 없이 체험하기</span></button>
       <div id="authFallback"></div>
       <div id="authSaved"></div>
       <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
@@ -1558,6 +1558,20 @@ const LV_BANDS=[
 function levelOf(r){ const b=LV_BANDS.find(x=>r>=x[1]&&r<=x[2])||LV_BANDS[3]; return {full:b[0], tier:b[0].replace(/\d+$/,''), ntrp:b[3]}; }
 function tierByRating(r){ const l=levelOf(r); return l.full+' · NTRP '+l.ntrp; }
 const myTier=()=>{const n=state.played; return n>=2?{name:tierByRating(state.rating),placing:false}:{name:`러브 · 배치 ${n}/2경기`,placing:true};};
+/* 개인리그는 단식·복식이 따로다. 레이팅·티어·랭킹이 각각 관리된다. */
+let LG_MODE='singles';                                   // 'singles' | 'doubles'
+const myRatingD = () => { const v=(state.serverUser||{}).rating_doubles; return (v==null?1000:v); };
+const myRatingFor = m => (m||LG_MODE)==='doubles' ? myRatingD() : state.rating;
+const myPlayedD = () => { const v=(state.serverUser||{}).played_doubles; return (v==null?0:v); };
+const myTierFor = m => {
+  if((m||LG_MODE)==='doubles'){
+    const n=myPlayedD();
+    return n>=2 ? {name:tierByRating(myRatingD()), placing:false}
+                : {name:`러브 · 배치 ${n}/2경기`, placing:true};
+  }
+  return myTier();
+};
+function setLeagueMode(m){ LG_MODE=m; LG_RANKS=null; LG_TS=0; renderLeague(); }
 function expScore(me,opp){return 1/(1+Math.pow(10,(opp-me)/400));}
 function dayGames(m){
   if(!m.games){ m.games=[['이석용',1010],['김영민',990],['정윤희',1030]].map(([opp,oppR])=>({opp,oppR,my:null,opn:null,status:'new',delta:0})); }
@@ -2002,42 +2016,6 @@ const API_BASE = (()=>{
   if (window.Capacitor) return REMOTE_API;                  // Android 앱: https://localhost 껍데기
   return location.origin;                                   // 웹 · 로컬 개발
 })();
-/* ── 업로드 이미지 경로 보정 ──────────────────────────────────
-   서버는 배너·사진을 상대 경로(/uploads/..)로 내려준다.
-   iOS 앱의 오리진은 capacitor://localhost 라서 상대 경로가
-   capacitor://localhost/uploads/.. 로 해석돼 404(물음표)가 난다.
-   → 상대 경로면 API_BASE 를 붙여 절대 URL 로 만든다. */
-function mediaURL(u){
-  u = String(u==null?'':u);
-  if(!u) return '';
-  if(/^(https?:|data:|blob:)/i.test(u)) return u;
-  return API_BASE + (u.charAt(0)==='/' ? u : '/'+u);
-}
-/* ── 링크 열기 (심사 가이드라인 4 대응) ──────────────────────
-   네이티브 앱에서 window.open(url,'_blank') 은 시스템 Safari 로
-   튕겨 "기본 브라우저로 이동" 반려 사유가 된다.
-   · 네이티브 + https 링크: Capacitor Browser 플러그인(iOS 는
-     SFSafariViewController — 애플이 반려 메일에서 직접 허용한 방식)
-   · 네이티브 + 상대 링크(번들 페이지): 같은 WebView 에서 이동
-   · 웹: 기존처럼 새 탭
-   사용법: onclick="openExternal('...')" 또는 <a onclick="return openExternal(this.href)"> */
-function openExternal(url){
-  if(!url) return false;
-  url = String(url);
-  const absHttp = /^https?:/i.test(url);
-  try{
-    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
-      if(absHttp){
-        const B = Capacitor.Plugins && Capacitor.Plugins.Browser;
-        if(B && B.open){ B.open({ url }); return false; }
-      }
-      location.href = url;               // 플러그인 없으면 같은 WebView 에서 이동
-      return false;
-    }
-  }catch(e){}
-  window.open(url, '_blank');
-  return false;
-}
 const TOKEN_KEY = 'matsu_jwt';
 let SERVER_OK = false;
 
@@ -2095,10 +2073,6 @@ function gsiReady(){
    한 번 보고 없다고 포기하면 버튼이 영영 안 뜬다. 최대 10초간 기다린다. */
 let _gsiTries = 0;
 function initGoogleWhenReady(){
-  /* 네이티브 iOS: 구글은 임베디드 WebView 의 GSI 를 차단한다
-     (disallowed_useragent). 버튼을 아예 노출하지 않는다.
-     Apple·카카오 로그인만 표시된다. */
-  try{ if(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform()==='ios') return; }catch(e){}
   if(_gsiDone || !SERVER_OK || !CFG.google_client_id) return;
   if(gsiReady()){ initGoogle(); return; }
   if(_gsiTries++ > 50){                        // 200ms × 50 = 10초
@@ -2165,26 +2139,16 @@ function loadAppleSdk(){
 }
 async function appleLogin(){
   if(!SERVER_OK){ toast('애플 로그인은 서버 연결이 필요해요'); return; }
+  if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
   try{
-    let idt='', nm='';
-    // iOS 앱: 네이티브 Sign in with Apple (Apple 정책 4.8 — 웹 팝업 불가)
-    if(IS_IOS_APP && window.Capacitor?.Plugins?.SignInWithApple){
-      const r = await Capacitor.Plugins.SignInWithApple.authorize({ scopes:'name email' });
-      const rp = r && r.response ? r.response : r;
-      idt = rp && rp.identityToken;
-      if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
-      nm = rp && rp.givenName ? `${rp.familyName||''}${rp.givenName||''}`.trim() : '';
-    } else {
-      // 웹 / PWA: Apple JS SDK 팝업
-      if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
-      await loadAppleSdk();
-      AppleID.auth.init({ clientId:CFG.apple_client_id, scope:'name email',
-        redirectURI: location.origin, usePopup:true });
-      const resp = await AppleID.auth.signIn();
-      idt = resp && resp.authorization && resp.authorization.id_token;
-      if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
-      nm = resp.user && resp.user.name ? `${resp.user.name.lastName||''}${resp.user.name.firstName||''}`.trim() : '';
-    }
+    await loadAppleSdk();
+    AppleID.auth.init({ clientId:CFG.apple_client_id, scope:'name email',
+      redirectURI: location.origin, usePopup:true });
+    const resp = await AppleID.auth.signIn();
+    const idt = resp && resp.authorization && resp.authorization.id_token;
+    if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
+    // 이름은 최초 1회만 내려온다 — 있으면 함께 보낸다
+    const nm = resp.user && resp.user.name ? `${resp.user.name.lastName||''}${resp.user.name.firstName||''}`.trim() : '';
     saveSession(await api('/auth/apple',{method:'POST',body:JSON.stringify({id_token:idt, name:nm})}));
     toast('Apple로 로그인했어요');
     document.getElementById('auth').classList.remove('on');
@@ -2252,8 +2216,8 @@ function applyAuthUI(){
         <label style="display:flex;align-items:flex-start;gap:8px;margin:2px 2px 10px;cursor:pointer">
           <input type="checkbox" id="nlAgree" style="margin-top:2px;accent-color:var(--coral)">
           <span style="font-size:12px;color:var(--gray);font-weight:500;line-height:1.5;text-align:left">(필수)
-            <a href="${API_BASE}/terms" target="_blank" onclick="return openExternal(this.href)" style="color:var(--coral-d)">이용약관</a>과
-            <a href="${API_BASE}/privacy" target="_blank" onclick="return openExternal(this.href)" style="color:var(--coral-d)">개인정보처리방침</a>에 동의합니다</span></label>
+            <a href="${API_BASE}/terms" target="_blank" style="color:var(--coral-d)">이용약관</a>과
+            <a href="${API_BASE}/privacy" target="_blank" style="color:var(--coral-d)">개인정보처리방침</a>에 동의합니다</span></label>
         <button class="btn" onclick="if(!document.getElementById('nlAgree').checked){toast('약관 동의가 필요해요');return;}nameLoginSrv()">시작하기</button>
         <div class="note" style="margin-top:10px;text-align:left">이름으로 바로 시작해요. 카카오 로그인이 열리면 자동으로 전환됩니다.</div>`;
     } else {
@@ -2456,11 +2420,24 @@ async function checkServer(){
   if(db2) db2.style.display = DEMO ? 'block' : 'none';
   const el = document.getElementById('srvTag');
   if(el){
-    el.textContent = SERVER_OK ? `서버 연결됨 · ${BUILD}` : '데모 · 실제 결제·예약은 작동하지 않습니다';
-    el.className = 'demo-tag' + (SERVER_OK?' live':'');
-    if(SERVER_OK) api('/version').then(v=>{
-      el.textContent = `서버 연결됨 · 앱 ${BUILD} · 서버 ${v.build||'구버전'}`;
-    }).catch(()=>{ el.textContent = `서버 연결됨 · 앱 ${BUILD} · 서버 구버전(재배포 필요)`; el.style.background='#f7e9c9'; el.style.color='#7a5c12'; });
+    // 정상 연결이면 아무것도 보여주지 않는다. 문제가 있을 때만 알린다.
+    if(SERVER_OK){
+      el.style.display = 'none';
+      el.textContent = '';
+      // 서버가 구버전이면(재배포 누락) 그때만 띠를 띄운다
+      api('/version').then(v=>{
+        if(!v || !v.build){
+          el.style.display = 'block';
+          el.className = 'demo-tag';
+          el.textContent = '서버가 구버전이에요 · 재배포가 필요해요';
+          el.style.background = '#f7e9c9'; el.style.color = '#7a5c12';
+        }
+      }).catch(()=>{});
+    } else {
+      el.style.display = 'block';
+      el.className = 'demo-tag';
+      el.textContent = '데모 · 실제 결제·예약은 작동하지 않습니다';
+    }
   }
   applyAuthUI();
   return SERVER_OK;
@@ -2495,86 +2472,13 @@ async function syncMe(){
 /* 카카오 JS SDK v2 에는 Kakao.Auth.login(팝업) 이 없다. v1 에서 삭제됐다.
    v2 는 authorize() 로 페이지를 이동시키고, redirectUri 로 ?code=... 를 돌려준다.
    그 code 를 서버가 REST 키로 토큰과 교환한다 (POST /auth/kakao/code). */
-/* ── 네이티브 앱(iOS/Android)용 카카오 로그인 ────────────────────────
-   앱을 벗어나지 않고 인앱 브라우저(iOS = SFSafariViewController)에서
-   로그인한다. 애플 가이드라인 4 대응.
-
-   ⚠ iOS 제약: SFSafariViewController 는 자기를 띄운 앱의 커스텀 주소
-      (matsu://) 를 열지 못한다. 그래서 딥링크로 돌아오지 않고,
-      서버가 결과를 잠깐 보관하면 앱이 그것을 물어보는 방식을 쓴다.
-
-     1) 앱이 임의의 표(state)를 만들어 /auth/kakao/native-start?state=.. 를 연다
-     2) 카카오 로그인 → 서버 /auth/kakao/native-callback 이 토큰까지 발급해 보관
-     3) 앱은 /auth/kakao/native-poll?state=.. 를 반복해서 물어본다
-     4) 결과가 오면 인앱 브라우저를 닫고 로그인을 마친다                */
-function _capBrowser(){
-  try{ return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser; }catch(e){ return null; }
-}
-function _randState(){
-  try{
-    const a=new Uint8Array(16); crypto.getRandomValues(a);
-    return Array.from(a, b=>('0'+b.toString(16)).slice(-2)).join('');
-  }catch(e){ return 'k'+Date.now()+Math.random().toString(36).slice(2,10); }
-}
-let _kakaoPolling = false;
-async function kakaoLoginNative(){
-  if(!SERVER_OK){ toast('로그인은 서버 연결이 필요해요'); return; }
-  if(_kakaoPolling) return;                 // 중복 실행 방지
-  const B = _capBrowser();
-  if(!B || !B.open){ toast('로그인 창을 열 수 없어요'); return; }
-
-  const st = _randState();
-  _kakaoPolling = true;
-  try{
-    await B.open({ url: API_BASE + '/auth/kakao/native-start?state=' + encodeURIComponent(st),
-                   presentationStyle: 'popover' });
-  }catch(e){ _kakaoPolling = false; toast('로그인 창을 열 수 없어요'); return; }
-
-  // 사용자가 직접 창을 닫으면 폴링도 멈춘다
-  let closed = false;
-  try{ B.addListener && B.addListener('browserFinished', ()=>{ closed = true; }); }catch(e){}
-
-  const t0 = Date.now();
-  const tick = async ()=>{
-    if(!_kakaoPolling) return;
-    if(Date.now() - t0 > 180000){ _kakaoPolling = false; return; }   // 3분이면 포기
-    let r = null;
-    try{ r = await fetch(API_BASE + '/auth/kakao/native-poll?state=' + encodeURIComponent(st),
-                         { cache:'no-store' }).then(x=>x.json()); }catch(e){}
-    if(r && r.ready){
-      _kakaoPolling = false;
-      try{ if(B.close) await B.close(); }catch(e){}
-      if(r.error || !r.token){ toast('카카오 로그인에 실패했어요'); return; }
-      try{
-        saveSession(r);
-        toast('카카오로 로그인했어요');
-        const _a=document.getElementById('auth'); if(_a) _a.classList.remove('on');
-        if(typeof afterLoginNative==='function') afterLoginNative();
-        await loadClubIds();
-        if(clubId()){ await loadClubServer(); await loadRoster(); }
-        if(state.loggedIn){ go(state.view||'home'); } else resumeOrOnboard();
-      }catch(e){ console.error('[MATSU] 로그인 마무리 실패:', e && e.message); }
-      return;
-    }
-    if(closed && Date.now() - t0 > 4000){ _kakaoPolling = false; return; }
-    setTimeout(tick, 1200);
-  };
-  setTimeout(tick, 1500);
-}
-
 function kakaoLogin(){
-  /* 네이티브 앱이면 인앱 브라우저 방식으로 넘긴다 */
-  try{
-    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
-      return kakaoLoginNative();
-    }
-  }catch(e){}
   if(!SERVER_OK) throw new Error('server_down');
   if(!CFG.kakao_js_key) throw new Error('no_kakao_key');
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
   if(!Kakao.isInitialized()) Kakao.init(CFG.kakao_js_key);
   try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
-  Kakao.Auth.authorize({ redirectUri: CFG.kakao_redirect_uri || (location.origin + '/'), state: 'kakao' });
+  Kakao.Auth.authorize({ redirectUri: CFG.kakao_redirect_uri || (location.origin + '/') });
 }
 /* 카카오가 ?code=... 를 달고 돌려보냈을 때 */
 async function handleKakaoCallback(code){
@@ -2918,7 +2822,7 @@ async function delGuest(gid){
 
 /* 클럽장 양도 */
 async function transferOwner(uid, name){
-  if(!confirm(`${name} 님에게 클럽장을 넘길까요?\n\n넘기면 회원님은 임원이 되고, 이 작업은 새 클럽장만 되돌릴 수 있어요.`)) return;
+  if(!await appConfirm(`${name} 님에게 클럽장을 넘길까요?\n\n넘기면 회원님은 임원이 되고, 이 작업은 새 클럽장만 되돌릴 수 있어요.`)) return;
   try{
     await api(`/clubs/${clubId()}/transfer-owner`, {method:'POST', body: JSON.stringify({user_id:uid})});
     toast(`${name} 님이 새 클럽장이 됐어요`);
@@ -3472,7 +3376,7 @@ async function shareGuestLink(eid){
   }catch(e){ toast('링크를 만들지 못했어요'); }
 }
 async function delEvent(eid){
-  if(!confirm('이 모임을 취소할까요?\n참석 응답한 회원들에게 취소 알림이 가요.')) return;
+  if(!await appConfirm('이 모임을 취소할까요?\n참석 응답한 회원들에게 취소 알림이 가요.')) return;
   try{
     await api(`/clubs/${clubId()}/events/${eid}`,{method:'DELETE'});
     await loadClubServer(); renderClub(); toast('모임을 취소했어요');
@@ -3560,7 +3464,17 @@ async function requestJoinServer(name){
     const r = await api(`/clubs/${cid}/join`, {method:'POST'});
     toast(r.status==='pending' ? '가입 신청을 보냈어요 · 임원진 승인을 기다려요' : '가입되었어요');
     return true;
-  }catch(e){ return false; }
+  }catch(e){
+    // 구력 조건에 걸린 경우를 사용자가 이해할 수 있게 알려준다
+    let err=null; try{ err=JSON.parse(e.message); }catch(_){}
+    const k=(err&&err.error)||'';
+    const yr = m => `${Math.floor((m||0)/12)}년`;
+    if(k==='career_required') toast('내정보에서 시작 시점을 먼저 입력해 주세요');
+    else if(k==='career_too_short') toast(`구력 ${yr(err.need)} 이상만 가입할 수 있는 클럽이에요`);
+    else if(k==='career_too_long') toast(`구력 ${yr(err.limit)} 이하만 가입할 수 있는 클럽이에요 (초급자 클럽)`);
+    else toast('가입 신청에 실패했어요 · 잠시 후 다시 시도해 주세요');
+    return false;
+  }
 }
 
 /* ═══════════ 실제 회원 명단 (서버) ═══════════
@@ -3624,8 +3538,8 @@ function logoutMatsu(){
   location.replace(location.pathname);           // ?code=... 같은 찌꺼기도 털어낸다
 }
 /* 이 기기에 저장된 것만 지운다. 서버의 글·클럽·전적은 그대로 남는다. */
-function wipeMatsu(){
-  if(!confirm('이 기기에 저장된 로그인 정보와 임시 데이터를 지울까요?\n\n서버에 올린 글·클럽·전적은 지워지지 않아요.')) return;
+async function wipeMatsu(){
+  if(!await appConfirm('이 기기에 저장된 로그인 정보와 임시 데이터를 지울까요?\n\n서버에 올린 글·클럽·전적은 지워지지 않아요.')) return;
   LOGGING_OUT = true;
   state.loggedIn = false;
   try{
@@ -3674,7 +3588,7 @@ async function openCompareSrv(uid, name){
       ${row('지역', esc(me.region||'—'), esc(op.region||'—'), '')}
     </div>
     <div class="note" style="text-align:left;margin-top:10px">예상 승률 <b>${Math.round(expScore(me.rating,op.rating)*100)}%</b> · 레이팅 차이 기준</div>
-    <button class="btn" style="margin-top:12px" onclick="challengePlayerSrv(${uid},'${String(name).replace(/'/g,'')}')">이 상대에게 도전하기</button>`;
+    `;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); }
@@ -3850,7 +3764,7 @@ async function postNotice(){
   }
 }
 async function delNotice(id){
-  if(!confirm('이 공지를 삭제할까요?')) return;
+  if(!await appConfirm('이 공지를 삭제할까요?')) return;
   try{ await api(`/notices/${id}`,{method:'DELETE'}); toast('삭제했어요'); openNotices(); }
   catch(e){ toast('삭제하지 못했어요'); }
 }
@@ -4268,7 +4182,7 @@ async function addCourtSrv(){
   openCourtBook();
 }
 async function delCourtSrv(id){
-  if(!confirm('이 일정을 삭제할까요?')) return;
+  if(!await appConfirm('이 일정을 삭제할까요?')) return;
   try{ await api(`/clubs/${clubId()}/courts/${id}`,{method:'DELETE'}); }catch(e){}
   openCourtBook();
 }
@@ -4277,7 +4191,7 @@ function cycleCourt(i){ const c=AC(); const order=['open','requested','booked'];
 function openPhotoView(url, who){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>${esc(who||'사진')}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <img src="${esc(mediaURL(url))}" style="width:100%;border-radius:16px" loading="lazy">`;
+    <img src="${esc(url)}" style="width:100%;border-radius:16px" loading="lazy">`;
   document.getElementById('ov').classList.add('on');
 }
 
@@ -4296,7 +4210,7 @@ async function openGallery(){
     }else{
       h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
       photos.forEach(p=>{ h+=`<div style="border-radius:14px;overflow:hidden;background:#eee7db;aspect-ratio:1">
-        <img src="${esc(mediaURL(p.photo))}" style="width:100%;height:100%;object-fit:cover" loading="lazy"
+        <img src="${esc(p.photo)}" style="width:100%;height:100%;object-fit:cover" loading="lazy"
              onclick="openPhotoView('${esc(p.photo)}','${esc(p.name||'')}')"></div>`; });
       h+=`</div>`;
     }
@@ -4383,14 +4297,14 @@ function openRivals(){
       <div style="display:flex;align-items:center;gap:13px;margin-top:8px">
         <div class="lb-av" style="width:48px;height:48px;font-size:18px;background:${cls[0]}">${top[0]}</div>
         <div style="flex:1"><div style="font-size:18px;font-weight:600;color:var(--ink)">${top}</div><div style="font-size:12px;font-weight:500;color:#4a3f6b">상대 전적 ${t.w}승 ${t.l}패 · 승률 ${wr}% · ${tot}경기</div></div>
-        <button class="btn sm" onclick="challengePlayer('${top}')">재대결</button></div></div>`; }
+        </div></div>`; }
   keys.forEach((k,i)=>{ const r=rv[k], tot=r.w+r.l, wr=tot?Math.round(r.w/tot*100):0;
     h+=`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:9px;padding:13px 15px">
       <div class="lb-av" style="background:${cls[i%6]}">${k[0]}</div>
       <div style="flex:1;min-width:0"><div style="font-weight:500;font-size:14px">${k}</div>
         <div style="height:6px;border-radius:4px;background:#eceae6;margin-top:6px;overflow:hidden"><div style="height:100%;width:${wr}%;background:${wr>=50?'#3fa571':'#ec6a2e'}"></div></div></div>
       <div style="text-align:right"><div style="font-weight:500;font-size:14px;color:var(--coral-d)">${r.w}승 ${r.l}패</div><div style="font-size:11px;color:var(--gray);font-weight:500">승률 ${wr}%</div></div>
-      <button class="btn sm ghost" style="padding:7px 12px" onclick="challengePlayer('${k}')">도전</button></div>`; });
+      </div>`; });
   h+=`<button class="btn ghost" style="margin-top:8px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -4637,8 +4551,58 @@ function openFeeEdit(){
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-top:1px solid #f0efec"><div><div style="font-weight:500;font-size:14px">게스트 정원</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:1px">모임당 최대 게스트</div></div>
         <div class="stepper"><button onclick="feeAdj('guestReq',-1)">−</button><b style="min-width:86px;text-align:center">${c.guestReq||0}명</b><button onclick="feeAdj('guestReq',1)">+</button></div></div>
     </div>
-    <button class="btn" style="margin-top:14px" onclick="closeOv();toast('회비 설정을 저장했어요');if(state.view==='club')renderClub()">저장</button>`;
+    <button class="btn ghost" style="margin-top:10px" onclick="openCareerPolicy()">가입 구력 조건 설정 ›</button>
+    <button class="btn" style="margin-top:8px" onclick="closeOv();toast('회비 설정을 저장했어요');if(state.view==='club')renderClub()">저장</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+/* ── 가입 구력 조건 (클럽장·임원) ── */
+const CAREER_PRESETS = [
+  { k:'none',  n:'제한 없음',        min:null, max:null, d:'누구나 신청할 수 있어요' },
+  { k:'beg',   n:'테린이 클럽',      min:null, max:24,   d:'구력 2년 이하만 · 초급자끼리 편하게' },
+  { k:'mid',   n:'중급 이상',        min:24,   max:null, d:'구력 2년 이상 · B 등급부터' },
+  { k:'adv',   n:'상급 클럽',        min:60,   max:null, d:'구력 5년 이상 · A 등급부터' },
+];
+function careerPolicyKey(c){
+  const mn=c._minCareer==null?null:c._minCareer, mx=c._maxCareer==null?null:c._maxCareer;
+  const f=CAREER_PRESETS.find(p=>p.min===mn && p.max===mx);
+  return f? f.k : 'custom';
+}
+function openCareerPolicy(){
+  const c=AC(); if(!c){toast('클럽 정보를 찾을 수 없어요');return;}
+  const cur=careerPolicyKey(c);
+  let h=`<div class="sh-top"><h3>가입 구력 조건</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>
+    <div class="sd"><b>클럽장·임원진</b>만 바꿀 수 있어요. 조건은 클럽 소개에 표시돼요.</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-top:4px">`;
+  CAREER_PRESETS.forEach(p=>{
+    const on = cur===p.k;
+    h+=`<div onclick="setCareerPolicy('${p.k}')" style="cursor:pointer;border-radius:12px;padding:12px 13px;
+        border:${on?'1.6px solid var(--coral-d)':'1px solid #f0ece4'};background:${on?'#fdf6ec':'#fff'}">
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="flex:none;width:17px;height:17px;border-radius:50%;border:${on?'5px solid var(--coral-d)':'1.6px solid #ddd6c8'};background:#fff"></div>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${p.n}</div>
+          <div style="font-size:11.5px;font-weight:500;color:var(--lgray);margin-top:2px">${p.d}</div></div>
+      </div></div>`;
+  });
+  h+=`</div>
+    <div class="note" style="text-align:left;margin-top:12px">조건을 켜면 가입 화면에 <b>"구력 2년 이상 모집해요"</b> 처럼 표시돼요.
+      조건을 못 채운 사람은 신청 전에 알게 되니 거절당하는 기분을 겪지 않아요.<br>
+      구력을 안 적은 회원은 <b>신청할 수 없어요</b> — 먼저 프로필을 채우도록 안내돼요.</div>`;
+  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+async function setCareerPolicy(key){
+  const c=AC(); if(!c) return;
+  const p=CAREER_PRESETS.find(x=>x.k===key); if(!p) return;
+  c._minCareer=p.min; c._maxCareer=p.max;
+  openCareerPolicy();
+  if(!SERVER_OK || !c.id){ toast('조건을 바꿨어요'); return; }
+  try{
+    await api(`/clubs/${c.id}/career-policy`, {method:'PATCH',
+      body: JSON.stringify({ min_career_months:p.min, max_career_months:p.max })});
+    toast(`${p.n}으로 바꿨어요`);
+  }catch(e){
+    if(String(e.message).includes('officer_only')) toast('임원진만 바꿀 수 있어요');
+    else toast('저장에 실패했어요 · 잠시 후 다시 시도해 주세요');
+  }
 }
 function feeAdj(key,d){ const c=AC(); if(!c)return; c[key]=Math.max(0,(c[key]||0)+d); pushFees(); openFeeEdit(); }
 let FEE_PUSH_T=null;
@@ -4745,7 +4709,7 @@ async function buyCash(n){
         const pkg=CASH_PKGS.find(p=>p.n===n); if(!pkg){ toast('패키지를 찾을 수 없어요'); return; }
         const o=await api('/pay/order',{method:'POST',body:JSON.stringify({amount:pkg.won})});
         closeOv();
-        openExternal(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`);
+        window.open(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`,'_blank');
         toast('결제창을 열었어요 · 완료 후 돌아오면 잔액이 갱신돼요');
       }catch(e){
         const m=String(e.message||'');
@@ -4827,7 +4791,7 @@ async function openSmartMatch(){
   if(SERVER_OK && state.serverUser){
     // 실서비스: 같은 종목 유저 중 레이팅이 가장 비슷한 상대 추천
     let all=[];
-    try{ all = await api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`); }catch(e){}
+    try{ all = await api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}&type=${LG_MODE}`); }catch(e){}
     const myR = state.serverUser.rating || state.rating || 1000;
     const ops = all.filter(u=>u.id!==state.serverUser.id)
                    .sort((a,b)=>Math.abs(a.rating-myR)-Math.abs(b.rating-myR)).slice(0,6);
@@ -4842,7 +4806,7 @@ async function openSmartMatch(){
           <div style="font-weight:500;font-size:14px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:500">· ${(o.games||0)>=5?'레이팅 '+o.rating:'배치 중'}</span></div>
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">${esc(o.region||'지역 미정')} · 탭하면 전적 비교</div>
           <div style="font-size:11px;color:var(--coral-d);font-weight:500;margin-top:3px">예상 승률 ${exp}%</div></div>
-        <button class="btn sm" onclick="challengePlayerSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">도전</button></div>`; });
+        </div>`; });
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
     return;
   }
@@ -4855,7 +4819,7 @@ async function openSmartMatch(){
       <div style="flex:1;min-width:0"><div style="font-weight:500;font-size:14px">${o.n} <span style="font-size:12px;color:var(--lgray);font-weight:500">· 레이팅 ${o.r}</span></div>
         <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">${o.note}</div>
         <div style="font-size:11px;color:var(--coral-d);font-weight:500;margin-top:3px">예상 승률 ${exp}%</div></div>
-      <button class="btn sm" onclick="challengePlayer('${o.n}')">도전</button></div>`; });
+      </div>`; });
   h+=`<div class="note" style="text-align:left">실제 서비스에선 상대 수락 시 일정·코트를 함께 정하고, 결과가 레이팅에 반영돼요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -4903,7 +4867,7 @@ async function openCompareSrv(uid, name){
       ${row('지역', esc(me.region||'—'), esc(op.region||'—'), '')}
     </div>
     <div class="note" style="text-align:left;margin-top:10px">예상 승률 <b>${Math.round(expScore(me.rating,op.rating)*100)}%</b> · 레이팅 차이 기준</div>
-    <button class="btn" style="margin-top:12px" onclick="challengePlayerSrv(${uid},'${String(name).replace(/'/g,'')}')">이 상대에게 도전하기</button>`;
+    `;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); const bl=document.querySelector('.bell'); if(bl)bl.classList.add('has'); }
@@ -5265,7 +5229,7 @@ async function joinClubLeague(){
   }
 }
 async function leaveClubLeague(){
-  if(!confirm('리그 참가를 취소할까요?')) return;
+  if(!await appConfirm('리그 참가를 취소할까요?')) return;
   try{
     await api(`/clubs/${clubId()}/league?sport=${state.sport}`,{method:'DELETE'});
     toast('참가를 취소했어요');
@@ -5405,6 +5369,19 @@ function renderTeamLeague(){
   if(!state.clubStandings.length) return h + leagueEmpty(`${sp.n} 리그`);
   if(sp.id==='soccer') h+=soccerModeSeg();
   h+=genderSeg();
+  // 단식 · 복식 — 레이팅과 랭킹이 완전히 분리된다
+  h+=`<div style="display:flex;gap:7px;margin:2px 0 8px">
+    ${['singles','doubles'].map(m=>{
+      const on=LG_MODE===m, nm=m==='singles'?'단식':'복식';
+      return `<div onclick="setLeagueMode('${m}')" style="flex:1;text-align:center;cursor:pointer;
+        border-radius:11px;padding:10px 0;font-size:13.5px;font-weight:${on?800:600};
+        background:${on?'var(--ink)':'#fff'};color:${on?'#fff':'var(--lgray)'};
+        border:1.4px solid ${on?'var(--ink)':'#e8e4dc'}">${nm}</div>`;
+    }).join('')}
+  </div>
+  <div class="note" style="text-align:left;margin:0 2px 10px">${LG_MODE==='doubles'
+    ? '복식 레이팅은 <b>2 대 2 경기</b>로만 오르내려요 · 단식과 따로 쌓여요'
+    : '단식 레이팅은 <b>1 대 1 경기</b>로만 오르내려요 · 복식과 따로 쌓여요'}</div>`;
   h+=`<div class="card" style="background:linear-gradient(140deg,#8c6fd6,#6f86e2);border:none;color:#fff">
     <div style="font-size:12px;font-weight:500;opacity:.9">2부 리그 · 우리 팀</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
@@ -5502,7 +5479,7 @@ function renderLeague(){
       <div style="font-weight:600;font-size:18px">→</div></div>`;
     if(SERVER_OK && authToken()){
       if(!LG_RANKS || Date.now()-LG_TS>60e3){
-        api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`)
+        api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}&type=${LG_MODE}`)
           .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
           .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
       } else if(LG_RANKS.length){
@@ -5584,7 +5561,16 @@ function openPyramid(tab){
   const my = state.played>=2 ? levelOf(state.rating).tier : '러브';
   const cur = tab || my;
   const T=TN_LV[cur];
-  let h=`<div class="sh-top"><h3>실력 레벨</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  let h=`<div class="sh-top"><h3>티어</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  <div style="background:#eef4fd;border:1px solid #d3e0f5;border-radius:12px;padding:12px 13px;margin:0 0 13px">
+    <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#2c4a7a">
+      <span style="font-size:14px">🏆</span> 티어는 개인리그에만 쓰여요</div>
+    <div style="font-size:11.5px;font-weight:500;line-height:1.65;color:#2c4a7a;margin-top:7px">
+      개인리그 경기 결과로 오르내려요 · 2경기를 뛰어야 배치돼요<br>
+      <b>단식과 복식이 따로예요</b> — 1대1 결과는 단식 티어, 2대2 결과는 복식 티어로 쌓여요<br>
+      <span style="color:#5b7fb8">대진 편성에는 안 쓰여요 · 클럽리그는 부(1·2·3부)로 나뉘어요</span></div>
+    <div onclick="closeOv();setTimeout(openGradeGuide,180)" style="margin-top:9px;font-size:11.5px;font-weight:700;color:#2c4a7a;text-decoration:underline;cursor:pointer">
+      대진에 쓰이는 등급(SS~C) 보기 ›</div></div>
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 14px">`+
   Object.keys(TN_LV).map(k=>`<span onclick="openPyramid('${k}')" style="cursor:pointer;font-size:14px;font-weight:${k===cur?900:700};color:${k===cur?'var(--ink)':'#b8b2a7'}">${k}</span>`).join('')+`</div>
   <div class="sd" style="margin-bottom:14px">${T.intro}</div>`;
@@ -5928,15 +5914,10 @@ function msgPerson(name){
   else if(SERVER_OK){ toast('같은 클럽 회원끼리 대화할 수 있어요'); }
   else toast('데모: 메시지 보내기');
 }
-function playRequest(name){
+async function playRequest(name){
   closeOv();
   const uid = SERVER_OK ? SRV_UID[name] : null;
   if(uid){
-    if(confirm(`${name} 님에게 도전을 신청할까요?\n수락 → 결과 입력 → 서로 확인하면 레이팅에 반영돼요.`)){
-      api('/matches',{method:'POST',body:JSON.stringify({sport:SP().id,kind:'friendly',away_user_id:uid})})
-        .then(()=>{ toast('도전을 신청했어요 · 매치 탭에서 진행을 확인하세요'); MYMATCH=null; })
-        .catch(()=>toast('도전 신청에 실패했어요'));
-    }
     openDM(uid, name);
     setTimeout(()=>{ const t=document.getElementById('dmText');
       if(t && !t.value) t.value='이번 주에 함께 치실래요? 🎾'; }, 450);
@@ -5957,7 +5938,7 @@ function openPerson(name){
     <div class="card" style="margin:0 0 12px;padding:14px;display:flex;justify-content:space-around;text-align:center">
       <div><div style="font-size:18px;font-weight:600">${p.w}승 ${p.l}패</div><div style="font-size:11px;color:var(--gray);font-weight:500">통산</div></div>
       <div><div style="font-size:18px;font-weight:600;color:var(--coral-d)">${wr}%</div><div style="font-size:11px;color:var(--gray);font-weight:500">승률</div></div>
-      <div><div style="font-size:18px;font-weight:600;color:var(--green)">${p.manner}</div><div style="font-size:11px;color:var(--gray);font-weight:500">매너</div></div></div>
+      <div><div style="font-size:18px;font-weight:600;color:var(--green)">${p.manner?p.manner:'-'}</div><div style="font-size:11px;color:var(--gray);font-weight:500">매너</div></div></div>
     <div class="cond"><span>소속 클럽</span><b>${p.clubs.join(', ')}</b></div>
     <button class="btn felt" style="margin-top:14px" onclick="playRequest('${name.replace(/'/g,"\\'")}')">함께 치기 요청</button>
     <button class="btn ghost" style="margin-top:9px" onclick="msgPerson('${name.replace(/'/g,"\\'")}')">메시지 보내기</button>`;
@@ -6002,7 +5983,7 @@ function renderProfileEditSrv(){
     <input type="file" id="myPhotoFile" accept="image/*" style="display:none" onchange="uploadMyPhoto(this.files[0])">
     <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
       <div><div style="font-size:14px;font-weight:500">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
-        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${myCareerTxt()||'탭해서 시작 시점 입력 (예: 2021-03)'}</div></div>
+        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${myCareerTxt()||'<b style="color:var(--coral-d)">탭해서 시작 시점 입력</b> · 입력하면 등급이 정해져요'}</div></div>
       <span style="color:var(--lgray);font-weight:600">›</span></div>
     <div class="card" onclick="editMyPhone()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
       <div><div style="font-size:14px;font-weight:500">연락처 <span style="font-size:11px;color:var(--lgray)">연명부용 · 임원에게만</span></div>
@@ -6124,7 +6105,7 @@ async function makeMainPhoto(i){
   toast('대표 사진을 바꿨어요');
 }
 async function removeMyPhoto(i){
-  if(!confirm('이 사진을 삭제할까요?')) return;
+  if(!await appConfirm('이 사진을 삭제할까요?')) return;
   state._myPhotos = (state._myPhotos||[]).filter((_,k)=>k!==i);
   try{ await api('/me',{method:'PATCH', body: JSON.stringify({photos: state._myPhotos})});
     state.serverUser.photos = JSON.stringify(state._myPhotos);
@@ -6581,7 +6562,7 @@ async function renderAdminPanel(){
       <input id="admBnLink" placeholder="랜딩 링크 예) https://..." style="width:100%;border:1.5px solid #ece8e0;border-radius:12px;padding:10px 12px;font-size:14px;margin-top:8px">
       <button class="btn sm" style="margin-top:10px" onclick="adminBannerAdd()">배너 등록</button></div>`+
     _bn.map(b=>`<div class="card" style="padding:10px 12px;display:flex;align-items:center;gap:10px">
-      <img src="${esc(mediaURL(b.image))}" style="width:86px;height:34px;object-fit:cover;border-radius:8px;flex-shrink:0">
+      <img src="${esc(b.image)}" style="width:86px;height:34px;object-fit:cover;border-radius:8px;flex-shrink:0">
       <div style="flex:1;min-width:0;font-size:11px;color:var(--gray);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.link||'링크 없음')}</div>
       <button class="btn sm ghost" style="width:auto;padding:6px 11px;flex-shrink:0" onclick="adminBannerDel(${b.id})">삭제</button></div>`).join('');
   const _po=(window._ADM_PAYOUTS||[]);
@@ -6600,7 +6581,7 @@ async function renderAdminPanel(){
         <button class="btn sm ghost" style="width:auto;padding:6px 10px;flex-shrink:0" onclick="adminPickOwner(${c.id})">클럽장 변경</button></div></div>`).join('') : '');
   document.getElementById('ov').classList.add('on');
 }
-function adminPickOwner(cid){
+async function adminPickOwner(cid){
   const c=(window._ADM_CLUBS||[]).find(x=>x.id===cid); if(!c) return;
   const roster=(c.roster||[]).filter(m=>!c.owner || m.id!==c.owner.id);
   if(!roster.length){ toast('넘겨받을 수 있는 회원이 없어요'); return; }
@@ -6609,7 +6590,7 @@ function adminPickOwner(cid){
   const idx=parseInt(pick)-1;
   if(isNaN(idx) || !roster[idx]) return;
   const target=roster[idx];
-  if(!confirm(`${target.name} 님을 ${c.name} 클럽장으로 지정할까요?\n기존 클럽장은 임원으로 남고, 양쪽 모두에게 알림이 가요.`)) return;
+  if(!await appConfirm(`${target.name} 님을 ${c.name} 클럽장으로 지정할까요?\n기존 클럽장은 임원으로 남고, 양쪽 모두에게 알림이 가요.`)) return;
   adminApi(`/admin/clubs/${cid}/owner`,{method:'POST',body:JSON.stringify({user_id:target.id})})
     .then(()=>{ toast('클럽장을 변경했어요'); renderAdminPanel(); })
     .catch(()=>toast('변경하지 못했어요'));
@@ -6630,14 +6611,14 @@ function adminBannerAdd(){
   }; img.src=rd.result; };
   rd.readAsDataURL(file);
 }
-function adminBannerDel(id){
-  if(!confirm('이 배너를 내릴까요?')) return;
+async function adminBannerDel(id){
+  if(!await appConfirm('이 배너를 내릴까요?')) return;
   adminApi(`/admin/banners/${id}`,{method:'DELETE'})
     .then(()=>{ toast('배너를 내렸어요'); HOME_BANNERS=null; renderAdminPanel(); })
     .catch(()=>toast('삭제하지 못했어요'));
 }
-function adminPayoutDone(id){
-  if(!confirm('실제 계좌 이체를 마치셨나요? 완료 처리하면 매니저에게 알림이 가요.')) return;
+async function adminPayoutDone(id){
+  if(!await appConfirm('실제 계좌 이체를 마치셨나요? 완료 처리하면 매니저에게 알림이 가요.')) return;
   adminApi(`/admin/payouts/${id}/paid`,{method:'POST',body:'{}'})
     .then(()=>{ toast('정산 완료 처리했어요'); renderAdminPanel(); })
     .catch(()=>toast('처리하지 못했어요'));
@@ -6647,8 +6628,8 @@ function adminResolve(id, action){
     .then(()=>{ toast('처리했어요 · 신고자에게 결과를 알렸어요'); renderAdminPanel(); })
     .catch(()=>toast('처리하지 못했어요'));
 }
-function adminRemovePost(pid, repId){
-  if(!confirm('신고된 글을 숨기고 "삭제 조치"로 처리할까요?')) return;
+async function adminRemovePost(pid, repId){
+  if(!await appConfirm('신고된 글을 숨기고 "삭제 조치"로 처리할까요?')) return;
   adminApi(`/admin/posts/${pid}/hide`,{method:'POST',body:'{}'})
     .then(()=>adminResolve(repId,'removed'))
     .catch(()=>toast('숨기지 못했어요'));
@@ -6658,11 +6639,31 @@ function adminSuspend(uid, repId){
     .then(r=>{ toast(r.suspended?'계정을 정지했어요':'정지를 해제했어요'); if(repId) adminResolve(repId,'reviewed'); })
     .catch(()=>toast('처리하지 못했어요'));
 }
+// iPad/Capacitor 에서 네이티브 confirm·alert 이 동작하지 않아 앱 내 모달로 대체한다.
+function appConfirm(html, okLabel){
+  return new Promise(res=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(20,16,10,.42);display:flex;align-items:center;justify-content:center;padding:24px';
+    ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;padding:20px 20px 16px;box-shadow:0 18px 50px rgba(0,0,0,.3)">'
+      +'<div style="font-size:14px;line-height:1.6;color:#1c1b18;white-space:pre-line">'+html+'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:18px">'
+      +'<button id="_acN" style="flex:1;padding:11px;border-radius:10px;border:1px solid #e6e2da;background:#fff;font-size:14px;font-weight:700;color:#6d675d">취소</button>'
+      +'<button id="_acY" style="flex:1;padding:11px;border-radius:10px;border:0;background:#ec7c30;color:#fff;font-size:14px;font-weight:700">'+(okLabel||'확인')+'</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    const done=v=>{ try{ov.remove();}catch(e){} res(v); };
+    ov.querySelector('#_acN').onclick=()=>done(false);
+    ov.querySelector('#_acY').onclick=()=>done(true);
+    ov.onclick=e=>{ if(e.target===ov) done(false); };
+  });
+}
+if(window.Capacitor){ window.alert=function(m){ try{ toast(String(m).split('\n')[0]); }catch(e){} }; }
+
 /* 계정 탈퇴 — 개인정보는 서버에서 파기되고, 클럽 장부·라운지 글은 익명으로 남는다 */
 async function deleteAccount(){
   if(!SERVER_OK || !authToken()){ toast('서버 연결이 필요해요'); return; }
-  if(!confirm('정말 탈퇴할까요?\n\n· 이름·성별·지역 등 개인정보가 삭제돼요\n· 대화 내용이 모두 지워져요\n· 라운지 글과 클럽 기록은 익명으로 남아요\n· 되돌릴 수 없어요')) return;
-  if(!confirm('마지막 확인이에요. 탈퇴를 진행할까요?')) return;
+  if(!await appConfirm('정말 탈퇴할까요?\n\n· 이름·성별·지역 등 개인정보가 삭제돼요\n· 대화 내용이 모두 지워져요\n· 라운지 글과 클럽 기록은 익명으로 남아요\n· 되돌릴 수 없어요')) return;
+  if(!await appConfirm('마지막 확인이에요. 탈퇴를 진행할까요?')) return;
   try{
     await api('/me',{method:'DELETE'});
     try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(MATSU_SAVE); }catch(e){}
@@ -6677,7 +6678,7 @@ async function deleteAccount(){
 }
 
 async function logoutAllDevices(){
-  if(!confirm('다른 모든 기기에서 로그아웃할까요?\n이 기기는 그대로 유지돼요.')) return;
+  if(!await appConfirm('다른 모든 기기에서 로그아웃할까요?\n이 기기는 그대로 유지돼요.')) return;
   try{
     const r = await api('/me/logout-all',{method:'POST',body:'{}'});
     if(r.token){ try{ localStorage.setItem(TOKEN_KEY, r.token); }catch(e){} }
@@ -6719,7 +6720,7 @@ async function openMyPosts(){
     d.club_feed.forEach(p=>{ h+=`<div class="card" style="padding:13px 15px;cursor:pointer" onclick="closeOv();go('club')">
       <div style="font-size:11px;font-weight:500;color:var(--lgray)">${esc(p.club_name)} · ${timeAgo(p.created_at)}</div>
       ${p.body?`<div style="font-size:14px;font-weight:500;margin-top:4px;line-height:1.5">${esc(p.body)}</div>`:''}
-      ${p.photo?`<div class="photo" style="margin-top:8px"><img src="${esc(mediaURL(p.photo))}" alt="내가 올린 사진" loading="lazy"></div>`:''}</div>`; });
+      ${p.photo?`<div class="photo" style="margin-top:8px"><img src="${esc(p.photo)}" alt="내가 올린 사진" loading="lazy"></div>`:''}</div>`; });
   }
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
@@ -6875,7 +6876,7 @@ async function openFeedPost(id){
       <div style="flex:1"><b style="font-size:14px">${esc(p.author||'')}</b><div style="font-size:11px;color:var(--lgray);font-weight:500">${timeAgo(p.created_at)}</div></div>
       ${(p.mine||officer)?`<span onclick="delClubPost(${p.id});" style="font-size:12px;font-weight:500;color:#cf5418;cursor:pointer;border:1.5px solid #e5b5ae;border-radius:11px;padding:6px 11px">삭제</span>`:''}</div>
     ${p.body?`<div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.65;margin-top:14px;white-space:pre-wrap">${esc(p.body)}</div>`:``}`;
-  phs.forEach(u=>{ const full=mediaURL(u);
+  phs.forEach(u=>{ const full=u.startsWith('http')?u:API_BASE+u;
     h+=`<div style="border-radius:16px;overflow:hidden;margin-top:10px"><img src="${esc(full)}" alt="사진" loading="lazy" style="width:100%;display:block"></div>`; });
   h+=`<div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
     <button class="btn ${p.liked?'':'ghost'} sm" style="flex:1;${p.liked?'background:var(--coral)':''}" onclick="likeFeedPost(${p.id})">♥ 좋아요 ${p.likes||0}</button></div>
@@ -6912,7 +6913,7 @@ async function loadClubFeed(){
   window.FEED_LOADED = true;
 }
 async function delClubPost(id){
-  if(!confirm('이 글을 삭제할까요?')) return;
+  if(!await appConfirm('이 글을 삭제할까요?')) return;
   try{ await api(`/clubs/${clubId()}/feed/${id}`,{method:'DELETE'}); closeOv(); await loadClubFeed(); renderClub(); toast('삭제했어요'); }
   catch(e){ toast('삭제하지 못했어요'); }
 }
@@ -7204,7 +7205,7 @@ async function finalizeBracket(){
     });
   });
   if(!games.length){ toast('점수가 입력된 게임이 없어요'); return; }
-  if(!confirm(`${games.length}게임을 확정할까요?\n확정하면 참가자 레이팅에 반영되고 되돌릴 수 없어요.`
+  if(!await appConfirm(`${games.length}게임을 확정할까요?\n확정하면 참가자 레이팅에 반영되고 되돌릴 수 없어요.`
       + (skipped?`\n(게스트가 낀 ${skipped}게임은 제외돼요)`:''))) return;
   try{
     const r = await api(`/brackets/${BK_ID}/finalize`,{method:'POST',body:JSON.stringify({games})});
@@ -7694,7 +7695,7 @@ async function buyClubPremium(){
         : '결제에 실패했어요'); }
 }
 async function cancelClubPremium(){
-  if(!confirm('프리미엄을 해지할까요? 회비 장부를 볼 수 없게 돼요.')) return;
+  if(!await appConfirm('프리미엄을 해지할까요? 회비 장부를 볼 수 없게 돼요.')) return;
   try{ await api(`/clubs/${clubId()}/premium`,{method:'DELETE'}); toast('해지했어요'); openClubPremium(); }catch(e){ toast('실패했어요'); }
 }
 
@@ -7731,7 +7732,7 @@ async function addExpense(){
   }catch(e){ toast('기록하지 못했어요'); }
 }
 async function delExpense(id){
-  if(!confirm('이 지출 기록을 삭제할까요?')) return;
+  if(!await appConfirm('이 지출 기록을 삭제할까요?')) return;
   try{ await api(`/clubs/${clubId()}/expenses/${id}`,{method:'DELETE'}); openExpenses(); }
   catch(e){ toast('삭제하지 못했어요'); }
 }
@@ -8078,9 +8079,281 @@ async function openClubBracketBuild(){
   drawCB2Build(); cbLoadBanner();
 }
 let CB2_GUESTS=[], CB2_LATE=new Set(), CB2_GRADEMODE=false, CB2_LATEAFTER=2;
-const CB2_GRADES=['S','A','B','C'];
-function cb2GradeColor(g){ return g==='S'?'background:#f9e7b8;color:#8a6a1f':g==='A'?'background:#fceee4;color:#cf5418':g==='B'?'background:#e7f4ec;color:#1f7d4d':g==='C'?'background:#f2f0ea;color:#6b6357':'background:#f6f4ef;color:#b3aea4'; }
-function cb2All(){ return [ ...(window._cb2Roster||[]),
+const CB2_GRADES=['SS','S','A','B','C'];
+/* 등급 마스터 — 구력 구간 · 예상 NTRP · 설명. 화면 표시와 대진 편성이 이 표를 공유한다. */
+const GRADE_INFO = [
+  { g:'SS', minY:20, label:'20년 이상',  ntrp:'4.5+',      desc:'선출·입상급',     c:'#2a2621', bg:'#e8e4dc' },
+  { g:'S',  minY:10, label:'10 ~ 19년',  ntrp:'4.0 ~ 4.5', desc:'금배부 · 코치급',  c:'#8a6a1f', bg:'#f9e7b8' },
+  { g:'A',  minY:5,  label:'5 ~ 9년',    ntrp:'3.5 ~ 4.0', desc:'상급 · 은배부',   c:'#cf5418', bg:'#fceee4' },
+  { g:'B',  minY:2,  label:'2 ~ 4년',    ntrp:'2.5 ~ 3.0', desc:'중급',           c:'#2b62c9', bg:'#e6eefb' },
+  { g:'C',  minY:0,  label:'1년 이하',   ntrp:'2.0 이하',  desc:'입문 · 초급',     c:'#2c7a53', bg:'#e8f5ee' },
+];
+const gradeInfo = g => GRADE_INFO.find(x=>x.g===g) || GRADE_INFO[GRADE_INFO.length-1];
+
+/* 구력(연차) → 등급. 프로필 '시작 시점'만 있으면 등급이 정해진다.
+   임원이 칩을 탭해 수동 조정하면 그 값이 우선(_gDirty). */
+function gradeFromCareer(years){
+  if(years==null) return null;
+  for(const t of GRADE_INFO) if(years>=t.minY) return t.g;
+  return 'C';
+}
+/* 등급 내 순위용 — 구력을 개월로. 테린이 클럽처럼 전원 같은 등급일 때 이게 순위를 만든다 */
+function careerMonthsOf(p){
+  try{
+    const ym=JSON.parse(p.sport_started||'{}')[state.sport];
+    const m=careerMonthsFrom(ym);
+    return m==null?-1:m;
+  }catch(e){ return -1; }
+}
+function careerYearsOf(p){
+  const m=careerMonthsOf(p);
+  return m<0 ? null : Math.max(1, Math.floor(m/12)+1);
+}
+/* 명단에 등급이 비어 있으면 구력으로 채운다 */
+function fillGradesByCareer(list){
+  (list||[]).forEach(p=>{
+    if(p.grade || p.is_guest) return;
+    const g=gradeFromCareer(careerYearsOf(p));
+    if(g){ p.grade=g; p._byCareer=true; }
+  });
+  return list;
+}
+
+/* ═══════════ 오픈매치 소셜 로테이션 ═══════════
+   클럽 대진과 같은 구력 등급을 쓴다. 매니저 평가가 있으면 그게 우선.
+   전원 4경기 보장 · 라운드마다 성격이 다름 · 팀 전력차 최소 · 파트너 중복 최소 */
+
+/* 참가자 → 대진용 선수 배열. 등급·전력값·성별을 붙인다 */
+function omPlayers(members){
+  const list=(members||[]).map(p=>{
+    const g = p.assessed || p.grade || gradeFromCareer(careerYearsOf(p)) || 'C';
+    return { id:String(p.user_id), name:p.name, g,
+             fem:String(p.gender||'').startsWith('여'),
+             mo:Math.max(0,careerMonthsOf(p)) };
+  });
+  // 등급 → 개월 순으로 정렬한 뒤, 전력값을 순위로 부여 (같은 등급 안에서도 순서가 갈린다)
+  const gr=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };
+  list.sort((a,b)=>(gr(b.g)-gr(a.g))||(b.mo-a.mo));
+  list.forEach((p,i)=>{ p.str=list.length-i; });     // 1등이 가장 큰 값
+  return list;
+}
+
+/* 라운드 성격 — mix: 등급 섞기(평소 못 만나는 조합) · same: 같은 등급대 */
+const OM_ROUND_KIND=['mix','same','mix','same','mix','mix'];
+const OM_ROUND_NAME=['탐색전 · 등급 섞기','동급 맞대결','교차 믹스','동급 리벤지','교차 믹스','파이널'];
+
+/* 네 명을 두 팀으로 — 전력 합을 맞추고, 서로 다른 등급끼리 짝지으면 가점 */
+function omSplit(four){
+  let best=null;
+  const [a,b,c,d]=four;
+  [[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]].forEach(([t1,t2])=>{
+    const gap=Math.abs(t1[0].str+t1[1].str-t2[0].str-t2[1].str);
+    const cross=[t1,t2].filter(t=>t[0].g!==t[1].g).length;
+    const sc=gap*10-cross*3;
+    if(!best||sc<best.sc) best={sc,t1,t2,gap};
+  });
+  return best;
+}
+
+/* 정규 라운드 = floor(인원 ÷ 코트). 코트를 꽉 채우는 라운드 수.
+   나머지가 있으면 3경기만 뛴 사람들을 위한 보너스 게임이 붙는다.
+   보너스 코트 수 = 인원 mod 코트 · 참가자 = 그 4배 (딱 맞아떨어진다) */
+function omRoundsFor(people, courts){
+  if(!courts || people < courts*4) return 0;
+  return Math.max(1, Math.floor(people/courts));
+}
+function omBonusCourts(people, courts){
+  if(!courts || people < courts*4) return 0;
+  return people % courts;
+}
+/* 로테이션 생성. rounds 를 안 주면 4경기 보장에 맞춰 자동 계산 */
+function omBuildRotation(players, courts, rounds){
+  const need = courts*4;
+  if(players.length < need) return null;                  // 코트를 채울 인원이 안 됨
+  rounds = rounds || omRoundsFor(players.length, courts);
+  if(!rounds) return null;
+  const gr=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };
+  let bestAll=null;
+
+  for(let seed=0; seed<40; seed++){
+    let rnd=(function(s){ return ()=>((s=s*1103515245+12345|0)>>>16)/65536; })(seed+1);
+    const play={}, pair={}, opp={};
+    players.forEach(p=>play[p.id]=0);
+    const sched=[]; let ok=true;
+
+    for(let rd=0; rd<rounds; rd++){
+      const kind=OM_ROUND_KIND[rd%OM_ROUND_KIND.length];
+      let best=null;
+      for(let t=0;t<1200;t++){
+        // 덜 뛴 사람 우선 + 약간의 무작위
+        const pool=players.slice().sort((a,b)=>(play[a.id]-play[b.id])||(rnd()-0.5)).slice(0,need);
+        if(pool.length<need){ ok=false; break; }
+        const sh=pool.slice(); 
+        for(let i=sh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [sh[i],sh[j]]=[sh[j],sh[i]]; }
+        const cs=[]; for(let i=0;i<courts;i++) cs.push(sh.slice(i*4,(i+1)*4));
+        // 라운드 성격 — 못 맞추면 벌점만 주고 계속(생성 실패를 만들지 않는다)
+        let sc=0;
+        cs.forEach(c=>{
+          const gs=new Set(c.map(x=>x.g));
+          const fit = kind==='same' ? gs.size<=2 : gs.size>=2;
+          if(!fit) sc += 25;
+        });
+        const built=[];
+        cs.forEach(c=>{
+          const sp=omSplit(c);
+          sc += sp.gap*8;
+          const k1=[sp.t1[0].id,sp.t1[1].id].sort().join('|'), k2=[sp.t2[0].id,sp.t2[1].id].sort().join('|');
+          sc += (pair[k1]||0)*40 + (pair[k2]||0)*40;
+          sp.t1.forEach(x=>sp.t2.forEach(y=>{ sc += (opp[[x.id,y.id].sort().join('|')]||0)*3; }));
+          built.push(sp);
+        });
+        if(!best||sc<best.sc) best={sc,built};
+      }
+      if(!ok||!best){ ok=false; break; }
+      sched.push(best.built);
+      best.built.forEach(sp=>{
+        sp.t1.concat(sp.t2).forEach(x=>play[x.id]++);
+        const k1=[sp.t1[0].id,sp.t1[1].id].sort().join('|'), k2=[sp.t2[0].id,sp.t2[1].id].sort().join('|');
+        pair[k1]=(pair[k1]||0)+1; pair[k2]=(pair[k2]||0)+1;
+        sp.t1.forEach(x=>sp.t2.forEach(y=>{ const k=[x.id,y.id].sort().join('|'); opp[k]=(opp[k]||0)+1; }));
+      });
+    }
+    if(!ok) continue;
+    const counts=Object.values(play);
+    const spread=Math.max(...counts)-Math.min(...counts);
+    const dup=Object.values(pair).reduce((a,v)=>a+Math.max(0,v-1),0);
+    const gaps=sched.reduce((a,r)=>a+r.reduce((b,sp)=>b+sp.gap,0),0);
+    const score=spread*10000+dup*100+gaps;
+    if(!bestAll||score<bestAll.score) bestAll={score,spread,dup,sched,play};
+  }
+  if(!bestAll) return null;
+
+  // ── 보너스 게임 — 3경기만 뛴 사람들에게 한 경기 더 ──
+  const bonusCourts = omBonusCourts(players.length, courts);
+  let bonus = null;
+  if(bonusCourts > 0){
+    const short = players.slice()
+      .sort((a,b)=>(bestAll.play[a.id]-bestAll.play[b.id]) || (b.str-a.str))
+      .slice(0, bonusCourts*4);
+    if(short.length === bonusCourts*4){
+      // 전력이 비슷한 사람끼리 코트를 나눈다
+      short.sort((a,b)=>b.str-a.str);
+      const cs=[];
+      for(let i=0;i<bonusCourts;i++){
+        const four=short.slice(i*4,(i+1)*4);
+        const sp=omSplit(four);
+        cs.push({ t1:sp.t1.map(x=>({id:x.id,name:x.name,g:x.g})),
+                  t2:sp.t2.map(x=>({id:x.id,name:x.name,g:x.g})), gap:sp.gap });
+      }
+      bonus = { no: bestAll.sched.length+1, name:'보너스 게임', isBonus:true, courts:cs,
+                resting: players.filter(p=>!short.some(x=>x.id===p.id)).map(p=>({id:p.id,name:p.name,g:p.g})) };
+      short.forEach(p=>{ bestAll.play[p.id]++; });
+    }
+  }
+
+  const out = {
+    rounds: bestAll.sched.map((r,i)=>({
+      no:i+1, name:OM_ROUND_NAME[i%OM_ROUND_NAME.length],
+      courts:r.map(sp=>({
+        t1:sp.t1.map(x=>({id:x.id,name:x.name,g:x.g})),
+        t2:sp.t2.map(x=>({id:x.id,name:x.name,g:x.g})),
+        gap:sp.gap
+      })),
+      resting: players.filter(p=>!r.some(sp=>sp.t1.concat(sp.t2).some(x=>x.id===p.id)))
+                      .map(p=>({id:p.id,name:p.name,g:p.g}))
+    })),
+    stats:{ perPlayer:bestAll.play, spread:bestAll.spread, pairDup:bestAll.dup, bonusCourts }
+  };
+  if(bonus) out.rounds.push(bonus);
+  // 보너스 반영 후 실제 편차 재계산
+  const cnt=Object.values(bestAll.play);
+  out.stats.spread = Math.max(...cnt)-Math.min(...cnt);
+  return out;
+}
+
+/* 등급 안내표 — 회원 누구나. 내 등급을 강조하고 구력·NTRP를 함께 보여준다 */
+function openGradeGuide(){
+  const roster = window._cb2Roster||[];
+  const meId = String((state.me&&state.me.id)||'');
+  const mine = roster.find(p=>String(p.user_id)===meId);
+  const myMo = mine ? careerMonthsOf(mine) : careerMonthsOf({sport_started: JSON.stringify(sportStartedMap())});
+  const myG  = mine && mine.grade ? mine.grade : gradeFromCareer(myMo!=null&&myMo>=0?Math.max(1,Math.floor(myMo/12)+1):null);
+  const myYr = (myMo!=null && myMo>=0) ? myMo : null;
+
+  let h = `<div class="sh-top"><h3>등급 안내</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>`;
+
+  // 내 등급 히어로
+  if(myG){
+    const gi=gradeInfo(myG);
+    h += `<div style="border-radius:16px;padding:16px;margin-bottom:12px;background:${gi.bg};border:1.5px solid ${gi.c}22">
+      <div style="display:flex;align-items:center;gap:13px">
+        <div style="flex:none;width:52px;height:52px;border-radius:14px;background:#fff;border:2px solid ${gi.c};
+          display:flex;align-items:center;justify-content:center;font-size:${myG.length>1?17:21}px;font-weight:800;color:${gi.c}">${myG}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10.5px;font-weight:700;color:${gi.c};letter-spacing:.03em">내 등급</div>
+          <div style="font-size:16px;font-weight:800;letter-spacing:-.03em;margin-top:1px">${gi.desc}</div>
+          <div style="font-size:11.5px;font-weight:600;color:${gi.c};margin-top:3px">예상 NTRP ${gi.ntrp}${myYr!=null?` · 구력 ${Math.floor(myYr/12)}년 ${myYr%12}개월`:''}</div>
+        </div></div></div>`;
+  } else {
+    h += `<div style="border-radius:16px;padding:15px;margin-bottom:12px;background:var(--felt);border:1.5px dashed var(--line);text-align:center">
+      <div style="font-size:13px;font-weight:700">아직 등급이 없어요</div>
+      <div style="font-size:11.5px;font-weight:500;color:var(--lgray);margin-top:4px">내정보에서 <b>언제 시작했는지</b>만 알려주면 바로 정해져요</div></div>`;
+  }
+
+  // 등급 사다리
+  h += '<div style="display:flex;flex-direction:column;gap:6px">';
+  GRADE_INFO.forEach((t,idx)=>{
+    const on = myG===t.g;
+    const w = 100 - idx*16;                                  // 사다리 느낌의 막대 길이
+    h += `<div style="position:relative;display:flex;align-items:center;gap:11px;border-radius:12px;padding:10px 12px;
+        background:${on?t.bg:'#fff'};border:${on?`1.5px solid ${t.c}`:'1px solid #f0ece4'};overflow:hidden">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:${w}%;background:${t.c};opacity:${on?.10:.045}"></div>
+      <div style="position:relative;flex:none;width:34px;height:34px;border-radius:9px;${cb2GradeColor(t.g)};
+        display:flex;align-items:center;justify-content:center;font-size:${t.g.length>1?12:15}px;font-weight:800">${t.g}</div>
+      <div style="position:relative;flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:700;letter-spacing:-.02em">${t.label}
+          <span style="font-size:10.5px;font-weight:500;color:var(--lgray)"> · ${t.desc}</span></div>
+        <div style="font-size:10.5px;font-weight:600;color:${t.c};margin-top:2px">NTRP ${t.ntrp}</div>
+      </div>
+      ${on?`<div style="position:relative;flex:none;font-size:9.5px;font-weight:800;color:#fff;background:${t.c};border-radius:11px;padding:4px 9px">나</div>`:''}
+    </div>`;
+  });
+  h += '</div>';
+
+  // 매칭 규칙
+  h += `<div style="margin-top:13px;border-radius:12px;background:var(--felt);padding:12px 13px">
+    <div style="font-size:11.5px;font-weight:800;margin-bottom:7px">대진은 인접 등급끼리</div>
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10px;font-weight:700">`;
+  GRADE_INFO.forEach((t,i)=>{
+    h += `<span style="border-radius:6px;padding:3px 7px;${cb2GradeColor(t.g)}">${t.g}</span>`;
+    if(i<GRADE_INFO.length-1) h += `<span style="color:var(--lgray)">↔</span>`;
+  });
+  h += `</div>
+    <div style="font-size:10.5px;font-weight:500;color:var(--lgray);margin-top:7px;line-height:1.5">
+      붙어 있는 등급끼리만 같은 코트에 들어가요. 두 단계 이상 차이나면 서로 재미가 없어서요.</div></div>`;
+
+  h += `<div style="background:#eef4fd;border:1px solid #d3e0f5;border-radius:12px;padding:12px 13px;margin-top:12px">
+    <div style="font-size:12px;font-weight:800;color:#2c4a7a;margin-bottom:8px">맞수의 네 가지 기준</div>
+    ${[['등급','SS ~ C','구력','오픈매치 대진 · 클럽 대진',true],
+       ['단식 티어','러브 ~ 프로','1대1 결과','개인리그 (단식)',false],
+       ['복식 티어','러브 ~ 프로','2대2 결과','개인리그 (복식)',false],
+       ['부','1 · 2 · 3부','클럽 성적','클럽리그',false]]
+      .map(([n,r,by,use,on])=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;${on?'':'opacity:.72'}">
+        <div style="flex:none;width:52px;font-size:11px;font-weight:800;color:#2c4a7a">${n}</div>
+        <div style="flex:none;width:58px;font-size:10px;font-weight:600;color:#5b7fb8">${r}</div>
+        <div style="flex:1;font-size:10.5px;font-weight:500;color:#2c4a7a">${by} 기준 → <b>${use}</b></div>
+      </div>`).join('')}
+    <div style="font-size:10.5px;font-weight:500;color:#5b7fb8;margin-top:6px;line-height:1.5">
+      대진은 <b>등급</b>만 봐요. 티어가 높아도 대진이 바뀌지 않아요.</div></div>
+    <div class="note" style="text-align:left;margin-top:11px">등급은 <b>프로필 구력</b>으로 자동 정해져요 · 같은 등급 안에서는 <b>개월 수</b>로 순서가 갈려요<br>
+    NTRP는 미국테니스협회 실력 지표예요. 구력에서 추정한 값이라 실제와 다를 수 있어요.<br>
+    실력이 구력과 다르면 임원이 조정할 수 있어요.</div>`;
+
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+
+function cb2All(){ return [ ...fillGradesByCareer(window._cb2Roster||[]),
   ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, is_guest:true})) ]; }
 function drawCB2Build(){
   const all=cb2All();
@@ -8119,9 +8392,15 @@ function drawCB2Build(){
     <div class="ch" style="font-size:14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">
       <span>참석자 선택</span>
       <span onclick="cb2GradeMode()" style="font-size:11px;font-weight:500;cursor:pointer;border-radius:14px;padding:5px 11px;${CB2_GRADEMODE?'background:var(--ink);color:#fff':'background:#f2f0ea;color:#6b6357'}">${CB2_GRADEMODE?'등급 편집 중 · 칩을 탭 → 저장':'등급 편집'}</span></div>
-    ${CB2_GRADEMODE?`<div class="note" style="text-align:left;margin:4px 0 6px">칩을 탭하면 S → A → B → C 순환<br>
-      <b>S</b> 금배부·코치급 · <b>A</b> 상급(은배부) · <b>B</b> 중급 · <b>C</b> 입문·초급<br>
-      대진은 S·A↔B, B↔C 인접 매칭으로 짜여요.</div>`:''}
+    ${CB2_GRADEMODE?`<div class="note" style="text-align:left;margin:4px 0 6px">등급은 <b>프로필 구력</b>으로 자동 정해져요 · <span onclick="openGradeGuide()" style="color:var(--coral-d);font-weight:700;cursor:pointer;text-decoration:underline">등급표 보기</span><br>
+      20년+ <b>SS</b> · 10~19년 <b>S</b> · 5~9년 <b>A</b> · 2~4년 <b>B</b> · 1년 이하 <b>C</b><br>
+      실력이 구력과 다르면 칩을 탭해 직접 바꿀 수 있어요</div>`:''}
+    ${(()=>{ const no=(window._cb2Roster||[]).filter(p=>!p.grade && careerMonthsOf(p)<0);
+      return no.length? `<div style="display:flex;align-items:center;gap:8px;background:#fdf6ec;border:1px solid #f1e3cd;border-radius:10px;padding:9px 11px;margin:4px 0 6px">
+        <span style="font-size:14px">📋</span>
+        <div style="flex:1;font-size:11px;font-weight:500;line-height:1.5"><b>${no.length}명</b>이 구력을 안 적었어요 · C로 임시 배정돼요<br>
+          <span style="color:var(--lgray)">${no.slice(0,4).map(p=>esc(p.name)).join(', ')}${no.length>4?` 외 ${no.length-4}명`:''}</span></div>
+      </div>` : ''; })()}
     <div style="display:flex;gap:12px;margin:2px 0 6px;font-size:11px;font-weight:500">
       <span style="color:#3182f6">● 남성</span><span style="color:#e0618c">● 여성</span>
       <span style="color:var(--lgray)">선택하면 진하게 · G = 게스트</span></div>
@@ -8178,7 +8457,7 @@ function cb2AddGuest(){
   const gender=((document.getElementById('cb2Ggender')||{}).value)||'남성';
   const grade=((document.getElementById('cb2Ggrade')||{}).value)||'';
   const gid='g'+Date.now()%1e7;
-  CB2_GUESTS.push({gid, name, gender, grade, rating: grade==='S'?1250:grade==='A'?1150:grade==='B'?1050:grade==='C'?950:1000});
+  CB2_GUESTS.push({gid, name, gender, grade, rating: ({SS:1350,S:1250,A:1150,B:1050,C:950})[grade] || 1000});
   CB2_SEL.add(gid);
   toast(`게스트 ${name} 추가 · 스코어는 임원이 입력해요`);
   drawCB2Build();
@@ -8187,10 +8466,10 @@ let CB_BANNER=null;
 function cbBannerHTML(){
   const b=(CB_BANNER&&CB_BANNER[0])||null;
   const link=(b&&b.link)||'/bracketguide.html';
-  if(b&&b.image) return `<div onclick="openExternal('${esc(link)}')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
-      <img src="${esc(mediaURL(b.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너" onerror="this.parentNode.style.display='none'"></div>
+  if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
+      <img src="${esc(b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
     <div style="font-size:11px;font-weight:500;color:var(--lgray);text-align:center;margin-top:7px">탭하면 대진 방식 설명이 열려요</div>`;
-  return `<div onclick="openExternal('${esc(link)}')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
+  return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
       <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:14px;flex:none">📖</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:500">어떤 방식을 고를까요?</div>
@@ -8242,10 +8521,10 @@ async function cb2Gen(mode){
   const courts=+((document.getElementById('cb2Courts')||{}).value||3);
   const GPP=4;                                              // 1인 4경기 보장 (테르메스 기본)
   if(sel.length<4){ toast('대진은 최소 4명이 필요해요 · 게스트를 추가해 채워보세요'); return; }
-  const gRank=g=>({S:4,A:3,B:2,C:1}[g]||0);
+  const gRank=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };  // SS 5 · S 4 · A 3 · B 2 · C 1
   const ps=sel.map(p=>({id:p.user_id,name:p.name,gender:p.gender,grade:p.grade||'',rating:p.rating||1000,
       late:CB2_LATE.has(String(p.user_id))}))
-    .sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||((b.rating||0)-(a.rating||0)));
+    .sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0)));
   const lateAfter=CB2_LATE.size?CB2_LATEAFTER:0;
   const isF=p=>String(p.gender||'').startsWith('여');
   const games=[]; let captains=null, groups=null;
@@ -8395,7 +8674,7 @@ async function cb2Gen(mode){
       if(pool.length<4) continue;
       const act=[]; for(let i=0;i<pool.length&&act.length<Math.min(perR,Math.floor(pool.length/4)*4);i++) act.push(pool[(cursor+i)%pool.length]);
       cursor=(cursor+act.length)%Math.max(1,pool.length);
-      act.sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||((b.rating||0)-(a.rating||0)));
+      act.sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0)));
       for(let c=0;c<act.length/4;c++){
         const four=act.slice(c*4,c*4+4);
         // 세 가지 짝 조합 중 과거에 덜 만난 쪽을 고른다
@@ -8694,7 +8973,7 @@ function cb2PromoSheet(){
 async function cb2PromoApply(){
   const {ch}=cb2PromoPlan();
   if(!ch.length){ toast('승강 대상이 없어요'); return; }
-  if(!confirm(`${ch.length}명의 등급을 조정할까요?\n확정하면 되돌릴 수 없어요.`)) return;
+  if(!await appConfirm(`${ch.length}명의 등급을 조정할까요?\n확정하면 되돌릴 수 없어요.`)) return;
   if(TRIAL){ toast(`승강을 확정했어요 (체험) · ${ch.length}명`); drawCB2View(); return; }
   try{ await api(`/clubs/${clubId()}/promote`,{method:'POST',body:JSON.stringify({changes:ch})});
     PROMOS=null; await cb2LoadPromos();
@@ -9011,7 +9290,7 @@ async function cb2ToggleCourt(c){
 }
 async function cb2CancelStart(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||!g.startedAt) return;
-  if(!confirm('이 경기 시작을 취소할까요?\n시작 전 상태로 되돌아가요.')) return;
+  if(!await appConfirm('이 경기 시작을 취소할까요?\n시작 전 상태로 되돌아가요.')) return;
   delete g.startedAt;
   drawCB2View(); toast('시작을 취소했어요');
   if(TRIAL){ CB2.updated_at=Date.now(); return; }
@@ -9683,7 +9962,7 @@ async function handleInviteToken(token){
   try{ info = await api(`/invites/${token}`); }
   catch(e){ toast('초대 링크가 만료됐거나 잘못됐어요'); return; }
   const c = info.club;
-  if(!confirm(`${c.name} (${c.region||'지역 미정'} · ${c.members}명)\n이 클럽에 가입할까요?`)) return;
+  if(!await appConfirm(`${c.name} (${c.region||'지역 미정'} · ${c.members}명)\n이 클럽에 가입할까요?`)) return;
   try{
     const r = await api(`/invites/${token}/accept`,{method:'POST',body:'{}'});
     toast(r.already ? '이미 가입된 클럽이에요' : `${r.club_name}에 가입했어요! 🎉`);
@@ -9955,7 +10234,6 @@ function renderSched(){
   let h=`<h2 class="t">일정</h2><p class="sub">신청한 매치와 대전을 한곳에서.</p>`;
   if((SERVER_OK||TRIAL) && HOME_OM_ALL===null) homeOpenMatches();  // 캐시 채우기 (콜백이 다시 그림)
   h+=schedCal();                                                   // 출석 캘린더 (참석일 프레첼)
-  h+=myMatchesCard();                                             // 내 대전 (도전전)
   const mine=(HOME_OM_ALL||[]).filter(m=>m.joined||m.is_host)
     .sort((a,b)=>Date.parse(b.start_at||0)-Date.parse(a.start_at||0));
   h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px">매치 <b style="color:var(--coral-d)">${mine.length}</b></div>`;
@@ -10113,9 +10391,9 @@ function omManagerPick(id){
     .then(()=>{ toast(`${m.mgr_apps[idx].name} 님을 매니저로 지정했어요 · 종료 후 정산 요청`); omReload(); })
     .catch(()=>toast('지정하지 못했어요'));
 }
-function omSettle(id){
+async function omSettle(id){
   const m=OM_LIST.find(x=>x.id===id); if(!m) return;
-  if(!confirm(`정산 금액: ${(m.manager_fee||0).toLocaleString()}원\n\n이 금액으로 정산을 요청할까요?\n경기 종료 확인 후 3일 안에 등록 계좌로 지급돼요.`)) return;
+  if(!await appConfirm(`정산 금액: ${(m.manager_fee||0).toLocaleString()}원\n\n이 금액으로 정산을 요청할까요?\n경기 종료 확인 후 3일 안에 등록 계좌로 지급돼요.`)) return;
   api(`/open-matches/${id}/settle`,{method:'POST',body:'{}'})
     .then(()=>{ toast('정산을 요청했어요 · 3일 안에 지급돼요'); omReload(); })
     .catch(()=>toast('정산하지 못했어요'));
@@ -10219,7 +10497,7 @@ function omMakeBracket(id){
     .catch(()=>toast('저장하지 못했어요'));
 }
 async function omPickMvp(mid, uid, name, score){
-  if(!confirm(`${name} 님을 오늘의 MVP로 확정할까요?`)) return;
+  if(!await appConfirm(`${name} 님을 오늘의 MVP로 확정할까요?`)) return;
   try{ const r=await api(`/open-matches/${mid}/mvp`,{method:'POST',body:JSON.stringify({user_id:uid,name,score})});
     toast(`${name} 님이 오늘의 MVP예요 · 통산 ${r.count}회`); closeOv();
   }catch(e){ toast('매니저만 확정할 수 있어요'); }
@@ -10677,7 +10955,7 @@ function openOmInvite(id){
       <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">참가비</b><div style="font-size:14px;font-weight:500;color:var(--coral-d)">${price}</div></div>
       <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">모집</b><div style="font-size:14px;font-weight:500">${m.cur||0}/${m.cap||0}명 · 전원 확정</div></div>
       ${mgr?`<div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">매니저</b><div style="font-size:14px;font-weight:500">${esc(mgr)}</div></div>`:''}
-      <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">레벨</b><div style="font-size:14px;font-weight:500">모든 레벨 · 남녀 모두</div></div>
+      <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">티어</b><div style="font-size:14px;font-weight:500">모든 레벨 · 남녀 모두</div></div>
     </div>
     <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
     <div style="padding:16px 18px 18px">
@@ -10711,7 +10989,7 @@ function showOmInviteLanding(id){
       <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">참가비</b><div style="font-size:14px;font-weight:500;color:var(--coral-d)">${price}</div></div>
       <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">모집</b><div style="font-size:14px;font-weight:500">${m.cur||0}/${m.cap||0}명 · 전원 확정</div></div>
       ${mgr?`<div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">매니저</b><div style="font-size:14px;font-weight:500">${esc(mgr)}</div></div>`:''}
-      <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">레벨</b><div style="font-size:14px;font-weight:500">모든 레벨 · 남녀 모두</div></div>
+      <div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">티어</b><div style="font-size:14px;font-weight:500">모든 레벨 · 남녀 모두</div></div>
     </div>
     <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
     <div style="padding:16px 18px 18px">
@@ -10795,7 +11073,7 @@ async function postOmComment(id){
   }
 }
 async function delOmComment(cid, mid){
-  if(!confirm('이 댓글을 삭제할까요?')) return;
+  if(!await appConfirm('이 댓글을 삭제할까요?')) return;
   try{
     await api(`/om-comments/${cid}`,{method:'DELETE'});
     const m = OM_LIST.find(x=>x.id===mid); if(m) m.comments=Math.max(0,(m.comments||1)-1);
@@ -10803,7 +11081,7 @@ async function delOmComment(cid, mid){
   }catch(e){ toast('삭제하지 못했어요'); }
 }
 async function deleteMatch(id){
-  if(!confirm('이 오픈매치를 삭제할까요? 참가자에게 알림이 가고 되돌릴 수 없어요.')) return;
+  if(!await appConfirm('이 오픈매치를 삭제할까요? 참가자에게 알림이 가고 되돌릴 수 없어요.')) return;
   try{ await api(`/open-matches/${id}`,{method:'DELETE'}); toast('삭제했어요'); renderMatch(); }
   catch(e){ toast(String(e.message).includes('host_only')?'주최자만 삭제할 수 있어요':'삭제하지 못했어요'); }
 }
@@ -10909,11 +11187,11 @@ function myMatchesCard(){
       <div style="min-width:0"><b style="font-size:14px">${opp}</b><span style="font-size:11px;color:var(--gray);font-weight:500;margin-left:6px">${m.status==='requested'?'도전':'대전'}</span></div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${right}</div></div>`;
   }).join('');
-  return `<div class="card"><div class="ch">내 대전 <span style="font-weight:500;font-size:11px;color:var(--gray)">결과는 서로 확인해야 레이팅에 반영돼요</span></div>${items}</div>`;
+  return `<div id="myMatchAnchor" class="card"><div class="ch">내 대전 <span style="font-weight:500;font-size:11px;color:var(--gray)">결과는 서로 확인해야 레이팅에 반영돼요</span></div>${items}</div>`;
 }
 function mmReload(){ MYMATCH=null; ensureMyMatches(); }
 async function mmAccept(id){ try{ await api(`/matches/${id}/accept`,{method:'POST',body:'{}'}); toast('대전을 수락했어요'); }catch(e){ toast('실패했어요'); } mmReload(); }
-async function mmDecline(id){ if(!confirm('이 대전을 취소/거절할까요?')) return; try{ await api(`/matches/${id}/decline`,{method:'POST',body:'{}'}); }catch(e){} mmReload(); }
+async function mmDecline(id){ if(!await appConfirm('이 대전을 취소/거절할까요?')) return; try{ await api(`/matches/${id}/decline`,{method:'POST',body:'{}'}); }catch(e){} mmReload(); }
 async function mmResult(id){
   const m=(MYMATCH||[]).find(x=>x.id===id); if(!m) return;
   const home=m.home_user_id===myUid();
@@ -10929,16 +11207,75 @@ async function mmApprove(id){
   const m=(MYMATCH||[]).find(x=>x.id===id); if(!m) return;
   const home=m.home_user_id===myUid();
   const myS=home?m.home_score:m.away_score, opS=home?m.away_score:m.home_score;
-  if(confirm(`상대가 입력한 점수예요.\n나 ${myS} : ${opS} 상대\n맞으면 확인을 눌러 확정하세요.`)){
+  if(await appConfirm(`상대가 입력한 점수예요.\n나 ${myS} : ${opS} 상대\n맞으면 확인을 눌러 확정하세요.`)){
     try{ await api(`/matches/${id}/result`,{method:'POST',body:JSON.stringify({home_score:m.home_score,away_score:m.away_score,side:home?'home':'away'})});
       toast('결과가 확정됐어요 · 레이팅에 반영돼요'); }catch(e){ toast('실패했어요'); }
     mmReload();
-  }else if(confirm('점수가 다른가요? 직접 다시 입력할까요?')){ mmResult(id); }
+  }else if(await appConfirm('점수가 다른가요? 직접 다시 입력할까요?')){ mmResult(id); }
 }
+/* ═══ 신청이력 — 오픈매치·게스트 신청을 한곳에서 ═══ */
+function renderApps(){
+  const el=document.getElementById('s-duel'); if(!el) return;
+  let h=`<h2 class="t">신청이력</h2><p class="sub">신청한 오픈매치와 게스트 방문을 모아 봐요.</p>`;
+
+  if(!SERVER_OK || !authToken()){
+    h+=`<div class="note" style="margin-top:12px">신청이력은 로그인이 필요해요.</div>`;
+    el.innerHTML=h; return;
+  }
+
+  if(MY_APPS===null){
+    MY_APPS=false;
+    api('/me/applications')
+      .then(r=>{ MY_APPS=r; if(state.view==='duel') renderApps(); })
+      .catch(()=>{ MY_APPS={guest:[],hosted:[],joined:[]}; if(state.view==='duel') renderApps(); });
+    h+=skelCards(3);
+    el.innerHTML=h; return;
+  }
+  const A = MY_APPS || {guest:[],hosted:[],joined:[]};
+
+  const sect=(title, note, rows, render)=>{
+    if(!rows.length) return '';
+    return `<div class="ch" style="font-size:16px;margin:16px 4px 9px;display:flex;align-items:baseline;gap:7px">
+        <span>${title}</span><b style="color:var(--coral-d)">${rows.length}</b>
+        <span style="font-weight:500;font-size:11px;color:var(--gray)">${note}</span></div>`
+      + rows.map(render).join('');
+  };
+  const row=(t,sub,badge,bc,onclick)=>`<div class="card" style="padding:13px 15px;${onclick?'cursor:pointer':''}"${onclick?` onclick="${onclick}"`:''}>
+      <div style="display:flex;align-items:center;gap:9px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</div>
+          <div style="font-size:11.5px;font-weight:500;color:var(--gray);margin-top:3px">${sub}</div></div>
+        <span style="flex:none;font-size:10.5px;font-weight:700;border-radius:11px;padding:4px 9px;${bc}">${badge}</span>
+      </div></div>`;
+
+  h += sect('내가 연 매치','주최자',(A.hosted||[]), m=>
+    row(esc(m.title||'오픈매치'), `${esc(m.date||'')}${m.place?' · '+esc(m.place):''} · ${m.joined||0}명 신청`,
+        '주최', 'background:#fdf6ec;color:#b3591a', `openMatchCard(${m.id})`));
+  h += sect('신청한 오픈매치','참가',(A.joined||[]), m=>
+    row(esc(m.title||'오픈매치'), `${esc(m.date||'')}${m.place?' · '+esc(m.place):''}`,
+        m.status&&m.status!=='open'?'마감':'신청됨',
+        m.status&&m.status!=='open'?'background:#f0efec;color:#8b8478':'background:#e8f5ee;color:#2c7a53',
+        `openMatchCard(${m.id})`));
+  h += sect('게스트 신청','클럽 방문',(A.guest||[]), g=>
+    row(esc(g.title||'클럽 모임'), `${esc(g.club||'')} · ${esc(g.date||'')}`,
+        '임원 확인 중', 'background:#eef4fd;color:#2b62c9', null));
+
+  const total=(A.hosted||[]).length+(A.joined||[]).length+(A.guest||[]).length;
+  if(!total){
+    h+=`<div class="card" style="text-align:center;padding:28px;cursor:pointer" onclick="go('match')">
+      <div style="font-size:24px">📋</div>
+      <b style="display:block;margin-top:7px">아직 신청한 매치가 없어요</b>
+      <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px">오픈매치를 둘러보고 신청해 보세요 →</div></div>`;
+  } else {
+    h+=`<div class="note" style="text-align:left;margin-top:14px">
+      취소는 매치 상세에서 할 수 있어요 · 신청 후 30분 안에는 수수료 없이 취소돼요.</div>`;
+  }
+  el.innerHTML=h;
+}
+
 async function renderMatch(){
   const el = document.getElementById('s-match'); if(!el) return;
   let h=`<h2 class="t">오픈매치</h2><p class="sub">클럽에 속하지 않아도 참여할 수 있는 경기예요.</p>`;
-  h+=myMatchesCard();
   // 페어플레이 평가 창(경기 후 24시간)이 열린 매치 배너
   try{
     const now=Date.now();
@@ -10962,6 +11299,9 @@ async function renderMatch(){
   }
   const sd = state._omSido||'', sg = state._omSigungu||'';
   const loading = typeof OM_LIST==='undefined' || (OM_LIST._pending && !OM_LIST.length);
+  h+=`<div class="ch" style="font-size:17px;margin:18px 4px 10px;display:flex;align-items:center;gap:7px">
+    <span>🎾</span><span>오픈매치 찾기</span>
+    <span style="font-weight:500;font-size:11px;color:var(--gray)">누구나 참여하는 모임</span></div>`;
   h+=`<button class="btn ghost" style="margin-bottom:12px" onclick="openNewMatch()"><span class="bic">${ic('plus',15,'currentColor')}오픈매치 열기</span></button>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <select onchange="setOmSido(this.value)" style="flex:1;min-width:0">
@@ -11181,7 +11521,7 @@ async function joinMatch(id){
       (mm.players=mm.players||[]).push({id:1,name:'체험 게스트',gender:'남성',rating:1000}); }
     toast(`참가했어요 · ${mm.cur}/${mm.cap}명 (체험 모드)`); renderMatch(); return; }
   if(mm&&mm.price){
-    if(!confirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n취소 시 시점에 따라 100·80·20% 환불돼요 (상세: 취소/환불 정책).\n\n신청할까요?`)) return;
+    if(!await appConfirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n취소 시 시점에 따라 100·80·20% 환불돼요 (상세: 취소/환불 정책).\n\n신청할까요?`)) return;
   }
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
     const pay = m.price?` · 인당 ${m.price.toLocaleString()}원, 30분 안에 취소하지 않으면 확정돼요`:'';
@@ -11208,7 +11548,7 @@ async function leaveMatch(id){
   const msg=(m.price||0)>0
     ? `지금 취소하면 ${r.refund.toLocaleString()}원(${r.pct}%)이 캐시로 환불돼요.\n신청 30분 안이면 하루 1회 전액 환불이 적용될 수 있어요.\n\n취소할까요?`
     : '참가를 취소할까요? 주최자에게 알림이 가요.';
-  if(!confirm(msg)) return;
+  if(!await appConfirm(msg)) return;
   if(TRIAL){ m.joined=false; m.cur=Math.max(0,(m.cur||1)-1);
     m.players=(m.players||[]).filter(p=>p.id!==1);
     toast(m.price?`취소 완료 · ${r.refund.toLocaleString()}원 환불 (체험 모드)`:'참가를 취소했어요 (체험 모드)'); renderMatch(); return; }
@@ -11227,7 +11567,7 @@ function openRefundPolicy(){
 }
 async function setMatchStatus(id, st){
   const msg = st==='closed' ? '모집을 마감할까요?' : '오픈매치를 취소할까요? 참가자에게 알림이 가요.';
-  if(!confirm(msg)) return;
+  if(!await appConfirm(msg)) return;
   try{ await api(`/open-matches/${id}`,{method:'PATCH',body:JSON.stringify({status:st})});
     toast(st==='closed'?'모집을 마감했어요':'오픈매치를 취소했어요'); renderMatch();
   }catch(e){ toast('주최자만 할 수 있어요'); }
@@ -11418,11 +11758,9 @@ function openCompare(name){
       <div class="cmp-bar-track"><i style="width:${exp}%"></i></div>
     </div>
 
-    <button class="btn" style="margin-top:14px" onclick="challengePlayer('${op.n}')">
-      <span class="bic">${ic('swap',16,'currentColor')}${op.n} 님에게 도전 신청</span></button>
-    ${op.uid?`<button class="btn ghost" style="margin-top:8px" onclick="openDM(${op.uid},'${op.n}')">
-      <span class="bic">${ic('chat',15,'currentColor')}1:1 대화하기</span></button>`:''}
-    <div class="note" style="text-align:left">도전 신청은 무료예요 (하루 ${CHAL_DAILY}번). 개인적인 대화는 대화로 나눠 주세요.</div>`;
+    ${op.uid?`<button class="btn" style="margin-top:14px" onclick="openDM(${op.uid},'${op.n}')">
+      <span class="bic">${ic('chat',16,'currentColor')}${op.n} 님과 대화하기</span></button>`:''}
+    <div class="note" style="text-align:left">함께 칠 사람을 찾으면 대화로 약속을 잡아 보세요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 
@@ -12872,7 +13210,7 @@ async function saveRecord(){
   }catch(e){ toast('저장하지 못했어요'); }
 }
 async function delRecord(id, ymd){
-  if(!confirm('이 기록을 삭제할까요?')) return;
+  if(!await appConfirm('이 기록을 삭제할까요?')) return;
   try{
     await api(`/records/${id}`,{method:'DELETE'});
     // 캐시 전체를 null 로 비우면 다시 불러오기 전까지 목록이 통째로 사라진다.
@@ -13125,7 +13463,7 @@ async function saveTeamMatch(){
   }catch(e){ toast('저장하지 못했어요'); }
 }
 async function delTeamMatch(id){
-  if(!confirm('이 경기 기록을 삭제할까요?')) return;
+  if(!await appConfirm('이 경기 기록을 삭제할까요?')) return;
   try{ await api(`/clubs/${clubId()}/team-matches/${id}`,{method:'DELETE'}); openTeamRecord(); }catch(e){}
 }
 
@@ -14189,12 +14527,19 @@ function _renderMeCore(){
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">—</b></div>
       <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">불러오는 중…</div></div>
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
-      <div style="font-size:12px;color:var(--gray);font-weight:500">레벨</div>
+      <div style="font-size:12px;color:var(--gray);font-weight:500">티어</div>
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:500">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:14px">${esc(t.name.split(' · ')[0])}</b></div>
       <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.7">
         <div>${SP().cat==='record'?'경력':'구력'} ${myCareerTxt()?myCareerTxt().split('·')[1].trim():(state.exp||'-')}</div>
-        <div>${t.placing?esc(t.name.split(' · ')[1]||'배치 진행 중'):esc(t.name.split(' · ')[1]||'')}</div>
-        <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
+        <div>${(()=>{
+                const ts=myTierFor('singles'), td=myTierFor('doubles');
+                const nm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
+                return `단식 <b>${nm(ts)}</b> · 복식 <b>${nm(td)}</b>`;
+              })()}</div>
+        <div style="display:flex;gap:10px">
+                <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
+                <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openGradeGuide()">등급 ›</div>
+              </div>
       </div></div></div>
   <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
     <div><div style="font-size:12px;font-weight:500;color:#ffe0cb">나의 캐시</div><b style="font-size:23px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
@@ -14246,8 +14591,8 @@ function _renderMeCore(){
   <div class="card"><div class="ch">계정</div>
     <div style="font-size:12px;color:var(--gray);font-weight:500;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
     <div style="display:flex;justify-content:center;gap:14px;margin-bottom:13px">
-      <a href="${API_BASE}/terms" target="_blank" onclick="return openExternal(this.href)" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">이용약관</a>
-      <a href="${API_BASE}/privacy" target="_blank" onclick="return openExternal(this.href)" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">개인정보처리방침</a>
+      <a href="${API_BASE}/terms" target="_blank" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">이용약관</a>
+      <a href="${API_BASE}/privacy" target="_blank" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">개인정보처리방침</a>
       <a href="mailto:${CFG.support_email||'matsu.help@gmail.com'}?subject=%5B%EB%A7%9E%EC%88%98%5D%20%EB%AC%B8%EC%9D%98" style="font-size:12px;color:var(--gray);font-weight:500;text-decoration:underline">문의하기</a></div>
     ${TRIAL&&!authToken()?`<button class="btn" onclick="exitTrial()">체험 종료 · 로그인하러 가기</button>`
       :`<button class="btn ghost" onclick="logoutMatsu()">로그아웃</button>`}
@@ -14301,11 +14646,21 @@ function bnSync(){ const t=document.getElementById('bnTrack'), d=document.getEle
   const n=Math.round(t.scrollLeft/t.clientWidth);
   [...d.children].forEach((s,i)=>{ s.style.background = i===n ? '#fff' : 'rgba(255,255,255,.55)'; });
 }
+/* 내 대전 — 오픈매치 화면의 '내 대전(도전 매치)' 카드로 데려간다.
+   오픈매치 목록과 도전 매치는 다른 것이라 같은 화면에서도 자리가 다르다. */
+function goMyMatches(){
+  go('match');
+  setTimeout(()=>{
+    const el=document.getElementById('myMatchAnchor');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    else toast('진행 중인 대전이 없어요 · 선수를 찾아 도전해 보세요');
+  }, 260);
+}
 function homeQuickMenu(){
   const t=_ymd(new Date());
   const q=(ic,l,fn)=>`<div onclick="${fn}" style="min-width:84px;background:#fff;border:1.5px solid #ece8e0;border-radius:18px;padding:13px 6px;text-align:center;cursor:pointer;flex-shrink:0"><div style="font-size:23px">${ic}</div><div style="font-size:12px;font-weight:500;margin-top:5px;color:#4a453e">${l}</div></div>`;
   return `<div style="display:flex;gap:9px;overflow-x:auto;margin:13px -2px 2px;padding:0 2px 4px;-webkit-overflow-scrolling:touch">
-    ${q('🎾','매치',"go('match')")}${q('⚔️','내 대전',"go('match')")}${q(im('trophy',26),'리그',"go('league')")}${q(im('house',26),'클럽',"go('club')")}${q(im('note',26),'다이어리',`openDayRec('${t}')`)}</div>`;
+    ${q('🎾','오픈매치',"go('match')")}${q('📋','신청이력',"go('duel')")}${q(im('trophy',26),'리그',"go('league')")}${q(im('house',26),'클럽',"go('club')")}${q(im('note',26),'다이어리',`openDayRec('${t}')`)}</div>`;
 }
 function homeMatchList(){
   if(!SERVER_OK) return '';
@@ -14399,12 +14754,12 @@ function _renderHomeCore(){
   let h='';
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
     if(bns.length===1){ const bn=bns[0];
-      h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`openExternal('${esc(bn.link)}')`:''}">
-      <img src="${esc(mediaURL(bn.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너" onerror="this.parentNode.style.display='none'"></div>`;
+      h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
+      <img src="${esc(bn.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
     } else if(bns.length>1){
       h+=`<div style="position:relative;margin:4px 0 12px">
         <div id="bnTrack" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:20px;-webkit-overflow-scrolling:touch;scrollbar-width:none" onscroll="bnSync()">
-          ${bns.map(b=>`<img src="${esc(mediaURL(b.image))}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`openExternal('${esc(b.link)}')`:''}" onerror="this.style.display='none'">`).join('')}
+          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
         </div>
         <div onclick="bnGo(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">‹</div>
         <div onclick="bnGo(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">›</div>
@@ -14533,7 +14888,7 @@ function _renderHomeCore(){
   // ⚔️ 오늘의 추천 상대 (개인 매칭) — 팀 스포츠는 제외
   if(SRV && SP().cat==='racket' && state.serverUser){
     const myR=(ME_PROF&&ME_PROF.rating)||(state.serverUser.rating)||1000;
-    if(!LG_RANKS){ api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}`).then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='home') renderHome(); }).catch(()=>{ LG_RANKS=[]; }); }
+    if(!LG_RANKS){ api(`/rankings?sport=${encodeURIComponent(state.sport||'tennis')}&type=${LG_MODE}`).then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='home') renderHome(); }).catch(()=>{ LG_RANKS=[]; }); }
     const ops=(LG_RANKS||[]).filter(u=>u.id!==state.serverUser.id).sort((a,b)=>Math.abs(a.rating-myR)-Math.abs(b.rating-myR));
     if(ops.length){ const o=ops[0]; const exp=Math.round(expScore(myR,o.rating)*100);
       h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>오늘의 추천 상대</span><span onclick="openSmartMatch()" style="font-size:12px;color:var(--coral-d);font-weight:500;cursor:pointer">더보기 →</span></div>
@@ -14802,7 +15157,7 @@ function openPostDemo(p, i){
     <div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.6;margin-top:14px">${p.b}</div>
     <div style="display:flex;gap:16px;font-size:12px;color:var(--gray);font-weight:500;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('view')}${p.v}</span><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('like')}${p.l}</span><span style="display:inline-flex;align-items:center;gap:4px">${lIcon('comment')}${p.c}</span></div>
     <div class="card" style="margin-top:14px;background:var(--cream2);border:none"><div style="font-size:12px;color:var(--gray);font-weight:500">익명 댓글은 자유롭게, 대화는 M캐쉬가 필요해요.</div></div>
-    <button class="btn" style="margin-top:12px" onclick="challengePlayer('작성자')">💌 대화하기 (M캐쉬)</button>
+    <button class="btn" style="margin-top:12px" onclick="toast('익명 글이라 작성자에게 바로 연락할 수 없어요')">💌 대화하기</button>
     <div style="display:flex;gap:9px;margin-top:9px"><button class="btn ghost sm" style="flex:1" onclick="reportPost(${i})">⚠ 신고</button><button class="btn ghost sm" style="flex:1" onclick="blockPostAuthor(${i})">🚫 차단</button></div>
     <button class="btn ghost" style="margin-top:9px" onclick="closeOv()">닫기</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
@@ -14896,6 +15251,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(v==='club' && SERVER_OK && clubId()) loadClubFeed().then(()=>{ if(state.view==='club') renderClub(); });
   if(v==='league' && SERVER_OK) loadClubLeague().then(()=>{ if(state.view==='league') renderLeague(); });
   if(v==='me' && SERVER_OK && authToken()) api('/me/noshow').then(r=>{ state._noshow=r; if(state.view==='me') renderMe(); }).catch(()=>{});
+  if(v==='duel') MY_APPS=null;                       // 신청이력은 들어올 때마다 최신으로
   if(v==='chat' && state.view==='chat') state.chatRoom=null;
   state.view=v; updBackBtn();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
@@ -14904,7 +15260,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   try{
-    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
@@ -14949,14 +15305,8 @@ checkServer().then(async ok=>{
     // 로그인 전이면 로그인 뒤에 처리된다 (아래 저장분 확인)
   }
   if(new URL(location.href).searchParams.get('code')){
-    /* 어떤 로그인이었는지 판별.
-       sessionStorage 는 다른 오리진을 거쳐 오면 비어 있을 수 있으므로
-       주소의 state 를 먼저 본다. */
-    let provider = '';
-    const _st = new URL(location.href).searchParams.get('state') || '';
-    if(_st === 'kakao') provider = 'kakao';
-    if(!provider){ try{ provider = sessionStorage.getItem('oauth_provider') || ''; }catch(e){} }
-    if(!provider) provider = CFG.naver_client_id ? 'naver' : 'kakao';
+    let provider = 'naver';
+    try{ provider = sessionStorage.getItem('oauth_provider') || 'naver'; }catch(e){}
     try{ sessionStorage.removeItem('oauth_provider'); }catch(e){}
     const code = new URL(location.href).searchParams.get('code');
     const done = provider==='kakao' ? await handleKakaoCallback(code) : await handleNaverCallback();
