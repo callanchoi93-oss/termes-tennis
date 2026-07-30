@@ -5716,12 +5716,71 @@ function renderClub(){
       h+=`<div class="dpin-row" style="margin-bottom:2px">${pins}</div>
         <div style="display:flex;gap:12px;font-size:11px;font-weight:500;margin:0 4px 8px">
           <span style="color:var(--coral-d)">● 정기</span><span style="color:#2b62c9">● 번개</span></div>`; }
-    // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
+    /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
+   지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
+/* 모임 수정 — 제목·날짜만 바꾼다. 임원 또는 내가 만든 번개만 가능(서버가 재검증). */
+async function editEvent(eid){
+  const cid=clubId(); if(!cid){ toast('클럽 정보를 찾을 수 없어요'); return; }
+  const ev=(SRV_EVENTS||[]).find(x=>String(x.id)===String(eid));
+  const t=prompt('모임 이름', (ev&&ev.title)||'');
+  if(t===null) return;
+  if(!t.trim()){ toast('이름을 입력해 주세요'); return; }
+  const d=prompt('날짜 (예: 8/9 또는 2026-08-09)', (ev&&ev.date)||'');
+  if(d===null) return;
+  try{
+    await api(`/clubs/${cid}/events/${eid}`,{method:'PATCH',
+      body:JSON.stringify({title:t.trim(), date:(d||'').trim()})});
+    toast('모임을 수정했어요 · 참석자에게 알림이 갔어요');
+    await reloadClubEvents();
+    closeEventPage(); if(state.view==='club') renderClub();
+  }catch(err){
+    const k=(()=>{ try{ return JSON.parse(err.message).error; }catch(_){ return ''; } })();
+    toast(k==='officer_only' ? '임원 또는 만든 사람만 수정할 수 있어요' : '수정에 실패했어요');
+  }
+}
+/* 모임 삭제 — 되돌릴 수 없으니 두 번 확인한다 */
+async function deleteEvent(eid){
+  const cid=clubId(); if(!cid){ toast('클럽 정보를 찾을 수 없어요'); return; }
+  const ev=(SRV_EVENTS||[]).find(x=>String(x.id)===String(eid));
+  const nm=(ev&&ev.title)||'이 모임';
+  if(!await appConfirm(`${nm}을 삭제할까요?\n\n· 참석 응답과 댓글이 함께 지워져요\n· 되돌릴 수 없어요`,'삭제')) return;
+  try{
+    await api(`/clubs/${cid}/events/${eid}`,{method:'DELETE'});
+    toast('모임을 삭제했어요');
+    await reloadClubEvents();
+    closeEventPage(); if(state.view==='club') renderClub();
+  }catch(err){
+    const k=(()=>{ try{ return JSON.parse(err.message).error; }catch(_){ return ''; } })();
+    toast(k==='officer_only' ? '임원 또는 만든 사람만 삭제할 수 있어요' : '삭제에 실패했어요');
+  }
+}
+function evIsPast(e){
+  const raw=String((e&&e.date)||'');
+  const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  let d=null;
+  let m=raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) d=new Date(+m[1],+m[2]-1,+m[3]);
+  else {
+    m=raw.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if(m){
+      const mo=+m[1], dy=+m[2];
+      d=new Date(now.getFullYear(),mo-1,dy);
+      // 12월에 1월 모임처럼 연말·연초가 걸치면 연도를 보정
+      const diff=(d-today)/864e5;
+      if(diff < -200) d=new Date(now.getFullYear()+1,mo-1,dy);
+      if(diff >  200) d=new Date(now.getFullYear()-1,mo-1,dy);
+    }
+  }
+  if(!d || isNaN(+d)) return false;      // 날짜를 못 읽으면 지난 것으로 보지 않는다
+  return d < today;                       // 당일은 아직 진행 중
+}
+
+// ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
       const evList = ((SERVER_OK && clubId()) ? SRV_EVENTS : (c2&&c2.events)) || [];
       const dayF=state._clubDay;
-      const evAll=evList;
+      const evAll=evList.filter(e=>!evIsPast(e));      // 지난 모임은 카드에서 감춘다
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
@@ -7181,7 +7240,7 @@ async function reshuffle(){
     const cur=(state.clubData[state.activeClub]&&(state.clubData[state.activeClub].schedule.attendees||[]).length)||0;
     if(SERVER_OK && cur && cur<need){ openMinModal(); return; } }
   const n=Object.keys(state.bcfg.scores).filter(k=>{const v=state.bcfg.scores[k];return v.a!==''&&v.b!=='';}).length;
-  if(n && !confirm(`입력된 점수 ${n}건이 삭제됩니다. 대진을 다시 짤까요?`)) return;
+  if(n && !await appConfirm(`입력된 점수 ${n}건이 삭제됩니다.\n대진을 다시 짤까요?`,'다시 짜기')) return;
   state.bcfg.seed++; state.bcfg.scores={}; bkState().startedAt={}; state._pubRoster=null;
   const c=AC(); if(c) c.published=null;
   if(SERVER_OK && clubId() && BK_ID){ try{ await bkPush(0); }catch(e){} }
@@ -8089,6 +8148,8 @@ const GRADE_INFO = [
   { g:'C',  minY:0,  label:'1년 이하',   ntrp:'2.0 이하',  desc:'입문 · 초급',     c:'#2c7a53', bg:'#e8f5ee' },
 ];
 const gradeInfo = g => GRADE_INFO.find(x=>x.g===g) || GRADE_INFO[GRADE_INFO.length-1];
+/* 등급 칩 색상 — 마스터 표에서 가져온다 */
+function cb2GradeColor(g){ const i=gradeInfo(g); return `background:${i.bg};color:${i.c}`; }
 
 /* 구력(연차) → 등급. 프로필 '시작 시점'만 있으면 등급이 정해진다.
    임원이 칩을 탭해 수동 조정하면 그 값이 우선(_gDirty). */
@@ -9563,7 +9624,11 @@ function drawEventDetail(){
       <span style="font-size:14px;font-weight:500">모임 정보</span></div>
     <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-      <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3></div>
+      <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3>
+      ${off?`<div style="display:flex;gap:6px;flex:none">
+        <span onclick="editEvent('${e.id}')" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
+        <span onclick="deleteEvent('${e.id}')" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
+      </div>`:''}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
       <span style="font-size:11px;font-weight:500;border-radius:8px;padding:4px 10px;background:${accentBg};color:${accent}">${esc(e.tag||'정기')}</span>
       <span style="font-size:14px;font-weight:400;color:#6b6357">${esc(e.date||'')}</span></div>
@@ -9580,13 +9645,18 @@ function drawEventDetail(){
     ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:12px;font-weight:500;color:#a8a29a;margin-top:10px;line-height:1.7">
       ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(esc).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(esc).join(' · ')}`:''}</div>`:''}
 
-    ${off?`<div style="margin-top:18px">
+    ${off?(evIsPast(e)?`<div style="margin-top:18px;display:flex;align-items:center;gap:12px;background:#f4f2ee;border-radius:15px;padding:14px 16px">
+      <span style="width:38px;height:38px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:18px;flex:none">🏁</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#8a857c">끝난 모임이에요</div>
+        <div style="font-size:11px;font-weight:500;color:#a8a29a;margin-top:2px">대진은 새로 짤 수 없어요 · 기록은 그대로 남아요</div></div></div>`
+    :`<div style="margin-top:18px">
       <div onclick="evToBracket('${e.id}')" style="display:flex;align-items:center;gap:12px;background:${accentBg};border-radius:15px;padding:14px 16px;cursor:pointer">
         <span style="width:38px;height:38px;border-radius:12px;background:#fff;display:grid;place-items:center;font-size:18px;flex:none">🎾</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500;color:${accent}">이 모임 참석자로 대진 짜기</div>
           <div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:2px">참석 ${(e.attendees||[]).length}명${(e.guests||[]).length?` · 게스트 ${(e.guests||[]).length}명`:''}이 명단에 들어가요</div></div>
-        <span style="color:${accent};font-weight:600">›</span></div></div>`:''}
+        <span style="color:${accent};font-weight:600">›</span></div></div>`):''}
 
     <div style="height:1px;background:#f0ede6;margin:22px 0 0"></div>
     <div style="display:flex;align-items:baseline;gap:7px;margin-top:18px">
@@ -11480,7 +11550,7 @@ async function createMatch(){
   try{
     try{
       const fp=await api('/me/fairplay');
-      if(fp && fp.score<55 && !confirm(`현재 페어플레이 ${fp.score}점이에요.\n점수가 낮으면 참가율이 떨어질 수 있어요.\n좋은 경기로 회복한 뒤 열어도 좋아요. 계속할까요?`)) return;
+      if(fp && fp.score<55 && !await appConfirm(`현재 페어플레이 ${fp.score}점이에요.\n점수가 낮으면 참가율이 떨어질 수 있어요.\n좋은 경기로 회복한 뒤 열어도 좋아요. 계속할까요?`,'계속하기')) return;
     }catch(e){}
     await api('/open-matches',{method:'POST',body:JSON.stringify({
       sport:state.sport, dt:fmtMatchDate(start), start_at:start,
@@ -11516,7 +11586,7 @@ async function createMatch(){
 async function joinMatch(id){
   const mm=(OM_LIST||[]).find(x=>x.id===id);
   if(TRIAL){ if(!mm) return;
-    if(mm.price&&!confirm(`참가비 ${mm.price.toLocaleString()}원\n체험 모드라 실제로 결제되지 않아요.\n\n신청해 볼까요?`)) return;
+    if(mm.price&&!await appConfirm(`참가비 ${mm.price.toLocaleString()}원\n체험 모드라 실제로 결제되지 않아요.\n\n신청해 볼까요?`,'신청하기')) return;
     if(!mm.joined){ mm.joined=true; mm.cur=Math.min(mm.cap,(mm.cur||0)+1);
       (mm.players=mm.players||[]).push({id:1,name:'체험 게스트',gender:'남성',rating:1000}); }
     toast(`참가했어요 · ${mm.cur}/${mm.cap}명 (체험 모드)`); renderMatch(); return; }
@@ -11576,7 +11646,7 @@ async function setMatchStatus(id, st){
 /* ═══════════ 회비 납부 요청 ═══════════ */
 async function remindDues(uid, name){
   const body = uid ? {user_id:uid} : {};
-  if(!uid && !confirm('미납 회원에게 회비 납부 요청 알림을 보낼까요?')) return;
+  if(!uid && !await appConfirm('미납 회원에게 회비 납부 요청 알림을 보낼까요?','보내기')) return;
   try{
     const r = await api(`/clubs/${clubId()}/dues/remind`, {method:'POST', body: JSON.stringify(body)});
     if(r.sent) toast(uid ? `${name} 님에게 납부 요청을 보냈어요` : `${r.sent}명에게 납부 요청을 보냈어요`);
@@ -14489,16 +14559,45 @@ function renderMe(){
   try{ _renderMeCore(); }
   finally{ _RM_BUSY=false; }
 }
+/* 매너(페어플레이) 점수 — 값을 캐시해 두고 렌더할 때마다 다시 칠한다.
+   매번 API 를 부르면 응답 전 '—' 가 보여서 깜빡인다. */
+let MY_FP=null, MY_FP_LOADING=false;
+function paintFairplay(){
+  const el=document.getElementById('myFpScore'), ln=document.getElementById('myFpLine');
+  if(!el && !ln) return;
+  if(MY_FP===null){                                   // 아직 한 번도 못 받음
+    if(ln) ln.textContent='불러오는 중…';
+    return;
+  }
+  if(MY_FP._err){
+    if(ln) ln.textContent='서버가 구버전이에요 · server.js를 재배포해 주세요';
+    return;
+  }
+  const sc=MY_FP.score;
+  if(el && sc!=null){
+    el.textContent=sc+'점';
+    el.style.color = sc>=85?'#2f7d4f' : sc>=70?'#a5750d' : '#cf5418';
+  }
+  if(ln) ln.textContent = MY_FP.reviews
+    ? `후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`
+    : '아직 후기가 없어요 · 80점에서 시작';
+}
 function _renderMeCore(){
   ensureRecs();
-  if(SERVER_OK && authToken()) api('/me/fairplay').then(f=>{
-    const s=document.getElementById('myFpScore'), l=document.getElementById('myFpLine');
-    if(s){ s.textContent=f.score+'점'; s.style.color = f.score>=85?'#2f7d4f':f.score>=70?'#a5750d':'#cf5418'; }
-    if(l) l.textContent = f.reviews? `후기 ${f.reviews}건 반영 · 탭해서 산정 방식 보기` : '아직 후기가 없어요 · 80점에서 시작';
-  }).catch(()=>{
-    const l=document.getElementById('myFpLine');
-    if(l) l.textContent='서버가 구버전이에요 · server.js를 재배포해 주세요';
-  });
+  // 매너 점수는 한 번 받아 캐시한다. 렌더마다 다시 부르면 '—' ↔ '80점' 깜빡임이 생긴다.
+  if(SERVER_OK && authToken()){
+    if(MY_FP===null && !MY_FP_LOADING){
+      MY_FP_LOADING=true;
+      api('/me/fairplay').then(f=>{
+        MY_FP=f||{score:80,reviews:0}; MY_FP_LOADING=false;
+        if(state.view==='me') paintFairplay();
+      }).catch(()=>{
+        MY_FP={_err:true}; MY_FP_LOADING=false;
+        if(state.view==='me') paintFairplay();
+      });
+    }
+    setTimeout(paintFairplay, 0);          // 캐시가 있으면 즉시 채운다
+  }
   if(SERVER_OK && authToken() && MY_APPS && Date.now()-(MY_APPS._ts||0)>3e4){ MY_APPS=null; }
 
   const joined=state.matches.filter(m=>m.joined).length,clubs=state.myClubs.length,t=myTier();
@@ -14524,8 +14623,8 @@ function _renderMeCore(){
   ${SERVER_OK&&authToken()?`<div style="display:flex;gap:10px;margin-bottom:12px">
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openFairplayInfo()">
       <div style="font-size:12px;color:var(--gray);font-weight:500">매너</div>
-      <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">—</b></div>
-      <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">불러오는 중…</div></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
+      <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div></div>
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
       <div style="font-size:12px;color:var(--gray);font-weight:500">티어</div>
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:7px;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:500">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:14px">${esc(t.name.split(' · ')[0])}</b></div>
