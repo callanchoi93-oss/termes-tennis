@@ -218,9 +218,9 @@ app.post('/auth/dev-login', limitLogin, (req, res) => {
 
 // ── 카카오 로그인 (실연동) ──
 // 준비: https://developers.kakao.com → 앱 생성 → JavaScript 키 발급 → 플랫폼에 도메인 등록
-async function kakaoIssueData(access_token) {
+async function kakaoIssue(access_token, res) {
   const kr = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: 'Bearer ' + access_token } });
-  if (!kr.ok) { const e = new Error('kakao_verify_failed'); e.code = 401; throw e; }
+  if (!kr.ok) return res.status(401).json({ error: 'kakao_verify_failed' });
   const k = await kr.json();                         // { id, kakao_account, properties }
   const pid = 'kakao-' + k.id;
   const name = cleanName((k.properties && k.properties.nickname), '카카오' + String(k.id).slice(-4));
@@ -231,22 +231,7 @@ async function kakaoIssueData(access_token) {
     u = getUser(rid(r));
     db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
   }
-  return { token: sign(u), user: u };
-}
-async function kakaoIssue(access_token, res) {
-  try { res.json(await kakaoIssueData(access_token)); }
-  catch (e) { res.status(e.code || 500).json({ error: String(e.message || e) }); }
-}
-// 카카오 인가코드 → 액세스 토큰
-async function kakaoExchange(code, redirect_uri) {
-  const key = process.env.KAKAO_REST_KEY;
-  const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri, code });
-  if (process.env.KAKAO_CLIENT_SECRET) body.set('client_secret', process.env.KAKAO_CLIENT_SECRET);
-  const tk = await fetch('https://kauth.kakao.com/oauth/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
-  }).then(r => r.json());
-  if (!tk.access_token) { const e = new Error(JSON.stringify(tk)); e.kakao = tk; throw e; }
-  return tk.access_token;
+  res.json({ token: sign(u), user: u });
 }
 // 클라이언트가 Kakao SDK로 받은 access_token을 보내는 방식 (SPA 권장)
 // ══════════════════════════════════════════════════════════════
@@ -262,9 +247,6 @@ app.get('/config', (_, res) => {
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
-    kakao_native_redirect_uri: KAKAO_NATIVE_REDIRECT_URI,        // 앱 전용 콜백 (https)
-    kakao_native_ready: !!(process.env.KAKAO_REST_KEY && KAKAO_NATIVE_REDIRECT_URI),
-    app_scheme: APP_SCHEME,                                      // 앱을 여는 주소 (matsu://)
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     apple_client_id: process.env.APPLE_CLIENT_ID || '',
@@ -317,100 +299,18 @@ app.post('/auth/kakao', limitLogin, async (req, res) => {
   try { await kakaoIssue(access_token, res); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 // (대안) 인가코드 방식: 서버가 code→token 교환. env: KAKAO_REST_KEY, KAKAO_REDIRECT_URI (, KAKAO_CLIENT_SECRET)
-//
-// ── iOS/Android 앱(Capacitor)용 콜백 중계 ────────────────────────────
-//  카카오는 리다이렉트 주소로 https 만 허용한다 (matsu:// 같은 앱 주소 불가).
-//  그래서 카카오 → 이 서버 페이지 → 앱(matsu://) 순서로 한 번 거쳐 간다.
-//  앱은 돌아온 code 를 그대로 POST /auth/kakao/code {code, native:true} 로 보낸다.
-//
-//  Railway Variables:
-//    KAKAO_NATIVE_REDIRECT_URI = https://matsu.up.railway.app/auth/kakao/native-callback
-//    APP_SCHEME                = matsu
-//  (없으면 아래 기본값을 쓴다)
-const APP_SCHEME = process.env.APP_SCHEME || 'matsu';
-const KAKAO_NATIVE_REDIRECT_URI =
-  process.env.KAKAO_NATIVE_REDIRECT_URI ||
-  ((process.env.APP_ORIGIN || 'https://matsu.up.railway.app') + '/auth/kakao/native-callback');
-
-// 앱은 이 주소만 열면 된다. REST 키는 서버 밖으로 나가지 않는다.
-app.get('/auth/kakao/native-start', (req, res) => {
-  const key = process.env.KAKAO_REST_KEY;
-  if (!key) return res.status(500).send('KAKAO_REST_KEY 가 설정되지 않았습니다');
-  const st = String(req.query.state || '').slice(0, 64);
-  if (!/^[A-Za-z0-9_-]{8,64}$/.test(st)) return res.status(400).send('bad state');
-  const q = new URLSearchParams({
-    client_id: key,
-    redirect_uri: KAKAO_NATIVE_REDIRECT_URI,
-    response_type: 'code',
-    state: st,                  // 앱이 결과를 찾아갈 때 쓰는 표
-    prompt: 'login',            // 이전 세션이 남아 조용히 통과하는 것을 막는다
-  });
-  res.set('Cache-Control', 'no-store');
-  res.redirect('https://kauth.kakao.com/oauth/authorize?' + q);
-});
-
-// 앱이 찾아갈 때까지 결과를 잠깐 들고 있는다 (5분)
-const NATIVE_AUTH = new Map();
-const _naTimer = setInterval(() => {
-  const t = Date.now();
-  for (const [k, v] of NATIVE_AUTH) if (t - v.at > 5 * 60 * 1000) NATIVE_AUTH.delete(k);
-}, 60 * 1000);
-if (_naTimer.unref) _naTimer.unref();
-
-function nativeDonePage(msg, ok) {
-  return '<!doctype html><meta charset="utf-8">'
-    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
-    + '<title>' + msg + '</title>'
-    + '<body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;text-align:center;'
-    + 'padding:72px 24px;color:#2b2620">'
-    + '<div style="font-size:44px;margin-bottom:18px">' + (ok ? '&#10003;' : '&#9888;') + '</div>'
-    + '<p style="font-size:17px;font-weight:600;margin:0 0 8px">' + msg + '</p>'
-    + '<p style="font-size:14px;color:#8a857c;margin:0">잠시 후 앱으로 돌아갑니다</p>'
-    + '</body>';
-}
-
-app.get('/auth/kakao/native-callback', async (req, res) => {
-  const code = String(req.query.code || '');
-  const st   = String(req.query.state || '');
-  res.set('Cache-Control', 'no-store');
-  res.set('Content-Type', 'text/html; charset=utf-8');
-  if (!st) return res.send(nativeDonePage('로그인을 확인할 수 없어요', false));
-  if (!code) {
-    NATIVE_AUTH.set(st, { at: Date.now(), error: 'cancelled' });
-    return res.send(nativeDonePage('로그인이 취소됐어요', false));
-  }
-  try {
-    const at = await kakaoExchange(code, KAKAO_NATIVE_REDIRECT_URI);
-    const d  = await kakaoIssueData(at);
-    NATIVE_AUTH.set(st, { at: Date.now(), data: d });
-    res.send(nativeDonePage('로그인됐어요', true));
-  } catch (e) {
-    console.error('[kakao-native] 실패:', e && e.message);
-    NATIVE_AUTH.set(st, { at: Date.now(), error: String((e && e.message) || e) });
-    res.send(nativeDonePage('로그인에 실패했어요', false));
-  }
-});
-
-// 앱이 결과를 찾아간다. 한 번 가져가면 지운다.
-app.get('/auth/kakao/native-poll', (req, res) => {
-  const st = String(req.query.state || '');
-  res.set('Cache-Control', 'no-store');
-  const v = NATIVE_AUTH.get(st);
-  if (!v) return res.json({ ready: false });
-  NATIVE_AUTH.delete(st);
-  if (v.error) return res.status(401).json({ ready: true, error: v.error });
-  res.json({ ready: true, token: v.data.token, user: v.data.user });
-});
-
 app.post('/auth/kakao/code', limitLogin, async (req, res) => {
-  const { code, native } = req.body || {};
-  const key = process.env.KAKAO_REST_KEY;
-  // 토큰 교환 시 redirect_uri 는 인증을 요청할 때 쓴 주소와 반드시 같아야 한다
-  const redirect = native ? KAKAO_NATIVE_REDIRECT_URI : process.env.KAKAO_REDIRECT_URI;
+  const { code } = req.body || {};
+  const key = process.env.KAKAO_REST_KEY, redirect = process.env.KAKAO_REDIRECT_URI;
   if (!code || !key || !redirect) return res.status(400).json({ error: 'missing_code_or_env' });
   try {
-    const at = await kakaoExchange(code, redirect);
-    await kakaoIssue(at, res);
+    const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri: redirect, code });
+    if (process.env.KAKAO_CLIENT_SECRET) body.set('client_secret', process.env.KAKAO_CLIENT_SECRET);
+    const tk = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
+    }).then(r => r.json());
+    if (!tk.access_token) return res.status(401).json({ error: 'token_exchange_failed', detail: tk });
+    await kakaoIssue(tk.access_token, res);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -474,7 +374,9 @@ app.get('/users/:id/profile', (req, res) => {
     wins,losses,photos,skill_verified,real_verified FROM users WHERE id=?`).get(intOrNull(req.params.id));
   if (!u) return res.status(404).json({ error: 'not_found' });
   const rank = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND rating>?').get(u.sport, u.rating).n;
-  res.json({ ...u, rank });
+  const rd = db.prepare('SELECT COALESCE(rating_doubles,1000) r FROM users WHERE id=?').get(u.id).r;
+  const rankD = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND COALESCE(rating_doubles,1000)>?').get(u.sport, rd).n;
+  res.json({ ...u, rank, rating_doubles: rd, rank_doubles: rankD });
 });
 
 // 데모 매칭용 사용자 목록
@@ -658,7 +560,14 @@ app.post('/pay/refund', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
-app.get('/me', auth, (req, res) => res.json(getUser(req.uid)));
+app.get('/me', auth, (req, res) => {
+  const u = getUser(req.uid);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  // 복식 배치 판정용 — rating_log 의 '복식' 기록 수를 센다
+  let pd = 0;
+  try { pd = db.prepare("SELECT COUNT(*) n FROM rating_log WHERE user_id=? AND reason='복식'").get(req.uid).n; } catch (e) {}
+  res.json({ ...u, played_doubles: pd });
+});
 app.patch('/me', auth, (req, res) => {
   const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
                  'birth_year','handed','backhand','style','phone','sport_started'];
@@ -708,10 +617,32 @@ app.post('/clubs', auth, (req, res) => {
     .run(rid(r), req.uid, 'owner');
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
 });
+/* 종목별 구력(개월). sport_started 는 {"tennis":"2019-05"} 형태 */
+function careerMonths(uid, sport) {
+  const u = getUser(uid);
+  if (!u || !u.sport_started) return null;
+  let ym;
+  try { ym = JSON.parse(u.sport_started)[sport || 'tennis']; } catch (e) { return null; }
+  if (!ym) return null;
+  const [y, m] = String(ym).split('-').map(Number);
+  if (!y) return null;
+  const d = new Date();
+  return Math.max(0, (d.getFullYear() - y) * 12 + (d.getMonth() + 1 - (m || 1)));
+}
+
 app.post('/clubs/:id/join', auth, (req, res) => {
   const cid = +req.params.id;
-  const club = db.prepare('SELECT name,owner_id FROM clubs WHERE id=?').get(cid);
+  const club = db.prepare('SELECT name,owner_id,sport,min_career_months,max_career_months FROM clubs WHERE id=?').get(cid);
   if (!club) return res.status(404).json({ error: 'no_club' });
+  // 구력 조건 검사 — 테린이 클럽은 max, 상급 클럽은 min 을 쓴다
+  if (club.min_career_months != null || club.max_career_months != null) {
+    const mo = careerMonths(req.uid, club.sport);
+    if (mo == null) return res.status(400).json({ error: 'career_required' });
+    if (club.min_career_months != null && mo < club.min_career_months)
+      return res.status(403).json({ error: 'career_too_short', need: club.min_career_months, mine: mo });
+    if (club.max_career_months != null && mo > club.max_career_months)
+      return res.status(403).json({ error: 'career_too_long', limit: club.max_career_months, mine: mo });
+  }
   const ex = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
   if (ex) return res.json({ ok: true, status: ex.status });          // 이미 신청/가입됨
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,status) VALUES (?,?, 'member','pending')`).run(cid, req.uid);
@@ -1011,7 +942,7 @@ app.get('/clubs/:id/roster', (req, res) => {
   let rows;
   let guests = [];
   if (ev) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, u.sport_started, u.rating
       FROM event_attendees ea JOIN users u ON u.id=ea.user_id
       LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
       WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
@@ -1019,7 +950,7 @@ app.get('/clubs/:id/roster', (req, res) => {
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
   if (!rows || !rows.length) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
   }
@@ -2139,6 +2070,17 @@ app.patch('/clubs/:id/fees', auth, (req, res) => {
     .run(entry_fee, season_fee, guest_fee, guest_cap, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
+// 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
+app.patch('/clubs/:id/career-policy', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const norm = v => (v === null || v === '' || v === undefined) ? null : Math.max(0, parseInt(v, 10) || 0);
+  const mn = norm(req.body.min_career_months), mx = norm(req.body.max_career_months);
+  if (mn != null && mx != null && mn > mx) return res.status(400).json({ error: 'range_invalid' });
+  db.prepare('UPDATE clubs SET min_career_months=?, max_career_months=? WHERE id=?').run(mn, mx, cid);
+  res.json({ ok: true, min_career_months: mn, max_career_months: mx });
+});
+
 // 등번호/주장
 app.patch('/clubs/:id/roster', auth, (req, res) => {
   if (!isOfficer(+req.params.id, req.uid)) return res.status(403).json({ error: 'officer_only' });
@@ -2467,9 +2409,13 @@ app.get('/matches', (req, res) => {
 // 개인 레이팅 랭킹 (리그 화면)
 app.get('/rankings', (req, res) => {
   const { sport } = req.query;
-  let sql = "SELECT id,name,region,sport,rating,(wins+losses) AS games FROM users WHERE provider!='bot'", p = [];
+  const dbl = String(req.query.type || 'singles') === 'doubles';
+  const col = dbl ? 'COALESCE(rating_doubles,1000)' : 'rating';
+  let sql = `SELECT id,name,region,sport,${col} AS rating,(wins+losses) AS games
+    FROM users WHERE provider!='bot'`;
+  const p = [];
   if (sport) { sql += ' AND sport=?'; p.push(sport); }
-  res.json(db.prepare(sql + ' ORDER BY rating DESC LIMIT 50').all(...p));
+  res.json(db.prepare(sql + ` ORDER BY ${col} DESC LIMIT 50`).all(...p));
 });
 // 대진 결과 → 내 레이팅 Elo 반영 (봇 상대 포함)
 app.post('/me/result', auth, (req, res) => {
@@ -2914,6 +2860,12 @@ const FREE_MAX_MEMBERS = 15;
 const FREE_MAX_BRACKETS_PER_MONTH = 4;
 
 try { db.exec('ALTER TABLE clubs ADD COLUMN premium_until BIGINT'); } catch (e) {}
+// 가입 구력 조건 (개월). null = 제한 없음. 테린이 클럽은 max 로 상급자를 막는다.
+// 복식 레이팅 — 기존 rating 은 단식 전용으로 남기고, 복식은 따로 쌓는다
+try { db.exec('ALTER TABLE users ADD COLUMN rating_doubles INTEGER DEFAULT 1000'); } catch (e) {}
+try { db.exec("UPDATE users SET rating_doubles=1000 WHERE rating_doubles IS NULL"); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN min_career_months INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN max_career_months INTEGER'); } catch (e) {}
 
 function isPremium(clubId) {
   const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(clubId);
@@ -3649,8 +3601,13 @@ app.post('/brackets/:id/finalize', auth, (req, res) => {
        home_score, away_score, status, home_confirmed, away_confirmed, created_by, created_at)
     VALUES (?, 'bracket', ?, ?, ?, ?, ?, ?, 'confirmed', 1, 1, ?, ?)`);
 
-  const teamElo = ids => ids.reduce((t, id) => t + ((getUser(id) || {}).rating || 1000), 0) / ids.length;
-  const bump = (id, d) => db.prepare('UPDATE users SET rating = COALESCE(rating,1000) + ? WHERE id=?').run(d, id);
+  // 복식은 rating_doubles 로 — 단식(rating)과 섞이지 않는다
+  const teamElo = ids => ids.reduce((t, id) => t + ((getUser(id) || {}).rating_doubles || 1000), 0) / ids.length;
+  const bump = (id, d) => {
+    const u = getUser(id); const cur = (u && u.rating_doubles) || 1000;
+    db.prepare('UPDATE users SET rating_doubles=? WHERE id=?').run(cur + d, id);
+    logRating(id, d, cur + d, '복식');
+  };
 
   for (const g of games) {
     const hs = intOrNull(g.home_score), as = intOrNull(g.away_score);
@@ -3890,6 +3847,19 @@ app.post('/open-matches/:id/photo', auth, limitWrite, (req, res) => {
   db.prepare('UPDATE open_matches SET photo=? WHERE id=?').run(url, m.id);
   res.json({ ok: true, photo: url });
 });
+/* 오픈매치 대진용 참가자 명단 — 클럽 대진과 같은 구력 등급 체계를 쓴다.
+   매니저 평가(om_assessments)가 있으면 그 등급이 구력보다 우선. */
+app.get('/open-matches/:id/roster', (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT id,sport,courts,cap FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const rows = db.prepare(`SELECT u.id user_id, u.name, u.gender, u.sport_started, u.rating, u.photos,
+      (SELECT level FROM om_assessments a WHERE a.user_id=u.id ORDER BY a.id DESC LIMIT 1) AS assessed
+    FROM open_match_joins j JOIN users u ON u.id=j.user_id
+    WHERE j.match_id=? ORDER BY j.joined_at, u.name`).all(mid);
+  res.json({ match_id: mid, sport: m.sport, courts: m.courts || 2, cap: m.cap || 0, members: rows });
+});
+
 app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
@@ -3920,7 +3890,7 @@ app.post('/open-matches/:id/assess', auth, limitWrite, (req, res) => {
       db.prepare('UPDATE users SET rating=? WHERE id=?').run(nr, uid);
     });
     logRating(uid, nr - (u.rating || 1000), nr, placed ? '매니저 평가' : '매니저 배치');
-    sendPush(uid, { icon: '📊', title: placed ? '경기력 평가가 반영됐어요' : '레벨이 배치됐어요', body: `매니저 평가: ${p.level} · ${m.dt || ''} 매치` });
+    sendPush(uid, { icon: '📊', title: placed ? '경기력 평가가 반영됐어요' : '티어가 배치됐어요', body: `매니저 평가: ${p.level} · ${m.dt || ''} 매치` });
     applied++;
   }
   res.json({ ok: true, applied });
