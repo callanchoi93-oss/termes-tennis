@@ -501,6 +501,8 @@
   .toolrow:active{ transform:scale(.985); }
   .toolrow .tr-ic{ width:46px; height:46px; border-radius:14px; display:grid; place-items:center; font-size:23px; flex-shrink:0; line-height:0; }
   .toolrow .tr-ic svg{ display:block; margin:auto; }
+  /* 이모지는 color 가 통하지 않아 span 으로 감싸 채도를 없앤다. 배경색은 영향받지 않는다. */
+  .toolrow .tr-ic .emo{ filter:grayscale(1); opacity:.72; }
   .toolrow .tr-x{ flex:1; min-width:0; }
   .toolrow .tr-n{ font-size:14px; font-weight:600; color:var(--ink); }
   .toolrow .tr-d{ font-size:12px; color:var(--gray); font-weight:600; margin-top:2px; }
@@ -5718,63 +5720,6 @@ function renderClub(){
           <span style="color:var(--coral-d)">● 정기</span><span style="color:#2b62c9">● 번개</span></div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
-/* 모임 수정 — 제목·날짜만 바꾼다. 임원 또는 내가 만든 번개만 가능(서버가 재검증). */
-async function editEvent(eid){
-  const cid=clubId(); if(!cid){ toast('클럽 정보를 찾을 수 없어요'); return; }
-  const ev=(SRV_EVENTS||[]).find(x=>String(x.id)===String(eid));
-  const t=prompt('모임 이름', (ev&&ev.title)||'');
-  if(t===null) return;
-  if(!t.trim()){ toast('이름을 입력해 주세요'); return; }
-  const d=prompt('날짜 (예: 8/9 또는 2026-08-09)', (ev&&ev.date)||'');
-  if(d===null) return;
-  try{
-    await api(`/clubs/${cid}/events/${eid}`,{method:'PATCH',
-      body:JSON.stringify({title:t.trim(), date:(d||'').trim()})});
-    toast('모임을 수정했어요 · 참석자에게 알림이 갔어요');
-    await reloadClubEvents();
-    closeEventPage(); if(state.view==='club') renderClub();
-  }catch(err){
-    const k=(()=>{ try{ return JSON.parse(err.message).error; }catch(_){ return ''; } })();
-    toast(k==='officer_only' ? '임원 또는 만든 사람만 수정할 수 있어요' : '수정에 실패했어요');
-  }
-}
-/* 모임 삭제 — 되돌릴 수 없으니 두 번 확인한다 */
-async function deleteEvent(eid){
-  const cid=clubId(); if(!cid){ toast('클럽 정보를 찾을 수 없어요'); return; }
-  const ev=(SRV_EVENTS||[]).find(x=>String(x.id)===String(eid));
-  const nm=(ev&&ev.title)||'이 모임';
-  if(!await appConfirm(`${nm}을 삭제할까요?\n\n· 참석 응답과 댓글이 함께 지워져요\n· 되돌릴 수 없어요`,'삭제')) return;
-  try{
-    await api(`/clubs/${cid}/events/${eid}`,{method:'DELETE'});
-    toast('모임을 삭제했어요');
-    await reloadClubEvents();
-    closeEventPage(); if(state.view==='club') renderClub();
-  }catch(err){
-    const k=(()=>{ try{ return JSON.parse(err.message).error; }catch(_){ return ''; } })();
-    toast(k==='officer_only' ? '임원 또는 만든 사람만 삭제할 수 있어요' : '삭제에 실패했어요');
-  }
-}
-function evIsPast(e){
-  const raw=String((e&&e.date)||'');
-  const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  let d=null;
-  let m=raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if(m) d=new Date(+m[1],+m[2]-1,+m[3]);
-  else {
-    m=raw.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
-    if(m){
-      const mo=+m[1], dy=+m[2];
-      d=new Date(now.getFullYear(),mo-1,dy);
-      // 12월에 1월 모임처럼 연말·연초가 걸치면 연도를 보정
-      const diff=(d-today)/864e5;
-      if(diff < -200) d=new Date(now.getFullYear()+1,mo-1,dy);
-      if(diff >  200) d=new Date(now.getFullYear()-1,mo-1,dy);
-    }
-  }
-  if(!d || isNaN(+d)) return false;      // 날짜를 못 읽으면 지난 것으로 보지 않는다
-  return d < today;                       // 당일은 아직 진행 중
-}
-
 // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
@@ -5830,25 +5775,25 @@ function evIsPast(e){
       if(off){
         h+=`<div class="ch" style="font-size:14px;margin:6px 4px 10px">클럽 운영 도구 · 임원진</div>
           <div class="tgrp">경기 운영</div>
-          <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#c47d10">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#2f9159">✅</div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
-          ${cb2OrderOpen()?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#3182f6">📋</div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
-          <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#e9f4ee;color:#2f9159">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위 · 발행한 대진 보기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openNewEvent()"><div class="tr-ic" style="background:#fdf2dd;color:#8b8478">${ic('calendarPlus',19)}</div><div class="tr-x"><div class="tr-n">새 모임 만들기</div><div class="tr-d">참석 체크한 회원으로 대진이 편성돼요</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openAttend()"><div class="tr-ic" style="background:#e6f3ec;color:#8b8478"><span class="emo">✅</span></div><div class="tr-x"><div class="tr-n">출석 · 노쇼</div><div class="tr-d">당일 출석 체크 · 노쇼 기록</div></div><div class="tr-arr">›</div></div>
+          ${cb2OrderOpen()?`<div class="toolrow" onclick="cb2OrderSheet()"><div class="tr-ic" style="background:#eef4ff;color:#8b8478"><span class="emo">📋</span></div><div class="tr-x"><div class="tr-n">청백전 오더 시트</div><div class="tr-d">캡틴이 우리 팀 출전 순서를 짜요 · 진행 중 수정 가능</div></div><div class="tr-arr">›</div></div>`:''}
+          <div class="toolrow" onclick="openClubBracketBuild()"><div class="tr-ic" style="background:#fbe8d7;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">모임 대진 편성</div><div class="tr-d">참석자 선택 → 버튼 한 번에 대진 · 실시간 스코어</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위 · 발행한 대진 보기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">회원 · 가입</div>
-          <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">클럽 초대장 공유</div><div class="tr-d">링크 하나로 가입 신청 · 7일 유효</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#a5750d">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openJoinRequests()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('users',19)}</div><div class="tr-x"><div class="tr-n">가입 신청</div><div class="tr-d">신청한 회원을 승인·거절해요</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="makeInvite()"><div class="tr-ic" style="background:#fceee4;color:#8b8478">${ic('ticket',19)}</div><div class="tr-x"><div class="tr-n">클럽 초대장 공유</div><div class="tr-d">링크 하나로 가입 신청 · 7일 유효</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openMembers()"><div class="tr-ic" style="background:#fdf2dd;color:#8b8478">${ic('crown',19)}</div><div class="tr-x"><div class="tr-n">회원 관리</div><div class="tr-d">임원 임명 · 등급 확인</div></div><div class="tr-arr">›</div></div>
           <div class="tgrp">클럽 설정</div>
-          <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#5b3fa8">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#8b8478">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지 작성</div><div class="tr-d">회원에게 알림과 공지 보내기</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubLogoEdit(state.activeClub)"><div class="tr-ic" style="background:#fceee4;color:#8b8478">${ic('palette',19)}</div><div class="tr-x"><div class="tr-n">클럽 로고 편집</div><div class="tr-d">${clubLogoOf(state.activeClub)?'로고 사용 중 · 아이콘·색 변경':'로고 없음 · 클럽명만 표시 중'}</div></div><div class="tr-arr">›</div></div>
           `;
       } else {
         h+=`<div class="ch" style="font-size:14px;margin:6px 4px 10px">클럽 정보</div>
-          <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#fbe8d7;color:#cf5418">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#cf5418">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
-          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#5b3fa8">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>`;
+          <div class="toolrow" onclick="openClubBracketView()"><div class="tr-ic" style="background:#fbe8d7;color:#8b8478">${ic('trophy',19)}</div><div class="tr-x"><div class="tr-n">대진 확인 · 실시간</div><div class="tr-d">진행 상황·스코어·오늘의 순위</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openNotices()"><div class="tr-ic" style="background:#fceee4;color:#8b8478">${ic('megaphone',19)}</div><div class="tr-x"><div class="tr-n">공지사항</div><div class="tr-d">클럽 알림과 공지 · 투표 참여</div></div><div class="tr-arr">›</div></div>
+          <div class="toolrow" onclick="openClubRecords()"><div class="tr-ic" style="background:#e9f4ee;color:#8b8478">${ic('chart',19)}</div><div class="tr-x"><div class="tr-n">클럽 기록 · 시즌</div><div class="tr-d">대진 결과가 쌓인 시즌 랭킹 (승·득실·P)</div></div><div class="tr-arr">›</div></div>`;
       }
     }
     // 서버에 모임이 있으면 참석/불참/미정 3단계 카드, 없으면 기존 데모 UI
@@ -5942,6 +5887,27 @@ let PEOPLE=[
   {n:'정지용',g:'남',region:'인천 연수',exp:'1년 미만',tier:'루키',w:8,l:20,manner:89,grade:'C',clubs:['송도 에이스']},
   {n:'오동현',g:'남',region:'경기 성남',exp:'3~5년',tier:'아마추어',w:70,l:72,manner:93,grade:'B',clubs:['분당 스매시 클럽']},
 ];
+function evIsPast(e){
+  const raw=String((e&&e.date)||'');
+  const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  let d=null;
+  let m=raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) d=new Date(+m[1],+m[2]-1,+m[3]);
+  else {
+    m=raw.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if(m){
+      const mo=+m[1], dy=+m[2];
+      d=new Date(now.getFullYear(),mo-1,dy);
+      // 12월에 1월 모임처럼 연말·연초가 걸치면 연도를 보정
+      const diff=(d-today)/864e5;
+      if(diff < -200) d=new Date(now.getFullYear()+1,mo-1,dy);
+      if(diff >  200) d=new Date(now.getFullYear()-1,mo-1,dy);
+    }
+  }
+  if(!d || isNaN(+d)) return false;      // 날짜를 못 읽으면 지난 것으로 보지 않는다
+  return d < today;                       // 당일은 아직 진행 중
+}
+
 function setFindTab(t){state.findTab=t;state._mq=state._mq||'';renderClub();}
 function searchMember(v){state._mq=v;renderClub();const el=document.getElementById('mq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
 function setMRegion(r){state._mregion=r;renderClub();}
@@ -9626,8 +9592,8 @@ function drawEventDetail(){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3>
       ${off?`<div style="display:flex;gap:6px;flex:none">
-        <span onclick="editEvent('${e.id}')" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
-        <span onclick="deleteEvent('${e.id}')" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
+        <span onclick="editEvent(${e.id})" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
+        <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:11.5px;font-weight:600;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
       </div>`:''}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
       <span style="font-size:11px;font-weight:500;border-radius:8px;padding:4px 10px;background:${accentBg};color:${accent}">${esc(e.tag||'정기')}</span>
