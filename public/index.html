@@ -1020,6 +1020,33 @@
   #sheet .sel-in{ border:1.5px solid var(--line);border-radius:12px;padding:12px 12px;font-size:14px;
                   font-family:inherit;font-weight:500;background:#fff;box-sizing:border-box;outline:none;color:var(--ink) }
   #sheet .sel-in:focus{ border-color:var(--coral) }
+  /* ── 클럽 만들기 마법사 ── */
+  .cw-bar{ height:5px;border-radius:3px;background:#f2f1ec;overflow:hidden;margin-bottom:6px }
+  .cw-bar i{ display:block;height:100%;background:var(--coral);border-radius:3px;transition:width .25s }
+  .cw-tab{ font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;background:#f2f1ec;
+           color:#57534c;cursor:pointer }
+  .cw-tab.on{ background:var(--coral);color:#fff }
+  .cw-emb{ width:112px;height:112px;border-radius:50%;margin:2px auto 14px;display:flex;
+           align-items:center;justify-content:center }
+  .cw-sw{ width:28px;height:28px;border-radius:50%;display:block;cursor:pointer }
+  .cw-sw.on{ box-shadow:0 0 0 2px #fff,0 0 0 4px var(--coral) }
+  .cw-ic{ width:52px;height:52px;border-radius:13px;background:#f2f1ec;display:flex;align-items:center;
+          justify-content:center;font-size:23px;cursor:pointer }
+  .cw-ic.on{ background:#fff;border:2px solid var(--coral) }
+  .cw-chips{ display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px }
+  .cw-c{ font-size:12px;font-weight:500;padding:7px 12px;border-radius:999px;background:#f2f1ec;
+         color:#57534c;cursor:pointer }
+  .cw-c.on{ background:var(--coral);color:#fff;font-weight:600 }
+  .cw-seg{ flex:1;text-align:center;font-size:13px;font-weight:600;padding:11px 0;border-radius:12px;
+           border:1.5px solid var(--line);color:#57534c;cursor:pointer }
+  .cw-seg.on{ border-color:var(--coral);background:var(--coral-s);color:var(--coral-d) }
+  .cw-ring{ width:74px;height:74px;border-radius:50%;background:var(--coral-s);margin:0 auto 12px;
+            display:flex;align-items:center;justify-content:center;font-size:32px }
+  .cw-kv{ display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;
+          border-bottom:1px solid var(--line) }
+  .cw-kv span{ color:var(--gray) }
+  .cw-kv b{ font-weight:600 }
+  .hint{ font-size:11px;color:var(--lgray);margin:-9px 2px 0 }
   /* ── 오픈매치 카드 ── */
   .omx{ background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(60,55,45,.07);
         margin-bottom:12px;cursor:pointer }
@@ -1027,8 +1054,7 @@
   .omx-ph{ height:104px;position:relative;background-position:center;background-size:cover }
   .omx-ph::after{ content:"";position:absolute;inset:0;
     background:linear-gradient(180deg,rgba(20,16,12,.34),transparent 46%,rgba(20,16,12,.30)) }
-  .omx-pat{ height:76px;position:relative;display:flex;align-items:center;justify-content:center;
-    background:repeating-linear-gradient(135deg,#f3f0e9 0 12px,#efebe2 12px 24px) }
+  .omx-pat{ height:56px;position:relative;background:linear-gradient(135deg,#f4874a,var(--coral)) }
   .omx-bd{ position:absolute;z-index:1;font-size:10.5px;font-weight:600;border-radius:7px;padding:4px 9px;
            white-space:nowrap }
   .omx-b{ padding:14px 16px 15px }
@@ -1074,6 +1100,8 @@
            flex:none;cursor:pointer }
   .nchip{ font-size:11.5px;font-weight:400;color:#57503f;background:#f4f2ee;border-radius:8px;
           padding:5px 10px;cursor:pointer }
+  .nchip.on{ background:var(--coral-s);color:var(--coral-d);font-weight:600 }
+  .omd-tag{ font-size:12px;font-weight:500;color:#57503f;background:#f4f2ee;border-radius:9px;padding:6px 11px }
   /* ── 클럽 평균 등급 15칸 ── */
   .gsel{ display:flex;gap:9px;margin-top:13px }
   .gsel-g{ flex:1;min-width:0 }
@@ -1833,6 +1861,7 @@ const UI_ICONS={
   award:'<circle cx="12" cy="8.5" r="6"/><path d="M8.4 13.6 7 22l5-2.8 5 2.8-1.4-8.4"/>',
   palette:'<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="7.8" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor" stroke="none"/><path d="M12 21a2.6 2.6 0 0 0 0-5.2 2.2 2.2 0 0 1 0-4.4"/>',
   pin:'<path d="M12 21.5s7-5.6 7-11.1a7 7 0 1 0-14 0c0 5.5 7 11.1 7 11.1z"/><circle cx="12" cy="10.2" r="2.6"/>',
+  heart:'<path d="M12 20.3 4.7 13a4.6 4.6 0 0 1 6.5-6.5l.8.8.8-.8A4.6 4.6 0 1 1 19.3 13z"/>',
   calendar:'<rect x="3.2" y="5" width="17.6" height="16" rx="3"/><path d="M3.2 10h17.6M8 3v4M16 3v4"/>',
   calendarPlus:'<rect x="3.2" y="5" width="17.6" height="16" rx="3"/><path d="M3.2 10h17.6M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/>',
   ticket:'<path d="M3 8.5A2 2 0 0 1 5 6.5h14a2 2 0 0 1 2 2v1.6a2.2 2.2 0 0 0 0 4.4v1.6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.6a2.2 2.2 0 0 0 0-4.4z"/><path d="M14.5 6.5v11" stroke-dasharray="2.6 2.4"/>',
@@ -6038,7 +6067,7 @@ function renderClub(){
     const ft=state.findTab||'club';
     h+=`<div class="seg" style="margin-bottom:12px"><div class="o ${ft==='club'?'on':''}" onclick="setFindTab('club')">클럽 찾기</div><div class="o ${ft==='member'?'on':''}" onclick="setFindTab('member')">회원 찾기</div></div>`;
     if(ft==='member'){ renderMemberFind(h); return; }
-    h+=`<button class="btn felt" style="margin-bottom:14px" onclick="openCreateClub()">+ 새 클럽 만들기</button>`;
+    h+=`<button class="btn felt" style="margin-bottom:14px" onclick="state._cw=null;openCreateClub()">+ 새 클럽 만들기</button>`;
     const _rs=[...new Set(state.clubs.filter(c=>(!c.sport||c.sport===state.sport)).map(c=>c.r).filter(Boolean))];
     const regions=['전체', ...(_rs.length?_rs.slice(0,8):['경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'])];
     h+=`<div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div><div class="chips">`;
@@ -6505,39 +6534,162 @@ async function saveProfile(){
     }catch(e){ toast('저장하지 못했어요 · 네트워크를 확인해 주세요'); }
   } else toast('프로필을 저장했어요');
 }
-function openCreateClub(){
-  const gv=id=>((document.getElementById(id)||{}).value||'');
-  // 등급 칸을 탭하면 시트를 다시 그리므로, 그 전에 입력값을 담아둔다
-  if(document.getElementById('ncName')) state._ncDraft={n:gv('ncName'),r:gv('ncRegion'),c:gv('ncCourt'),d:gv('ncDays')};
-  const d=state._ncDraft||{};
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>새 클럽 만들기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">우리 클럽을 직접 만들어요. 만든 사람이 <b>회장(임원)</b>이 돼요. <b style="color:var(--green)">만들기·운영은 평생 무료</b>예요.</div>
-    <div class="fld"><label>클럽 이름</label><input id="ncName" placeholder="예) ${clubEg().n}" maxlength="20" value="${esc(d.n||'')}"></div>
-    <div class="fld"><label>활동 지역</label><input id="ncRegion" placeholder="예) ${clubEg().r}" maxlength="14" value="${esc(d.r||'')}"></div>
-    <div class="fld"><label>주 사용 ${SP().place}</label><input id="ncCourt" placeholder="예) ${clubEg().p}" maxlength="30" value="${esc(d.c||'')}"></div>
-    <div class="fld"><label>정기모임 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label><input id="ncDays" placeholder="예) 수·토 오전" maxlength="14" value="${esc(d.d||'')}"></div>
-
-    <div style="font-size:12px;font-weight:500;color:var(--gray);margin:18px 2px 0">클럽 평균 등급</div>
-    <div style="font-size:12px;color:var(--gray);margin:4px 2px 0;line-height:1.5">주로 모이는 실력대를 골라주세요 · 나중에 바꿀 수 있어요</div>
-    ${gradeStepPicker(state._gsel||'B2','openCreateClub')}
-
-    <div class="note" style="text-align:left;margin:14px 0 12px">입회비·회비·게스트비는 클럽을 만든 뒤 <b>클럽 → 회비</b>에서 언제든 설정할 수 있어요.</div>
-
-    <button class="btn" style="margin-top:6px" onclick="createClub()">클럽 만들기</button>
-    <p class="sd" style="margin:12px 0 0;color:var(--lgray)">데모 — 만든 클럽은 이 기기에서만 보여요.</p>`;
-  document.getElementById('ov').classList.add('on');
-  setTimeout(()=>{const e=document.getElementById('ncName');if(e)e.focus();},100);
+/* ══ 클럽 만들기 — 4단계 마법사 ══
+   한 화면에 몰아넣으면 입력이 많아 중간에 이탈한다. 단계마다 필수값이 하나뿐이라
+   "다음"이 언제 켜지는지 분명하고, 이전으로 돌아가도 값이 남는다. */
+const CW_TIMES=['오전(06~10시)','낮(10~18시)','저녁(18~24시)'];
+const CW_DAYS=['월','화','수','목','금','토','일'];
+const CW_AGES=['10대','20대','30대','40대','50대 이상'];
+function cw(){ return state._cw || (state._cw={step:1,name:'',intro:'',logoMode:'sym',
+  logoBg:CLUB_LOGO_BGS[0],logoIc:SP().ic,logoImg:null,sido:'',sigungu:'',
+  times:[],days:[],court:'',ages:[],gender:'남녀 모두',grade:'B2'}); }
+function cwStash(){
+  const g=id=>{const e=document.getElementById(id);return e?e.value:null;};
+  const c=cw(), n=g('cwName'), i=g('cwIntro'), ct=g('cwCourt');
+  if(n!=null) c.name=n; if(i!=null) c.intro=i; if(ct!=null) c.court=ct;
 }
+function cwSet(k,v){ cwStash(); const c=cw();
+  if(k==='sido'&&c.sido!==v) c.sigungu='';
+  c[k]=v; openCreateClub(); }
+function cwTog(k,v){ cwStash(); const c=cw(); const a=c[k];
+  const i=a.indexOf(v); i<0?a.push(v):a.splice(i,1); openCreateClub(); }
+function cwGo(n){ cwStash(); const c=cw();
+  if(n>c.step && !cwCanNext()) return;
+  c.step=n; openCreateClub();
+  setTimeout(()=>{const e=document.getElementById('sheet');if(e)e.scrollTop=0;},0);
+}
+function cwCanNext(){ const c=cw();
+  if(c.step===1) return !!c.name.trim();
+  if(c.step===3) return !!(c.sido && c.court.trim());
+  return true;
+}
+function cwLogoPick(el){
+  const f=(el.files||[])[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ const img=new Image(); img.onload=()=>{                 // 정사각 512px로 줄여 올린다
+      const cv=document.createElement('canvas'); cv.width=cv.height=512;
+      const sz=Math.min(img.width,img.height);
+      cv.getContext('2d').drawImage(img,(img.width-sz)/2,(img.height-sz)/2,sz,sz,0,0,512,512);
+      cw().logoImg=cv.toDataURL('image/jpeg',0.82); cw().logoMode='img'; openCreateClub();
+    }; img.src=rd.result; };
+  rd.readAsDataURL(f);
+}
+function openCreateClub(){
+  cwStash(); const c=cw(), st=c.step;
+  const pct=[0,25,50,75,100][st]||100;
+  let body='';
+  if(st===1){
+    body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 기본 정보</h3>
+      <div class="sd">클럽 이름과 한 줄 소개를 정해주세요</div>
+      <div class="fld"><label>클럽 이름 <span style="color:var(--coral-d)">*</span>
+        <span style="float:right;font-weight:400;color:var(--lgray)">${c.name.length}/20</span></label>
+        <input id="cwName" maxlength="20" placeholder="예) ${clubEg().n}" value="${esc(c.name)}" oninput="cwLive()"></div>
+      <div class="hint">1~20자 · 같은 종목에 같은 이름은 쓸 수 없어요</div>
+      <div class="fld" style="margin-top:14px"><label>한 줄 소개
+        <span style="float:right;font-weight:400;color:var(--lgray)">${(c.intro||'').length}/40</span></label>
+        <input id="cwIntro" maxlength="40" placeholder="예) 주말 오전에 모이는 편한 분위기예요" value="${esc(c.intro||'')}" oninput="cwLive()"></div>
+      <div class="hint">클럽 찾기 목록에 함께 보여요 · 나중에 바꿀 수 있어요</div>`;
+  } else if(st===2){
+    body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 로고</h3>
+      <div class="sd">클럽을 대표할 로고를 등록해 주세요</div>
+      <div style="display:flex;gap:7px;margin-bottom:16px">
+        <span class="cw-tab ${c.logoMode==='img'?'on':''}" onclick="cwSet('logoMode','img')">사진 업로드</span>
+        <span class="cw-tab ${c.logoMode==='sym'?'on':''}" onclick="cwSet('logoMode','sym')">심볼로 만들기</span></div>
+      <div class="cw-emb" style="${c.logoMode==='img'&&c.logoImg
+          ?`background:url('${c.logoImg}') center/cover`
+          :`background:${c.logoBg};font-size:48px;color:#fff`}">${c.logoMode==='img'&&c.logoImg?'':c.logoIc}</div>
+      ${c.logoMode==='img'
+        ? `<input id="cwLogoFile" type="file" accept="image/*" style="display:none" onchange="cwLogoPick(this)">
+           <button class="btn ghost" onclick="document.getElementById('cwLogoFile').click()">
+             ${c.logoImg?'사진 다시 고르기':'사진 고르기'}</button>
+           <div class="hint" style="margin-top:8px">정사각형 이미지를 권장해요 · 가운데를 잘라 512px로 저장돼요</div>`
+        : `<label>배경색</label>
+           <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">
+             ${CLUB_LOGO_BGS.map(b=>`<i class="cw-sw ${c.logoBg===b?'on':''}" style="background:${b}" onclick="cwSet('logoBg','${b}')"></i>`).join('')}</div>
+           <label>심볼</label>
+           <div style="display:flex;gap:7px;flex-wrap:wrap">
+             ${CLUB_LOGO_OPTS.slice(0,10).map(o=>`<div class="cw-ic ${c.logoIc===o?'on':''}" onclick="cwSet('logoIc','${o}')">${o}</div>`).join('')}</div>
+           <div class="hint" style="margin-top:10px">나중에 클럽 설정에서 바꿀 수 있어요</div>`}`;
+  } else if(st===3){
+    const sgs=REGIONS[c.sido]||[];
+    body=`<h3 style="font-size:17px;letter-spacing:-.03em">활동 정보</h3>
+      <div class="sd">주로 활동하는 지역과 시간을 알려주세요</div>
+      <label>활동 지역 <span style="color:var(--coral-d)">*</span></label>
+      <div class="cw-chips">${Object.keys(REGIONS).map(r=>
+        `<span class="cw-c ${c.sido===r?'on':''}" onclick="cwSet('sido','${r}')">${r.replace(/(특별시|광역시|특별자치시|특별자치도|자치도)$/,'').replace('도','')}</span>`).join('')}</div>
+      ${c.sido?`<label>상세 지역 <span style="color:var(--coral-d)">*</span>
+        <span style="font-weight:400;color:var(--lgray)">· ${c.sido}</span></label>
+        <div class="cw-chips">${sgs.map(g=>
+          `<span class="cw-c ${c.sigungu===g?'on':''}" onclick="cwSet('sigungu','${g}')">${g}</span>`).join('')}</div>`:''}
+      <label>활동 시간대</label>
+      <div class="cw-chips">${CW_TIMES.map(t=>
+        `<span class="cw-c ${c.times.includes(t)?'on':''}" onclick="cwTog('times','${t}')">${t}</span>`).join('')}</div>
+      <label>활동 요일</label>
+      <div class="cw-chips">${CW_DAYS.map(d=>
+        `<span class="cw-c ${c.days.includes(d)?'on':''}" onclick="cwTog('days','${d}')">${d}</span>`).join('')}</div>
+      <div class="fld"><label>주 사용 ${SP().place} <span style="color:var(--coral-d)">*</span></label>
+        <input id="cwCourt" maxlength="30" placeholder="예) ${clubEg().p}" value="${esc(c.court)}" oninput="cwLive()"></div>`;
+  } else if(st===4){
+    body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 멤버 정보</h3>
+      <div class="sd">어떤 분들이 모이는지 알려주세요 · 정확하지 않아도 괜찮아요</div>
+      <label>나이대</label>
+      <div class="cw-chips">${CW_AGES.map(a=>
+        `<span class="cw-c ${c.ages.includes(a)?'on':''}" onclick="cwTog('ages','${a}')">${a}</span>`).join('')}</div>
+      <label>성별</label>
+      <div style="display:flex;gap:7px;margin-bottom:16px">
+        ${['남녀 모두','남자','여자'].map(g=>
+          `<div class="cw-seg ${c.gender===g?'on':''}" onclick="cwSet('gender','${g}')">${g}</div>`).join('')}</div>
+      <label>클럽 평균 등급 <span style="color:var(--coral-d)">*</span></label>
+      ${gradeStepPicker(c.grade,'cwGrade')}
+      <div class="note" style="text-align:left;margin-top:16px">회비·게스트비는 만든 뒤 <b>클럽 → 회비</b>에서 언제든 정할 수 있어요</div>`;
+  } else {
+    const G=gradeStepLabel(c.grade);
+    body=`<div style="text-align:center;padding:10px 0 4px">
+        <div class="cw-ring">🎉</div>
+        <h3 style="font-size:17px;letter-spacing:-.03em">${esc(c.name)}</h3>
+        <div class="sd" style="margin-bottom:16px">클럽이 만들어졌어요 · 회장은 <b>${esc(meName())}</b>님이에요</div></div>
+      ${[['지역',[c.sido,c.sigungu].filter(Boolean).join(' ')||'-'],
+         ['주 사용 '+SP().place,c.court||'-'],
+         ['활동',[c.days.join('·'),c.times[0]?c.times[0].split('(')[0]:''].filter(Boolean).join(' ')||'-'],
+         ['평균 등급',`${G.code} · ${G.desc}`]].map(([k,v],i)=>
+        `<div class="cw-kv" style="${i===3?'border:0':''}"><span>${k}</span><b>${esc(String(v))}</b></div>`).join('')}
+      <div class="note" style="text-align:left;margin-top:14px">다음은 회원을 모을 차례예요. 초대장을 카톡방에 뿌리면 이름만 남기고 바로 들어와요.</div>
+      <button class="btn" style="margin-top:14px" onclick="cwDone(1)">초대장 만들기</button>
+      <button class="btn ghost" style="margin-top:9px" onclick="cwDone(0)">클럽 홈으로 가기</button>`;
+  }
+  const btns = st>=5 ? '' : `<div style="display:flex;gap:9px;margin-top:18px">
+      ${st>1?`<button class="btn ghost" style="flex:0 0 34%" onclick="cwGo(${st-1})">이전</button>`:''}
+      <button class="btn" style="flex:1;${cwCanNext()?'':'opacity:.45'}" id="cwNext"
+        onclick="${st===4?'createClub()':`cwGo(${st+1})`}">${st===4?'클럽 만들기':'다음'}</button></div>`;
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>클럽 만들기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    ${st<5?`<div class="cw-bar"><i style="width:${pct}%"></i></div>
+      <div style="font-size:11.5px;color:var(--lgray);font-weight:500;margin:0 2px 16px">${st}/4 단계</div>`:''}
+    ${body}${btns}`;
+  document.getElementById('ov').classList.add('on');
+  if(st===1) setTimeout(()=>{const e=document.getElementById('cwName');if(e&&!c.name)e.focus();},100);
+}
+/* 타이핑 중에는 시트를 다시 그리지 않는다 — 커서가 튄다. 다음 버튼 상태만 갱신 */
+function cwLive(){ cwStash();
+  const b=document.getElementById('cwNext'); if(b) b.style.opacity=cwCanNext()?'':'0.45'; }
+function cwGrade(){ cw().grade=state._gsel||cw().grade; state._gsel=null; openCreateClub(); }
+/* 완료 화면을 벗어날 때 마법사 상태를 비운다 — 안 그러면 다음에 열 때 이전 클럽 값이 남는다 */
+function cwDone(invite){ state._cw=null; closeOv(); if(invite) setTimeout(openInvite,120); }
 async function createClub(){
-  const g=id=>(document.getElementById(id)||{}).value||'';
-  const n=g('ncName').trim(), r=g('ncRegion').trim(), court=g('ncCourt').trim();
-  if(!n){toast('클럽 이름을 입력해 주세요');return;}
-  if(!r){toast('활동 지역을 입력해 주세요');return;}
-  if(state.myClubs.includes(n)||state.clubs.some(c=>c.n===n&&(!c.sport||c.sport===state.sport))){toast('이 종목에 이미 있는 클럽 이름이에요');return;}
+  cwStash(); const c=cw();
+  const n=(c.name||'').trim(), r=[c.sido,c.sigungu].filter(Boolean).join(' ').trim(), court=(c.court||'').trim();
+  if(!n){toast('클럽 이름을 입력해 주세요'); c.step=1; openCreateClub(); return;}
+  if(!c.sido||!court){toast('활동 지역과 코트를 입력해 주세요'); c.step=3; openCreateClub(); return;}
+  if(state.myClubs.includes(n)||state.clubs.some(x=>x.n===n&&(!x.sport||x.sport===state.sport))){
+    toast('이 종목에 이미 있는 클럽 이름이에요'); c.step=1; openCreateClub(); return;}
+  const days=[c.days.join('·'), c.times[0]?c.times[0].split('(')[0]:''].filter(Boolean).join(' ');
+  const extra={ avg_grade:c.grade, home_court:court, meet_days:days, intro:(c.intro||'').trim(),
+    logo:c.logoMode==='img'?c.logoImg:null, logo_ic:c.logoMode==='sym'?c.logoIc:null,
+    logo_bg:c.logoMode==='sym'?c.logoBg:null, meet_time:c.times.join(','),
+    age_bands:c.ages.join(','), gender_pref:c.gender };
   // 서버 연결 상태면 서버에 먼저 만든다 — 안 그러면 피드·공지·회비·대진이 전부 데모로 떨어진다
-  const days=g('ncDays').trim(), avg=state._gsel||'B2';
   if(SERVER_OK){
-    const sc = await createClubServer(n, r, state.sport, {avg_grade:avg, home_court:court, meet_days:days});
+    const sc = await createClubServer(n, r, state.sport, extra);
     if(!sc || sc._fail){
       const code = sc && sc.error;
       toast(code==='club_limit' ? ((sc&&sc.message)||'클럽은 1인당 3개까지 만들 수 있어요')
@@ -6546,17 +6698,19 @@ async function createClub(){
       return;
     }
   }
-  const gr=parseInt(g('ncGuestReq'))||0, gf=parseInt(g('ncGuestFee'))||0, en=parseInt(g('ncEntry'))||0, se=parseInt(g('ncSeason'))||0;
-  // 카탈로그에도 추가(찾기 목록에 보이게)
-  state.clubs.unshift({n,r,m:1,guestFee:gf,guestReq:gr,entry:en,season:se,court,avg_grade:avg,meet_days:days});
+  state.clubLogos=state.clubLogos||{};
+  state.clubLogos[n] = c.logoMode==='img'&&c.logoImg ? {ic:null,bg:CLUB_LOGO_BGS[0],img:c.logoImg}
+                                                     : {ic:c.logoIc,bg:c.logoBg};
+  state.clubs.unshift({n,r,m:1,guestFee:0,guestReq:0,entry:0,season:0,court,
+    avg_grade:c.grade, meet_days:days, intro:(c.intro||'').trim()});
   state.clubStatus[n]='member';
   state.clubData[n]={region:r,court:court,members:1,officer:true,pending:[],
     schedule:{dt:'일정 미정 · 첫 모임을 잡아보세요',attendees:[],attend:null},
-    feed: DEMO ? [{who:state.userName||'나',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요 🎾`,ph:null,like:0,cm:0}] : []};
+    feed: DEMO ? [{who:state.userName||'나',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요`,ph:null,like:0,cm:0}] : []};
   if(!state.myClubs.includes(n)) state.myClubs.push(n); state.activeClub=n;
   state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'시스템',t:'클럽 단체방이 만들어졌어요.'}]};
-  state._ncDraft=null; state._gsel=null;
-  closeOv(); state.clubTab='my'; renderClub(); renderChat(); go('club');
+  state.clubTab='my'; renderClub(); renderChat(); go('club');
+  c.step=5; openCreateClub();                      // 완료 화면 — 닫으면 초기화된다
   toast(n+' 클럽을 만들었어요! 회장이 되셨어요');
 }
 async function openClubPreview(n){
@@ -11183,12 +11337,8 @@ function matchCards(list){
              ${photos.length>1?`<span class="omx-bd" style="bottom:10px;right:12px;background:rgba(30,26,20,.5);color:#fff;font-weight:500;z-index:1">1/${photos.length}</span>`:''}
            </div>`
         : `<div class="omx-pat">
-             <svg width="112" height="46" viewBox="0 0 112 46" aria-hidden="true" style="opacity:.5">
-               <rect x="2" y="2" width="108" height="42" rx="3" fill="none" stroke="#c3bba8" stroke-width="1.6"/>
-               <line x1="56" y1="2" x2="56" y2="44" stroke="#c3bba8" stroke-width="1.6"/>
-               <rect x="16" y="11" width="80" height="24" fill="none" stroke="#d3ccbb" stroke-width="1.3"/></svg>
-             <span class="omx-bd" style="top:10px;left:12px;background:${stCol[0]};color:${stCol[1]}">${stTxt}</span>
-             ${left>0&&left<=3?`<span class="omx-bd" style="top:10px;right:12px;background:#fdeee7;color:var(--coral-d)">${left}자리 남음</span>`:''}
+             <span class="omx-bd" style="top:10px;left:12px;background:rgba(255,255,255,.92);color:var(--coral-d)">${stTxt}</span>
+             ${left>0&&left<=3?`<span class="omx-bd" style="top:10px;right:12px;background:rgba(30,26,20,.32);color:#fff">${left}자리 남음</span>`:''}
            </div>`}
       <div class="omx-b">
         <div style="display:flex;align-items:flex-start;gap:10px">
@@ -11314,8 +11464,12 @@ function openOmDetail(id){
     ${_ph.length>1?`<span style="position:absolute;right:10px;bottom:10px;background:#1b1813cc;color:#fff;font-size:11px;font-weight:500;border-radius:12px;padding:4px 10px">${_ph.length}장 · 옆으로 넘겨보세요</span>`:''}</div>`;
   h+=`<div class="om-date">${fmtRange(m.start_at,m.end_at,m.dt)}</div>
     <div class="om-title" style="font-weight:600">${esc(m.loc||'')}</div>
-    ${(m.sido||m.sigungu)?`<div class="om-meta" style="cursor:pointer" onclick="copyAddr('${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}')">📍 ${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))} <span style="font-size:11px;color:var(--coral-d);font-weight:500">복사</span></div>`:''}
-    <div class="om-react">${im('heart',12)} ${m.likes||0} &nbsp; ${im('msg',12)} ${m.comments||0}</div>
+    ${(m.sido||m.sigungu)?`<div class="om-meta" style="display:flex;align-items:center;gap:5px;cursor:pointer" onclick="copyAddr('${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}')">
+      <span style="color:var(--lgray);display:flex">${ic('pin',13)}</span>${esc([m.sido,m.sigungu,m.dong].filter(Boolean).join(' '))}
+      <span style="font-size:11px;color:var(--coral-d);font-weight:500">복사</span></div>`:''}
+    <div class="om-react" style="display:flex;align-items:center;gap:14px;color:var(--lgray)">
+      <span style="display:flex;align-items:center;gap:5px">${ic('heart',13)}${m.likes||0}</span>
+      <span style="display:flex;align-items:center;gap:5px">${ic('chat',13)}${m.comments||0}</span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
       <b class="om-price">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
       <span class="om-pricenote">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
@@ -11324,19 +11478,32 @@ function openOmDetail(id){
       ${info('레벨','모든 레벨')}${info('구성','남녀 모두')}
       ${info('시간',`${_durH}시간`)}${info('모집',`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
     </div>
+    ${(()=>{const tg=String(m.tags||'').split(',').map(x=>x.trim()).filter(Boolean);
+      return tg.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 2px 14px">${
+        tg.map(t=>`<span class="omd-tag">${esc(t)}</span>`).join('')}</div>`:'';})()}
     <div class="om-note" style="margin:-2px 0 12px">경기 룰 · ${_durH===2?'5:5는 동점으로 종료해요 (노 매치포인트)':'5:5가 되면 6게임째로 승부를 가려요'}</div>
     <div id="omMvpBox"></div>
     ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
       <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:700">${esc(mgrName[0]||'')}</div>
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
         <div style="font-size:11px;color:var(--gray);font-weight:500">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
-    ${(m.players||[]).length?(()=>{
-      const femN=(m.players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
-      return `<div class="ch" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        <span>참가자 ${m.cur||m.players.length}명</span>
-        <span class="t-mcr" style="color:#8a7550;background:#f6efe2;border-radius:20px;padding:4px 9px">여성 ${femN}명</span>
-        ${m.joined?`<span class="t-mcr" style="color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:4px 9px">참가 중</span>`:''}</div>
-      ${omGradeMixHTML(m.players)}`;})():''}
+    ${(()=>{
+      const ps=m.players||[], femN=ps.filter(p=>String(p.gender||'').startsWith('여')).length;
+      const head=`<div class="ch" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <span>참가자 ${m.cur||ps.length}명</span>
+        ${ps.length?`<span class="t-mcr" style="color:#8a7550;background:#f6efe2;border-radius:20px;padding:4px 9px">여성 ${femN}명</span>`:''}
+        ${m.joined?`<span class="t-mcr" style="color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:4px 9px">참가 중</span>`:''}</div>`;
+      // 아직 아무도 없어도 등급 분포 자리는 남긴다 — 빈 막대로 어떤 정보가 채워질지 알려준다
+      return head + (ps.length ? omGradeMixHTML(ps) : `
+        <div style="padding:2px 2px 12px">
+          <div style="display:flex;gap:5px;align-items:flex-end;height:52px">
+            ${GRADE_INFO.slice().reverse().map(t=>`<div style="flex:1;text-align:center">
+              <div style="height:6px;border-radius:3px;background:#f0ede7"></div>
+              <div style="font-size:10.5px;color:var(--lgray);margin-top:6px">${t.g}</div></div>`).join('')}
+          </div>
+          <div style="font-size:11.5px;color:var(--lgray);margin-top:6px">참가자가 들어오면 등급 분포가 여기에 보여요</div>
+        </div>`);
+    })()}
     ${m.note?`<div class="ch">안내</div><div style="font-size:14px;color:#4a463f;font-weight:500;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
   // ── 액션 ──
   const acts=[];
@@ -12551,12 +12718,17 @@ function omPhPaint(){
     ${OM_PHOTOS.length<6?`<div class="ph-add" onclick="document.getElementById('omPhotoFile').click()">＋</div>`:''}</div>
     <div style="font-size:11px;color:#b3aa94;margin:7px 2px 0">첫 사진이 목록 카드의 대표 이미지가 돼요</div>`;
 }
-/* 안내 칩 — 이미 들어간 문구는 다시 넣지 않는다 */
-function omNoteChip(t){
-  const el=document.getElementById('omNote'); if(!el) return;
-  if(el.value.includes(t)){ toast('이미 넣은 문구예요'); return; }
-  el.value = el.value.trim() ? el.value.replace(/\s*$/,'')+'\n'+t : t;
-  el.focus(); contactWarn('omNote','omWarn');
+/* 조건·편의 — 자유 문구가 아니라 값으로 저장한다. 그래야 상세에서 일정한 자리에 보이고
+   나중에 "야간 조명 있는 매치만" 같은 필터로도 쓸 수 있다. */
+const OM_AMEN_ALL=['초급 환영','여성 환영','주차 가능','야간 조명','샤워 가능','실내 코트'];
+let OM_AMEN=[];
+function omTagTog(t){
+  const i=OM_AMEN.indexOf(t); i<0?OM_AMEN.push(t):OM_AMEN.splice(i,1); omTagPaint();
+}
+function omTagPaint(){
+  const box=document.getElementById('omTagBox'); if(!box) return;
+  box.innerHTML=OM_AMEN_ALL.map(t=>
+    `<span class="nchip ${OM_AMEN.includes(t)?'on':''}" onclick="omTagTog('${t}')">${OM_AMEN.includes(t)?'✓':'＋'} ${t}</span>`).join('');
 }
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
@@ -12608,12 +12780,12 @@ function openNewMatch(){
       <input id="omPhotoFile" type="file" accept="image/*" multiple style="display:none" onchange="omPhPick(this)">
       <div id="omPhBox"></div></div>
 
-    <div class="fld"><label>안내 <span style="color:var(--lgray);font-weight:400">· 선택</span></label>
-      <textarea id="omNote" rows="3" placeholder="예) ${OM_EX().note}"></textarea>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        ${['초급 환영','주차 가능','야간 조명','샤워 가능','실내 코트','여성 환영']
-          .map(t=>`<span class="nchip" onclick="omNoteChip('${t}')">＋ ${t}</span>`).join('')}
-      </div></div>
+    <div class="fld"><label>조건·편의 <span style="color:var(--lgray);font-weight:400">· 선택</span></label>
+      <div id="omTagBox" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div class="hint" style="margin-top:8px">고른 항목은 매치 상세의 <b>매치 정보</b>에 표시돼요</div></div>
+
+    <div class="fld" style="margin-top:14px"><label>안내 <span style="color:var(--lgray);font-weight:400">· 선택</span></label>
+      <textarea id="omNote" rows="3" placeholder="예) ${OM_EX().note}"></textarea></div>
     <div id="omWarn" class="cwarn"></div>
     <button class="btn" onclick="createMatch()">오픈매치 열기</button>`;
   document.getElementById('ov').classList.add('on');
@@ -12628,6 +12800,7 @@ function openNewMatch(){
   S.value=fmt(d); S.min=fmt(new Date());
   omCalc();                                              // 정원·인당가 초기 표시
   OM_PHOTOS=[]; omPhPaint();                             // 사진 선택 초기화
+  OM_AMEN=[]; omTagPaint();                              // 조건·편의 초기화
 
   // 내 지역을 기본 선택
   const my = (state.region && state.region!=='전체') ? state.region : '';
@@ -12704,7 +12877,7 @@ async function createMatch(){
       sport:state.sport, dt:fmtMatchDate(start), start_at:start,
       sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
       loc, fmt:'', gd:'남녀 모두',
-      courts, court_cost, ball_cost, hours, note })}).then(async cm=>{
+      courts, court_cost, ball_cost, hours, note, tags:OM_AMEN.join(',') })}).then(async cm=>{
       const fl=OM_PHOTOS.slice(0,6);
       if(cm&&cm.id&&fl.length){
         const urls=[];
