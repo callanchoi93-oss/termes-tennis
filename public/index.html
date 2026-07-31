@@ -5908,15 +5908,33 @@ function renderClub(){
     c.schedule=c.schedule||{dt:'',attendees:[],attend:null};
     const sch=c.schedule, going=(sch.attendees||[]).length+(sch.attend===true?1:0);
     const today=new Date(); const MON=today.getMonth()+1, DAY=today.getDate();
-    // ⑤ 인사 헤더
-    h+=`<div class="greet"><div class="gv-av" onclick="go('me')" style="cursor:pointer;${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':meName()[0]}</div><div class="gv-x"><div class="gv-h">안녕하세요,<br>${meName()} 님</div><div class="gv-d">오늘 ${MON}월 ${DAY}일 · ${state.activeClub}</div></div><div class="gv-s" onclick="setClubTab('find')">${ic('search',20)}</div></div>`;
-    // ⑤ 히어로 카드 (이번 주 클럽 모임 + 참여 아바타)
-    { const ev0=(c.events&&c.events[0])||null; const att=ev0?ev0.attendees:sch.attendees; const cls=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b','#5b3fa8'];
+    // 인사는 한 줄로 — 화면 제목('클럽')과 인사말이 두 번 겹치던 걸 합친다
+    h+=`<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:400;color:var(--lgray);margin:-4px 4px 12px">
+      <span>${esc(meName())} 님 · ${MON}월 ${DAY}일${c.members?` · 회원 ${c.members}명`:''}</span>
+      <span style="margin-left:auto;color:var(--coral-d);font-weight:600;cursor:pointer" onclick="setClubTab('find')">클럽 찾기 ›</span></div>`;
+    // 이번 주 모임 — 없으면 '아직 없음'이 아니라 만들 수 있게
+    { const ev0=(c.events&&c.events[0])||null; const att=(ev0?ev0.attendees:sch.attendees)||[];
+      const cls=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b','#5b3fa8'];
       const stack=att.length?`<div class="memstack">${att.slice(0,4).map((nm,i)=>{const ph=photoOf(nm);return `<div class="ma" style="background:${ph?`url('${ph}') center/cover`:cls[i%5]}">${ph?'':nm[0]}</div>`;}).join('')}${att.length>4?`<div class="ma more">+${att.length-4}</div>`:''}</div>`:'';
-      h+=`<div class="yhero"><div class="yh-deco">${SP().ic}</div>
-        <div class="yh-n">이번 주<br>클럽 모임</div>
-        <div class="yh-s">참석을 체크하면 그날 대진에 자동 포함돼요</div>
-        <div class="yh-foot">${stack}<span style="font-size:12px;font-weight:500;color:#473c69">${att.length?att.length+'명 참여 예정':'아직 없음'}</span></div></div>`; }
+      const dt=(ev0&&ev0.date)||sch.dt||'';
+      h+=`<div class="card" style="padding:15px">
+        <div style="display:flex;align-items:baseline;gap:7px">
+          <b style="font-size:14.5px;font-weight:600">이번 주 모임</b>
+          <span style="margin-left:auto;font-size:11.5px;color:var(--lgray)">참석하면 대진에 자동 포함</span></div>`;
+      if(ev0||sch.dt){
+        h+=`<div onclick="${ev0?`openEventDetail(${ev0.id})`:''}" style="display:flex;align-items:center;gap:11px;background:var(--felt);border-radius:14px;padding:12px;margin-top:11px;cursor:pointer">
+            <div style="flex:1;min-width:0">
+              <b style="font-size:13.5px;font-weight:600">${esc(dt||'일정 미정')}</b>
+              <span style="display:block;font-size:11.5px;color:var(--gray);margin-top:2px">${esc((ev0&&ev0.place)||c.court||'장소 미정')}${att.length?` · 참석 ${att.length}명`:''}</span></div>
+            ${stack}</div>`;
+      } else {
+        h+=`<div style="border:1.5px dashed #e5ded1;border-radius:14px;padding:18px 12px;text-align:center;margin-top:11px">
+            <div style="font-size:13.5px;font-weight:600;color:#57503f">아직 잡힌 모임이 없어요</div>
+            <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">${esc(c.meet_days||'날짜를 정하면 회원 전체에게 알림이 가요')}</div>
+            ${c.officer?`<span onclick="openNewEvent()" style="display:inline-block;margin-top:11px;background:var(--ink);color:#fff;border-radius:11px;padding:9px 16px;font-size:12.5px;font-weight:600;cursor:pointer">＋ 모임 만들기</span>`
+                       :`<div style="font-size:11.5px;color:var(--lgray);margin-top:9px">임원이 모임을 만들면 여기에 보여요</div>`}</div>`;
+      }
+      h+=`</div>`; }
     // 임원진 알림
     if(SERVER_OK && c.officer && (state._joinReqN||0)>0){
       h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openJoinRequests()"><div><div style="font-size:14px;font-weight:500;color:#fff">임원진 · 가입 신청 ${state._joinReqN}건</div><div style="font-size:12px;color:#cbb8a6;font-weight:500;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--coral);font-weight:600;font-size:18px">→</div></div>`;
@@ -7545,7 +7563,14 @@ function archGames(b){
   (b.reg||[]).forEach((r,ri)=>{
     const key=r.key || r.court_key || String(ri);
     const sc=(b.scores||{})[key];
-    out.push({ key, court:r.court||r.c||(ri+1), A:r.A||r.a||[], B:r.B||r.b||[],
+    /* 저장 형식은 {key, names:[4명]} 이다 — 앞 절반이 A팀, 뒤 절반이 B팀.
+       예전 코드가 A/B 키만 찾아서 모든 모임이 '0명 · 0경기'로 보였다. */
+    let A=r.A||r.a||[], B=r.B||r.b||[];
+    if((!A.length && !B.length) && Array.isArray(r.names)){
+      const half=Math.floor(r.names.length/2);
+      A=r.names.slice(0,half); B=r.names.slice(half);
+    }
+    out.push({ key, court:r.court||r.c||(ri+1), A, B,
                sa: sc?sc.a:null, sb: sc?sc.b:null });
   });
   return out;
@@ -7554,6 +7579,7 @@ function archStats(b){
   const gs=archGames(b);
   const names=new Set();
   gs.forEach(g=>[...(g.A||[]),...(g.B||[])].forEach(n=>names.add(n)));
+  (b.attendees||[]).forEach(p=>{ const n=(p&&p.name)||p; if(n) names.add(n); });
   return { games:gs.length, done:gs.filter(g=>g.sa!=null&&g.sb!=null).length, players:names.size };
 }
 /* 그날 순위 — 획득점수·득실차·승률 */
@@ -8581,6 +8607,7 @@ function drawCB2View(){
         <span onclick="cb2Stage()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:8px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">거치 모드</span>
         <span onclick="cb2Share()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:8px;border-radius:11px;background:#f2f0ea;color:#5a544b;cursor:pointer">공유</span>
         <span onclick="cb2SheetView()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:8px;border-radius:11px;background:#f2f0ea;color:#5a544b;cursor:pointer">수기표</span>
+        ${off?`<span onclick="cb2Redo()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:8px;border-radius:11px;background:#fceee4;color:var(--coral-d);cursor:pointer">다시 짜기</span>`:''}
         ${CB2.groups?`<span onclick="cb2Groups()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:8px;border-radius:11px;background:#f2f0ea;color:#6b6357;cursor:pointer">${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</span>`:''}
       </div>
       <div style="display:flex;gap:6px;margin:10px 0 6px">${rstat.map((s,i)=>{ const r=i+1, on=r===live;
@@ -10027,6 +10054,32 @@ function cb2CopyDay(n,w,l,gd,rk){
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
     .then(()=>toast('오늘 기록을 복사했어요')).catch(()=>toast('복사하지 못했어요'));
 }
+/* ── 발행된 대진 다시 짜기 ──
+   스코어가 하나라도 들어갔으면 그 기록이 사라지므로 반드시 확인을 받는다.
+   같은 명단·같은 방식으로 다시 뽑되, 시드를 바꿔 다른 조합이 나오게 한다. */
+async function cb2Redo(){
+  if(!cb2Officer()){ toast('임원만 다시 짤 수 있어요'); return; }
+  if(!CB2){ toast('대진이 없어요'); return; }
+  const gs=(CB2.games||[]);
+  const doneN=gs.filter(g=>g.sa!=null&&g.sb!=null).length;
+  const msg = doneN
+    ? `이미 ${doneN}경기 스코어가 입력돼 있어요.\n다시 짜면 그 기록이 지워져요. 계속할까요?`
+    : '같은 명단으로 대진을 다시 뽑을까요?';
+  if(!await appConfirm(msg, doneN?'기록 지우고 다시 짜기':'다시 짜기')) return;
+  state.bcfg.seed=(state.bcfg.seed||1)+1;                 // 시드를 바꿔야 다른 조합이 나온다
+  state.bcfg.scores={};
+  if(CB2.courts) state.bcfg.courts=CB2.courts;
+  // 발행된 대진에 실제로 들어간 사람만 다시 고른다 — 늦게 온 사람·빠진 사람 반영
+  const names=new Set(); gs.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
+    const n=(p&&p.name)||p; if(n) names.add(String(n)); }));
+  closeOv();
+  await openClubBracketBuild();                            // 편성 화면으로 — 명단·코트는 그대로
+  if(names.size && window._cb2Roster){
+    const hit=window._cb2Roster.filter(p=>names.has(String(p.name)));
+    if(hit.length>=4){ CB2_SEL.clear(); hit.forEach(p=>CB2_SEL.add(String(p.user_id))); drawCB2Build(); }
+  }
+  toast(`${names.size||'전'}명 그대로 · 방식을 고르면 새 조합이 나와요`);
+}
 /* ── 거치 모드 (코트 옆 큰 화면) ── */
 let STAGE_T=null;
 function cb2Stage(){
@@ -10194,10 +10247,12 @@ async function cb2ShareImage(){
       y += RHEAD;
 
       gs.forEach(g=>{
+        // done 을 먼저 계산한다 — 아래 테두리 색에서 쓰는데 선언보다 앞서 참조하면
+        // ReferenceError 로 이미지 생성 자체가 실패한다(TDZ)
+        const done = g.sa!=null && g.sb!=null;
         x.fillStyle='#ffffff'; rr(ox, y, cw, ROW-14, 20); x.fill();
         x.strokeStyle = done ? '#e8e3d8' : '#efe9dc'; x.lineWidth=2; x.stroke();
 
-        const done = g.sa!=null && g.sb!=null;
         const aWin = done && +g.sa > +g.sb, bWin = done && +g.sb > +g.sa;
 
         // 코트 — 왼쪽 세로 가운데 (숫자 + '코트' 라벨을 함께 넣어 게임 번호와 헷갈리지 않게)
@@ -10261,9 +10316,16 @@ async function cb2ShareImage(){
     x.fillText('맞수 · matsu.up.railway.app', W/2, H-46);
     x.textAlign='left';
 
-    // 공유 · 저장
-    const blob = await new Promise(res=>cv.toBlob(res,'image/png',0.95));
-    if(!blob) throw new Error('blob');
+    // 공유 · 저장 — toBlob 이 없거나 실패하면 dataURL 로 되돌린다
+    let blob=null;
+    if(cv.toBlob) blob = await new Promise(res=>{ try{ cv.toBlob(res,'image/png',0.95); }catch(e){ res(null); } });
+    if(!blob){
+      try{ const du=cv.toDataURL('image/png');
+        const bin=atob(du.split(',')[1]); const arr=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+        blob=new Blob([arr],{type:'image/png'});
+      }catch(e){ throw new Error('canvas'); }
+    }
     const fname = `matsu-대진-${(CB2.date||'').replace(/[^0-9]/g,'')||'today'}.png`;
     const file = new File([blob], fname, {type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
@@ -10274,7 +10336,10 @@ async function cb2ShareImage(){
     a.href=URL.createObjectURL(blob); a.download=fname; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
     toast('대진표 이미지를 저장했어요 · 단톡방에 올려주세요');
-  }catch(e){ toast('이미지를 만들지 못했어요'); }
+  }catch(e){
+    console.error('cb2ShareImage', e);
+    toast(`이미지를 만들지 못했어요 · ${(e&&e.message)||'알 수 없는 오류'}`);
+  }
 }
 
 /* ── 대진표 공유 ── */
@@ -11598,9 +11663,16 @@ async function omSettle(id){
 }
 /* ═══ 등급 추이 — 10경기 이상부터 상하향 그래프 (플랩식) ═══ */
 let RL_CACHE=null, RL_TS=0;
+let MY_MVP_N=null;                                   // 내정보 요약에 쓰는 MVP 횟수
+function loadMyMvpCount(){
+  if(MY_MVP_N!=null || !SERVER_OK || !authToken()) return;
+  MY_MVP_N=0;
+  api('/me/mvp').then(r=>{ MY_MVP_N=(r&&r.count)||0; if(state.view==='me') renderMe(); }).catch(()=>{});
+}
 async function openMyMvp(){
   let r={count:0,list:[]};
   try{ r=await api('/me/mvp'); }catch(e){}
+  MY_MVP_N=r.count||0;
   let h=`<div class="om-detail"><div class="sh-top"><h3>MVP 기록</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">오픈매치에서 그날 1위를 하면 받아요</div>
     <div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#fdf6e4,#f9edd2);border-radius:18px;padding:20px;margin-top:14px">
@@ -15128,6 +15200,14 @@ const WX_ICON={
 const WX_TONE={sun:'#f0a93b',partly:'#f0a93b',cloud:'#8a8172',rain:'#5b3fa8',snow:'#8a857c'};
 function wxIcon(k){ return `<svg class="wx-i" viewBox="0 0 24 24" fill="none" stroke="${WX_TONE[k]||'#8a8172'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WX_ICON[k]||WX_ICON.cloud}</svg>`; }
 // 날씨(야외) + 캘린더
+/* 히어로 한 줄용 — 아이콘 없이 '24° 맑음' 형태의 짧은 문자열 */
+function weatherText(){
+  const outdoor=['tennis','soccer','baseball','running'].includes(SP().id); if(!outdoor) return '';
+  const t=(state.wx&&state.wx.t)!=null?state.wx.t:24;
+  const k=(state.wx&&state.wx.k)||'sun';
+  const nm={sun:'맑음',cloud:'구름',rain:'비',snow:'눈'}[k]||'';
+  return `${t}°${nm?' '+nm:''}`;
+}
 function weatherChip(kind,temp,desc){
   const outdoor=['tennis','soccer','baseball','running'].includes(SP().id); if(!outdoor) return '';
   const k=kind||state.wx?.k||'sun', t=(temp??state.wx?.t??24), d=desc||state.wx?.d||'경기하기 좋은 날씨예요';
@@ -15963,6 +16043,7 @@ function meTeamCard(){
 }
 let _RM_BUSY=false;
 function renderMe(){
+  loadMyMvpCount();
   if(_RM_BUSY) return;
   _RM_BUSY=true;
   try{ _renderMeCore(); }
@@ -16022,65 +16103,65 @@ function _renderMeCore(){
   const _td=new Date(), _mo=_td.getMonth()+1, _dy=_td.getDate();
   const _tcol={'러브':'#a89e8e','퓨처스':'#e0a83c','챌린저':'#e07b3c','투어':'#cf5418','그랜드슬램':'#3b2a1a'}[(t.name.split(' · ')[0]||'').replace(/\d+$/,'')]||'#a89e8e';
   let h=`
-  <div class="yhero" style="margin:6px 0 16px">
-    <div class="yh-deco">${SP().ic}</div>
-    <div class="yh-n">안녕하세요,<br>${esc(state.userName||'회원')} 님${state.premium?' <span style="font-size:11px;color:#cf5418;background:#fff6ef;border-radius:8px;padding:2px 7px;vertical-align:6px;font-weight:500">프리미엄 ✓</span>':''}</div>
-    <div class="yh-s">오늘은 ${_mo}월 ${_dy}일 · ${SP().n} 치기 좋은 날이에요</div>
-    ${weatherChip()?`<div style="margin-top:8px">${weatherChip()}</div>`:''}
-    <div style="margin-top:14px"><span onclick="openProfileEdit()" style="display:inline-flex;align-items:center;gap:5px;background:#ffffffcc;border-radius:20px;padding:6px 13px;font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">${ic('camera',14)}프로필 수정</span></div>
+  <div class="yhero" style="margin:6px 0 12px;padding:15px 17px;display:flex;align-items:center;gap:12px">
+    <div style="flex:none;width:46px;height:46px;border-radius:50%;background:#fff8;display:grid;place-items:center;
+      font-size:15px;font-weight:600;color:#8a6a4d;overflow:hidden;${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':esc((state.userName||'회')[0])}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.025em">${esc(state.userName||'회원')} 님${state.premium?' <span style="font-size:10.5px;color:#cf5418;background:#fff;border-radius:7px;padding:2px 6px;vertical-align:2px;font-weight:500">프리미엄</span>':''}</div>
+      <div style="font-size:12px;font-weight:400;color:#8a7a68;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_mo}월 ${_dy}일${weatherText()?` · ${weatherText()}`:''} · ${SP().n} 치기 좋은 날이에요</div>
+    </div>
+    <span onclick="openProfileEdit()" style="flex:none;font-size:11.5px;font-weight:600;color:var(--coral-d);background:#fff;border-radius:999px;padding:7px 11px;cursor:pointer">프로필 수정</span>
   </div>
-  ${SERVER_OK&&authToken()?`<div style="display:flex;gap:10px;margin-bottom:12px">
-    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openFairplayInfo()">
-      <div style="font-size:12px;color:var(--gray);font-weight:500">매너</div>
-      <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
-      <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div></div>
-    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
-      <div style="font-size:12px;color:var(--gray);font-weight:600">티어 · 등급</div>
-      <div style="display:flex;align-items:center;gap:7px;margin-top:9px"><span style="width:23px;height:23px;border-radius:50%;background:${_tcol};color:#fff;display:grid;place-items:center;font-size:12px;font-weight:500">${(t.name.match(/\d+/)||['·'])[0]}</span><b style="font-size:14px">${esc(t.name.split(' · ')[0])}</b></div>
-      <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.7">
-        
-        <div>${(()=>{
-                const ts=myTierFor('singles'), td=myTierFor('doubles');
-                const nm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
-                return `단식 <b>${nm(ts)}</b> · 복식 <b>${nm(td)}</b>`;
-              })()}</div>
-        <div style="color:var(--lgray)">개인리그 성적</div>
-        <div style="height:1px;background:#f0ece4;margin:6px 0"></div>
-        <div>${(()=>{
-                const ym=sportStartedMap()[state.sport];
-                const mo=careerMonthsFrom(ym);
-                const g=(mo==null)?null:gradeFromCareer(Math.floor(mo/12));
-                if(!g) return '등급 <span style="color:var(--coral-d);font-weight:700">구력 입력 필요</span>';
-                const gi=gradeInfo(g);
-                let gl=g;                                  // 클럽 명단이 있으면 B1처럼 순번까지
-                try{
-                  const rs=window._cb2Roster||[];
-                  if(rs.length){
-                    const meId=String((state.me&&state.me.id)||'');
-                    const me2=assignGradeRanks(fillGradesByCareer(rs.slice())).find(p=>String(p.user_id)===meId);
-                    if(me2&&me2.glabel) gl=me2.glabel;
-                  }
-                }catch(e){}
-                return `등급 <b style="color:${gi.c}">${gl}</b> <span style="color:var(--lgray)">${gi.desc}</span>`;
-              })()}</div>
-        <div style="color:var(--lgray)">오픈매치 대진 · 클럽 대진에 쓰여요</div>
-              <div style="display:flex;gap:11px;margin-top:2px">
-          <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openRatingTrend()">추이 ›</div>
-          <div style="color:var(--coral-d);cursor:pointer" onclick="event.stopPropagation();openGradeGuide()">내 등급 보기 ›</div>
-        </div>
-      </div></div></div>
-  <div class="card" style="background:linear-gradient(135deg,#ec6a2e,#cf5418);border:none;display:flex;justify-content:space-between;align-items:center;box-shadow:0 10px 22px rgba(236,106,46,.24)">
-    <div><div style="font-size:12px;font-weight:500;color:#ffe0cb">나의 캐시</div><b style="font-size:23px;color:#fff">${(((state.serverUser||{}).cash)||0).toLocaleString()}원</b></div>
-    <div style="font-size:11px;font-weight:500;color:#ffe0cb">환불·정산이 여기 쌓여요</div></div>
+  ${SERVER_OK&&authToken()?(()=>{
+    // 매너·등급·캐시 — 각각 카드 하나씩 쓰던 걸 한 줄 요약으로. 캐시는 잔액이 있을 때만 강조한다
+    const cash=((state.serverUser||{}).cash)||0;
+    const ym=sportStartedMap()[state.sport], mo=careerMonthsFrom(ym);
+    const g=(mo==null)?null:gradeFromCareer(Math.floor(mo/12));
+    const gi=g?gradeInfo(g):null;
+    const gTxt=g?`${g} ${gi.desc.split(' · ')[0]}`:'구력 입력';
+    const fp=(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—';
+    const cell=(k,v,col,act)=>`<div style="flex:1;padding:13px 6px;text-align:center;border-right:1px solid #f2efe9;cursor:pointer" onclick="${act}">
+      <div style="font-size:11px;color:var(--lgray);font-weight:400">${k}</div>
+      <div style="font-size:16px;font-weight:600;margin-top:3px;letter-spacing:-.02em;color:${col}">${v}</div></div>`;
+    return `<div style="display:flex;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:12px">
+      ${cell('매너',fp,'#2f7d4f','openFairplayInfo()')}
+      ${cell('등급',gTxt,g?gi.c:'var(--coral-d)','openGradeGuide()')}
+      <div style="flex:1;padding:13px 6px;text-align:center;cursor:pointer" onclick="openCash&&openCash()">
+        <div style="font-size:11px;color:var(--lgray);font-weight:400">캐시</div>
+        <div style="font-size:16px;font-weight:600;margin-top:3px;letter-spacing:-.02em;color:${cash?'var(--coral-d)':'var(--lgray)'}">${cash.toLocaleString()}원</div></div>
+    </div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
-  ${[['신청 내역',"go('sched')"],['등급 추이','openRatingTrend()'],['MVP 기록','openMyMvp()']].map(x=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:15px 18px" onclick="${x[1]}">
-    <b style="flex:1;font-size:14px">${x[0]}</b><span style="color:var(--lgray);font-weight:700">›</span></div>`).join('')}`:''}
+  <div style="background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:12px">
+    ${[['신청 내역',"go('sched')", (()=>{ const A=MY_APPS||{};
+          const n=((A.hosted||[]).length)+((A.joined||[]).length)+((A.guest||[]).length);
+          return n?`${n}건`:'없음'; })()],
+       ['등급 추이','openRatingTrend()', g?`${g} 유지`:'—'],
+       ['MVP 기록','openMyMvp()', (MY_MVP_N==null?'':`${MY_MVP_N}회`)]]
+      .map((x,i)=>`<div onclick="${x[1]}" style="display:flex;align-items:center;gap:10px;padding:13px 15px;font-size:13.5px;font-weight:500;cursor:pointer;${i?'border-top:1px solid #f4f1eb':''}">
+        <span style="flex:1">${x[0]}</span>
+        <span style="font-size:12px;font-weight:400;color:var(--gray)">${x[2]}</span>
+        <span style="color:#d3ccc0">›</span></div>`).join('')}
+  </div>`;})():''}
   ${myAppsCard()}
   ${SP().cat==='record'?meRecordCard():SP().cat==='team'?meTeamCard():`<div class="card"><div class="ch">전적</div>
-    <div style="display:flex;text-align:center">
-      <div style="flex:1"><div style="font-size:23px;font-weight:700">${rec.w}<span style="font-size:12px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:12px;color:var(--gray)">패</span></div><div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:2px">승률 ${wr}%</div></div>
-      <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:23px;font-weight:700;color:var(--coral-d)">${ratingLabel}</div><div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:2px">현재 레이팅</div></div>
-      <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:23px;font-weight:700">${peakLabel}</div><div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:2px">최고</div></div></div>
+    ${(()=>{
+      // 티어는 단식·복식이 따로 매겨진다 — 한 칸에 뭉뚱그리면 어느 쪽 얘긴지 알 수 없다
+      const ts=myTierFor('singles'), td=myTierFor('doubles');
+      const nm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
+      const col=x=>x.placing?'var(--lgray)':'var(--coral-d)';
+      return `<div style="display:flex;text-align:center">
+        <div style="flex:1"><div style="font-size:23px;font-weight:700">${rec.w}<span style="font-size:12px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:12px;color:var(--gray)">패</span></div>
+          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:2px">승률 ${wr}%</div></div>
+        <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:15px;font-weight:600;color:${col(ts)};padding-top:5px">${nm(ts)}</div>
+          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">단식 티어</div></div>
+        <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:15px;font-weight:600;color:${col(td)};padding-top:5px">${nm(td)}</div>
+          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">복식 티어</div></div></div>
+      ${(ts.placing&&td.placing)
+        ? `<div onclick="go('match')" style="display:flex;align-items:center;gap:8px;background:var(--coral-s);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#8a5230;cursor:pointer">
+             개인리그 3경기면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
+        : `<div style="display:flex;align-items:center;gap:8px;background:#f2f7f4;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#3f7a5c">
+             최고 티어 <b style="margin-left:auto;color:var(--green);font-weight:600">${peakLabel}</b></div>`}`;
+    })()}
     ${state.ratingHist.length>1?`<div style="margin-top:14px;border-top:1px solid #f0efec;padding-top:12px"><div style="font-size:12px;color:var(--gray);font-weight:500;margin-bottom:6px">레이팅 변화</div>${sparkline(state.ratingHist)}</div>`:''}
   </div>`}
   <div class="card"><div class="ch">시즌 배지</div>
