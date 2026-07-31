@@ -4948,6 +4948,141 @@ async function buyCash(n){
   }
   state.cash+=n; toast('현재 모든 기능이 무료예요'); openStore();
   if(state.view==='home')renderHome(); if(state.view==='me')renderMe(); }
+/* ══ 내 캐시 — 잔액·내역·출금 ══
+   환불은 따로 신청하지 않는다(매치 취소 시 자동 입금). 여기서 하는 건 '통장으로 빼기'뿐. */
+let CASHV=null;
+async function openWallet(){
+  if(!SERVER_OK || !authToken()){ toast('로그인 후 이용할 수 있어요'); return; }
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>내 캐시</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>${skelCards(2)}`;
+  document.getElementById('ov').classList.add('on');
+  try{ CASHV=await api('/me/cash'); }catch(e){ CASHV=null; toast('불러오지 못했어요'); return; }
+  drawWallet();
+}
+function walletReason(r){
+  return {toss_purchase:'캐시 충전', match_refund:'매치 취소 환불', om_payout:'매치 정산',
+          withdraw:'통장 출금', refund:'충전 취소', admin_refund:'관리자 환불',
+          match_join:'매치 참가비'}[r] || '캐시 변동';
+}
+function drawWallet(){
+  const v=CASHV||{}; const bal=v.balance||0, po=v.payout||0, rf=v.refund||0;
+  const d=v.dueAt?new Date(v.dueAt):null;
+  let h=`<div class="sh-top"><h3>내 캐시</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="background:linear-gradient(140deg,#fbe3cf,#f8efe6);border-radius:18px;padding:16px">
+      <div style="font-size:12px;color:#8a7a68">쓸 수 있는 캐시</div>
+      <div style="font-size:28px;font-weight:700;letter-spacing:-.03em;margin-top:2px">${bal.toLocaleString()}원</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <div style="flex:1;background:#ffffffcc;border-radius:12px;padding:9px 10px">
+          <div style="font-size:10.5px;color:#8a7a68">환불받은 돈</div>
+          <div style="font-size:14px;font-weight:600;margin-top:2px;color:var(--coral-d)">${rf.toLocaleString()}원</div></div>
+        <div style="flex:1;background:#ffffffcc;border-radius:12px;padding:9px 10px">
+          <div style="font-size:10.5px;color:#8a7a68">정산금</div>
+          <div style="font-size:14px;font-weight:600;margin-top:2px;color:#2c7a53">${po.toLocaleString()}원</div></div>
+      </div></div>`;
+  const hs=v.history||[];
+  h+=`<div class="ch" style="margin-top:16px">최근 내역</div>`;
+  if(!hs.length) h+=`<div class="note" style="text-align:left">아직 내역이 없어요</div>`;
+  else h+=`<div style="background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden">
+    ${hs.slice(0,12).map((r,i)=>{
+      const plus=r.delta>0;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;font-size:13px;${i?'border-top:1px solid #f4f1eb':''}">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500">${walletReason(r.reason)}</div>
+          <div style="font-size:11px;color:var(--lgray);margin-top:2px">${fmtWhen(r.created_at)}</div></div>
+        <b style="white-space:nowrap;color:${plus?'#2c7a53':'var(--coral-d)'}">${plus?'+':'−'}${Math.abs(r.delta).toLocaleString()}</b></div>`;
+    }).join('')}</div>`;
+  h+=`<button class="btn" style="margin-top:14px" onclick="openWithdraw()">통장으로 출금하기</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="openCash()">캐시 충전하기</button>
+    <div class="note" style="text-align:left;margin-top:11px"><b>환불은 신청하지 않아도 돼요.</b><br>
+      매치를 취소하면 정책에 따라 캐시로 바로 돌아와요 · 다음 매치에 쓰거나 통장으로 뺄 수 있어요${
+        d?` · 출금 신청분은 ${d.getMonth()+1}월 ${d.getDate()}일까지 입금돼요`:''}</div>`;
+  document.getElementById('sheet').innerHTML=h;
+}
+function fmtWhen(t){
+  if(!t) return '';
+  const d=new Date(typeof t==='number'?t:Date.parse(t));
+  if(isNaN(d)) return '';
+  return `${d.getMonth()+1}월 ${d.getDate()}일`;
+}
+/* ── 출금 신청 ── */
+let WDR={amount:0, plan:null};
+async function openWithdraw(){
+  if(!CASHV){ await openWallet(); if(!CASHV) return; }
+  WDR={amount:CASHV.balance||0, plan:null};
+  await wdPreview();
+}
+async function wdPreview(){
+  try{ WDR.plan=await api('/me/cash/withdraw/preview',{method:'POST',body:JSON.stringify({amount:WDR.amount})}); }
+  catch(e){ WDR.plan=null; }
+  drawWithdraw();
+}
+function wdSet(v){ WDR.amount=Math.max(0,Math.min(CASHV.balance||0, parseInt(String(v).replace(/[^0-9]/g,''),10)||0)); wdPreview(); }
+function drawWithdraw(){
+  const p=WDR.plan||{}, bank=(CASHV&&CASHV.bank)||'';
+  const d=p.dueAt?new Date(p.dueAt):null;
+  const ok=(p.amount||0)>0 && (!(p.bankPart>0) || !!bank);
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top">
+      <span onclick="openWallet()" style="cursor:pointer;font-size:21px;color:#8a857c;margin-right:9px;line-height:1">‹</span>
+      <h3>통장으로 출금</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">등록한 계좌로 보내드려요</div>
+    <div class="fld"><label>출금 금액</label>
+      <div class="sel-in" style="font-size:22px;font-weight:700;letter-spacing:-.02em;padding:14px 13px">
+        ${(p.amount||0).toLocaleString()}<span style="font-size:14px;color:var(--gray);font-weight:400"> 원</span></div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <div onclick="wdSet(${CASHV.balance||0})" style="flex:1;text-align:center;border-radius:11px;padding:9px 0;font-size:12.5px;font-weight:600;cursor:pointer;
+          border:1.5px solid ${p.amount===CASHV.balance?'var(--coral)':'var(--line)'};
+          background:${p.amount===CASHV.balance?'var(--coral-s)':'#fff'};color:${p.amount===CASHV.balance?'var(--coral-d)':'#57534c'}">전액</div>
+        <input inputmode="numeric" placeholder="직접 입력" onchange="wdSet(this.value)"
+          style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:11px;padding:9px 11px;font-size:12.5px;font-family:inherit;text-align:center;outline:none">
+      </div></div>
+    <div class="fld"><label>받을 계좌</label>
+      <div class="sel-in" style="${bank?'':'color:var(--coral-d)'}">${bank?esc(bank):'정산 계좌를 등록해 주세요'}</div>
+      ${bank?'':`<div class="note" style="text-align:left;margin-top:6px;cursor:pointer" onclick="closeOv();go('me')">내정보에서 계좌 등록하기 ›</div>`}</div>
+    <div class="ch" style="margin-top:16px">이렇게 나갑니다</div>
+    <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:4px 14px">
+      ${[['환불받은 돈 '+(p.cardPart||0).toLocaleString()+'원','카드 취소 · 즉시'],
+         ['정산금 '+(p.bankPart||0).toLocaleString()+'원', d?`계좌이체 · ${d.getMonth()+1}월 ${d.getDate()}일`:'계좌이체'],
+         ['원천징수 3.3%','−'+(p.tax||0).toLocaleString()+'원'],
+         ['실제 받는 금액','<b style="font-size:14px">'+(p.payout||0).toLocaleString()+'원</b>']]
+        .map(([k,v],i)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:9px 2px;${i?'border-top:1px solid #f4f1eb':''}">
+          <span style="color:var(--gray)">${k}</span><b style="font-weight:600">${v}</b></div>`).join('')}
+    </div>
+    <button class="btn" style="margin-top:14px;${ok?'':'opacity:.45'}" onclick="wdSubmit()">출금 신청하기</button>
+    <div class="note" style="text-align:left;margin-top:11px"><b>왜 두 갈래로 나가나요?</b><br>
+      환불받은 돈은 원래 결제한 카드로 되돌리는 게 가장 빨라요 · 정산금은 소득이라 세금(3.3%)을 떼고 계좌로 보내드려요</div>`;
+}
+async function wdSubmit(){
+  const p=WDR.plan||{};
+  if(!(p.amount>0)){ toast('출금할 금액을 입력해 주세요'); return; }
+  if(p.bankPart>0 && !(CASHV&&CASHV.bank)){ toast('정산 계좌를 먼저 등록해 주세요'); return; }
+  if(!await appConfirm(`${(p.payout||0).toLocaleString()}원을 출금할까요?`,'출금 신청')) return;
+  try{
+    const r=await api('/me/cash/withdraw',{method:'POST',body:JSON.stringify({amount:p.amount})});
+    if(state.serverUser) state.serverUser.cash=r.cash;
+    const d=r.dueAt?new Date(r.dueAt):null;
+    document.getElementById('sheet').innerHTML=`
+      <div class="sh-top"><h3>출금 신청됨</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div style="text-align:center;padding:18px 0 4px">
+        <div style="width:64px;height:64px;border-radius:50%;background:#e8f5ee;margin:0 auto 12px;display:grid;place-items:center;font-size:26px">✓</div>
+        <div style="font-size:17px;font-weight:600">${(r.payout||0).toLocaleString()}원</div>
+        <div style="font-size:12.5px;color:var(--gray);margin-top:5px">${
+          r.bankPart>0 && d ? `${d.getMonth()+1}월 ${d.getDate()}일까지 입금돼요` : '카드 취소를 요청했어요'}</div></div>
+      <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:4px 14px;margin-top:14px">
+        ${[['카드 취소', r.cardPart?`완료 · ${r.cardPart.toLocaleString()}원`:'없음'],
+           ['계좌이체', r.bankPart?`예정 · ${(r.bankPart-(r.tax||0)).toLocaleString()}원`:'없음'],
+           ['남은 캐시', `${(r.cash||0).toLocaleString()}원`]]
+          .map(([k,v],i)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:9px 2px;${i?'border-top:1px solid #f4f1eb':''}">
+            <span style="color:var(--gray)">${k}</span><b style="font-weight:600">${v}</b></div>`).join('')}</div>
+      <div class="note" style="text-align:left;margin-top:11px">카드 취소는 카드사에 따라 <b>영업일 2~3일</b> 뒤 명세서에 반영돼요 · 계좌이체는 <b>영업일 3일 내</b>에 들어가요</div>
+      <button class="btn ghost" style="margin-top:12px" onclick="openWallet()">내역 보기</button>`;
+    if(state.view==='me') renderMe();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('no_bank')?'정산 계좌를 먼저 등록해 주세요'
+      : m.includes('invalid_amount')?'출금할 수 없는 금액이에요' : '신청하지 못했어요');
+  }
+}
 /* ══ 캐시 충전 — 토스페이먼츠 (원 단위 1:1) ══
    서버가 주문(orderId·금액)을 만들고, 결제 성공 시 서버가 토스에 최종 승인한다.
    금액을 클라이언트가 정해 보내지 않으므로 위변조가 안 된다. */
@@ -11699,10 +11834,10 @@ function openOmDetail(id){
     acts.push(`<div class="ch" style="margin-top:6px">매니저 메뉴</div>`);
     if(m.manager_fee) acts.push(`<div style="background:#f6f4ef;border-radius:14px;padding:13px 15px;font-size:12px;font-weight:500;color:#5a544b;display:flex;justify-content:space-between;align-items:center">
       <span>내 정산 <span style="font-size:11px;font-weight:500;color:var(--lgray)">매니저에게만</span></span>
-      <span style="text-align:right"><b style="color:var(--coral-d);font-size:14px">${(m.manager_fee||0).toLocaleString()}원</b><br><span style="font-size:11px;color:var(--lgray)">코트·캔볼 당일 · 수고비 3일 내 지급</span></span></div>`);
+      <span style="text-align:right"><b style="color:var(--coral-d);font-size:14px">${(m.manager_fee||0).toLocaleString()}원</b><br><span style="font-size:11px;color:var(--lgray)">매치 종료 후 영업일 3일 내 지급</span></span></div>`);
     acts.push(`<button class="btn ghost" onclick="omMakeBracket(${m.id})">대진 짜기 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 4명부터</span></button>`);
     if(closed) acts.push(`<button class="btn ghost" onclick="openOmAssess(${m.id})">참가자 등급 평가</button>`);
-    if(closed&&m.manager_fee&&!m.settled) acts.push(`<div class="note" style="text-align:left">모든 경기 스코어가 확정되면 <b>정산 ${(m.manager_fee||0).toLocaleString()}원</b>이 자동으로 접수돼요 · 코트·캔볼 당일, 수고비 3일 내</div>
+    if(closed&&m.manager_fee&&!m.settled) acts.push(`<div class="note" style="text-align:left">경기가 끝나면 <b>정산 ${(m.manager_fee||0).toLocaleString()}원</b>이 자동으로 접수돼요 · 코트비·캔볼값·수고비를 합쳐 영업일 3일 내 입금</div>
       <button class="btn ghost" onclick="omSettle(${m.id})">지금 정산 접수하기</button>`);
     if(m.settled) acts.push(`<div class="note" style="text-align:left">정산 접수됨 · 이체 후 완료 처리돼요</div>`);
     if(!closed) acts.push(`<button class="btn ghost" onclick="openOmEdit(${m.id})">매치 수정 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 시간·장소·금액 바로잡기</span></button>`);
@@ -12874,7 +13009,7 @@ function omCalc(){
         <span class="rcp-v t-num" style="font-size:12.5px;color:#2c7a53">${won(q.payout)}원</span></div>
       <div class="rcp-row">
         <span class="rcp-k" style="font-size:11.5px">환급</span>
-        <span class="rcp-d" style="font-size:10.5px">코트·캔볼 당일 + 수고비 3일 내</span></div>
+        <span class="rcp-d" style="font-size:10.5px">코트·캔볼 + 수고비 · 3일 내</span></div>
       <div class="rcp-row">
         <span class="rcp-k" style="font-size:11.5px">경기 룰</span>
         <span class="rcp-d" style="font-size:10.5px">${rule}</span></div>
@@ -12924,7 +13059,7 @@ function openManagerGuide(){
     [MGL_ICONS.crowd,  '코트당 6명이 모이면 확정', '2코트 12명 · 3코트 18명, 전원 모여야 열려요'],
     [MGL_ICONS.receipt,'비용 두 칸이면 견적 완성', '코트비·캔볼값만 넣으면 참가비가 자동 계산돼요 · 캔볼은 코트당 1캔을 참가자가 분담해요'],
     [MGL_ICONS.mgr,    '매니저는 경기를 뛰지 않아요', '개설자 = 매니저 1명, 운영과 등급 평가만 맡아요'],
-    [MGL_ICONS.payout, '정산은 당일 + 3일', '코트·캔볼은 당일 환급, 수고비는 시간당 12,000원(2코트)·15,000원(3코트)으로 3일 내 입금돼요'],
+    [MGL_ICONS.payout, '정산은 영업일 3일 내', '코트비·캔볼값 환급과 수고비(시간당 12,000원·2코트 / 15,000원·3코트)를 합쳐 한 번에 입금돼요'],
     [MGL_ICONS.rule,   '경기 룰', '2시간은 5:5 동점 종료(노 매치포인트) · 3시간은 5:5면 6게임째로 승부'],
     [MGL_ICONS.clock,  '결제와 취소', '참가비는 신청 시 결제 · 30분 안에 취소하지 않으면 확정이에요'],
   ];
@@ -16254,7 +16389,7 @@ function _renderMeCore(){
         <div style="font-size:12px;color:var(--gray);font-weight:500">캐시</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
           <b style="font-size:18px;color:${cash?'var(--coral-d)':'var(--ink)'}">${cash.toLocaleString()}원</b>
-          <span onclick="event.stopPropagation();openCash()" style="margin-left:auto;font-size:11px;font-weight:600;color:var(--coral-d)">충전 ›</span></div></div>
+          <span onclick="event.stopPropagation();openWallet()" style="margin-left:auto;font-size:11px;font-weight:600;color:var(--coral-d)">내역·출금 ›</span></div></div>
     </div>
     <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
       <div style="font-size:12px;color:var(--gray);font-weight:500">등급 <span style="color:var(--lgray);font-weight:400">· 구력</span></div>
