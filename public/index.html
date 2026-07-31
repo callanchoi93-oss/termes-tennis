@@ -6064,17 +6064,29 @@ function renderClub(){
         </div>`;
       }});
   } else {
-    const ft=state.findTab||'club';
-    h+=`<div class="seg" style="margin-bottom:12px"><div class="o ${ft==='club'?'on':''}" onclick="setFindTab('club')">클럽 찾기</div><div class="o ${ft==='member'?'on':''}" onclick="setFindTab('member')">회원 찾기</div></div>`;
-    if(ft==='member'){ renderMemberFind(h); return; }
     h+=`<button class="btn felt" style="margin-bottom:14px" onclick="state._cw=null;openCreateClub()">+ 새 클럽 만들기</button>`;
-    const _rs=[...new Set(state.clubs.filter(c=>(!c.sport||c.sport===state.sport)).map(c=>c.r).filter(Boolean))];
+    /* 지역 칩 — '경기도 용인시 처인구'와 '용인 처인구'가 각각 칩이 되던 문제.
+       시·도와 시·군·구만 짧게 남겨 같은 지역은 한 칩으로 묶는다. */
+    const regShort = r => { const t=String(r||'').trim().split(/\s+/);
+      if(!t[0]) return '';
+      const sido=t[0].replace(/(특별시|광역시|특별자치시|특별자치도|자치도|도)$/,'');
+      return [sido, t[1]||''].filter(Boolean).join(' '); };
+    const _rs=[...new Set(state.clubs.filter(c=>(!c.sport||c.sport===state.sport))
+      .map(c=>regShort(c.r)).filter(x=>x&&x.length>1))];
     const regions=['전체', ...(_rs.length?_rs.slice(0,8):['경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'])];
     h+=`<div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div><div class="chips">`;
     regions.forEach(r=>{h+=`<div class="chip ${state.region===r?'on':''}" onclick="setRegion('${r}')">${r}</div>`;});
     h+=`</div>`;
     const q=(state._q||'').trim();
-    const list=state.clubs.filter(c=>(c.sport||state.sport)===state.sport&&(state.region==='전체'||c.r===state.region)&&(!q||c.n.includes(q)||c.r.includes(q)));
+    // 서버 목록과 로컬 카탈로그가 같은 클럽을 각각 넣어 두 번 보이던 문제 — 이름+종목으로 합친다
+    const seen={}, uniq=[];
+    state.clubs.forEach(c=>{ const k=(c.n||'')+'|'+(c.sport||state.sport);
+      if(seen[k]!=null){ uniq[seen[k]]=Object.assign({}, c, uniq[seen[k]], {   // 서버 값(id 있는 쪽) 우선
+        id:uniq[seen[k]].id||c.id, m:Math.max(uniq[seen[k]].m||0, c.m||0)}); return; }
+      seen[k]=uniq.length; uniq.push(c); });
+    const list=uniq.filter(c=>(c.sport||state.sport)===state.sport
+      &&(state.region==='전체'||regShort(c.r)===state.region)
+      &&(!q||c.n.includes(q)||c.r.includes(q)));
     if(!list.length) h+=`<div class="empty"><div class="ei">${ic('search',34)}</div><div class="et">조건에 맞는 클럽이 없어요</div><div class="es">검색어나 지역을 바꿔보거나<br>새 클럽을 직접 만들어보세요.</div></div>`;
     const cg=['linear-gradient(135deg,#3fa571,#5b3fa8)','linear-gradient(135deg,#f1a55c,#e07f3a)','linear-gradient(135deg,#3fa571,#3f9e6e)','linear-gradient(135deg,#8a857c,#55514a)'];
     list.forEach((c,i)=>{const joined=state.myClubs.includes(c.n);
@@ -8945,47 +8957,48 @@ function omGradeMix(players){
 function omGradeMixHTML(players, opts){
   const o=opts||{};
   const m=omGradeMix(players);
-  if(!m.total) return '';
-  const max=Math.max(...GRADE_INFO.map(t=>m.cnt[t.g]));
   const gi=m.avgGrade?gradeInfo(m.avgGrade):null;
+  const women=(players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
+  /* 세로 기둥 차트 — 트랙은 항상 꽉 찬 높이로 서 있고 그 안이 아래에서 위로 차오른다.
+     참가자가 0명이어도 자리가 그대로라 화면이 튀지 않는다.
+     비율(%)로 보여준다: 인원 수는 정원이 매치마다 달라 비교가 안 된다. */
+  const COL_H=132;
+  let h=`<div style="padding:2px 2px 14px">`;
+  // 평균 등급 줄
+  h+=`<div style="display:flex;align-items:center;gap:8px">
+      <span style="flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;
+        background:${gi?gi.c:'#ddd6c8'};color:#fff;font-size:${m.avgGrade&&m.avgGrade.length>1?10:12}px;font-weight:600;
+        letter-spacing:-.02em">${m.avgGrade||'—'}</span>
+      <span style="font-size:13.5px;font-weight:400;color:var(--gray)">${gi
+        ? `평균 등급 <b style="color:var(--ink);font-weight:600">${m.avgGrade} ${gi.desc.split(' · ')[0]}</b> · NTRP ${gi.ntrp}`
+        : '첫 참가자가 들어오면 평균 등급이 정해져요'}</span></div>`;
+  // 여성 참가자 줄
+  h+=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;
+        background:${women?'#faeff2':'#f2efe9'};color:${women?'#c2417a':'var(--lgray)'};font-size:11px;font-weight:600">여</span>
+      <span style="font-size:13.5px;font-weight:400;color:var(--gray)">${women
+        ? `여성 참가자 <b style="color:var(--ink);font-weight:600">${women}명</b>`
+        : '여성 참가자가 아직 없어요'}</span></div>`;
+  // 비율
+  const pct = g => m.total ? Math.round(m.cnt[g]/m.total*100) : 0;
+  const cols = GRADE_INFO.slice().reverse();          // C → SS 순으로 왼쪽부터
+  h+=`<div style="display:flex;gap:7px;margin-top:16px">${cols.map(t=>{
+      const p=pct(t.g), isAvg=t.g===m.avgGrade;
+      return `<div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:${
+        p? (isAvg?'var(--coral-d)':'var(--ink)') : 'var(--lgray)'}">${p}%</div>`;}).join('')}</div>`;
+  // 기둥
+  h+=`<div style="display:flex;gap:7px;margin-top:7px;height:${COL_H}px">${cols.map(t=>{
+      const p=pct(t.g), isAvg=t.g===m.avgGrade;
+      return `<div style="flex:1;background:#f4f2ee;border-radius:10px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden">${
+        p?`<div style="height:${Math.max(p,6)}%;border-radius:10px;background:${isAvg?'var(--coral)':'#f6b48d'}"></div>`:''}</div>`;}).join('')}</div>`;
+  // 라벨
+  h+=`<div style="display:flex;gap:7px;margin-top:9px">${cols.map(t=>{
+      const p=pct(t.g), isAvg=t.g===m.avgGrade;
+      return `<div style="flex:1;text-align:center;font-size:12.5px;font-weight:${isAvg?600:400};color:${
+        p? (isAvg?'var(--coral-d)':'var(--gray)') : 'var(--lgray)'}">${t.g} ${t.desc.split(' · ')[0]}</div>`;}).join('')}</div>`;
 
-  // 평균 등급 히어로
-  let h=`<div style="border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff">
-    <div style="display:flex;align-items:center;gap:13px;padding:14px 16px;background:${gi?gi.bg:'var(--felt)'}">
-      <div style="flex:none;width:52px;height:52px;border-radius:50%;background:#fff;border:2.5px solid ${gi?gi.c:'#ddd6c8'};
-        display:grid;place-items:center;font-weight:800;letter-spacing:-.04em;color:${gi?gi.c:'var(--lgray)'};
-        font-size:${m.avgGrade&&m.avgGrade.length>1?17:21}px">${m.avgGrade||'—'}</div>
-      <div style="flex:1;min-width:0">
-        <div class="t-lbl" style="color:${gi?gi.c:'var(--lgray)'};font-weight:700">참여자 평균 등급</div>
-        <div class="t-ttl" style="margin-top:2px">${gi?gi.desc:'—'}</div>
-        <div class="t-lbl" style="font-weight:600;margin-top:3px;color:${gi?gi.c:'var(--lgray)'}">
-          ${m.total}명 참여${gi?` · 예상 NTRP ${gi.ntrp}`:''}</div></div>
-    </div>`;
-
-  // 분포 막대 — 인원 수는 보여주지 않는다.
-  // 색은 등급 고유색 대신 한 계열의 농담을 쓴다. 다섯 색이 제각각이면
-  // 막대 길이보다 색이 먼저 눈에 들어와 분포를 못 읽는다.
-  // 평균 등급 막대만 브랜드색으로 띄워 가장 중요한 정보를 도드라지게 한다.
-  const RAMP=['#4a443c','#6b6357','#8b8478','#b0a99c','#cfc9bd'];
-  h+=`<div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px">`;
-  GRADE_INFO.forEach((t,idx)=>{
-    const n=m.cnt[t.g], w=max? Math.round(n/max*100) : 0;
-    const isAvg = t.g===m.avgGrade;
-    const bar = isAvg ? 'var(--coral)' : RAMP[idx];
-    h+=`<div style="display:flex;align-items:center;gap:10px">
-      <span style="flex:none;display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
-        font-size:${t.g.length>1?9.5:11.5}px;font-weight:800;letter-spacing:-.02em;
-        background:${isAvg?'#fdf2e6':'#f2efe9'};color:${isAvg?'#b3591a':'#8b8478'};
-        ${n?'':'opacity:.4'}">${t.g}</span>
-      <div style="flex:1;min-width:0;height:22px;border-radius:7px;background:#eae6de;overflow:hidden;position:relative">
-        ${n?`<div style="position:absolute;left:0;top:0;bottom:0;width:${Math.max(w,8)}%;background:${bar};border-radius:7px"></div>`:''}
-      </div>
-    </div>`;
-  });
-  h+=`</div>`;
-
-  if(m.unknown) h+=`<div class="t-lbl" style="font-weight:500;padding:0 16px 13px">구력 미입력 ${m.unknown}명은 집계에서 빠졌어요</div>`;
-  else if(o.note!==false) h+=`<div class="t-lbl" style="font-weight:500;padding:0 16px 13px">등급은 프로필 구력으로 자동 계산돼요 · 대진은 앞번호+뒷번호로 팀을 맞춰요</div>`;
+  if(m.unknown) h+=`<div class="t-lbl" style="font-weight:500;margin-top:11px">구력 미입력 ${m.unknown}명은 집계에서 빠졌어요</div>`;
+  else if(o.note!==false) h+=`<div class="t-lbl" style="font-weight:500;margin-top:11px">등급은 프로필 구력으로 자동 계산돼요</div>`;
   h+=`</div>`;
   return h;
 }
@@ -11488,21 +11501,10 @@ function openOmDetail(id){
       <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
         <div style="font-size:11px;color:var(--gray);font-weight:500">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
     ${(()=>{
-      const ps=m.players||[], femN=ps.filter(p=>String(p.gender||'').startsWith('여')).length;
-      const head=`<div class="ch" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        <span>참가자 ${m.cur||ps.length}명</span>
-        ${ps.length?`<span class="t-mcr" style="color:#8a7550;background:#f6efe2;border-radius:20px;padding:4px 9px">여성 ${femN}명</span>`:''}
-        ${m.joined?`<span class="t-mcr" style="color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:4px 9px">참가 중</span>`:''}</div>`;
-      // 아직 아무도 없어도 등급 분포 자리는 남긴다 — 빈 막대로 어떤 정보가 채워질지 알려준다
-      return head + (ps.length ? omGradeMixHTML(ps) : `
-        <div style="padding:2px 2px 12px">
-          <div style="display:flex;gap:5px;align-items:flex-end;height:52px">
-            ${GRADE_INFO.slice().reverse().map(t=>`<div style="flex:1;text-align:center">
-              <div style="height:6px;border-radius:3px;background:#f0ede7"></div>
-              <div style="font-size:10.5px;color:var(--lgray);margin-top:6px">${t.g}</div></div>`).join('')}
-          </div>
-          <div style="font-size:11.5px;color:var(--lgray);margin-top:6px">참가자가 들어오면 등급 분포가 여기에 보여요</div>
-        </div>`);
+      const ps=m.players||[];
+      // 0명이어도 같은 차트를 그린다 — omGradeMixHTML 이 빈 기둥으로 자리를 지킨다
+      return `<div class="ch">참가자 ${m.cur||ps.length}명${m.joined?` <span class="t-mcr" style="color:#4c7a5c;background:#edf2ec;border-radius:20px;padding:4px 9px">참가 중</span>`:''}</div>`
+        + omGradeMixHTML(ps);
     })()}
     ${m.note?`<div class="ch">안내</div><div style="font-size:14px;color:#4a463f;font-weight:500;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
   // ── 액션 ──
