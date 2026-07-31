@@ -4932,6 +4932,79 @@ async function buyCash(n){
   }
   state.cash+=n; toast('현재 모든 기능이 무료예요'); openStore();
   if(state.view==='home')renderHome(); if(state.view==='me')renderMe(); }
+/* ══ 캐시 충전 — 토스페이먼츠 (원 단위 1:1) ══
+   서버가 주문(orderId·금액)을 만들고, 결제 성공 시 서버가 토스에 최종 승인한다.
+   금액을 클라이언트가 정해 보내지 않으므로 위변조가 안 된다. */
+const CASH_PRESETS=[5000,10000,20000,30000,50000,100000];
+let CASH_SEL=30000;
+function openCash(){
+  if(!SERVER_OK || !authToken()){ toast('로그인 후 이용할 수 있어요'); return; }
+  CASH_SEL=CASH_SEL||30000;
+  drawCash();
+}
+function cashPick(v){ CASH_SEL=v; drawCash(); }
+function drawCash(){
+  const bal=((state.serverUser||{}).cash)||0;
+  const ready=!PAY_PENDING_FN();
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>캐시 충전</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin:2px 2px 14px">
+      <span style="font-size:12px;color:var(--gray)">보유 캐시</span>
+      <b style="font-size:15px;font-weight:600">${bal.toLocaleString()}원</b></div>
+    <div style="background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px">
+      <div style="font-size:12px;color:var(--gray)">충전 금액</div>
+      <div style="display:flex;align-items:baseline;gap:4px;margin-top:4px">
+        <b style="font-size:30px;font-weight:700;letter-spacing:-.03em">${CASH_SEL.toLocaleString()}</b>
+        <span style="font-size:15px;color:var(--gray)">원</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px">
+        ${CASH_PRESETS.map(v=>`<div onclick="cashPick(${v})" style="text-align:center;padding:12px 0;border-radius:12px;cursor:pointer;
+          font-size:13px;font-weight:${v===CASH_SEL?600:400};
+          border:1.5px solid ${v===CASH_SEL?'var(--coral)':'var(--line)'};
+          background:${v===CASH_SEL?'var(--coral-s)':'#fff'};color:${v===CASH_SEL?'var(--coral-d)':'#57534c'}">
+          ${v.toLocaleString()}원</div>`).join('')}
+      </div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:11px">1,000원 단위로 충전돼요 · 충전한 캐시는 1원 = 1캐시로 참가비에 쓸 수 있어요</div>
+    </div>
+    <div class="note" style="text-align:left;margin-top:12px">${ready
+      ? '결제는 <b>토스페이먼츠</b>로 안전하게 진행돼요 · 카드·간편결제·계좌이체를 쓸 수 있어요'
+      : '결제 준비 중이에요 · 토스페이먼츠 연동이 끝나면 바로 열려요'}</div>
+    <button class="btn" style="margin-top:14px;${ready?'':'opacity:.45'}" onclick="cashCharge()">
+      ${CASH_SEL.toLocaleString()}원 충전하기</button>
+    <div class="note" style="text-align:center;margin-top:10px;cursor:pointer" onclick="openRefundPolicy&&openRefundPolicy()">환불 규정 보기 ›</div>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function cashCharge(){
+  if(PAY_PENDING_FN()){ toast('결제 준비 중이에요 · 조금만 기다려 주세요'); return; }
+  try{
+    const o=await api('/pay/order',{method:'POST',body:JSON.stringify({amount:CASH_SEL})});
+    const url=`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}`
+      +`&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}&orderName=${encodeURIComponent(o.orderName)}`;
+    closeOv();
+    if(window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser){
+      await Capacitor.Plugins.Browser.open({url});          // 앱: 인앱 브라우저로 열어야 돌아올 수 있다
+    } else window.open(url,'_blank');
+    toast('결제창을 열었어요 · 끝나면 돌아와 주세요');
+    state._cashPoll=0; cashPoll();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('payments_not_ready')?'결제 준비 중이에요'
+      : m.includes('invalid_amount')?'충전할 수 없는 금액이에요'
+      : '주문을 만들지 못했어요 · 잠시 후 다시 시도해 주세요');
+  }
+}
+/* 결제창이 다른 탭·인앱 브라우저에서 끝나므로, 돌아왔을 때 잔액을 다시 읽는다 */
+function cashPoll(){
+  const before=((state.serverUser||{}).cash)||0;
+  let n=0;
+  const t=setInterval(async ()=>{
+    n++;
+    try{ const me=await api('/me'); if(me){ state.serverUser=me;
+      if((me.cash||0)>before){ clearInterval(t);
+        toast(`캐시 ${((me.cash||0)-before).toLocaleString()}원이 충전됐어요`);
+        if(state.view==='me') renderMe(); return; } } }catch(e){}
+    if(n>=20) clearInterval(t);                              // 최대 100초
+  }, 5000);
+}
 function openLeaderboard(){
   state._lbTab=state._lbTab||'region';
   const myGd=state.gender||'남자부', myReg='경기 용인';
@@ -15201,6 +15274,11 @@ const WX_TONE={sun:'#f0a93b',partly:'#f0a93b',cloud:'#8a8172',rain:'#5b3fa8',sno
 function wxIcon(k){ return `<svg class="wx-i" viewBox="0 0 24 24" fill="none" stroke="${WX_TONE[k]||'#8a8172'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WX_ICON[k]||WX_ICON.cloud}</svg>`; }
 // 날씨(야외) + 캘린더
 /* 히어로 한 줄용 — 아이콘 없이 '24° 맑음' 형태의 짧은 문자열 */
+/* 한 줄에 들어가는 짧은 코멘트 — '치기 좋은 날이에요'는 길어서 잘린다 */
+function wxLine(){
+  const k=(state.wx&&state.wx.k)||'sun';
+  return {sun:'치기 좋아요',cloud:'선선해요',rain:'실내 코트 추천',snow:'실내 코트 추천'}[k]||'';
+}
 function weatherText(){
   const outdoor=['tennis','soccer','baseball','running'].includes(SP().id); if(!outdoor) return '';
   const t=(state.wx&&state.wx.t)!=null?state.wx.t:24;
@@ -16108,28 +16186,53 @@ function _renderMeCore(){
       font-size:15px;font-weight:600;color:#8a6a4d;overflow:hidden;${myPhotoUrl()?`background:url('${myPhotoUrl()}') center/cover`:''}">${myPhotoUrl()?'':esc((state.userName||'회')[0])}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:17px;font-weight:600;letter-spacing:-.025em">${esc(state.userName||'회원')} 님${state.premium?' <span style="font-size:10.5px;color:#cf5418;background:#fff;border-radius:7px;padding:2px 6px;vertical-align:2px;font-weight:500">프리미엄</span>':''}</div>
-      <div style="font-size:12px;font-weight:400;color:#8a7a68;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_mo}월 ${_dy}일${weatherText()?` · ${weatherText()}`:''} · ${SP().n} 치기 좋은 날이에요</div>
+      <div style="font-size:12px;font-weight:400;color:#8a7a68;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_mo}월 ${_dy}일${weatherText()?` · ${weatherText()}`:''}${wxLine()?` · ${wxLine()}`:''}</div>
     </div>
     <span onclick="openProfileEdit()" style="flex:none;font-size:11.5px;font-weight:600;color:var(--coral-d);background:#fff;border-radius:999px;padding:7px 11px;cursor:pointer">프로필 수정</span>
   </div>
   ${SERVER_OK&&authToken()?(()=>{
-    // 매너·등급·캐시 — 각각 카드 하나씩 쓰던 걸 한 줄 요약으로. 캐시는 잔액이 있을 때만 강조한다
     const cash=((state.serverUser||{}).cash)||0;
     const ym=sportStartedMap()[state.sport], mo=careerMonthsFrom(ym);
     const g=(mo==null)?null:gradeFromCareer(Math.floor(mo/12));
     const gi=g?gradeInfo(g):null;
-    const gTxt=g?`${g} ${gi.desc.split(' · ')[0]}`:'구력 입력';
-    const fp=(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—';
-    const cell=(k,v,col,act)=>`<div style="flex:1;padding:13px 6px;text-align:center;border-right:1px solid #f2efe9;cursor:pointer" onclick="${act}">
-      <div style="font-size:11px;color:var(--lgray);font-weight:400">${k}</div>
-      <div style="font-size:16px;font-weight:600;margin-top:3px;letter-spacing:-.02em;color:${col}">${v}</div></div>`;
-    return `<div style="display:flex;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:12px">
-      ${cell('매너',fp,'#2f7d4f','openFairplayInfo()')}
-      ${cell('등급',gTxt,g?gi.c:'var(--coral-d)','openGradeGuide()')}
-      <div style="flex:1;padding:13px 6px;text-align:center;cursor:pointer" onclick="openCash&&openCash()">
-        <div style="font-size:11px;color:var(--lgray);font-weight:400">캐시</div>
-        <div style="font-size:16px;font-weight:600;margin-top:3px;letter-spacing:-.02em;color:${cash?'var(--coral-d)':'var(--lgray)'}">${cash.toLocaleString()}원</div></div>
+    let gl=g;                                              // 클럽 명단이 있으면 B1처럼 순번까지
+    try{
+      const rs=window._cb2Roster||[];
+      if(rs.length){
+        const meId=String((state.me&&state.me.id)||'');
+        const me2=assignGradeRanks(fillGradesByCareer(rs.slice())).find(p=>String(p.user_id)===meId);
+        if(me2&&me2.glabel) gl=me2.glabel;
+      }
+    }catch(e){}
+    const ts=myTierFor('singles'), td=myTierFor('doubles');
+    const tnm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
+    return `<div style="display:flex;gap:10px;margin-bottom:12px">
+    <div class="card" style="flex:1;margin:0;cursor:pointer;display:flex;flex-direction:column" onclick="openFairplayInfo()">
+      <div style="font-size:12px;color:var(--gray);font-weight:500">매너</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:18px;color:#2f7d4f">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
+      <div id="myFpLine" style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div>
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid #f2efe9">
+        <div style="font-size:12px;color:var(--gray);font-weight:500">캐시</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
+          <b style="font-size:18px;color:${cash?'var(--coral-d)':'var(--ink)'}">${cash.toLocaleString()}원</b>
+          <span onclick="event.stopPropagation();openCash()" style="margin-left:auto;font-size:11px;font-weight:600;color:var(--coral-d)">충전 ›</span></div></div>
     </div>
+    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
+      <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 개인리그</span></div>
+      <div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:8px;line-height:1.8">
+        <div>단식 <b style="color:${ts.placing?'var(--lgray)':'var(--ink)'}">${tnm(ts)}</b></div>
+        <div>복식 <b style="color:${td.placing?'var(--lgray)':'var(--ink)'}">${tnm(td)}</b></div></div>
+      <div style="height:1px;background:#f0ece4;margin:10px 0"></div>
+      <div style="font-size:12px;color:var(--gray);font-weight:500">등급 <span style="color:var(--lgray);font-weight:400">· 구력</span></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        ${g?`<span style="width:22px;height:22px;border-radius:50%;background:${gi.c};color:#fff;display:grid;place-items:center;font-size:${String(gl).length>2?9:11}px;font-weight:600">${gl}</span>
+             <b style="font-size:14px">${gi.desc.split(' · ')[0]}</b>`
+           :`<b style="font-size:13px;color:var(--coral-d)">구력 입력 필요</b>`}</div>
+      <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">오픈매치·클럽 대진에 쓰여요</div>
+      <div style="display:flex;gap:11px;margin-top:7px;font-size:11px;font-weight:600;color:var(--coral-d)">
+        <span onclick="event.stopPropagation();openRatingTrend()">추이 ›</span>
+        <span onclick="event.stopPropagation();openGradeGuide()">내 등급 보기 ›</span></div>
+    </div></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
   <div style="background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:12px">
     ${[['신청 내역',"go('sched')", (()=>{ const A=MY_APPS||{};
