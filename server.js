@@ -475,6 +475,48 @@ app.post('/auth/apple', async (req, res) => {
 // 흐름: (1) 서버가 주문 생성(orderId·금액·캐쉬 고정) → (2) 클라가 토스 위젯으로 결제
 //       → (3) 성공 콜백의 {paymentKey,orderId,amount}로 서버가 토스에 최종 승인 → (4) 캐쉬 지급
 // env: TOSS_SECRET_KEY (테스트키로 시작 가능)
+/* ── 결제·캐시 장부 ──
+   orders: 충전 주문 · cash_ledger: 캐시 증감 내역 · cash_withdrawals: 출금 신청
+   (예전 배포에서 만들어진 테이블에 의존하고 있었다. 새 DB에서도 뜨도록 여기서 보장한다) */
+db.exec(`
+CREATE TABLE IF NOT EXISTS orders (
+  order_id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,          -- 결제 금액(원)
+  cash INTEGER NOT NULL,            -- 지급 캐시 (1:1)
+  status TEXT NOT NULL DEFAULT 'ready',   -- ready|paid|refunded|partial
+  payment_key TEXT,
+  refunded INTEGER NOT NULL DEFAULT 0,    -- 이미 취소한 금액(부분취소 누적)
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_orders_user ON orders(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS cash_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  delta INTEGER NOT NULL,
+  reason TEXT,                      -- toss_purchase|match_refund|om_payout|withdraw|...
+  balance_after INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ledger_user ON cash_ledger(user_id, id DESC);
+CREATE TABLE IF NOT EXISTS cash_withdrawals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,          -- 신청 총액(캐시)
+  card_part INTEGER NOT NULL DEFAULT 0,   -- 카드 취소로 나간 금액
+  bank_part INTEGER NOT NULL DEFAULT 0,   -- 계좌이체로 나갈 금액(세전)
+  tax INTEGER NOT NULL DEFAULT 0,         -- 원천징수 3.3%
+  payout INTEGER NOT NULL DEFAULT 0,      -- 실제 입금액(세후)
+  bank TEXT,
+  status TEXT NOT NULL DEFAULT 'requested', -- requested|paid|failed
+  due_at INTEGER,                    -- 입금 예정일
+  created_at INTEGER NOT NULL,
+  paid_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_withdraw_user ON cash_withdrawals(user_id, id DESC);
+`);
+try { db.exec('ALTER TABLE orders ADD COLUMN refunded INTEGER NOT NULL DEFAULT 0'); } catch (e) {}
+
 /* 캐시는 원 단위 1:1 — 1,000원 넣으면 1,000캐시.
    참가비가 4,000원·25,000원처럼 원 단위라 패키지(코인) 방식은 계산이 안 맞는다.
    iOS도 토스로 직접 결제한다(실물 서비스 결제). */
@@ -567,6 +609,124 @@ app.post('/pay/refund', auth, async (req, res) => {
       .run(u.id, -ord.cash, 'refund', bal, now());
     res.json({ ok: true, cash: bal, refunded: ord.cash });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+/* ══ 캐시 출금 ══
+   캐시는 출처가 두 가지다.
+     · 환불 캐시 — 매치 취소로 돌려받은 돈. 원결제 카드로 되돌리는 게 가장 빠르고 세금도 없다.
+     · 정산 캐시 — 매니저 수고비·코트비 환급. 소득이라 3.3% 원천징수 후 계좌이체.
+   출금은 정산 캐시부터 소진한다. 환불 캐시를 먼저 쓰면 나중에 취소할 원결제가 사라진다. */
+const WITHHOLD_RATE = 0.033;
+function cashSources(uid) {
+  const rows = db.prepare('SELECT delta, reason FROM cash_ledger WHERE user_id=?').all(uid);
+  let refundIn = 0, payoutIn = 0, out = 0;
+  rows.forEach(r => {
+    if (r.delta > 0) {
+      if (r.reason === 'om_payout' || r.reason === 'settle') payoutIn += r.delta;
+      else refundIn += r.delta;                       // 충전·매치환불 모두 '원결제가 있는 돈'
+    } else out += -r.delta;
+  });
+  const u = getUser(uid);
+  const bal = Math.max(0, u.cash || 0);
+  // 이미 쓴 금액은 정산 캐시부터 차감된 것으로 본다
+  const payout = Math.max(0, payoutIn - Math.min(out, payoutIn));
+  const refund = Math.max(0, bal - payout);
+  return { balance: bal, payout: Math.min(payout, bal), refund };
+}
+function nextBusinessDay(from, days) {              // 영업일 n일 뒤 (주말 건너뜀)
+  const d = new Date(from); let left = days;
+  while (left > 0) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) left--; }
+  return d.getTime();
+}
+app.get('/me/cash', auth, (req, res) => {
+  const src = cashSources(req.uid);
+  const u = getUser(req.uid);
+  const rows = db.prepare(`SELECT delta, reason, balance_after, created_at FROM cash_ledger
+    WHERE user_id=? ORDER BY id DESC LIMIT 30`).all(req.uid);
+  res.json({ ...src, bank: u.bank_account || '', history: rows,
+             withholdRate: WITHHOLD_RATE, dueAt: nextBusinessDay(Date.now(), 3) });
+});
+/* 출금 미리보기 — 얼마가 카드로, 얼마가 계좌로, 세금은 얼마인지 */
+function withdrawPlan(uid, amount) {
+  const src = cashSources(uid);
+  const amt = Math.max(0, Math.min(Math.trunc(amount || 0), src.balance));
+  const bankPart = Math.min(amt, src.payout);         // 정산 캐시부터
+  const cardPart = amt - bankPart;
+  const tax = Math.round(bankPart * WITHHOLD_RATE);
+  return { amount: amt, cardPart, bankPart, tax, payout: cardPart + bankPart - tax,
+           dueAt: nextBusinessDay(Date.now(), 3) };
+}
+app.post('/me/cash/withdraw/preview', auth, (req, res) => {
+  res.json(withdrawPlan(req.uid, +(req.body || {}).amount));
+});
+app.post('/me/cash/withdraw', auth, limitWrite, async (req, res) => {
+  const u = getUser(req.uid);
+  const plan = withdrawPlan(req.uid, +(req.body || {}).amount);
+  if (plan.amount <= 0) return res.status(400).json({ error: 'invalid_amount' });
+  if (plan.bankPart > 0 && !u.bank_account)
+    return res.status(400).json({ error: 'no_bank', message: '정산 계좌를 먼저 등록해 주세요' });
+
+  // ① 환불 캐시는 원결제 카드로 부분취소 — 최근 결제부터 거슬러 올라간다
+  let cardDone = 0;
+  if (plan.cardPart > 0) {
+    const secret = process.env.TOSS_SECRET_KEY;
+    const paid = db.prepare(`SELECT * FROM orders WHERE user_id=? AND status IN ('paid','partial')
+      AND payment_key IS NOT NULL ORDER BY created_at DESC`).all(req.uid);
+    for (const ord of paid) {
+      if (cardDone >= plan.cardPart) break;
+      const left = ord.amount - (ord.refunded || 0);
+      if (left <= 0) continue;
+      const want = Math.min(left, plan.cardPart - cardDone);
+      if (!secret) break;
+      try {
+        const r = await fetch(`https://api.tosspayments.com/v1/payments/${ord.payment_key}/cancel`, {
+          method: 'POST',
+          headers: { Authorization: 'Basic ' + Buffer.from(secret + ':').toString('base64'), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cancelReason: '캐시 출금', cancelAmount: want })
+        });
+        if (!r.ok) continue;                            // 이 건은 건너뛰고 다음 결제로
+        const nowRef = (ord.refunded || 0) + want;
+        db.prepare("UPDATE orders SET refunded=?, status=? WHERE order_id=?")
+          .run(nowRef, nowRef >= ord.amount ? 'refunded' : 'partial', ord.order_id);
+        cardDone += want;
+      } catch (e) { /* 다음 결제 건으로 */ }
+    }
+  }
+  // 카드로 못 돌려준 몫은 계좌이체로 넘긴다 (원천징수 없음 — 소득이 아니므로)
+  const bankExtra = plan.cardPart - cardDone;
+  const bankPart = plan.bankPart + bankExtra;
+  const tax = Math.round(plan.bankPart * WITHHOLD_RATE);   // 세금은 정산 캐시분에만
+  const payout = cardDone + bankPart - tax;
+
+  const bal = Math.max(0, (u.cash || 0) - plan.amount);
+  db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, req.uid);
+  db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+    .run(req.uid, -plan.amount, 'withdraw', bal, now());
+  const due = nextBusinessDay(Date.now(), 3);
+  const r = db.prepare(`INSERT INTO cash_withdrawals
+      (user_id,amount,card_part,bank_part,tax,payout,bank,status,due_at,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(req.uid, plan.amount, cardDone, bankPart, tax, payout,
+         u.bank_account || '', bankPart > 0 ? 'requested' : 'paid', due, now());
+  sendPush(req.uid, { title: '출금 신청 완료',
+    body: bankPart > 0 ? `${payout.toLocaleString()}원 · 영업일 3일 내 입금돼요` : `${cardDone.toLocaleString()}원 카드 취소를 요청했어요` });
+  res.json({ ok: true, id: rid(r), cardPart: cardDone, bankPart, tax, payout, dueAt: due, cash: bal });
+});
+app.get('/me/cash/withdrawals', auth, (req, res) => {
+  res.json(db.prepare(`SELECT id,amount,card_part,bank_part,tax,payout,status,due_at,created_at,paid_at
+    FROM cash_withdrawals WHERE user_id=? ORDER BY id DESC LIMIT 20`).all(req.uid));
+});
+/* 관리자 — 계좌이체를 실제로 보낸 뒤 완료 처리 */
+app.get('/admin/withdrawals', admin, (_req, res) => {
+  res.json(db.prepare(`SELECT w.*, u.name FROM cash_withdrawals w JOIN users u ON u.id=w.user_id
+    WHERE w.status='requested' ORDER BY w.id ASC LIMIT 100`).all());
+});
+app.post('/admin/withdrawals/:id/paid', admin, (req, res) => {
+  const w = db.prepare('SELECT * FROM cash_withdrawals WHERE id=?').get(+req.params.id);
+  if (!w) return res.status(404).json({ error: 'not_found' });
+  db.prepare("UPDATE cash_withdrawals SET status='paid', paid_at=? WHERE id=?").run(now(), w.id);
+  sendPush(w.user_id, { title: '출금 완료', body: `${w.payout.toLocaleString()}원을 보냈어요` });
+  res.json({ ok: true });
 });
 
 app.get('/me', auth, (req, res) => {
@@ -1405,7 +1565,8 @@ app.post('/open-matches', auth, (req, res) => {
     _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
     req.body = _b;
     req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
-    // 매니저 정산 = 코트·캔볼 실비 환급(당일) + 수고비(2코트 시간당 12,000 · 3코트 15,000, 3일 내)
+    // 매니저 정산 = 코트·캔볼 실비 환급 + 수고비(2코트 시간당 12,000 · 3코트 15,000)
+    // 지급은 매치 종료 후 영업일 3일 내 — PG 정산이 들어온 뒤에 내보내야 자금이 꼬이지 않는다
     // 매니저 = 이 매치의 개설자 1명뿐 · 다른 매치에 참가자로 들어가면 그 매치 정산과는 무관하다
     req._mgrPay = _q.mgr;
   }
@@ -1424,7 +1585,7 @@ app.post('/open-matches', auth, (req, res) => {
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
          start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
          String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost), tags);
-  if (req._autoManager) {                                 // 매니저 정산액 = 코트·캔볼 환급(당일) + 수고비(3일 내)
+  if (req._autoManager) {                                 // 매니저 정산액 = 코트·캔볼 환급 + 수고비 (영업일 3일 내 지급)
     db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
       .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 0), rid(r));
   }
@@ -2080,9 +2241,12 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
   }
   const refund = Math.round(price * pct / 100);
   db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
-  if (refund > 0) {                                       // 환불은 캐시로 (PG 연동 전)
+  if (refund > 0) {                                       // 환불은 캐시로 — 출처를 남겨야 나중에 카드 취소로 돌려줄 수 있다
     const u = getUser(req.uid);
-    db.prepare('UPDATE users SET cash=? WHERE id=?').run((u.cash || 0) + refund, req.uid);
+    const bal = (u.cash || 0) + refund;
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, req.uid);
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(req.uid, refund, 'match_refund', bal, now());
   }
   db.prepare('INSERT INTO cancel_logs (user_id,match_id,free,refund,created_at) VALUES (?,?,?,?,?)')
     .run(req.uid, mid, freeGrace, refund, Date.now());
@@ -3917,14 +4081,21 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
   if (m.settled) return res.status(400).json({ error: 'already_settled' });
   if (!m.manager_id || !m.manager_fee) return res.status(400).json({ error: 'no_manager_fee' });
-  // 원화 정산: 캐쉬가 아니라 실제 계좌 이체 대상 — 요청을 만들고 운영자가 이체 후 완료 처리한다
+  /* 정산은 캐시로 즉시 지급한다. 실제 현금은 매니저가 출금 신청할 때 나가고,
+     그 시점이면 참가비 PG 정산이 들어와 있어 자금이 꼬이지 않는다.
+     om_payouts 는 회계 기록으로 계속 남긴다(지급 사유·매치 추적용). */
   const mu = getUser(m.manager_id);
   tx(() => {
     db.prepare('INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at) VALUES (?,?,?,?,?,?)')
-      .run(m.id, m.manager_id, m.manager_fee, (mu && mu.bank_account) || '', 'requested', now());
+      .run(m.id, m.manager_id, m.manager_fee, (mu && mu.bank_account) || '', 'cash', now());
+    const bal = (mu.cash || 0) + m.manager_fee;
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, m.manager_id);
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(m.manager_id, m.manager_fee, 'om_payout', bal, now());
     db.prepare('UPDATE open_matches SET settled=1 WHERE id=?').run(m.id);
   });
-  sendPush(m.manager_id, { icon: '💰', title: '운영 정산이 요청됐어요', body: `${m.dt || ''} 매치 · ${m.manager_fee.toLocaleString()}원 · ${(mu && mu.bank_account) ? '등록 계좌로 이체 예정이에요' : '내정보에서 정산 계좌를 등록해 주세요'}` });
+  sendPush(m.manager_id, { icon: '💰', title: '정산이 들어왔어요',
+    body: `${m.dt || ''} 매치 · ${m.manager_fee.toLocaleString()}원이 캐시로 지급됐어요 · 내정보에서 출금할 수 있어요` });
   res.json({ ok: true, payout: true });
 });
 /* 등급 추이 — 레이팅이 움직이는 모든 지점을 기록한다 (10경기부터 추이 노출) */
