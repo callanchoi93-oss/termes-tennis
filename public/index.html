@@ -8609,7 +8609,7 @@ function drawCB2View(){
       const doneN=gs.filter(g=>g.sa!=null).length, totalN=gs.length;
       const pct=totalN?Math.round(doneN/totalN*100):0;
       const durs=gs.filter(g=>g.sa!=null&&g.startedAt&&g.at).map(g=>(g.at-g.startedAt)/60000).filter(v=>v>0&&v<120);
-      const avg=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):18;
+      const avg=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):OM_GAME_MIN;
       const runNow=gs.map((g,i)=>({...g,gi:i})).filter(g=>g.startedAt&&g.sa==null);
       const eta=(()=>{ const left=totalN-doneN; if(!left||!CB2.courts) return null;
         const mins=Math.round(left/CB2.courts*avg); const t=new Date(Date.now()+mins*60000);
@@ -11659,38 +11659,68 @@ async function openRatingTrend(){
 function omGrade(r){ const t=(r||1000)===1000?'러브':levelOf(r).tier;
   return {'그랜드슬램':5,'투어':4,'챌린저':3,'퓨처스':2,'러브':1}[t]||1; }
 const OM_GLBL={5:'S',4:'A',3:'B',2:'C',1:'D'};
+/* 오픈매치 대진 — 소셜 로테이션 규칙
+   · 코트 수는 매니저가 예약한 만큼만 쓴다 (m.courts)
+   · 전원 같은 경기 수 · 파트너 중복 최소 · 팀 전력차 최소 (omBuildRotation)
+   · 성별 구성에 따라 남복/여복/혼복 라벨을 붙이고, 혼복은 팀마다 남·여 한 명씩
+   · 스코어는 넣지 않는다 — 순위를 매기지 않는 소셜 경기다 */
+const OM_GAME_MIN=25;                             // 오픈매치 1게임 = 25분
+function omTeamGrade(team){                       // 두 명의 평균 등급
+  const gr=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?1:GRADE_INFO.length-i; };
+  const avg=team.reduce((a,p)=>a+gr(p.g),0)/(team.length||1);
+  let best=null;
+  GRADE_INFO.slice().reverse().forEach(t=>{ const d=Math.abs(gr(t.g)-avg);
+    if(best==null||d<best.d-1e-9) best={g:t.g,d}; });
+  return best?best.g:'C';
+}
+function omLabelOf(four){
+  const f=four.filter(p=>p.fem).length;
+  return f===0?'남복':f===four.length?'여복':(f*2===four.length?'혼복':'혼성');
+}
+/* 혼복이면 팀마다 남·여 한 명씩이 되도록 다시 나눈다 (전력차가 작은 조합 선택) */
+function omMixSplit(four){
+  const men=four.filter(p=>!p.fem), wom=four.filter(p=>p.fem);
+  if(men.length!==2||wom.length!==2) return null;
+  const opts=[{t1:[men[0],wom[0]],t2:[men[1],wom[1]]},{t1:[men[0],wom[1]],t2:[men[1],wom[0]]}];
+  opts.forEach(o=>o.gap=Math.abs(o.t1[0].str+o.t1[1].str-o.t2[0].str-o.t2[1].str));
+  return opts.sort((a,b)=>a.gap-b.gap)[0];
+}
 function omMakeBracket(id){
   const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
-  const ps=[...(m.players||[])];
-  if(ps.length<4){ toast('대진은 4명부터 짤 수 있어요'); return; }
-  const isF=p=>String(p.gender||'').startsWith('여');
-  const byG=(a,b)=>omGrade(b.rating)-omGrade(a.rating);
-  const male=ps.filter(p=>!isF(p)).sort(byG), female=ps.filter(isF).sort(byG);
-  const groups=[], rest=[];
-  while(male.length>=4) groups.push({label:'남복', g:male.splice(0,4)});          // 정렬 후 연속 4명 → 등급 인접
-  while(female.length>=4) groups.push({label:'여복', g:female.splice(0,4)});
-  while(male.length>=2&&female.length>=2)
-    groups.push({label:'혼복', g:[male.shift(),female.shift(),male.pop(),female.pop()]});
-  rest.push(...male,...female);
-  const bracket={courts:groups.map((c,i)=>{
-    const g=[...c.g].sort(byG);
-    const span=omGrade(g[0].rating)-omGrade(g[g.length-1].rating);
-    let rounds;
-    if(c.label==='혼복'){
-      const mn=g.filter(p=>!isF(p)), wm=g.filter(isF);         // 팀은 항상 남·여 한 명씩
-      rounds=[{a:[mn[0],wm[0]],b:[mn[1],wm[1]]},{a:[mn[0],wm[1]],b:[mn[1],wm[0]]},
-              {a:[mn[0],wm[0]],b:[mn[1],wm[1]]},{a:[mn[0],wm[1]],b:[mn[1],wm[0]]}];
-    }else{
-      rounds=[{a:[g[0],g[3]],b:[g[1],g[2]]},{a:[g[0],g[2]],b:[g[1],g[3]]},
-              {a:[g[0],g[1]],b:[g[2],g[3]]},{a:[g[0],g[3]],b:[g[1],g[2]]}];      // 1·4 vs 2·3 밸런스 우선
-    }
-    return {no:i+1,label:c.label,balance:span>1,
-      grades:g.map(p=>OM_GLBL[omGrade(p.rating)]).join(''),
-      rounds:rounds.map(r=>({a:r.a.map(p=>p.name),b:r.b.map(p=>p.name)}))};
-  }), rest:rest.map(p=>p.name), made_by:(state.serverUser||{}).name||'',
-    at:new Date().toISOString().slice(0,16).replace('T',' ')};
+  const players=omPlayers(m.players||[]);
+  const courts=Math.max(1, +m.courts || Math.max(1, Math.round((m.cap||12)/6)));
+  if(players.length < courts*4){
+    toast(`${courts}코트를 채우려면 ${courts*4}명이 필요해요 · 지금 ${players.length}명`); return; }
+  const rot=omBuildRotation(players, courts);
+  if(!rot){ toast('대진을 만들지 못했어요 · 인원을 확인해 주세요'); return; }
+
+  // 코트별 라운드 배열로 변환 — 화면(ombFlat)이 기대하는 모양
+  const P={}; players.forEach(p=>P[p.id]=p);          // 성별·전력값을 다시 붙이기 위한 색인
+  const full = t => (t||[]).map(x=>P[x.id]||x);
+  const byCourt=[];
+  for(let c=0;c<courts;c++) byCourt.push({no:c+1, rounds:[]});
+  (rot.rounds||[]).forEach(round=>{
+    (round.courts||[]).forEach((sp, ci)=>{
+      const t1f=full(sp.t1), t2f=full(sp.t2), four=[...t1f,...t2f];
+      const label=omLabelOf(four);
+      let t1=t1f, t2=t2f;
+      if(label==='혼복'){ const mx=omMixSplit(four); if(mx){ t1=mx.t1; t2=mx.t2; } }
+      const slot=byCourt[ci % courts];
+      slot.rounds.push({ a:t1.map(p=>p.name), b:t2.map(p=>p.name), label,
+        kind:round.name||'', ga:omTeamGrade(t1), gb:omTeamGrade(t2), bonus:!!round.isBonus });
+    });
+  });
+
+  const played={}; players.forEach(p=>played[p.name]=0);
+  byCourt.forEach(ct=>ct.rounds.forEach(r=>[...r.a,...r.b].forEach(n=>played[n]=(played[n]||0)+1)));
+  const rest=players.filter(p=>!played[p.name]).map(p=>p.name);
+  const per=Math.min(...Object.values(played).filter(v=>v>0)) || 0;
+
+  const bracket={ courts:byCourt, rest, gameMin:OM_GAME_MIN,
+    made_by:(state.serverUser||{}).name||'',
+    at:new Date().toISOString().slice(0,16).replace('T',' ') };
   api(`/open-matches/${id}/bracket`,{method:'POST',body:JSON.stringify({bracket})})
-    .then(()=>{ toast('대진을 저장했어요 · 전원 4게임씩이에요'); omReload();
+    .then(()=>{ toast(`대진을 저장했어요 · ${courts}코트 · 1인 ${per}게임`); omReload();
       setTimeout(()=>{ const mm=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(mm){ mm.bracket=bracket; openOmBracket(id); } },300); })
     .catch(()=>toast('저장하지 못했어요'));
 }
@@ -11706,8 +11736,10 @@ function ombFlat(){                                  // 코트·라운드 → �
   const out=[];
   (OMB.bracket.courts||[]).forEach(ct=>{
     const rounds=ct.rounds||(ct.a?[{a:ct.a,b:ct.b}]:[]);
-    rounds.forEach((r,ri)=>out.push({c:ct.no, r:ri+1, label:ct.label||'', a:r.a||[], b:r.b||[],
-      sa:(r.sa!=null?r.sa:null), sb:(r.sb!=null?r.sb:null), startedAt:r.startedAt||null, _ct:ct, _ri:ri}));
+    rounds.forEach((r,ri)=>out.push({c:ct.no, r:ri+1, label:r.label||ct.label||'', kind:r.kind||'',
+      a:r.a||[], b:r.b||[], ga:r.ga||null, gb:r.gb||null, bonus:!!r.bonus,
+      sa:(r.sa!=null?r.sa:null), sb:(r.sb!=null?r.sb:null),
+      startedAt:r.startedAt||null, endedAt:r.endedAt||null, _ct:ct, _ri:ri}));
   });
   return out.sort((x,y)=>x.r-y.r||x.c-y.c);
 }
@@ -11722,7 +11754,7 @@ async function ombSave(){
   try{ await api(`/open-matches/${OMB.id}/bracket`,{method:'POST',body:JSON.stringify({bracket:OMB.bracket})}); }catch(e){}
 }
 function ombStats(){
-  const gs=ombFlat(), done=g=>g.sa!=null&&g.sb!=null;
+  const gs=ombFlat(), done=g=>!!g.endedAt || (g.sa!=null&&g.sb!=null);
   const st={};
   gs.forEach(g=>{ if(!done(g))return;
     const win=g.sa>g.sb?'a':g.sa<g.sb?'b':'d';
@@ -11774,6 +11806,18 @@ function drawOmb(){
     <div class="sh-top"><h3 class="gt4">대진표 · 실시간</h3><div class="cl" role="button" tabindex="0" onclick="clearInterval(OMB_T);closeOv()">×</div></div>
     <div class="sd">${esc(m.loc||'')} · ${esc((m.bracket||{}).made_by||'')} 매니저 편성</div>
     <div class="om-note" style="margin:8px 0 10px">${durH===2?'2시간 룰 — 5:5는 동점으로 종료 (노 매치포인트)':'3시간 룰 — 5:5가 되면 6게임째로 승부'}</div>`;
+  // 진행 구조 — '6게임인데 왜 4번만 뛰지?' 를 먼저 알려준다
+  {
+    const rounds=Math.max(0,...gs.map(g=>g.r));
+    const cnt={}; gs.forEach(g=>[...(g.a||[]),...(g.b||[])].forEach(n=>cnt[n]=(cnt[n]||0)+1));
+    const vals=Object.values(cnt), per=vals.length?Math.min(...vals):0, perMax=vals.length?Math.max(...vals):0;
+    const need=rounds*OM_GAME_MIN;
+    if(rounds) h+=`<div style="background:#f2f7f4;border-radius:12px;padding:11px 13px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:#2f7d4f">${rounds}게임 진행 · 1인 ${per}${perMax>per?`~${perMax}`:''}경기 · 게임당 ${OM_GAME_MIN}분</div>
+      <div style="font-size:11px;font-weight:400;color:#4c7a5c;line-height:1.55;margin-top:4px">
+        한 게임에 ${usable}코트가 동시에 돌아 ${usable*4}명이 뛰고 ${Math.max(0,Object.keys(cnt).length-usable*4)}명이 쉬어요 ·
+        쉬는 사람이 매번 바뀌어 전원 같은 횟수로 뛰어요 · 순수 경기 ${need}분</div></div>`;
+  }
 
   // 대관 시간
   if(leftMin!=null){
@@ -11791,6 +11835,10 @@ function drawOmb(){
   if(rstat.length) h+=`<div style="display:flex;gap:6px;margin-bottom:8px">${rstat.map((s,i)=>{const r=i+1,on=r===live;
     return `<span style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:7px 4px;border-radius:10px;${
       s==='done'?'background:#f2f0ea;color:#8b95a1':on?'background:var(--coral);color:#fff':'background:#fff;border:1.5px solid #ececea;color:#b3aea4'}">${r}게임${s==='done'?' 완료':on?' 진행중':''}</span>`;}).join('')}</div>`;
+  // 이번 게임의 성격 — 등급 섞기 / 동급 맞대결
+  const liveKind=(gs.find(g=>g.r===live)||{}).kind||'';
+  if(liveKind) h+=`<div class="om-note" style="margin:0 0 10px">${live}게임 · <b>${esc(liveKind)}</b>${
+    /동급/.test(liveKind)?' — 비슷한 등급끼리 붙어요':' — 다른 등급끼리 팀을 섞어요'}</div>`;
   // 다음 추천
   if(rec) h+=`<div style="background:#e9f5ef;border-radius:12px;padding:11px 13px;margin-bottom:10px">
     <div style="font-size:12px;font-weight:500;color:#2f7d4f;line-height:1.55">다음 추천 — ${rec.r}게임 · ${rec.c}코트${rec.label?` ${esc(rec.label)}`:''}<br>
@@ -11811,9 +11859,11 @@ function drawOmb(){
           ${isMgr?`<span onclick="ombCourt(${c})" style="margin-left:8px;cursor:pointer">${isOff?'재개':'중지'}</span>`:''}</span></div>`;
     cg.forEach(g=>{
       let sc;
-      if(done(g)) sc=`<b onclick="${isMgr?`ombScore(${g.gi})`:''}" style="font-size:12px;color:${g.sa>g.sb?'#3f8f5f':g.sa<g.sb?'#cf5418':'var(--gray)'};${isMgr?'cursor:pointer':''}">${g.sa} : ${g.sb}</b>`;
+      if(done(g)) sc=`<span style="font-size:11px;font-weight:500;color:#8b95a1">완료</span>`;
       else if(g.startedAt){ const mn=Math.max(0,Math.floor((now-g.startedAt)/60000));
-        sc=`<span onclick="ombScore(${g.gi})" style="cursor:pointer;font-size:11px;font-weight:500;color:#cf5418">▶ ${mn}분 진행 · 스코어</span>`;
+        const over=mn>=OM_GAME_MIN;
+        sc=`<span style="font-size:11px;font-weight:500;color:${over?'#cf5418':'var(--gray)'}">▶ ${mn}분 / ${OM_GAME_MIN}분</span>
+          ${isMgr?`<span onclick="ombEnd(${g.gi})" style="margin-left:7px;background:${over?'var(--coral)':'#f2f0ea'};color:${over?'#fff':'#5a544b'};border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">완료</span>`:''}`;
       } else if(isOff) sc=`<span style="font-size:11px;font-weight:500;color:var(--lgray)">중지</span>`;
       else if(runG.length>=usable) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 코트 만석</span>`;
       else if([...(g.a||[]),...(g.b||[])].some(n=>ombStats().busy.has(n))) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 선수 경기 중</span>`;
@@ -11823,18 +11873,22 @@ function drawOmb(){
           <span style="font-size:11px;font-weight:500;color:${g.r===live?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
           ${g.label?`<span style="font-size:11px;font-weight:500;border-radius:6px;padding:2px 7px;background:#f0ecfd;color:#6a4cc4">${esc(g.label)}</span>`:''}
           <span style="flex:1"></span>${sc}</div>
-        <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
-          <b style="flex:1;font-size:11px;color:#cf5418;font-weight:500">${esc((g.a||[]).join(' · '))}</b>
-          <span style="font-size:11px;font-weight:500;color:var(--lgray)">vs</span>
-          <b style="flex:1;text-align:right;font-size:11px;color:#3b2a1a;font-weight:500">${esc((g.b||[]).join(' · '))}</b></div></div>`;
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
+          <div style="flex:1;min-width:0">
+            <b style="display:block;font-size:11px;color:#cf5418;font-weight:500">${esc((g.a||[]).join(' · '))}</b>
+            ${g.ga?`<span style="font-size:10px;font-weight:400;color:var(--lgray)">평균 ${esc(g.ga)}</span>`:''}</div>
+          <span style="font-size:11px;font-weight:500;color:var(--lgray);padding-top:1px">vs</span>
+          <div style="flex:1;min-width:0;text-align:right">
+            <b style="display:block;font-size:11px;color:#3b2a1a;font-weight:500">${esc((g.b||[]).join(' · '))}</b>
+            ${g.gb?`<span style="font-size:10px;font-weight:400;color:var(--lgray)">평균 ${esc(g.gb)}</span>`:''}</div></div></div>`;
     });
     h+=`</div>`;
   }
-  h+=`<div class="note" style="text-align:left;margin-top:10px">스코어는 그 경기를 뛴 <b>참가자</b>가 넣고, <b>매니저는 언제든 수정</b>할 수 있어요.</div>`;
+  h+=`<div class="note" style="text-align:left;margin-top:10px">1게임 <b>${OM_GAME_MIN}분</b> 기준이에요 · 오픈매치는 <b>승패를 기록하지 않아요</b>.</div>`;
   if(isMgr) h+=`<div style="display:flex;gap:7px;margin-top:10px">
     <span onclick="ombStage()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:9px;border-radius:11px;background:#1c1b18;color:#fff;cursor:pointer">거치 모드</span>
     <span onclick="ombShare()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:9px;border-radius:11px;background:#f2f0ea;color:#5a544b;cursor:pointer">공유</span>
-    <span onclick="ombNoShow()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:9px;border-radius:11px;background:#f2f0ea;color:#5a544b;cursor:pointer">노쇼·레벨</span></div>`;
+    <span onclick="ombNoShow()" style="flex:1;text-align:center;font-size:11px;font-weight:500;padding:9px;border-radius:11px;background:#f2f0ea;color:#5a544b;cursor:pointer">노쇼·교체</span></div>`;
   if(rank.length){
     h+=`<div style="display:flex;align-items:center;gap:8px;margin-top:16px">
       <span class="gt3">오늘의 순위</span>
@@ -11852,11 +11906,15 @@ function drawOmb(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 async function ombStart(gi){
-  const {gs,runG,usable,off,busy}=ombStats(); const g=gs[gi]; if(!g||g.startedAt||g.sa!=null) return;
+  const {gs,runG,usable,off,busy,done}=ombStats(); const g=gs[gi]; if(!g||g.startedAt||done(g)) return;
   if(off.includes(g.c)){ toast(`${g.c}코트는 사용 중지 상태예요`); return; }
   if(runG.length>=usable){ toast(`코트 ${usable}개가 모두 사용 중이에요`); return; }
   if([...(g.a||[]),...(g.b||[])].some(n=>busy.has(n))){ toast('이 경기 선수 중에 지금 뛰고 있는 사람이 있어요'); return; }
   ombSet(g,{startedAt:Date.now()}); drawOmb(); toast(`${g.r}게임 · ${g.c}코트 시작`); ombSave();
+}
+async function ombEnd(gi){
+  const {gs}=ombStats(); const g=gs[gi]; if(!g||!g.startedAt) return;
+  ombSet(g,{endedAt:Date.now()}); drawOmb(); toast(`${g.r}게임 · ${g.c}코트 완료`); ombSave();
 }
 async function ombCourt(c){
   OMB.bracket.offCourts=OMB.bracket.offCourts||[];
@@ -11965,12 +12023,12 @@ function ombNoShow(){
   const {gs,done}=ombStats();
   const names=[...new Set(gs.flatMap(g=>[...(g.a||[]),...(g.b||[])]))];
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
-    <div class="sh-top"><h3>노쇼 · 레벨 조정</h3><div class="cl" role="button" tabindex="0" onclick="drawOmb()">×</div></div>
+    <div class="sh-top"><h3>노쇼 · 인원 교체</h3><div class="cl" role="button" tabindex="0" onclick="drawOmb()">×</div></div>
     <div class="sd">끝난 경기는 그대로 두고 <b>남은 경기만</b> 바뀌어요</div>
     <div class="ch" style="font-size:14px;margin-top:14px">누구를 바꿀까요?</div>
     <div style="margin-top:6px">${names.map(n=>`<span onclick="ombPickOut('${esc(n)}')" style="display:inline-block;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;background:#f2f0ea;color:#5a544b;cursor:pointer">${esc(n)}</span>`).join('')}</div>
-    <div class="note" style="text-align:left;margin-top:12px">레벨이 신고와 다르면 <b>참가자 등급 평가</b>에서 고쳐주세요. 다음 대진부터 반영돼요.</div>
-    <button class="btn ghost" style="margin-top:12px" onclick="openOmAssess(${OMB.id})">참가자 등급 평가 열기</button></div>`;
+    <div class="note" style="text-align:left;margin-top:12px">등급은 프로필 <b>구력</b>으로 자동 계산돼요 · 매니저가 따로 매기지 않아요.</div>
+    <button class="btn ghost" style="margin-top:12px" onclick="openOmAssess(${OMB.id})">함께 친 사람 평가하기</button></div>`;
   document.getElementById('ov').classList.add('on');
 }
 function ombPickOut(name){
@@ -11999,35 +12057,55 @@ async function ombDoSwap(out, inn){
   drawOmb(); ombSave();
 }
 /* ═══ 매니저 참가자 평가 — 배치·경기력 산정 (소셜 매치의 레벨 주체는 매니저) ═══ */
+/* 참가자 평가 — 등급은 구력에서 자동으로 나오므로 매니저가 손대지 않는다.
+   대신 함께 친 느낌(매너)을 별점+태그로 남긴다. 별점은 페어플레이 점수에 쌓인다. */
+const OM_MANNER_TAGS=['매너 좋아요','시간 약속 정확','또 치고 싶어요','초보 배려','분위기 메이커'];
+let _OMA={};
 function openOmAssess(id){
-  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
   const me=(state.serverUser||{}).id;
-  const bands=LV_BANDS.map(b=>b[0]);
+  _OMA={id, val:{}};
+  (m.players||[]).filter(p=>p.id!==me).forEach(p=>{ _OMA.val[p.id]={stars:0, tag:null}; });
+  drawOmAssess(m);
+}
+function omaStar(uid, n){ const v=_OMA.val[uid]; if(!v) return;
+  v.stars = (v.stars===n) ? 0 : n; drawOmAssess(); }
+function omaTag(uid, t){ const v=_OMA.val[uid]; if(!v) return;
+  v.tag = (v.tag===t) ? null : t; drawOmAssess(); }
+function drawOmAssess(mm){
+  const m=mm||(OM_LIST||[]).find(x=>x.id===_OMA.id)||(HOME_OM_ALL||[]).find(x=>x.id===_OMA.id); if(!m) return;
+  const me=(state.serverUser||{}).id;
   const rows=(m.players||[]).filter(p=>p.id!==me).map(p=>{
-    const cur=levelOf(p.rating||1000).full;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid #f0efec">
-      <div style="min-width:0"><b style="font-size:14px">${esc(p.name)}</b>
-        <div style="font-size:11px;color:var(--gray);font-weight:500">현재 ${cur}</div></div>
-      <select id="asv_${p.id}" style="border:1.5px solid #ece8e0;border-radius:12px;padding:8px 10px;font-size:14px;font-weight:500;background:#fff">
-        ${bands.map(bn=>`<option ${bn===cur?'selected':''}>${bn}</option>`).join('')}</select></div>`;
+    const v=_OMA.val[p.id]||{stars:0,tag:null};
+    const g=p.assessed||p.grade||gradeFromCareer(careerYearsOf(p));
+    return `<div style="padding:12px 2px;border-top:1px solid #f0efec">
+      <div style="display:flex;align-items:center;gap:8px">
+        <b style="font-size:14px;font-weight:600">${esc(p.name)}</b>
+        ${g?`<span style="font-size:11px;font-weight:500;border-radius:6px;padding:2px 7px;${cb2GradeColor(g)}">${g}</span>`:''}
+        <span style="flex:1"></span>
+        <span style="font-size:15px;letter-spacing:2px;cursor:pointer">${[1,2,3,4,5].map(n=>
+          `<span onclick="omaStar(${p.id},${n})" style="color:${n<=v.stars?'#f0a93b':'#e3ded4'}">★</span>`).join('')}</span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">${OM_MANNER_TAGS.map(t=>
+        `<span onclick="omaTag(${p.id},'${t}')" class="nchip ${v.tag===t?'on':''}">${t}</span>`).join('')}</div></div>`;
   }).join('');
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>참가자 평가</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">매니저가 오늘 경기력을 보고 레벨을 정해요. 미배치 선수는 바로 배치, 배치된 선수는 보정돼요.</div>
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>함께 친 사람 평가</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">오늘 같이 뛴 분들의 <b>매너</b>를 남겨주세요 · 익명이고, 실력 등급과는 무관해요</div>
     ${rows||'<div class="empty" style="padding:22px"><div class="et">평가할 참가자가 없어요</div></div>'}
-    <button class="btn" style="margin-top:16px" onclick="omAssessSubmit(${id})">평가 저장</button>`;
+    <div class="note" style="text-align:left;margin-top:12px">별점은 상대의 <b>페어플레이 점수</b>에 쌓여요 · 등급은 프로필 구력으로 자동 계산돼요</div>
+    <button class="btn" style="margin-top:12px" onclick="omAssessSubmit(${m.id})">평가 남기기</button>`;
   document.getElementById('ov').classList.add('on');
 }
 async function omAssessSubmit(id){
-  const m=OM_LIST.find(x=>x.id===id); if(!m) return;
-  const me=(state.serverUser||{}).id;
-  const players=(m.players||[]).filter(p=>p.id!==me).map(p=>{
-    const el=document.getElementById('asv_'+p.id);
-    return el?{user_id:p.id, level:el.value}:null;
-  }).filter(Boolean);
-  try{
-    const r=await api(`/open-matches/${id}/assess`,{method:'POST',body:JSON.stringify({players})});
-    toast(`참가자 ${r.applied||0}명 평가를 반영했어요`); closeOv(); omReload();
-  }catch(e){ toast('저장하지 못했어요'); }
+  const entries=Object.entries(_OMA.val||{}).filter(([,v])=>v.stars>0);
+  if(!entries.length){ toast('별점을 매긴 사람이 없어요'); return; }
+  let ok=0;
+  for(const [uid,v] of entries){
+    try{ await api(`/open-matches/${id}/reviews`,{method:'POST',
+      body:JSON.stringify({to_user:+uid, stars:v.stars, tag:v.tag||''})}); ok++; }
+    catch(e){}
+  }
+  toast(ok?`${ok}명 평가를 남겼어요 · 고마워요!`:'저장하지 못했어요 · 경기가 끝난 뒤에 남길 수 있어요');
+  if(ok) closeOv();
 }
 /* 매치·매니저·구장 3축 평가 시트 (플랩식) */
 let _OMR={};
