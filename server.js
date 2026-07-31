@@ -454,10 +454,16 @@ app.post('/auth/apple', async (req, res) => {
     const jwk = (await appleKeys()).find(k => k.kid === hdr.kid);
     if (!jwk) return res.status(401).json({ error: 'apple_key_not_found' });
     const pub = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+    /* audience 는 로그인 경로에 따라 달라진다.
+         · 웹(브라우저)   → Services ID  (예: app.matsu.web)
+         · 앱(네이티브)   → 번들 ID      (예: app.matsu.ios)
+       그래서 APPLE_CLIENT_ID 에 쉼표로 여러 개를 넣을 수 있게 한다. */
+    const auds = String(process.env.APPLE_CLIENT_ID || '')
+      .split(',').map(x => x.trim()).filter(Boolean);
     const claims = jwt.verify(id_token, pub, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
-      ...(process.env.APPLE_CLIENT_ID ? { audience: process.env.APPLE_CLIENT_ID } : {})
+      ...(auds.length ? { audience: auds } : {})
     });
     const pid = 'apple-' + claims.sub;
     const nm = cleanName(name, '애플' + String(claims.sub).slice(-4));
