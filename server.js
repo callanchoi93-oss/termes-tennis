@@ -475,17 +475,26 @@ app.post('/auth/apple', async (req, res) => {
 // 흐름: (1) 서버가 주문 생성(orderId·금액·캐쉬 고정) → (2) 클라가 토스 위젯으로 결제
 //       → (3) 성공 콜백의 {paymentKey,orderId,amount}로 서버가 토스에 최종 승인 → (4) 캐쉬 지급
 // env: TOSS_SECRET_KEY (테스트키로 시작 가능)
-const CASH_BY_WON = { 8900: 25, 13900: 45, 24900: 90, 49900: 200, 129000: 600, 229000: 1100 };
+/* 캐시는 원 단위 1:1 — 1,000원 넣으면 1,000캐시.
+   참가비가 4,000원·25,000원처럼 원 단위라 패키지(코인) 방식은 계산이 안 맞는다.
+   iOS도 토스로 직접 결제한다(실물 서비스 결제). */
+const CASH_MIN = 1000, CASH_MAX = 300000, CASH_STEP = 1000;
+function cashAmountError(amount) {
+  if (!Number.isInteger(amount)) return 'not_integer';
+  if (amount < CASH_MIN || amount > CASH_MAX) return 'out_of_range';
+  if (amount % CASH_STEP !== 0) return 'bad_step';
+  return null;
+}
 app.post('/pay/order', auth, (req, res) => {
-  if (blockIosWebPurchase(req, res)) return;         // M캐쉬 충전 → 애플 IAP 필수
   if (requirePayments(req, res)) return;
-  const amount = +req.body.amount;
-  const cash = CASH_BY_WON[amount];
-  if (!cash) return res.status(400).json({ error: 'invalid_amount', allowed: Object.keys(CASH_BY_WON) });
+  const amount = Math.trunc(+req.body.amount);
+  const bad = cashAmountError(amount);
+  if (bad) return res.status(400).json({ error: 'invalid_amount', reason: bad,
+    min: CASH_MIN, max: CASH_MAX, step: CASH_STEP });
   const orderId = 'matsu_' + req.uid + '_' + Date.now();
   db.prepare('INSERT INTO orders (order_id,user_id,amount,cash,status,created_at) VALUES (?,?,?,?,?,?)')
-    .run(orderId, req.uid, amount, cash, 'ready', now());
-  res.json({ orderId, amount, cash, orderName: `M캐쉬 ${cash}` });
+    .run(orderId, req.uid, amount, amount, 'ready', now());          // cash = amount (1:1)
+  res.json({ orderId, amount, cash: amount, orderName: `맞수 캐시 ${amount.toLocaleString()}원` });
 });
 app.post('/pay/confirm', async (req, res) => {
   const { paymentKey, orderId, amount } = req.body || {};
@@ -509,7 +518,7 @@ app.post('/pay/confirm', async (req, res) => {
     db.prepare("UPDATE orders SET status='paid', payment_key=? WHERE order_id=?").run(paymentKey, orderId);
     db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
       .run(u.id, ord.cash, 'toss_purchase', bal, now());
-    sendPush(u.id, { title: '충전 완료', body: `M캐쉬 ${ord.cash} 충전됐어요` });
+    sendPush(u.id, { title: '충전 완료', body: `캐시 ${ord.cash.toLocaleString()}원이 충전됐어요` });
     res.json({ ok: true, cash: bal, credited: ord.cash });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -2486,24 +2495,67 @@ app.post('/me/result', auth, (req, res) => {
 
 // ── 토스 결제 웹뷰용 페이지 (RN WebView가 로드) ──
 app.get('/pay/checkout', (req, res) => {
+  /* 결제위젯(SDK v2) — 카드·간편결제·계좌이체·가상계좌를 한 화면에서 고른다.
+     주의: 여기 쓰는 clientKey 는 반드시 '결제위젯 연동 키'여야 한다.
+     '결제창(API 개별 연동)' 키를 넣으면 UNAUTHORIZED_KEY 가 난다. */
   const { clientKey, amount, orderId, orderName } = req.query;
   const base = `${req.protocol}://${req.get('host')}`;
-  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html><html><head><meta charset="utf-8">
+  const amt = Number(amount) || 0;
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<script src="https://js.tosspayments.com/v1/payment"></script></head>
-<body style="font-family:sans-serif;padding:24px;color:#333">
-<p>결제창을 여는 중…</p>
+<title>맞수 결제</title>
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<style>
+  body{margin:0;background:#f7f5f0;font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;color:#1c1b18}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 14px 120px}
+  .top{display:flex;align-items:baseline;gap:8px;padding:6px 4px 14px}
+  .top b{font-size:17px;letter-spacing:-.02em}
+  .top span{margin-left:auto;font-size:12px;color:#7d7870}
+  .amt{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px}
+  .amt .k{font-size:12px;color:#7d7870}
+  .amt .v{font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:3px}
+  .box{background:#fff;border-radius:16px;overflow:hidden;margin-bottom:12px}
+  .bar{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:#f7f5f0}
+  .btn{display:block;width:100%;max-width:492px;margin:0 auto;border:0;border-radius:14px;padding:16px;
+       background:#ec6a2e;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+  .btn[disabled]{opacity:.5}
+  .msg{padding:22px;text-align:center;font-size:14px;color:#7d7870;line-height:1.6}
+</style></head>
+<body><div class="wrap">
+  <div class="top"><b>맞수 캐시 충전</b><span>토스페이먼츠</span></div>
+  <div class="amt"><div class="k">결제 금액</div><div class="v">${amt.toLocaleString()}원</div></div>
+  <div class="box" id="method"></div>
+  <div class="box" id="agreement"></div>
+</div>
+<div class="bar"><button class="btn" id="pay" disabled>결제하기</button></div>
 <script>
-  try {
+(async function(){
+  var el=document.getElementById('pay');
+  try{
     var toss = TossPayments(${JSON.stringify(clientKey || '')});
-    toss.requestPayment('카드', {
-      amount: ${Number(amount) || 0},
-      orderId: ${JSON.stringify(orderId || '')},
-      orderName: ${JSON.stringify(orderName || 'M캐쉬')},
-      successUrl: ${JSON.stringify(base + '/pay/done')},
-      failUrl: ${JSON.stringify(base + '/pay/done?fail=1')}
-    }).catch(function(e){ document.body.innerHTML = '<p>결제 취소/실패: ' + (e && e.message) + '</p>'; });
-  } catch(e){ document.body.innerHTML = '<p>clientKey를 확인하세요.</p>'; }
+    var widgets = toss.widgets({ customerKey: TossPayments.ANONYMOUS });
+    await widgets.setAmount({ currency: 'KRW', value: ${amt} });
+    await Promise.all([
+      widgets.renderPaymentMethods({ selector:'#method', variantKey:'DEFAULT' }),
+      widgets.renderAgreement({ selector:'#agreement', variantKey:'AGREEMENT' })
+    ]);
+    el.disabled=false;
+    el.addEventListener('click', async function(){
+      el.disabled=true;
+      try{
+        await widgets.requestPayment({
+          orderId: ${JSON.stringify(orderId || '')},
+          orderName: ${JSON.stringify(orderName || '맞수 캐시')},
+          successUrl: ${JSON.stringify(base + '/pay/done')},
+          failUrl: ${JSON.stringify(base + '/pay/done?fail=1')}
+        });
+      }catch(e){ el.disabled=false; }
+    });
+  }catch(e){
+    document.querySelector('.wrap').innerHTML =
+      '<div class="msg">결제창을 열지 못했어요.<br>결제위젯 연동 키가 맞는지 확인해 주세요.<br><br>'+(e&&e.message||'')+'</div>';
+  }
+})();
 </script></body></html>`);
 });
 app.get('/pay/done', async (req, res) => {
