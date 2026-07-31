@@ -2003,7 +2003,9 @@ app.delete('/om-comments/:id', auth, (req, res) => {
 });
 
 function omView(m, uid) {
-  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender FROM open_match_joins j
+  /* sport_started(구력)를 함께 보낸다 — 앱은 이 값으로 등급을 계산한다.
+     빠뜨리면 참가자 전원이 '구력 미입력'으로 집계에서 빠지고 대진도 못 짠다. */
+  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender, u.sport_started FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
   const host = m.host_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) : null;
   const likes = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(m.id).n;
@@ -2021,7 +2023,8 @@ function omView(m, uid) {
     bracket: (()=>{ try { return m.bracket ? JSON.parse(m.bracket) : null; } catch (e) { return null; } })(),
     photos: (()=>{ try { const p = m.photos ? JSON.parse(m.photos) : null; return Array.isArray(p) && p.length ? p : (m.photo ? [m.photo] : []); } catch (e) { return m.photo ? [m.photo] : []; } })(),
     cur: joins.length,
-    players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating, gender: j.gender || '' })),
+    players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating, gender: j.gender || '',
+                               sport_started: j.sport_started || null })),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
     is_host: uid ? m.host_id === uid : false,
     confirmed: joins.length >= (m.min_cnt || 0),
@@ -4558,9 +4561,16 @@ app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
   const body = req.body || {};
+  /* 오픈매치 등급은 구력(sport_started)에서 나온다.
+     구력을 안 넣으면 분포 차트에서 '미입력'으로 빠지고 대진 편성도 이 사람을 못 읽는다. */
+  const startedFrom = years => {
+    const d = new Date(); d.setMonth(d.getMonth() - Math.round((+years || 0) * 12));
+    return d.toISOString().slice(0, 7);                              // "YYYY-MM"
+  };
   const bots = (body.bots || (body.names || []).map(n => ({ name: n })))
     .map(b => ({ name: String(b.name || '').trim(),
                  gender: b.gender === '여성' ? '여성' : '남성',
+                 years: Math.max(0, Math.min(60, +b.years || 0)),
                  rating: Math.max(600, Math.min(1700, +b.rating || 1000)) }))
     .filter(b => b.name).slice(0, 20);
   let added = 0;
@@ -4570,12 +4580,14 @@ app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
     const pid = 'bot:' + b.name;
     let u = db.prepare("SELECT id FROM users WHERE provider='bot' AND provider_id=?").get(pid);
     if (!u) {
-      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,rating,sport,anon_nick,created_at)
-        VALUES ('bot',?,?,?,?,?,?,?)`).run(pid, b.name, b.gender, b.rating, m.sport || 'tennis', b.name, now());
+      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,rating,sport,anon_nick,created_at,sport_started)
+        VALUES ('bot',?,?,?,?,?,?,?,?)`).run(pid, b.name, b.gender, b.rating, m.sport || 'tennis', b.name, now(),
+        JSON.stringify({ [m.sport || 'tennis']: startedFrom(b.years) }));
       u = { id: r.lastInsertRowid };
       db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);
     } else {
-      db.prepare('UPDATE users SET gender=?, rating=? WHERE id=?').run(b.gender, b.rating, u.id);
+      db.prepare('UPDATE users SET gender=?, rating=?, sport_started=? WHERE id=?')
+        .run(b.gender, b.rating, JSON.stringify({ [m.sport || 'tennis']: startedFrom(b.years) }), u.id);
     }
     const r2 = db.prepare(`INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at)
       VALUES (?,?,?)`).run(mid, u.id, now());
