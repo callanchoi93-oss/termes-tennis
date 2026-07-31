@@ -614,12 +614,16 @@ app.post('/clubs', auth, (req, res) => {
   if (owned >= 3) return res.status(400).json({ error: 'club_limit', message: '클럽은 1인당 3개까지 만들 수 있어요' });
   const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport=?').get(name, sport);
   if (dup) return res.status(409).json({ error: 'name_taken', message: '이미 있는 클럽 이름이에요' });
-  const r = db.prepare(`INSERT INTO clubs (name,sport,region,owner_id,created_at,avg_grade,home_court,meet_days)
-      VALUES (?,?,?,?,?,?,?,?)`)
+  const txt = (v, n) => String(v || '').trim().slice(0, n) || null;
+  const r = db.prepare(`INSERT INTO clubs
+      (name,sport,region,owner_id,created_at,avg_grade,home_court,meet_days,
+       intro,logo,logo_ic,logo_bg,meet_time,age_bands,gender_pref)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(name, sport, region || '', req.uid, now(),
-         cleanGrade(req.body.avg_grade),
-         String(req.body.home_court || '').trim().slice(0, 40) || null,
-         String(req.body.meet_days || '').trim().slice(0, 30) || null);
+         cleanGrade(req.body.avg_grade), txt(req.body.home_court, 40), txt(req.body.meet_days, 30),
+         txt(req.body.intro, 40), txt(req.body.logo, 300), txt(req.body.logo_ic, 8),
+         txt(req.body.logo_bg, 12), txt(req.body.meet_time, 30),
+         txt(req.body.age_bands, 40), txt(req.body.gender_pref, 10));
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
     .run(rid(r), req.uid, 'owner');
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
@@ -1402,11 +1406,15 @@ app.post('/open-matches', auth, (req, res) => {
     return res.status(400).json({ error: 'end_before_start' });
   const bad = findContact(`${loc} ${note || ''} ${dong || ''}`);   // 공개 모집글이므로 연락처 차단
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
-  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account, courts, court_cost) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?, ?, ?)`)
+  // 앱이 보내는 태그 중 허용 목록에 있는 것만 남긴다
+  const OM_AMEN = ['초급 환영','여성 환영','주차 가능','야간 조명','샤워 가능','실내 코트'];
+  const tags = String((req.body && req.body.tags) || '').split(',')
+    .map(t => t.trim()).filter(t => OM_AMEN.includes(t)).join(',') || null;
+  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account, courts, court_cost, tags) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?, ?, ?, ?)`)
     .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
          start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
-         String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost));
+         String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost), tags);
   if (req._autoManager) {                                 // 매니저 정산액 = 코트·캔볼 환급(당일) + 수고비(3일 내)
     db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
       .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 0), rid(r));
@@ -2102,10 +2110,13 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(c.id, req.uid);
   if (!m || !['owner','officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
   const has = k => Object.prototype.hasOwnProperty.call(req.body || {}, k);
-  db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, meet_days=? WHERE id=?`).run(
+  const pick = (k, n) => has(k) ? (String(req.body[k] || '').trim().slice(0, n) || null) : c[k];
+  db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, meet_days=?, intro=?,
+      logo=?, logo_ic=?, logo_bg=?, meet_time=?, age_bands=?, gender_pref=? WHERE id=?`).run(
     has('avg_grade') ? cleanGrade(req.body.avg_grade) : c.avg_grade,
-    has('home_court') ? (String(req.body.home_court || '').trim().slice(0, 40) || null) : c.home_court,
-    has('meet_days') ? (String(req.body.meet_days || '').trim().slice(0, 30) || null) : c.meet_days,
+    pick('home_court', 40), pick('meet_days', 30), pick('intro', 40),
+    pick('logo', 300), pick('logo_ic', 8), pick('logo_bg', 12),
+    pick('meet_time', 30), pick('age_bands', 40), pick('gender_pref', 10),
     c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
@@ -2909,6 +2920,14 @@ try { db.exec('ALTER TABLE clubs ADD COLUMN max_career_months INTEGER'); } catch
 try { db.exec('ALTER TABLE clubs ADD COLUMN avg_grade TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN home_court TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN meet_days TEXT'); } catch (e) {}
+/* 클럽 만들기 4단계에서 받는 값들 */
+try { db.exec('ALTER TABLE clubs ADD COLUMN intro TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN logo TEXT'); } catch (e) {}        // 업로드 이미지 URL
+try { db.exec('ALTER TABLE clubs ADD COLUMN logo_ic TEXT'); } catch (e) {}     // 심볼 (이미지 없을 때)
+try { db.exec('ALTER TABLE clubs ADD COLUMN logo_bg TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN meet_time TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN age_bands TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN gender_pref TEXT'); } catch (e) {}
 
 function isPremium(clubId) {
   const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(clubId);
@@ -3872,6 +3891,8 @@ const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린�
 try { db.exec('ALTER TABLE open_matches ADD COLUMN bracket TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photo TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photos TEXT'); } catch (e) {}
+/* 조건·편의 태그 — 정해진 값만 저장한다 (자유 입력이 아니라 나중에 필터로 쓸 값) */
+try { db.exec('ALTER TABLE open_matches ADD COLUMN tags TEXT'); } catch (e) {}
 app.post('/open-matches/:id/photos', auth, limitWrite, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
