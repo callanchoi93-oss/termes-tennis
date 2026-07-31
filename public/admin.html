@@ -140,7 +140,7 @@ async function render(){
       </div>
       <div class="card" id="botCard">
         <b style="font-size:14px">② 봇 참가자 추가</b>
-        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람을 넣어요. 성별·레벨은 참가자 분포 차트와 대진 편성에 반영돼요.</div>
+        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람을 넣어요. 성별·구력은 참가자 분포 차트와 대진 편성에 반영돼요.</div>
         <div id="botRows"></div>
         <button class="btn ghost xs" style="width:100%;margin-top:4px" onclick="addRow()">+ 인원 추가</button>
         <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBots()">추가하기</button>
@@ -225,9 +225,11 @@ function drawParts(){
     (ps.length? ps.map(p=>`<span class="pill ${p.provider==='bot'?'warn':'ok'}">${esc(p.name)}${p.provider==='bot'?' 🤖':''}
       <a style="cursor:pointer;font-weight:900;margin-left:3px" onclick="rmBot(${p.id})">×</a></span>`).join('') : '<div class="meta">아직 참가자가 없어요</div>');
 }
-const LV=[['러브 (배치 전)',1000],['퓨처스1 · 1.0~1.5',850],['퓨처스2 · 1.5~2.0',900],['퓨처스3 · 2.0',975],
-  ['챌린저1 · 2.5',1025],['챌린저2 · 2.5~3.0',1075],['챌린저3 · 3.0',1125],['챌린저4 · 3.0~3.5',1175],['챌린저5 · 3.5',1225],
-  ['투어1 · 3.5~4.0',1285],['투어2 · 4.0',1355],['투어3 · 4.5',1425],['그랜드슬램 · 5.0+',1500]];
+/* 오픈매치는 리그 티어가 아니라 구력 등급(C~SS)으로 돌아간다.
+   구력을 넣어야 참가자 분포 차트와 대진 편성이 이 사람을 읽는다.
+   [표시, 구력(년), 참고 레이팅] */
+const LV=[['B · 중급 (2~4년)',3,1050],['C · 입문 (1년 이하)',0.5,950],['A · 상급 (5~9년)',6,1180],
+  ['S · 코치급 (10~19년)',12,1300],['SS · 선출 (20년+)',22,1420]];
 function addRow(){
   const box=$('botRows'); if(!box) return;
   const div=document.createElement('div');
@@ -236,16 +238,19 @@ function addRow(){
     <select class="bg" style="flex:.8;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:13px;background:#fff">
       <option>남성</option><option>여성</option></select>
     <select class="br" style="flex:1.4;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:12px;background:#fff">
-      ${LV.map(l=>`<option value="${l[1]}">${l[0]}</option>`).join('')}</select>
+      ${LV.map(l=>`<option value="${l[1]}" data-r="${l[2]}">${l[0]}</option>`).join('')}</select>
     <a style="align-self:center;font-weight:900;color:#b3aea4;cursor:pointer;padding:0 3px" onclick="this.parentNode.remove()">×</a>`;
   box.appendChild(div);
 }
 async function addBots(){
   if(!SEL){ toast('매치를 먼저 선택해 주세요'); return; }
-  const bots=[...document.querySelectorAll('#botRows > div')].map(d=>({
-    name:d.querySelector('.bn').value.trim(),
-    gender:d.querySelector('.bg').value,
-    rating:+d.querySelector('.br').value })).filter(b=>b.name).slice(0,20);
+  const bots=[...document.querySelectorAll('#botRows > div')].map(d=>{
+    const sel=d.querySelector('.br'), op=sel.options[sel.selectedIndex];
+    return { name:d.querySelector('.bn').value.trim(),
+             gender:d.querySelector('.bg').value,
+             years:+sel.value,                       // 구력 → 서버가 sport_started 로 저장
+             rating:+(op&&op.dataset.r||1000) };
+  }).filter(b=>b.name).slice(0,20);
   if(!bots.length){ toast('인원 추가를 눌러 이름을 입력해 주세요'); return; }
   try{ const r=await api(`/admin/open-matches/${SEL}/bots`,{method:'POST',body:JSON.stringify({bots})});
     toast(`${r.added||0}명을 추가했어요`); $('botRows').innerHTML=''; addRow(); render(); }
