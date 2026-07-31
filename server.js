@@ -602,6 +602,9 @@ app.get('/clubs', (req, res) => {
   if (q) { sql += ' AND c.name LIKE ?'; p.push('%' + q + '%'); }
   res.json(db.prepare(sql + ' ORDER BY members DESC, last_active DESC LIMIT 100').all(...p));
 });
+/* 평균 등급 — C1~SS3 15단계만 허용 (그 외 값은 무시) */
+const GRADE_STEPS = ['C','B','A','S','SS'].flatMap(g => [1,2,3].map(n => g + n));
+const cleanGrade = v => GRADE_STEPS.includes(String(v || '')) ? String(v) : null;
 app.post('/clubs', auth, (req, res) => {
   let { name, sport, region } = req.body;
   name = cleanName(name, '').slice(0, 24);
@@ -611,8 +614,12 @@ app.post('/clubs', auth, (req, res) => {
   if (owned >= 3) return res.status(400).json({ error: 'club_limit', message: '클럽은 1인당 3개까지 만들 수 있어요' });
   const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport=?').get(name, sport);
   if (dup) return res.status(409).json({ error: 'name_taken', message: '이미 있는 클럽 이름이에요' });
-  const r = db.prepare(`INSERT INTO clubs (name,sport,region,owner_id,created_at) VALUES (?,?,?,?,?)`)
-    .run(name, sport, region || '', req.uid, now());
+  const r = db.prepare(`INSERT INTO clubs (name,sport,region,owner_id,created_at,avg_grade,home_court,meet_days)
+      VALUES (?,?,?,?,?,?,?,?)`)
+    .run(name, sport, region || '', req.uid, now(),
+         cleanGrade(req.body.avg_grade),
+         String(req.body.home_court || '').trim().slice(0, 40) || null,
+         String(req.body.meet_days || '').trim().slice(0, 30) || null);
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
     .run(rid(r), req.uid, 'owner');
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
@@ -1338,24 +1345,43 @@ app.delete('/open-matches/:id', auth, (req, res) => {
 try { db.exec('ALTER TABLE open_matches ADD COLUMN courts INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN court_cost INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at TEXT'); } catch (e) {}
-/* 소셜 매치 요금 공식 — 구장 총액 1/n + 운영비(매니저·공·수수료) 9,000원, 500원 올림 */
-const OM_SVC = 11000;                                     // 인당 서비스요금 (쉐어 기준가의 원천)
-function omFee(courtCost, cap) {
-  if (!cap) return 0;
-  // 참가비 = 코트비 1/N + 서비스요금 11,000원
-  // 쉐어 기준가 S = 11,000 × 정원 → 플랫폼 30% 이상 · 일반 매니저 15% · 파트너 45%(≈9만) · 볼값·PG 실비
-  return Math.ceil((+courtCost || 0) / cap / 500) * 500 + OM_SVC;
+/* 소셜 매치 요금 공식 — 앱 영수증(index.html의 omQuote)과 동일한 계산.
+   두 곳이 어긋나면 매니저가 본 견적과 참가자가 내는 금액이 달라지므로 반드시 함께 고칠 것. */
+const OM_MARGIN = 0.375, OM_CAP_PP = 10000;               // 목표 마진 · 1인당 운영비 상한
+/* 일반 매니저 수고비 — 시간당 정액(최저임금 1.2~1.5배).
+   코트 단가에 연동하지 않는다: 연동하면 그만큼 참가비에 얹혀 참가자가 부담하게 된다.
+   코트 단가는 파트너 매니저 보너스(맞수 몫의 20%)에만 반영된다. */
+function omManagerFee(courts, hours) {
+  return (courts <= 2 ? 12000 : 15000) * hours;
+}
+/* court·ball 은 '총액'이다 (코트비 = 시간당 × 코트수 × 시간, 캔볼 = 캔값 × 코트수).
+   캔볼은 마진 계산에서 빼고 실비로 넘긴다 — 캔볼값에까지 운영비가 붙으면 참가자가 더 낸다. */
+function omQuote(court, ball, courts, hours) {
+  const cap = courts * (hours === 2 ? 4 : 6);
+  const mgr = omManagerFee(courts, hours);
+  const base = (+court || 0) + mgr;
+  const raw = base / (1 - OM_MARGIN) - base;
+  const matsu = Math.min(raw, OM_CAP_PP * cap);
+  const cost = base + (+ball || 0);
+  const per = Math.round((cost + matsu) / cap / 500) * 500;
+  return { cap, per, mgr, payout: (+court || 0) + (+ball || 0) + mgr };
 }
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
   let _courts = Math.min(3, Math.max(0, +_b.courts || 0));
   if (_courts) {                                          // 코트 기반 소셜 매치 규칙
-    _courts = 3;                                          // 3코트 전용 (2h 12명 · 3h 18명)
+    _courts = (_courts <= 2) ? 2 : 3;                     // 2코트(2h 8명·3h 12명) · 3코트(2h 12명·3h 18명)
     const _hours = (+_b.hours === 2) ? 2 : 3;             // 2·3시간만
+    /* 구버전 앱은 코트비에 캔볼값을 합산해 court_cost 하나로 보낸다.
+       ball_cost가 오면 분리해 계산하고(캔볼은 마진 제외), 없으면 전부 코트비로 본다. */
+    const _court = Math.max(0, +_b.court_cost || 0);
+    const _ball = Math.max(0, +_b.ball_cost || 0);
+    const _q = omQuote(_court, _ball, _courts, _hours);
     _b.courts = _courts;
-    _b.cap = _courts * (_hours === 2 ? 4 : 6);            // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
+    _b.cap = _q.cap;                                      // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
     _b.min_cnt = _b.cap;                                  // 전원 모여야 확정
-    _b.price = omFee(+_b.court_cost || 0, _b.cap);        // 가격은 서버가 산정 (신뢰 지점)
+    _b.price = _q.per;                                    // 가격은 서버가 산정 (신뢰 지점) — 앱 영수증과 같은 식
+    _b.court_cost = _court + _ball;                       // 정산 환급 대상은 코트비+캔볼 실비 합
     if (_b.start_at) {                                    // 로컬 벽시계 그대로 +N시간 (서버 TZ 영향 제거)
       const mm = String(_b.start_at).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
       if (mm) {
@@ -1366,10 +1392,9 @@ app.post('/open-matches', auth, (req, res) => {
     _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
     req.body = _b;
     req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
-    // 일반 매니저 수고비 = 시간당 10,320원(최저시급 연동, 쉐어 기준가의 약 15.6%) · 파트너 40%는 다음 업데이트
-    // 캔볼값은 클라이언트가 코트비에 합산해 보내므로 court_cost 환급에 포함된다
+    // 매니저 정산 = 코트·캔볼 실비 환급(당일) + 수고비(2코트 시간당 12,000 · 3코트 15,000, 3일 내)
     // 매니저 = 이 매치의 개설자 1명뿐 · 다른 매치에 참가자로 들어가면 그 매치 정산과는 무관하다
-    req._mgrPay = 10320 * _hours;
+    req._mgrPay = _q.mgr;
   }
   const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong, account } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
@@ -1382,9 +1407,9 @@ app.post('/open-matches', auth, (req, res) => {
          intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
          start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
          String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost));
-  if (req._autoManager) {                                 // 매니저 정산액 = 구장·볼값 환급(당일) + 수고비(시간당 10,320원)
+  if (req._autoManager) {                                 // 매니저 정산액 = 코트·캔볼 환급(당일) + 수고비(3일 내)
     db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
-      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 20000), rid(r));
+      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 0), rid(r));
   }
   const mid = rid(r);
   // 매니저는 운영만 하고 경기에 참여하지 않는다 — 자동 참가 없음
@@ -2068,6 +2093,20 @@ app.patch('/clubs/:id/fees', auth, (req, res) => {
   db.prepare(`UPDATE clubs SET entry_fee=COALESCE(?,entry_fee), season_fee=COALESCE(?,season_fee),
     guest_fee=COALESCE(?,guest_fee), guest_cap=COALESCE(?,guest_cap) WHERE id=?`)
     .run(entry_fee, season_fee, guest_fee, guest_cap, c.id);
+  res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
+});
+/* 클럽 소개 정보 (클럽장/임원만) — 평균 등급 · 주 사용 코트 · 정기모임 요일 */
+app.patch('/clubs/:id/profile', auth, (req, res) => {
+  const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(+req.params.id);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(c.id, req.uid);
+  if (!m || !['owner','officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
+  const has = k => Object.prototype.hasOwnProperty.call(req.body || {}, k);
+  db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, meet_days=? WHERE id=?`).run(
+    has('avg_grade') ? cleanGrade(req.body.avg_grade) : c.avg_grade,
+    has('home_court') ? (String(req.body.home_court || '').trim().slice(0, 40) || null) : c.home_court,
+    has('meet_days') ? (String(req.body.meet_days || '').trim().slice(0, 30) || null) : c.meet_days,
+    c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
 // 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
@@ -2866,6 +2905,10 @@ try { db.exec('ALTER TABLE users ADD COLUMN rating_doubles INTEGER DEFAULT 1000'
 try { db.exec("UPDATE users SET rating_doubles=1000 WHERE rating_doubles IS NULL"); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN min_career_months INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN max_career_months INTEGER'); } catch (e) {}
+/* 클럽 찾기 카드에 쓰이는 소개 정보 — 평균 등급(C1~SS3 15단계) · 주 사용 코트 · 정기모임 요일 */
+try { db.exec('ALTER TABLE clubs ADD COLUMN avg_grade TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN home_court TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE clubs ADD COLUMN meet_days TEXT'); } catch (e) {}
 
 function isPremium(clubId) {
   const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(clubId);
