@@ -9719,7 +9719,7 @@ function cbBannerHTML(){
   const b=(CB_BANNER&&CB_BANNER[0])||null;
   const link=(b&&b.link)||'/bracketguide.html';
   if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
-      <img src="${esc(b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
+      <img src="${esc(/^https?:|^data:/.test(b.image)?b.image:API_BASE+b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
     <div style="font-size:11px;font-weight:500;color:var(--lgray);text-align:center;margin-top:7px">탭하면 대진 방식 설명이 열려요</div>`;
   return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
       <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:14px;flex:none">📖</span>
@@ -16678,14 +16678,16 @@ function _renderHomeCore(){
     HOME_BANNERS=[]; api('/banners').then(r=>{ HOME_BANNERS=r||[]; if(state.view==='home') renderHome(); }).catch(()=>{});
   }
   let h='';
+  // 상대 경로(/uploads/..)는 앱(capacitor://)에서 깨진다 — 서버 절대주소로 바꾼다
+  const bnSrc = u => /^https?:|^data:/.test(u||'') ? u : API_BASE + u;
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
     if(bns.length===1){ const bn=bns[0];
       h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
-      <img src="${esc(bn.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
+      <img src="${esc(bnSrc(bn.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
     } else if(bns.length>1){
       h+=`<div style="position:relative;margin:4px 0 12px">
         <div id="bnTrack" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:20px;-webkit-overflow-scrolling:touch;scrollbar-width:none" onscroll="bnSync()">
-          ${bns.map(b=>`<img src="${esc(b.image)}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
+          ${bns.map(b=>`<img src="${esc(bnSrc(b.image))}" alt="배너" style="width:100%;flex:none;scroll-snap-align:center;display:block;aspect-ratio:5/2;object-fit:cover;cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">`).join('')}
         </div>
         <div onclick="bnGo(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">‹</div>
         <div onclick="bnGo(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.85);display:grid;place-items:center;font-weight:700;color:#5a544b;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)">›</div>
