@@ -2341,6 +2341,33 @@ function loadAppleSdk(){
 }
 async function appleLogin(){
   if(!SERVER_OK){ toast('애플 로그인은 서버 연결이 필요해요'); return; }
+  /* ── iOS 앱: 웹 팝업 대신 네이티브 Sign in with Apple ──
+     capacitor://localhost 에서는 웹 흐름이 invalid_client 로 죽는다.
+     @capacitor-community/apple-sign-in 플러그인 + Xcode capability 필요. */
+  if(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform()==='ios'){
+    const P = Capacitor.Plugins && Capacitor.Plugins.SignInWithApple;
+    if(!P){ toast('앱을 최신 버전으로 업데이트해 주세요'); return; }
+    try{
+      const r = await P.authorize({ clientId:'app.matsu.ios', redirectURI:'https://matsu.up.railway.app', scopes:'email name' });
+      const idt = r && r.response && r.response.identityToken;
+      if(!idt){ toast('애플 로그인이 취소됐어요'); return; }
+      const nm = `${(r.response.familyName||'')}${(r.response.givenName||'')}`.trim();
+      saveSession(await api('/auth/apple',{method:'POST',body:JSON.stringify({id_token:idt, name:nm})}));
+      toast('Apple로 로그인했어요');
+      document.getElementById('auth').classList.remove('on');
+      afterLoginNative();
+      await loadClubIds();
+      if(clubId()){ await loadClubServer(); await loadRoster(); }
+      if(state.loggedIn){ go(state.view||'home'); }
+      else resumeOrOnboard();
+    }catch(e){
+      const m=String((e&&e.message)||e||'');
+      if(/cancel|1001/i.test(m)) return;                     // 사용자가 시트를 닫음
+      console.error('[MATSU] 네이티브 애플 로그인 실패:', m);
+      toast('애플 로그인에 실패했어요');
+    }
+    return;
+  }
   if(!CFG.apple_client_id){ toast('애플 로그인을 준비하고 있어요'); return; }
   try{
     await loadAppleSdk();
@@ -2697,6 +2724,17 @@ function prefetchMe(){
 function kakaoLogin(){
   if(!SERVER_OK) throw new Error('server_down');
   if(!CFG.kakao_js_key) throw new Error('no_kakao_key');
+  /* ── iOS/안드 앱: 웹뷰(capacitor://)로는 code 가 돌아올 수 없다.
+     외부 브라우저에서 동의 → 서버 /oauth/app-return → matsu:// 딥링크로 복귀. */
+  if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+    const redirect = CFG.kakao_native_redirect_uri;
+    if(!redirect){ toast('카카오 로그인 설정을 준비하고 있어요'); return; }
+    const q = new URLSearchParams({ response_type:'code', client_id:CFG.kakao_js_key, redirect_uri:redirect });
+    const url = 'https://kauth.kakao.com/oauth/authorize?' + q.toString();
+    const B = Capacitor.Plugins && Capacitor.Plugins.Browser;
+    if(B) B.open({url}); else location.href = url;
+    return;
+  }
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
   if(!Kakao.isInitialized()) Kakao.init(CFG.kakao_js_key);
   try{ sessionStorage.setItem('oauth_provider','kakao'); }catch(e){}
@@ -17231,6 +17269,42 @@ setInterval(saveMatsu,2500);
    App Store 심사 4.2 "최소 기능": 웹뷰만 감싼 앱은 반려된다.
    푸시 알림을 네이티브로 붙여 네이티브 기능을 갖춘다.               */
 const IS_NATIVE = (()=>{ try{ return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }catch(e){ return false; } })();
+
+/* ── 딥링크 수신 (matsu://oauth?provider=..&code=..) ──
+   외부 브라우저 인가 → 서버 /oauth/app-return → 여기로 돌아온다. */
+if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App){
+  Capacitor.Plugins.App.addListener('appUrlOpen', async ({url})=>{
+    let u; try{ u = new URL(url); }catch(e){ return; }
+    if(u.protocol !== 'matsu:') return;
+    try{ Capacitor.Plugins.Browser && Capacitor.Plugins.Browser.close(); }catch(e){}
+    const code = u.searchParams.get('code');
+    const provider = u.searchParams.get('provider') || 'kakao';
+    if(!code){ toast('로그인이 취소됐어요'); return; }
+    try{
+      let d;
+      if(provider === 'kakao'){
+        d = await api('/auth/kakao/code', {method:'POST',
+          body: JSON.stringify({code, redirect_uri: CFG.kakao_native_redirect_uri})});
+      }else if(provider === 'naver'){
+        d = await api('/auth/naver', {method:'POST',
+          body: JSON.stringify({code, state: u.searchParams.get('state')||''})});
+      }else return;
+      saveSession(d);
+      toast(provider==='kakao' ? '카카오로 로그인했어요' : '네이버로 로그인했어요');
+      document.getElementById('auth').classList.remove('on');
+      afterLoginNative();
+      await loadClubIds();
+      if(clubId()){ await loadClubServer(); await loadRoster(); }
+      try{ const t=sessionStorage.getItem('pending_invite');
+        if(t){ sessionStorage.removeItem('pending_invite'); setTimeout(()=>handleInviteToken(t), 800); } }catch(e){}
+      resumeOrOnboard();
+    }catch(e){
+      const m = String((e&&e.message)||'');
+      console.error('[MATSU] 딥링크 로그인 실패:', m);
+      toast(m.includes('KOE006') ? '카카오 콘솔에 Redirect URI 가 등록되지 않았어요' : '로그인에 실패했어요');
+    }
+  });
+}
 
 /* 웹 푸시 구독. VAPID 공개키가 서버에서 오면 켠다.
    구독 객체(JSON)를 그대로 /push/register 에 보낸다. 서버는 이걸로 발송한다. */
