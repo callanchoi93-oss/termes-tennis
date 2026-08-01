@@ -246,6 +246,7 @@ app.get('/config', (_, res) => {
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
+    kakao_native_redirect_uri: process.env.KAKAO_NATIVE_REDIRECT_URI || '',   // iOS 앱: 딥링크 복귀용
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
@@ -300,8 +301,12 @@ app.post('/auth/kakao', limitLogin, async (req, res) => {
 });
 // (대안) 인가코드 방식: 서버가 code→token 교환. env: KAKAO_REST_KEY, KAKAO_REDIRECT_URI (, KAKAO_CLIENT_SECRET)
 app.post('/auth/kakao/code', limitLogin, async (req, res) => {
-  const { code } = req.body || {};
-  const key = process.env.KAKAO_REST_KEY, redirect = process.env.KAKAO_REDIRECT_URI;
+  const { code, redirect_uri } = req.body || {};
+  const key = process.env.KAKAO_REST_KEY;
+  // 교환 시 redirect_uri 는 인가 때 쓴 값과 정확히 같아야 한다.
+  // 클라이언트가 보낸 값은 화이트리스트(웹/네이티브)에 있을 때만 인정한다.
+  const allowed = [process.env.KAKAO_REDIRECT_URI, process.env.KAKAO_NATIVE_REDIRECT_URI].filter(Boolean);
+  const redirect = (redirect_uri && allowed.includes(redirect_uri)) ? redirect_uri : process.env.KAKAO_REDIRECT_URI;
   if (!code || !key || !redirect) return res.status(400).json({ error: 'missing_code_or_env' });
   try {
     const body = new URLSearchParams({ grant_type: 'authorization_code', client_id: key, redirect_uri: redirect, code });
@@ -312,6 +317,28 @@ app.post('/auth/kakao/code', limitLogin, async (req, res) => {
     if (!tk.access_token) return res.status(401).json({ error: 'token_exchange_failed', detail: tk });
     await kakaoIssue(tk.access_token, res);
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+/* ── iOS 앱 복귀용 딥링크 ──
+   외부 브라우저에서 카카오/네이버 인가가 끝나면 ?code=... 를 달고 여기로 온다.
+   커스텀 스킴(matsu://)으로 302 시켜 iOS 가 앱을 다시 열게 한다.
+   code 는 일회용·수 분 내 만료라 URL 노출 위험이 작다. */
+app.get('/oauth/app-return', (req, res) => {
+  const provider = /^[a-z]+$/.test(String(req.query.provider || '')) ? req.query.provider : 'kakao';
+  const q = new URLSearchParams({
+    provider,
+    code: String(req.query.code || ''),
+    state: String(req.query.state || ''),
+  });
+  const target = 'matsu://oauth?' + q.toString();
+  // 일부 브라우저는 302 로 커스텀 스킴 이동을 막는다 — HTML 폴백을 함께 준다
+  res.set('Cache-Control', 'no-store');
+  res.send(`<!doctype html><meta charset="utf-8">
+<title>MATSU</title>
+<body style="font-family:-apple-system,sans-serif;display:flex;min-height:90vh;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#f7f5f0">
+<div style="font-size:15px;color:#555">앱으로 돌아가는 중이에요…</div>
+<a href="${target}" style="padding:12px 22px;background:#111;color:#fff;border-radius:12px;text-decoration:none;font-weight:600">앱 열기</a>
+<script>location.href=${JSON.stringify(target)};<\/script>`);
 });
 
 // ── 종목별 프로필 (포지션·주발·영법 …) ──
@@ -454,16 +481,11 @@ app.post('/auth/apple', async (req, res) => {
     const jwk = (await appleKeys()).find(k => k.kid === hdr.kid);
     if (!jwk) return res.status(401).json({ error: 'apple_key_not_found' });
     const pub = crypto.createPublicKey({ key: jwk, format: 'jwk' });
-    /* audience 는 로그인 경로에 따라 달라진다.
-         · 웹(브라우저)   → Services ID  (예: app.matsu.web)
-         · 앱(네이티브)   → 번들 ID      (예: app.matsu.ios)
-       그래서 APPLE_CLIENT_ID 에 쉼표로 여러 개를 넣을 수 있게 한다. */
-    const auds = String(process.env.APPLE_CLIENT_ID || '')
-      .split(',').map(x => x.trim()).filter(Boolean);
     const claims = jwt.verify(id_token, pub, {
       algorithms: ['RS256'],
       issuer: 'https://appleid.apple.com',
-      ...(auds.length ? { audience: auds } : {})
+      // 웹(Services ID)과 iOS 앱(번들 ID)의 aud 가 달라 콤마로 여러 개 허용한다
+      ...(process.env.APPLE_CLIENT_ID ? { audience: process.env.APPLE_CLIENT_ID.split(',').map(s => s.trim()).filter(Boolean) } : {})
     });
     const pid = 'apple-' + claims.sub;
     const nm = cleanName(name, '애플' + String(claims.sub).slice(-4));
