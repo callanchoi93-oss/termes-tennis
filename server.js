@@ -250,7 +250,8 @@ app.get('/config', (_, res) => {
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
-    apple_client_id: process.env.APPLE_CLIENT_ID || '',
+    // APPLE_CLIENT_ID 는 "웹ServicesID,iOS번들ID" 형태 — 웹에는 첫 값만 내려준다
+    apple_client_id: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim(),
     support_email: process.env.SUPPORT_EMAIL || '',
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
