@@ -5003,7 +5003,7 @@ function walletReason(r){
           match_join:'매치 참가비'}[r] || '캐시 변동';
 }
 function drawWallet(){
-  const v=CASHV||{}; const bal=v.balance||0, po=v.payout||0, rf=v.refund||0;
+  const v=CASHV||{}; const bal=v.balance||0, po=v.payout||0, rf=v.refund||0, ex=v.expense||0;
   const d=v.dueAt?new Date(v.dueAt):null;
   let h=`<div class="sh-top"><h3>내 캐시</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div style="background:linear-gradient(140deg,#fbe3cf,#f8efe6);border-radius:18px;padding:16px">
@@ -5014,7 +5014,10 @@ function drawWallet(){
           <div style="font-size:10.5px;color:#8a7a68">환불받은 돈</div>
           <div style="font-size:14px;font-weight:600;margin-top:2px;color:var(--coral-d)">${rf.toLocaleString()}원</div></div>
         <div style="flex:1;background:#ffffffcc;border-radius:12px;padding:9px 10px">
-          <div style="font-size:10.5px;color:#8a7a68">정산금</div>
+          <div style="font-size:10.5px;color:#8a7a68">코트비 환급</div>
+          <div style="font-size:14px;font-weight:600;margin-top:2px;color:#2c7a53">${ex.toLocaleString()}원</div></div>
+        <div style="flex:1;background:#ffffffcc;border-radius:12px;padding:9px 10px">
+          <div style="font-size:10.5px;color:#8a7a68">수고비</div>
           <div style="font-size:14px;font-weight:600;margin-top:2px;color:#2c7a53">${po.toLocaleString()}원</div></div>
       </div></div>`;
   const hs=v.history||[];
@@ -5088,7 +5091,7 @@ function drawWithdraw(){
     </div>
     <button class="btn" style="margin-top:14px;${ok?'':'opacity:.45'}" onclick="wdSubmit()">출금 신청하기</button>
     <div class="note" style="text-align:left;margin-top:11px"><b>왜 두 갈래로 나가나요?</b><br>
-      환불받은 돈은 원래 결제한 카드로 되돌리는 게 가장 빨라요 · 정산금은 소득이라 세금(3.3%)을 떼고 계좌로 보내드려요</div>`;
+      환불받은 돈은 원래 결제한 카드로 되돌려요 · 코트비 환급은 실비라 세금이 없고, 수고비에만 3.3%를 떼고 계좌로 보내드려요</div>`;
 }
 async function wdSubmit(){
   const p=WDR.plan||{};
@@ -5112,7 +5115,8 @@ async function wdSubmit(){
            ['남은 캐시', `${(r.cash||0).toLocaleString()}원`]]
           .map(([k,v],i)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:9px 2px;${i?'border-top:1px solid #f4f1eb':''}">
             <span style="color:var(--gray)">${k}</span><b style="font-weight:600">${v}</b></div>`).join('')}</div>
-      <div class="note" style="text-align:left;margin-top:11px">카드 취소는 카드사에 따라 <b>영업일 2~3일</b> 뒤 명세서에 반영돼요 · 계좌이체는 <b>영업일 3일 내</b>에 들어가요</div>
+      <div class="note" style="text-align:left;margin-top:11px">카드 취소는 카드사에 따라 <b>영업일 2~3일</b> 뒤 명세서에 반영돼요 · 계좌이체는 <b>영업일 3일 내</b>에 들어가요${
+        r.failed>0?`<br><b style="color:var(--coral-d)">${r.failed.toLocaleString()}원은 원결제 취소 기한이 지나 출금되지 않았어요.</b> 캐시에 그대로 남아 있으니 문의해 주세요.`:''}</div>
       <button class="btn ghost" style="margin-top:12px" onclick="openWallet()">내역 보기</button>`;
     if(state.view==='me') renderMe();
   }catch(e){
@@ -11941,10 +11945,19 @@ function omManagerPick(id){
 }
 async function omSettle(id){
   const m=OM_LIST.find(x=>x.id===id); if(!m) return;
-  if(!await appConfirm(`정산 금액: ${(m.manager_fee||0).toLocaleString()}원\n\n이 금액으로 정산을 요청할까요?\n경기 종료 확인 후 3일 안에 등록 계좌로 지급돼요.`)) return;
+  if(!await appConfirm(`예상 정산 금액: ${(m.manager_fee||0).toLocaleString()}원\n\n코트비·캔볼값 환급과 수고비를 합친 금액이에요.\n실제 금액은 걷힌 참가비에 맞춰 정해지고, 수고비에만 3.3%가 공제돼요.`)) return;
   api(`/open-matches/${id}/settle`,{method:'POST',body:'{}'})
-    .then(()=>{ toast('정산을 요청했어요 · 3일 안에 지급돼요'); omReload(); })
-    .catch(()=>toast('정산하지 못했어요'));
+    .then(d=>{ toast(`정산 접수 · 실비 ${((d&&d.expense)||0).toLocaleString()}원 + 수고비 ${((d&&d.fee)||0).toLocaleString()}원`); omReload(); })
+    .catch(e=>toast(omSettleMsg(e)));
+}
+/* 정산 실패 사유를 사람 말로 */
+function omSettleMsg(e){
+  const s=String((e&&e.message)||e||'');
+  if(s.includes('no_payment')) return '참가비 수납 내역이 없어 정산할 수 없어요';
+  if(s.includes('not_finished')) return '매치가 끝난 뒤에 정산할 수 있어요';
+  if(s.includes('already_settled')) return '이미 정산된 매치예요';
+  if(s.includes('no_manager')) return '매니저가 지정되지 않았어요';
+  return '정산하지 못했어요';
 }
 /* ═══ 등급 추이 — 10경기 이상부터 상하향 그래프 (플랩식) ═══ */
 let RL_CACHE=null, RL_TS=0;
@@ -12313,8 +12326,8 @@ async function ombAutoSettle(){                      // 전 경기 종료 → �
   if(!gs.length||!gs.every(done)) return;
   const m=OMB;
   if(!m.is_host||m.settled||!m.manager_fee) return;
-  try{ await api(`/open-matches/${m.id}/settle`,{method:'POST',body:'{}'});
-    m.settled=1; toast(`모든 경기 종료 · 정산 ${(m.manager_fee||0).toLocaleString()}원이 자동 접수됐어요`);
+  try{ const d=await api(`/open-matches/${m.id}/settle`,{method:'POST',body:'{}'});
+    m.settled=1; toast(`모든 경기 종료 · 정산 ${((d&&d.total)||m.manager_fee||0).toLocaleString()}원이 접수됐어요`);
   }catch(e){}
 }
 function ombStage(){
