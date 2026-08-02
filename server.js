@@ -550,6 +550,37 @@ try { db.exec('ALTER TABLE orders ADD COLUMN refunded INTEGER NOT NULL DEFAULT 0
    참가비가 4,000원·25,000원처럼 원 단위라 패키지(코인) 방식은 계산이 안 맞는다.
    iOS도 토스로 직접 결제한다(실물 서비스 결제). */
 const CASH_MIN = 1000, CASH_MAX = 300000, CASH_STEP = 1000;
+
+/* ── 매치별 참가비 수납 원장 ─────────────────────────────────
+   정산은 "실제로 걷힌 돈" 안에서만 나간다. 이 표가 그 근거다.
+   status: paid(수납) · refunded(취소 환불)                      */
+db.exec(`CREATE TABLE IF NOT EXISTS om_payments (
+  id INTEGER PRIMARY KEY,
+  match_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  order_id TEXT,
+  payment_key TEXT,
+  amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'paid',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ompay_match ON om_payments(match_id);
+CREATE INDEX IF NOT EXISTS ix_ompay_user ON om_payments(user_id, match_id);`);
+
+/* 이 매치로 실제 들어온 순수납액 (환불 제외) */
+function omCollected(matchId) {
+  const r = db.prepare(`SELECT COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END),0) s
+    FROM om_payments WHERE match_id=?`).get(matchId);
+  return (r && r.s) || 0;
+}
+/* 이 사람이 이 매치에 낸 돈 (환불 계산 기준) */
+function omPaidBy(matchId, uid) {
+  const r = db.prepare(`SELECT COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END),0) s
+    FROM om_payments WHERE match_id=? AND user_id=?`).get(matchId, uid);
+  return (r && r.s) || 0;
+}
+const OM_MAX_COURT_COST = 600000;   // 코트·캔볼 실비 상한 (건당) — 과다 입력으로 인한 부정 정산 방지
+
 function cashAmountError(amount) {
   if (!Number.isInteger(amount)) return 'not_integer';
   if (amount < CASH_MIN || amount > CASH_MAX) return 'out_of_range';
@@ -648,19 +679,24 @@ app.post('/pay/refund', auth, async (req, res) => {
 const WITHHOLD_RATE = 0.033;
 function cashSources(uid) {
   const rows = db.prepare('SELECT delta, reason FROM cash_ledger WHERE user_id=?').all(uid);
-  let refundIn = 0, payoutIn = 0, out = 0;
+  let refundIn = 0, payoutIn = 0, expenseIn = 0, out = 0;
   rows.forEach(r => {
     if (r.delta > 0) {
-      if (r.reason === 'om_payout' || r.reason === 'settle') payoutIn += r.delta;
-      else refundIn += r.delta;                       // 충전·매치환불 모두 '원결제가 있는 돈'
+      if (r.reason === 'om_payout' || r.reason === 'settle') payoutIn += r.delta;   // 수고비 = 소득(과세)
+      else if (r.reason === 'om_expense') expenseIn += r.delta;                     // 코트·캔볼 실비 환급(비과세)
+      else refundIn += r.delta;                                                     // 충전·매치환불 = 원결제가 있는 돈
     } else out += -r.delta;
   });
   const u = getUser(uid);
   const bal = Math.max(0, u.cash || 0);
-  // 이미 쓴 금액은 정산 캐시부터 차감된 것으로 본다
-  const payout = Math.max(0, payoutIn - Math.min(out, payoutIn));
-  const refund = Math.max(0, bal - payout);
-  return { balance: bal, payout: Math.min(payout, bal), refund };
+  // 이미 쓴 금액은 실비 → 수고비 순으로 차감된 것으로 본다 (환불 캐시는 마지막까지 남긴다)
+  let left = out;
+  const expUsed = Math.min(left, expenseIn); left -= expUsed;
+  const payUsed = Math.min(left, payoutIn);
+  const expense = Math.max(0, expenseIn - expUsed);
+  const payout = Math.max(0, payoutIn - payUsed);
+  const refund = Math.max(0, bal - expense - payout);
+  return { balance: bal, payout: Math.min(payout, bal), expense: Math.min(expense, bal), refund };
 }
 function nextBusinessDay(from, days) {              // 영업일 n일 뒤 (주말 건너뜀)
   const d = new Date(from); let left = days;
@@ -675,15 +711,20 @@ app.get('/me/cash', auth, (req, res) => {
   res.json({ ...src, bank: u.bank_account || '', history: rows,
              withholdRate: WITHHOLD_RATE, dueAt: nextBusinessDay(Date.now(), 3) });
 });
-/* 출금 미리보기 — 얼마가 카드로, 얼마가 계좌로, 세금은 얼마인지 */
+/* 출금 미리보기 — 얼마가 카드로, 얼마가 계좌로, 세금은 얼마인지
+   · 실비(코트·캔볼 환급)  → 계좌이체 · 세금 없음
+   · 수고비                → 계좌이체 · 3.3% 원천징수
+   · 환불/충전 캐시        → 원결제 카드 취소로만 (계좌로 현금화 불가) */
 function withdrawPlan(uid, amount) {
   const src = cashSources(uid);
   const amt = Math.max(0, Math.min(Math.trunc(amount || 0), src.balance));
-  const bankPart = Math.min(amt, src.payout);         // 정산 캐시부터
-  const cardPart = amt - bankPart;
-  const tax = Math.round(bankPart * WITHHOLD_RATE);
-  return { amount: amt, cardPart, bankPart, tax, payout: cardPart + bankPart - tax,
-           dueAt: nextBusinessDay(Date.now(), 3) };
+  const expensePart = Math.min(amt, src.expense);                    // 비과세 실비부터
+  const feePart = Math.min(amt - expensePart, src.payout);           // 그다음 수고비(과세)
+  const bankPart = expensePart + feePart;
+  const cardPart = amt - bankPart;                                   // 남은 건 환불·충전분 → 카드 취소
+  const tax = Math.round(feePart * WITHHOLD_RATE);                   // 세금은 수고비에만
+  return { amount: amt, cardPart, bankPart, expensePart, feePart, tax,
+           payout: cardPart + bankPart - tax, dueAt: nextBusinessDay(Date.now(), 3) };
 }
 app.post('/me/cash/withdraw/preview', auth, (req, res) => {
   res.json(withdrawPlan(req.uid, +(req.body || {}).amount));
@@ -721,25 +762,27 @@ app.post('/me/cash/withdraw', auth, limitWrite, async (req, res) => {
       } catch (e) { /* 다음 결제 건으로 */ }
     }
   }
-  // 카드로 못 돌려준 몫은 계좌이체로 넘긴다 (원천징수 없음 — 소득이 아니므로)
-  const bankExtra = plan.cardPart - cardDone;
-  const bankPart = plan.bankPart + bankExtra;
-  const tax = Math.round(plan.bankPart * WITHHOLD_RATE);   // 세금은 정산 캐시분에만
+  // 카드로 못 돌려준 몫은 계좌로 내보내지 않는다 — 충전·환불 캐시의 현금화(카드깡) 차단
+  const failed = plan.cardPart - cardDone;
+  const bankPart = plan.bankPart;                          // 실비 + 수고비만 계좌이체
+  const tax = Math.round(plan.feePart * WITHHOLD_RATE);    // 세금은 수고비분에만
   const payout = cardDone + bankPart - tax;
+  const spent = cardDone + bankPart;                       // 실제로 빠져나간 캐시만 차감
 
-  const bal = Math.max(0, (u.cash || 0) - plan.amount);
+  const bal = Math.max(0, (u.cash || 0) - spent);
   db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, req.uid);
   db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-    .run(req.uid, -plan.amount, 'withdraw', bal, now());
+    .run(req.uid, -spent, 'withdraw', bal, now());
   const due = nextBusinessDay(Date.now(), 3);
   const r = db.prepare(`INSERT INTO cash_withdrawals
       (user_id,amount,card_part,bank_part,tax,payout,bank,status,due_at,created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(req.uid, plan.amount, cardDone, bankPart, tax, payout,
+    .run(req.uid, spent, cardDone, bankPart, tax, payout,
          u.bank_account || '', bankPart > 0 ? 'requested' : 'paid', due, now());
   sendPush(req.uid, { title: '출금 신청 완료',
     body: bankPart > 0 ? `${payout.toLocaleString()}원 · 영업일 3일 내 입금돼요` : `${cardDone.toLocaleString()}원 카드 취소를 요청했어요` });
-  res.json({ ok: true, id: rid(r), cardPart: cardDone, bankPart, tax, payout, dueAt: due, cash: bal });
+  res.json({ ok: true, id: rid(r), cardPart: cardDone, bankPart, tax, payout, dueAt: due, cash: bal,
+             failed, message: failed > 0 ? '일부 금액은 원결제 취소 기한이 지나 출금되지 않았어요. 고객센터로 문의해 주세요.' : undefined });
 });
 app.get('/me/cash/withdrawals', auth, (req, res) => {
   res.json(db.prepare(`SELECT id,amount,card_part,bank_part,tax,payout,status,due_at,created_at,paid_at
@@ -1576,8 +1619,8 @@ app.post('/open-matches', auth, (req, res) => {
     const _hours = (+_b.hours === 2) ? 2 : 3;             // 2·3시간만
     /* 구버전 앱은 코트비에 캔볼값을 합산해 court_cost 하나로 보낸다.
        ball_cost가 오면 분리해 계산하고(캔볼은 마진 제외), 없으면 전부 코트비로 본다. */
-    const _court = Math.max(0, +_b.court_cost || 0);
-    const _ball = Math.max(0, +_b.ball_cost || 0);
+    const _court = Math.min(Math.max(0, +_b.court_cost || 0), OM_MAX_COURT_COST);
+    const _ball = Math.min(Math.max(0, +_b.ball_cost || 0), OM_MAX_COURT_COST);
     const _q = omQuote(_court, _ball, _courts, _hours);
     _b.courts = _courts;
     _b.cap = _q.cap;                                      // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
@@ -2268,7 +2311,8 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
     else if (dDiff === 1) pct = 80;
     else pct = 20;
   }
-  const refund = Math.round(price * pct / 100);
+  const paid = omPaidBy(mid, req.uid);                    // 실제로 낸 돈이 없으면 환불도 없다
+  const refund = Math.min(Math.round(price * pct / 100), paid);
   db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
   if (refund > 0) {                                       // 환불은 캐시로 — 출처를 남겨야 나중에 카드 취소로 돌려줄 수 있다
     const u = getUser(req.uid);
@@ -2276,6 +2320,8 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
     db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, req.uid);
     db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
       .run(req.uid, refund, 'match_refund', bal, now());
+    db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'")
+      .run(mid, req.uid);
   }
   db.prepare('INSERT INTO cancel_logs (user_id,match_id,free,refund,created_at) VALUES (?,?,?,?,?)')
     .run(req.uid, mid, freeGrace, refund, Date.now());
@@ -4098,34 +4144,75 @@ app.post('/open-matches/:id/manager', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
-  const uid = intOrNull(req.body && req.body.user_id), fee = Math.max(0, +(req.body && req.body.fee) || 0);
+  const uid = intOrNull(req.body && req.body.user_id);
   if (!uid || !getUser(uid)) return res.status(400).json({ error: 'no_user' });
-  db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?').run(uid, fee, m.id);
-  sendPush(uid, { icon: '🎽', title: '매니저로 지정됐어요', body: `${m.dt || ''} 매치 운영을 맡게 됐어요${fee ? ` · 정산 ${fee}캐쉬` : ''}` });
-  res.json({ ok: true, manager_id: uid, manager_fee: fee });
+  /* 정산액은 여기서 정하지 않는다 — 실제 금액은 정산 시점에 서버가 다시 계산한다.
+     호스트가 임의 금액을 적어 넣던 경로를 막는다. */
+  db.prepare('UPDATE open_matches SET manager_id=? WHERE id=?').run(uid, m.id);
+  sendPush(uid, { icon: '🎽', title: '매니저로 지정됐어요', body: `${m.dt || ''} 매치 운영을 맡게 됐어요` });
+  res.json({ ok: true, manager_id: uid });
 });
 app.post('/open-matches/:id/settle', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
   if (m.settled) return res.status(400).json({ error: 'already_settled' });
-  if (!m.manager_id || !m.manager_fee) return res.status(400).json({ error: 'no_manager_fee' });
-  /* 정산은 캐시로 즉시 지급한다. 실제 현금은 매니저가 출금 신청할 때 나가고,
-     그 시점이면 참가비 PG 정산이 들어와 있어 자금이 꼬이지 않는다.
-     om_payouts 는 회계 기록으로 계속 남긴다(지급 사유·매치 추적용). */
+  if (!m.manager_id) return res.status(400).json({ error: 'no_manager' });
+
+  /* ── 정산 안전장치 ────────────────────────────────────────
+     ① 매치가 끝난 뒤에만  ② 실제로 걷힌 돈 안에서만
+     ③ 금액은 서버가 다시 계산한다 (호스트 입력값을 믿지 않는다)
+     이 셋이 없으면 매치를 만들고 금액만 적어 현금을 빼갈 수 있다. */
+  const endMs = Date.parse(String(m.end_at || m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (!isNaN(endMs) && Date.now() < endMs)
+    return res.status(400).json({ error: 'not_finished', message: '매치가 끝난 뒤에 정산할 수 있어요' });
+
+  const collected = omCollected(m.id);
+  if (collected <= 0)
+    return res.status(400).json({ error: 'no_payment', message: '참가비 수납 내역이 없어 정산할 수 없어요' });
+
+  // 실비(코트·캔볼)와 수고비를 서버가 다시 계산한다
+  const courts = Math.max(0, m.courts || 0);
+  const hours = (() => {
+    const s = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+    const e = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
+    return (!isNaN(s) && !isNaN(e) && e > s) ? Math.round((e - s) / 3600e3) : 3;
+  })();
+  const expense = Math.min(Math.max(0, m.court_cost || 0), OM_MAX_COURT_COST);   // 실비 상한
+  const fee = courts ? omManagerFee(courts <= 2 ? 2 : 3, hours === 2 ? 2 : 3) : 0;
+  let payExpense = expense, payFee = fee;
+
+  // 걷힌 돈을 넘지 않게: 실비 → 수고비 순으로 채운다
+  if (payExpense + payFee > collected) {
+    payExpense = Math.min(payExpense, collected);
+    payFee = Math.max(0, collected - payExpense);
+  }
+  const total = payExpense + payFee;
+  if (total <= 0) return res.status(400).json({ error: 'nothing_to_settle' });
+
   const mu = getUser(m.manager_id);
+  if (!mu) return res.status(400).json({ error: 'no_manager' });
   tx(() => {
-    db.prepare('INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at) VALUES (?,?,?,?,?,?)')
-      .run(m.id, m.manager_id, m.manager_fee, (mu && mu.bank_account) || '', 'cash', now());
-    const bal = (mu.cash || 0) + m.manager_fee;
+    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at)
+                VALUES (?,?,?,?,?,?)`)
+      .run(m.id, m.manager_id, total, (mu && mu.bank_account) || '', 'cash', now());
+    let bal = mu.cash || 0;
+    if (payExpense > 0) {                       // 실비 환급 — 비과세
+      bal += payExpense;
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(m.manager_id, payExpense, 'om_expense', bal, now());
+    }
+    if (payFee > 0) {                           // 수고비 — 소득(출금 시 3.3% 원천징수)
+      bal += payFee;
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(m.manager_id, payFee, 'om_payout', bal, now());
+    }
     db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, m.manager_id);
-    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-      .run(m.manager_id, m.manager_fee, 'om_payout', bal, now());
-    db.prepare('UPDATE open_matches SET settled=1 WHERE id=?').run(m.id);
+    db.prepare('UPDATE open_matches SET settled=1, manager_fee=? WHERE id=?').run(total, m.id);
   });
   sendPush(m.manager_id, { icon: '💰', title: '정산이 들어왔어요',
-    body: `${m.dt || ''} 매치 · ${m.manager_fee.toLocaleString()}원이 캐시로 지급됐어요 · 내정보에서 출금할 수 있어요` });
-  res.json({ ok: true, payout: true });
+    body: `${m.dt || ''} 매치 · 실비 ${payExpense.toLocaleString()}원 + 수고비 ${payFee.toLocaleString()}원` });
+  res.json({ ok: true, payout: true, expense: payExpense, fee: payFee, total, collected });
 });
 /* 등급 추이 — 레이팅이 움직이는 모든 지점을 기록한다 (10경기부터 추이 노출) */
 db.exec(`CREATE TABLE IF NOT EXISTS rating_log (
