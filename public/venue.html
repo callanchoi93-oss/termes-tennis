@@ -25,7 +25,11 @@
   .num{font-variant-numeric:tabular-nums}
 
   /* 상단 */
-  .top{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
+  #statusGuard{position:fixed;top:0;left:0;right:0;z-index:20;pointer-events:none;
+    height:env(safe-area-inset-top,0px);background:var(--cream)}
+  .app.login #statusGuard,.top.sheet~#statusGuard{background:#fff}
+  .top{min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
+       padding-top:env(safe-area-inset-top,0px);
        position:sticky;top:0;background:var(--cream);z-index:5}
   .app.login .top{background:#fff}
   .top.sheet{background:#fff;border-bottom:1px solid var(--line)}
@@ -214,6 +218,7 @@
 203 5 26 13 56 20 68 17 31 42 107 42 128 0 10 14 35 30 56 17 21 30 44 30 52
 0 50 211 314 315 393 43 34 145 95 156 95 5 0 30 14 56 30 26 17 56 30 67 30
 12 0 57 13 101 29 106 38 451 46 559 12z"/></g><circle cx="357" cy="539" r="71" fill="#fff"/><circle cx="490" cy="539" r="71" fill="#fff"/><circle cx="379" cy="533" r="47" fill="#12100E"/><circle cx="513" cy="532" r="47" fill="#12100E"/></symbol></svg>
+<div id="statusGuard" aria-hidden="true"></div>
 <div class="app" id="app">
   <div class="top" id="top"></div>
   <div class="body" id="view"><div class="empty">불러오는 중…</div></div>
@@ -388,6 +393,9 @@ function drawHome(){
   const week = SLOTS.filter(s => s.date > t && s.date <= plus(7) && s.status !== 'closed');
 
   $('view').innerHTML = `
+  ${(V.photos||[]).length ? `<img src="${esc(V.photos[0])}" alt="${esc(V.name)}"
+      style="width:100%;height:132px;object-fit:cover;border-radius:14px;display:block;margin:4px 0 12px"
+      loading="lazy">` : ''}
   <div style="margin:2px 4px 12px">
     <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">${esc(V.name)}</div>
     <div style="font-size:12.5px;color:var(--lgray);margin-top:1px">${greet()}</div>

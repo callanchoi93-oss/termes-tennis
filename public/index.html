@@ -44,6 +44,11 @@
   .demo-tag.live{background:#d8f0e2;color:#1f5c40}
   .demo-tag{background:var(--felt);color:var(--gray);text-align:center;font-size:11px;font-weight:600;padding:4px;flex-shrink:0}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top, 0px)) 20px 8px;flex-shrink:0}
+  /* 상태바 가림막 — 페이지가 스크롤돼도 시계·배터리 아래로 내용이 비치지 않게 한다.
+     .appbar 의 padding-top 만으로는 스크롤한 뒤를 막지 못한다. */
+  #statusGuard{position:fixed;top:0;left:0;right:0;z-index:280;pointer-events:none;
+    height:env(safe-area-inset-top,0px);background:var(--cream)}
+
   .appbar .logo{margin-right:auto}   /* 뒤로가기가 있어도 로고는 그 바로 옆에 */
   .logo{font-size:23px;font-weight:600;letter-spacing:-.5px}.logo b{color:var(--coral)}
   .bell{width:36px;height:36px;border-radius:11px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
@@ -1440,6 +1445,7 @@
 </style>
 </head>
 <body>
+<div id="statusGuard" aria-hidden="true"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <symbol id="matsuMark" viewBox="0 0 834 714"><g transform="translate(0.000000,714.000000) scale(0.100000,-0.100000)" fill="var(--brand,#ED7C30)" stroke="none"><path d="M5500 7010 c-8 -5 -51 -10 -95 -10 -77 0 -134 -14 -196 -45 -15 -8
 -45 -15 -66 -15 -21 0 -76 -14 -123 -30 -47 -16 -93 -30 -103 -30 -10 0 -43

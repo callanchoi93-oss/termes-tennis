@@ -226,6 +226,23 @@ async function drawVenues(v){
       · ${esc(x.bank_name||'')} ${esc(x.bank_no||'계좌 미등록')}
       · ${x.owner_id?('계정 #'+x.owner_id):'<b style="color:#cf5418">계정 없음</b>'}</div>
 
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;align-items:center">
+      ${(x.photos||[]).map((p,i)=>`
+        <div style="position:relative;width:76px;height:56px;border-radius:8px;overflow:hidden;
+                    border:${i===0?'2px solid #ec6a2e':'1px solid #e6e1d8'}">
+          <img src="${esc(p)}" style="width:100%;height:100%;object-fit:cover;display:block">
+          ${i===0?'<span style="position:absolute;left:0;bottom:0;background:#ec6a2e;color:#fff;font-size:9px;font-weight:800;padding:1px 5px">대표</span>'
+                 :`<button onclick="coverPhoto(${x.id},${i})" style="position:absolute;left:2px;bottom:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border:none;border-radius:4px">대표</button>`}
+          <button onclick="delPhoto(${x.id},${i})" style="position:absolute;right:2px;top:2px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;width:16px;height:16px;line-height:1;border:none;border-radius:4px">×</button>
+        </div>`).join('')}
+      <label style="width:76px;height:56px;border:1.5px dashed #cfc9bd;border-radius:8px;display:flex;
+                    align-items:center;justify-content:center;font-size:11px;color:#8a857c;cursor:pointer">
+        + 사진
+        <input type="file" accept="image/*" style="display:none" onchange="upPhoto(${x.id},this)">
+      </label>
+    </div>
+    ${(x.photos||[]).length?'':'<div class="meta" style="margin-top:4px">사진이 없으면 매니저·참가자 화면에 회색 자리만 보여요</div>'}
+
     ${x.courts.map(c=>`
       <div class="row">
         <div style="flex:1;min-width:0"><b>${esc(c.name)}</b>
@@ -251,8 +268,32 @@ async function drawVenues(v){
       <input id="aId_${x.id}" placeholder="아이디 (영문·숫자 4자+)" style="flex:1;min-width:120px">
       <input id="aPw_${x.id}" placeholder="비밀번호 (6자+)" style="flex:1;min-width:110px">
       <button class="btn xs coral" onclick="addVenueAcct(${x.id},'${esc(x.name)}')">계정 발급</button>
+    </div>
+    <div class="meta" style="margin-top:6px;color:#cf5418">↑ 이 구장의 사장님 계정을 아직 안 만들었어요
     </div>`:''}
   </div>`).join('') || '<div class="card meta">등록된 구장이 없어요</div>'}`;
+}
+async function upPhoto(vid, input){
+  const f = input.files && input.files[0]; if(!f) return;
+  if(f.size > 3*1024*1024){ toast('3MB 이하로 줄여주세요'); input.value=''; return; }
+  toast('올리는 중…');
+  try{
+    const dataUrl = await new Promise((ok,no)=>{ const r=new FileReader();
+      r.onload=()=>ok(r.result); r.onerror=()=>no(new Error('읽기 실패')); r.readAsDataURL(f); });
+    await api(`/admin/venues/${vid}/photo`,{method:'POST',body:JSON.stringify({dataUrl})});
+    toast('사진을 올렸어요'); render();
+  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+  input.value='';
+}
+async function delPhoto(vid,i){
+  if(!confirm('이 사진을 지울까요?')) return;
+  try{ await api(`/admin/venues/${vid}/photo?i=${i}`,{method:'DELETE'}); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function coverPhoto(vid,i){
+  try{ await api(`/admin/venues/${vid}/photo/cover`,{method:'POST',body:JSON.stringify({i})});
+    toast('대표 사진을 바꿨어요'); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
 }
 async function addVenue(){
   const name=$('vName').value.trim(); if(!name){ toast('구장 이름을 입력해 주세요'); return; }
@@ -302,6 +343,7 @@ async function addVenueAcct(vid,name){
 /* ══════════ 계정 (사장님 · 매니저) ══════════ */
 async function drawStaff(v){
   const list = await api('/admin/staff-accounts');
+  if (!window._VN) { try { window._VN = await api('/admin/venues'); } catch(e){ window._VN = []; } }
   const vs = list.filter(u=>u.provider==='venue'), ms = list.filter(u=>u.provider==='manager');
   const card = u => `
     <div class="row">
@@ -314,7 +356,15 @@ async function drawStaff(v){
       <button class="btn xs ghost" onclick="resetPw(${u.id},'${esc(u.provider_id)}')">비번 초기화</button>
       <button class="btn xs ghost" onclick="suspend(${u.id},${u.suspended?0:1})">${u.suspended?'해제':'정지'}</button>
     </div>`;
+  const noAcct = (window._VN || []).filter(x => !x.owner_id);
   v.innerHTML = `
+  <div class="card" style="background:#fceee4;border-color:#f6dcc9">
+    <b style="font-size:14px;color:#cf5418">구장 사장님 계정은 구장 탭에서 발급해요</b>
+    <div class="meta" style="color:#a3714c;margin-top:3px">
+      계정은 반드시 구장에 연결돼야 해서, 구장 카드 아래에서 바로 발급합니다.<br>
+      구장 등록 → 코트 등록(단가 필수) → 계정 발급 순서예요.</div>
+    <button class="btn coral" style="margin-top:9px;width:100%" onclick="setTab('venues')">구장 탭으로 가기</button>
+  </div>
   <div class="card"><b style="font-size:14px">매니저 계정 발급</b>
     <div class="meta" style="margin-top:3px">교육을 마친 매니저에게 발급하세요</div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
