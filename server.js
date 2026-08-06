@@ -5284,7 +5284,34 @@ app.post('/venue/slots', auth, venueGuard, (req, res) => {
     .get(req.venue.id, ...courtIds).n;
   if (mine !== courtIds.length) return res.status(400).json({ error: 'bad_court' });
 
-  const price = slotPrice(courtIds, start, end);
+  /* 긴 시간을 소셜 매치가 열릴 수 있는 단위로 자른다.
+     오픈매치는 2시간 또는 3시간만 열리므로, 09-17시(8시간)를 한 덩어리로 두면 아무도 못 잡는다.
+     3시간을 우선으로 채우고 1시간이 남으면 3+1 대신 2+2로 바꾼다. */
+  function splitHours(total) {
+    if (total < 2) return null;                       // 1시간짜리는 매치를 열 수 없다
+    const out = [];
+    let left = total;
+    while (left >= 3) { out.push(3); left -= 3; }
+    if (left === 2) out.push(2);
+    else if (left === 1) {
+      if (!out.length) return null;
+      out.pop(); out.push(2, 2);                      // 3+1 → 2+2
+    }
+    return out;
+  }
+  const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+  const toHHMM = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const totalMin = toMin(end) - toMin(start);
+  if (totalMin % 60 !== 0)
+    return res.status(400).json({ error: 'bad_time', message: '시간 단위로 열어주세요 (예: 09:00–17:00)' });
+  const chunks = splitHours(totalMin / 60);
+  if (!chunks) return res.status(400).json({ error: 'bad_time', message: '최소 2시간 이상 열어주세요' });
+
+  const spans = [];
+  let cur = toMin(start);
+  chunks.forEach(h => { spans.push([toHHMM(cur), toHHMM(cur + h * 60)]); cur += h * 60; });
+
+  const price = slotPrice(courtIds, spans[0][0], spans[0][1]);
   if (price <= 0) return res.status(400).json({ error: 'no_price', message: '코트 단가가 설정되지 않았어요' });
 
   // 날짜 목록 만들기
@@ -5303,20 +5330,21 @@ app.post('/venue/slots', auth, venueGuard, (req, res) => {
 
   let made = 0, skipped = 0;
   tx(() => {
-    dates.forEach(date => {
+    dates.forEach(date => spans.forEach(([sStart, sEnd]) => {
       // 같은 날 같은 시간에 코트가 겹치면 건너뛴다
       const same = db.prepare(`SELECT court_ids FROM venue_slots
         WHERE venue_id=? AND date=? AND status!='closed' AND NOT(end<=? OR start>=?)`)
-        .all(req.venue.id, date, start, end);
+        .all(req.venue.id, date, sStart, sEnd);
       const busy = new Set(); same.forEach(r => jparse(r.court_ids, []).forEach(id => busy.add(id)));
       if (courtIds.some(id => busy.has(id))) { skipped++; return; }
       db.prepare(`INSERT INTO venue_slots (venue_id,date,start,end,court_ids,price,status,created_at)
                   VALUES (?,?,?,?,?,?, 'open', ?)`)
-        .run(req.venue.id, date, start, end, JSON.stringify(courtIds), price, now());
+        .run(req.venue.id, date, sStart, sEnd, JSON.stringify(courtIds), price, now());
       made++;
-    });
+    }));
   });
-  res.json({ ok: true, made, skipped, price });
+  res.json({ ok: true, made, skipped, price, per_day: spans.length,
+             spans: spans.map(([a, b2]) => `${a}-${b2}`) });
 });
 
 /* 시간 닫기 — 일반 대관이 잡혔을 때 */
@@ -5745,6 +5773,48 @@ app.delete('/admin/courts/:id', admin, (req, res) => {
   db.prepare('DELETE FROM venue_courts WHERE id=?').run(c.id);
   res.json({ ok: true });
 });
+/* 구장 사진 — 관리자 키로 인증한다 (사장님 계정과 무관).
+   기존 venues.photos(JSON 배열)를 그대로 쓴다. 첫 장이 대표 사진이다. */
+app.post('/admin/venues/:id/photo', admin, (req, res) => {
+  const v = db.prepare('SELECT id, photos FROM venues WHERE id=?').get(+req.params.id);
+  if (!v) return res.status(404).json({ error: 'not_found' });
+  const list = jparse(v.photos, []);
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec((req.body && req.body.dataUrl) || '');
+  if (!m) return res.status(400).json({ error: 'bad_image', message: 'PNG·JPG·WEBP만 올릴 수 있어요' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length > 3 * 1024 * 1024)
+    return res.status(413).json({ error: 'too_large', message: '3MB 이하로 줄여주세요' });
+  if (list.length >= 6) return res.status(400).json({ error: 'too_many', message: '사진은 6장까지예요' });
+  const name = 'venue' + v.id + '_' + Date.now() + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]);
+  fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
+  list.push('/uploads/' + name);
+  db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(list), v.id);
+  res.json({ ok: true, photos: list });
+});
+
+/* 사진 삭제 · 대표 지정 */
+app.delete('/admin/venues/:id/photo', admin, (req, res) => {
+  const v = db.prepare('SELECT id, photos FROM venues WHERE id=?').get(+req.params.id);
+  if (!v) return res.status(404).json({ error: 'not_found' });
+  const list = jparse(v.photos, []);
+  const i = Number(req.query.i);
+  if (!(i >= 0 && i < list.length)) return res.status(400).json({ error: 'bad_index' });
+  list.splice(i, 1);
+  db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(list), v.id);
+  res.json({ ok: true, photos: list });
+});
+
+app.post('/admin/venues/:id/photo/cover', admin, (req, res) => {
+  const v = db.prepare('SELECT id, photos FROM venues WHERE id=?').get(+req.params.id);
+  if (!v) return res.status(404).json({ error: 'not_found' });
+  const list = jparse(v.photos, []);
+  const i = Number((req.body && req.body.i));
+  if (!(i > 0 && i < list.length)) return res.status(400).json({ error: 'bad_index' });
+  list.unshift(list.splice(i, 1)[0]);                 // 앞으로 끌어올리면 대표가 된다
+  db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(list), v.id);
+  res.json({ ok: true, photos: list });
+});
+
 /* 코트 수정 · 삭제 — 재계약으로 단가가 바뀔 때 */
 app.patch('/admin/venues/:vid/courts/:cid', admin, (req, res) => {
   const c = db.prepare('SELECT * FROM venue_courts WHERE id=? AND venue_id=?')
