@@ -73,7 +73,7 @@ async function api(path, opts){
   return r.json();
 }
 
-const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['reports','신고'],['payouts','정산'],['banners','배너']];
+const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vslots','열린 시간'],['reports','신고'],['payouts','정산'],['banners','배너']];
 let TAB='stats', OMS=[], SEL=null;
 
 function drawTabs(){
@@ -157,6 +157,10 @@ async function render(){
             <button class="btn xs coral" onclick="resolveRep(${r.id},'removed')">삭제 조치</button>
             <button class="btn xs ghost" onclick="resolveRep(${r.id},'rejected')">기각</button></div></div>`).join('') : '<div class="meta">미처리 신고가 없어요</div>') + '</div>';
     }
+    else if(TAB==='venues'){ await drawVenues(v); }
+    else if(TAB==='staff'){ await drawStaff(v); }
+    else if(TAB==='vpay'){ await drawVenuePay(v); }
+    else if(TAB==='vslots'){ await drawVenueSlots(v); }
     else if(TAB==='payouts'){
       const rows=await api('/admin/payouts');
       v.innerHTML='<div class="card">'+ (rows.length? rows.map(p=>`
@@ -194,6 +198,222 @@ async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요?
 async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`))return;
   try{ await api('/admin/clubs/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
 async function resolveRep(id,action){ try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
+/* ══════════ 구장 ══════════
+   순서가 중요하다: 구장 등록 → 코트 등록(단가!) → 계정 발급.
+   단가가 비면 사장님이 시간을 열 수 없다. */
+async function drawVenues(v){
+  const list = await api('/admin/venues');
+  window._VN = list;
+  v.innerHTML = `
+  <div class="card"><b style="font-size:14px">구장 등록</b>
+    <input id="vName" placeholder="구장 이름 (예: 필킨스 테니스)" style="margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="vSido" placeholder="시/도 (서울)" style="flex:1">
+      <input id="vGu" placeholder="시군구 (강남구)" style="flex:1">
+    </div>
+    <input id="vAddr" placeholder="상세 주소" style="margin-top:8px">
+    <input id="vPhone" placeholder="구장 전화" style="margin-top:8px">
+    <button class="btn coral" style="margin-top:10px;width:100%" onclick="addVenue()">구장 등록</button>
+  </div>
+  ${list.map(x=>`
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px">
+      <b style="font-size:15px;flex:1">${esc(x.name)}</b>
+      <span class="meta">#${x.id} · 열린 시간 ${x.open_slots}</span>
+      <button class="btn xs ghost" onclick="toggleVenue(${x.id},${x.active?0:1})">${x.active?'활성':'중지'}</button>
+    </div>
+    <div class="meta" style="margin-top:4px">${esc([x.sido,x.sigungu,x.addr].filter(Boolean).join(' '))||'주소 없음'}
+      · ${esc(x.bank_name||'')} ${esc(x.bank_no||'계좌 미등록')}
+      · ${x.owner_id?('계정 #'+x.owner_id):'<b style="color:#cf5418">계정 없음</b>'}</div>
+
+    ${x.courts.map(c=>`
+      <div class="row">
+        <div style="flex:1;min-width:0"><b>${esc(c.name)}</b>
+          <div class="meta">${c.indoor?'실내':'실외'} · ${esc(c.surface||'')} · 시간당
+            <b style="color:${c.price_hour?'#1f7d4d':'#cf5418'}">${won(c.price_hour)}</b>
+            ${c.status==='paused'?' · 쉼':''}</div></div>
+        <button class="btn xs ghost" onclick="editCourt(${x.id},${c.id},${c.price_hour})">단가</button>
+        <button class="btn xs ghost" onclick="pauseCourt(${x.id},${c.id},'${c.status==='paused'?'active':'paused'}')">${c.status==='paused'?'재개':'쉼'}</button>
+        <button class="btn xs ghost" onclick="delCourt(${x.id},${c.id})">삭제</button>
+      </div>`).join('')}
+
+    <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+      <input id="cNo_${x.id}" placeholder="번호" style="width:64px" inputmode="numeric">
+      <input id="cLb_${x.id}" placeholder="이름 (비우면 N번 코트)" style="flex:1;min-width:110px">
+      <select id="cSf_${x.id}" style="width:96px"><option>하드</option><option>클레이</option><option>인조잔디</option></select>
+      <select id="cIn_${x.id}" style="width:80px"><option value="0">실외</option><option value="1">실내</option></select>
+      <input id="cPr_${x.id}" placeholder="시간당 단가" style="width:110px" inputmode="numeric">
+      <button class="btn xs coral" onclick="addCourt(${x.id})">코트 추가</button>
+    </div>
+
+    ${!x.owner_id?`
+    <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;border-top:1px solid #f0efec;padding-top:10px">
+      <input id="aId_${x.id}" placeholder="아이디 (영문·숫자 4자+)" style="flex:1;min-width:120px">
+      <input id="aPw_${x.id}" placeholder="비밀번호 (6자+)" style="flex:1;min-width:110px">
+      <button class="btn xs coral" onclick="addVenueAcct(${x.id},'${esc(x.name)}')">계정 발급</button>
+    </div>`:''}
+  </div>`).join('') || '<div class="card meta">등록된 구장이 없어요</div>'}`;
+}
+async function addVenue(){
+  const name=$('vName').value.trim(); if(!name){ toast('구장 이름을 입력해 주세요'); return; }
+  try{ await api('/admin/venues',{method:'POST',body:JSON.stringify({name,
+    sido:$('vSido').value.trim(), sigungu:$('vGu').value.trim(),
+    addr:$('vAddr').value.trim(), phone:$('vPhone').value.trim()})});
+    toast('구장을 등록했어요 · 이제 코트를 추가해 주세요'); render();
+  }catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function toggleVenue(id,active){
+  try{ await api('/admin/venues/'+id,{method:'PATCH',body:JSON.stringify({active})}); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function addCourt(vid){
+  const no=+$('cNo_'+vid).value, price=+$('cPr_'+vid).value;
+  if(!no){ toast('코트 번호를 입력해 주세요'); return; }
+  if(!price){ toast('시간당 단가를 반드시 넣어주세요 · 비면 사장님이 시간을 열 수 없어요'); return; }
+  try{ await api(`/admin/venues/${vid}/courts`,{method:'POST',body:JSON.stringify({no,
+    label:$('cLb_'+vid).value.trim(), surface:$('cSf_'+vid).value,
+    indoor:+$('cIn_'+vid).value, price_hour:price})});
+    toast('코트를 추가했어요'); render();
+  }catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function editCourt(vid,cid,cur){
+  const p=prompt('시간당 단가 (원)', cur||''); if(p===null) return;
+  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'PATCH',body:JSON.stringify({price_hour:+p})});
+    toast('단가를 바꿨어요'); render(); }catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function pauseCourt(vid,cid,status){
+  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'PATCH',body:JSON.stringify({status})});
+    render(); }catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function delCourt(vid,cid){
+  if(!confirm('이 코트를 삭제할까요?')) return;
+  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'DELETE'}); toast('삭제했어요'); render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+}
+async function addVenueAcct(vid,name){
+  const id=$('aId_'+vid).value.trim().toLowerCase(), pw=$('aPw_'+vid).value;
+  if(!id||!pw){ toast('아이디와 비밀번호를 입력해 주세요'); return; }
+  try{ await api('/admin/venue-accounts',{method:'POST',body:JSON.stringify({login_id:id,password:pw,name,venue_id:vid})});
+    alert(`발급 완료\n\n구장: ${name}\n아이디: ${id}\n비밀번호: ${pw}\n\n사장님께 전달해 주세요.`);
+    render();
+  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+}
+
+/* ══════════ 계정 (사장님 · 매니저) ══════════ */
+async function drawStaff(v){
+  const list = await api('/admin/staff-accounts');
+  const vs = list.filter(u=>u.provider==='venue'), ms = list.filter(u=>u.provider==='manager');
+  const card = u => `
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <b>${esc(u.name)}</b> <span class="meta">${esc(u.provider_id)}</span>
+        ${u.suspended?'<span style="color:#e4685d;font-size:11.5px;font-weight:800"> · 정지</span>':''}
+        <div class="meta">${u.provider==='venue'
+          ? (u.venue?esc(u.venue.name):'<b style="color:#cf5418">구장 미연결</b>')
+          : `잡은 코트 ${u.held}건`} · 발급 ${fdate(u.created_at)}</div></div>
+      <button class="btn xs ghost" onclick="resetPw(${u.id},'${esc(u.provider_id)}')">비번 초기화</button>
+      <button class="btn xs ghost" onclick="suspend(${u.id},${u.suspended?0:1})">${u.suspended?'해제':'정지'}</button>
+    </div>`;
+  v.innerHTML = `
+  <div class="card"><b style="font-size:14px">매니저 계정 발급</b>
+    <div class="meta" style="margin-top:3px">교육을 마친 매니저에게 발급하세요</div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <input id="mName" placeholder="이름" style="flex:1;min-width:90px">
+      <input id="mId" placeholder="아이디" style="flex:1;min-width:100px">
+      <input id="mPw" placeholder="비밀번호 (6자+)" style="flex:1;min-width:110px">
+      <input id="mPhone" placeholder="연락처" style="flex:1;min-width:100px">
+    </div>
+    <button class="btn coral" style="margin-top:10px;width:100%" onclick="addMgrAcct()">매니저 계정 발급</button>
+  </div>
+  <div class="card"><b style="font-size:14px">구장 사장님 <span class="meta">${vs.length}명</span></b>
+    ${vs.map(card).join('') || '<div class="meta" style="margin-top:8px">없어요</div>'}</div>
+  <div class="card"><b style="font-size:14px">매니저 <span class="meta">${ms.length}명</span></b>
+    ${ms.map(card).join('') || '<div class="meta" style="margin-top:8px">없어요</div>'}</div>`;
+}
+async function addMgrAcct(){
+  const id=$('mId').value.trim().toLowerCase(), pw=$('mPw').value, name=$('mName').value.trim();
+  if(!id||!pw||!name){ toast('이름·아이디·비밀번호를 모두 입력해 주세요'); return; }
+  try{ await api('/admin/manager-accounts',{method:'POST',body:JSON.stringify({login_id:id,password:pw,name,phone:$('mPhone').value.trim()})});
+    alert(`발급 완료\n\n이름: ${name}\n아이디: ${id}\n비밀번호: ${pw}\n\n매니저에게 전달해 주세요.`);
+    render();
+  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+}
+async function resetPw(id, who){
+  const pw=prompt(`${who} 의 새 비밀번호 (6자 이상)\n\n초기화하면 지금 로그인된 기기는 모두 로그아웃돼요.`);
+  if(!pw) return;
+  try{ await api(`/admin/staff-accounts/${id}/password`,{method:'POST',body:JSON.stringify({password:pw})});
+    alert(`비밀번호를 바꿨어요\n\n아이디: ${who}\n새 비밀번호: ${pw}`);
+  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+}
+async function suspend(id,on){
+  if(on && !confirm('이 계정을 정지할까요? 즉시 로그아웃됩니다.')) return;
+  try{ await api(`/admin/staff-accounts/${id}/suspend`,{method:'POST',body:JSON.stringify({suspended:!!on})}); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+
+/* ══════════ 구장 정산 — 월요일에 이 화면만 보고 이체 ══════════ */
+async function drawVenuePay(v){
+  const d = await api('/admin/venue-payouts/by-venue');
+  v.innerHTML = `
+  <div class="card" style="background:#fceee4;border-color:#f6dcc9">
+    <div style="display:flex;align-items:center">
+      <b style="font-size:14px;color:#cf5418">이번에 보낼 총액</b>
+      <b style="margin-left:auto;font-size:20px;color:#cf5418">${won(d.total)}</b></div>
+    <div class="meta" style="color:#a3714c;margin-top:3px">구장 ${d.groups.length}곳 · 이체 후 "입금 완료"를 눌러주세요</div>
+  </div>
+  ${d.groups.map(g=>`
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px">
+      <b style="font-size:15px;flex:1">${esc(g.venue.name)}</b>
+      <b style="font-size:17px;color:#cf5418">${won(g.total)}</b></div>
+    <div class="meta" style="margin-top:4px">
+      ${g.venue.bank_name?`${esc(g.venue.bank_name)} ${esc(g.venue.bank_no)} · 예금주 ${esc(g.venue.bank_holder||'')}`
+        :'<b style="color:#e4685d">계좌 미등록 — 사장님께 등록을 요청하세요</b>'}
+      ${g.venue.biz_no?` · 사업자 ${esc(g.venue.biz_no)}`:''}</div>
+    ${g.list.map(r=>`<div class="row"><div style="flex:1"><b>${esc(r.date||'')} ${esc(r.start||'')}–${esc(r.end||'')}</b>
+      <div class="meta">#${r.id}</div></div><b>${won(r.amount)}</b></div>`).join('')}
+    <button class="btn coral" ${g.venue.bank_name?'':'disabled'}
+      style="margin-top:10px;width:100%${g.venue.bank_name?'':';opacity:.45'}"
+      onclick="payVenue(${g.venue.id},'${esc(g.venue.name)}',${g.total})">입금 완료 처리</button>
+  </div>`).join('') || '<div class="card meta">보낼 정산이 없어요</div>'}`;
+}
+async function payVenue(vid,name,total){
+  if(!confirm(`${name}\n${won(total)}\n\n이체를 마치셨나요? 완료로 표시하면 사장님께 알림이 갑니다.`)) return;
+  try{ const r=await api(`/admin/venue-payouts/pay-venue/${vid}`,{method:'POST',body:JSON.stringify({})});
+    toast(`${r.updated}건 완료 처리했어요`); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+
+/* ══════════ 열린 시간 모니터링 ══════════ */
+async function drawVenueSlots(v){
+  const rows = await api('/admin/venue-slots');
+  const st = s => s==='booked'?'확정':s==='held'?'모집 중':s==='open'?'판매 대기':'닫음';
+  const stale = rows.filter(r=>r.status==='held' && r.held_hours>=48);
+  v.innerHTML = `
+  ${stale.length?`<div class="card" style="background:#fdf3e2;border-color:#f0e0bd">
+    <b style="font-size:14px;color:#a3721a">오래 잡혀 있는 코트 ${stale.length}건</b>
+    <div class="meta" style="color:#8a6b1f;margin-top:3px">48시간 넘게 모집이 안 되고 있어요.
+      매니저에게 확인하거나 해제해 주세요.</div></div>`:''}
+  <div class="card">
+    ${rows.length? rows.map(r=>`
+      <div class="row">
+        <div style="flex:1;min-width:0">
+          <b>${esc(r.venue||'')} · ${esc(r.date)} ${esc(r.start)}–${esc(r.end)}</b>
+          <div class="meta">${st(r.status)} · ${won(r.price)}
+            ${r.holder?` · 매니저 ${esc(r.holder)}`:''}
+            ${r.status==='held'?` · ${r.held_hours}시간째${r.need?` · ${r.joined}/${r.need}명`:' · 매치 미연결'}`:''}
+            ${r.status==='booked'&&r.need?` · ${r.joined}/${r.need}명`:''}</div></div>
+        ${r.status==='held'||r.status==='booked'
+          ? `<button class="btn xs ghost" onclick="forceRelease(${r.id})">해제</button>`:''}
+      </div>`).join('') : '<div class="meta">열린 시간이 없어요</div>'}
+  </div>`;
+}
+async function forceRelease(id){
+  if(!confirm('이 코트를 강제로 해제할까요?\n\n확정 건이라면 잡혀 있던 정산도 함께 취소됩니다.\n참가자에게는 따로 안내해 주세요.')) return;
+  try{ await api(`/admin/venue-slots/${id}/release`,{method:'POST'}); toast('해제했어요'); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+
 async function paidPayout(id){ if(!confirm('이체를 완료 처리할까요? 매니저에게 완료 알림이 가요.'))return;
   try{ await api('/admin/payouts/'+id+'/paid',{method:'POST',body:'{}'}); toast('완료 처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
 async function bnMove(i,dir){
