@@ -80,6 +80,8 @@
   .st-go{background:var(--green-s);color:var(--green)}
   .st-wait{background:var(--amber-s);color:var(--amber)}
   .st-open{background:var(--felt);color:var(--gray)}
+  .st-om{background:#eef0fb;color:#4a3f6b}
+  .st-bk{background:#e9f4ee;color:var(--green)}
   .money{font-weight:700;color:var(--coral-d);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 
   /* 버튼 */
@@ -357,6 +359,21 @@ function stTag(s){
   return '<span class="st st-open">판매 대기</span>';
 }
 const courtsOf = s => (s.courts || []).map(c => c.name).join(' · ');
+/* 오픈매치는 열댓 명이 매니저와 함께 오고, 개인 예약은 두세 명이 자기들끼리 온다.
+   준비가 달라지므로 한눈에 구분되게 한다. */
+function useTag(s){
+  if (s.use === 'match')   return '<span class="st st-om" style="margin-left:6px">맞수 오픈매치</span>';
+  if (s.use === 'booking') return '<span class="st st-bk" style="margin-left:6px">개인 예약</span>';
+  return '';
+}
+function useLine(s){
+  if (s.use === 'match')
+    return `맞수 오픈매치 · ${s.manager ? '매니저 ' + esc(s.manager.name) + ' · ' : ''}${s.headcount || 0}명 방문`;
+  if (s.use === 'booking')
+    return `개인 예약 · ${esc((s.booker && s.booker.name) || '회원')} 님${
+      s.booker && s.booker.phone ? ' · ' + esc(s.booker.phone) : ''}`;
+  return '';
+}
 
 /* ═══ 화면 분기 ═══ */
 function render(){
@@ -414,11 +431,12 @@ function drawHome(){
   <h2>오늘 <span>${md(t)} (${dayKo(t)})</span></h2>
   ${todays.length ? todays.map(s => `
     <div class="card">
-      <div class="row">${stTag(s.status)}
+      <div class="row">${stTag(s.status)}${useTag(s)}
         <span style="margin-left:auto;font-size:12px;color:var(--gray)">${esc(courtsOf(s))}</span></div>
       <div class="num" style="font-size:19px;font-weight:700;margin-top:9px;letter-spacing:-.01em">${s.start} – ${s.end}</div>
       ${s.status === 'held' ? `<p class="note" style="margin-top:3px">매니저가 모집 중이에요 · 확정되면 알려드려요</p>` : ''}
-      ${s.status === 'booked' ? `<div class="divider"></div>
+      ${s.status === 'booked' ? `<p class="note" style="margin-top:3px">${useLine(s)}</p>
+        <div class="divider"></div>
         <div class="row"><span class="lbl sm">코트 대금</span>
           <span class="money" style="margin-left:auto;font-size:17px">${won(s.price)}</span></div>` : ''}
     </div>`).join('')
@@ -430,7 +448,9 @@ function drawHome(){
       <div class="li">
         <div class="num" style="width:104px;flex:none;font-size:13.5px;font-weight:600">${md(s.date)} (${dayKo(s.date)})<br>
           <span style="font-size:12px;color:var(--gray);font-weight:400">${s.start}–${s.end}</span></div>
-        ${stTag(s.status)}
+        <div style="min-width:0">${stTag(s.status)}
+          ${s.use ? `<div style="font-size:11px;color:var(--lgray);margin-top:3px;font-weight:500">${
+            s.use === 'match' ? `오픈매치 ${s.headcount || 0}명` : '개인 예약'}</div>` : ''}</div>
         <span class="num" style="margin-left:auto;font-size:14px;font-weight:600;${s.status==='open'?'color:var(--lgray);font-weight:500':''}">${won(s.price)}</span>
       </div>`).join('') : '<div class="empty">열어둔 시간이 없어요</div>'}
   </div>`;
@@ -445,20 +465,40 @@ let SEL_DAYS = new Set(), SEL_COURTS = new Set();
 function toggleDay(d){ SEL_DAYS.has(d) ? SEL_DAYS.delete(d) : SEL_DAYS.add(d); drawOpen(true); }
 function toggleCourt(id){ SEL_COURTS.has(id) ? SEL_COURTS.delete(id) : SEL_COURTS.add(id); drawOpen(true); }
 function fval(id, dflt){ const el = $(id); return el ? el.value : dflt; }
-function calcPrice(){
+/* 서버와 같은 규칙으로 자른다. 오픈매치는 2·3시간만 열리므로
+   09-18시를 한 덩어리로 두면 아무도 잡지 못한다. */
+function splitHours(total){
+  if (total < 2) return null;
+  const out = []; let left = total;
+  while (left >= 3) { out.push(3); left -= 3; }
+  if (left === 2) out.push(2);
+  else if (left === 1) { if (!out.length) return null; out.pop(); out.push(2,2); }
+  return out;
+}
+const toMin = t => +t.slice(0,2)*60 + +t.slice(3,5);
+const hhmm = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+function spansOf(){
   const st = fval('f_start','09:00'), en = fval('f_end','12:00');
-  const hrs = (+en.slice(0,2)*60 + +en.slice(3,5) - +st.slice(0,2)*60 - +st.slice(3,5)) / 60;
-  if (hrs <= 0) return 0;
+  const total = toMin(en) - toMin(st);
+  if (total <= 0 || total % 60 !== 0) return null;
+  const parts = splitHours(total/60);
+  if (!parts) return null;
+  const out = []; let cur = toMin(st);
+  parts.forEach(h => { out.push([hhmm(cur), hhmm(cur + h*60), h]); cur += h*60; });
+  return out;
+}
+function perHour(){
   let per = 0; COURTS.forEach(c => { if (SEL_COURTS.has(c.id)) per += c.price_hour || 0; });
-  return Math.round(per * hrs);
+  return per;
 }
 function countTimes(){
-  const weeks = +fval('f_weeks', 4);
-  return SEL_DAYS.size * weeks;
+  const sp = spansOf();
+  return sp ? SEL_DAYS.size * (+fval('f_weeks',4)) * sp.length : 0;
 }
 function drawOpen(keep){
   const st = fval('f_start','09:00'), en = fval('f_end','12:00'), wk = fval('f_weeks','4');
-  const price = calcPrice(), times = countTimes();
+  const sp = spansOf(), ph = perHour(), times = countTimes();
+  const dayTotal = sp ? sp.reduce((a,[,,h]) => a + ph*h, 0) : 0;
   const upcoming = SLOTS.filter(s => s.status !== 'closed').slice(0, 14);
   const scroll = keep ? window.scrollY : 0;
 
@@ -496,12 +536,30 @@ function drawOpen(keep){
   </div>
 
   <div class="card" style="background:var(--coral-s);border-color:#f6dcc9;box-shadow:none">
-    <div class="row"><span style="font-size:13.5px;font-weight:600;color:var(--coral-d)">타임당 받는 금액</span>
-      <span class="num" style="margin-left:auto;font-size:21px;font-weight:800;color:var(--coral-d);letter-spacing:-.02em">${won(price)}</span></div>
-    <p class="note" style="color:#a3714c">${times ? `${times}타임이 열려요 · ` : ''}대금은 매니저가 모집을 확정할 때만 발생해요</p>
+    ${sp ? `
+      <div style="font-size:13.5px;font-weight:700;color:var(--coral-d)">3시간 단위로 나눠서 열려요</div>
+      <p class="note" style="color:#a3714c;margin-top:3px">
+        오픈매치는 2시간·3시간만 열려서, 긴 시간은 잘라야 매니저가 잡을 수 있어요.</p>
+      <div style="margin-top:11px">
+        ${sp.map(([a,b2,h])=>`
+          <div class="row" style="padding:7px 0;border-bottom:1px solid #f2ddcb">
+            <span class="num" style="font-size:14px;font-weight:600;color:#8a5a33">${a} – ${b2}</span>
+            <span style="font-size:11.5px;color:#b58a63;margin-left:6px">${h}시간</span>
+            <span class="num" style="margin-left:auto;font-size:14.5px;font-weight:700;color:var(--coral-d)">${won(ph*h)}</span>
+          </div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span style="font-size:13px;font-weight:700;color:var(--coral-d)">하루 합계</span>
+        <span class="num" style="margin-left:auto;font-size:19px;font-weight:800;color:var(--coral-d);letter-spacing:-.02em">${won(dayTotal)}</span>
+      </div>
+      <p class="note" style="color:#a3714c">대금은 매니저가 모집을 확정한 타임만 발생해요</p>
+    ` : `
+      <div style="font-size:13.5px;font-weight:700;color:var(--coral-d)">시간을 다시 확인해 주세요</div>
+      <p class="note" style="color:#a3714c;margin-top:3px">최소 2시간 이상, 정각 단위로 열어주세요 (예: 09:00–18:00)</p>
+    `}
   </div>
-  <button class="btn" onclick="openSlots()" ${(!SEL_DAYS.size||!SEL_COURTS.size||price<=0)?'disabled':''}>
-    ${times && SEL_COURTS.size && price > 0 ? `${times}타임 열기` : '이 시간 열기'}</button>
+  <button class="btn" onclick="openSlots()" ${(!SEL_DAYS.size||!SEL_COURTS.size||!sp||ph<=0)?'disabled':''}>
+    ${times && SEL_COURTS.size && sp && ph>0 ? `${times}타임 열기` : '이 시간 열기'}</button>
 
   <h2>열어둔 시간</h2>
   <div class="card flush">
@@ -524,7 +582,7 @@ async function openSlots(){
                  start: fval('f_start','09:00'), end: fval('f_end','12:00'), court_ids: [...SEL_COURTS] };
   try {
     const d = await api('/venue/slots', { method:'POST', body: JSON.stringify(body) });
-    toast(`${d.made}타임 열었어요${d.skipped ? ` · ${d.skipped}타임은 이미 있어 건너뛰었어요` : ''}`);
+    toast(`${d.made}타임 열었어요${d.per_day > 1 ? ` (하루 ${d.per_day}타임)` : ''}${d.skipped ? ` · ${d.skipped}타임 건너뜀` : ''}`);
     SEL_DAYS = new Set(); SEL_COURTS = new Set();
     await load();
   } catch(e){ handle(e); }

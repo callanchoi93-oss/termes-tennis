@@ -43,6 +43,54 @@
   @media(min-width:480px){.app{margin:24px 0;min-height:auto;height:calc(100vh - 48px);border-radius:34px}}
   .demo-tag.live{background:#d8f0e2;color:#1f5c40}
   .demo-tag{background:var(--felt);color:var(--gray);text-align:center;font-size:11px;font-weight:600;padding:4px;flex-shrink:0}
+
+  .vncard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;
+          box-shadow:0 1px 2px rgba(40,30,18,.04),0 4px 16px rgba(40,30,18,.05)}
+  .vnphoto{width:100%;height:150px;object-fit:cover;border-radius:12px;display:block;background:#f2f0ea}
+  .vnphoto.ph{display:flex;align-items:center;justify-content:center;font-size:12.5px;color:#a8a49c}
+  .vntag{flex:none;background:#f2f0ea;color:#6b6357;font-size:11.5px;font-weight:700;border-radius:7px;padding:4px 9px}
+  .vnslot{display:inline-flex;align-items:center;gap:5px;background:#fff;color:#cf5418;
+          border:1.5px solid #f3d9c5;border-radius:10px;padding:9px 13px;font-size:13px;font-weight:700;
+          font-variant-numeric:tabular-nums;font-family:inherit;cursor:pointer}
+  .vnslot b{font-weight:800}
+  .vnslot.off{background:#f4f2ee;color:#a8a49c;border-color:#eae6de;cursor:default}
+  .vnslot i{font-style:normal;font-size:10.5px;font-weight:600}
+  .vndays{display:flex;gap:7px;overflow-x:auto;padding:2px 0 4px;-webkit-overflow-scrolling:touch;
+          scrollbar-width:none}
+  .vndays::-webkit-scrollbar{display:none}
+  .vnday{flex:none;width:52px;height:58px;border-radius:14px;background:#fff;border:1px solid var(--line);
+         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+         font-family:inherit;color:#6b6357;cursor:pointer}
+  .vnday .w{font-size:11px;font-weight:600}
+  .vnday b{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+  .vnday.on{background:#ec6a2e;border-color:#ec6a2e;color:#fff;box-shadow:0 5px 14px rgba(236,106,46,.3)}
+  .vnrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;
+         border-bottom:1px solid #f4f2ed;font-size:13px}
+  .vnrow:last-child{border-bottom:0}
+  .vnrow span{color:#8a857c;flex:none}
+  .vnrow b{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+  .vnrow.tot{padding-top:11px;border-top:1px solid #eee9e1;border-bottom:0}
+  .vnrow.tot span{color:#1c1b18;font-weight:800;font-size:14px}
+  .vnrow.tot b{font-size:19px;font-weight:800;color:#cf5418;letter-spacing:-.02em}
+  .vnwarn{margin-top:9px;background:#fceee4;border-radius:10px;padding:10px 12px;font-size:12.5px;
+          color:#a3714c;font-weight:600}
+  .vnpay{width:100%;height:54px;border-radius:14px;background:#ec6a2e;color:#fff;font-size:16px;
+         font-weight:700;border:none;font-family:inherit;letter-spacing:-.02em;margin-top:6px;
+         box-shadow:0 8px 20px rgba(236,106,46,.28);cursor:pointer}
+  .vnpay:disabled{background:#e8e4dc;color:#b0aa9f;box-shadow:none}
+  .vbh{font-size:15.5px;font-weight:700;margin:20px 4px 10px;letter-spacing:-.02em}
+  .vbh span{font-size:12px;color:#a8a49c;font-weight:400;margin-left:6px}
+  .vbtag{background:#e9f4ee;color:#1f7d4d;font-size:11px;font-weight:700;border-radius:7px;padding:4px 9px}
+  .vbcancel{width:100%;height:44px;margin-top:11px;border-radius:12px;background:#fff;
+            border:1.5px solid #f0dcd0;color:#c4483c;font-size:13.5px;font-weight:700;
+            font-family:inherit;cursor:pointer}
+  .vnx{width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid var(--line);
+       font-size:15px;color:#6b6357;font-family:inherit;cursor:pointer;flex:none}
+  .vnnote{font-size:12px;color:#a8a49c;margin-top:11px;line-height:1.5}
+  .vnsel{flex:1;min-width:0;height:44px;border:1px solid #e2ddd4;border-radius:12px;background:#fff;
+         padding:0 12px;font-size:14px;font-weight:600;font-family:inherit;color:inherit;appearance:none;
+         -webkit-appearance:none}
+  .vnsel:disabled{background:#f2f0ea;color:#a8a49c}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top, 0px)) 20px 8px;flex-shrink:0}
   /* 상태바 가림막 — 페이지가 스크롤돼도 시계·배터리 아래로 내용이 비치지 않게 한다.
      .appbar 의 padding-top 만으로는 스크롤한 뒤를 막지 못한다. */
@@ -1543,6 +1591,7 @@
     <section class="screen" id="s-sched"></section>
     <section class="screen" id="s-lounge"></section>
     <section class="screen" id="s-chat"></section>
+    <section class="screen" id="s-venue"></section>
     <section class="screen" id="s-me"></section>
   </div>
   <div class="tabbar">
@@ -1550,6 +1599,7 @@
     <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
     <div class="tab" data-s="sched" onclick="go('sched')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>일정</div>
+    <div class="tab" data-s="venue" onclick="go('venue')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14M3 12h18"/></svg>구장예약</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
   <div class="fullov on" id="auth"><div class="auth2">
@@ -11852,11 +11902,239 @@ function schedCal(){
       <span style="font-size:11px;font-weight:500;color:var(--lgray)">회색 숫자 = 열리는 매치</span>
     </div></div>`;
 }
+/* ══════════ 구장예약 — 캐시로 코트를 빌린다 ══════════ */
+let VN_SIDO='', VN_GU='', VN_DATE='', VN_OPEN=null, VN_PICK=null, VN_BUSY=false;
+const VN_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광역시':'대구','인천광역시':'인천',
+  '광주광역시':'광주','대전광역시':'대전','울산광역시':'울산','세종특별자치시':'세종','경기도':'경기',
+  '강원특별자치도':'강원','충청북도':'충북','충청남도':'충남','전북특별자치도':'전북','전라남도':'전남',
+  '경상북도':'경북','경상남도':'경남','제주특별자치도':'제주'};
+
+function vnDays(){
+  const out=[]; const base=new Date(); base.setHours(12,0,0,0);
+  for(let i=0;i<14;i++){ const d=new Date(base.getTime()+i*864e5);
+    out.push({v:d.toISOString().slice(0,10), d:d.getDate(),
+      w:['일','월','화','수','목','금','토'][d.getDay()], i}); }
+  return out;
+}
+async function loadVenueOpen(){
+  const qs=[];
+  if(VN_SIDO) qs.push('sido='+encodeURIComponent(VN_SIDO));
+  if(VN_GU) qs.push('sigungu='+encodeURIComponent(VN_GU));
+  if(VN_DATE) qs.push('date='+VN_DATE);
+  try{ VN_OPEN = await api('/venue-slots/reservable'+(qs.length?'?'+qs.join('&'):'')); }
+  catch(e){ VN_OPEN=[]; }
+  renderVenues();
+}
+function vnSido(v){ VN_SIDO=v; VN_GU=''; VN_OPEN=null; renderVenues(); loadVenueOpen(); }
+function vnGu(v){ VN_GU=v; VN_OPEN=null; renderVenues(); loadVenueOpen(); }
+function vnDate(v){ VN_DATE=(VN_DATE===v?'':v); VN_OPEN=null; renderVenues(); loadVenueOpen(); }
+function vnDateLabel(d){
+  const dt=new Date(d+'T12:00:00');
+  return `${dt.getMonth()+1}.${dt.getDate()} (${['일','월','화','수','목','금','토'][dt.getDay()]})`;
+}
+
+function renderVenues(){
+  const el=document.getElementById('s-venue'); if(!el) return;
+  if(VN_PICK) return vnDetail(el);
+  if(VN_OPEN===null) loadVenueOpen();
+
+  const byVenue=new Map();
+  (VN_OPEN||[]).forEach(s=>{ const v=s.venue||{}; if(!v.id) return;
+    if(!byVenue.has(v.id)) byVenue.set(v.id,{venue:v,slots:[]});
+    byVenue.get(v.id).slots.push(s); });
+  const groups=[...byVenue.values()];
+
+  let h=`<h2 class="t">구장예약</h2><p class="sub">맞수 캐시로 코트를 바로 빌릴 수 있어요.</p>`;
+
+  h+=`<div class="vndays">${vnDays().map(d=>`
+    <button class="vnday ${VN_DATE===d.v?'on':''}" onclick="vnDate('${d.v}')">
+      <span class="w">${d.i===0?'오늘':d.w}</span><b>${d.d}</b></button>`).join('')}</div>`;
+
+  h+=`<div style="display:flex;gap:8px;margin:12px 0 6px">
+    <select class="vnsel" onchange="vnSido(this.value)">
+      <option value="">전국</option>
+      ${Object.keys(REGIONS).map(k=>`<option value="${k}" ${VN_SIDO===k?'selected':''}>${VN_SHORT[k]||k}</option>`).join('')}
+    </select>
+    <select class="vnsel" onchange="vnGu(this.value)" ${VN_SIDO?'':'disabled'}>
+      <option value="">${VN_SIDO?'전체 지역':'시/도 먼저'}</option>
+      ${VN_SIDO?(REGIONS[VN_SIDO]||[]).map(g=>`<option value="${g}" ${VN_GU===g?'selected':''}>${g}</option>`).join(''):''}
+    </select>
+  </div>`;
+
+  if(VN_OPEN===null){ el.innerHTML=h+`<div class="vncard" style="text-align:center;color:#8a857c;padding:26px">불러오는 중…</div>`; return; }
+
+  if(!groups.length){
+    el.innerHTML=h+`<div class="vncard" style="text-align:center;padding:30px 20px">
+      <div style="font-size:15px;font-weight:700">열린 코트가 없어요</div>
+      <p style="font-size:12.5px;color:#8a857c;margin-top:6px;line-height:1.55">
+        ${VN_DATE?vnDateLabel(VN_DATE)+'에 ':''}${VN_GU?esc(VN_GU)+' ':''}빈 코트가 없네요.<br>
+        다른 날짜나 지역을 골라보세요.</p></div>`;
+    return;
+  }
+
+  groups.forEach(g=>{
+    const v=g.venue;
+    const days={}; g.slots.forEach(s=>{ (days[s.date]=days[s.date]||[]).push(s); });
+    h+=`<div class="vncard">
+      ${(v.photos||[]).length
+        ? `<img class="vnphoto" src="${esc(v.photos[0])}" alt="${esc(v.name||'')}" loading="lazy">`
+        : `<div class="vnphoto ph">사진 준비 중</div>`}
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-top:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:700;letter-spacing:-.02em">${esc(v.name||'')}</div>
+          <div style="font-size:12.5px;color:#8a857c;margin-top:2px">
+            ${esc([v.sigungu,v.addr].filter(Boolean).join(' '))}</div>
+        </div>
+        <span class="vntag">${g.slots.length}타임</span>
+      </div>
+      ${Object.keys(days).sort().slice(0,5).map(d=>`
+        <div style="margin-top:11px">
+          <div style="font-size:12.5px;font-weight:700;color:#5a544b">${vnDateLabel(d)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+            ${days[d].map(s=>`
+              <button class="vnslot ${s.reservable?'':'off'}" onclick="vnOpen(${s.id})"
+                ${s.reservable?'':'disabled'}>
+                ${s.start} <b>${Math.round(s.amount/10000)}만</b>
+                ${s.reservable?'':'<i>대기</i>'}</button>`).join('')}
+          </div>
+        </div>`).join('')}
+      ${g.slots.some(s=>!s.reservable)?`<p class="vnnote">
+        '대기'는 아직 예약이 열리지 않은 시간이에요. 경기 ${(g.slots.find(s=>!s.reservable)||{}).window_h||48}시간 전부터 열려요.</p>`:''}
+    </div>`;
+  });
+  el.innerHTML=h;
+}
+
+/* ── 예약 상세 ── */
+function vnOpen(id){
+  VN_PICK=(VN_OPEN||[]).find(s=>s.id===id) || null;
+  if(!VN_PICK) return;
+  document.getElementById('scroll').scrollTop=0;
+  renderVenues();
+}
+function vnClose(){ VN_PICK=null; renderVenues(); }
+function vnDetail(el){
+  const s=VN_PICK, v=s.venue||{};
+  const cash=(state.me&&state.me.cash)||0;
+  const short=Math.max(0, s.amount-cash);
+  el.innerHTML=`
+  <div style="display:flex;align-items:center;gap:10px;margin:2px 0 14px">
+    <button class="vnx" onclick="vnClose()" aria-label="닫기">✕</button>
+    <h2 class="t" style="margin:0;font-size:22px">예약 확인</h2>
+  </div>
+
+  <div class="vncard">
+    <div style="font-size:14px;font-weight:800;margin-bottom:10px">예약 정보</div>
+    <div class="vnrow"><span>날짜</span><b>${vnDateLabel(s.date)} ${s.start}~${s.end}</b></div>
+    <div class="vnrow"><span>장소</span><b>${esc(v.name||'')}</b></div>
+    <div class="vnrow"><span>코트</span><b>${esc((s.courts||[]).map(c=>c.name).join(' · '))}</b></div>
+    <div class="vnrow"><span>주소</span><b style="font-weight:600;color:#5a544b">${esc([v.sigungu,v.addr].filter(Boolean).join(' '))}</b></div>
+  </div>
+
+  <div class="vncard">
+    <div style="font-size:14px;font-weight:800;margin-bottom:10px">시설 정보</div>
+    ${(s.courts||[]).map(c=>`
+      <div class="vnrow"><span>${esc(c.name)}</span>
+        <b>${c.indoor?'실내':'실외'}${c.surface?' · '+esc(c.surface):''}</b></div>`).join('')}
+    <div class="vnrow"><span>코트 수</span><b>${(s.courts||[]).length}면</b></div>
+  </div>
+
+  <div class="vncard">
+    <div style="font-size:14px;font-weight:800;margin-bottom:10px">결제 정보</div>
+    <div class="vnrow"><span>코트 대여료</span><b>${(s.court_cost||0).toLocaleString()}원</b></div>
+    <div class="vnrow"><span>맞수 수수료</span><b>${(s.fee||0).toLocaleString()}원</b></div>
+    <div class="vnrow tot"><span>최종 결제</span><b>${(s.amount||0).toLocaleString()}원</b></div>
+    <div class="vnrow" style="border:0;padding-top:10px">
+      <span>내 캐시</span>
+      <b style="color:${short?'#cf5418':'#1f7d4d'}">${cash.toLocaleString()}원</b></div>
+    ${short?`<div class="vnwarn">캐시가 ${short.toLocaleString()}원 모자라요 ·
+      <button onclick="go('me')" style="color:#cf5418;font-weight:800;text-decoration:underline">충전하러 가기</button></div>`:''}
+  </div>
+
+  <div class="vncard" style="background:#f7f5f0;border-style:dashed">
+    <div style="font-size:13px;font-weight:800;margin-bottom:6px">이용 안내</div>
+    <ul style="margin:0;padding-left:16px;font-size:12.5px;color:#6b6357;line-height:1.65">
+      <li>결제는 충전해 두신 맞수 캐시에서 빠져나가요.</li>
+      <li>경기 24시간 전까지 취소하면 캐시로 전액 돌려드려요.</li>
+      <li>그 이후에는 취소가 어려우니 맞수로 연락 주세요.</li>
+      <li>코트 상태나 편의시설은 구장에 따라 달라요.</li>
+    </ul>
+  </div>
+
+  <button class="vnpay" onclick="vnReserve()" ${(short||VN_BUSY)?'disabled':''}>
+    ${short?'캐시가 부족해요':`${(s.amount||0).toLocaleString()}원 예약하기`}</button>
+  <p style="font-size:11.5px;color:#a8a49c;text-align:center;margin:10px 0 4px">
+    예약 내용과 이용 안내를 확인했으며 결제에 동의합니다.</p>`;
+}
+async function vnReserve(){
+  if(VN_BUSY||!VN_PICK) return;
+  VN_BUSY=true; renderVenues();
+  try{
+    const d=await api(`/venue-slots/${VN_PICK.id}/reserve`,{method:'POST',body:JSON.stringify({})});
+    if(state.me) state.me.cash=d.cash;
+    toast('예약이 끝났어요 · 일정에서 확인하세요');
+    VB_LIST=null; loadMyBookings(true);
+    VN_PICK=null; VN_OPEN=null; VN_BUSY=false;
+    renderVenues(); loadVenueOpen();
+    try{ loadMe&&loadMe(); }catch(e){}
+  }catch(e){
+    VN_BUSY=false;
+    const m=String(e.message||'');
+    toast(m.slice(0,70)||'예약에 실패했어요');
+    if(/taken|409/.test(m)){ VN_PICK=null; VN_OPEN=null; renderVenues(); loadVenueOpen(); }
+    else renderVenues();
+  }
+}
+
+/* ── 내 코트 예약 (일정 탭에 함께 보여준다) ── */
+let VB_LIST=null;
+async function loadMyBookings(silent){
+  try{ VB_LIST = await api('/me/venue-bookings'); }catch(e){ VB_LIST=[]; }
+  if(!silent && state.view==='sched') renderSched();
+}
+function myBookingsBlock(){
+  if(VB_LIST===null){ loadMyBookings(); return ''; }
+  const live=VB_LIST.filter(b=>b.status==='paid');
+  if(!live.length) return '';
+  const nowMs=Date.now();
+  return `<h3 class="vbh">내 코트 예약 <span>${live.length}건</span></h3>` + live.map(b=>{
+    const startMs=new Date(`${b.date}T${b.start}:00`).getTime();
+    const past=startMs<nowMs;
+    const canCancel=!past && (startMs-nowMs)>=24*3600000;
+    return `<div class="vncard" style="${past?'opacity:.6':''}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="vbtag">${past?'이용 완료':'예약 확정'}</span>
+        <span style="margin-left:auto;font-size:12px;color:#8a857c">${esc(b.venue_name||'')}</span>
+      </div>
+      <div style="font-size:17px;font-weight:700;margin-top:8px;letter-spacing:-.01em;
+                  font-variant-numeric:tabular-nums">${vnDateLabel(b.date)} ${b.start}–${b.end}</div>
+      <div style="font-size:12.5px;color:#8a857c;margin-top:3px">
+        ${esc([b.sigungu,b.addr].filter(Boolean).join(' '))}</div>
+      <div class="vnrow" style="margin-top:10px;border-top:1px solid #f4f2ed;padding-top:10px">
+        <span>결제 금액</span><b style="color:#cf5418">${(b.amount||0).toLocaleString()}원</b></div>
+      ${!past ? (canCancel
+        ? `<button class="vbcancel" onclick="cancelBooking(${b.id})">예약 취소</button>`
+        : `<p class="vnnote" style="margin-top:9px">경기 24시간 이내에는 앱에서 취소할 수 없어요 · 010-3487-5507</p>`) : ''}
+    </div>`;
+  }).join('');
+}
+async function cancelBooking(id){
+  if(!confirm('예약을 취소할까요?\n결제한 금액은 캐시로 전액 돌려드려요.')) return;
+  try{
+    const d=await api(`/me/venue-bookings/${id}/cancel`,{method:'POST',body:JSON.stringify({})});
+    toast(`취소했어요 · ${(d.refunded||0).toLocaleString()}원 환불`);
+    VB_LIST=null; VN_OPEN=null;
+    await loadMyBookings();
+    try{ loadMe&&loadMe(); }catch(e){}
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+
 function renderSched(){
   const el=document.getElementById('s-sched'); if(!el) return;
   let h=`<h2 class="t">일정</h2><p class="sub">신청한 매치와 대전을 한곳에서.</p>`;
   if((SERVER_OK||TRIAL) && HOME_OM_ALL===null) homeOpenMatches();  // 캐시 채우기 (콜백이 다시 그림)
   h+=schedCal();                                                   // 출석 캘린더 (참석일 프레첼)
+  h+=myBookingsBlock();                                            // 캐시로 빌린 코트
   const mine=(HOME_OM_ALL||[]).filter(m=>m.joined||m.is_host)
     .sort((a,b)=>Date.parse(b.start_at||0)-Date.parse(a.start_at||0));
   h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px">매치 <b style="color:var(--coral-d)">${mine.length}</b></div>`;
@@ -17271,7 +17549,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   try{
-    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,venue:renderVenues,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }

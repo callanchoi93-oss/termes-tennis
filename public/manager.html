@@ -25,11 +25,7 @@
   .num{font-variant-numeric:tabular-nums}
 
   /* 상단 */
-  #statusGuard{position:fixed;top:0;left:0;right:0;z-index:20;pointer-events:none;
-    height:env(safe-area-inset-top,0px);background:var(--cream)}
-  .app.login #statusGuard,.top.sheet~#statusGuard{background:#fff}
-  .top{min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
-       padding-top:env(safe-area-inset-top,0px);
+  .top{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
        position:sticky;top:0;background:var(--cream);z-index:5}
   .app.login .top{background:#fff}
   .top.sheet{background:#fff;border-bottom:1px solid var(--line)}
@@ -231,12 +227,16 @@
   .scroller{display:flex;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;
             scrollbar-width:none}
   .scroller::-webkit-scrollbar{display:none}
+  .warn{font-size:12.5px;color:var(--amber);background:var(--amber-s);border-radius:9px;
+        padding:9px 11px;margin-top:8px;line-height:1.5;font-weight:500}
+  .warn b{font-weight:800}
   .wrap{display:flex;flex-wrap:wrap;gap:0}
   .lbl2{font-size:13px;font-weight:700;margin:0 4px 8px;letter-spacing:-.02em}
+  .fld.sel{flex:1;height:46px;font-size:14px;font-weight:600;min-width:0}
+  .fld.sel:disabled{background:var(--felt);color:var(--lgray)}
   .photo{width:100%;height:150px;border-radius:12px;object-fit:cover;display:block;background:var(--felt);margin-bottom:12px}
   .photo.ph{display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--lgray)}
 </style>
-<div id="statusGuard" aria-hidden="true"></div>
 <div class="app" id="app">
   <div class="top" id="top"></div>
   <div class="body" id="view"><div class="empty">불러오는 중…</div></div>
@@ -387,8 +387,8 @@ const SIDO_SHORT = { '서울특별시':'서울','부산광역시':'부산','대�
   '강원특별자치도':'강원','충청북도':'충북','충청남도':'충남','전북특별자치도':'전북','전라남도':'전남',
   '경상북도':'경북','경상남도':'경남','제주특별자치도':'제주' };
 let SIDO = '';
-function setSido(v){ SIDO = (SIDO===v ? '' : v); REGION=''; load(); }
-function setRegion(r){ REGION = (REGION===r ? '' : r); load(); }
+function pickSido(v){ SIDO = v; REGION = ''; load(); }
+function setRegion(r){ REGION = r; load(); }
 function drawFind(){
   const byDate = {};
   OPEN.forEach(s => { (byDate[s.date] = byDate[s.date] || []).push(s); });
@@ -401,19 +401,16 @@ function drawFind(){
       모집 중 ${ME?.held||0}건 · 확정 ${ME?.booked||0}건</div>
   </div>
 
-  <div class="lbl2">활동 지역</div>
-  <div class="wrap">
-    ${Object.keys(REGIONS).map(k=>`<button class="pill ${SIDO===k?'on':''}"
-      onclick="setSido('${k}')">${SIDO_SHORT[k]||k}</button>`).join('')}
+  <div class="row" style="gap:8px;margin-bottom:16px">
+    <select class="fld sel" id="f_sido" onchange="pickSido(this.value)">
+      <option value="">전국</option>
+      ${Object.keys(REGIONS).map(k=>`<option value="${k}" ${SIDO===k?'selected':''}>${SIDO_SHORT[k]||k}</option>`).join('')}
+    </select>
+    <select class="fld sel" id="f_gu" onchange="setRegion(this.value)" ${SIDO?'':'disabled'}>
+      <option value="">${SIDO?'전체 지역':'시/도 먼저'}</option>
+      ${SIDO?REGIONS[SIDO].map(g=>`<option value="${g}" ${REGION===g?'selected':''}>${g}</option>`).join(''):''}
+    </select>
   </div>
-  ${SIDO ? `
-    <div class="lbl2" style="margin-top:12px">상세 지역
-      <span style="color:var(--lgray);font-weight:400">· ${esc(SIDO)}</span></div>
-    <div class="wrap">
-      ${REGIONS[SIDO].map(g=>`<button class="pill ${REGION===g?'on':''}"
-        onclick="setRegion('${g}')">${g}</button>`).join('')}
-    </div>` : ''}
-  <div style="height:14px"></div>
 
   ${dates.length ? dates.map(d=>`
     <h2>${md(d)} (${dayKo(d)}) <span>${byDate[d].length}자리</span></h2>
@@ -451,6 +448,12 @@ async function hold(id){
 }
 
 /* ═══ 내 모집 ═══ */
+function hoursLeft(s){
+  const t = Date.parse(`${s.date}T${s.start}:00`);
+  if (isNaN(t)) return null;
+  const h = Math.round((t - Date.now()) / 36e5);
+  return h > 0 ? h : 0;
+}
 function drawMine(){
   $('view').innerHTML = `
   <h2 style="margin-top:8px">내가 잡은 코트 <span>${MINE.length}건</span></h2>
@@ -475,7 +478,13 @@ function drawMine(){
             color:${m.joined>=need?'var(--green)':'var(--ink)'}">${m.joined} / ${need}명</span></div>
         <div class="bar ${m.joined>=need?'full':''}"><i style="width:${pct}%"></i></div>
         ${done ? `<p class="note">확정됐어요 · 사장님께 코트 대금이 예약됐습니다</p>`
-               : `<p class="note">${need-m.joined}명 더 모이면 확정돼요</p>`}
+               : (()=>{ const h = hoursLeft(s);
+                   if (h === null) return `<p class="note">${need-m.joined}명 더 모이면 확정돼요</p>`;
+                   if (h <= 24) return `<p class="warn">경기가 ${h}시간 뒤예요 · 지금 못 채우면
+                     <b>자동으로 취소되고 참가비가 전액 환불</b>돼요</p>`;
+                   if (h <= 48) return `<p class="warn">${need-m.joined}명 더 필요해요 ·
+                     경기 24시간 전까지 못 채우면 자동 취소돼요 (${h}시간 남음)</p>`;
+                   return `<p class="note">${need-m.joined}명 더 모이면 확정돼요</p>`; })()}
       ` : `
         <div class="divider"></div>
         <p class="note" style="margin-top:0">아직 사람을 모으지 않았어요</p>

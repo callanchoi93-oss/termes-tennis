@@ -73,7 +73,7 @@ async function api(path, opts){
   return r.json();
 }
 
-const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vslots','열린 시간'],['reports','신고'],['payouts','정산'],['banners','배너']];
+const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vbook','코트 예약'],['vslots','열린 시간'],['under','인원 미달'],['reports','신고'],['payouts','정산'],['banners','배너']];
 let TAB='stats', OMS=[], SEL=null;
 
 function drawTabs(){
@@ -160,7 +160,9 @@ async function render(){
     else if(TAB==='venues'){ await drawVenues(v); }
     else if(TAB==='staff'){ await drawStaff(v); }
     else if(TAB==='vpay'){ await drawVenuePay(v); }
+    else if(TAB==='vbook'){ await drawBookings(v); }
     else if(TAB==='vslots'){ await drawVenueSlots(v); }
+    else if(TAB==='under'){ await drawUnderfilled(v); }
     else if(TAB==='payouts'){
       const rows=await api('/admin/payouts');
       v.innerHTML='<div class="card">'+ (rows.length? rows.map(p=>`
@@ -208,8 +210,8 @@ async function drawVenues(v){
   <div class="card"><b style="font-size:14px">구장 등록</b>
     <input id="vName" placeholder="구장 이름 (예: 필킨스 테니스)" style="margin-top:8px">
     <div style="display:flex;gap:8px;margin-top:8px">
-      <input id="vSido" placeholder="시/도 (서울)" style="flex:1">
-      <input id="vGu" placeholder="시군구 (강남구)" style="flex:1">
+      <select id="vSido" style="flex:1" onchange="fillGu('vSido','vGu')">${sidoOptions('')}</select>
+      <select id="vGu" style="flex:1"><option value="">시군구 선택</option></select>
     </div>
     <input id="vAddr" placeholder="상세 주소" style="margin-top:8px">
     <input id="vPhone" placeholder="구장 전화" style="margin-top:8px">
@@ -222,7 +224,12 @@ async function drawVenues(v){
       <span class="meta">#${x.id} · 열린 시간 ${x.open_slots}</span>
       <button class="btn xs ghost" onclick="toggleVenue(${x.id},${x.active?0:1})">${x.active?'활성':'중지'}</button>
     </div>
-    <div class="meta" style="margin-top:4px">${esc([x.sido,x.sigungu,x.addr].filter(Boolean).join(' '))||'주소 없음'}
+    <div class="meta" style="margin-top:4px">
+      ${(x.sido&&x.sigungu)
+        ? esc(x.sido+' '+x.sigungu)
+        : '<b style="color:#e4685d">지역 미설정 — 매니저 검색에 안 잡혀요</b>'}
+      ${esc(x.addr||'')}
+      <button class="btn xs ghost" style="margin-left:4px" onclick="editRegion(${x.id})">지역 수정</button><br>
       · ${esc(x.bank_name||'')} ${esc(x.bank_no||'계좌 미등록')}
       · ${x.owner_id?('계정 #'+x.owner_id):'<b style="color:#cf5418">계정 없음</b>'}</div>
 
@@ -273,6 +280,40 @@ async function drawVenues(v){
     </div>`:''}
   </div>`).join('') || '<div class="card meta">등록된 구장이 없어요</div>'}`;
 }
+const REGIONS = {
+  '서울특별시':['강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구','노원구','도봉구','동대문구','동작구','마포구','서대문구','서초구','성동구','성북구','송파구','양천구','영등포구','용산구','은평구','종로구','중구','중랑구'],
+  '부산광역시':['강서구','금정구','남구','동구','동래구','부산진구','북구','사상구','사하구','서구','수영구','연제구','영도구','중구','해운대구','기장군'],
+  '대구광역시':['남구','달서구','동구','북구','서구','수성구','중구','달성군','군위군'],
+  '인천광역시':['계양구','미추홀구','남동구','동구','부평구','서구','연수구','중구','강화군','옹진군'],
+  '광주광역시':['광산구','남구','동구','북구','서구'],
+  '대전광역시':['대덕구','동구','서구','유성구','중구'],
+  '울산광역시':['남구','동구','북구','중구','울주군'],
+  '세종특별자치시':['세종시'],
+  '경기도':['수원시 장안구','수원시 권선구','수원시 팔달구','수원시 영통구','성남시 수정구','성남시 중원구','성남시 분당구','고양시 덕양구','고양시 일산동구','고양시 일산서구','용인시 처인구','용인시 기흥구','용인시 수지구','부천시','안산시 상록구','안산시 단원구','안양시 만안구','안양시 동안구','남양주시','화성시','평택시','의정부시','시흥시','파주시','김포시','광명시','광주시','군포시','오산시','이천시','양주시','안성시','구리시','포천시','의왕시','하남시','여주시','동두천시','과천시','양평군','가평군','연천군'],
+  '강원특별자치도':['춘천시','원주시','강릉시','동해시','태백시','속초시','삼척시','홍천군','횡성군','영월군','평창군','정선군','철원군','화천군','양구군','인제군','고성군','양양군'],
+  '충청북도':['청주시 상당구','청주시 서원구','청주시 흥덕구','청주시 청원구','충주시','제천시','보은군','옥천군','영동군','증평군','진천군','괴산군','음성군','단양군'],
+  '충청남도':['천안시 동남구','천안시 서북구','공주시','보령시','아산시','서산시','논산시','계룡시','당진시','금산군','부여군','서천군','청양군','홍성군','예산군','태안군'],
+  '전북특별자치도':['전주시 완산구','전주시 덕진구','군산시','익산시','정읍시','남원시','김제시','완주군','진안군','무주군','장수군','임실군','순창군','고창군','부안군'],
+  '전라남도':['목포시','여수시','순천시','나주시','광양시','담양군','곡성군','구례군','고흥군','보성군','화순군','장흥군','강진군','해남군','영암군','무안군','함평군','영광군','장성군','완도군','진도군','신안군'],
+  '경상북도':['포항시 남구','포항시 북구','경주시','김천시','안동시','구미시','영주시','영천시','상주시','문경시','경산시','의성군','청송군','영양군','영덕군','청도군','고령군','성주군','칠곡군','예천군','봉화군','울진군','울릉군'],
+  '경상남도':['창원시 의창구','창원시 성산구','창원시 마산합포구','창원시 마산회원구','창원시 진해구','진주시','통영시','사천시','김해시','밀양시','거제시','양산시','의령군','함안군','창녕군','고성군','남해군','하동군','산청군','함양군','거창군','합천군'],
+  '제주특별자치도':['제주시','서귀포시'],
+};
+const SIDO_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광역시':'대구','인천광역시':'인천','광주광역시':'광주',
+ '대전광역시':'대전','울산광역시':'울산','세종특별자치시':'세종','경기도':'경기','강원특별자치도':'강원',
+ '충청북도':'충북','충청남도':'충남','전북특별자치도':'전북','전라남도':'전남','경상북도':'경북','경상남도':'경남',
+ '제주특별자치도':'제주'};
+/* 시도를 고르면 시군구 목록을 갈아끼운다. 지역은 반드시 이 목록의 값으로만 저장해야
+   매니저·참가자 화면의 지역 필터와 맞아떨어진다. */
+function fillGu(sidoSel, guSel, cur){
+  const gu=$(guSel), sd=$(sidoSel).value;
+  gu.innerHTML = '<option value="">시군구 선택</option>' +
+    (REGIONS[sd]||[]).map(g=>`<option ${g===cur?'selected':''}>${g}</option>`).join('');
+}
+function sidoOptions(cur){
+  return '<option value="">시/도 선택</option>' +
+    Object.keys(REGIONS).map(k=>`<option ${k===cur?'selected':''}>${k}</option>`).join('');
+}
 async function upPhoto(vid, input){
   const f = input.files && input.files[0]; if(!f) return;
   if(f.size > 3*1024*1024){ toast('3MB 이하로 줄여주세요'); input.value=''; return; }
@@ -294,6 +335,32 @@ async function coverPhoto(vid,i){
   try{ await api(`/admin/venues/${vid}/photo/cover`,{method:'POST',body:JSON.stringify({i})});
     toast('대표 사진을 바꿨어요'); render(); }
   catch(e){ toast(String(e.message).slice(0,80)); }
+}
+async function editRegion(vid){
+  const x=(window._VN||[]).find(v=>v.id===vid); if(!x) return;
+  const v=$('view');
+  const box=document.createElement('div'); box.className='card';
+  box.style.cssText='position:fixed;left:12px;right:12px;top:80px;z-index:99;max-width:420px;margin:0 auto;box-shadow:0 20px 50px rgba(0,0,0,.25)';
+  box.innerHTML=`<b style="font-size:14px">${esc(x.name)} 지역 설정</b>
+    <div class="meta" style="margin-top:3px">매니저·참가자 지역 필터에 쓰여요. 목록에서 골라주세요.</div>
+    <select id="eSido" style="margin-top:8px;width:100%" onchange="fillGu('eSido','eGu')">${sidoOptions(x.sido)}</select>
+    <select id="eGu" style="margin-top:8px;width:100%"></select>
+    <input id="eAddr" style="margin-top:8px;width:100%" placeholder="상세 주소" value="${esc(x.addr||'')}">
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn ghost" style="flex:1" onclick="this.closest('.card').remove()">취소</button>
+      <button class="btn coral" style="flex:1" onclick="saveRegion(${vid})">저장</button>
+    </div>`;
+  document.body.appendChild(box);
+  fillGu('eSido','eGu', x.sigungu);
+}
+async function saveRegion(vid){
+  const sido=$('eSido').value, sigungu=$('eGu').value;
+  if(!sido||!sigungu){ toast('시/도와 시군구를 모두 골라주세요'); return; }
+  try{ await api('/admin/venues/'+vid,{method:'PATCH',
+    body:JSON.stringify({sido,sigungu,addr:$('eAddr').value.trim()})});
+    document.querySelectorAll('.card[style*="position:fixed"]').forEach(e=>e.remove());
+    toast('지역을 저장했어요'); render();
+  }catch(e){ toast(String(e.message).slice(0,80)); }
 }
 async function addVenue(){
   const name=$('vName').value.trim(); if(!name){ toast('구장 이름을 입력해 주세요'); return; }
@@ -432,6 +499,87 @@ async function payVenue(vid,name,total){
   try{ const r=await api(`/admin/venue-payouts/pay-venue/${vid}`,{method:'POST',body:JSON.stringify({})});
     toast(`${r.updated}건 완료 처리했어요`); render(); }
   catch(e){ toast(String(e.message).slice(0,80)); }
+}
+
+/* ══════════ 회원 코트 예약 ══════════
+   취소 요청이 오면 여기서 처리한다. 관리자 취소는 시간 제한 없이 전액 캐시 환불. */
+async function drawBookings(v){
+  const d = await api('/admin/venue-bookings');
+  const live = d.list.filter(b=>b.status==='paid');
+  const dead = d.list.filter(b=>b.status!=='paid');
+  const nowMs = Date.now();
+  const row = b => {
+    const startMs = new Date(`${b.date}T${b.start}:00`).getTime();
+    const past = startMs < nowMs;
+    return `<div class="row">
+      <div style="flex:1;min-width:0">
+        <b>${esc(b.venue_name||'')} · ${esc(b.date)} ${esc(b.start)}–${esc(b.end)}</b>
+        <div class="meta">${esc(b.user_name||'회원')}${b.user_phone?' · '+esc(b.user_phone):''}
+          · 결제 ${won(b.amount)} (코트 ${won(b.court_cost)} + 수수료 ${won(b.fee)})
+          ${past?' · 이용 완료':''}${b.memo?' · '+esc(b.memo):''}</div></div>
+      ${b.status==='paid'
+        ? `<button class="btn xs ghost" onclick="cancelBooking(${b.id},'${esc(b.user_name||'회원')}',${b.amount})">취소·환불</button>`
+        : `<span class="meta">취소됨</span>`}
+    </div>`;
+  };
+  v.innerHTML = `
+  <div class="card" style="background:#e9f4ee;border-color:#cde5d8">
+    <div style="display:flex;align-items:center">
+      <b style="font-size:14px;color:#1f7d4d">유효한 예약</b>
+      <b style="margin-left:auto;font-size:20px;color:#1f7d4d">${won(d.paid)}</b></div>
+    <div class="meta" style="color:#3d7a5a;margin-top:3px">${live.length}건 · 취소 환불 누계 ${won(d.canceled)}</div>
+  </div>
+  <div class="card"><b style="font-size:14px">예약 중 <span class="meta">${live.length}건</span></b>
+    ${live.length?live.map(row).join(''):'<div class="meta" style="margin-top:8px">예약이 없어요</div>'}</div>
+  <div class="card"><b style="font-size:14px">취소된 예약 <span class="meta">${dead.length}건</span></b>
+    ${dead.length?dead.map(row).join(''):'<div class="meta" style="margin-top:8px">없어요</div>'}</div>
+  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
+    <div class="meta" style="color:#8a6b1f">관리자 취소는 시간 제한 없이 전액을 캐시로 돌려줍니다.
+      사장님 정산 예약도 함께 지워지고, 그 시간은 다시 판매 대기로 돌아갑니다.</div></div>`;
+}
+async function cancelBooking(id, who, amt){
+  if(!confirm(`${who} 님의 예약을 취소할까요?\n\n${won(amt)}을 캐시로 전액 환불하고,\n그 시간은 다시 판매 대기로 돌아갑니다.`)) return;
+  try{ const r=await api(`/admin/venue-bookings/${id}/cancel`,{method:'POST',body:JSON.stringify({})});
+    toast(`취소 완료 · ${won(r.refunded)} 환불`); render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
+}
+
+/* ══════════ 인원 미달 매치 ══════════
+   경기 24시간 전까지 정원이 안 차면 서버가 자동으로 접고 전액 환불한다.
+   여기서는 그 전에 상황을 보고, 필요하면 미리 접을 수 있다. */
+async function drawUnderfilled(v){
+  const d = await api('/admin/underfilled');
+  const danger = d.list.filter(m=>m.hours_left <= d.kill_h + 12);
+  v.innerHTML = `
+  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
+    <b style="font-size:14px;color:#a3721a">인원 미달 ${d.list.length}건</b>
+    <div class="meta" style="color:#8a6b1f;margin-top:3px">
+      경기 <b>${d.kill_h}시간</b> 전까지 못 채우면 자동으로 취소되고 참가비는 전액 캐시로 환불돼요.
+      <b>${d.warn_h}시간</b> 전에 매니저에게 미리 알림이 갑니다.</div>
+  </div>
+  ${danger.length?`<div class="card" style="background:#fdeceb;border-color:#f3d4d1">
+    <b style="font-size:14px;color:#c4483c">곧 취소될 매치 ${danger.length}건</b>
+    <div class="meta" style="color:#a04a41;margin-top:3px">매니저에게 연락해 채우거나, 미리 접어주세요.</div>
+  </div>`:''}
+  <div class="card">
+    ${d.list.length? d.list.map(m=>`
+      <div class="row">
+        <div style="flex:1;min-width:0">
+          <b>${esc(m.loc||'매치')} · ${esc(m.dt||'')}</b>
+          <div class="meta">
+            <b style="color:${m.hours_left<=d.kill_h?'#c4483c':'#a3721a'}">${m.have}/${m.need}명</b>
+            · ${m.hours_left}시간 남음
+            ${m.host?' · 매니저 '+esc(m.host):''}
+            ${m.warned?' · 경고 발송됨':''}</div></div>
+        <button class="btn xs ghost" onclick="killMatch(${m.id},'${esc(m.loc||'매치')}',${m.have})">지금 접기</button>
+      </div>`).join('') : '<div class="meta">인원 미달 매치가 없어요</div>'}
+  </div>`;
+}
+async function killMatch(id, loc, n){
+  if(!confirm(`${loc}\n\n지금 접을까요?\n참가자 ${n}명에게 전액 캐시로 환불하고,\n코트는 사장님께 판매 대기로 돌려드립니다.`)) return;
+  try{ const r=await api(`/admin/open-matches/${id}/kill`,{method:'POST',body:JSON.stringify({})});
+    toast(`접었어요 · ${r.refunded}명 환불`); render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
 }
 
 /* ══════════ 열린 시간 모니터링 ══════════ */
