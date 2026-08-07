@@ -906,7 +906,9 @@ app.post('/clubs/:id/join', auth, (req, res) => {
   }
   const ex = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
   if (ex) return res.json({ ok: true, status: ex.status });          // 이미 신청/가입됨
-  db.prepare(`INSERT INTO club_members (club_id,user_id,role,status) VALUES (?,?, 'member','pending')`).run(cid, req.uid);
+  /* 신청 시각을 남겨야 신청자 화면에서 '언제 신청했는지'를 보여줄 수 있다 */
+  db.prepare(`INSERT INTO club_members (club_id,user_id,role,status,joined_at) VALUES (?,?, 'member','pending',?)`)
+    .run(cid, req.uid, now());
   const me = getUser(req.uid);
   // 클럽장·임원에게 알림
   db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(cid)
@@ -1228,6 +1230,27 @@ app.get('/clubs/:id/roster', (req, res) => {
   res.json({ event_id: ev ? ev.id : null, members: [...rows, ...guests] });
 });
 // 가입 신청 목록 (임원진)
+/* 내가 낸 클럽 가입 신청 — 신청한 사람이 스스로 상태를 볼 수 있어야 한다.
+   승인을 마냥 기다리다 잊히는 게 가장 흔한 이탈 지점이다. */
+app.get('/me/club-applications', auth, (req, res) => {
+  const rows = db.prepare(`SELECT cm.club_id, cm.status, cm.role, cm.joined_at,
+      c.name, c.region, c.logo, c.logo_ic, c.logo_bg, c.home_court, c.meet_days
+    FROM club_members cm JOIN clubs c ON c.id=cm.club_id
+    WHERE cm.user_id=? AND cm.status='pending' ORDER BY cm.club_id DESC`).all(req.uid);
+  res.json(rows.map(r => ({ ...r, applied_at: r.joined_at || null })));
+});
+
+/* 신청 취소 — 승인 전에만 */
+app.delete('/clubs/:id/join', auth, (req, res) => {
+  const cid = +req.params.id;
+  const m = db.prepare('SELECT * FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (m.status !== 'pending')
+    return res.status(400).json({ error: 'already', message: '이미 처리된 신청이에요' });
+  db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, req.uid);
+  res.json({ ok: true });
+});
+
 app.get('/clubs/:id/join-requests', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
