@@ -5501,7 +5501,9 @@ app.get('/venue-slots/open', (req, res) => {
    · 경기 시작이 RESERVE_WINDOW_H 시간 이내로 임박한 것만 연다
      — 여유 있는 시간은 12명이 오는 오픈매치로 채우는 편이 모두에게 낫다
    ══════════════════════════════════════════════════════════════ */
-const RESERVE_WINDOW_H = +(process.env.VENUE_RESERVE_WINDOW_H || 48);   // 0이면 상시 예약
+/* 0 = 상시 예약. 몇 달 뒤 코트를 미리 잡는 사람이 많아 기본은 제한을 두지 않는다.
+   오픈매치와 자리를 다투게 되면 이 값을 시간 단위로 올려 개인 예약을 뒤로 미룰 수 있다. */
+const RESERVE_WINDOW_H = +(process.env.VENUE_RESERVE_WINDOW_H || 0);
 const RESERVE_FEE_RATE = +(process.env.VENUE_RESERVE_FEE_RATE || 0.1);  // 코트비 위에 붙는 맞수 수수료
 
 db.exec(`CREATE TABLE IF NOT EXISTS venue_bookings (
