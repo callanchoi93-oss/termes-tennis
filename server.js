@@ -1215,7 +1215,7 @@ app.get('/clubs/:id/roster', (req, res) => {
   let rows;
   let guests = [];
   if (ev) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM event_attendees ea JOIN users u ON u.id=ea.user_id
       LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
       WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
@@ -1223,7 +1223,7 @@ app.get('/clubs/:id/roster', (req, res) => {
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
   if (!rows || !rows.length) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
   }
@@ -5324,6 +5324,7 @@ CREATE INDEX IF NOT EXISTS ix_vp_venue ON venue_payouts(venue_id, status);
 try { db.exec('ALTER TABLE users ADD COLUMN suspended INTEGER DEFAULT 0'); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE club_events ADD COLUMN place TEXT'); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE clubs ADD COLUMN intro TEXT'); } catch (e) { /* 이미 있음 */ }
+
 /* 개인 리그 참가 신청 — 참가한 사람만 리그 테이블에 오른다 */
 db.exec(`CREATE TABLE IF NOT EXISTS league_entries (
   user_id INTEGER NOT NULL, sport TEXT NOT NULL, div TEXT NOT NULL DEFAULT 'men',
