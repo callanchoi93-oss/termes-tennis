@@ -2790,18 +2790,47 @@ app.get('/matches', (req, res) => {
     ${where} ORDER BY m.id DESC LIMIT 40`).all(...p));
 });
 // 개인 레이팅 랭킹 (리그 화면)
+/* 개인 리그 참가 — 신청한 사람만 랭킹에 노출된다.
+   신청 없이 전원을 줄세우면 '배치 중'만 가득해 리그가 의미를 잃는다. */
+app.get('/league/me', auth, (req, res) => {
+  const sport = String(req.query.sport || 'tennis');
+  const div = String(req.query.div || 'men');
+  const r = db.prepare('SELECT joined_at FROM league_entries WHERE user_id=? AND sport=? AND div=?')
+    .get(req.uid, sport, div);
+  const n = db.prepare('SELECT COUNT(*) n FROM league_entries WHERE sport=? AND div=?').get(sport, div).n;
+  res.json({ joined: !!r, joined_at: r ? r.joined_at : null, entries: n, sport, div });
+});
+
+app.post('/league/join', auth, (req, res) => {
+  const b = req.body || {};
+  const sport = String(b.sport || 'tennis'), div = String(b.div || 'men');
+  db.prepare(`INSERT INTO league_entries (user_id,sport,div,joined_at) VALUES (?,?,?,?)
+              ON CONFLICT(user_id,sport,div) DO NOTHING`).run(req.uid, sport, div, now());
+  res.json({ ok: true, joined: true });
+});
+
+app.delete('/league/join', auth, (req, res) => {
+  const sport = String(req.query.sport || 'tennis'), div = String(req.query.div || 'men');
+  db.prepare('DELETE FROM league_entries WHERE user_id=? AND sport=? AND div=?').run(req.uid, sport, div);
+  res.json({ ok: true, joined: false });
+});
+
 app.get('/rankings', (req, res) => {
   const { sport } = req.query;
   const dbl = String(req.query.type || 'singles') === 'doubles';
-  const col = dbl ? 'COALESCE(rating_doubles,1000)' : 'rating';
+  const col = dbl ? 'COALESCE(u.rating_doubles,1000)' : 'u.rating';
   /* 경기를 한 번도 안 한 사람은 랭킹에 올리지 않는다.
      마지막 경기 시각도 함께 줘서 앱이 '최근 활동'으로 한 번 더 거를 수 있게 한다. */
-  let sql = `SELECT id,name,region,sport,${col} AS rating,(wins+losses) AS games,
-      (SELECT MAX(created_at) FROM rating_log rl WHERE rl.user_id=users.id) AS last_played_at
-    FROM users WHERE provider NOT IN ('bot','venue','manager') AND (wins+losses) > 0`;
-  const p = [];
-  if (sport) { sql += ' AND sport=?'; p.push(sport); }
-  res.json(db.prepare(sql + ` ORDER BY ${col} DESC LIMIT 50`).all(...p));
+  const div = String(req.query.div || 'men');
+  /* 리그에 참가 신청한 사람만 줄세운다. 경기 수는 '배치 N/5' 표시에만 쓴다. */
+  let sql = `SELECT u.id,u.name,u.region,u.sport,${col} AS rating,
+      (u.wins+u.losses) AS games,
+      (SELECT MAX(created_at) FROM rating_log rl WHERE rl.user_id=u.id) AS last_played_at
+    FROM league_entries le JOIN users u ON u.id=le.user_id
+    WHERE le.div=? AND u.provider NOT IN ('bot','venue','manager')`;
+  const p = [div];
+  if (sport) { sql += ' AND le.sport=? AND u.sport=?'; p.push(sport, sport); }
+  res.json(db.prepare(sql + ' ORDER BY rating DESC LIMIT 50').all(...p));
 });
 // 대진 결과 → 내 레이팅 Elo 반영 (봇 상대 포함)
 app.post('/me/result', auth, (req, res) => {
@@ -5295,6 +5324,10 @@ CREATE INDEX IF NOT EXISTS ix_vp_venue ON venue_payouts(venue_id, status);
 try { db.exec('ALTER TABLE users ADD COLUMN suspended INTEGER DEFAULT 0'); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE club_events ADD COLUMN place TEXT'); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE clubs ADD COLUMN intro TEXT'); } catch (e) { /* 이미 있음 */ }
+/* 개인 리그 참가 신청 — 참가한 사람만 리그 테이블에 오른다 */
+db.exec(`CREATE TABLE IF NOT EXISTS league_entries (
+  user_id INTEGER NOT NULL, sport TEXT NOT NULL, div TEXT NOT NULL DEFAULT 'men',
+  joined_at INTEGER NOT NULL, PRIMARY KEY (user_id, sport, div))`);
 /* 매니저 등급 — 'partner' 는 맞수 몫의 20% 를 보너스로 받고 인기 시간을 먼저 잡는다 */
 ['manager_tier TEXT', 'partner_since INTEGER', 'tier_warned_at INTEGER']
   .forEach(c => { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch (e) {} });
