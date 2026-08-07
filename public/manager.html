@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f7f5f0">
 <title>맞수 매니저센터</title>
@@ -25,7 +25,16 @@
   .num{font-variant-numeric:tabular-nums}
 
   /* 상단 */
-  .top{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
+
+  @supports (-webkit-touch-callout: none){
+    input:not([type=range]):not([type=checkbox]):not([type=radio]),
+    select, textarea{ font-size:16px !important; }
+  }
+  #statusGuard{position:fixed;top:0;left:0;right:0;z-index:20;pointer-events:none;
+    height:env(safe-area-inset-top,0px);background:var(--cream)}
+  .app.login #statusGuard{background:#fff}
+  .top{min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:none;
+       padding-top:env(safe-area-inset-top,0px);
        position:sticky;top:0;background:var(--cream);z-index:5}
   .app.login .top{background:#fff}
   .top.sheet{background:#fff;border-bottom:1px solid var(--line)}
@@ -227,6 +236,18 @@
   .scroller{display:flex;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;
             scrollbar-width:none}
   .scroller::-webkit-scrollbar{display:none}
+  .crt{width:100%;display:flex;align-items:center;gap:10px;padding:11px 12px;margin-bottom:6px;
+       border:1.5px solid var(--line);border-radius:12px;background:#fff;font-family:inherit;
+       font-size:14px;font-weight:600;color:var(--ink)}
+  .crt.on{border-color:var(--coral);background:var(--coral-s)}
+  .crt.lock{opacity:.55;background:#faf8ff;border-color:#e6e0f5;cursor:default}
+  .ptag{background:#f0ecfa;color:#5b3fa8;font-size:11px;font-weight:800;border-radius:7px;padding:4px 9px}
+  .pl{margin:7px 0 0;padding-left:17px;font-size:12.5px;color:var(--gray);line-height:1.7}
+  .pl b{color:var(--purple-d);font-weight:800}
+  .crt .ck{width:22px;height:22px;border-radius:7px;border:1.5px solid var(--line);flex:none;
+           display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800}
+  .crt .ck.on{background:var(--coral);border-color:var(--coral)}
+  .quote{background:var(--coral-s);border:1px solid #f6dcc9;border-radius:12px;padding:11px 13px;margin-top:10px}
   .warn{font-size:12.5px;color:var(--amber);background:var(--amber-s);border-radius:9px;
         padding:9px 11px;margin-top:8px;line-height:1.5;font-weight:500}
   .warn b{font-weight:800}
@@ -237,6 +258,7 @@
   .photo{width:100%;height:150px;border-radius:12px;object-fit:cover;display:block;background:var(--felt);margin-bottom:12px}
   .photo.ph{display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--lgray)}
 </style>
+<div id="statusGuard" aria-hidden="true"></div>
 <div class="app" id="app">
   <div class="top" id="top"></div>
   <div class="body" id="view"><div class="empty">불러오는 중…</div></div>
@@ -299,7 +321,7 @@ function drawLogin(msg){
   </div>
   <div style="margin-top:34px;background:var(--cream);border-radius:12px;padding:16px">
     <div style="font-size:13.5px;font-weight:700">아이디는 맞수가 발급해 드려요</div>
-    <div class="note" style="margin-top:5px">매니저 교육을 마치면 아이디를 드립니다.
+    <div class="note" style="margin-top:5px">신청하시면 맞수가 아이디를 드려요.
       분실하셨다면 아래 번호로 연락 주세요.</div>
     <a href="tel:${HELP}" style="margin-top:12px;display:flex;align-items:center;gap:7px;font-size:13.5px;
        font-weight:700;color:var(--coral-d);text-decoration:none">
@@ -389,17 +411,78 @@ const SIDO_SHORT = { '서울특별시':'서울','부산광역시':'부산','대�
 let SIDO = '';
 function pickSido(v){ SIDO = v; REGION = ''; load(); }
 function setRegion(r){ REGION = r; load(); }
-function drawFind(){
+const T = () => (ME && ME.tier) || {tier:'normal',quota:20,window_m:3,need:60,done:0,this_month:0,left:60,lead_days:7,bonus_rate:0.2};
+function tierCard(){
+  const t = T();
+  const pct = t.need ? Math.min(100, Math.round(t.done/t.need*100)) : 0;
+  if (t.tier === 'partner') {
+    const risky = t.left > 0 && t.done < t.need*0.75;
+    return `<div class="card" style="border-color:#e6e0f5;background:#faf8ff">
+      <div class="row"><span class="ptag">파트너 매니저</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--gray)">이번 달 ${t.this_month}회</span></div>
+      <div class="row" style="margin-top:10px">
+        <span style="font-size:13px;font-weight:600">최근 ${t.window_m}개월 실적</span>
+        <span class="num" style="margin-left:auto;font-size:14px;font-weight:800;
+          color:${t.ok?'var(--green)':(risky?'var(--red)':'var(--purple-d)')}">${t.done} / ${t.need}회</span></div>
+      <div class="bar ${t.ok?'full':''}"><i style="width:${pct}%;${t.ok?'':'background:#8c6fd6'}"></i></div>
+      <p class="note">${t.ok
+        ? `자격 유지 중이에요 · 맞수 몫의 ${Math.round(t.bonus_rate*100)}%를 보너스로 받고, 인기 시간을 ${t.lead_days}일 먼저 고를 수 있어요`
+        : `${t.left}회 더 채우면 자격이 유지돼요 · 지금 못 채워도 다시 채우면 바로 복구됩니다`}</p>
+    </div>`;
+  }
+  return `<div class="card" style="border-color:#e6e0f5">
+    <div style="font-size:14px;font-weight:700">파트너 매니저가 되면</div>
+    <ul class="pl">
+      <li>맞수 몫의 <b>${Math.round(t.bonus_rate*100)}%</b>를 보너스로 더 받아요 (회당 약 1.7배)</li>
+      <li>인기 시간대 코트를 <b>${t.lead_days}일 먼저</b> 고를 수 있어요</li>
+    </ul>
+    <div class="row" style="margin-top:10px">
+      <span style="font-size:13px;font-weight:600">최근 ${t.window_m}개월 실적</span>
+      <span class="num" style="margin-left:auto;font-size:14px;font-weight:800">${t.done} / ${t.need}회</span></div>
+    <div class="bar"><i style="width:${pct}%;background:#8c6fd6"></i></div>
+    <p class="note">월 ${t.quota}회 기준이에요. 조건을 채우면 맞수가 확인 후 올려드려요.</p>
+  </div>`;
+}
+
+let SEL = new Set();
+function pickSlot(id){ SEL.has(id) ? SEL.delete(id) : SEL.add(id); drawFind(true); }
+const countIn = g => g.list.filter(x=>SEL.has(x.id)).length;
+const sumIn = g => g.list.filter(x=>SEL.has(x.id)).reduce((a,x)=>a+(x.price||0),0);
+const capOf = (courts,hours) => courts * (hours===2 ? 4 : 6);
+async function holdMany(){
+  const ids=[...SEL];
+  if(!ids.length){ toast('코트를 골라주세요'); return; }
+  if(!confirm(`${ids.length}면을 잡을까요?\n못 채우면 반드시 놓아주세요.`)) return;
+  try{ await api('/venue-slots/hold-many',{method:'POST',body:JSON.stringify({ids})});
+    toast(`${ids.length}면을 잡았어요 · 내 모집에서 매치를 만들어 주세요`);
+    SEL=new Set(); TAB='mine'; await load();
+  }catch(e){ handle(e); }
+}
+/* 같은 구장·같은 시간의 코트를 하나로 묶어 보여준다 */
+function drawFind(keep){
+  const scroll = keep ? window.scrollY : 0;
+  const gm = new Map();
+  OPEN.forEach(s => {
+    const k = `${s.date}|${s.start}|${s.end}|${s.venue&&s.venue.id}`;
+    if(!gm.has(k)) gm.set(k,{ date:s.date, start:s.start, end:s.end, venue:s.venue,
+      hours: Math.round((+s.end.slice(0,2)*60 + +s.end.slice(3,5) - +s.start.slice(0,2)*60 - +s.start.slice(3,5))/60),
+      list:[] });
+    gm.get(k).list.push(s);
+  });
   const byDate = {};
-  OPEN.forEach(s => { (byDate[s.date] = byDate[s.date] || []).push(s); });
+  [...gm.values()].forEach(g => { (byDate[g.date] = byDate[g.date] || []).push(g); });
   const dates = Object.keys(byDate).sort();
 
   $('view').innerHTML = `
   <div style="margin:2px 4px 12px">
-    <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">${esc(ME?.user?.name||'매니저')} 님</div>
+    <div class="row" style="gap:7px">
+      <div style="font-size:19px;font-weight:700;letter-spacing:-.02em">${esc((ME&&ME.user&&ME.user.name)||'매니저')} 님</div>
+      ${T().tier==='partner'?'<span class="ptag">파트너</span>':''}
+    </div>
     <div style="font-size:12.5px;color:var(--lgray);margin-top:1px">
-      모집 중 ${ME?.held||0}건 · 확정 ${ME?.booked||0}건</div>
+      모집 중 ${(ME&&ME.held)||0}건 · 확정 ${(ME&&ME.booked)||0}건</div>
   </div>
+  ${tierCard()}
 
   <div class="row" style="gap:8px;margin-bottom:16px">
     <select class="fld sel" id="f_sido" onchange="pickSido(this.value)">
@@ -413,28 +496,46 @@ function drawFind(){
   </div>
 
   ${dates.length ? dates.map(d=>`
-    <h2>${md(d)} (${dayKo(d)}) <span>${byDate[d].length}자리</span></h2>
+    <h2>${md(d)} (${dayKo(d)}) <span>${byDate[d].reduce((a,g)=>a+g.list.length,0)}면</span></h2>
     ${byDate[d].map(s=>`
       <div class="card">
-        ${(s.venue?.photos||[]).length
-          ? `<img class="photo" src="${esc(s.venue.photos[0])}" alt="${esc(s.venue?.name||'')}" loading="lazy">`
+        ${(s.venue&&s.venue.photos&&s.venue.photos.length)
+          ? `<img class="photo" src="${esc(s.venue.photos[0])}" alt="${esc((s.venue&&s.venue.name)||'')}" loading="lazy">`
           : `<div class="photo ph">사진 준비 중</div>`}
         <div class="row">
           <div style="min-width:0;flex:1">
-            <div style="font-size:15.5px;font-weight:700;letter-spacing:-.02em">${esc(s.venue?.name||'')}</div>
-            <p class="note" style="margin-top:2px">${esc([s.venue?.sigungu,s.venue?.addr].filter(Boolean).join(' '))}</p>
+            <div style="font-size:15.5px;font-weight:700;letter-spacing:-.02em">${esc((s.venue&&s.venue.name)||'')}</div>
+            <p class="note" style="margin-top:2px">${esc([s.venue&&s.venue.sigungu,s.venue&&s.venue.addr].filter(Boolean).join(' '))}</p>
           </div>
-          <span class="badge">${(s.courts||[]).length}면</span>
+          <span class="badge">${s.list.length}면 비어 있음</span>
         </div>
-        <div class="row" style="margin-top:11px;gap:10px">
-          <div class="num" style="font-size:18px;font-weight:700;letter-spacing:-.01em">${s.start} – ${s.end}</div>
-          <div style="margin-left:auto;text-align:right">
-            <div class="num money" style="font-size:16px">${won(s.price)}</div>
-            <div class="note" style="margin-top:0">코트비</div>
+        <div class="num" style="font-size:18px;font-weight:700;margin-top:11px;letter-spacing:-.01em">
+          ${s.start} – ${s.end}
+          <span style="font-size:12.5px;color:var(--lgray);font-weight:600">${s.hours}시간</span></div>
+        <div style="margin-top:10px">
+          ${s.list.map(x=>{ const on=SEL.has(x.id);
+            if (x.holdable === false) return `<div class="crt lock">
+              <span class="ck" style="border-style:dashed"></span>
+              <span style="flex:1;text-align:left">${esc((x.courts||[]).map(c=>c.name).join(' · '))}</span>
+              <span style="font-size:11.5px;font-weight:700;color:var(--purple-d)">파트너 우선</span></div>`;
+            return `<button class="crt ${on?'on':''}" onclick="pickSlot(${x.id})">
+              <span class="ck ${on?'on':''}">${on?'✓':''}</span>
+              <span style="flex:1;text-align:left">${esc((x.courts||[]).map(c=>c.name).join(' · '))}</span>
+              <span class="num" style="font-weight:700">${won(x.price)}</span></button>`;}).join('')}
+        </div>
+        ${countIn(s)>=2 ? `
+          <div class="quote">
+            <div class="row">
+              <span style="font-size:12.5px;font-weight:700;color:var(--coral-d)">${countIn(s)}면 · 모집 ${capOf(countIn(s),s.hours)}명</span>
+              <span class="num" style="margin-left:auto;font-size:15px;font-weight:800;color:var(--coral-d)">${won(sumIn(s))}</span></div>
+            <p class="note" style="color:#a3714c;margin-top:2px">코트비 합계 · 참가비는 매치 만들 때 계산돼요</p>
           </div>
-        </div>
-        <p class="note">${esc((s.courts||[]).map(c=>c.name).join(' · '))}</p>
-        <button class="btn" style="height:46px;margin-top:12px" onclick="hold(${s.id})">이 코트 잡기</button>
+          <button class="btn" style="height:46px;margin-top:10px" onclick="holdMany()">${countIn(s)}면 잡고 ${capOf(countIn(s),s.hours)}명 모집</button>
+        ` : countIn(s)===1 ? `
+          <div class="warn" style="margin-top:10px">오픈매치는 <b>2면부터</b> 열 수 있어요.
+            1면은 개인 예약으로 나가는 자리예요.</div>
+          <button class="btn" style="height:46px;margin-top:10px;background:#e8e4dc;color:#b0aa9f;box-shadow:none" disabled>1면 더 골라주세요</button>
+        ` : `<p class="note">2면부터 고를 수 있어요 · ${[2,3].map(n=>`${n}면 ${capOf(n,s.hours)}명`).join(' · ')}</p>`}
       </div>`).join('')}
   `).join('')
     : `<div class="card"><p class="note" style="text-align:center;margin:14px 0">
@@ -515,8 +616,12 @@ async function linkMatch(sid){
   }catch(e){ handle(e); }
 }
 async function release(id){
-  if(!confirm('이 코트를 놓을까요?\n사장님 화면에서 다시 판매 대기로 돌아갑니다.')) return;
-  try{ await api(`/venue-slots/${id}/release`,{method:'POST'}); toast('놓았어요'); await load(); }
+  const s = MINE.find(x=>x.id===id);
+  const ids = s ? MINE.filter(x=>x.status==='held' && x.date===s.date && x.start===s.start
+    && ((x.venue&&x.venue.name)===(s.venue&&s.venue.name))).map(x=>x.id) : [id];
+  if(!confirm(`${ids.length>1?ids.length+'면을':'이 코트를'} 놓을까요?\n사장님 화면에서 다시 판매 대기로 돌아갑니다.`)) return;
+  try{ await api('/venue-slots/release-many',{method:'POST',body:JSON.stringify({ids})});
+    toast('놓았어요'); await load(); }
   catch(e){ handle(e); }
 }
 
@@ -618,7 +723,8 @@ function drawPay(){
   </div>
 
   <div class="card dash">
-    <p class="note" style="margin:0;color:var(--gray)">정산은 코트비·캔볼 실비 환급 + 수고비예요.<br>문의 ${HELP}</p>
+    <p class="note" style="margin:0;color:var(--gray)">정산은 수고비${
+      T().tier==='partner'?' + 파트너 보너스':''}${''} · 외부 코트를 직접 빌린 경우 실비도 환급돼요.<br>문의 ${HELP}</p>
   </div>`;
 }
 

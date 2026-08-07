@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f7f5f0">
 <title>맞수 파트너센터</title>
@@ -24,6 +24,13 @@
   button{cursor:pointer;border:none;background:none}
   .num{font-variant-numeric:tabular-nums}
 
+
+  /* iOS 는 글씨가 16px 미만인 입력창을 누르면 화면을 확대하고, 되돌리지 않는다.
+     실제 글꼴만 16px 로 올려 확대를 막는다 (보이는 레이아웃은 그대로). */
+  @supports (-webkit-touch-callout: none){
+    input:not([type=range]):not([type=checkbox]):not([type=radio]),
+    select, textarea{ font-size:16px !important; }
+  }
   /* 상단 */
   #statusGuard{position:fixed;top:0;left:0;right:0;z-index:20;pointer-events:none;
     height:env(safe-area-inset-top,0px);background:var(--cream)}
@@ -111,6 +118,10 @@
   .fgroup{margin-top:18px}
 
   /* 요일 · 코트 */
+  .pick{display:flex;gap:7px;margin-top:6px}
+  .pk{flex:1;height:44px;border-radius:11px;background:#fff;border:1.5px solid var(--line);
+      font-size:14px;font-weight:600;color:var(--gray);font-family:inherit}
+  .pk.on{background:var(--ink);border-color:var(--ink);color:#fff}
   .days{display:flex;gap:6px;margin-top:13px}
   .day{flex:1;height:40px;border-radius:12px;background:#fff;border:1.5px solid var(--line);
        display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:600;color:var(--gray)}
@@ -477,11 +488,18 @@ function splitHours(total){
 }
 const toMin = t => +t.slice(0,2)*60 + +t.slice(3,5);
 const hhmm = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+let UNIT = '3';
+function setUnit(v){ UNIT = v; drawOpen(true); }
 function spansOf(){
   const st = fval('f_start','09:00'), en = fval('f_end','12:00');
   const total = toMin(en) - toMin(st);
   if (total <= 0 || total % 60 !== 0) return null;
-  const parts = splitHours(total/60);
+  let parts;
+  if (UNIT === '2' || UNIT === '3') {
+    const u = +UNIT; parts = []; let left = total/60;
+    while (left >= u) { parts.push(u); left -= u; }
+    if (!parts.length) parts = null;
+  } else parts = splitHours(total/60);
   if (!parts) return null;
   const out = []; let cur = toMin(st);
   parts.forEach(h => { out.push([hhmm(cur), hhmm(cur + h*60), h]); cur += h*60; });
@@ -493,11 +511,12 @@ function perHour(){
 }
 function countTimes(){
   const sp = spansOf();
-  return sp ? SEL_DAYS.size * (+fval('f_weeks',4)) * sp.length : 0;
+  return sp ? SEL_DAYS.size * (+fval('f_weeks',4)) * sp.length * SEL_COURTS.size : 0;
 }
 function drawOpen(keep){
   const st = fval('f_start','09:00'), en = fval('f_end','12:00'), wk = fval('f_weeks','4');
   const sp = spansOf(), ph = perHour(), times = countTimes();
+  const one = SEL_COURTS.size ? Math.round(ph / SEL_COURTS.size) : 0;   // 1면 시간당
   const dayTotal = sp ? sp.reduce((a,[,,h]) => a + ph*h, 0) : 0;
   const upcoming = SLOTS.filter(s => s.status !== 'closed').slice(0, 14);
   const scroll = keep ? window.scrollY : 0;
@@ -520,6 +539,13 @@ function drawOpen(keep){
           ${[1,2,4,8,12].map(w => `<option value="${w}" ${String(w)===String(wk)?'selected':''}>${w}주</option>`).join('')}
         </select></div>
     </div>
+    <div style="margin-top:14px"><span class="lbl sm">한 타임 길이</span>
+      <div class="pick">
+        ${[['2','2시간'],['3','3시간'],['mix','혼합']].map(([v,l])=>
+          `<button class="pk ${UNIT===v?'on':''}" onclick="setUnit('${v}')">${l}</button>`).join('')}
+      </div>
+      <p class="note">단식은 2시간, 오픈매치는 3시간을 많이 써요.</p>
+    </div>
   </div>
 
   <h2>어떤 코트를 열까요 <span>${SEL_COURTS.size}면 선택</span></h2>
@@ -537,22 +563,25 @@ function drawOpen(keep){
 
   <div class="card" style="background:var(--coral-s);border-color:#f6dcc9;box-shadow:none">
     ${sp ? `
-      <div style="font-size:13.5px;font-weight:700;color:var(--coral-d)">3시간 단위로 나눠서 열려요</div>
+      <div style="font-size:13.5px;font-weight:700;color:var(--coral-d)">코트마다 1면씩 따로 열려요</div>
       <p class="note" style="color:#a3714c;margin-top:3px">
-        오픈매치는 2시간·3시간만 열려서, 긴 시간은 잘라야 매니저가 잡을 수 있어요.</p>
+        단식 한 사람도, 오픈매치 매니저도 각자 필요한 만큼 가져갈 수 있어요.</p>
       <div style="margin-top:11px">
         ${sp.map(([a,b2,h])=>`
           <div class="row" style="padding:7px 0;border-bottom:1px solid #f2ddcb">
             <span class="num" style="font-size:14px;font-weight:600;color:#8a5a33">${a} – ${b2}</span>
             <span style="font-size:11.5px;color:#b58a63;margin-left:6px">${h}시간</span>
-            <span class="num" style="margin-left:auto;font-size:14.5px;font-weight:700;color:var(--coral-d)">${won(ph*h)}</span>
+            <span class="num" style="margin-left:auto;font-size:14.5px;font-weight:700;color:var(--coral-d)">${won(one*h)} <span style="font-size:11px;font-weight:600">/1면</span></span>
           </div>`).join('')}
       </div>
-      <div class="row" style="margin-top:10px">
-        <span style="font-size:13px;font-weight:700;color:var(--coral-d)">하루 합계</span>
+      <div class="row" style="margin-top:10px;padding-top:9px;border-top:1px solid #f0d9c6">
+        <span style="font-size:12.5px;color:#a3714c;font-weight:600">하루 열리는 타임</span>
+        <span class="num" style="margin-left:auto;font-size:13.5px;font-weight:700;color:#a3714c">${SEL_COURTS.size}면 × ${sp.length}타임 = ${SEL_COURTS.size*sp.length}타임</span></div>
+      <div class="row" style="margin-top:7px">
+        <span style="font-size:13px;font-weight:800;color:var(--coral-d)">하루 합계</span>
         <span class="num" style="margin-left:auto;font-size:19px;font-weight:800;color:var(--coral-d);letter-spacing:-.02em">${won(dayTotal)}</span>
       </div>
-      <p class="note" style="color:#a3714c">대금은 매니저가 모집을 확정한 타임만 발생해요</p>
+      <p class="note" style="color:#a3714c">대금은 팔린 타임만 발생해요</p>
     ` : `
       <div style="font-size:13.5px;font-weight:700;color:var(--coral-d)">시간을 다시 확인해 주세요</div>
       <p class="note" style="color:#a3714c;margin-top:3px">최소 2시간 이상, 정각 단위로 열어주세요 (예: 09:00–18:00)</p>
@@ -579,7 +608,7 @@ function drawOpen(keep){
 }
 async function openSlots(){
   const body = { weekdays: [...SEL_DAYS], weeks: +fval('f_weeks', 4),
-                 start: fval('f_start','09:00'), end: fval('f_end','12:00'), court_ids: [...SEL_COURTS] };
+                 start: fval('f_start','09:00'), end: fval('f_end','12:00'), court_ids: [...SEL_COURTS], unit: UNIT };
   try {
     const d = await api('/venue/slots', { method:'POST', body: JSON.stringify(body) });
     toast(`${d.made}타임 열었어요${d.per_day > 1 ? ` (하루 ${d.per_day}타임)` : ''}${d.skipped ? ` · ${d.skipped}타임 건너뜀` : ''}`);

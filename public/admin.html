@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>맞수 관리자</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <style>
@@ -39,6 +39,13 @@
     padding:12px 18px; border-radius:14px; font-size:13px; font-weight:700; opacity:0; transition:.3s; pointer-events:none; z-index:9; max-width:88%; text-align:center; }
   .toast.on{ opacity:1; }
   .sel{ outline:2.5px solid var(--coral); border-radius:14px; }
+
+  /* iOS 는 글씨가 16px 미만인 입력창을 누르면 화면을 확대하고, 되돌리지 않는다.
+     실제 글꼴만 16px 로 올려 확대를 막는다 (보이는 레이아웃은 그대로). */
+  @supports (-webkit-touch-callout: none){
+    input:not([type=range]):not([type=checkbox]):not([type=radio]),
+    select, textarea{ font-size:16px !important; }
+  }
 </style>
 </head>
 <body>
@@ -73,7 +80,7 @@ async function api(path, opts){
   return r.json();
 }
 
-const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vbook','코트 예약'],['vslots','열린 시간'],['under','인원 미달'],['reports','신고'],['payouts','정산'],['banners','배너']];
+const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vbook','코트 예약'],['vslots','열린 시간'],['under','인원 미달'],['mgrs','매니저 등급'],['reports','신고'],['payouts','정산'],['banners','배너']];
 let TAB='stats', OMS=[], SEL=null;
 
 function drawTabs(){
@@ -163,6 +170,7 @@ async function render(){
     else if(TAB==='vbook'){ await drawBookings(v); }
     else if(TAB==='vslots'){ await drawVenueSlots(v); }
     else if(TAB==='under'){ await drawUnderfilled(v); }
+    else if(TAB==='mgrs'){ await drawManagers(v); }
     else if(TAB==='payouts'){
       const rows=await api('/admin/payouts');
       v.innerHTML='<div class="card">'+ (rows.length? rows.map(p=>`
@@ -433,7 +441,7 @@ async function drawStaff(v){
     <button class="btn coral" style="margin-top:9px;width:100%" onclick="setTab('venues')">구장 탭으로 가기</button>
   </div>
   <div class="card"><b style="font-size:14px">매니저 계정 발급</b>
-    <div class="meta" style="margin-top:3px">교육을 마친 매니저에게 발급하세요</div>
+    <div class="meta" style="margin-top:3px">신청한 매니저에게 발급하세요</div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
       <input id="mName" placeholder="이름" style="flex:1;min-width:90px">
       <input id="mId" placeholder="아이디" style="flex:1;min-width:100px">
@@ -544,6 +552,59 @@ async function cancelBooking(id, who, amt){
   catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
 }
 
+/* ══════════ 매니저 등급 ══════════
+   파트너는 맞수 몫의 20%를 보너스로 받고 인기 시간을 먼저 고른다.
+   3개월 누적으로 판정해 한 달 부진으로 바로 떨어지지 않게 한다. */
+async function drawManagers(v){
+  const d = await api('/admin/managers');
+  const P = d.list.filter(m=>m.tier==='partner');
+  const N = d.list.filter(m=>m.tier!=='partner');
+  const row = m => {
+    const pct = m.need ? Math.min(100, Math.round(m.done/m.need*100)) : 0;
+    const risky = m.tier==='partner' && !m.ok;
+    const ready = m.tier!=='partner' && m.ok;
+    return `<div class="row">
+      <div style="flex:1;min-width:0">
+        <b>${esc(m.name)}</b> <span class="meta">${esc(m.login_id)}</span>
+        ${m.suspended?'<span style="color:#e4685d;font-size:11.5px;font-weight:800"> · 정지</span>':''}
+        <div class="meta">최근 ${m.window_m}개월 <b style="color:${m.ok?'#1f7d4d':(risky?'#c4483c':'#5f5e5a')}">${m.done}/${m.need}회</b>
+          · 이번 달 ${m.this_month}회
+          ${risky?` · <b style="color:#c4483c">${m.left}회 부족</b>`:''}
+          ${ready?' · <b style="color:#1f7d4d">승급 조건 충족</b>':''}</div>
+        <div style="height:4px;border-radius:9px;background:#f1efe8;margin-top:5px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${m.ok?'#1f7d4d':'#8c6fd6'}"></div></div>
+      </div>
+      <button class="btn xs ${m.tier==='partner'?'ghost':'coral'}"
+        onclick="setTier(${m.id},'${m.tier==='partner'?'normal':'partner'}','${esc(m.name)}')">
+        ${m.tier==='partner'?'자격 해제':'파트너 승급'}</button>
+    </div>`;
+  };
+  v.innerHTML = `
+  <div class="card" style="background:#f0ecfa;border-color:#ded4f5">
+    <b style="font-size:14px;color:#5b3fa8">파트너 매니저 ${P.length}명 / 전체 ${d.list.length}명</b>
+    <div class="meta" style="color:#6d5ba3;margin-top:3px">
+      보너스 맞수 몫의 <b>${Math.round(d.bonus_rate*100)}%</b> ·
+      의무 월 <b>${d.quota}회</b> (최근 ${d.window_m}개월 누적 ${d.quota*d.window_m}회) ·
+      인기 시간 <b>${d.lead_days}일</b> 우선 선점</div>
+  </div>
+  <div class="card"><b style="font-size:14px">파트너 <span class="meta">${P.length}명</span></b>
+    ${P.length?P.map(row).join(''):'<div class="meta" style="margin-top:8px">아직 없어요</div>'}</div>
+  <div class="card"><b style="font-size:14px">일반 <span class="meta">${N.length}명</span></b>
+    ${N.length?N.map(row).join(''):'<div class="meta" style="margin-top:8px">없어요</div>'}</div>
+  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
+    <div class="meta" style="color:#8a6b1f">자격 미달은 매달 초에 자동 강등되고, 그 전에 매니저에게 경고가 갑니다.
+      다시 채우면 자동으로 복구되지 않으니 여기서 승급시켜 주세요.</div></div>`;
+}
+async function setTier(id, tier, name){
+  const up = tier==='partner';
+  if(!confirm(`${name} 님을 ${up?'파트너로 승급':'일반으로 해제'}할까요?\n\n${up
+    ?'회당 수입이 약 1.7배가 되고, 인기 시간을 먼저 고를 수 있게 됩니다.'
+    :'보너스와 우선 선점권이 사라집니다.'}`)) return;
+  try{ await api(`/admin/managers/${id}/tier`,{method:'POST',body:JSON.stringify({tier})});
+    toast(up?'파트너로 승급했어요':'자격을 해제했어요'); render(); }
+  catch(e){ toast(String(e.message).slice(0,80)); }
+}
+
 /* ══════════ 인원 미달 매치 ══════════
    경기 24시간 전까지 정원이 안 차면 서버가 자동으로 접고 전액 환불한다.
    여기서는 그 전에 상황을 보고, 필요하면 미리 접을 수 있다. */
@@ -607,8 +668,9 @@ async function drawVenueSlots(v){
   </div>`;
 }
 async function forceRelease(id){
-  if(!confirm('이 코트를 강제로 해제할까요?\n\n확정 건이라면 잡혀 있던 정산도 함께 취소됩니다.\n참가자에게는 따로 안내해 주세요.')) return;
-  try{ await api(`/admin/venue-slots/${id}/release`,{method:'POST'}); toast('해제했어요'); render(); }
+  if(!confirm('이 코트를 강제로 해제할까요?\n\n· 잡혀 있던 사장님 정산이 취소됩니다\n· 개인 예약이 걸려 있으면 전액 캐시로 환불됩니다\n· 오픈매치 참가자에게는 따로 안내해 주세요')) return;
+  try{ const r=await api(`/admin/venue-slots/${id}/release`,{method:'POST'});
+    toast(r.refunded?`해제 · ${won(r.refunded)} 환불`:'해제했어요'); render(); }
   catch(e){ toast(String(e.message).slice(0,80)); }
 }
 
