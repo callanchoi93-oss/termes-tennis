@@ -3108,6 +3108,13 @@ async function adoptServerClubs(){
     d.officer = (c.role==='owner'||c.role==='officer'); d.members = c.member_count||d.members; d.region = c.region||d.region;
   });
   SRV_MYCLUBS = active;
+  /* '내 클럽' 화면은 state.myClubs 를 본다. 서버에서 받은 클럽을 여기에 넣지 않으면
+     내가 만든 클럽인데도 "가입한 클럽이 없어요"가 뜬다. */
+  state.myClubs = state.myClubs || [];
+  active.filter(c=>(c.sport||state.sport)===state.sport).forEach(c=>{
+    if(!state.myClubs.includes(c.name)) state.myClubs.push(c.name);
+  });
+  if(!state.activeClub && state.myClubs.length) state.activeClub = state.myClubs[0];
   syncActiveClub();                    // 종목 필터 재적용 — 다른 종목 클럽이 새 종목에 새지 않게
   syncActiveClub();                                      // 현재 종목의 클럽만 활성으로
   // 신청 대기 중인 클럽 표시
@@ -6207,15 +6214,27 @@ function renderLeague(){
           .then(r=>{ LG_RANKS=r||[]; LG_TS=Date.now(); if(state.view==='league') renderLeague(); })
           .catch(()=>{ LG_RANKS=[]; LG_TS=Date.now(); });
       } else if(LG_RANKS.length){
-        h+=`<div class="note" style="text-align:left;margin:0 2px 6px">선수를 탭하면 나이·신장·주손·통산성적을 볼 수 있어요 (개인리그에서만)</div>`;
+        /* 경기를 한 번도 안 한 사람까지 줄세우면 '배치 중'만 가득해 랭킹이 의미를 잃는다.
+           실제로 뛴 사람만, 그리고 최근 30일 활동이 있는 사람만 남긴다. */
+        const MS30=30*864e5, nowMs=Date.now();
+        const played=LG_RANKS.filter(p=>(p.games||0)>0
+          && (!p.last_played_at || nowMs-p.last_played_at<=MS30));
         const myId=(state.serverUser||{}).id;
-        h+=`<div class="card"><div class="ch" style="font-size:14px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:500">상위 ${Math.min(LG_RANKS.length,10)}명</span></div>`;
-        LG_RANKS.slice(0,10).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
+        if(!played.length){
+          h+=`<div class="card" style="text-align:center;padding:26px 18px">
+            <div style="font-size:15px;font-weight:600">아직 랭킹이 없어요</div>
+            <div style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.55">
+              경기를 하고 결과를 입력하면 순위에 올라가요.<br>5경기를 마치면 등급이 정해집니다.</div></div>`;
+        } else {
+        h+=`<div class="note" style="text-align:left;margin:0 2px 6px">선수를 탭하면 나이·신장·주손·통산성적을 볼 수 있어요 (개인리그에서만)</div>`;
+        h+=`<div class="card"><div class="ch" style="font-size:14px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:500">최근 30일 · 상위 ${Math.min(played.length,10)}명</span></div>`;
+        played.slice(0,10).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
           h+=`<div ${me?'':`onclick="openLeagueMatchup(${p.id})"`} style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
             <div style="width:24px;text-align:center;font-weight:700;color:${medal}">${i+1}</div>
             <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${me?' (나)':''}</div>
-            <div style="font-weight:700;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:'배치 중'}</div></div>`; });
+            <div style="font-weight:700;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:`배치 ${p.games||0}/5`}</div></div>`; });
         h+=`</div>`;
+        }
       }
     }
     h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMatchArrange('스마트 매칭 상대')">
@@ -7443,8 +7462,8 @@ function openClubDetail(n){
     ${c.entry?`<div class="cond"><span>입회비</span><b>${c.entry.toLocaleString()}원</b></div>`:''}
     ${c.season?`<div class="cond"><span>연회비(시즌)</span><b>${c.season.toLocaleString()}원</b></div>`:''}
     ${c.guestFee?`<div class="cond"><span>게스트비 (1회)</span><b>${c.guestFee.toLocaleString()}원</b></div>`:''}
-    ${c.guestReq>0?`<div class="cond"><span>정회원 전환</span><b>게스트 ${c.guestReq}회 참여 후</b></div>`:''}
-    <div class="note" style="text-align:left;margin-top:8px">회비는 클럽에 직접 납부해요. 가입은 <b>임원진 승인제</b>이고, 처음엔 게스트 등급으로 시작할 수 있어요.</div>`;
+    <div class="note" style="text-align:left;margin-top:8px">회비는 클럽에 직접 납부해요.
+      가입은 <b>임원진 승인제</b>예요 — 신청하면 임원진이 확인 후 승인합니다.</div>`;
   if(st==='member'){
     h+=`<button class="btn done" style="margin-top:14px">가입된 클럽이에요 ✓</button>`;
   }else if(st==='pending'||st==='memberPending'||st==='guestPending'){
@@ -7484,8 +7503,9 @@ function guestVisit(n){
   if(!state.card){state._pendDetail=n;closeOv();toast('먼저 결제 수단을 등록해 주세요');setTimeout(openCard,300);return;}
   state.guestVisits[n]=(state.guestVisits[n]||0)+1;
   const c=state.clubs.find(x=>x.n===n);openClubDetail(n);
-  const gv=state.guestVisits[n],need=Math.max(0,c.guestReq-gv);
-  toast(need>0?`게스트 ${gv}회 참여 · ${need}회 더 하면 신청 가능`:`게스트 ${gv}회 · 이제 정회원 신청 가능!`);
+  /* 게스트 N회는 클럽이 자체적으로 두는 기준일 뿐, 앱은 막지 않는다.
+     가입은 언제든 신청할 수 있고 임원진 승인으로 결정된다. */
+  toast(`게스트 ${state.guestVisits[n]}회 참여 · 언제든 정회원으로 신청할 수 있어요`);
 }
 
 function subscribePremium(){
