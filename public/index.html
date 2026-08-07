@@ -118,9 +118,11 @@
   /* iOS 는 글씨가 16px 미만인 입력창을 누르면 화면을 확대한다.
      그리고 확대된 채로 돌아오지 않아 앱 전체가 커진 것처럼 보인다.
      실제 글꼴은 16px 로 두고 transform 으로 보이는 크기만 줄인다. */
+  /* iOS 는 '텍스트를 입력하는' 요소에서만 확대한다. select 까지 16px 로 올리면
+     주변 글자보다 혼자 커져서 어색해진다. */
   @supports (-webkit-touch-callout: none){
-    input:not([type=range]):not([type=checkbox]):not([type=radio]),
-    select, textarea{ font-size:16px !important; }
+    input[type=text],input[type=search],input[type=tel],input[type=email],
+    input[type=number],input[type=password],input:not([type]),textarea{ font-size:16px !important; }
   }
 
 
@@ -165,36 +167,73 @@
   .opsclub{margin-left:auto;font-size:12px;color:var(--lgray);font-weight:400}
   .opsbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
     padding:14px 18px calc(24px + env(safe-area-inset-bottom))}
-  .opsum{background:var(--ink);color:#fff;border-radius:16px;padding:15px 16px;margin:4px 0 12px}
-  .opsum .k{font-size:12px;opacity:.7}
-  .opsum .v{font-size:18px;font-weight:700;margin-top:3px;letter-spacing:-.02em}
-  .opnote{font-size:11.5px;color:rgba(255,255,255,.6);margin-top:3px}
-  .opq{display:flex;gap:8px;margin-bottom:16px}
-  .opq>div{flex:1;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 8px;text-align:center}
-  .opq .qn{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
-  .opq .qn span{font-size:11.5px;font-weight:500;color:var(--lgray)}
-  .opq .ql{font-size:11px;color:var(--lgray);margin-top:2px}
-  .opgl{font-size:12px;font-weight:600;color:var(--lgray);margin:4px 2px 8px}
-  .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+
+  .opsum{width:100%;display:flex;align-items:center;gap:10px;background:var(--coral-s);
+    border:none;border-radius:13px;padding:14px 16px;margin:2px 0 18px;font-family:inherit;cursor:pointer}
+  .opsum .v{flex:1;text-align:left;font-size:14.5px;font-weight:600;color:var(--coral-d)}
+  .opsum .go{flex:none;font-size:12.5px;font-weight:500;color:var(--coral-d)}
+  .opgl{font-size:12px;font-weight:500;color:var(--lgray);margin:2px 2px 9px}
+  .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
   .optool{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;
-    padding:13px;text-align:left;font-family:inherit;cursor:pointer;display:block}
-  .opic{width:32px;height:32px;border-radius:10px;background:var(--coral-s);color:var(--coral-d);
-    display:flex;align-items:center;justify-content:center;margin-bottom:8px}
-  .opic.g{background:var(--green-s);color:var(--green)}
-  .opic.p{background:#f0ecfa;color:#5b3fa8}
-  .opt{display:block;font-size:13.5px;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
-  .opd{display:block;font-size:11px;color:var(--lgray);margin-top:2px;line-height:1.35}
+    padding:15px 14px;text-align:left;font-family:inherit;cursor:pointer;display:block}
+  .optool:active{background:var(--cream2)}
+  .opic{display:flex;align-items:center;color:#8a857c;margin-bottom:9px}
+  .opt{display:block;font-size:14px;font-weight:500;letter-spacing:-.02em;color:var(--ink)}
+  .opd{display:block;font-size:11px;color:var(--lgray);margin-top:3px;line-height:1.35}
   .opn{position:absolute;top:10px;right:10px;min-width:18px;height:18px;border-radius:9px;
     background:var(--red);color:#fff;font-size:10.5px;font-weight:700;display:flex;
     align-items:center;justify-content:center;padding:0 5px}
 
-  .cheroback{display:inline-block;font-size:12.5px;color:var(--gray);font-weight:500;
-    margin:0 0 12px;padding:6px 11px 6px 8px;border:1px solid var(--line);border-radius:9px;
-    background:#fff;cursor:pointer}
 
-  .clrow{display:flex;align-items:center;gap:13px;padding:14px 4px;
-    border-bottom:1px solid var(--line);cursor:pointer}
-  .clrow:last-of-type{border-bottom:0}
+
+
+  /* 모임 고르기 */
+  .evlead{font-size:12.5px;color:var(--lgray);margin:0 2px 14px;line-height:1.5}
+  .evpick{width:100%;display:flex;align-items:center;gap:14px;background:#fff;
+    border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:9px;
+    font-family:inherit;text-align:left;cursor:pointer;box-shadow:0 1px 2px rgba(40,30,18,.04)}
+  .evpick:active{transform:scale(.99)}
+  .evd{flex:none;width:44px;text-align:center;line-height:1.1}
+  .evd b{display:block;font-size:17px;font-weight:700;letter-spacing:-.03em;
+    font-variant-numeric:tabular-nums;color:var(--ink)}
+  .evd i{display:block;font-style:normal;font-size:11px;color:var(--lgray);margin-top:2px}
+  .evx{flex:1;min-width:0;display:block}
+  .evt{display:block;font-size:15px;font-weight:500;letter-spacing:-.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .evs{display:block;font-size:12.5px;color:var(--lgray);margin-top:3px}
+  .evn{display:inline-block;font-size:11px;font-weight:500;color:var(--lgray);
+    background:var(--felt);border-radius:6px;padding:3px 8px;margin-top:7px}
+  .evn.has{background:var(--coral-s);color:var(--coral-d);font-weight:600}
+  .evgo{flex:none;color:#cdc8be;font-size:19px}
+  /* 대진 목록 */
+  .bkgl{font-size:12.5px;font-weight:500;color:var(--lgray);margin:6px 4px 10px}
+  .bkgl b{color:var(--ink);font-weight:700}
+  .bkrow{width:100%;display:block;text-align:left;background:#fff;border:1px solid var(--line);
+    border-radius:16px;padding:15px 16px;margin-bottom:9px;font-family:inherit;cursor:pointer;
+    box-shadow:0 1px 2px rgba(40,30,18,.04)}
+  .bkrow:active{transform:scale(.99)}
+  .bkrow.past{background:#fdfcfa}
+  .bkrow.past .bkt{color:var(--gray);font-weight:500}
+  .bkhd{display:flex;align-items:center;gap:7px}
+  .bkt{font-size:15.5px;font-weight:600;letter-spacing:-.02em;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .bklive{flex:none;font-size:10.5px;font-weight:600;color:var(--coral-d);
+    background:var(--coral-s);border-radius:6px;padding:3px 7px}
+  .bkdone{flex:none;font-size:10.5px;font-weight:500;color:var(--lgray);
+    background:var(--felt);border-radius:6px;padding:3px 7px}
+  .bkdate{margin-left:auto;flex:none;font-size:11.5px;color:var(--lgray);
+    font-variant-numeric:tabular-nums}
+  .bkmeta{display:block;font-size:12.5px;color:var(--lgray);margin-top:5px}
+  .bkbar{display:block;height:5px;border-radius:9px;background:var(--felt);margin-top:11px;overflow:hidden}
+  .bkbar i{display:block;height:100%;background:var(--coral);border-radius:9px;transition:width .3s}
+  .bkfoot{display:flex;align-items:baseline;gap:2px;margin-top:8px}
+  .bkfoot b{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .bkfoot em{font-style:normal;font-size:12px;color:var(--lgray)}
+  .bkpct{margin-left:auto;font-size:12px;font-weight:600;color:var(--coral-d);
+    font-variant-numeric:tabular-nums}
+
+  .secl{font-size:15px;font-weight:600;color:var(--ink);margin:0 4px 10px;letter-spacing:-.02em}
+  .clrow{display:flex;align-items:center;gap:13px;padding:13px 4px;cursor:pointer}
   .clrow .clogo{flex:none}
   .clav{width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;
     justify-content:center;color:#fff;font-size:16px;font-weight:600;
@@ -205,24 +244,29 @@
     padding:3px 7px;margin-left:6px;vertical-align:2px}
   .clr{font-size:13px;color:var(--lgray);margin-top:3px}
   .clgo{flex:none;color:#cdc8be;font-size:19px}
-  .mcempty{background:#fff;border:1px dashed #ddd7cb;border-radius:16px;padding:26px 18px;
-    text-align:center;margin-bottom:18px}
-  .mcempty .t{font-size:14.5px;font-weight:500;color:var(--gray)}
-  .mcrow{display:flex;gap:10px;overflow-x:auto;padding:2px 0 6px;margin-bottom:18px;
+  .mcempty{text-align:center;padding:18px 0 22px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .mcempty .t{font-size:13.5px;color:var(--lgray)}
+  .mcbtn{display:inline-block;margin-top:12px;border:1px solid var(--line);background:#fff;
+    border-radius:20px;padding:10px 20px;font-size:13.5px;font-weight:500;color:var(--ink);
+    font-family:inherit;cursor:pointer}
+  .mcbtn:active{background:var(--felt)}
+  .mcrow{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 16px;margin-bottom:14px;
+    border-bottom:1px solid var(--line);
     -webkit-overflow-scrolling:touch;scrollbar-width:none}
   .mcrow::-webkit-scrollbar{display:none}
-  .mcard{flex:none;width:112px;background:#fff;border:1px solid var(--line);border-radius:16px;
-    padding:14px 10px;text-align:center;cursor:pointer;
-    box-shadow:0 1px 2px rgba(40,30,18,.04)}
-  .mcard .clogo{margin:0 auto 8px}
-  .mcav{width:44px;height:44px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;
-    justify-content:center;color:#fff;font-size:16px;font-weight:600;
+  .mcard{flex:none;width:70px;background:none;border:none;padding:0;font-family:inherit;
+    cursor:pointer;text-align:center}
+  .mcard:active{transform:scale(.96)}
+  .mcard .clogo{margin:0 auto 7px}
+  .mcav{width:52px;height:52px;border-radius:50%;margin:0 auto 7px;display:flex;align-items:center;
+    justify-content:center;color:#fff;font-size:18px;font-weight:600;
     background:linear-gradient(150deg,#3f9e6b,#2c7d50)}
-  .mcplus{width:44px;height:44px;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;
-    justify-content:center;font-size:20px;color:var(--lgray);background:var(--felt)}
-  .mcard.add{border-style:dashed;background:var(--cream2)}
-  .mcn{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mcs{font-size:11px;color:var(--lgray);margin-top:2px}
+  .mcplus{width:52px;height:52px;border-radius:50%;margin:0 auto 7px;display:flex;align-items:center;
+    justify-content:center;font-size:21px;color:var(--lgray);background:var(--felt);
+    border:1px dashed #ddd7cb}
+  .mcn{display:block;font-size:11.5px;font-weight:400;color:var(--gray);line-height:1.35;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    word-break:keep-all}
   .chero{display:flex;align-items:center;gap:12px;margin:2px 0 12px}
   .cheroav{width:52px;height:52px;border-radius:50%;flex:none;display:flex;align-items:center;
     justify-content:center;color:#fff;font-size:19px;font-weight:600;
@@ -238,12 +282,13 @@
     background:var(--ink);border-radius:2px}
 
   .card.flush2{padding:2px 15px 3px}
-  .cdm{flex:none;border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;
-    font-size:11.5px;font-weight:500;color:var(--gray);font-family:inherit;cursor:pointer}
+  .cdm{flex:none;width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;color:#8a857c;font-family:inherit;cursor:pointer;padding:0}
+  .cdm:active{background:var(--felt)}
 
   .cpics{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:9px}
   .cpics.one{grid-template-columns:1fr}
-  .cpic2{aspect-ratio:1;border-radius:10px;background:var(--felt);position:relative}
+  .cpic2{aspect-ratio:4/3;border-radius:10px;background:var(--felt);position:relative}
   .cpics.one .cpic2{aspect-ratio:16/10}
   .cpic2 .more{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(20,14,8,.45);color:#fff;font-size:17px;font-weight:600;border-radius:10px}
@@ -254,18 +299,18 @@
     justify-content:center;cursor:pointer}
   .npadd{width:70px;height:70px;border-radius:11px;border:1.5px dashed #ddd7cb;display:flex;
     align-items:center;justify-content:center;font-size:20px;color:var(--lgray);cursor:pointer}
-  .cnotice{background:var(--amber-s);border:1px solid #f0e2c2;border-radius:14px;padding:13px 15px;margin-bottom:12px}
-  .cnotice .t{font-size:11px;font-weight:700;color:var(--amber)}
-  .cnotice .b{font-size:13.5px;font-weight:500;margin-top:4px;line-height:1.5}
-  .cwbar{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
-    border-radius:14px;padding:11px 14px;margin-bottom:12px;cursor:pointer}
-  .cwbar .ph{flex:1;font-size:13px;color:#bdb8ae}
-  .cwbar .ic{width:30px;height:30px;border-radius:9px;background:var(--felt);display:flex;
-    align-items:center;justify-content:center;flex:none;font-size:14px}
-  .cpost{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px;margin-bottom:11px;
-    box-shadow:0 1px 2px rgba(40,30,18,.04)}
-  .cpost .hd{display:flex;align-items:center;gap:9px;margin-bottom:9px}
-  .cpost .tx{font-size:13.5px;line-height:1.6}
+  .cnotice{background:var(--amber-s);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .cnotice .t{font-size:11px;font-weight:600;color:var(--amber)}
+  .cnotice .b{font-size:13.5px;font-weight:400;margin-top:3px;line-height:1.55;color:#6b5a2e}
+  .cwbar{width:100%;display:flex;align-items:center;gap:9px;background:var(--cream2);
+    border:none;border-radius:12px;padding:12px 14px;margin-bottom:14px;cursor:pointer;
+    font-family:inherit;font-size:13px;color:var(--lgray);text-align:left}
+  .cwbar svg{flex:none;color:#bdb8ae}
+  .cwbar:active{background:var(--felt)}
+  .cpost{padding:2px 2px 18px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+  .cpost:last-child{border-bottom:0}
+  .cpost .hd{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .cpost .tx{font-size:14px;line-height:1.6}
   .cpic{margin-top:9px;background:var(--felt);border-radius:11px;padding:22px;text-align:center;
     font-size:12.5px;color:var(--gray)}
   .kvrow{display:flex;justify-content:space-between;gap:12px;padding:11px 0;
@@ -280,13 +325,28 @@
   .rgfoot{display:flex;align-items:center;gap:14px;margin-top:20px}
   .opsfoot{flex:none;display:flex;align-items:center;gap:14px;padding:12px 18px calc(18px + env(safe-area-inset-bottom));
     border-top:1px solid var(--line);background:var(--cream)}
-  #regionpick,#clubfilter,#eventpick,#tierpage{z-index:126}
+  #clubfilter,#tierpage{z-index:126}
+  #eventpick{z-index:134}
+  #opspage{z-index:130}
   .rgl{font-size:12px;font-weight:600;color:var(--lgray);margin:14px 2px 9px}
   .rgl:first-child{margin-top:2px}
   .rgw{display:flex;flex-wrap:wrap;gap:8px}
   .rgc{border:1px solid var(--line);background:#fff;border-radius:20px;padding:10px 17px;
     font-size:13.5px;font-weight:400;color:var(--gray);font-family:inherit;cursor:pointer}
   .rgc.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+
+  .rgw{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .rgc{border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 15px;
+    font-size:13px;font-weight:400;color:var(--gray);font-family:inherit;cursor:pointer}
+  .rgc.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+  .rgfoot{display:flex;align-items:center;gap:14px;margin-top:16px}
+  .cfscroll{max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -2px;padding:0 2px}
+  .cfg{margin-top:14px}
+  .cft{font-size:13px;font-weight:600;margin-bottom:7px}
+  .cfw{display:flex;flex-wrap:wrap;gap:6px}
+  .cfc{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 13px;
+    font-size:12.5px;font-weight:400;color:var(--gray);font-family:inherit;cursor:pointer}
+  .cfc.on{background:var(--coral-s);border-color:#f3d9c5;color:var(--coral-d);font-weight:600}
   .cfbar{display:flex;align-items:center;gap:8px;margin:12px 0 6px}
   .cfbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;
     border-radius:20px;padding:8px 14px;font-size:13px;font-weight:500;color:var(--gray);
@@ -332,7 +392,9 @@
   .appbar .logo{margin-right:auto}   /* 뒤로가기가 있어도 로고는 그 바로 옆에 */
   .logo{font-size:23px;font-weight:600;letter-spacing:-.5px}.logo b{color:var(--coral)}
   .bell{width:36px;height:36px;border-radius:11px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center}
-  .scroll{flex:1;overflow-y:auto;padding:4px 16px 100px;-webkit-overflow-scrolling:touch}
+  /* 탭바 높이(74px)에 홈 인디케이터를 더해야 마지막 카드가 안 가린다 */
+  .scroll{flex:1;overflow-y:auto;padding:4px 16px calc(96px + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling:touch}
   .screen{display:none;animation:fade .25s ease}.screen.on{display:block}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   h2.t{font-size:29px;font-weight:600;margin:10px 4px 2px;letter-spacing:-.02em}
@@ -806,7 +868,10 @@
   .toolrow .tr-arr{ color:var(--lgray); font-weight:700; font-size:18px; }
 
   /* ⑤ Yoga → horizontal DATE PIN strip (모임 날짜 선택) */
-  .dpin-row{ display:flex; gap:9px; overflow-x:auto; padding:2px 0 8px; scrollbar-width:none; }
+  .dpin-row{ display:flex; gap:9px; overflow-x:auto; padding:2px 16px 8px; margin:0 -16px;
+    scrollbar-width:none; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; }
+  .dpin-row::-webkit-scrollbar{ display:none; }
+  .dpin{ scroll-snap-align:center; }
   .dpin-row::-webkit-scrollbar{ display:none; }
   .dpin{ flex:0 0 auto; width:54px; padding:11px 0 9px; border-radius:20px; text-align:center;
     background:#ffffff; border:1.5px solid var(--line); cursor:pointer; transition:.14s; }
@@ -1835,6 +1900,7 @@
     <div class="tab" data-s="venue" onclick="go('venue')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>구장예약</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
+  <div class="fullov" id="opspage"></div>
   <div class="fullov" id="tierpage"></div>
   <div class="fullov" id="eventpick"></div>
   <div class="fullov" id="clubfilter"></div>
@@ -6040,7 +6106,7 @@ function tierMeta(r){
   h+=`<div style="font-size:11px;color:#a8a49c;font-weight:500;text-align:center;margin-top:12px">레이팅(LP) 순 · 상위 3명 승격 · 하위 3명 강등</div></div>`;
   return h;
 }
-function setLeagueTab(t){ state.leagueTab=t; if(t==='club'&&SERVER_OK){ loadClubLeague().then(renderLeague); } renderLeague(); }
+function setLeagueTab(t){ if(!LEAGUE_CLUB_ON) t='solo'; state.leagueTab=t; if(t==='club'&&SERVER_OK){ loadClubLeague().then(renderLeague); } renderLeague(); }
 function setClubDiv(d){state.clubDivView=d;renderLeague();}
 function tieAgg(){let hw=0,aw=0;state.clubTie.matches.forEach(m=>{if(m.hw===true)hw++;else if(m.hw===false)aw++;});return {hw,aw};}
 /* 서버 모드 클럽 리그
@@ -6342,7 +6408,9 @@ function renderLeague(){
   if(cat==='team'){ document.getElementById('s-league').innerHTML=renderTeamLeague(); return; }
   if(cat==='record'){ renderRecordLeague(); return; }
   const t=myTier();
-  const ltab=state.leagueTab;
+  /* 클럽 리그를 껐으면 저장된 탭이 'club' 이어도 개인 리그를 보여준다 */
+  if(!LEAGUE_CLUB_ON && state.leagueTab==='club') state.leagueTab='solo';
+  const ltab=LEAGUE_CLUB_ON ? state.leagueTab : 'solo';
   let h=`<h2 class="t">리그</h2><p class="sub">${LEAGUE_CLUB_ON?'개인 레이팅 리그와 클럽 단체전.':'경기 결과로 정해지는 개인 레이팅 리그.'}</p>
   ${LEAGUE_CLUB_ON ? `<div class="seg"><div class="o ${ltab==='solo'?'on':''}" onclick="setLeagueTab('solo')">개인 리그</div><div class="o ${ltab==='club'?'on':''}" onclick="setLeagueTab('club')">클럽 리그</div></div>` : ''}`;
   if(ltab==='club'){ h+=renderClubLeague(); document.getElementById('s-league').innerHTML=h; return; }
@@ -6373,7 +6441,7 @@ function renderLeague(){
             <div style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.55">
               경기를 하고 결과를 입력하면 순위에 올라가요.<br>5경기를 마치면 등급이 정해집니다.</div></div>`;
         } else {
-        h+=`<div class="note" style="text-align:left;margin:0 2px 6px">선수를 탭하면 나이·신장·주손·통산성적을 볼 수 있어요 (개인리그에서만)</div>`;
+        h+=`<div style="font-size:11.5px;color:var(--lgray);margin:2px 4px 8px">선수를 탭하면 통산 성적을 볼 수 있어요</div>`;
         h+=`<div class="card"><div class="ch" style="font-size:14px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:500">최근 30일 · 상위 ${Math.min(played.length,10)}명</span></div>`;
         played.slice(0,10).forEach((p,i)=>{ const me=p.id===myId; const medal=i===0?'#ec6a2e':i===1?'#b8bcc4':i===2?'#cd8e5a':'var(--lgray)';
           h+=`<div ${me?'':`onclick="openLeagueMatchup(${p.id})"`} style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
@@ -6593,7 +6661,7 @@ function renderClub(){
   else state.clubOpen=null;
   const t = state.clubOpen ? 'my' : 'find';
   let h='';
-  if(t==='find') h+=`<h2 class="t">클럽</h2><p class="sub">함께 칠 사람들을 찾아보세요.</p>`;
+  if(t==='find') h+=`<h2 class="t" style="margin-bottom:14px">클럽</h2>`;
   if(t==='my'){
     if(SERVER_OK && state.activeClub && !clubId()){
       h+=`<div class="card" style="background:#fdf4ec;border-color:#eeddc8">
@@ -6686,7 +6754,6 @@ function renderClub(){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
         h+=`<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
-          ${SERVER_OK&&clubId()?`<div onclick="reloadClubEvents()" style="font-size:11px;font-weight:500;color:var(--lgray);cursor:pointer;margin-bottom:8px">다시 불러오기</div>`:''}
           <div style="font-size:29px">📅</div>
           <b style="display:block;margin-top:6px;font-size:14px">이번 주 모임이 아직 없어요</b>
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
@@ -6722,16 +6789,17 @@ function renderClub(){
     const _rs=[...new Set(state.clubs.filter(c=>(!c.sport||c.sport===state.sport))
       .map(c=>regShort(c.r)).filter(x=>x&&x.length>1))];
     const regions=['전체', ...(_rs.length?_rs.slice(0,8):['경기 용인','서울 강남','경기 성남','인천 연수','부산 해운대'])];
-    h+=`<div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div>`;
+    h+=`<div class="secl">클럽 모집</div>
+      <div class="search">${ic('search',18)}<input placeholder="클럽 이름·지역 검색" oninput="searchClub(this.value)" id="cq" value="${state._q}"></div>`;
     { const F=cf(), n=cfCount();
       const rn=rgSel().length?rgLabel():'';
       h+=`<div class="cfbar">
-        <button class="cfbtn ${n?'on':''}" onclick="openClubFilter()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
-          필터${n?` ${n}`:''}</button>
         <button class="cfbtn ${rn?'on':''}" onclick="openRegionPick()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>
           ${rgLabel()}</button>
+        <button class="cfbtn ${n?'on':''}" onclick="openClubFilter()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          필터${n?` ${n}`:''}</button>
         ${(n||rn)?`<button class="cfclear" onclick="cfResetAll()">초기화</button>`:''}
       </div>`; }
 
@@ -6746,9 +6814,10 @@ function renderClub(){
       /* '서울'을 고르면 '서울 서초구'도 걸린다 — 시도만 골라도 그 안이 다 보여야 한다 */
       &&rgMatch(regShort(c.r))
       &&(!q||c.n.includes(q)||c.r.includes(q))
+      &&!(state.myClubs||[]).includes(c.n)      // 내 클럽은 위에 있으니 목록에서 뺀다
       &&cfMatch(c));
     if(!list.length) h+=`<div class="empty"><div class="ei">${ic('search',34)}</div><div class="et">조건에 맞는 클럽이 없어요</div><div class="es">검색어나 지역을 바꿔보거나<br>새 클럽을 직접 만들어보세요.</div></div>`;
-    h+=`<h2 class="ch" style="font-size:15.5px;margin:18px 4px 4px">클럽 모집</h2>`;
+    
     const cg=['linear-gradient(135deg,#3fa571,#5b3fa8)','linear-gradient(135deg,#f1a55c,#e07f3a)','linear-gradient(135deg,#3fa571,#3f9e6e)','linear-gradient(135deg,#8a857c,#55514a)'];
     list.forEach((c,i)=>{const joined=state.myClubs.includes(c.n);
       const G=c.avg_grade?gradeStepLabel(c.avg_grade):null;
@@ -6758,14 +6827,14 @@ function renderClub(){
                   (c.entry||c.entry_fee) ? `입회비 <b>${won0(c.entry||c.entry_fee)}</b>` : null,
                   (c.guestFee||c.guest_fee) ? `게스트 <b>${won0(c.guestFee||c.guest_fee)}</b>` : null ]
                 .filter(Boolean).slice(0,2).join(' · ');
-      h+=`<div class="clrow" onclick="${joined?`openClubPage('${c.n}')`:`openClubPreview('${c.n}')`}">
+      h+=`<div class="clrow" onclick="openClubPreview('${c.n}')">
         ${clubAvatar(c.n, 46, 'ls-ic')||`<div class="clav">${esc(String(c.n).slice(0,1))}</div>`}
         <div style="flex:1;min-width:0">
-          <div class="cln">${esc(c.n)}${joined?`<span class="cljoin">가입됨</span>`:''}</div>
+          <div class="cln">${esc(c.n)}</div>
           <div class="clr">${esc(c.r)} · 회원 ${c.m}명</div>
         </div>
         <span class="clgo">›</span></div>`;});
-    h+=`<div class="note" style="margin-top:10px">클럽을 누르면 활동 요일·회비·멤버를 볼 수 있어요.</div>`;
+    
   }
   document.getElementById('s-club').innerHTML=h;
 }
@@ -7712,7 +7781,7 @@ function cfTog(k,v){ const F=cf(); const a=F[k];
 function cfTogGuest(){ const F=cf(); F.guest=!F.guest; drawClubFilter(); }
 function cfReset(){ state._cf={days:[],time:[],gender:[],grade:[],age:[],guest:false};
   if(document.getElementById('cfSheet')) drawClubFilter(); else renderClub(); }
-function cfApply(){ closeClubFilter(); renderClub(); const n=cfCount(); if(n) toast(`조건 ${n}개로 걸렀어요`); }
+function cfApply(){ closeOv(); renderClub(); const n=cfCount(); if(n) toast(`조건 ${n}개로 걸렀어요`); }
 function cfMatch(c){
   const F=cf();
   const has=(txt,arr)=>!arr.length || arr.some(v=>String(txt||'').includes(v));
@@ -7739,7 +7808,7 @@ function rgTog(v){ const a=rgSel(); const i=a.indexOf(v); i<0?a.push(v):a.splice
 function rgClear(){ state._rg=[]; drawRegionPick(); }
 function rgApply(){
   state.region = rgSel().length ? '_multi' : '전체';
-  closeRegionPick(); renderClub();
+  closeOv(); renderClub();
   const n=rgSel().length;
   if(n) toast(`${rgSel().slice(0,2).join(' · ')}${n>2?` 외 ${n-2}곳`:''}`);
 }
@@ -7749,50 +7818,48 @@ function rgMatch(shortR){
   const a=rgSel(); if(!a.length) return true;
   return a.some(v=> shortR===v || String(shortR||'').startsWith(v+' '));
 }
-function openRegionPick(){ drawRegionPick(); document.getElementById('regionpick').style.display='flex'; }
-function closeRegionPick(){ document.getElementById('regionpick').style.display='none'; }
+function openRegionPick(){ drawRegionPick(); document.getElementById('ov').classList.add('on'); }
+function closeRegionPick(){ closeOv(); }
 function drawRegionPick(){
   const a=rgSel();
-  const h=`<div class="opshd"><button class="pvback" onclick="closeRegionPick()" aria-label="뒤로">‹</button>
-      <span class="pvttl">지역</span></div>
-    <div class="opsbody tight">
-      <div class="rgw">${SIDO_LIST.map(r=>`<button class="rgc ${a.includes(r)?'on':''}"
-        onclick="rgTog('${r}')">${r}</button>`).join('')}</div>
-      <div class="rgfoot">
-        <button class="cfclear" onclick="rgClear()">초기화</button>
-        <button class="btn" style="flex:1;margin:0" onclick="rgApply()">적용${a.length?` (${a.length})`:''}</button>
-      </div>
+  const h=`<div class="sh-top"><h3>지역</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="rgw">${SIDO_LIST.map(r=>`<button class="rgc ${a.includes(r)?'on':''}"
+      onclick="rgTog('${r}')">${r}</button>`).join('')}</div>
+    <div class="rgfoot">
+      <button class="cfclear" onclick="rgClear()">초기화</button>
+      <button class="btn" style="flex:1;margin:0" onclick="rgApply()">적용${a.length?` (${a.length})`:''}</button>
     </div>`;
-  document.getElementById('regionpick').innerHTML=h;
+  document.getElementById('sheet').innerHTML=h;
 }
 function cfResetAll(){ cfReset(); state._rg=[]; state.region='전체'; renderClub(); }
-function openClubFilter(){ drawClubFilter(); document.getElementById('clubfilter').style.display='flex'; }
-function closeClubFilter(){ document.getElementById('clubfilter').style.display='none'; }
+function openClubFilter(){ drawClubFilter(); document.getElementById('ov').classList.add('on'); }
+function closeClubFilter(){ closeOv(); }
 function drawClubFilter(){
   const F=cf();
   const grp=(title,key,opts)=>`<div class="cfg"><div class="cft">${title}</div><div class="cfw">
     ${opts.map(o=>{ const [v,l]=Array.isArray(o)?o:[o,o];
       return `<button class="cfc ${F[key].includes(v)?'on':''}" onclick="cfTog('${key}','${v}')">${l}</button>`;
     }).join('')}</div></div>`;
-  const h=`<div class="opshd"><button class="pvback" onclick="closeClubFilter()" aria-label="뒤로">‹</button>
-      <span class="pvttl">필터</span></div>
-    <div class="opsbody" id="cfSheet">
-    ${grp('요일','days',CF_DAYS)}
-    ${grp('시간대','time',CF_TIME)}
-    ${grp('성별','gender',CF_GEND)}
-    ${grp('클럽 평균 등급','grade',CF_GRADE)}
-    ${grp('나이대','age',CF_AGE)}
-    <div class="cfg"><div class="cft">그 외</div><div class="cfw">
-      <button class="cfc ${F.guest?'on':''}" onclick="cfTogGuest()">게스트 가능</button></div></div>
-    <div style="display:flex;align-items:center;gap:14px;margin-top:18px">
-      <button class="cfclear" style="flex:none" onclick="cfReset()">초기화</button>
+  const h=`<div class="sh-top"><h3>필터</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="cfscroll" id="cfSheet">
+      ${grp('요일','days',CF_DAYS)}
+      ${grp('시간대','time',CF_TIME)}
+      ${grp('성별','gender',CF_GEND)}
+      ${grp('클럽 평균 등급','grade',CF_GRADE)}
+      ${grp('나이대','age',CF_AGE)}
+      <div class="cfg"><div class="cft">그 외</div><div class="cfw">
+        <button class="cfc ${F.guest?'on':''}" onclick="cfTogGuest()">게스트 가능</button></div></div>
+    </div>
+    <div class="rgfoot">
+      <button class="cfclear" onclick="cfReset()">초기화</button>
       <button class="btn" style="flex:1;margin:0" onclick="cfApply()">적용${cfCount()?` (${cfCount()})`:''}</button>
-    </div></div>`;
-  document.getElementById('clubfilter').innerHTML=h;
+    </div>`;
+  document.getElementById('sheet').innerHTML=h;
 }
-/* ── 개인 리그 참가 ──
-   신청한 사람만 리그 테이블에 오른다. 신청 없이 전원을 줄세우면
-   '배치 중'만 가득해 리그가 의미를 잃는다. */
+
+/* ── 개인 리그 참가 ── 신청한 사람만 리그 테이블에 오른다 */
 let LG_JOIN=null, LG_JOIN_LOADING=false;
 const LG_DIV = () => (state.leagueGender==='여자부' ? 'women' : 'men');
 function loadLeagueJoin(){
@@ -7854,6 +7921,31 @@ function openIntroEditOps(){
   PV.n=n; PV.cid=cid; PV.c=Object.assign({}, cat, AC()||{});
   openIntroEdit();
 }
+/* 운영진 도구에서 여는 화면들은 전부 전체 페이지로 띄운다.
+   원래 함수들이 #sheet 에 그리므로, 여는 동안만 #sheet 를 페이지 안쪽으로 옮긴다. */
+function opsPage(title, fn){
+  const el=document.getElementById('opspage');
+  el.innerHTML=`<div class="opshd"><button class="pvback" onclick="closeOpsPage()" aria-label="뒤로">‹</button>
+      <span class="pvttl">${esc(title)}</span></div>
+    <div class="opsbody"><div id="opsInner"></div></div>`;
+  el.style.display='flex';
+  const real=document.getElementById('sheet');
+  const inner=document.getElementById('opsInner');
+  window._opsHost=real;
+  // 원래 함수가 #sheet 를 찾으므로 id 를 잠시 옮겨준다
+  real.id='sheet_parked'; inner.id='sheet';
+  try{ fn(); }catch(e){ console.error(e); }
+  // 시트용 헤더(×)는 페이지 헤더와 겹치므로 숨긴다
+  const top=inner.querySelector('.sh-top'); if(top) top.style.display='none';
+  document.getElementById('ov').classList.remove('on');
+}
+function closeOpsPage(){
+  const parked=document.getElementById('sheet_parked');
+  const inner=document.getElementById('sheet');
+  if(parked && inner && inner!==parked){ inner.id='opsInner'; parked.id='sheet'; }
+  document.getElementById('opspage').style.display='none';
+  closeOv();
+}
 function openClubOps(){
   const c=AC()||{}; const n=state.activeClub||'';
   const d=(state.clubData||{})[n]||{};
@@ -7862,34 +7954,30 @@ function openClubOps(){
   const att=c.attendRate!=null?c.attendRate:null;
 
 
-  const tool=(t,dsc,fn,tone,badge)=>`<button class="optool" onclick="closeClubOps();setTimeout(()=>{${fn}},160)">
+  /* 이름만으로 무엇인지 알 수 있는 것에 설명을 붙이면 훑는 속도만 느려진다.
+     정말 헷갈리는 것만 한 줄을 남긴다. */
+  const tool=(t,dsc,fn,tone,badge)=>`<button class="optool" onclick="opsPage('${t}',()=>{${fn}})">
     ${badge?`<span class="opn">${badge}</span>`:''}
-    <span class="opic ${tone||''}">${opIcon(t)}</span>
-    <span class="opt">${t}</span><span class="opd">${dsc}</span></button>`;
+    <span class="opic">${opIcon(t)}</span>
+    <span class="opt">${t}</span>${dsc?`<span class="opd">${dsc}</span>`:''}</button>`;
 
-  let h=`<div class="opsum"><div class="k">지금 처리할 일</div>
-      <div class="v">${pend?`가입 신청 ${pend}건`:'처리할 일이 없어요'}</div>
-      <p class="opnote">눌러서 바로 처리하세요</p></div>
-    <div class="opq">
-      <div><div class="qn">${att!=null?att:'—'}${att!=null?'<span>%</span>':''}</div><div class="ql">이번 달 참석률</div></div>
-      <div><div class="qn">${d.members||c.m||0}</div><div class="ql">회원 수</div></div>
-      <div><div class="qn">${((c.schedule&&c.schedule.attendees)||[]).length}</div><div class="ql">다음 모임 참석</div></div>
-    </div>
+  let h=`${pend?`<button class="opsum" onclick="opsPage('가입 신청',()=>{openAdmin()})">
+      <span class="v">가입 신청 ${pend}건</span><span class="go">처리하기 ›</span></button>`:''}
     <div class="opgl">경기 운영</div>
     <div class="opgrid">
-      ${tool('모임 만들기','날짜·코트 정하고 참석 받기','openEventCreate()')}
-      ${tool('대진 짜기','참석자로 자동 편성','openClubBracketBuild()')}
-      ${tool('출석 · 노쇼','당일 체크 · 노쇼 기록','openClubBracketView()','g')}
-      ${tool('기록 · 시즌','지난 대진 · 시즌 랭킹','openClubStats()','p')}
+      ${tool('모임 만들기','','openEventCreate()')}
+      ${tool('대진 짜기','','openClubBracketBuild()')}
+      ${tool('출석 · 노쇼','','openClubBracketView()')}
+      ${tool('기록 · 시즌','','openClubStats()')}
     </div>
     <div class="opgl">회원 · 클럽</div>
     <div class="opgrid">
-      ${tool('가입 신청','승인 · 거절','openAdmin()','g',pend||0)}
-      ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
-      ${tool('공지 보내기','전체 알림 발송','openNotices()','p')}
-      ${tool('초대장 공유','링크 하나로 신청 · 7일','openInvite()','g')}
-      ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()','p')}
-      ${tool('클럽 로고','아이콘 · 사진 변경',`openClubLogoEdit('${esc(n)}')`,'p')}
+      ${tool('가입 신청','','openAdmin()','',pend||0)}
+      ${tool('회원 관리','임원 · 클럽장','openMembers()')}
+      ${tool('공지 보내기','','openNotices()')}
+      ${tool('초대장 공유','','openInvite()')}
+      ${tool('클럽 소개','','openIntroEditOps()')}
+      ${tool('클럽 로고','',`openClubLogoEdit('${esc(n)}')`)}
     </div>`;
   document.getElementById('opsBody').innerHTML=h;
   document.getElementById('opsClub').textContent=n;
@@ -7928,29 +8016,39 @@ function myClubsBlock(){
   if(!mine.length){
     return `<div class="mcempty">
       <div class="t">아직 소속된 클럽이 없어요</div>
-      <button class="btn" style="max-width:200px;margin:12px auto 0" onclick="state._cw=null;openCreateClub()">클럽 만들기</button>
+      <button class="mcbtn" onclick="state._cw=null;openCreateClub()">＋ 클럽 만들기</button>
     </div>`;
   }
-  return `<h2 class="ch" style="font-size:15.5px;margin:2px 4px 10px">내 클럽 <span style="font-size:12px;color:var(--lgray);font-weight:400">${mine.length}개</span></h2>
-    <div class="mcrow">
-      ${mine.map(n=>{ const c=(state.clubs||[]).find(x=>x.n===n)||{};
-        const d=(state.clubData||{})[n]||{};
-        return `<div class="mcard" onclick="openClubPage('${esc(n)}')">
-          ${clubAvatar(n,44)||`<div class="mcav">${esc(n.slice(0,1))}</div>`}
-          <div class="mcn">${esc(n)}</div>
-          <div class="mcs">회원 ${d.members||c.m||1}명</div></div>`;}).join('')}
-      <div class="mcard add" onclick="state._cw=null;openCreateClub()">
-        <div class="mcplus">＋</div><div class="mcn">클럽 만들기</div></div>
+  return `<div class="mcrow">
+      ${mine.map(n=>`<button class="mcard" onclick="openClubPage('${esc(n)}')">
+          ${clubAvatar(n,52)||`<span class="mcav">${esc(n.slice(0,1))}</span>`}
+          <span class="mcn">${esc(n)}</span></button>`).join('')}
+      <button class="mcard" onclick="state._cw=null;openCreateClub()">
+        <span class="mcplus">＋</span><span class="mcn">만들기</span></button>
     </div>`;
 }
 function openClubPage(n){
   state.clubOpen=n; state.clubSub='sched';
   try{ switchClub(n); }catch(e){ state.activeClub=n; }
-  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; window.FEED_LOADED=false;
+  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; window.FEED_LOADED=false; CB2_LIST=null;
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
   renderClub();
+  try{ updBackBtn(); }catch(e){}
 }
-function closeClubPage(){ state.clubOpen=null; renderClub(); }
+function closeClubPage(){
+  state.clubOpen=null; renderClub();
+  try{ updBackBtn(); }catch(e){}
+}
+/* 서버 모임(SRV_EVENTS)과 기기 저장 모임(AC().events)을 합쳐서 본다.
+   한쪽만 보면 '모임이 없다'고 잘못 판단한다. */
+function clubEvents(){
+  const local=((AC()||{}).events)||[];
+  const srv=(typeof SRV_EVENTS!=='undefined' && Array.isArray(SRV_EVENTS)) ? SRV_EVENTS : [];
+  const seen=new Set(); const out=[];
+  [...srv, ...local].forEach(e=>{ const k=String(e.id||e.title+e.date);
+    if(seen.has(k)) return; seen.add(k); out.push(e); });
+  return out;
+}
 function clubSub(){ return state.clubSub || 'sched'; }
 function setClubSub(v){ state.clubSub=v; renderClub(); }
 function clubHeroTabs(){
@@ -7960,8 +8058,7 @@ function clubHeroTabs(){
   const role = d.officer ? '운영진' : '회원';
   const tabs=[['sched','일정'],['bracket','대진'],['rec','기록'],['mem','멤버'],['news','소식'],['info','정보']];
   const cur=clubSub();
-  return `<div class="cheroback" onclick="closeClubPage()">‹ 클럽 목록</div>
-    <div class="chero">
+  return `<div class="chero">
       ${clubAvatar(n,52)||`<div class="cheroav">${esc(n.slice(0,1))}</div>`}
       <div style="flex:1;min-width:0">
         <div class="cheron">${esc(n)}</div>
@@ -7973,9 +8070,9 @@ function clubHeroTabs(){
       `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}</div>`).join('')}</div>`;
 }
 function clubTabBracket(){
-  const c=AC()||{}; const evs=(c.events||[]);
+  const c=AC()||{}; const evs=clubEvents();
   const d=(state.clubData||{})[state.activeClub||'']||{};
-  if(!evs.length && !(c.schedule&&c.schedule.dt)){
+  if(false){
     return `<div class="card" style="text-align:center;padding:30px 20px">
       <div style="font-size:15px;font-weight:600">아직 대진이 없어요</div>
       <p style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.6">
@@ -7983,17 +8080,45 @@ function clubTabBracket(){
       ${d.officer?`<button class="btn" style="max-width:220px;margin:14px auto 0" onclick="openEventCreate()">모임 만들기</button>`:''}
     </div>`;
   }
-  return `<div class="card" style="text-align:center;padding:24px 18px">
-      <div style="font-size:15px;font-weight:600">대진</div>
+  if(CB2_LIST===null){ loadBracketList(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+  const list=CB2_LIST||[];
+  if(!list.length){
+    return `<div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:15px;font-weight:600">발행된 대진이 없어요</div>
       <p style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.6">
-        모임 참석자로 편성된 대진과 실시간 점수를 봅니다.<br>대진은 운영진만 짤 수 있어요.</p>
-      <button class="btn" style="max-width:220px;margin:12px auto 0" onclick="openClubBracketView()">대진 열기</button>
-      <button class="btn ghost" style="max-width:220px;margin:8px auto 0" onclick="openClubBracketList()">발행된 대진 보기</button>
+        운영진이 모임 참석자로 대진을 짜면 여기에 보여요.</p>
+      ${d0().officer?`<button class="btn" style="max-width:200px;margin:14px auto 0" onclick="openClubBracketBuild()">대진 짜기</button>`:''}
     </div>`;
+  }
+  const live=list.filter(b=>!b.finished), done=list.filter(b=>b.finished);
+  const row=b=>{
+    const tot=b.games||0, fin=b.done||0;
+    const pct=tot?Math.round(fin/tot*100):0;
+    const live=!b.finished;
+    return `<button class="bkrow${live?'':' past'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
+      <span class="bkhd">
+        <span class="bkt">${esc(b.title||'모임 미지정')}</span>
+        ${live?`<span class="bklive">진행 중</span>`:`<span class="bkdone">종료</span>`}
+        <span class="bkdate">${esc(b.date||'')}</span></span>
+      <span class="bkmeta">${esc(b.mode||'일반')} · ${b.courts||0}코트</span>
+      <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
+      <span class="bkfoot"><b>${fin}</b><em>/${tot}게임</em>
+        <span class="bkpct" style="${live?'':'color:var(--lgray);font-weight:500'}">${
+          live?pct+'%':'완료'}</span></span></button>`;
+  };
+  return `${d0().officer?`<button class="btn" style="margin-bottom:14px" onclick="openClubBracketBuild()">＋ 대진 짜기</button>`:''}
+    ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
+    ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
+}
+function d0(){ return (state.clubData||{})[state.activeClub||'']||{}; }
+function loadBracketList(){
+  const cid=clubId();
+  if(!SERVER_OK || !cid){ CB2_LIST=[]; return; }
+  api(`/clubs/${cid}/brackets`).then(r=>{ CB2_LIST=Array.isArray(r)?r:[];
+    if(state.view==='club') renderClub(); }).catch(()=>{ CB2_LIST=[]; });
 }
 function clubTabRecords(){
-  const c=AC()||{};
-  const done=(c.events||[]).filter(e=>{
+  const done=clubEvents().filter(e=>{
     const m=String(e.date||'').match(/(\d+)\/(\d+)/); if(!m) return false;
     const y=new Date().getFullYear();
     return new Date(y, +m[1]-1, +m[2], 23, 59) < new Date();
@@ -8035,7 +8160,8 @@ function clubTabMembers(){
             r.grade&&career?' · ':''}${esc(career)}${!r.grade&&!career?'등급 미정':''}</div>
         </div>
         ${role?`<span class="pvrole ${r.role==='owner'?'ow':'of'}">${role}</span>`:''}
-        ${(!mine && r.user_id)?`<button class="cdm" onclick="openDM(${r.user_id},'${esc(r.name)}')">대화</button>`:''}
+        ${(!mine && r.user_id)?`<button class="cdm" onclick="openDM(${r.user_id},'${esc(r.name)}')" aria-label="대화">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg></button>`:''}
       </div>`;}).join('')}</div>`;
 }
 let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null;
@@ -8052,13 +8178,12 @@ function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
   let h='';
   if(notices.length){ const nt=notices[0];
-    h+=`<div class="cnotice"><div class="t">📌 공지 · 운영진</div>
+    h+=`<div class="cnotice"><div class="t">공지</div>
       <div class="b">${esc(nt.b||nt.body||nt.t||'')}</div></div>`;
   }
-  h+=`<div class="cwbar" onclick="openClubPost()">
-      <div class="ic">🖼</div>
-      <div class="ph">오늘 경기 사진을 올려보세요</div>
-      <span style="font-size:12.5px;font-weight:600;color:var(--coral-d)">올리기</span></div>`;
+  h+=`<button class="cwbar" onclick="openClubPost()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-6 6"/></svg>
+      사진이나 소식을 올려보세요</button>`;
 
   if(SERVER_OK && clubId() && !window.FEED_LOADED && !window._feedOnce){
     window._feedOnce=true; loadClubFeed().then(()=>{ window._feedOnce=false; if(state.view==='club') renderClub(); });
@@ -9993,19 +10118,32 @@ function drawCB2View(){
 }
 
 /* ── 임원 전용: 대진 만들기 ── */
-/* 어느 모임의 대진인지 고른다 */
+/* 어느 모임의 대진인지 고른다 — 날짜가 판단 기준이라 날짜를 크게 세운다. */
 function pickBracketEvent(evs){
+  const parseD = e => {
+    const m=String(e.date||'').match(/(\d{1,2})[\/.](\d{1,2})/);
+    return m ? {mo:+m[1], da:+m[2]} : null;
+  };
+  const timeOf = e => { const m=String(e.date||'').match(/(\d{1,2}:\d{2})/); return m?m[1]:''; };
+  const rows = evs.slice(0,14).map(e=>{
+    const d=parseD(e), t=timeOf(e), n=((e.attendees)||[]).length;
+    const W=['일','월','화','수','목','금','토'];
+    let wd='';
+    if(d){ const y=new Date().getFullYear(); wd=W[new Date(y,d.mo-1,d.da).getDay()]; }
+    return `<button class="evpick" onclick="CB2_EVENT=${e.id||0};window._bracketEventPicked=true;closeEventPick();setTimeout(openClubBracketBuild,150)">
+      <span class="evd">${d?`<b>${d.mo}.${d.da}</b><i>${wd}</i>`:`<b>—</b>`}</span>
+      <span class="evx">
+        <span class="evt">${esc(e.title||'모임')}</span>
+        <span class="evs">${t?t+' · ':''}${esc(e.place||'장소 미정')}</span>
+        <span class="evn ${n?'has':''}">참석 ${n}명</span>
+      </span>
+      <span class="evgo">›</span></button>`;
+  }).join('');
   const h=`<div class="opshd"><button class="pvback" onclick="closeEventPick()" aria-label="뒤로">‹</button>
-      <span class="pvttl">어느 모임의 대진인가요</span></div>
+      <span class="pvttl">대진 짤 모임 고르기</span></div>
     <div class="opsbody">
-      <p class="note" style="margin:0 2px 12px">참석 체크한 회원으로 대진이 편성돼요.</p>
-      ${evs.slice(0,12).map(e=>`<div class="card" style="cursor:pointer"
-        onclick="CB2_EVENT=${e.id||0};closeEventPick();setTimeout(openClubBracketBuild,150)">
-        <div class="row"><div style="flex:1;min-width:0">
-          <div style="font-size:14.5px;font-weight:500">${esc(e.title||'모임')}</div>
-          <p class="note">${esc(e.date||'일정 미정')}${e.place?' · '+esc(e.place):''}</p>
-          <p class="note">참석 ${((e.attendees)||[]).length}명</p></div>
-          <span style="margin-left:auto;color:#cdc8be;font-size:19px">›</span></div></div>`).join('')}
+      <p class="evlead">참석 체크한 회원으로 대진이 편성돼요.</p>
+      ${rows}
     </div>`;
   const el=document.getElementById('eventpick'); el.innerHTML=h; el.style.display='flex';
 }
@@ -10014,10 +10152,13 @@ async function openClubBracketBuild(){
   if(!cb2Officer()){ toast('임원만 대진을 만들 수 있어요'); return; }
   /* 대진은 '어느 모임'의 참석자로 짜는 것이다. 모임이 없으면 만들 수 없고,
      여러 개면 어느 모임인지 먼저 골라야 참석자가 정해진다. */
-  { const c=AC()||{}; const evs=(c.events||[]);
-    if(!evs.length && !(c.schedule&&c.schedule.dt)){
+  { const evs=clubEvents();
+    if(!evs.length){
       toast('먼저 모임을 만들어 주세요'); setTimeout(openEventCreate, 300); return; }
-    if(evs.length>1 && !CB2_EVENT){ pickBracketEvent(evs); return; } }
+    /* 어느 날 모임의 대진인지 매번 고르게 한다. 지난번 선택이 남아 있으면
+       엉뚱한 모임에 대진이 붙는다. */
+    if(!window._bracketEventPicked){ pickBracketEvent(evs); return; }
+    window._bracketEventPicked=false; }
   const cid=clubId(); if(!TRIAL&&(!SERVER_OK||!cid)){ toast('클럽에 먼저 들어가 주세요'); return; }
   clearInterval(CB2_TIMER);
   let roster=[];
@@ -12886,10 +13027,7 @@ function vnHall(el){
       String((a.courts||[])[0]&&(a.courts||[])[0].name).localeCompare(String((b.courts||[])[0]&&(b.courts||[])[0].name)));
 
   el.innerHTML=`
-  <div style="display:flex;align-items:center;gap:10px;margin:2px 0 12px">
-    <button class="vnx" onclick="vnLeave()" aria-label="뒤로">‹</button>
-    <h2 class="t" style="margin:0;font-size:21px;flex:1;min-width:0">${esc(v.name||'')}</h2>
-  </div>
+  <h2 class="t" style="margin:2px 0 12px;font-size:21px">${esc(v.name||'')}</h2>
 
   ${(v.photos||[]).length
     ? `<img class="vnphoto big" src="${esc(v.photos[0])}" alt="${esc(v.name||'')}">`
@@ -12941,10 +13079,7 @@ function vnDetail(el){
   const cash=(state.me&&state.me.cash)||0;
   const short=Math.max(0, s.amount-cash);
   el.innerHTML=`
-  <div style="display:flex;align-items:center;gap:10px;margin:2px 0 14px">
-    <button class="vnx" onclick="vnClose()" aria-label="닫기">✕</button>
-    <h2 class="t" style="margin:0;font-size:22px">예약 확인</h2>
-  </div>
+  <h2 class="t" style="margin:2px 0 14px;font-size:22px">예약 확인</h2>
 
   <div class="vncard">
     <div style="font-size:14px;font-weight:800;margin-bottom:10px">예약 정보</div>
@@ -18444,12 +18579,18 @@ async function submitLounge(){
 }
 let NAV_HIST=[];
 function goBack(){
+  /* 안쪽 화면을 보고 있으면 한 단계씩 되돌린다 — 상단 화살표 하나로 통일 */
+  if(state.view==='club' && state.clubOpen){ closeClubPage(); return; }
+  if(state.view==='venue'){
+    if(typeof VN_PICK!=='undefined' && VN_PICK){ vnClose(); return; }
+    if(typeof VN_HALL!=='undefined' && VN_HALL){ vnLeave(); return; }
+  }
   const prev=NAV_HIST.pop() || 'home';
   go(prev, true);
 }
 function updBackBtn(){
   const b=document.getElementById('backBtn');
-  const show = state.view!=='home';
+  const show = state.view!=='home' || (state.view==='club' && state.clubOpen);
   if(b) b.style.display = show ? 'flex' : 'none';
 }
 let _LT=[],_LTN=0;
@@ -18480,7 +18621,11 @@ function openDiag(){
   document.getElementById('ov').classList.add('on');
 }
 function go(v, isBack){ try{ closeEventPage(); }catch(e){}
-  if(v==='club'){ try{ ensureClubEvents(); }catch(e){} }
+  if(v==='club'){
+    try{ ensureClubEvents(); }catch(e){}
+    /* 탭으로 들어오면 항상 목록부터. 상세에 머물러 있으면 다른 클럽을 못 찾는다 */
+    if(!isBack) state.clubOpen=null;
+  }
   if(!isBack && state.view && state.view!==v){
     NAV_HIST.push(state.view);
     if(NAV_HIST.length>10) NAV_HIST.shift();
