@@ -926,6 +926,16 @@ app.get('/clubs/:id/members', (req, res) => {
 });
 
 // 회원 등급 일괄 설정 (임원진) — { grades: { "12": "A", "34": "B" } }  키는 user_id
+/* 클럽 소개 — 임원만 수정. 가입 전 미리보기에서 가장 먼저 읽는 글이다. */
+app.patch('/clubs/:id/intro', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only',
+    message: '클럽 소개는 임원만 수정할 수 있어요' });
+  const intro = String((req.body || {}).intro || '').slice(0, 1000);
+  db.prepare('UPDATE clubs SET intro=? WHERE id=?').run(intro || null, cid);
+  res.json({ ok: true, intro });
+});
+
 app.patch('/clubs/:id/grades', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
@@ -1297,7 +1307,7 @@ app.get('/clubs/:id/events', (req, res) => {
 });
 app.post('/clubs/:id/events', auth, (req, res) => {
   const cid = +req.params.id;
-  const { title, date, tag } = req.body || {};
+  const { title, date, tag, place } = req.body || {};
   const isFlash = String(tag || '정기') === '번개';
   // 정기 모임은 임원만 · 번개 모임은 클럽 회원 누구나
   if (isFlash) {
@@ -1307,8 +1317,10 @@ app.post('/clubs/:id/events', auth, (req, res) => {
     return res.status(403).json({ error: 'officer_only', message: '정기 모임은 임원만 만들 수 있어요' });
   }
   if (!title) return res.status(400).json({ error: 'title_required' });
-  const r = db.prepare('INSERT INTO club_events (club_id,title,date,tag,created_by,created_at) VALUES (?,?,?,?,?,?)')
-    .run(cid, String(title), String(date || ''), String(tag || '정기'), req.uid, now());
+  const r = db.prepare(`INSERT INTO club_events (club_id,title,date,tag,place,created_by,created_at)
+                        VALUES (?,?,?,?,?,?,?)`)
+    .run(cid, String(title), String(date || ''), String(tag || '정기'),
+         String(place || '').trim().slice(0, 60) || null, req.uid, now());
   notifyClub(cid, req.uid, '📅', '새 모임이 열렸어요', `${title}${date ? ' · ' + date : ''}`);
   res.json({ ok: true, id: rid(r) });
 });
@@ -1322,7 +1334,9 @@ app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
     return res.status(403).json({ error: 'officer_only' });
   const title = String((req.body || {}).title || ev.title);
   const date = String((req.body || {}).date != null ? (req.body || {}).date : ev.date);
-  db.prepare('UPDATE club_events SET title=?, date=? WHERE id=?').run(title, date, eid);
+  const place = (req.body || {}).place != null
+    ? String((req.body || {}).place).trim().slice(0, 60) : (ev.place || null);
+  db.prepare('UPDATE club_events SET title=?, date=?, place=? WHERE id=?').run(title, date, place || null, eid);
   // 참석 응답한 회원들에게 변경 알림
   db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
     .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
@@ -1601,22 +1615,30 @@ app.delete('/open-matches/:id', auth, (req, res) => {
 /* 매치가 사라지면 코트도 놓아준다.
    이게 없으면 취소된 경기의 코트 대금이 사장님께 그대로 나간다. */
 function releaseSlotOfMatch(matchId) {
-  const s = db.prepare('SELECT * FROM venue_slots WHERE match_id=?').get(matchId);
-  if (!s) return;
-  tx(() => {
+  const list = db.prepare('SELECT * FROM venue_slots WHERE match_id=?').all(matchId);
+  if (!list.length) return;
+  tx(() => list.forEach(s => {
     db.prepare("DELETE FROM venue_payouts WHERE slot_id=? AND status='pending'").run(s.id);
     db.prepare("UPDATE venue_slots SET status='open', held_by=NULL, held_at=NULL, match_id=NULL WHERE id=?").run(s.id);
-  });
+  }));
+  const s = list[0];
   const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(s.venue_id);
   if (v && v.owner_id) sendPush(v.owner_id, { icon: '↩️', title: '코트 예약이 취소됐어요',
-    body: `${s.date} ${s.start}-${s.end} · 다시 판매 대기로 돌아갔어요` });
+    body: `${s.date} ${s.start}-${s.end} · ${list.length}면 · 다시 판매 대기로 돌아갔어요` });
 }
 try { db.exec('ALTER TABLE open_matches ADD COLUMN courts INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN court_cost INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at TEXT'); } catch (e) {}
 /* 소셜 매치 요금 공식 — 앱 영수증(index.html의 omQuote)과 동일한 계산.
    두 곳이 어긋나면 매니저가 본 견적과 참가자가 내는 금액이 달라지므로 반드시 함께 고칠 것. */
-const OM_MARGIN = 0.375, OM_CAP_PP = 10000;               // 목표 마진 · 1인당 운영비 상한
+const OM_MARGIN = 0.375, OM_CAP_PP = 10000;
+/* 파트너 매니저 제도.
+   보너스는 맞수 몫의 20%. 회당 매니저 수입이 1.7배가 되는 대신 맞수 마진은 37%→30%.
+   파트너가 일반보다 25%만 더 열면 본전이고, 실제로는 그보다 훨씬 많이 연다. */
+const PARTNER_BONUS_RATE = +(process.env.PARTNER_BONUS_RATE || 0.2);
+const PARTNER_QUOTA_M   = +(process.env.PARTNER_QUOTA_M   || 20);   // 월 의무 횟수
+const PARTNER_WINDOW_M  = +(process.env.PARTNER_WINDOW_M  || 3);    // 누적 판정 기간(개월)
+const PARTNER_LEAD_D    = +(process.env.PARTNER_LEAD_D    || 7);    // 파트너 우선 선점 일수               // 목표 마진 · 1인당 운영비 상한
 /* 일반 매니저 수고비 — 시간당 정액(최저임금 1.2~1.5배).
    코트 단가에 연동하지 않는다: 연동하면 그만큼 참가비에 얹혀 참가자가 부담하게 된다.
    코트 단가는 파트너 매니저 보너스(맞수 몫의 20%)에만 반영된다. */
@@ -4215,16 +4237,32 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
     const e = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
     return (!isNaN(s) && !isNaN(e) && e > s) ? Math.round((e - s) / 3600e3) : 3;
   })();
-  const expense = Math.min(Math.max(0, m.court_cost || 0), OM_MAX_COURT_COST);   // 실비 상한
+  /* 실비 환급은 '매니저가 자기 돈으로 코트비를 냈을 때'만 준다.
+     맞수 계약 구장에서 열린 매치는 코트비를 맞수가 사장님께 직접 보내므로,
+     여기서 또 환급하면 코트비를 두 번 내는 셈이 된다. */
+  const onPartnerCourt = !!db.prepare('SELECT 1 FROM venue_slots WHERE match_id=?').get(m.id);
+  const expense = onPartnerCourt
+    ? 0
+    : Math.min(Math.max(0, m.court_cost || 0), OM_MAX_COURT_COST);   // 실비 상한
   const fee = courts ? omManagerFee(courts <= 2 ? 2 : 3, hours === 2 ? 2 : 3) : 0;
-  let payExpense = expense, payFee = fee;
 
-  // 걷힌 돈을 넘지 않게: 실비 → 수고비 순으로 채운다
-  if (payExpense + payFee > collected) {
-    payExpense = Math.min(payExpense, collected);
-    payFee = Math.max(0, collected - payExpense);
-  }
-  const total = payExpense + payFee;
+  /* 파트너 매니저 보너스 — 맞수가 남긴 몫의 20%.
+     코트 단가에 연동되므로 비싼 코트를 굴릴수록 매니저도 더 가져간다.
+     참가비에는 영향이 없다(이미 걷은 돈을 나누는 것이라). */
+  const mgrUser = getUser(m.manager_id) || {};
+  const isPartner = mgrUser.manager_tier === 'partner';
+  const realCourt = Math.max(0, m.court_cost || 0);
+  const matsuShare = Math.max(0, collected - realCourt - fee);
+  const bonus = isPartner ? Math.round(matsuShare * PARTNER_BONUS_RATE / 100) * 100 : 0;
+
+  let payExpense = expense, payFee = fee, payBonus = bonus;
+
+  // 걷힌 돈을 넘지 않게: 실비 → 수고비 → 보너스 순으로 채운다
+  let room = collected;
+  payExpense = Math.min(payExpense, room); room -= payExpense;
+  payFee = Math.min(payFee, room);         room -= payFee;
+  payBonus = Math.min(payBonus, room);
+  const total = payExpense + payFee + payBonus;
   if (total <= 0) return res.status(400).json({ error: 'nothing_to_settle' });
 
   const mu = getUser(m.manager_id);
@@ -4244,12 +4282,20 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
       db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
         .run(m.manager_id, payFee, 'om_payout', bal, now());
     }
+    if (payBonus > 0) {                         // 파트너 보너스 — 수고비와 같은 소득 처리
+      bal += payBonus;
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(m.manager_id, payBonus, 'om_partner_bonus', bal, now());
+    }
     db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, m.manager_id);
     db.prepare('UPDATE open_matches SET settled=1, manager_fee=? WHERE id=?').run(total, m.id);
   });
   sendPush(m.manager_id, { icon: '💰', title: '정산이 들어왔어요',
-    body: `${m.dt || ''} 매치 · 실비 ${payExpense.toLocaleString()}원 + 수고비 ${payFee.toLocaleString()}원` });
-  res.json({ ok: true, payout: true, expense: payExpense, fee: payFee, total, collected });
+    body: `${m.dt || ''} 매치 · 수고비 ${payFee.toLocaleString()}원${
+      payBonus ? ` + 파트너 보너스 ${payBonus.toLocaleString()}원` : ''}${
+      payExpense ? ` + 실비 ${payExpense.toLocaleString()}원` : ''}` });
+  res.json({ ok: true, payout: true, expense: payExpense, fee: payFee,
+             bonus: payBonus, partner: isPartner, total, collected });
 });
 /* 등급 추이 — 레이팅이 움직이는 모든 지점을 기록한다 (10경기부터 추이 노출) */
 db.exec(`CREATE TABLE IF NOT EXISTS rating_log (
@@ -5221,6 +5267,11 @@ CREATE INDEX IF NOT EXISTS ix_vp_venue ON venue_payouts(venue_id, status);
 ['bank_name TEXT', 'bank_no TEXT', 'bank_holder TEXT', 'biz_no TEXT', 'bank_at INTEGER']
   .forEach(c => { try { db.exec(`ALTER TABLE venues ADD COLUMN ${c}`); } catch (e) { /* 이미 있음 */ } });
 try { db.exec('ALTER TABLE users ADD COLUMN suspended INTEGER DEFAULT 0'); } catch (e) { /* 이미 있음 */ }
+try { db.exec('ALTER TABLE club_events ADD COLUMN place TEXT'); } catch (e) { /* 이미 있음 */ }
+try { db.exec('ALTER TABLE clubs ADD COLUMN intro TEXT'); } catch (e) { /* 이미 있음 */ }
+/* 매니저 등급 — 'partner' 는 맞수 몫의 20% 를 보너스로 받고 인기 시간을 먼저 잡는다 */
+['manager_tier TEXT', 'partner_since INTEGER', 'tier_warned_at INTEGER']
+  .forEach(c => { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch (e) {} });
 
 const jparse = (s, d) => { try { return JSON.parse(s) || d; } catch (e) { return d; } };
 const courtName = c => c.label || `${c.no}번 코트`;
@@ -5325,14 +5376,27 @@ app.post('/venue/slots', auth, venueGuard, (req, res) => {
   const totalMin = toMin(end) - toMin(start);
   if (totalMin % 60 !== 0)
     return res.status(400).json({ error: 'bad_time', message: '시간 단위로 열어주세요 (예: 09:00–17:00)' });
-  const chunks = splitHours(totalMin / 60);
-  if (!chunks) return res.status(400).json({ error: 'bad_time', message: '최소 2시간 이상 열어주세요' });
+  let skippedTail = 0;
+  const unit = String(b.unit || 'mix');          // '2' | '3' | 'mix'
+  let chunks;
+  if (unit === '2' || unit === '3') {
+    const u = +unit, hrs = totalMin / 60;
+    chunks = [];
+    let left = hrs;
+    while (left >= u) { chunks.push(u); left -= u; }
+    if (left > 0 && chunks.length) skippedTail = left;   // 남는 자투리는 열지 않는다
+    if (!chunks.length) chunks = null;
+  } else {
+    chunks = splitHours(totalMin / 60);
+  }
+  if (!chunks) return res.status(400).json({ error: 'bad_time',
+    message: unit === '3' ? '3시간 이상 열어주세요' : '최소 2시간 이상 열어주세요' });
 
   const spans = [];
   let cur = toMin(start);
   chunks.forEach(h => { spans.push([toHHMM(cur), toHHMM(cur + h * 60)]); cur += h * 60; });
 
-  const price = slotPrice(courtIds, spans[0][0], spans[0][1]);
+  const price = slotPrice([courtIds[0]], spans[0][0], spans[0][1]);
   if (price <= 0) return res.status(400).json({ error: 'no_price', message: '코트 단가가 설정되지 않았어요' });
 
   // 날짜 목록 만들기
@@ -5357,14 +5421,21 @@ app.post('/venue/slots', auth, venueGuard, (req, res) => {
         WHERE venue_id=? AND date=? AND status!='closed' AND NOT(end<=? OR start>=?)`)
         .all(req.venue.id, date, sStart, sEnd);
       const busy = new Set(); same.forEach(r => jparse(r.court_ids, []).forEach(id => busy.add(id)));
-      if (courtIds.some(id => busy.has(id))) { skipped++; return; }
-      db.prepare(`INSERT INTO venue_slots (venue_id,date,start,end,court_ids,price,status,created_at)
-                  VALUES (?,?,?,?,?,?, 'open', ?)`)
-        .run(req.venue.id, date, sStart, sEnd, JSON.stringify(courtIds), price, now());
-      made++;
+      skipped += courtIds.filter(id => busy.has(id)).length;
+      /* 코트를 묶지 않고 1면씩 따로 연다.
+         단식 한 사람은 1면만, 오픈매치 매니저는 여러 면을 골라 가져갈 수 있어야 한다. */
+      courtIds.forEach(cid => {
+        if (busy.has(cid)) return;
+        const p = slotPrice([cid], sStart, sEnd);
+        if (p <= 0) return;
+        db.prepare(`INSERT INTO venue_slots (venue_id,date,start,end,court_ids,price,status,created_at)
+                    VALUES (?,?,?,?,?,?, 'open', ?)`)
+          .run(req.venue.id, date, sStart, sEnd, JSON.stringify([cid]), p, now());
+        made++;
+      });
     }));
   });
-  res.json({ ok: true, made, skipped, price, per_day: spans.length,
+  res.json({ ok: true, made, skipped, price, unit, tail_hours: skippedTail, per_day: spans.length,
              spans: spans.map(([a, b2]) => `${a}-${b2}`) });
 });
 
@@ -5482,15 +5553,16 @@ app.get('/venue/payouts', auth, venueGuard, (req, res) => {
 });
 
 /* ── 매니저 ─────────────────────────────────────── */
-app.get('/venue-slots/open', (req, res) => {
+app.get('/venue-slots/open', auth, (req, res) => {
   const { sido, sigungu } = req.query;
   const today = new Date().toISOString().slice(0, 10);
   const w = ["s.status='open'", 's.date>=?']; const a = [today];
   if (sido) { w.push('v.sido=?'); a.push(sido); }
   if (sigungu) { w.push('v.sigungu=?'); a.push(sigungu); }
   const rows = db.prepare(`SELECT s.* FROM venue_slots s JOIN venues v ON v.id=s.venue_id
-    WHERE ${w.join(' AND ')} AND v.active=1 ORDER BY s.date, s.start LIMIT 60`).all(...a);
-  res.json(rows.map(slotView));
+    WHERE ${w.join(' AND ')} AND v.active=1 ORDER BY s.date, s.start LIMIT 120`).all(...a);
+  const me = req.uid ? (getUser(req.uid) || {}) : {};
+  res.json(rows.map(r => ({ ...slotView(r), holdable: canHoldNow(me, r), lead_days: PARTNER_LEAD_D })));
 });
 
 /* ══════════════════════════════════════════════════════════════
@@ -5504,6 +5576,12 @@ app.get('/venue-slots/open', (req, res) => {
 /* 0 = 상시 예약. 몇 달 뒤 코트를 미리 잡는 사람이 많아 기본은 제한을 두지 않는다.
    오픈매치와 자리를 다투게 되면 이 값을 시간 단위로 올려 개인 예약을 뒤로 미룰 수 있다. */
 const RESERVE_WINDOW_H = +(process.env.VENUE_RESERVE_WINDOW_H || 0);
+
+/* 기본은 선착순 — 먼저 잡는 사람이 임자다.
+   코트는 시간이 지나면 사라지는 재고라, 비워두는 것보다 누구에게든 파는 게 낫다.
+   나중에 오픈매치가 코트를 못 구하는 일이 잦아지면 여기에 시간을 넣어
+   '경기 N시간 전까지는 매니저만' 으로 바꿀 수 있다. */
+const MANAGER_PRIORITY_H = +(process.env.VENUE_MANAGER_PRIORITY_H || 0);
 const RESERVE_FEE_RATE = +(process.env.VENUE_RESERVE_FEE_RATE || 0.1);  // 코트비 위에 붙는 맞수 수수료
 
 db.exec(`CREATE TABLE IF NOT EXISTS venue_bookings (
@@ -5526,10 +5604,11 @@ function reserveQuote(slot) {
   const fee = Math.round(slot.price * RESERVE_FEE_RATE / 100) * 100;   // 100원 단위
   return { court_cost: slot.price, fee, amount: slot.price + fee };
 }
-function reserveOpenAt(slot) {                      // 예약을 열어주는 시각
-  if (!RESERVE_WINDOW_H) return 0;
+function reserveOpenAt(slot) {                      // 개인 예약이 열리는 시각
   const startMs = new Date(`${slot.date}T${slot.start}:00`).getTime();
-  return startMs - RESERVE_WINDOW_H * 3600000;
+  const byWindow = RESERVE_WINDOW_H ? startMs - RESERVE_WINDOW_H * 3600000 : 0;
+  const byPriority = MANAGER_PRIORITY_H ? startMs - MANAGER_PRIORITY_H * 3600000 : 0;
+  return Math.max(byWindow, byPriority);
 }
 
 /* 지금 회원이 예약할 수 있는 코트 */
@@ -5548,7 +5627,9 @@ app.get('/venue-slots/reservable', (req, res) => {
     const openAt = reserveOpenAt(r);
     const startMs = new Date(`${r.date}T${r.start}:00`).getTime();
     return { ...v, ...q, reservable: nowMs >= openAt && startMs > nowMs,
-             opens_at: openAt || null, window_h: RESERVE_WINDOW_H };
+             opens_at: openAt || null, window_h: RESERVE_WINDOW_H,
+             priority_h: MANAGER_PRIORITY_H,
+             hours: Math.round((new Date(`${r.date}T${r.end}:00`) - new Date(`${r.date}T${r.start}:00`)) / 36e5) };
   }));
 });
 
@@ -5566,7 +5647,7 @@ app.post('/venue-slots/:id/reserve', auth, (req, res) => {
     return res.status(400).json({ error: 'past', message: '이미 지난 시간이에요' });
   if (Date.now() < reserveOpenAt(s))
     return res.status(400).json({ error: 'too_early',
-      message: `경기 ${RESERVE_WINDOW_H}시간 전부터 예약할 수 있어요` });
+      message: `아직 매니저 모집 기간이에요 · 경기 ${MANAGER_PRIORITY_H}시간 전부터 예약할 수 있어요` });
 
   const q = reserveQuote(s);
   if ((u.cash || 0) < q.amount)
@@ -5645,12 +5726,69 @@ app.post('/venue-slots/:id/hold', auth, (req, res) => {
   const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(+req.params.id);
   if (!s) return res.status(404).json({ error: 'not_found' });
   if (s.status !== 'open') return res.status(400).json({ error: 'taken', message: '이미 지나간 자리예요' });
+  const me = getUser(req.uid) || {};
+  if (!canHoldNow(me, s)) return res.status(403).json({ error: 'partner_only',
+    message: `파트너 매니저가 먼저 고르는 기간이에요 · 경기 ${PARTNER_LEAD_D}일 전부터 열려요` });
   db.prepare("UPDATE venue_slots SET status='held', held_by=?, held_at=? WHERE id=? AND status='open'")
     .run(req.uid, now(), s.id);
   const v = db.prepare('SELECT owner_id,name FROM venues WHERE id=?').get(s.venue_id);
   if (v && v.owner_id) sendPush(v.owner_id, { icon: '🎾', title: '매니저가 코트를 잡았어요',
     body: `${s.date} ${s.start}–${s.end} · 모집이 확정되면 알려드릴게요` });
   res.json({ ok: true, slot: slotView(db.prepare('SELECT * FROM venue_slots WHERE id=?').get(s.id)) });
+});
+
+/* 여러 면을 한 번에 잡는다 — 오픈매치는 코트 수로 정원이 정해지므로 묶어서 가져가야 한다.
+   하나라도 이미 나갔으면 전부 되돌린다. 반쪽만 잡히면 매치를 열 수 없다. */
+app.post('/venue-slots/hold-many', auth, (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids)
+    ? [...new Set(req.body.ids.map(Number).filter(Boolean))] : [];
+  if (!ids.length) return res.status(400).json({ error: 'no_ids' });
+  /* 오픈매치는 2면부터. 1면(4~6명)은 매니저 없이 개인끼리 치는 자리라
+     수고비를 얹으면 참가비만 비싸진다. 그런 시간은 구장예약으로 팔린다. */
+  if (ids.length < 2) return res.status(400).json({ error: 'too_few',
+    message: '오픈매치는 2면부터 열 수 있어요 · 1면은 개인 예약으로 나갑니다' });
+  if (ids.length > 6) return res.status(400).json({ error: 'too_many', message: '한 번에 6면까지예요' });
+
+  const rows = db.prepare(`SELECT * FROM venue_slots WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  if (rows.length !== ids.length) return res.status(404).json({ error: 'not_found' });
+  const me = getUser(req.uid) || {};
+  if (rows.some(r => !canHoldNow(me, r))) return res.status(403).json({ error: 'partner_only',
+    message: `파트너 매니저가 먼저 고르는 기간이에요 · 경기 ${PARTNER_LEAD_D}일 전부터 열려요` });
+  const base = rows[0];
+  const same = rows.every(r => r.venue_id === base.venue_id && r.date === base.date
+                            && r.start === base.start && r.end === base.end);
+  if (!same) return res.status(400).json({ error: 'mixed', message: '같은 구장·같은 시간의 코트만 함께 잡을 수 있어요' });
+
+  let ok = 0;
+  try {
+    tx(() => {
+      rows.forEach(r => {
+        const c = db.prepare("UPDATE venue_slots SET status='held', held_by=?, held_at=? WHERE id=? AND status='open'")
+          .run(req.uid, now(), r.id);
+        if (!c.changes) throw new Error('taken');
+        ok++;
+      });
+    });
+  } catch (e) {
+    if (String(e.message) === 'taken')
+      return res.status(409).json({ error: 'taken', message: '방금 누군가 가져간 코트가 있어요. 새로고침해 주세요' });
+    return res.status(500).json({ error: String(e.message || e) });
+  }
+
+  const v = db.prepare('SELECT owner_id,name FROM venues WHERE id=?').get(base.venue_id);
+  if (v && v.owner_id) sendPush(v.owner_id, { icon: '🎾', title: '매니저가 코트를 잡았어요',
+    body: `${base.date} ${base.start}–${base.end} · ${ok}면 · 확정되면 알려드릴게요` });
+  res.json({ ok: true, held: ok,
+    slots: db.prepare(`SELECT * FROM venue_slots WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids).map(slotView) });
+});
+
+/* 잡은 코트 전체를 한 번에 놓는다 */
+app.post('/venue-slots/release-many', auth, (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: 'no_ids' });
+  const r = db.prepare(`UPDATE venue_slots SET status='open', held_by=NULL, held_at=NULL, match_id=NULL
+    WHERE held_by=? AND status='held' AND id IN (${ids.map(() => '?').join(',')})`).run(req.uid, ...ids);
+  res.json({ ok: true, released: r.changes });
 });
 
 /* 매니저가 포기 — 다시 열어둔다 */
@@ -5663,21 +5801,26 @@ app.post('/venue-slots/:id/release', auth, (req, res) => {
 });
 
 /* 모집 확정 → 코트 확정 + 사장님 정산 예약 */
+/* 한 매치가 여러 면을 쓸 수 있으므로 걸려 있는 코트를 모두 확정한다.
+   정산도 코트별로 따로 잡아야 나중에 1면만 취소하는 일이 가능하다. */
 function venueConfirm(slotId, matchId) {
-  const s = slotId
-    ? db.prepare('SELECT * FROM venue_slots WHERE id=?').get(slotId)
-    : db.prepare("SELECT * FROM venue_slots WHERE match_id=? AND status='held'").get(matchId);
-  if (!s || s.status === 'booked') return null;
-  tx(() => {
-    db.prepare("UPDATE venue_slots SET status='booked', match_id=? WHERE id=?").run(matchId || null, s.id);
+  const list = slotId
+    ? [db.prepare('SELECT * FROM venue_slots WHERE id=?').get(slotId)].filter(Boolean)
+    : db.prepare("SELECT * FROM venue_slots WHERE match_id=? AND status='held'").all(matchId);
+  const todo = list.filter(s => s && s.status !== 'booked');
+  if (!todo.length) return null;
+  tx(() => todo.forEach(s => {
+    db.prepare("UPDATE venue_slots SET status='booked', match_id=? WHERE id=?").run(matchId || s.match_id || null, s.id);
     db.prepare(`INSERT INTO venue_payouts (venue_id,slot_id,match_id,amount,status,due_at,created_at)
                 VALUES (?,?,?,?, 'pending', ?, ?)`)
-      .run(s.venue_id, s.id, matchId || null, s.price, nextBusinessDay(Date.now(), 3), now());
-  });
-  const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(s.venue_id);
+      .run(s.venue_id, s.id, matchId || s.match_id || null, s.price, nextBusinessDay(Date.now(), 3), now());
+  }));
+  const first = todo[0];
+  const total = todo.reduce((a, s) => a + s.price, 0);
+  const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(first.venue_id);
   if (v && v.owner_id) sendPush(v.owner_id, { icon: '✅', title: '코트 판매가 확정됐어요',
-    body: `${s.date} ${s.start}–${s.end} · ${s.price.toLocaleString()}원` });
-  return s;
+    body: `${first.date} ${first.start}–${first.end} · ${todo.length}면 · ${total.toLocaleString()}원` });
+  return first;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5708,7 +5851,8 @@ app.get('/manager/me', auth, mgrGuard, (req, res) => {
   const pend = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM om_payouts WHERE user_id=? AND status!='paid'").get(req.uid).s;
   const paid = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM om_payouts WHERE user_id=? AND status='paid'").get(req.uid).s;
   res.json({ user: { id: req.mgr.id, name: req.mgr.name },
-             held, booked, payout_pending: pend, payout_paid: paid });
+             held, booked, payout_pending: pend, payout_paid: paid,
+             tier: mgrTierState(req.mgr) });
 });
 
 /* 내가 잡은 코트 — 모집 중 · 확정 */
@@ -5758,7 +5902,11 @@ app.post('/venue-slots/:id/create-match', auth, mgrGuard, (req, res) => {
                           - Number(s.start.slice(0, 2)) * 60 - Number(s.start.slice(3, 5))) / 60);
   if (hours !== 2 && hours !== 3)
     return res.status(400).json({ error: 'bad_hours', message: '소셜 매치는 2시간 또는 3시간만 열려요' });
-  const courts = ids.length <= 2 ? 2 : 3;            // 요금표는 2코트·3코트 두 가지
+  const held = db.prepare("SELECT COUNT(*) n FROM venue_slots WHERE held_by=? AND status='held' AND date=? AND start=? AND venue_id=?")
+    .get(req.uid, s.date, s.start, s.venue_id).n;
+  if (held < 2) return res.status(400).json({ error: 'too_few',
+    message: '오픈매치는 2면부터 열 수 있어요' });
+  const courts = held <= 2 ? 2 : 3;                 // 요금표는 2코트·3코트 두 가지
   const ball = Math.max(0, +((req.body && req.body.ball_cost) || 0));
   const q = omQuote(s.price, ball, courts, hours);
 
@@ -5907,6 +6055,97 @@ app.post('/admin/open-matches/:id/kill', admin, (req, res) => {
   if (m.status === 'cancelled') return res.status(400).json({ error: 'already' });
   const n = killMatch(m, 'admin');
   res.json({ ok: true, refunded: n });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   파트너 매니저 — 자격·유지·우선 선점
+
+   의무만 세우면 이탈이 오히려 는다. 미달 → 강등 → 포기로 이어지기 때문이다.
+   그래서 (1) 판정을 3개월 누적으로 완충하고, (2) 미리 경고하고,
+   (3) 돈이 아닌 혜택(인기 시간 우선 선점)을 얹는다.
+   ══════════════════════════════════════════════════════════════ */
+function ymOf(ms) { return new Date(ms).toISOString().slice(0, 7); }
+
+/* 확정까지 간 매치만 실적으로 센다 — 열기만 하고 못 채운 건 실적이 아니다 */
+function mgrMatchCount(uid, months) {
+  const from = new Date(); from.setMonth(from.getMonth() - (months - 1)); from.setDate(1);
+  const fromStr = from.toISOString().slice(0, 10);
+  return db.prepare(`SELECT COUNT(DISTINCT m.id) n FROM open_matches m
+    WHERE m.manager_id=? AND m.status!='cancelled'
+      AND COALESCE(substr(m.start_at,1,10), substr(m.dt,1,10)) >= ?
+      AND EXISTS (SELECT 1 FROM venue_slots s WHERE s.match_id=m.id AND s.status='booked')`)
+    .get(uid, fromStr).n;
+}
+function mgrTierState(u) {
+  const need = PARTNER_QUOTA_M * PARTNER_WINDOW_M;
+  const done = mgrMatchCount(u.id, PARTNER_WINDOW_M);
+  const thisMonth = mgrMatchCount(u.id, 1);
+  return { tier: u.manager_tier || 'normal', quota: PARTNER_QUOTA_M,
+           window_m: PARTNER_WINDOW_M, need, done, this_month: thisMonth,
+           left: Math.max(0, need - done), ok: done >= need,
+           bonus_rate: PARTNER_BONUS_RATE, lead_days: PARTNER_LEAD_D };
+}
+
+/* 매니저가 이 슬롯을 지금 잡을 수 있는지 — 파트너는 언제든, 일반은 PARTNER_LEAD_D 이후부터 */
+function canHoldNow(u, slot) {
+  if (!PARTNER_LEAD_D) return true;
+  if ((u.manager_tier || 'normal') === 'partner') return true;
+  const startMs = new Date(`${slot.date}T${slot.start}:00`).getTime();
+  return startMs - Date.now() <= PARTNER_LEAD_D * 86400000;
+}
+
+app.get('/manager/tier', auth, mgrGuard, (req, res) => {
+  res.json(mgrTierState(req.mgr));
+});
+
+/* 매달 1일에 판정 — 3개월 누적이 모자라면 강등, 그 전에 경고 */
+function sweepPartnerTier() {
+  const need = PARTNER_QUOTA_M * PARTNER_WINDOW_M;
+  db.prepare("SELECT * FROM users WHERE provider='manager' AND manager_tier='partner'").all()
+    .forEach(u => {
+      const done = mgrMatchCount(u.id, PARTNER_WINDOW_M);
+      if (done >= need) {
+        if (u.tier_warned_at) db.prepare('UPDATE users SET tier_warned_at=NULL WHERE id=?').run(u.id);
+        return;
+      }
+      const day = new Date().getDate();
+      if (day >= 1 && day <= 3) {                       // 달이 바뀌면 강등 판정
+        db.prepare("UPDATE users SET manager_tier='normal', tier_warned_at=NULL WHERE id=?").run(u.id);
+        sendPush(u.id, { icon: '📉', title: '파트너 자격이 해제됐어요',
+          body: `최근 ${PARTNER_WINDOW_M}개월 ${done}/${need}회 · 다시 채우면 바로 복구돼요` });
+        return;
+      }
+      if (!u.tier_warned_at || ymOf(u.tier_warned_at) !== ymOf(Date.now())) {
+        db.prepare('UPDATE users SET tier_warned_at=? WHERE id=?').run(now(), u.id);
+        sendPush(u.id, { icon: '⚠️', title: '파트너 자격이 위험해요',
+          body: `최근 ${PARTNER_WINDOW_M}개월 ${done}/${need}회 · ${need - done}회 더 필요해요` });
+      }
+    });
+}
+setInterval(sweepPartnerTier, 12 * 60 * 60 * 1000);
+setTimeout(sweepPartnerTier, 40 * 1000);
+
+/* ── 관리자 ── */
+app.get('/admin/managers', admin, (_req, res) => {
+  const rows = db.prepare("SELECT * FROM users WHERE provider='manager' ORDER BY id DESC").all();
+  res.json({ quota: PARTNER_QUOTA_M, window_m: PARTNER_WINDOW_M,
+    bonus_rate: PARTNER_BONUS_RATE, lead_days: PARTNER_LEAD_D,
+    list: rows.map(u => ({ id: u.id, name: u.name, login_id: u.provider_id,
+      phone: u.phone || '', suspended: !!u.suspended,
+      partner_since: u.partner_since || null, ...mgrTierState(u) })) });
+});
+
+app.post('/admin/managers/:id/tier', admin, (req, res) => {
+  const u = db.prepare("SELECT * FROM users WHERE id=? AND provider='manager'").get(+req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const t = (req.body && req.body.tier) === 'partner' ? 'partner' : 'normal';
+  db.prepare('UPDATE users SET manager_tier=?, partner_since=?, tier_warned_at=NULL WHERE id=?')
+    .run(t, t === 'partner' ? (u.partner_since || now()) : null, u.id);
+  sendPush(u.id, t === 'partner'
+    ? { icon: '🏅', title: '파트너 매니저가 되셨어요',
+        body: `이제 맞수 몫의 ${Math.round(PARTNER_BONUS_RATE*100)}%를 보너스로 받고, 인기 시간을 먼저 잡을 수 있어요` }
+    : { icon: '📉', title: '파트너 자격이 해제됐어요', body: '다시 채우면 복구돼요' });
+  res.json({ ok: true, tier: t });
 });
 
 /* 매니저 정산 — 내 수고비·실비 환급 내역 */
@@ -6218,11 +6457,29 @@ app.get('/admin/venue-slots', admin, (req, res) => {
 app.post('/admin/venue-slots/:id/release', admin, (req, res) => {
   const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(+req.params.id);
   if (!s) return res.status(404).json({ error: 'not_found' });
+
+  /* 개인 예약이 걸린 슬롯이면 예약도 함께 취소하고 캐시를 돌려준다.
+     이 처리가 없으면 회원은 돈을 낸 채 코트만 사라진다. */
+  const bk = db.prepare("SELECT * FROM venue_bookings WHERE slot_id=? AND status='paid'").get(s.id);
+  let refunded = 0;
   tx(() => {
+    if (bk) {
+      const u = getUser(bk.user_id);
+      db.prepare("UPDATE venue_bookings SET status='canceled', canceled_at=? WHERE id=?").run(now(), bk.id);
+      if (u) {
+        const bal = (u.cash || 0) + bk.amount;
+        db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
+        db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+          .run(u.id, bk.amount, 'venue_reserve_admin_refund', bal, now());
+        refunded = bk.amount;
+      }
+    }
     db.prepare("DELETE FROM venue_payouts WHERE slot_id=? AND status='pending'").run(s.id);
     db.prepare("UPDATE venue_slots SET status='open', held_by=NULL, held_at=NULL, match_id=NULL WHERE id=?").run(s.id);
   });
-  res.json({ ok: true });
+  if (bk && refunded) sendPush(bk.user_id, { icon: '↩️', title: '코트 예약이 취소됐어요',
+    body: `${refunded.toLocaleString()}원을 캐시로 돌려드렸어요` });
+  res.json({ ok: true, refunded, had_booking: !!bk });
 });
 
 app.get('/admin/venue-payouts', admin, (_req, res) => {
