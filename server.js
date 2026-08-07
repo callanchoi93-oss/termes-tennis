@@ -2794,8 +2794,11 @@ app.get('/rankings', (req, res) => {
   const { sport } = req.query;
   const dbl = String(req.query.type || 'singles') === 'doubles';
   const col = dbl ? 'COALESCE(rating_doubles,1000)' : 'rating';
-  let sql = `SELECT id,name,region,sport,${col} AS rating,(wins+losses) AS games
-    FROM users WHERE provider!='bot'`;
+  /* 경기를 한 번도 안 한 사람은 랭킹에 올리지 않는다.
+     마지막 경기 시각도 함께 줘서 앱이 '최근 활동'으로 한 번 더 거를 수 있게 한다. */
+  let sql = `SELECT id,name,region,sport,${col} AS rating,(wins+losses) AS games,
+      (SELECT MAX(created_at) FROM rating_log rl WHERE rl.user_id=users.id) AS last_played_at
+    FROM users WHERE provider NOT IN ('bot','venue','manager') AND (wins+losses) > 0`;
   const p = [];
   if (sport) { sql += ' AND sport=?'; p.push(sport); }
   res.json(db.prepare(sql + ` ORDER BY ${col} DESC LIMIT 50`).all(...p));
