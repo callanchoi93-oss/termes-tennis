@@ -356,8 +356,8 @@
     justify-content:center;color:#fff;font-size:18px;font-weight:600;
     background:linear-gradient(150deg,#3f9e6b,#2c7d50)}
   .mcplus{width:52px;height:52px;border-radius:50%;margin:0 auto 7px;display:flex;align-items:center;
-    justify-content:center;font-size:21px;color:var(--lgray);background:var(--felt);
-    border:1px dashed #ddd7cb}
+    justify-content:center;font-size:27px;line-height:1;color:#b8b3a9;background:var(--felt);
+    border:1.5px solid #ddd7cb}
   .mcn{display:block;font-size:11.5px;font-weight:400;color:var(--gray);line-height:1.35;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
     word-break:keep-all}
@@ -432,10 +432,14 @@
   #eventpick{z-index:134}
 
   /* 운영진 도구 안에서는 시트가 카드가 아니라 페이지 본문처럼 보인다 */
-  .sheet.as-page{background:none;border-radius:0;padding:0;max-height:none;animation:none;overflow:visible;
-    min-height:100%;display:flex;flex-direction:column}
+  /* 운영진 도구 안에서는 '카드'가 아니라 페이지 본문이다.
+     .sheet 쪽에 box-shadow 와 !important 패딩·애니메이션이 걸려 있어
+     그냥 덮어쓰면 그림자 박스가 그대로 남는다. 여기서 전부 눌러 끈다. */
+  .sheet.as-page{background:none !important;border-radius:0 !important;padding:0 !important;
+    box-shadow:none !important;animation:none !important;max-height:none;overflow:visible;
+    display:flex;flex-direction:column;flex:1;min-height:0}
   /* 운영진 도구는 본문 여백을 시트가 직접 갖는다 — 아래가 텅 비어 '잘린' 것처럼 보이지 않게 */
-  body.ops-open .opsbody{padding-bottom:0}
+  body.ops-open .opsbody{padding-bottom:0;display:flex;flex-direction:column}
   .ed-page{display:flex;flex-direction:column;flex:1;min-height:0}
   .ed-page textarea{flex:1;min-height:200px;resize:none}
   .ed-foot{margin-top:auto;padding-top:14px}
@@ -8664,8 +8668,6 @@ function openEventCreate(){
   for(let i=0;i<14;i++){ const d=new Date(now.getTime()+i*864e5); const mo=d.getMonth()+1, da=d.getDate(), w=W[d.getDay()];
     const key=`${mo}/${da} (${w})`;
     pins+=`<div class="dpin ${busy.has(key)?'has':''}" data-k="${key}" onclick="pickEvDate(this)"><div class="dp-w">${w}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
-  const times=['07:00','09:00','14:00','19:00','21:00'];
-  const timeChips=times.map(t=>`<div class="chip ${t==='09:00'?'on':''}" data-t="${t}" onclick="pickEvTime(this)" style="cursor:pointer">${t}</div>`).join('');
   // 참여 예상 멤버 미리보기 (아바타 스택)
   const mem=clubMembersList().slice(0,4); const colors=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b'];
   const stack=mem.map((m,i)=>`<div class="ma" style="background:${colors[i%4]}">${m[0]}</div>`).join('')+`<div class="ma more">+${Math.max(0,clubMembersList().length-4)}</div>`;
@@ -8674,15 +8676,13 @@ function openEventCreate(){
     <div class="fld"><label>모임 이름</label><input id="evTitle" placeholder="예) 7월 첫째주 정기모임" maxlength="24"></div>
     <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:2px 0 8px">날짜</label>
     <div class="dpin-row">${pins}</div>
-    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:8px 0 8px">자주 쓰는 시간</label>
-    <div class="chips" style="padding-bottom:6px">${timeChips}</div>
-    <div class="tmrow">
+    <div class="tmrow" style="margin-top:10px">
       <div class="fld"><label>시작 시간</label>
         <input id="evStart" type="time" step="60" value="09:00" onchange="setEvStart(this.value)"></div>
       <div class="fld"><label>종료 시간 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
         <input id="evEnd" type="time" step="60" value="" onchange="setEvEnd(this.value)"></div>
     </div>
-    <div class="note" style="text-align:left;margin-top:2px" id="evTimeNote">1분 단위로 정할 수 있어요</div>
+    <div id="evTimeNote" style="font-size:11.5px;font-weight:500;color:var(--lgray);margin:2px 2px 0">1분 단위로 정할 수 있어요</div>
     <div class="fld" style="margin-top:10px"><label>장소 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
       <input id="evPlace" maxlength="30" placeholder="예) ${esc(((AC()||{}).court)||'용인 테니스파크')}"></div>
     <div class="card" style="margin:8px 0 0;padding:14px;display:flex;align-items:center;justify-content:space-between">
@@ -8693,18 +8693,7 @@ function openEventCreate(){
   setTimeout(()=>{const e=document.getElementById('evTitle');if(e)e.focus();},100);
 }
 function pickEvDate(el){ document.querySelectorAll('.dpin').forEach(p=>p.classList.remove('on')); el.classList.add('on'); state._evDate=el.dataset.k; }
-/* 칩은 자주 쓰는 시간으로 가는 지름길일 뿐이다. 진짜 값은 항상 시작·종료 입력칸이 갖는다. */
-function pickEvTime(el){
-  document.querySelectorAll('.chips .chip').forEach(c=>c.classList.remove('on'));
-  el.classList.add('on');
-  const inp=document.getElementById('evStart'); if(inp) inp.value=el.dataset.t;
-  setEvStart(el.dataset.t);
-}
-function setEvStart(v){
-  state._evTime=v||'';
-  document.querySelectorAll('.chips .chip').forEach(c=>c.classList.toggle('on', c.dataset.t===v));
-  evTimeNote();
-}
+function setEvStart(v){ state._evTime=v||''; evTimeNote(); }
 function setEvEnd(v){ state._evEnd=v||''; evTimeNote(); }
 /* 종료가 시작보다 이르면 조용히 두지 않는다 — 등록 후에야 알면 다시 고쳐야 한다. */
 function evTimeNote(){
