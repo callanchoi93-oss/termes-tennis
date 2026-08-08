@@ -145,7 +145,7 @@
   .pvav:has(.clogo){background:none;box-shadow:none}
   .pvav .clogo{width:58px;height:58px;font-size:26px}
   .pvbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 18px 12px}
-  .pvfoot{flex:none;padding:12px 18px calc(18px + env(safe-area-inset-bottom))}
+  .pvfoot{flex:none;padding:12px 18px calc(18px + env(safe-area-inset-bottom, 0px))}
   .pvfoot .btn{width:100%}
 
 
@@ -166,7 +166,7 @@
     display:flex;align-items:center;gap:8px;min-height:52px;padding-top:env(safe-area-inset-top,0px)}
   .opsclub{margin-left:auto;font-size:12px;color:var(--lgray);font-weight:400}
   .opsbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
-    padding:14px 18px calc(24px + env(safe-area-inset-bottom))}
+    padding:14px 18px calc(24px + env(safe-area-inset-bottom, 0px))}
 
 
   .msload,.msnone{font-size:13px;color:var(--lgray);text-align:center;padding:22px}
@@ -237,7 +237,7 @@
   .rtrest .p.zero{opacity:.5}
   .rtmveil{position:absolute;inset:0;background:rgba(20,14,8,.32)}
   .rtmsheet{position:absolute;left:0;right:0;bottom:0;background:var(--cream);
-    border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom));
+    border-radius:22px 22px 0 0;padding:20px 18px calc(24px + env(safe-area-inset-bottom, 0px));
     max-height:80%;overflow-y:auto;animation:up .25s ease}
   .rtmhd{font-size:15.5px;font-weight:600;margin-bottom:12px}
   .rtm{display:flex;align-items:center;gap:12px;padding:14px 2px;border-bottom:1px solid var(--line);cursor:pointer}
@@ -426,7 +426,7 @@
 
   .opsbody.tight{flex:none;overflow:visible}
   .rgfoot{display:flex;align-items:center;gap:14px;margin-top:20px}
-  .opsfoot{flex:none;display:flex;align-items:center;gap:14px;padding:12px 18px calc(18px + env(safe-area-inset-bottom));
+  .opsfoot{flex:none;display:flex;align-items:center;gap:14px;padding:12px 18px calc(18px + env(safe-area-inset-bottom, 0px));
     border-top:1px solid var(--line);background:var(--cream)}
   #clubfilter,#tierpage{z-index:126}
   #eventpick{z-index:134}
@@ -439,6 +439,9 @@
   .ed-page{display:flex;flex-direction:column;flex:1;min-height:0}
   .ed-page textarea{flex:1;min-height:200px;resize:none}
   .ed-foot{margin-top:auto;padding-top:14px}
+  .tmrow{display:flex;gap:9px;margin-top:2px}
+  .tmrow .fld{flex:1;min-width:0;margin-bottom:6px}
+  .tmrow input{width:100%;box-sizing:border-box}
   .sheet.as-page::before{display:none}
   .sheet.as-page .cl{display:none}
   .sheet.as-page > h3:first-child,
@@ -1280,7 +1283,7 @@
   .hn-wc b{ color:#dd8a3a; margin-left:2px; }
 
   /* 로그인 — bleet 스타일 (로고 + 후기 슬라이드) */
-  .auth2{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; justify-content:safe center; padding:14px 0; gap:clamp(10px,2.6vh,32px); background:linear-gradient(180deg,#ffffff,#f4f3f0); padding:clamp(10px,2.4vh,26px) 0 max(clamp(10px,2.4vh,26px),env(safe-area-inset-bottom)); }
+  .auth2{ flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; justify-content:safe center; padding:14px 0; gap:clamp(10px,2.6vh,32px); background:linear-gradient(180deg,#ffffff,#f4f3f0); padding:clamp(10px,2.4vh,26px) 0 max(clamp(10px,2.4vh,26px),env(safe-area-inset-bottom, 0px)); }
   .auth2-top{ flex:0 0 auto; display:flex; flex-direction:column; justify-content:flex-start; }
   .auth2-logo{ text-align:center; font-size:clamp(34px,6vh,52px); font-weight:600; letter-spacing:-3px; color:var(--ink); }
   .auth2-logo b{ color:var(--coral); }
@@ -4064,9 +4067,9 @@ function renderNewEvent(){
       </div>
       ${!_off?`<div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:7px;line-height:1.6">정기 모임은 임원만 만들 수 있어요. 번개는 회원 누구나 열 수 있어요.</div>`:''}</div>
     <div class="fld" style="margin-top:12px"><label>시작 시간</label>
-      <input id="evStart" type="time" step="900" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
+      <input id="evStart" type="time" step="60" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
     <div class="fld" style="margin-top:12px"><label>종료 시간 <span style="font-weight:500;color:var(--lgray)">· 선택</span></label>
-      <input id="evEnd" type="time" step="900" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
+      <input id="evEnd" type="time" step="60" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
@@ -8143,9 +8146,7 @@ function openClubOps(){
       ${tool('가입 신청','승인 · 거절','openAdmin()','',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
-      ${tool('초대장 공유','링크 하나로 신청 · 7일','openInvite()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
-      ${tool('클럽 로고','아이콘 · 사진 변경',`openClubLogoEdit('${esc(n)}')`)}
     </div>`;
   document.getElementById('opsBody').innerHTML=h;
   document.getElementById('opsClub').textContent=n;
@@ -8657,15 +8658,14 @@ function switchClub(nm){state.activeClub=nm;state._draft='';state._photo=false;r
 function setAttend(v){ setRsvp(v===true?'going':'absent'); }
 function openEventCreate(){
   // 가로 날짜 핀 (오늘부터 14일) — 점은 이미 잡힌 모임이 있는 날
-  state._evDate=null; state._evTime='09:00';
+  state._evDate=null; state._evTime='09:00'; state._evEnd='';
   const W=['일','월','화','수','목','금','토']; const now=new Date(); let pins='';
   const c=AC(); const busy=new Set((c&&c.events||[]).map(e=>e.date));
   for(let i=0;i<14;i++){ const d=new Date(now.getTime()+i*864e5); const mo=d.getMonth()+1, da=d.getDate(), w=W[d.getDay()];
     const key=`${mo}/${da} (${w})`;
     pins+=`<div class="dpin ${busy.has(key)?'has':''}" data-k="${key}" onclick="pickEvDate(this)"><div class="dp-w">${w}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
   const times=['07:00','09:00','14:00','19:00','21:00'];
-  const timeChips=times.map(t=>`<div class="chip ${t==='09:00'?'on':''}" data-t="${t}" onclick="pickEvTime(this)" style="cursor:pointer">${t}</div>`).join('')
-    +`<div class="chip" id="evTimeCustom" onclick="pickEvTimeCustom()" style="cursor:pointer">직접 지정</div>`;
+  const timeChips=times.map(t=>`<div class="chip ${t==='09:00'?'on':''}" data-t="${t}" onclick="pickEvTime(this)" style="cursor:pointer">${t}</div>`).join('');
   // 참여 예상 멤버 미리보기 (아바타 스택)
   const mem=clubMembersList().slice(0,4); const colors=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b'];
   const stack=mem.map((m,i)=>`<div class="ma" style="background:${colors[i%4]}">${m[0]}</div>`).join('')+`<div class="ma more">+${Math.max(0,clubMembersList().length-4)}</div>`;
@@ -8674,12 +8674,15 @@ function openEventCreate(){
     <div class="fld"><label>모임 이름</label><input id="evTitle" placeholder="예) 7월 첫째주 정기모임" maxlength="24"></div>
     <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:2px 0 8px">날짜</label>
     <div class="dpin-row">${pins}</div>
-    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:8px 0 8px">시작 시간</label>
+    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:8px 0 8px">자주 쓰는 시간</label>
     <div class="chips" style="padding-bottom:6px">${timeChips}</div>
-    <div id="evTimeBox" style="display:none;margin:2px 0 4px">
-      <input id="evTimeIn" type="time" step="300" value="09:00" onchange="setEvTimeCustom(this.value)"
-        style="width:100%;box-sizing:border-box">
-      <div class="note" style="text-align:left;margin-top:6px">5분 단위로 원하는 시간을 정할 수 있어요</div></div>
+    <div class="tmrow">
+      <div class="fld"><label>시작 시간</label>
+        <input id="evStart" type="time" step="60" value="09:00" onchange="setEvStart(this.value)"></div>
+      <div class="fld"><label>종료 시간 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
+        <input id="evEnd" type="time" step="60" value="" onchange="setEvEnd(this.value)"></div>
+    </div>
+    <div class="note" style="text-align:left;margin-top:2px" id="evTimeNote">1분 단위로 정할 수 있어요</div>
     <div class="fld" style="margin-top:10px"><label>장소 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
       <input id="evPlace" maxlength="30" placeholder="예) ${esc(((AC()||{}).court)||'용인 테니스파크')}"></div>
     <div class="card" style="margin:8px 0 0;padding:14px;display:flex;align-items:center;justify-content:space-between">
@@ -8690,23 +8693,31 @@ function openEventCreate(){
   setTimeout(()=>{const e=document.getElementById('evTitle');if(e)e.focus();},100);
 }
 function pickEvDate(el){ document.querySelectorAll('.dpin').forEach(p=>p.classList.remove('on')); el.classList.add('on'); state._evDate=el.dataset.k; }
+/* 칩은 자주 쓰는 시간으로 가는 지름길일 뿐이다. 진짜 값은 항상 시작·종료 입력칸이 갖는다. */
 function pickEvTime(el){
   document.querySelectorAll('.chips .chip').forEach(c=>c.classList.remove('on'));
-  el.classList.add('on'); state._evTime=el.dataset.t;
-  const box=document.getElementById('evTimeBox'); if(box) box.style.display='none';
+  el.classList.add('on');
+  const inp=document.getElementById('evStart'); if(inp) inp.value=el.dataset.t;
+  setEvStart(el.dataset.t);
 }
-/* 07·09·14·19·21시 말고 다른 시간에 치는 클럽이 더 많다. 직접 고를 길을 열어둔다. */
-function pickEvTimeCustom(){
-  document.querySelectorAll('.chips .chip').forEach(c=>c.classList.remove('on'));
-  const chip=document.getElementById('evTimeCustom'); if(chip) chip.classList.add('on');
-  const box=document.getElementById('evTimeBox'); if(box) box.style.display='';
-  const inp=document.getElementById('evTimeIn');
-  if(inp){ state._evTime=inp.value||'09:00'; setTimeout(()=>{ try{ inp.showPicker?inp.showPicker():inp.focus(); }catch(e){ inp.focus(); } },60); }
+function setEvStart(v){
+  state._evTime=v||'';
+  document.querySelectorAll('.chips .chip').forEach(c=>c.classList.toggle('on', c.dataset.t===v));
+  evTimeNote();
 }
-function setEvTimeCustom(v){
-  if(!v) return;
-  state._evTime=v;
-  const chip=document.getElementById('evTimeCustom'); if(chip) chip.textContent=v;
+function setEvEnd(v){ state._evEnd=v||''; evTimeNote(); }
+/* 종료가 시작보다 이르면 조용히 두지 않는다 — 등록 후에야 알면 다시 고쳐야 한다. */
+function evTimeNote(){
+  const n=document.getElementById('evTimeNote'); if(!n) return;
+  const s=state._evTime||'', e=state._evEnd||'';
+  if(s && e && e<=s){ n.textContent='종료 시간이 시작보다 빨라요'; n.style.color='var(--red)'; return; }
+  if(s && e){
+    const [sh,sm]=s.split(':').map(Number), [eh,em]=e.split(':').map(Number);
+    const mins=(eh*60+em)-(sh*60+sm);
+    n.textContent=`${Math.floor(mins/60)}시간 ${mins%60?`${mins%60}분 `:''}동안 진행해요`;
+    n.style.color=''; return;
+  }
+  n.textContent='1분 단위로 정할 수 있어요'; n.style.color='';
 }
 /* 이름을 createEvent 로 두면 인라인 onclick 안에서 document.createEvent 가 먼저 잡혀
    "Failed to execute 'createEvent' on 'Document'" 가 난다. 반드시 다른 이름을 쓴다. */
@@ -8715,7 +8726,12 @@ async function submitEventCreate(){
   if(!t){toast('모임 이름을 입력해 주세요');return;}
   if(!state._evDate){toast('날짜를 선택해 주세요');return;}
   const place=((document.getElementById('evPlace')||{}).value||'').trim();
-  const d=`${state._evDate} ${state._evTime||''}`.trim() + (place?` · ${place}`:'');
+  const st=((document.getElementById('evStart')||{}).value||state._evTime||'').trim();
+  const en=((document.getElementById('evEnd')||{}).value||'').trim();
+  if(!st){toast('시작 시간을 정해 주세요');return;}
+  if(en && en<=st){toast('종료 시간이 시작보다 빨라요');return;}
+  const span = en ? `${st}~${en}` : st;
+  const d=`${state._evDate} ${span}`.trim() + (place?` · ${place}`:'');
   const cid=clubId();
   if(SERVER_OK && cid){
     try{
