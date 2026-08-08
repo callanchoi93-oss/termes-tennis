@@ -8323,7 +8323,7 @@ function myClubsBlock(){
 function openClubPage(n){
   state.clubOpen=n; state.clubSub='sched';
   try{ switchClub(n); }catch(e){ state.activeClub=n; }
-  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; window.FEED_LOADED=false; CB2_LIST=null;
+  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; window.FEED_LOADED=false; CB2_LIST=null; CLUBME_GAMES=null;
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
   renderClub();
   try{ updBackBtn(); }catch(e){}
@@ -8700,35 +8700,43 @@ function maskNum(v, name){
    집계는 기록 탭과 같은 HIST_GAMES(발행된 대진 · 확정 점수)를 쓴다. */
 let CLUBME_TAB='games';
 function setClubMeTab(t){ CLUBME_TAB=t; renderClub(); }
+let CLUBME_GAMES=null;          // null=아직 안 불러옴 · []=불러왔는데 없음
+function loadClubMeGames(){
+  if(window._clubMeLoading) return;
+  window._clubMeLoading=true;
+  cbAllGames().then(r=>{ CLUBME_GAMES=r||[]; })
+    .catch(()=>{ CLUBME_GAMES=[]; })
+    .finally(()=>{ window._clubMeLoading=false; if(state.view==='club') renderClub(); });
+}
 function clubTabMe(){
-  const ME=meName();
-  if(typeof HIST_GAMES==='undefined' || !HIST_GAMES.length){
-    if(!window._clubMeLoading && SERVER_OK && clubId()){
-      window._clubMeLoading=true;
-      api(`/clubs/${clubId()}/brackets/history?limit=60`).then(r=>{
-        try{ histParse(r); }catch(e){}
-        window._clubMeLoading=false; if(state.view==='club') renderClub();
-      }).catch(()=>{ window._clubMeLoading=false; });
-      return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`;
-    }
+  const meId=(state.serverUser||{}).id;
+  /* 기록 탭·리포트와 같은 출처(bracket2 로그)를 쓴다.
+     예전엔 옛 brackets 테이블을 봐서, 데이터가 없으면 매번 다시 불러 '불러오는 중'에 갇혔다. */
+  if(CLUBME_GAMES===null){
+    if(SERVER_OK && clubId()) loadClubMeGames();
+    else CLUBME_GAMES=[];
+    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`;
   }
-  const games=(typeof HIST_GAMES!=='undefined'?HIST_GAMES:[]).filter(g=>[...g.A,...g.B].includes(ME));
-  if(!games.length) return `<div class="card" style="text-align:center;padding:34px 22px">
+  const my=(CLUBME_GAMES||[]).map(g=>{
+    const inA=(g.teamA||[]).some(p=>p&&p.id===meId);
+    const inB=(g.teamB||[]).some(p=>p&&p.id===meId);
+    if(!inA && !inB) return null;
+    const mine=inA?(g.teamA||[]):(g.teamB||[]), opp=inA?(g.teamB||[]):(g.teamA||[]);
+    const ms=inA?g.sa:g.sb, os=inA?g.sb:g.sa;
+    return { win:ms>os, draw:ms===os, ms, os,
+      partner:(mine.find(p=>p&&p.id!==meId)||{}).name||null,
+      opp:opp.map(p=>p&&p.name).filter(Boolean),
+      date:g.date||'' };
+  }).filter(Boolean);
+
+  if(!my.length) return `<div class="card" style="text-align:center;padding:34px 22px">
     <div class="gt3">아직 기록이 없어요</div>
     <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
       정기 모임 대진에서 점수가 확정되면<br>여기에 내 전적이 쌓여요.</p></div>`;
 
-  const my=games.map(g=>{
-    const inA=g.A.includes(ME);
-    const mine=inA?g.A:g.B, opp=inA?g.B:g.A;
-    const ms=inA?g.a:g.b, os=inA?g.b:g.a;
-    return { win:ms>os, ms, os, partner:mine.find(n=>n!==ME)||null, opp, date:g.date, bi:g.bi };
-  });
-  const W=my.filter(x=>x.win).length, L=my.length-W;
-  const gf=my.reduce((a,x)=>a+x.ms,0), ga=my.reduce((a,x)=>a+x.os,0);
-  const gd=gf-ga;
+  const W=my.filter(x=>x.win).length, L=my.filter(x=>!x.win&&!x.draw).length;
+  const gf=my.reduce((a,x)=>a+x.ms,0), ga=my.reduce((a,x)=>a+x.os,0), gd=gf-ga;
 
-  /* 강조는 크기가 아니라 색으로. 네 칸의 글자 크기는 모두 같다. */
   let h=`<div class="mi-stat">
     <div><div class="mi-sv">${gf}</div><div class="mi-sl">총 득점</div></div>
     <div><div class="mi-sv">${ga}</div><div class="mi-sl">총 실점</div></div>
@@ -8763,8 +8771,8 @@ function clubTabMe(){
   if(CLUBME_TAB==='partner'){
     const P={};
     my.forEach(x=>{ if(!x.partner) return;
-      P[x.partner]=P[x.partner]||{n:x.partner,g:0,w:0,gd:0};
-      P[x.partner].g++; if(x.win)P[x.partner].w++; P[x.partner].gd+=x.ms-x.os; });
+      P[x.partner]=P[x.partner]||{n:x.partner,g:0,w:0};
+      P[x.partner].g++; if(x.win)P[x.partner].w++; });
     const list=Object.values(P).map(p=>({...p,wr:Math.round(p.w/p.g*100)}))
       .sort((a,b)=>b.g-a.g||b.wr-a.wr);
     if(!list.length) return h+`<div class="card" style="text-align:center;padding:26px"><span class="gt1 gmute">아직 복식 기록이 없어요</span></div>`;
@@ -8789,11 +8797,10 @@ function clubTabMe(){
     return h;
   }
 
-  /* 경기 기록 — 모임(날짜)별로 묶어 그날 성적을 함께 보여준다 */
   const byDay={};
-  my.forEach(x=>{ const k=String(x.bi); (byDay[k]=byDay[k]||{date:x.date,rows:[]}).rows.push(x); });
-  Object.keys(byDay).sort((a,b)=>b-a).forEach(k=>{
-    const d=byDay[k], w=d.rows.filter(r=>r.win).length, l=d.rows.length-w;
+  my.forEach(x=>{ const k=x.date||'?'; (byDay[k]=byDay[k]||{date:x.date,rows:[]}).rows.push(x); });
+  Object.keys(byDay).sort((a,b)=>String(b).localeCompare(String(a))).forEach(k=>{
+    const d=byDay[k], w=d.rows.filter(r=>r.win).length, l=d.rows.filter(r=>!r.win&&!r.draw).length;
     const dgd=d.rows.reduce((a,r)=>a+r.ms-r.os,0);
     h+=`<div class="mi-day">
       <div class="mi-dayhd">
@@ -8804,7 +8811,7 @@ function clubTabMe(){
     d.rows.forEach(r=>{
       h+=`<div class="mi-g">
         <span class="mi-gs" style="color:${r.win?'var(--coral-d)':'var(--gray)'}">${r.ms} : ${r.os}</span>
-        <span class="mi-gw" style="color:${r.win?'#2f9159':'#d1614f'}">${r.win?'승':'패'}</span>
+        <span class="mi-gw" style="color:${r.win?'#2f9159':'#d1614f'}">${r.draw?'무':r.win?'승':'패'}</span>
         <span class="mi-go">${r.partner?`${esc(r.partner)} · `:''}vs ${esc(r.opp.join(', '))}</span></div>`;
     });
     h+=`</div>`;
@@ -9026,7 +9033,7 @@ async function useEventForBracket(id){
     if(state._attSel) delete state._attSel[key];
     await loadRoster();
     CB2_SEL=new Set();                 // 참석자 기준으로 새로 선택
-    openClubBracketBuild();
+    CB2_STEP=1; openClubBracketBuild();
     return;
   }
 
@@ -10845,6 +10852,7 @@ async function delClubEvent(id, title){
 function closeEventPick(){ document.getElementById('eventpick').style.display='none'; }
 async function openClubBracketBuild(){
   if(!cb2Officer()){ toast('임원만 대진을 만들 수 있어요'); return; }
+  CB2_STEP=1;                                    // 열 때는 언제나 참석자 고르기부터
   /* 대진은 '어느 모임'의 참석자로 짜는 것이다. 모임이 없으면 만들 수 없고,
      여러 개면 어느 모임인지 먼저 골라야 참석자가 정해진다. */
   { const evs=clubEvents();
@@ -11410,7 +11418,67 @@ function openGradeGuide(){
 
 function cb2All(){ return assignGradeRanks([ ...fillGradesByCareer(window._cb2Roster||[]),
   ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, months:g.months, is_guest:true})) ]); }
+/* ═══ 대진 방식 고르기 (2단계) ═══
+   방식마다 색이 다른 버튼 다섯 개를 한 번에 늘어놓으면 무엇이 기본인지 알 수 없고,
+   누르는 순간 바로 발행돼서 되돌아볼 지점이 없었다. 고르는 화면과 만드는 순간을 나눈다. */
+let CB2_STEP=1, CB2_MODE='normal';
+const CB2_MODES=[
+  {k:'normal',     n:'일반',     d:'비슷한 등급끼리 · 쉬는 사람 순환'},
+  {k:'hanul',      n:'한울',     d:'AB 수기표 방식 · 8~16명'},
+  {k:'monthly',    n:'월례대회', d:'등급별 리그 후 승강'},
+  {k:'gender',     n:'성비',     d:'남녀 섞어서 · 혼복 위주'},
+  {k:'cheongbaek', n:'청백전',   d:'두 팀으로 나눠 단체전'},
+];
+function cb2GoStep(n){
+  if(n===2 && CB2_SEL.size<4){ toast('참석자를 4명 이상 골라주세요'); return; }
+  CB2_STEP=n; drawCB2Build();
+  setTimeout(()=>{const e=document.getElementById('sheet'); if(e) e.scrollTop=0;},0);
+}
+function cb2PickMode(k){ CB2_MODE=k; drawCB2Build(); }
+/* 몇 경기가 나올지 미리 알려준다 — 코트 수와 인원으로 정해진다 */
+function cb2GameCount(){
+  const courts=+((document.getElementById('cb2Courts')||{}).value||3);
+  const n=CB2_SEL.size + CB2_GUESTS.length*0;
+  const perRound=Math.max(1, Math.min(courts, Math.floor(n/4)));
+  return perRound*4;
+}
+function drawCB2Step2(){
+  const n=CB2_SEL.size;
+  const courts=+((document.getElementById('cb2Courts')||{}).value||3);
+  const games=cb2GameCount();
+  let h=`<div class="om-detail" id="cb2b">
+    <div class="sh-top" style="align-items:center">
+      <span onclick="cb2GoStep(1)" style="cursor:pointer;font-size:21px;color:var(--lgray);line-height:1;margin-right:8px">‹</span>
+      <h3 class="gt4" style="flex:1">대진 방식</h3>
+      <span class="gt1 gmute">${n}명 · ${courts}코트</span></div>
+    <div style="margin-top:14px">`;
+  CB2_MODES.forEach(m=>{
+    const on=CB2_MODE===m.k;
+    h+=`<div onclick="cb2PickMode('${m.k}')" style="display:flex;align-items:center;gap:12px;cursor:pointer;
+        border-radius:14px;padding:14px;margin-bottom:8px;
+        background:${on?'var(--coral-s)':'#fff'};border:${on?'1.5px solid var(--coral)':'1px solid var(--line)'}">
+      <div style="flex:1;min-width:0">
+        <div class="gt2" style="font-weight:600;letter-spacing:-.02em;color:${on?'var(--coral-d)':'var(--ink)'}">${m.n}</div>
+        <div class="gt1 gmute" style="margin-top:3px">${m.d}</div></div>
+      <span style="flex:none;width:20px;height:20px;border-radius:50%;
+        border:${on?'6px solid var(--coral)':'1.5px solid #ddd7cb'};background:#fff"></span></div>`;
+  });
+  h+=`</div>
+    <div onclick="window.open('/bracketguide.html','_blank')" style="display:flex;align-items:center;gap:10px;
+        padding:14px 2px;border-top:1px solid var(--line);margin-top:6px;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div class="gt2" style="font-weight:600;letter-spacing:-.02em">대진 매뉴얼</div>
+        <div class="gt1 gmute" style="margin-top:3px">5가지 방식을 예시로 설명해요</div></div>
+      <span style="color:#cdc8be;font-size:17px">›</span></div>
+    <button class="btn" style="margin-top:18px" onclick="cb2Gen(CB2_MODE)">대진 만들기
+      <span style="font-weight:500;font-size:11px;opacity:.85">${games}경기</span></button>
+    <div class="note" style="text-align:center;margin-top:9px">발행하면 회원 화면이 즉시 바뀌어요</div>
+  </div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
 function drawCB2Build(){
+  if(CB2_STEP===2){ drawCB2Step2(); return; }
   const all=cb2All();
   const courts=+((document.getElementById('cb2Courts')||{}).value||3);
   const rounds=4;
@@ -11419,13 +11487,15 @@ function drawCB2Build(){
      '누가 선택됐나'와 '남녀 구성'을 한 칩에서 동시에 읽게 한다. */
   const chip=p=>{
     const id=String(p.user_id), on=CB2_SEL.has(id), fem=String(p.gender||'').startsWith('여');
-    const dot = on ? (fem?'#ffd9e8':'#cfe2ff') : (fem?'#e0618c':'#3182f6');
+    /* 코랄 위에 연한 분홍·하늘색을 얹으면 묻힌다. 색은 그대로 두고 흰 테를 둘러 띄운다. */
+    const dot = fem?'#e0618c':'#3182f6';
+    const ring = on ? 'box-shadow:0 0 0 1.6px #fff;' : '';
     const gb=p.grade?`<span style="font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 6px;margin-left:5px;letter-spacing:-.01em;${on?'background:rgba(255,255,255,.22);color:#fff':cb2GradeColor(p.grade)}">${CB2_GRADEMODE?p.grade:(p.glabel||p.grade)}</span>`:'';
     const guest=p.is_guest?`<span style="font-size:11px;font-weight:500;margin-left:4px;opacity:.75">G</span>`:'';
     const sty = on
       ? `background:var(--coral);color:#fff;border:1.5px solid var(--coral)`
       : `background:#fff;color:var(--gray);border:1.5px solid ${p.is_guest?'#ddd7cb':'#ececea'}`;
-    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;${sty}"><i style="width:6px;height:6px;border-radius:50%;background:${dot};flex:none"></i>${esc(p.name)}${gb}${guest}${promoBadge(p.user_id)}</span>`;
+    return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;${sty}"><i style="width:7px;height:7px;border-radius:50%;background:${dot};${ring}flex:none"></i>${esc(p.name)}${gb}${guest}${promoBadge(p.user_id)}</span>`;
   };
   const selArr=[...CB2_SEL].map(id=>all.find(p=>String(p.user_id)===id)).filter(Boolean);
   const lateChips=selArr.map(p=>{
@@ -11487,13 +11557,7 @@ function drawCB2Build(){
       <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
         <option value="1" ${courts===1?'selected':''}>1코트</option><option value="2" ${courts===2?'selected':''}>2코트</option><option value="3" ${courts===3?'selected':''}>3코트</option></select></div>
       <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:12px;font-weight:500;background:#faf8f4">1인 4경기 보장</div></div></div>
-    ${cbBannerHTML()}
-    <button class="btn" style="margin-top:10px" onclick="cb2Gen('normal')">일반 대진 생성 · 발행 <span style="font-weight:500;font-size:11px;opacity:.85">· 등급 인접 + 휴식 순환</span></button>
-    <button class="btn" style="margin-top:9px;background:var(--coral-s);color:var(--coral-d);box-shadow:none" onclick="cb2Gen('hanul')">한울 방식 생성 · 발행 <span style="font-weight:500;font-size:11px;opacity:.75">· AB 수기표 · 8~16명 · 코트만큼 동시</span></button>
-    <button class="btn" style="margin-top:9px;background:#f3f0fb;color:#5b3fa8;box-shadow:none" onclick="cb2Gen('monthly')">월례대회 생성 · 발행 <span style="font-weight:500;font-size:11px;opacity:.75">· 등급별 리그 + 승강제</span></button>
-    <button class="btn" style="margin-top:9px;background:#fdf6ec;color:#8a5230;border:1.5px solid #f0e2c8;box-shadow:none" onclick="cb2Gen('gender')">성비 대진 생성 · 발행 <span style="font-weight:500;font-size:11px;opacity:.7">· 남 남복3+혼복1 / 여 혼복3+여복1</span></button>
-    <button class="btn" style="margin-top:9px;background:#fff;color:#3b2a1a;border:1.5px solid #e9dfcf;box-shadow:none" onclick="cb2Gen('cheongbaek')"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3182f6;margin-right:5px"></span>청백전 생성 · 발행<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f04452;margin-left:5px"></span> <span style="font-weight:500;font-size:11px;opacity:.7">· 밸런스 팀 + 팀장 랜덤</span></button>
-  </div>`;
+    <button class="btn" style="margin-top:18px" onclick="cb2GoStep(2)">다음 · 방식 고르기</button>  </div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function cb2ApplyPreset(){
