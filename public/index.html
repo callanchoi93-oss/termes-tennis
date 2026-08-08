@@ -1160,17 +1160,15 @@
   .hallrow{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;
     margin:0 -2px var(--s4);padding:0 2px 2px}
   .hallrow::-webkit-scrollbar{display:none}
-  .hallc{flex:0 0 auto;width:96px;border:1px solid var(--line);border-radius:14px;
-    padding:12px 10px;cursor:pointer;background:#fff}
+  .hallc{flex:0 0 auto;width:94px;border:1px solid var(--line);border-radius:14px;
+    padding:13px 11px;cursor:pointer;background:#fff}
   .hallc:active{background:var(--felt)}
-  .hallc .hi{display:flex;width:26px;height:26px;border-radius:9px;background:var(--coral-s);
-    color:var(--coral-d);align-items:center;justify-content:center}
-  .hallc .hl{font-size:var(--t1);font-weight:600;color:var(--coral-d);margin-top:9px}
-  .hallc .hn{font-size:var(--t2);font-weight:600;letter-spacing:-.02em;margin-top:4px;
+  .hallc .hl{font-size:var(--t1);font-weight:700;color:var(--coral-d);letter-spacing:-.01em}
+  .hallc .hn{font-size:var(--t2);font-weight:600;letter-spacing:-.02em;margin-top:7px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hallc .hv{font-size:var(--t1);font-weight:600;color:var(--ink);margin-top:3px;
+  .hallc .hv{font-size:var(--t2);font-weight:600;color:var(--ink);margin-top:4px;
     font-variant-numeric:tabular-nums}
-  .hallc .hs{font-size:var(--t1);font-weight:400;color:var(--lgray);margin-top:2px}
+  .hallc .hs{font-size:var(--t1);font-weight:400;color:var(--lgray);margin-top:3px}
   .mi-n{font-size:var(--t1);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
   .mi-wr{font-size:var(--t1);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
   .mi-rec{font-size:var(--t1);font-weight:400;color:var(--lgray);text-align:right;white-space:nowrap}
@@ -8685,16 +8683,15 @@ function clubTabRecords(){
   /* 이름은 한 배열에만 있다 — 바꾸고 싶으면 여기만 고치면 된다.
      테니스 용어(에이스·위너·리터너)는 정확하지만 딱딱해서, 말맛이 남는 쪽으로 골랐다. */
   const HALL=[
-    {l:'승리요정', s:'승률 1위',    ic:'trophyln', p:best('wr',false,4), f:r=>`${r.wr}%`},
-    {l:'점수도둑', s:'득실차 1위',  ic:'trendup',  p:best('gd',false,3), f:r=>`${r.gd>=0?'+':''}${r.gd}`},
-    {l:'팡팡쳐요', s:'최다 득점',   ic:'bolt',     p:best('gf',false),   f:r=>`${r.gf}점`},
-    {l:'안내줘요', s:'최소 실점',   ic:'shield',   p:best('ga',true,3),  f:r=>`${r.ga}실점`},
-    {l:'매주와요', s:'최다 참여',   ic:'calchk',   p:best('dayN',false), f:r=>`${r.dayN}회`},
+    {l:'승리요정', s:'승률 1위',    p:best('wr',false,4), f:r=>`${r.wr}%`},
+    {l:'점수도둑', s:'득실차 1위',  p:best('gd',false,3), f:r=>`${r.gd>=0?'+':''}${r.gd}`},
+    {l:'팡팡쳐요', s:'최다 득점',   p:best('gf',false),   f:r=>`${r.gf}점`},
+    {l:'안내줘요', s:'최소 실점',   p:best('ga',true,3),  f:r=>`${r.ga}실점`},
+    {l:'매주와요', s:'최다 참여',   p:best('dayN',false), f:r=>`${r.dayN}회`},
   ].filter(x=>x.p);
   if(HALL.length){
     h+=`<div class="hallrow">${HALL.map(x=>`
       <div class="hallc" onclick="openClubMember(${jsArg(x.p.id)},${jsArg(x.p.name)})">
-        <span class="hi">${li(x.ic,15)}</span>
         <div class="hl">${x.l}</div>
         <div class="hn">${esc(x.p.name)}</div>
         <div class="hv">${x.f(x.p)}</div>
