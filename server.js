@@ -1157,10 +1157,14 @@ app.get('/clubs/:id/brackets', auth, (req, res) => {
 try { db.exec(`CREATE TABLE IF NOT EXISTS club_bracket_logs (
   id INTEGER PRIMARY KEY, club_id INTEGER, date TEXT, data TEXT, updated_at INTEGER,
   UNIQUE(club_id, date))`); } catch (e) {}
-function cbLog(cid, data) {                                    // 같은 날짜는 최신으로 덮어써 시즌 기록에 쌓인다
-  try { db.prepare(`INSERT INTO club_bracket_logs (club_id,date,data,updated_at) VALUES (?,?,?,?)
-    ON CONFLICT(club_id,date) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
-    .run(cid, String(data.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10), JSON.stringify(data), now()); } catch (e) {}
+/* 번개 대진은 시즌 기록에서 빼야 한다. 로그에는 모임 종류가 없었으므로 열을 하나 더한다.
+   예전 행은 tag 가 비는데, 그건 '정기'로 본다 — 이미 반영된 순위를 뒤늦게 흔들지 않는다. */
+try { db.exec('ALTER TABLE club_bracket_logs ADD COLUMN tag TEXT'); } catch (e) {}
+function cbLog(cid, data, tag) {                               // 같은 날짜는 최신으로 덮어써 시즌 기록에 쌓인다
+  try { db.prepare(`INSERT INTO club_bracket_logs (club_id,date,data,updated_at,tag) VALUES (?,?,?,?,?)
+    ON CONFLICT(club_id,date) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at, tag=excluded.tag`)
+    .run(cid, String(data.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+      JSON.stringify(data), now(), tag || '정기'); } catch (e) {}
 }
 app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원만
   const cid = +req.params.id;
@@ -1177,14 +1181,20 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
       ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
       .run(cid, JSON.stringify(data), now());
   }
-  cbLog(cid, data);
+  /* 어느 모임의 대진인지 알면 그 모임의 종류(정기/번개)를 로그에 함께 남긴다 */
+  let tag = '정기';
+  if (eid) {
+    const ev = db.prepare('SELECT tag FROM club_events WHERE id=?').get(eid);
+    if (ev && ev.tag) tag = ev.tag;
+  }
+  cbLog(cid, data, tag);
   res.json({ ok: true });
 });
 app.get('/clubs/:id/bracket2/logs', auth, (req, res) => {     // 시즌 기록 — 클럽 멤버
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=? ORDER BY date DESC LIMIT 400').all(cid);
-  res.json(rows.map(r => ({ date: r.date, data: JSON.parse(r.data) })));
+  const rows = db.prepare('SELECT date, data, tag FROM club_bracket_logs WHERE club_id=? ORDER BY date DESC LIMIT 400').all(cid);
+  res.json(rows.map(r => ({ date: r.date, tag: r.tag || '정기', data: JSON.parse(r.data) })));
 });
 app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — 당사자 또는 임원
   const cid = +req.params.id;
