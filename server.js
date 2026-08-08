@@ -2822,13 +2822,18 @@ app.get('/rankings', (req, res) => {
   /* 경기를 한 번도 안 한 사람은 랭킹에 올리지 않는다.
      마지막 경기 시각도 함께 줘서 앱이 '최근 활동'으로 한 번 더 거를 수 있게 한다. */
   const div = String(req.query.div || 'men');
-  /* 리그에 참가 신청한 사람만 줄세운다. 경기 수는 '배치 N/5' 표시에만 쓴다. */
+  /* 참가 신청한 사람만 줄세운다.
+     오래 안 뛴 사람은 내린다 — 안 오는 사람이 상단을 차지하면 순위가 죽은 표가 된다.
+     신청만 하고 아직 안 뛴 사람도 같은 기간 안에는 남겨둔다. */
+  const DORMANT_D = 90;
+  const cut = now() - DORMANT_D * 86400000;
   let sql = `SELECT u.id,u.name,u.region,u.sport,${col} AS rating,
-      (u.wins+u.losses) AS games,
+      (u.wins+u.losses) AS games, le.joined_at,
       (SELECT MAX(created_at) FROM rating_log rl WHERE rl.user_id=u.id) AS last_played_at
     FROM league_entries le JOIN users u ON u.id=le.user_id
-    WHERE le.div=? AND u.provider NOT IN ('bot','venue','manager')`;
-  const p = [div];
+    WHERE le.div=? AND u.provider NOT IN ('bot','venue','manager')
+      AND COALESCE((SELECT MAX(created_at) FROM rating_log rl WHERE rl.user_id=u.id), le.joined_at) >= ?`;
+  const p = [div, cut];
   if (sport) { sql += ' AND le.sport=? AND u.sport=?'; p.push(sport, sport); }
   res.json(db.prepare(sql + ' ORDER BY rating DESC LIMIT 50').all(...p));
 });
@@ -3162,6 +3167,18 @@ function bracketPayload(b) {
 
 // 클럽의 최신 대진 (회원은 published=1 만)
 // 과거 대진 전체 (시즌 리포트용). 발행된 것만 집계한다.
+/* 대진 삭제 — 잘못 편성했거나 취소된 모임의 대진을 지운다. 임원만. */
+app.delete('/clubs/:id/brackets/:bid', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only',
+    message: '임원만 대진을 지울 수 있어요' });
+  const b = db.prepare('SELECT * FROM club_brackets WHERE id=? AND club_id=?')
+    .get(+req.params.bid, cid);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  db.prepare('DELETE FROM club_brackets WHERE id=?').run(b.id);
+  res.json({ ok: true });
+});
+
 app.get('/clubs/:id/brackets/history', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
