@@ -5785,27 +5785,98 @@ app.get('/me/venue-bookings', auth, (req, res) => {
 
 /* 예약 취소 — 경기 24시간 전까지는 전액, 이후에는 불가 */
 const RESERVE_FREE_CANCEL_H = +(process.env.VENUE_CANCEL_FREE_H || 24);
+/* ═══ 예약 취소 · 환불 3단계 ═══
+   "그 이후에는 연락 주세요"가 가장 위험했다. 기준이 없으면 매번 협상이 되고,
+   사장님은 이미 코트를 비워둔 상태다. 시점에 따라 손실을 나눈다.
+
+     48시간 전   회원 전액 (수수료까지)
+     24~48시간   코트비 전액 · 맞수 수수료는 미환급
+     24시간 이내  코트비 50% · 나머지 50%는 사장님께
+     시작 이후    환불 없음 · 코트비 전액 사장님께
+   우천 휴장은 이 표와 무관하게 전액 환불한다. */
+const CANCEL_FULL_H = +(process.env.CANCEL_FULL_H || 48);
+const CANCEL_HALF_H = +(process.env.CANCEL_HALF_H || 24);
+
+function cancelQuote(b, startMs, opts) {
+  const rain = !!(opts && opts.rain);
+  const left = (startMs - Date.now()) / 3600000;
+  if (rain) return { refund: b.amount, venue: 0, tier: 'rain', label: '우천 휴장 · 전액 환불' };
+  if (left >= CANCEL_FULL_H)
+    return { refund: b.amount, venue: 0, tier: 'full', label: `${CANCEL_FULL_H}시간 전 · 전액 환불` };
+  if (left >= CANCEL_HALF_H)
+    return { refund: b.court_cost, venue: 0, tier: 'nofee',
+             label: `${CANCEL_HALF_H}시간 전 · 코트비만 환불 (수수료 제외)` };
+  if (left > 0) {
+    const half = Math.round(b.court_cost / 2);
+    return { refund: half, venue: b.court_cost - half, tier: 'half',
+             label: `${CANCEL_HALF_H}시간 이내 · 코트비 절반만 환불` };
+  }
+  return { refund: 0, venue: b.court_cost, tier: 'noshow', label: '시작 이후 · 환불 없음' };
+}
+
+/* 취소 전에 얼마가 돌아오는지 미리 보여준다 — 눌러보고 알게 하면 안 된다 */
+app.get('/me/venue-bookings/:id/cancel-quote', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM venue_bookings WHERE id=? AND user_id=?').get(+req.params.id, req.uid);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(b.slot_id);
+  const startMs = s ? new Date(`${s.date}T${s.start}:00`).getTime() : 0;
+  const q = cancelQuote(b, startMs);
+  res.json({ ...q, paid: b.amount, court_cost: b.court_cost, fee: b.fee,
+             hours_left: Math.max(0, Math.round((startMs - Date.now()) / 3600000)) });
+});
+
+function applyBookingCancel(b, startMs, opts) {
+  const q = cancelQuote(b, startMs, opts);
+  const u = getUser(b.user_id);
+  tx(() => {
+    db.prepare("UPDATE venue_bookings SET status='canceled', canceled_at=?, memo=COALESCE(memo,'')||? WHERE id=?")
+      .run(now(), ` [취소:${q.tier}]`, b.id);
+    /* 사장님 몫이 남으면 정산을 지우지 않고 금액만 줄인다 —
+       예약이 조용히 사라지면 사장님은 무슨 일이 있었는지 알 수 없다. */
+    if (q.venue > 0) {
+      db.prepare("UPDATE venue_payouts SET amount=? WHERE slot_id=? AND status='pending'").run(q.venue, b.slot_id);
+    } else {
+      db.prepare("DELETE FROM venue_payouts WHERE slot_id=? AND status='pending'").run(b.slot_id);
+    }
+    db.prepare("UPDATE venue_slots SET status='open' WHERE id=? AND status='booked'").run(b.slot_id);
+    if (q.refund > 0 && u) {
+      const bal = (u.cash || 0) + q.refund;
+      db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(u.id, q.refund, 'venue_reserve_refund', bal, now());
+    }
+  });
+  return q;
+}
+
 app.post('/me/venue-bookings/:id/cancel', auth, (req, res) => {
   const b = db.prepare('SELECT * FROM venue_bookings WHERE id=? AND user_id=?').get(+req.params.id, req.uid);
   if (!b) return res.status(404).json({ error: 'not_found' });
   if (b.status !== 'paid') return res.status(400).json({ error: 'already', message: '이미 취소된 예약이에요' });
   const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(b.slot_id);
   const startMs = s ? new Date(`${s.date}T${s.start}:00`).getTime() : 0;
-  if (startMs - Date.now() < RESERVE_FREE_CANCEL_H * 3600000)
-    return res.status(400).json({ error: 'too_late',
-      message: `경기 ${RESERVE_FREE_CANCEL_H}시간 전까지만 취소할 수 있어요. 맞수로 문의해 주세요` });
+  const q = applyBookingCancel(b, startMs);
+  try {
+    if (q.venue > 0) sendPush(b.user_id, { title: '예약을 취소했어요', body: q.label });
+  } catch (e) {}
+  res.json({ ok: true, refunded: q.refund, tier: q.tier, label: q.label });
+});
 
+/* ── 우천 휴장 — 사장님이 누르면 그 슬롯 예약이 전액 환불된다 ── */
+app.post('/venue/slots/:id/rain', auth, (req, res) => {
   const u = getUser(req.uid);
-  tx(() => {
-    db.prepare("UPDATE venue_bookings SET status='canceled', canceled_at=? WHERE id=?").run(now(), b.id);
-    db.prepare("DELETE FROM venue_payouts WHERE slot_id=? AND status='pending'").run(b.slot_id);
-    db.prepare("UPDATE venue_slots SET status='open' WHERE id=? AND status='booked'").run(b.slot_id);
-    const bal = (u.cash || 0) + b.amount;                 // 캐시로 그대로 돌려준다
-    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
-    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-      .run(u.id, b.amount, 'venue_reserve_refund', bal, now());
-  });
-  res.json({ ok: true, refunded: b.amount });
+  if (!u || u.provider !== 'venue') return res.status(403).json({ error: 'not_venue' });
+  const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(+req.params.id);
+  if (!s) return res.status(404).json({ error: 'not_found' });
+  const v = db.prepare('SELECT id FROM venues WHERE id=? AND owner_id=?').get(s.venue_id, req.uid);
+  if (!v) return res.status(403).json({ error: 'not_owner' });
+  const startMs = new Date(`${s.date}T${s.start}:00`).getTime();
+  const bs = db.prepare("SELECT * FROM venue_bookings WHERE slot_id=? AND status='paid'").all(s.id);
+  let refunded = 0;
+  bs.forEach(b => { const q = applyBookingCancel(b, startMs, { rain: true }); refunded += q.refund;
+    try { sendPush(b.user_id, { title: '우천으로 휴장돼요', body: `${s.date} ${s.start} · 전액 환불했어요` }); } catch (e) {} });
+  db.prepare("UPDATE venue_slots SET status='closed' WHERE id=?").run(s.id);
+  res.json({ ok: true, canceled: bs.length, refunded });
 });
 
 /* 매니저가 잡기 — 아직 돈은 나가지 않는다 */
@@ -6822,6 +6893,227 @@ app.patch('/duel/:id/fix', admin, (req, res) => {
   db.prepare('UPDATE duels SET sa=?, sb=? WHERE id=?').run(sa, sb, d.id);
   const r = applyDuel(db.prepare('SELECT * FROM duels WHERE id=?').get(d.id));
   res.json({ ok: true, result: r });
+});
+
+/* ═══ 1:1 랭크 — 비용 나누기 · 취소 ═══
+   코트를 잡은 사람이 코트비와 캔볼값을 넣으면, 상대 몫을 캐시로 걷는다.
+   토스 결제를 새로 붙이지 않고 기존 캐시를 쓴다 — 캐시는 이미 토스로 충전되고,
+   출금·환불 경로가 다 뚫려 있어서 정산이 한 갈래로 유지된다. */
+
+try { db.exec('ALTER TABLE duels ADD COLUMN court_fee INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE duels ADD COLUMN ball_fee INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE duels ADD COLUMN hours REAL'); } catch (e) {}
+try { db.exec('ALTER TABLE duels ADD COLUMN payer INTEGER'); } catch (e) {}   // 코트를 잡은 사람
+try { db.exec('ALTER TABLE duels ADD COLUMN settled INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE duels ADD COLUMN cancel_by INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE duels ADD COLUMN cancel_reason TEXT'); } catch (e) {}
+
+const DUEL_CANCEL_REASONS = ['비가 와서', '코트 예약이 취소돼서', '몸이 안 좋아서',
+  '일정이 안 맞아서', '상대와 연락이 안 돼서', '직접 입력'];
+
+/* ── 비용 입력 — 코트를 잡은 사람만 ── */
+app.patch('/duel/:id/cost', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.settled) return res.status(409).json({ error: 'already_settled' });
+  const hours = Math.max(0, Math.min(12, +req.body.hours || 0));
+  const perHour = Math.max(0, Math.min(500000, +req.body.per_hour | 0));
+  const ball = Math.max(0, Math.min(200000, +req.body.ball_fee | 0));
+  const court = Math.round(perHour * hours);
+  db.prepare('UPDATE duels SET court_fee=?, ball_fee=?, hours=?, payer=? WHERE id=?')
+    .run(court, ball, hours, req.uid, d.id);
+  const total = court + ball, half = Math.round(total / 2);
+  res.json({ ok: true, court_fee: court, ball_fee: ball, total, half });
+});
+
+/* ── 상대 몫 걷기 — 캐시에서 차감해 코트 잡은 사람에게 보낸다 ── */
+app.post('/duel/:id/settle', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.settled) return res.json({ ok: true, already: true });
+  if (!d.payer) return res.status(400).json({ error: 'no_cost', message: '먼저 코트비를 입력해 주세요' });
+  const other = d.payer === d.a_id ? d.b_id : d.a_id;
+  if (req.uid !== other) return res.status(403).json({ error: 'not_payer_side', message: '비용을 낼 사람만 보낼 수 있어요' });
+  const total = (d.court_fee || 0) + (d.ball_fee || 0);
+  const half = Math.round(total / 2);
+  if (half <= 0) return res.status(400).json({ error: 'zero' });
+
+  const me = getUser(req.uid);
+  if (me.cash < half)
+    return res.status(402).json({ error: 'not_enough_cash', need: half, cash: me.cash,
+      message: `캐시가 ${(half - me.cash).toLocaleString()}원 모자라요` });
+
+  const host = getUser(d.payer);
+  tx(() => {
+    const mb = me.cash - half, hb = host.cash + half;
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(mb, me.id);
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(hb, host.id);
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(me.id, -half, 'duel_share', mb, now());
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(host.id, half, 'duel_share_in', hb, now());
+    db.prepare('UPDATE duels SET settled=1 WHERE id=?').run(d.id);
+  });
+  try { sendPush(host.id, { title: '코트비 정산', body: `${me.name}님이 ${half.toLocaleString()}원을 보냈어요` }); } catch (e) {}
+  res.json({ ok: true, paid: half });
+});
+
+/* ── 취소 — 사유를 남긴다. 이미 정산했으면 되돌려준다 ── */
+app.get('/duel/cancel-reasons', (_req, res) => res.json(DUEL_CANCEL_REASONS));
+app.post('/duel/:id/cancel', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status === 'confirmed') return res.status(409).json({ error: 'already_confirmed', message: '이미 확정된 경기는 취소할 수 없어요' });
+  const reason = String(req.body && req.body.reason || '').trim().slice(0, 60);
+  if (!reason) return res.status(400).json({ error: 'need_reason', message: '취소 사유를 알려주세요' });
+
+  /* 정산이 끝났으면 낸 사람에게 그대로 돌려준다 */
+  if (d.settled) {
+    const total = (d.court_fee || 0) + (d.ball_fee || 0), half = Math.round(total / 2);
+    const other = d.payer === d.a_id ? d.b_id : d.a_id;
+    const host = getUser(d.payer), payer = getUser(other);
+    if (host && payer && half > 0) tx(() => {
+      const hb = Math.max(0, host.cash - half), pb = payer.cash + half;
+      db.prepare('UPDATE users SET cash=? WHERE id=?').run(hb, host.id);
+      db.prepare('UPDATE users SET cash=? WHERE id=?').run(pb, payer.id);
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(host.id, -half, 'duel_share_back', hb, now());
+      db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+        .run(payer.id, half, 'duel_share_refund', pb, now());
+      db.prepare('UPDATE duels SET settled=0 WHERE id=?').run(d.id);
+    });
+  }
+  db.prepare("UPDATE duels SET status='canceled', cancel_by=?, cancel_reason=? WHERE id=?")
+    .run(req.uid, reason, d.id);
+  const other = d.a_id === req.uid ? d.b_id : d.a_id;
+  try {
+    const me = getUser(req.uid);
+    sendPush(other, { title: '경기가 취소됐어요', body: `${me.name}님 · ${reason}` });
+  } catch (e) {}
+  res.json({ ok: true, refunded: !!d.settled });
+});
+
+/* ═══ 매니저 콘솔 — 비밀번호 변경 ═══
+   매니저도 users(provider='manager')로 저장되므로 구장과 같은 방식을 쓴다.
+   초기 비밀번호를 계속 쓰는 계정이 쌓이는 게 가장 위험하다. */
+app.post('/manager/password', auth, (req, res) => {
+  const u = getUser(req.uid);
+  if (!u || u.provider !== 'manager') return res.status(403).json({ error: 'not_manager' });
+  const cur = String((req.body && req.body.current) || '');
+  const next = String((req.body && req.body.next) || '');
+  if (next.length < 6) return res.status(400).json({ error: 'weak', message: '비밀번호는 6자 이상이어야 해요' });
+  if (u.pw_hash !== pwHash(cur, u.pw_salt || ''))
+    return res.status(401).json({ error: 'bad_current', message: '현재 비밀번호가 맞지 않아요' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.prepare('UPDATE users SET pw_salt=?, pw_hash=? WHERE id=?').run(salt, pwHash(next, salt), u.id);
+  res.json({ ok: true });
+});
+
+/* ═══ 매니저 — 내가 진행한 매치 ═══
+   지금은 코트를 잡고 매치를 만드는 것까지만 있고, 결과를 돌아볼 화면이 없었다. */
+app.get('/manager/matches', auth, (req, res) => {
+  const u = getUser(req.uid);
+  if (!u || u.provider !== 'manager') return res.status(403).json({ error: 'not_manager' });
+  const rows = db.prepare(`SELECT id, loc, dt, cap, price, status, settled
+    FROM open_matches WHERE host_id=? ORDER BY id DESC LIMIT 60`).all(req.uid);
+  res.json(rows.map(m => {
+    const joined = db.prepare('SELECT COUNT(*) c FROM open_match_joins WHERE match_id=?').get(m.id);
+    return { ...m, joined: (joined && joined.c) || 0 };
+  }));
+});
+
+/* ═══ 구장 정산 — 주 1회, 이용일 기준 ═══
+   월 정산은 소규모 구장의 현금 흐름을 막는다. 화요일에 지난주 이용분을 일괄 지급한다.
+   화요일인 이유는 주말 경기가 월요일에 정리되기 때문이다.
+   최소 지급액은 두지 않는다 — 3만원이라도 그 주에 보내는 편이 신뢰에 낫다. */
+
+function weekRange(ref) {                      // 지난주 월 00:00 ~ 일 24:00
+  const d = new Date(ref); d.setHours(0, 0, 0, 0);
+  const dow = (d.getDay() + 6) % 7;            // 월=0
+  const thisMon = new Date(d); thisMon.setDate(d.getDate() - dow);
+  const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
+  return { from: lastMon.getTime(), to: thisMon.getTime() - 1,
+           label: `${lastMon.toISOString().slice(0, 10)} ~ ${new Date(thisMon - 86400000).toISOString().slice(0, 10)}` };
+}
+
+/* 지난주에 '이용이 끝난' 예약만 지급 대상이다.
+   예약일이 아니라 이용일 기준 — 3개월 뒤 코트를 미리 잡아도 돈은 이용 후에 나간다. */
+function venuePayoutBatch(dry) {
+  const w = weekRange(Date.now());
+  const rows = db.prepare(`
+    SELECT p.id, p.venue_id, p.amount, s.date, s.start
+    FROM venue_payouts p JOIN venue_slots s ON s.id=p.slot_id
+    WHERE p.status='pending'`).all();
+  const due = rows.filter(r => {
+    const used = new Date(`${r.date}T${r.start || '00:00'}:00`).getTime();
+    return used >= w.from && used <= w.to;     // 지난주 이용분
+  });
+  const byVenue = {};
+  due.forEach(r => { (byVenue[r.venue_id] = byVenue[r.venue_id] || []).push(r); });
+  const out = Object.keys(byVenue).map(vid => ({
+    venue_id: +vid,
+    count: byVenue[vid].length,
+    amount: byVenue[vid].reduce((a, r) => a + (r.amount || 0), 0),
+    ids: byVenue[vid].map(r => r.id),
+  }));
+  if (!dry) {
+    const ts = now();
+    tx(() => { due.forEach(r => {
+      db.prepare("UPDATE venue_payouts SET status='paid', paid_at=? WHERE id=? AND status='pending'").run(ts, r.id);
+    }); });
+    out.forEach(v => {
+      const own = db.prepare('SELECT owner_id, name FROM venues WHERE id=?').get(v.venue_id);
+      if (own && own.owner_id) try {
+        sendPush(own.owner_id, { title: '정산이 완료됐어요',
+          body: `${w.label} · ${v.count}건 · ${v.amount.toLocaleString()}원` });
+      } catch (e) {}
+    });
+  }
+  return { week: w.label, venues: out.length,
+           total: out.reduce((a, v) => a + v.amount, 0), detail: out };
+}
+
+/* 화요일 오전에 한 번 돈다. 서버가 하루 종일 떠 있다는 보장이 없으므로
+   '이번 주에 이미 돌았는지'를 파일이 아니라 payout 상태로 판단한다. */
+let LAST_PAYOUT_WEEK = null;
+setInterval(() => {
+  try {
+    const d = new Date();
+    if (d.getDay() !== 2 || d.getHours() < 9) return;      // 화요일 09시 이후
+    const w = weekRange(Date.now()).label;
+    if (LAST_PAYOUT_WEEK === w) return;
+    const r = venuePayoutBatch(false);
+    LAST_PAYOUT_WEEK = w;
+    if (r.total) console.log(`[payout] ${r.week} · ${r.venues}개 구장 · ${r.total}원`);
+  } catch (e) { console.error('payout batch', e); }
+}, 3600000);
+
+app.get('/admin/venue-payout-preview', admin, (_req, res) => res.json(venuePayoutBatch(true)));
+app.post('/admin/venue-payout-run', admin, (_req, res) => res.json(venuePayoutBatch(false)));
+
+/* ═══ 부족분 충전 후 원래 자리로 ═══
+   "충전하러 가기"로 앱을 나갔다 오면 예약 화면이 초기화됐다.
+   주문에 돌아갈 곳을 실어두고, 결제가 끝나면 그대로 이어서 결제한다. */
+try { db.exec('ALTER TABLE orders ADD COLUMN return_to TEXT'); } catch (e) {}
+
+app.post('/pay/order-for', auth, (req, res) => {
+  const need = Math.max(1000, Math.min(2000000, +req.body.need | 0));
+  /* 1,000원 단위로 올려 받는다 — 잔돈이 남아 다음 결제가 또 막히지 않게 */
+  const amount = Math.ceil(need / 1000) * 1000;
+  const orderId = 'mc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const ret = String(req.body.return_to || '').slice(0, 120);
+  db.prepare(`INSERT INTO orders (order_id,user_id,amount,cash,status,created_at,return_to)
+              VALUES (?,?,?,?, 'ready', ?, ?)`)
+    .run(orderId, req.uid, amount, amount, now(), ret);
+  res.json({ ok: true, orderId, amount, return_to: ret });
+});
+app.get('/pay/return-to/:orderId', auth, (req, res) => {
+  const o = db.prepare('SELECT return_to, status, cash FROM orders WHERE order_id=? AND user_id=?')
+    .get(req.params.orderId, req.uid);
+  if (!o) return res.status(404).json({ error: 'not_found' });
+  res.json({ return_to: o.return_to || '', status: o.status, cash: o.cash });
 });
 
 // 연결된 웹 클라이언트 (public/) 서빙 — npm start 하면 http://localhost:PORT 에서 바로 동작
