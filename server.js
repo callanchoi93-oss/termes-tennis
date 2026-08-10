@@ -2318,6 +2318,75 @@ app.post('/open-matches/:id/comments', auth, limitWrite, (req, res) => {
   res.json({ ok: true, id: rid(r) });
 });
 
+/* ═══ 늦어요 알림 ═══════════════════════════════════════════════
+   오픈매치는 늦참을 대진에 미리 반영하지 않는다(모르는 사람끼리라 선언이
+   안 지켜지고, 앞 라운드를 비워두면 정시에 온 사람이 손해다).
+   대신 늦는 사람이 매니저에게 바로 알리고, 매니저가 현장에서 순서를 바꾼다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS om_lates (
+  match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  minutes INTEGER NOT NULL, eta INTEGER NOT NULL, created_at INTEGER,
+  PRIMARY KEY (match_id, user_id))`); } catch (e) {}
+
+const OM_LATE_MAX = 180;                       // 3시간 넘게 늦는 건 늦참이 아니라 노쇼다
+function omLateRows(mid) {
+  return db.prepare(`SELECT l.user_id, l.minutes, l.eta, l.created_at, u.name
+    FROM om_lates l JOIN users u ON u.id=l.user_id
+    WHERE l.match_id=? ORDER BY l.eta`).all(mid);
+}
+/* 매니저(없으면 주최자)에게 알린다 */
+function omLateTarget(m) { return m.manager_id || m.host_id || null; }
+
+app.post('/open-matches/:id/late', auth, limitWrite, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const joined = !!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if (!joined && m.host_id !== req.uid) return res.status(403).json({ error: 'not_joined' });
+
+  const minutes = Math.max(1, Math.min(OM_LATE_MAX, Math.round(+(req.body || {}).minutes || 0)));
+  if (!minutes) return res.status(400).json({ error: 'bad_minutes' });
+  /* 도착 예정 시각은 서버가 정한다 — 기기 시계를 믿으면 남은 시간이 어긋난다 */
+  const eta = now() + minutes * 60e3;
+  db.prepare(`INSERT INTO om_lates (match_id,user_id,minutes,eta,created_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(match_id,user_id) DO UPDATE SET minutes=excluded.minutes, eta=excluded.eta, created_at=excluded.created_at`)
+    .run(mid, req.uid, minutes, eta, now());
+
+  const to = omLateTarget(m);
+  if (to && to !== req.uid) {
+    const who = getUser(req.uid);
+    const hhmm = new Date(eta + 9 * 3600e3).toISOString().slice(11, 16);   // KST 벽시계
+    sendPush(to, { icon: '🏸', title: '늦는다는 연락이 왔어요',
+      body: `${who.name} 님 · ${minutes}분 뒤 도착 예정 (${hhmm})`, link: 'match' });
+  }
+  res.json({ ok: true, minutes, eta, lates: omLateRows(mid) });
+});
+
+app.delete('/open-matches/:id/late', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const had = db.prepare('SELECT 1 FROM om_lates WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  db.prepare('DELETE FROM om_lates WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  const to = omLateTarget(m);
+  if (had && to && to !== req.uid) {
+    const who = getUser(req.uid);
+    sendPush(to, { icon: '🏸', title: '도착했어요', body: `${who.name} 님이 도착했어요`, link: 'match' });
+  }
+  res.json({ ok: true, lates: omLateRows(mid) });
+});
+
+/* 매니저가 대신 내려주기 — 도착했는데 본인이 안 누르는 경우가 많다 */
+app.delete('/open-matches/:id/late/:uid', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (omLateTarget(m) !== req.uid && m.host_id !== req.uid) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM om_lates WHERE match_id=? AND user_id=?').run(mid, +req.params.uid);
+  res.json({ ok: true, lates: omLateRows(mid) });
+});
+
+app.get('/open-matches/:id/lates', (req, res) => res.json(omLateRows(+req.params.id)));
+
 app.delete('/om-comments/:id', auth, (req, res) => {
   const c = db.prepare('SELECT * FROM om_comments WHERE id=?').get(+req.params.id);
   if (!c) return res.status(404).json({ error: 'not_found' });
@@ -2341,10 +2410,15 @@ function omView(m, uid) {
   const mgr_apps = (uid && m.host_id === uid && !m.manager_id)
     ? db.prepare('SELECT a.user_id id, u.name FROM om_manager_apps a JOIN users u ON u.id=a.user_id WHERE a.match_id=? ORDER BY a.id').all(m.id) : [];
   const my_mreview = uid ? db.prepare('SELECT match_r,manager_r,venue_r,note FROM om_match_reviews WHERE match_id=? AND user_id=?').get(m.id, uid) : null;
+  /* 늦어요 알림 — 매치가 끝났으면 굳이 싣지 않는다 */
+  const endMs = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
+  const lates = (isNaN(endMs) || endMs > Date.now()) ? omLateRows(m.id) : [];
+  const my_late = uid ? (lates.find(x => x.user_id === uid) || null) : null;
   return {
     ...m,
     host, likes, liked, comments,
     manager, manager_fee: m.manager_fee || 0, settled: !!m.settled, mgr_applied, mgr_apps, my_mreview,
+    lates, my_late,
     bracket: (()=>{ try { return m.bracket ? JSON.parse(m.bracket) : null; } catch (e) { return null; } })(),
     photos: (()=>{ try { const p = m.photos ? JSON.parse(m.photos) : null; return Array.isArray(p) && p.length ? p : (m.photo ? [m.photo] : []); } catch (e) { return m.photo ? [m.photo] : []; } })(),
     cur: joins.length,
@@ -2383,6 +2457,7 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
   if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_leave' });
   const jr = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
   if (!jr) return res.status(404).json({ error: 'not_joined' });
+  try { db.prepare('DELETE FROM om_lates WHERE match_id=? AND user_id=?').run(mid, req.uid); } catch (e) {}
 
   /* ── 단계 환불 정책 (매치 시각은 KST 벽시계) ─────────────────
      2일 전 100% · 1일 전 80% · 당일~90분 전 20% · 90분 이내 불가
