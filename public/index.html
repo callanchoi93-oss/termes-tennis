@@ -1151,6 +1151,10 @@
   .mi-mons{font-size:var(--t1);font-weight:400;color:var(--lgray);margin-top:3px}
   .mi-arr{flex:none;color:#cdc8be;font-size:17px;transition:.15s}
   .mi-arr.open{transform:rotate(90deg)}
+  /* 내 정보 서브탭 — 네 개가 나란히 서니 기본 칩(14px · 좌우 15px)은 화면을 다 먹는다 */
+  .chips.mi-sub{gap:6px;padding-bottom:14px}
+  .chips.mi-sub .chip{padding:6px 12px;border-radius:14px;font-size:var(--t1);
+    font-weight:600;border-width:1px}
   /* 월례대회 조 설정 — 스텝퍼 */
   .tgrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
     border-radius:12px;padding:11px 13px;margin-bottom:8px}
@@ -2879,7 +2883,7 @@ function finishOnboard(){
    · 카카오: JS 키를 넣으면 실제 로그인 → POST /auth/kakao 로 우리 JWT 발급  */
 // 로그인 키는 서버 /config 에서 받아온다. index.html 에 적지 않는다.
 // (GitHub 가 Public 이라 코드에 키를 넣으면 그대로 노출된다)
-let CFG = { kakao_js_key:'', naver_client_id:'', naver_redirect_uri:'', apple_client_id:'', phone_auth:false };
+let CFG = { kakao_js_key:'', kakao_native_key:'', naver_client_id:'', naver_redirect_uri:'', apple_client_id:'', phone_auth:false };
 let CFG_ERROR = '';
 async function loadConfig(){
   if(!API_BASE) return CFG;
@@ -3483,9 +3487,31 @@ function kakaoLogin(){
     const redirect = CFG.kakao_native_redirect_uri;
     if(!redirect){ toast('카카오 로그인 설정을 준비하고 있어요'); return; }
     const q = new URLSearchParams({ response_type:'code', client_id:CFG.kakao_js_key, redirect_uri:redirect });
-    const url = 'https://kauth.kakao.com/oauth/authorize?' + q.toString();
+    const web = 'https://kauth.kakao.com/oauth/authorize?' + q.toString();
+
+    /* 브라우저를 열면 카카오톡 세션이 없어 아이디·비밀번호를 다시 받는다.
+       폰에 깔린 카카오톡으로 먼저 넘기면 '동의하고 계속하기' 한 번으로 끝난다.
+       카카오톡이 없거나 스킴이 막히면 1.2초 뒤 브라우저로 넘어간다. */
+    const nk = CFG.kakao_native_key;
+    if(nk){
+      const talk = 'kakaokompassauth://authorize?'
+        + new URLSearchParams({ client_id: nk, redirect_uri: redirect, response_type: 'code' }).toString();
+      let moved = false;
+      const onHide = ()=>{ moved = true; };            // 앱이 실제로 넘어가면 화면이 가려진다
+      document.addEventListener('visibilitychange', onHide, {once:true});
+      window.addEventListener('pagehide', onHide, {once:true});
+      try{ window.location.href = talk; }catch(e){}
+      setTimeout(()=>{
+        document.removeEventListener('visibilitychange', onHide);
+        window.removeEventListener('pagehide', onHide);
+        if(moved || document.hidden) return;           // 카카오톡이 떴다 — 그대로 둔다
+        const B = Capacitor.Plugins && Capacitor.Plugins.Browser;
+        if(B) B.open({url:web}); else location.href = web;
+      }, 1200);
+      return;
+    }
     const B = Capacitor.Plugins && Capacitor.Plugins.Browser;
-    if(B) B.open({url}); else location.href = url;
+    if(B) B.open({url:web}); else location.href = web;
     return;
   }
   if(typeof Kakao==='undefined') throw new Error('no_kakao_sdk');
@@ -9014,7 +9040,7 @@ function clubTabMe(){
   const TB=[['games','경기 기록'],['partner','파트너'],['opp','상대 전적']]
     .concat(isMe?[['report','리포트']]:[]);
   if(!isMe && CLUBME_TAB==='report') CLUBME_TAB='games';
-  h+=`<div class="chips" style="padding-bottom:14px">${TB.map(([k,l])=>
+  h+=`<div class="chips mi-sub">${TB.map(([k,l])=>
     `<div class="chip ${CLUBME_TAB===k?'on':''}" onclick="setClubMeTab('${k}')" style="cursor:pointer">${l}</div>`).join('')}</div>`;
 
   const wrCol=w=>w>=60?'#2f9159':w>=40?'var(--coral-d)':'#d1614f';
@@ -12795,16 +12821,41 @@ async function cb2Redo(){
   state.bcfg.seed=(state.bcfg.seed||1)+1;                 // 시드를 바꿔야 다른 조합이 나온다
   state.bcfg.scores={};
   if(CB2.courts) state.bcfg.courts=CB2.courts;
-  // 발행된 대진에 실제로 들어간 사람만 다시 고른다 — 늦게 온 사람·빠진 사람 반영
-  const names=new Set(); gs.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
-    const n=(p&&p.name)||p; if(n) names.add(String(n)); }));
+
+  /* 발행된 대진에 실제로 들어간 사람을 그대로 끌어온다.
+     회원은 명단에서 다시 고르고, 게스트는 명단에 없으므로 직접 되살린다.
+     코트 수와 방식도 함께 복원한다 — 다시 짤 때 처음부터 넣게 하면 안 된다. */
+  const seen=new Map();                                    // id 또는 이름 → 선수 원본
+  gs.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
+    if(!p) return; const key=String(p.id!=null?p.id:(p.name||'')); if(key) seen.set(key, p); }));
+  const prevMode = CB2.mode || 'normal';
+  const prevCourts = +CB2.courts || 3;
+
   closeOv();
-  await openClubBracketBuild();                            // 편성 화면으로 — 명단·코트는 그대로
-  if(names.size && window._cb2Roster){
-    const hit=window._cb2Roster.filter(p=>names.has(String(p.name)));
-    if(hit.length>=4){ CB2_SEL.clear(); hit.forEach(p=>CB2_SEL.add(String(p.user_id))); drawCB2Build(); }
-  }
-  toast(`${names.size||'전'}명 그대로 · 방식을 고르면 새 조합이 나와요`);
+  await openClubBracketBuild();                            // 편성 화면으로
+
+  const roster = window._cb2Roster || [];
+  const byId = new Map(roster.map(p=>[String(p.user_id), p]));
+  const byName = new Map(roster.map(p=>[String(p.name), p]));
+
+  CB2_SEL.clear(); CB2_GUESTS=[]; CB2_LATE=new Set();
+  let n=0;
+  seen.forEach((p, key)=>{
+    const hit = byId.get(key) || byName.get(String(p.name||''));
+    if(hit){ CB2_SEL.add(String(hit.user_id)); n++; return; }
+    /* 명단에 없으면 게스트다 — 이름·성별·등급을 그대로 되살린다 */
+    const gid = String(p.id||'').startsWith('g') ? String(p.id) : ('g'+Date.now()%1e7+n);
+    CB2_GUESTS.push({gid, name:p.name||'게스트', gender:p.gender||'남성',
+      grade:p.grade||'', months:p.months||0, rating:p.rating||1000});
+    CB2_SEL.add(gid); n++;
+  });
+
+  CB2_COURTS = prevCourts;
+  const sel=document.getElementById('cb2Courts'); if(sel) sel.value=String(prevCourts);
+  CB2_MODE = prevMode;                                     // 방식도 그대로 — 바꾸고 싶으면 2단계에서
+  drawCB2Build();
+  const gN = CB2_GUESTS.length;
+  toast(`${n}명 그대로 불러왔어요${gN?` (게스트 ${gN}명 포함)`:''} · 방식을 고르면 새 조합이 나와요`);
 }
 /* ── 거치 모드 (코트 옆 큰 화면) ── */
 let STAGE_T=null;
@@ -13563,15 +13614,18 @@ function drawPastMeetings(){
       });
       h+=`<div style="font-size:11.5px;font-weight:600;color:var(--gray);margin:16px 0 8px">경기별 스코어</div>`;
       gs.forEach(g=>{
-        const A=(g.teamA||[]).map(p=>p&&p.name).filter(Boolean).join(' · ');
-        const B=(g.teamB||[]).map(p=>p&&p.name).filter(Boolean).join(' · ');
+        /* 이름 하나하나가 눌린다 — 팀을 통째로 묶으면 누구를 보려는지 알 수 없다 */
+        const nm=arr=>(arr||[]).map(p=>p&&p.name
+          ? (p.id ? `<span onclick="event.stopPropagation();openClubMember(${'$'}{jsArg(p.id)},${'$'}{jsArg(p.name)})" style="cursor:pointer">${'$'}{esc(p.name)}</span>`
+                  : esc(p.name))
+          : '').filter(Boolean).join(' · ');
         h+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid #faf8f4">
           <span style="flex:none;font-size:10.5px;color:var(--lgray);width:34px">${g.r}게임</span>
           <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:${g.sa>g.sb?'var(--coral-d)':'var(--gray)'};
-            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(A)}</span>
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm(g.teamA)}</span>
           <span class="cbsc done" style="flex:none">${g.sa} : ${g.sb}</span>
           <span style="flex:1;min-width:0;text-align:right;font-size:12.5px;font-weight:600;color:${g.sb>g.sa?'var(--coral-d)':'var(--gray)'};
-            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(B)}</span></div>`;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nm(g.teamB)}</span></div>`;
       });
       h+=`</div>`;
     }
@@ -18358,7 +18412,10 @@ function openMatchArrange(name){ name=name||'상대'; const sp=SP();
 let DUEL=null, DUEL_CAND=null, DUEL_ONE=null;
 
 async function loadDuel(){
-  try{ DUEL=await api('/duel/mine'); }catch(e){ DUEL={me:{},list:[]}; }
+  /* 서버가 아직 이 API 를 모르면 화면을 그리지 않는다.
+     빈 객체로 떨어뜨리면 undefined 가 그대로 찍힌다. */
+  try{ DUEL=await api('/duel/mine'); DUEL._ok=true; }
+  catch(e){ DUEL={_ok:false, err:String((e&&e.message)||'')}; }
 }
 async function openDuelHub(){
   if(!SERVER_OK||!authToken()){ toast('로그인이 필요해요'); return; }
@@ -18369,8 +18426,20 @@ async function openDuelHub(){
   await loadDuel(); drawDuelHub();
 }
 function drawDuelHub(){
+  if(DUEL && DUEL._ok===false){
+    document.getElementById('sheet').innerHTML=`<div class="om-detail">
+      <div class="sh-top"><h3 class="gt4">1:1 랭크</h3>
+        <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="card" style="text-align:center;padding:32px 22px">
+        <div class="gt2" style="font-weight:600">아직 준비 중이에요</div>
+        <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
+          곧 열려요. 조금만 기다려 주세요.</p></div></div>`;
+    return;
+  }
   const me=(DUEL&&DUEL.me)||{}, list=(DUEL&&DUEL.list)||[];
-  const placing=!!me.placing, done=me.games||0, need=me.place_n||5;
+  const done=+me.games||0, need=+me.place_n||5;
+  /* placing 이 안 왔으면 경기 수로 판단한다 — 숫자가 없는데 MMR 을 그릴 수는 없다 */
+  const placing = (me.placing!=null) ? !!me.placing : (me.mmr==null || done<need);
   const live=list.filter(d=>['requested','accepted','scored'].includes(d.status));
   const past=list.filter(d=>d.status==='confirmed').slice(0,10);
 
@@ -18432,8 +18501,9 @@ async function openDuelFind(){
     <span onclick="drawDuelHub()" style="cursor:pointer;font-size:21px;color:var(--lgray);margin-right:8px">‹</span>
     <h3 class="gt4" style="flex:1">상대 찾기</h3></div>
     <div class="card" style="text-align:center;color:var(--lgray);padding:26px">찾는 중…</div></div>`;
-  try{ await api('/duel/open',{method:'POST',body:JSON.stringify({mixed:false})}); }catch(e){}
-  try{ DUEL_CAND=await api('/duel/candidates'); }catch(e){ DUEL_CAND={list:[],me:{},window:{}}; }
+  try{ await api('/duel/open',{method:'POST',body:'{}'}); }catch(e){}
+  try{ DUEL_CAND=await api('/duel/candidates'); }
+  catch(e){ toast('아직 준비 중이에요'); drawDuelHub(); return; }
   drawDuelFind();
 }
 function drawDuelFind(){
@@ -18445,16 +18515,9 @@ function drawDuelFind(){
     <div style="padding:12px 2px 14px;border-bottom:1px solid var(--line)">
       <div class="gt1" style="font-weight:600">지금 조건 · ${esc(w.label||'같은 시·군')}</div>
       <div class="gt1 gmute" style="margin-top:4px">
-        ${me.placing?'배치 중이라 비슷한 구력끼리 붙여요':`MMR ${w.low}~${w.high}`}
+        ${(w.low!=null&&w.high!=null)?`MMR ${w.low}~${w.high}`:'비슷한 실력끼리'}
         · 기다리면 범위가 넓어져요</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
-        <div style="flex:1;min-width:0"><div class="gt1" style="font-weight:600">혼성도 괜찮아요</div>
-          <div class="gt1 gmute" style="margin-top:3px">양쪽 다 켜야 섞여요</div></div>
-        <div role="switch" aria-checked="${!!me.mixed}" tabindex="0" onclick="duelMixed(${!me.mixed})"
-          style="flex:none;width:42px;height:25px;border-radius:13px;background:${me.mixed?'var(--coral)':'#ddd7cb'};
-            position:relative;cursor:pointer;transition:.15s">
-          <div style="width:19px;height:19px;border-radius:50%;background:#fff;position:absolute;top:3px;
-            left:${me.mixed?'20px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div></div>`;
+    </div>`;
 
   if(!list.length){
     h+=`<div class="card" style="text-align:center;padding:32px 20px;margin-top:14px">
@@ -18474,11 +18537,6 @@ function drawDuelFind(){
   }
   h+=`</div>`;
   document.getElementById('sheet').innerHTML=h;
-}
-async function duelMixed(v){
-  try{ await api('/duel/open',{method:'POST',body:JSON.stringify({mixed:!!v})}); }catch(e){}
-  try{ DUEL_CAND=await api('/duel/candidates'); }catch(e){}
-  drawDuelFind();
 }
 async function duelRequest(uid,name){
   if(!await appConfirm(`${name}님에게 1:1 경기를 신청할까요?`)) return;
@@ -20572,10 +20630,12 @@ const IS_NATIVE = (()=>{ try{ return !!(window.Capacitor && Capacitor.isNativePl
 if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App){
   Capacitor.Plugins.App.addListener('appUrlOpen', async ({url})=>{
     let u; try{ u = new URL(url); }catch(e){ return; }
-    if(u.protocol !== 'matsu:') return;
+    /* 브라우저 경유는 matsu://, 카카오톡 앱 경유는 kakao{네이티브키}:// 로 돌아온다 */
+    const isKakaoScheme = CFG.kakao_native_key && u.protocol === `kakao${CFG.kakao_native_key}:`;
+    if(u.protocol !== 'matsu:' && !isKakaoScheme) return;
     try{ Capacitor.Plugins.Browser && Capacitor.Plugins.Browser.close(); }catch(e){}
     const code = u.searchParams.get('code');
-    const provider = u.searchParams.get('provider') || 'kakao';
+    const provider = isKakaoScheme ? 'kakao' : (u.searchParams.get('provider') || 'kakao');
     if(!code){ toast('로그인이 취소됐어요'); return; }
     try{
       let d;
