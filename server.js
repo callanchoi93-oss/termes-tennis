@@ -247,6 +247,9 @@ app.get('/config', (_, res) => {
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_native_redirect_uri: process.env.KAKAO_NATIVE_REDIRECT_URI || '',   // iOS 앱: 딥링크 복귀용
+    /* 앱에서 카카오톡을 직접 여는 데 쓰는 네이티브 앱 키.
+       JS 키로는 kakaokompassauth:// 스킴이 열리지 않는다. */
+    kakao_native_key: process.env.KAKAO_NATIVE_KEY || '',
     kakao_ready: !!(process.env.KAKAO_JS_KEY && process.env.KAKAO_REST_KEY && process.env.KAKAO_REDIRECT_URI),
     naver_client_id: process.env.NAVER_CLIENT_ID || '',
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
@@ -6713,8 +6716,7 @@ function provinceOf(region) { return String(region || '').trim().split(/\s+/)[0]
 
 /* ── 상대 찾기 열기 / 닫기 ── */
 app.post('/duel/open', auth, (req, res) => {
-  const mixed = req.body && req.body.mixed ? 1 : 0;
-  db.prepare('UPDATE users SET duel_mixed=?, duel_open_at=? WHERE id=?').run(mixed, now(), req.uid);
+  db.prepare('UPDATE users SET duel_open_at=? WHERE id=?').run(now(), req.uid);
   const u = duelUser(req.uid);
   res.json({ ok: true, mmr: u.mmr, games: u.mmr_games, placing: u.mmr_games < DUEL_PLACE });
 });
@@ -6734,8 +6736,8 @@ app.get('/duel/candidates', auth, (req, res) => {
   const out = [];
   for (const r of rows) {
     if (r.mmr == null) r.mmr = seedMMR(r);
-    /* 성별 — 양쪽 다 혼성을 열어야 섞인다 */
-    if (r.gender !== me.gender && !(me.duel_mixed && r.duel_mixed)) continue;
+    /* 개인리그가 남자부·여자부로 나뉘므로 1:1 도 같은 성별끼리만 붙인다 */
+    if (r.gender !== me.gender) continue;
     if (Math.abs((r.mmr || 1000) - me.mmr) > w.band) continue;
     const rc = cityOf(r.region), rp = provinceOf(r.region);
     let scope = null;
@@ -6755,7 +6757,7 @@ app.get('/duel/candidates', auth, (req, res) => {
   res.json({
     me: { mmr: me.mmr_games >= DUEL_PLACE ? me.mmr : null, games: me.mmr_games,
           placing: me.mmr_games < DUEL_PLACE, place_n: DUEL_PLACE,
-          open: !!me.duel_open_at, mixed: !!me.duel_mixed },
+          open: !!me.duel_open_at },
     window: { band: w.band, label: w.label, low: me.mmr - w.band, high: me.mmr + w.band },
     list: out.slice(0, 40),
   });
