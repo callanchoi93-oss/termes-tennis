@@ -9898,7 +9898,8 @@ function buildClubSchedule(players,courts,lateNames,lateAfter,seed,opts){
   const sched=[]; let guard=0;
   // 모두 4게임 채울 때까지 라운드 생성 (안전장치 14R)
   while(guard<14){
-    const elig=[]; for(let i=0;i<n;i++) if(startR[i]<=guard) elig.push(i);
+    // 이미 4게임을 채운 사람은 후보에서 뺀다 — 안 그러면 코트가 남을 때 5게임을 뛴다
+    const elig=[]; for(let i=0;i<n;i++) if(startR[i]<=guard && gc[i]<GAMES) elig.push(i);
     elig.sort((a,b)=> gc[a]-gc[b] || rnd()-0.5);
     const cap=mpr*per;
     let playing=elig.slice(0,Math.min(cap, Math.floor(elig.length/per)*per));
@@ -10897,6 +10898,7 @@ async function openClubStats(){
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
 /* ═══ 클럽 대진 v2.1 — 테르메스 스타일 · 만들기/보기 분리 · 한울 포함 ═══ */
 let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null, CB2_EVENT=0, CB2_LIST=null;
+let CB2_SEED=1;                 // '다시 섞기'를 누르면 올라간다 — 같은 시드면 같은 대진이 나온다
 const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
 function cb2Officer(){ if(TRIAL) return true; const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return c&&(c.role==='owner'||c.role==='officer'); }
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
@@ -10928,6 +10930,372 @@ const HANUL_AB = {
   14:['1A:2B','3C:4D','5E:6F','7G:1B','2A:3D','4C:5F','6E:7A','1G:5C','2D:4F','3G:6B','7E:2C','1F:4A','5G:3E','6D:7B'],
   16:['1A:2B','3C:4D','5E:6F','7G:8H','1B:3D','2A:4C','5F:7H','6E:8G','1D:4A','2F:3G','6B:7C','5H:8E','1G:5C','2H:6D','3E:7A','4F:8B']
 };
+/* ═══════════ 한울 — 한 조 = 한 코트 고정 ═══════════
+   현장 한울의 핵심은 "내 코트에서 안 벗어난다"이다. 코트를 옮겨다니면
+   호명·대기가 늘고 수기표와도 어긋난다. 그래서 이렇게 짠다.
+     ① 참석자를 코트 수만큼의 조로 나눈다 (실력 스네이크 · 조별 성비 균등)
+     ② 조는 배정된 코트에 고정 — 그 코트에서만 1인 4게임
+     ③ 조 안에서 파트너가 겹치지 않게 4게임을 짠다
+   조가 8·10·12·14·16명이면 한울 AB 수기표를 그대로 써서 파트너 중복 0.
+   그 밖의 인원(5~7명, 홀수)은 탐색으로 짠다 — 5명 이상이면 파트너 중복 0,
+   상대 중복도 2회 이하로 떨어진다. 4명 조는 조합이 3가지뿐이라
+   4게임 중 한 조합이 한 번 반복된다(수학적으로 불가피). */
+const HN_GV={SS:5,S:4,A:3,B:2,C:1};
+const hnG=p=>HN_GV[String(p.grade||'B').toUpperCase()]||2;
+const hnF=p=>String(p.gender||'').startsWith('여');
+const hnK=(a,b)=>a<b?a+'_'+b:b+'_'+a;
+function hnCombos(arr,k){
+  const out=[]; const rec=(s,acc)=>{ if(acc.length===k){ out.push(acc.slice()); return; }
+    for(let i=s;i<arr.length;i++){ acc.push(arr[i]); rec(i+1,acc); acc.pop(); } };
+  rec(0,[]); return out;
+}
+/* 코트 수만큼 조 나누기 — 실력은 스네이크로, 성비는 전체 비율에 맞춰서 */
+function hnSplit(ps, courts){
+  const n=ps.length;
+  const G=Math.max(1, Math.min(courts, Math.floor(n/4)));
+  const sizes=Array.from({length:G},(_,i)=>Math.floor(n/G)+(i<n%G?1:0));   // 큰 조가 앞 코트
+  const women=ps.filter(hnF), men=ps.filter(p=>!hnF(p));                    // 들어올 때 이미 실력순
+  const W=women.length;
+  /* 한 조에 여성이 몰리면 그 코트만 여복이 되고 옆 코트는 남복만 돈다 */
+  const fq=Array.from({length:G},(_,g)=>Math.floor(W/G)+(g<W%G?1:0));
+  for(let g=0;g<G;g++){
+    while(fq[g]>sizes[g]){ const t=fq.findIndex((v,i)=>v<sizes[i]); if(t<0) break; fq[g]--; fq[t]++; }
+  }
+  for(let g=0;g<G;g++){                                   // 여성 혼자인 조는 피한다
+    if(fq[g]!==1||W<2) continue;
+    const rich=fq.findIndex((v,i)=>i!==g&&v>=3);
+    if(rich>=0 && fq[g]+1<=sizes[g]){ fq[g]++; fq[rich]--; }
+  }
+  const groups=Array.from({length:G},()=>[]);
+  const snake=(list, cap)=>{ let g=0, dir=1;
+    list.forEach(p=>{ let guard=0;
+      while(cap[g]<=0 && guard++<G*3){ g+=dir; if(g<0){g=0;dir=1;} else if(g>=G){g=G-1;dir=-1;} }
+      if(cap[g]<=0){ const alt=cap.findIndex(v=>v>0); if(alt<0) return; g=alt; }
+      groups[g].push(p); cap[g]--;
+      g+=dir; if(g<0){g=0;dir=1;} else if(g>=G){g=G-1;dir=-1;} }); };
+  snake(women, fq.slice());
+  snake(men, sizes.map((s,i)=>s-fq[i]));
+  return groups.filter(g=>g.length>=4);
+}
+/* 한 조(=한 코트)의 4게임 — 그리디 1회 */
+function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
+  const m=mem.length, N=games||Math.round(m*GPP/4);
+  const played=Array(m).fill(0), last=Array(m).fill(-9);
+  const pu={}, ou={}, out=[];
+  const nF=mem.filter(hnF).length, bothSex=nF>=2 && m-nF>=2;
+  const lvl=(style==='level');          // 일반·월례: 등급이 붙어 있는 4명을 고른다
+  const pastCost=(a,b)=>{ if(!past) return 0; const k=[mem[a].id,mem[b].id].sort().join('-'); return past[k]||0; };
+  for(let k=0;k<N;k++){
+    let elig=[]; for(let i=0;i<m;i++) if(played[i]<GPP && (!lateSet.has(i)||k>=lateAfter)) elig.push(i);
+    if(elig.length<4){ for(let i=0;i<m;i++) if(played[i]<GPP && elig.indexOf(i)<0) elig.push(i); }
+    if(elig.length<4) break;
+    // 적게 뛴 사람이 반드시 먼저 들어간다 — 전원 4게임이 여기서 보장된다
+    const thr=elig.map(i=>played[i]).sort((a,b)=>a-b)[3];
+    const must=elig.filter(i=>played[i]<thr);
+    let opt=elig.filter(i=>played[i]===thr).sort((a,b)=>last[a]-last[b]||rnd()-0.5);
+    if(opt.length>8) opt=opt.slice(0,8);
+    const need=4-must.length;
+    if(need<0 || need>opt.length) break;
+    let best=null;
+    hnCombos(opt,need).forEach(cmb=>{
+      const four=must.concat(cmb);
+      const [a0,b0,c0,d0]=four;
+      [[[a0,b0],[c0,d0]],[[a0,c0],[b0,d0]],[[a0,d0],[b0,c0]]].forEach(sp=>{
+        const [[a,b],[c,d]]=sp;
+        // 여2·남2면 팀마다 남녀 1명(혼복)이 기본. 파트너가 겹칠 바엔 남복:여복도 허용
+        const mixed=(hnF(mem[a])!==hnF(mem[b])) && (hnF(mem[c])!==hnF(mem[d]));
+        const nf=four.filter(i=>hnF(mem[i])).length;
+        const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
+          +(nf===2 && !mixed ? 110 : 0)
+          +(pastCost(a,b)+pastCost(c,d))*20
+          +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
+          +Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]))*4
+          +Math.abs((hnF(mem[a])?1:0)+(hnF(mem[b])?1:0)-(hnF(mem[c])?1:0)-(hnF(mem[d])?1:0))*6
+          +(lvl?0:(bothSex?Math.abs(nf-2)*8:0))
+          +(lvl?(Math.max(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]))
+                -Math.min(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d])))*30:0)
+          +four.reduce((s,i)=>s+(last[i]===k-1?3:0),0)
+          +rnd()*0.5;
+        if(!best||cost<best.cost) best={cost,sp,four};
+      });
+    });
+    if(!best) break;
+    const [[a,b],[c,d]]=best.sp;
+    pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
+    [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
+    best.four.forEach(i=>{played[i]++; last[i]=k;});
+    out.push([[a,b],[c,d]]);
+  }
+  const floorG=Math.floor(4*N/m);
+  const short=played.reduce((s,v)=>s+Math.max(0,floorG-v),0);
+  return {out, short};
+}
+/* 완성된 편성표 점수 — 낮을수록 좋다 */
+function hnEval(out, mem, past, style){
+  const pu={}, ou={}; let mix=0, gap=0, b2b=0, spread=0;
+  const lvl=(style==='level');
+  const nFa=mem.filter(hnF).length, bothSex=nFa>=2 && mem.length-nFa>=2 && !lvl;
+  out.forEach(([t1,t2],k)=>{
+    const [a,b]=t1,[c,d]=t2, four=[a,b,c,d];
+    pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
+    [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
+    const nf=four.filter(i=>hnF(mem[i])).length;
+    if(nf===2 && !(hnF(mem[a])!==hnF(mem[b]) && hnF(mem[c])!==hnF(mem[d]))) mix++;
+    if(bothSex) mix+=Math.abs(nf-2)*0.45;
+    gap+=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
+    if(lvl) spread+=Math.max(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]))
+                   -Math.min(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]));
+    if(k>0){ const prev=out[k-1][0].concat(out[k-1][1]); b2b+=four.filter(i=>prev.indexOf(i)>=0).length; }
+  });
+  const pv=Object.values(pu), ov=Object.values(ou);
+  const maxP=Math.max(0,...pv), dupP=pv.reduce((s,v)=>s+Math.max(0,v-1),0);
+  const dupO=ov.reduce((s,v)=>s+Math.max(0,v-1),0), maxO=Math.max(0,...ov);
+  let pastN=0;
+  if(past) out.forEach(([t1,t2])=>[t1,t2].forEach(t=>{
+    const kk=[mem[t[0]].id,mem[t[1]].id].sort().join('-'); pastN+=past[kk]||0; }));
+  return {score:maxP*4000+dupP*600+Math.max(0,maxO-2)*260+dupO*30+mix*130+gap*4+spread*30+b2b*3+pastN*20, maxP, dupP};
+}
+/* 국소 탐색 — 두 게임이 선수를 한 명씩 맞바꾼다(각자 경기 수는 그대로) */
+function hnPolish(out, mem, lateSet, lateAfter, past, t0, budget, style){
+  const spl=four=>{const [a,b,c,d]=four; return [[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]];};
+  const ok=(i,k)=>!lateSet.has(i)||k>=lateAfter;
+  let cur=hnEval(out,mem,past,style).score, moved=true, guard=0;
+  while(moved && guard++<8 && Date.now()-t0<budget){
+    moved=false;
+    for(let k=0;k<out.length;k++){                       // ① 팀만 다시 나눠보기
+      const four=out[k][0].concat(out[k][1]);
+      spl(four).forEach(sp=>{
+        const bak=out[k]; out[k]=sp;
+        const s=hnEval(out,mem,past,style).score;
+        if(s<cur-1e-9){ cur=s; moved=true; } else out[k]=bak;
+      });
+    }
+    for(let i=0;i<out.length && Date.now()-t0<budget;i++) for(let j=i+1;j<out.length;j++){   // ② 선수 맞교환
+      const fi=out[i][0].concat(out[i][1]), fj=out[j][0].concat(out[j][1]);
+      for(const p of fi) for(const q of fj){
+        if(p===q||fj.indexOf(p)>=0||fi.indexOf(q)>=0) continue;
+        if(!ok(p,j)||!ok(q,i)) continue;
+        const ni=fi.map(x=>x===p?q:x), nj=fj.map(x=>x===q?p:x);
+        const bi=out[i], bj=out[j];
+        let bs=null;
+        spl(ni).forEach(si=>spl(nj).forEach(sj=>{
+          out[i]=si; out[j]=sj; const s=hnEval(out,mem,past,style).score;
+          if(!bs||s<bs.s) bs={s,si,sj}; }));
+        if(bs && bs.s<cur-1e-9){ out[i]=bs.si; out[j]=bs.sj; cur=bs.s; moved=true; }
+        else { out[i]=bi; out[j]=bj; }
+      }
+    }
+  }
+}
+/* AB 수기표 배치 — 파트너 중복 0 을 유지한 채 자리만 바꿔 성비·실력을 맞춘다 */
+function hnPlanAB(mem, rnd){
+  const tbl=HANUL_AB[mem.length];
+  const NUM=mem.filter((_,i)=>i%2===0), LET=mem.filter((_,i)=>i%2===1);
+  const build=(N,L)=>tbl.map(g=>{
+    const [A,B]=g.split(':');
+    const at=t=>/[0-9]/.test(t)?N[+t-1]:L[t.charCodeAt(0)-65];
+    return [[at(A[0]),at(A[1])],[at(B[0]),at(B[1])]];
+  });
+  const score=plan=>plan.reduce((s,[t1,t2])=>s
+    +Math.abs(t1.filter(hnF).length-t2.filter(hnF).length)*6
+    +Math.abs(t1.reduce((x,p)=>x+hnG(p),0)-t2.reduce((x,p)=>x+hnG(p),0))*3,0);
+  let best=build(NUM,LET), bs=score(best);
+  for(let t=0;t<400;t++){
+    const sh=a=>a.slice().sort(()=>rnd()-0.5);
+    const p=build(sh(NUM),sh(LET)), s=score(p);
+    if(s<bs){ bs=s; best=p; }
+  }
+  return best;
+}
+/* ═══ 성비 대진 전용 편성 ═══
+   여성은 혼복 3 + 여복 1, 남성은 나머지를 남복으로 — 이 목표를 먼저
+   경기 수 산수로 확정한 뒤(혼복 X · 여복 Y · 남복 Z), 그 틀 안에서
+   파트너·상대가 겹치지 않게 사람을 넣는다.
+     여자 자리 4F = 2X + 4Y,  남자 자리 4M = 2X + 4Z
+   예전 방식은 남자에게 '혼복 1회' 쿼터를 줘서, 남자 쿼터가 먼저 바닥나면
+   여자가 혼복을 3번 못 뛰고 여복만 도는 문제가 있었다. */
+function cbGenderMix(F, M){
+  let X=Math.round(3*F/2); if(X%2) X++;                 // 여성 1인 혼복 3회 목표
+  X=Math.min(X, 2*F, 2*M); if(X<0) X=0;
+  return {X, Y:F-X/2, Z:M-X/2};                          // 혼복 · 여복 · 남복 게임 수
+}
+function cbGenderPlan(F, M, past, seed, lateGames){
+  const {X,Y,Z}=cbGenderMix(F.length, M.length);
+  if(Y<0||Z<0) return [];
+  const total=X+Y+Z;
+  const buckets={'혼복':X,'여복':Y,'남복':Z}, taken={'혼복':0,'여복':0,'남복':0};
+  const rnd=_rng((seed||1)*613+F.length*29+M.length*7);
+  const all=M.concat(F), idxOf=new Map(all.map((p,i)=>[p,i]));
+  const played=Array(all.length).fill(0), last=Array(all.length).fill(-9);
+  const pu={}, ou={}, out=[];
+  const pastCost=(a,b)=>{ if(!past) return 0; const k=[all[a].id,all[b].id].sort().join('-'); return past[k]||0; };
+  const pick=(pool, want)=>{                             // 적게 뛴 사람이 반드시 먼저
+    if(pool.length<want) return null;
+    const thr=pool.map(i=>played[i]).sort((a,b)=>a-b)[want-1];
+    const must=pool.filter(i=>played[i]<thr);
+    let opt=pool.filter(i=>played[i]===thr).sort((a,b)=>last[a]-last[b]||rnd()-0.5);
+    if(opt.length>7) opt=opt.slice(0,7);
+    return {must, opt, need:want-must.length};
+  };
+  const Mi=M.map(p=>idxOf.get(p)), Fi=F.map(p=>idxOf.get(p));
+  /* 늦참자는 lateGames 번째 경기부터 들어간다. 종류(혼복·여복·남복)를 미리
+     못 박아두면 '지금 나와 있는 사람으로는 못 만드는 종류'가 걸려 편성이 멈춘다.
+     그래서 매 경기마다 가능한 종류 중에서 가장 밀린 것을 고른다. */
+  const here=(i,k)=>!(lateGames>0 && all[i].late && k<lateGames);
+  for(let k=0;k<total;k++){
+    const poolM=Mi.filter(i=>played[i]<4 && here(i,k)), poolF=Fi.filter(i=>played[i]<4 && here(i,k));
+    const can=t=> t==='혼복' ? (poolM.length>=2 && poolF.length>=2)
+               : t==='여복' ? poolF.length>=4 : poolM.length>=4;
+    let type=null, bestV=-1;
+    Object.keys(buckets).forEach(t=>{
+      if(taken[t]>=buckets[t] || !can(t)) return;
+      const v=(buckets[t]-taken[t])/buckets[t];
+      if(v>bestV){ bestV=v; type=t; }
+    });
+    if(!type) continue;                                  // 지금 만들 수 있는 종류가 없다 — 다음 경기로
+    taken[type]++;
+    let cands=[];
+    if(type==='혼복'){
+      const pm=pick(poolM,2), pf=pick(poolF,2); if(!pm||!pf){ taken[type]--; continue; }
+      const ms=hnCombos(pm.opt,pm.need).map(c=>pm.must.concat(c));
+      const fs=hnCombos(pf.opt,pf.need).map(c=>pf.must.concat(c));
+      ms.forEach(mm=>fs.forEach(ff=>{                    // 혼복은 팀마다 남녀 1명
+        cands.push([[mm[0],ff[0]],[mm[1],ff[1]]]);
+        cands.push([[mm[0],ff[1]],[mm[1],ff[0]]]); }));
+    } else {
+      const pk2=pick(type==='여복'?poolF:poolM,4); if(!pk2){ taken[type]--; continue; }
+      hnCombos(pk2.opt,pk2.need).map(c=>pk2.must.concat(c)).forEach(f=>{
+        const [a,b,c,d]=f;
+        cands.push([[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]); });
+    }
+    let best=null;
+    cands.forEach(sp=>{
+      const [[a,b],[c,d]]=sp;
+      const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
+        +(pastCost(a,b)+pastCost(c,d))*20
+        +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
+        +Math.abs(hnG(all[a])+hnG(all[b])-hnG(all[c])-hnG(all[d]))*5
+        +[a,b,c,d].reduce((s,i)=>s+(last[i]===k-1?3:0),0)+rnd()*0.5;
+      if(!best||cost<best.cost) best={cost,sp};
+    });
+    if(!best){ taken[type]--; continue; }
+    const [[a,b],[c,d]]=best.sp;
+    pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
+    [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
+    [a,b,c,d].forEach(i=>{played[i]++; last[i]=k;});
+    out.push({t1:[all[a],all[b]], t2:[all[c],all[d]], label:type});
+  }
+  return out;
+}
+/* 경기 목록을 라운드에 담는다 — 한 라운드에 코트 수만큼, 겹치는 선수 없이.
+   앞에서부터 밀어 넣기만 하면 코트 하나가 비는 라운드가 생겨 세션이 길어진다.
+   라운드마다 뒤쪽 경기까지 훑어서 빈 코트를 채운다. */
+/* 되짚기(백트래킹)로 라운드 수를 최소로 맞춰본다 — 못 찾으면 null */
+function cbPackExact(list, courts, rounds, budget){
+  const N=list.length; if(!N) return [];
+  const done=new Array(N).fill(false), plan=[]; let steps=0;
+  const rec=(placed, r)=>{
+    if(placed===N) return true;
+    if(r>rounds || steps++>budget) return false;
+    const first=list.findIndex((g,i)=>!done[i] && (g.minR||1)<=r);
+    if(first<0) return false;                      // 이 라운드에 넣을 수 있는 경기가 없다
+    const want=Math.min(courts, N-placed);
+    const cur=[], busy=new Set();
+    const put=i=>{ cur.push(i); list[i].ids.forEach(x=>busy.add(x)); };
+    const take=()=>{ const i=cur.pop(); list[i].ids.forEach(x=>busy.delete(x)); };
+    put(first);                                    // 남은 것 중 첫 경기는 반드시 이번 라운드에
+    const build=start=>{
+      if(cur.length===want){
+        cur.forEach(i=>done[i]=true); plan.push(cur.slice());
+        if(rec(placed+cur.length, r+1)) return true;
+        plan.pop(); cur.forEach(i=>done[i]=false);
+        return false;
+      }
+      for(let i=start;i<N;i++){
+        if(done[i] || (list[i].minR||1)>r || list[i].ids.some(x=>busy.has(x))) continue;
+        put(i);
+        if(build(i+1)) return true;
+        take();
+        if(steps++>budget) return false;
+      }
+      return false;
+    };
+    const ok=build(first+1);
+    take();
+    return ok;
+  };
+  if(!rec(0,1)) return null;
+  const out=[];
+  plan.forEach((rd,ri)=>rd.forEach((i,c)=>out.push(Object.assign({}, list[i], {r:ri+1, c:c+1}))));
+  return out;
+}
+function cbPack(list, courts){
+  const fill=src=>{
+    const rest=src.slice(), out=[];
+    for(let r=1; rest.length && r<=src.length+4; r++){
+      const used=new Set(); let c=0;
+      for(let i=0; i<rest.length && c<courts; ){
+        if((rest[i].minR||1)>r || rest[i].ids.some(x=>used.has(x))){ i++; continue; }
+        rest[i].ids.forEach(x=>used.add(x)); c++;
+        out.push(Object.assign({}, rest[i], {r, c}));
+        rest.splice(i,1);
+      }
+      // 아직 합류 전이라 못 넣는 경기만 남았으면 라운드만 넘긴다
+    }
+    return out;
+  };
+  /* 담는 순서에 따라 라운드가 한두 개 왔다 갔다 한다 — 몇 가지 순서를 재보고
+     라운드가 가장 적은 걸 쓴다. 라운드가 늘면 마지막에 코트 하나만 도는
+     '꼬리'가 생겨 그만큼 늦게 끝난다. */
+  /* 먼저 '최소 라운드'로 딱 떨어지는 배치를 되짚기로 찾아본다.
+     탐욕적으로만 담으면 마지막에 코트 하나만 도는 꼬리 라운드가 생긴다. */
+  const minRounds=Math.max(Math.ceil(list.length/courts), ...list.map(g=>g.minR||1));
+  for(let extra=0; extra<=2; extra++){
+    const exact=cbPackExact(list, courts, minRounds+extra, extra?30000:120000);
+    if(exact) return exact;
+  }
+  const tries=[list, list.slice().reverse()];
+  for(let k=1;k<Math.min(5,list.length);k++) tries.push(list.slice(k).concat(list.slice(0,k)));
+  const prnd=_rng(list.length*31+7);
+  for(let k=0;k<14;k++) tries.push(list.map(g=>[prnd(),g]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]));
+  let best=null;
+  for(const t of tries){
+    const out=fill(t);
+    if(out.length<list.length) continue;
+    const rounds=Math.max(0,...out.map(g=>g.r));
+    if(!best||rounds<best.rounds){ best={rounds,out}; }
+    if(best.rounds<=Math.ceil(list.length/courts)) break;
+  }
+  return best?best.out:fill(list);
+}
+/* 조 하나의 최종 편성 — [[팀A, 팀B], ...] 순서대로 그 코트의 1게임·2게임… */
+function hnPlanGroup(mem, opts){
+  const o=opts||{}, GPP=o.gpp||4, m=mem.length;
+  const lateSet=new Set(); mem.forEach((p,i)=>{ if(p.late) lateSet.add(i); });
+  const rnd=_rng((o.seed||1)*97+m*13+7);
+  if(!lateSet.size && !o.games && HANUL_AB[m] && o.style!=='level' && (o.gpp||4)===4) return hnPlanAB(mem, rnd);
+  const t0=Date.now(), budget=o.budget||500;
+  /* 경기 수가 인원과 딱 안 떨어질 때(코트·시간이 모자란 오픈매치) 를 위해
+     총 경기 수를 직접 받는다. 이때 1인 경기 수는 n~n+1 로 갈리되 편차는 1을 넘지 않는다. */
+  const N=o.games||Math.round(m*GPP/4);
+  const cap=Math.ceil(4*N/m), floorG=Math.floor(4*N/m);
+  let best=null, fallback=null;
+  for(let t=0;t<24;t++){
+    const res=hnPlanOnce(mem, cap, lateSet, o.lateAfter||0, _rng((o.seed||1)*911+t*37+m*5), o.past, o.style, N);
+    if(res.short){                                  // 늦참이 많으면 전원 4게임이 불가능할 수 있다
+      if(!fallback || res.short<fallback.short) fallback={short:res.short, out:res.out};
+      continue;
+    }
+    const ev=hnEval(res.out, mem, o.past, o.style);
+    if(!best||ev.score<best.s) best={s:ev.score, out:res.out, dupP:ev.dupP};
+    if((ev.dupP===0&&m>10) || Date.now()-t0>budget) break;
+  }
+  if(!best && fallback) best={s:0, out:fallback.out, dupP:1};   // 못 채우더라도 짜 준다
+  if(!best) return [];
+  if(m<=16 && Date.now()-t0<budget) hnPolish(best.out, mem, lateSet, o.lateAfter||0, o.past, t0, budget, o.style);
+  return best.out.map(([t1,t2])=>[t1.map(i=>mem[i]), t2.map(i=>mem[i])]);
+}
+
 function cb2Roster(r){ const a = Array.isArray(r)?r:(r&&r.members)||[];
   return a.filter(p=>p&&(p.user_id||p.id)).map(p=>({...p, user_id:p.user_id||p.id})); }
 async function cb2Load(){
@@ -11596,120 +11964,143 @@ function omSplit(four){
   return best;
 }
 
-/* 정규 라운드 = floor(인원 ÷ 코트). 코트를 꽉 채우는 라운드 수.
-   나머지가 있으면 3경기만 뛴 사람들을 위한 보너스 게임이 붙는다.
-   보너스 코트 수 = 인원 mod 코트 · 참가자 = 그 4배 (딱 맞아떨어진다) */
+/* ═══ 오픈매치 로테이션 ═══
+   오픈매치는 게임당 25분 제한이 있다. 대관 시간이 정해져 있으니
+   '전원 4게임'을 무조건 밀어붙이면 절대 못 끝내는 대진이 나온다.
+   (24명 2코트면 12라운드 = 5시간)
+   그래서 대관 시간에서 돌릴 수 있는 라운드 수를 먼저 구하고,
+   거기에 맞춰 1인 경기 수를 정한 뒤 편성한다. */
+function omRoundsMax(startAt, endAt){
+  const st=Date.parse(String(startAt||'').slice(0,16)+':00+09:00');
+  const en=Date.parse(String(endAt||'').slice(0,16)+':00+09:00');
+  if(isNaN(st)||isNaN(en)||en<=st) return null;              // 시간 정보가 없으면 제한 없음
+  return Math.max(1, Math.floor((en-st)/60000/OM_GAME_MIN));
+}
+/* 대관 시간 안에 들어가는 1인 경기 수 (최대 4) */
+function omGppFor(people, courts, maxRounds){
+  const useC=Math.max(1, Math.min(courts, Math.floor(people/4)));
+  for(let g=4; g>=1; g--){
+    const rounds=Math.ceil(people*g/4/useC);
+    if(maxRounds==null || rounds<=maxRounds) return {gpp:g, rounds, useC};
+  }
+  return {gpp:1, rounds:Math.ceil(people/4/useC), useC};
+}
 function omRoundsFor(people, courts){
   if(!courts || people < courts*4) return 0;
-  return Math.max(1, Math.floor(people/courts));
+  return Math.ceil(people*4/4/Math.max(1,Math.min(courts,Math.floor(people/4))));
 }
-function omBonusCourts(people, courts){
-  if(!courts || people < courts*4) return 0;
-  return people % courts;
-}
-/* 로테이션 생성. rounds 를 안 주면 4경기 보장에 맞춰 자동 계산 */
-function omBuildRotation(players, courts, rounds){
-  const need = courts*4;
-  if(players.length < need) return null;                  // 코트를 채울 인원이 안 됨
-  rounds = rounds || omRoundsFor(players.length, courts);
-  if(!rounds) return null;
-  const gr=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };
-  let bestAll=null;
-
-  for(let seed=0; seed<40; seed++){
-    let rnd=(function(s){ return ()=>((s=s*1103515245+12345|0)>>>16)/65536; })(seed+1);
-    const play={}, pair={}, opp={};
-    players.forEach(p=>play[p.id]=0);
-    const sched=[]; let ok=true;
-
-    for(let rd=0; rd<rounds; rd++){
-      const kind=OM_ROUND_KIND[rd%OM_ROUND_KIND.length];
-      let best=null;
-      for(let t=0;t<1200;t++){
-        // 덜 뛴 사람 우선 + 약간의 무작위
-        const pool=players.slice().sort((a,b)=>(play[a.id]-play[b.id])||(rnd()-0.5)).slice(0,need);
-        if(pool.length<need){ ok=false; break; }
-        const sh=pool.slice(); 
-        for(let i=sh.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [sh[i],sh[j]]=[sh[j],sh[i]]; }
-        const cs=[]; for(let i=0;i<courts;i++) cs.push(sh.slice(i*4,(i+1)*4));
-        // 라운드 성격 — 못 맞추면 벌점만 주고 계속(생성 실패를 만들지 않는다)
-        let sc=0;
-        cs.forEach(c=>{
-          const gs=new Set(c.map(x=>x.g));
-          const fit = kind==='same' ? gs.size<=2 : gs.size>=2;
-          if(!fit) sc += 25;
+/* 라운드 단위 편성 — 오픈매치는 '매 라운드 모든 코트가 동시에 돈다'가 전제라
+   경기를 먼저 만들고 라운드에 담으면(클럽 대진 방식) 인원이 코트에 딱 맞을 때
+   (12명 3코트처럼 매 라운드 전원이 뛰는 경우) 라운드가 안 나눠진다.
+   그래서 라운드마다 '이번에 뛸 사람'을 먼저 뽑고 코트에 나눈다. */
+function omRoundPlan(mem, useC, rounds, past, seed){
+  const need=useC*4, m=mem.length;
+  if(m<need) return null;
+  const rnd=_rng((seed||1)*337+m*11+useC*5);
+  const pastCost=(a,b)=>{ if(!past) return 0; const k=[mem[a].id,mem[b].id].sort().join('-'); return past[k]||0; };
+  let best=null;
+  for(let t=0;t<26;t++){
+    const played=Array(m).fill(0), last=Array(m).fill(-9);
+    const pu={}, ou={}, out=[];
+    for(let r=0;r<rounds;r++){
+      // ① 이번 라운드에 뛸 사람 — 적게 뛴 사람 · 오래 쉰 사람 우선
+      const sel=[...Array(m).keys()]
+        .sort((a,b)=>played[a]-played[b]||last[a]-last[b]||rnd()-0.5).slice(0,need);
+      // ② 코트 나누기 — 파트너·상대가 겹치지 않게
+      const remain=sel.slice(), fours=[];
+      while(remain.length>=4){
+        const a=remain.shift();
+        const pool=remain.slice(0,Math.min(9,remain.length));
+        let pick=null;
+        hnCombos(pool,3).forEach(c=>{
+          const four=[a].concat(c);
+          let cost=rnd()*0.5;
+          for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
+            cost+=(pu[hnK(four[i],four[j])]||0)*45+(ou[hnK(four[i],four[j])]||0)*12
+                 +pastCost(four[i],four[j])*8;
+          }
+          const gs=four.map(i=>hnG(mem[i]));
+          cost+=(Math.max.apply(null,gs)-Math.min.apply(null,gs))*6;
+          if(!pick||cost<pick.cost) pick={cost,c,four};
         });
-        const built=[];
-        cs.forEach(c=>{
-          const sp=omSplit(c);
-          sc += sp.gap*8;
-          const k1=[sp.t1[0].id,sp.t1[1].id].sort().join('|'), k2=[sp.t2[0].id,sp.t2[1].id].sort().join('|');
-          sc += (pair[k1]||0)*40 + (pair[k2]||0)*40;
-          sp.t1.forEach(x=>sp.t2.forEach(y=>{ sc += (opp[[x.id,y.id].sort().join('|')]||0)*3; }));
-          built.push(sp);
-        });
-        if(!best||sc<best.sc) best={sc,built};
+        if(!pick) break;
+        pick.c.forEach(i=>remain.splice(remain.indexOf(i),1));
+        fours.push(pick.four);
       }
-      if(!ok||!best){ ok=false; break; }
-      sched.push(best.built);
-      best.built.forEach(sp=>{
-        sp.t1.concat(sp.t2).forEach(x=>play[x.id]++);
-        const k1=[sp.t1[0].id,sp.t1[1].id].sort().join('|'), k2=[sp.t2[0].id,sp.t2[1].id].sort().join('|');
-        pair[k1]=(pair[k1]||0)+1; pair[k2]=(pair[k2]||0)+1;
-        sp.t1.forEach(x=>sp.t2.forEach(y=>{ const k=[x.id,y.id].sort().join('|'); opp[k]=(opp[k]||0)+1; }));
+      // ③ 팀 나누기
+      const cs=fours.map(four=>{
+        const [a,b,c,d]=four;
+        let bs=null;
+        [[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]].forEach(sp=>{
+          const [[x,y],[z,w]]=sp;
+          const nf=four.filter(i=>hnF(mem[i])).length;
+          const mixed=(hnF(mem[x])!==hnF(mem[y]))&&(hnF(mem[z])!==hnF(mem[w]));
+          const cost=(pu[hnK(x,y)]||0)*120+(pu[hnK(z,w)]||0)*120
+            +(nf===2&&!mixed?90:0)
+            +((ou[hnK(x,z)]||0)+(ou[hnK(x,w)]||0)+(ou[hnK(y,z)]||0)+(ou[hnK(y,w)]||0))*15
+            +Math.abs(mem[x].str+mem[y].str-mem[z].str-mem[w].str)*3+rnd()*0.4;
+          if(!bs||cost<bs.cost) bs={cost,sp};
+        });
+        return bs.sp;
       });
+      cs.forEach(([t1,t2])=>{
+        pu[hnK(t1[0],t1[1])]=(pu[hnK(t1[0],t1[1])]||0)+1;
+        pu[hnK(t2[0],t2[1])]=(pu[hnK(t2[0],t2[1])]||0)+1;
+        t1.forEach(x=>t2.forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
+        [...t1,...t2].forEach(i=>{played[i]++; last[i]=r;});
+      });
+      out.push(cs);
     }
-    if(!ok) continue;
-    const counts=Object.values(play);
-    const spread=Math.max(...counts)-Math.min(...counts);
-    const dup=Object.values(pair).reduce((a,v)=>a+Math.max(0,v-1),0);
-    const gaps=sched.reduce((a,r)=>a+r.reduce((b,sp)=>b+sp.gap,0),0);
-    const score=spread*10000+dup*100+gaps;
-    if(!bestAll||score<bestAll.score) bestAll={score,spread,dup,sched,play};
+    const pv=Object.values(pu), ov=Object.values(ou);
+    const spread=Math.max.apply(null,played)-Math.min.apply(null,played);
+    const score=spread*10000
+      +pv.reduce((s,v)=>s+Math.max(0,v-1),0)*400
+      +ov.reduce((s,v)=>s+Math.max(0,v-1),0)*20;
+    if(!best||score<best.score) best={score,out,played};
+    if(best.score===0) break;
   }
-  if(!bestAll) return null;
-
-  // ── 보너스 게임 — 3경기만 뛴 사람들에게 한 경기 더 ──
-  const bonusCourts = omBonusCourts(players.length, courts);
-  let bonus = null;
-  if(bonusCourts > 0){
-    const short = players.slice()
-      .sort((a,b)=>(bestAll.play[a.id]-bestAll.play[b.id]) || (b.str-a.str))
-      .slice(0, bonusCourts*4);
-    if(short.length === bonusCourts*4){
-      // 전력이 비슷한 사람끼리 코트를 나눈다
-      short.sort((a,b)=>b.str-a.str);
-      const cs=[];
-      for(let i=0;i<bonusCourts;i++){
-        const four=short.slice(i*4,(i+1)*4);
-        const sp=omSplit(four);
-        cs.push({ t1:sp.t1.map(x=>({id:x.id,name:x.name,g:x.g})),
-                  t2:sp.t2.map(x=>({id:x.id,name:x.name,g:x.g})), gap:sp.gap });
-      }
-      bonus = { no: bestAll.sched.length+1, name:'보너스 게임', isBonus:true, courts:cs,
-                resting: players.filter(p=>!short.some(x=>x.id===p.id)).map(p=>({id:p.id,name:p.name,g:p.g})) };
-      short.forEach(p=>{ bestAll.play[p.id]++; });
-    }
-  }
-
-  const out = {
-    rounds: bestAll.sched.map((r,i)=>({
+  return best;
+}
+/* 로테이션 생성 — 클럽 대진과 같은 편성 코어를 쓴다.
+   예전에는 라운드마다 1,200번 무작위로 뽑아 40개 시드를 비교했다.
+   결과는 나쁘지 않았지만 24명이면 7초 동안 화면이 멈췄다. */
+function omBuildRotation(players, courts, gpp, maxRounds){
+  const n=players.length;
+  if(n < 4) return null;
+  const useC=Math.max(1, Math.min(courts, Math.floor(n/4)));
+  /* 전원 4게임이면 라운드는 ceil(인원 ÷ 코트). 대관 시간이 모자라면 그만큼만 돈다.
+     이때 1인 경기 수는 2~3처럼 갈릴 수 있지만 편차는 1을 넘지 않는다. */
+  const fullRounds=Math.ceil(n*4/(useC*4));
+  const rounds=Math.max(1, Math.min(maxRounds||Infinity, fullRounds));
+  /* 오픈매치는 늦참을 편성에 반영하지 않는다 — late 플래그가 섞여 들어와도 떨군다.
+     늦는 사람은 '늦어요' 알림으로 매니저에게 알리고 현장에서 순서를 조정한다. */
+  const mem = players.map(p=>Object.assign({}, p, {grade:p.g, gender:p.fem?'여':'남', late:false}));
+  const res = omRoundPlan(mem, useC, rounds, null, (Date.now()/1000|0)%9973);
+  if(!res) return null;
+  const play={}; mem.forEach((p,i)=>play[p.id]=res.played[i]);
+  const pair={};
+  const out=res.out.map((cs,i)=>{
+    const inR=new Set();
+    cs.forEach(([t1,t2])=>{
+      [...t1,...t2].forEach(x=>inR.add(mem[x].id));
+      [t1,t2].forEach(t=>{ const k=[mem[t[0]].id,mem[t[1]].id].sort().join('|'); pair[k]=(pair[k]||0)+1; });
+    });
+    return {
       no:i+1, name:OM_ROUND_NAME[i%OM_ROUND_NAME.length],
-      courts:r.map(sp=>({
-        t1:sp.t1.map(x=>({id:x.id,name:x.name,g:x.g})),
-        t2:sp.t2.map(x=>({id:x.id,name:x.name,g:x.g})),
-        gap:sp.gap
-      })),
-      resting: players.filter(p=>!r.some(sp=>sp.t1.concat(sp.t2).some(x=>x.id===p.id)))
-                      .map(p=>({id:p.id,name:p.name,g:p.g}))
-    })),
-    stats:{ perPlayer:bestAll.play, spread:bestAll.spread, pairDup:bestAll.dup, bonusCourts }
-  };
-  if(bonus) out.rounds.push(bonus);
-  // 보너스 반영 후 실제 편차 재계산
-  const cnt=Object.values(bestAll.play);
-  out.stats.spread = Math.max(...cnt)-Math.min(...cnt);
-  return out;
+      courts: cs.map(([t1,t2])=>({
+        t1:t1.map(x=>({id:mem[x].id,name:mem[x].name,g:mem[x].g})),
+        t2:t2.map(x=>({id:mem[x].id,name:mem[x].name,g:mem[x].g})),
+        gap:Math.abs(mem[t1[0]].str+mem[t1[1]].str-mem[t2[0]].str-mem[t2[1]].str) })),
+      resting: mem.filter(p=>!inR.has(p.id)).map(p=>({id:p.id,name:p.name,g:p.g}))
+    };
+  });
+  const cnt=Object.values(play);
+  return { rounds:out, stats:{
+    perPlayer:play, gpp:Math.min.apply(null,cnt), gppMax:Math.max.apply(null,cnt),
+    courtsUsed:useC, fullRounds,
+    spread:Math.max.apply(null,cnt)-Math.min.apply(null,cnt),
+    pairDup:Object.values(pair).reduce((a,v)=>a+Math.max(0,v-1),0),
+    overTime: maxRounds!=null && fullRounds>maxRounds } };
 }
 
 /* 등급 안내표 — 회원 누구나. 내 등급을 강조하고 구력·NTRP를 함께 보여준다 */
@@ -11839,7 +12230,7 @@ let CB2_STEP=1, CB2_MODE='normal', CB2_COURTS=3;
    받는 것보다, 고르기 전에 왜 안 되는지 아는 편이 낫다. */
 const CB2_MODES=[
   {k:'normal',     n:'일반',     d:'비슷한 등급끼리 · 쉬는 사람 순환', min:4},
-  {k:'hanul',      n:'한울',     d:'대기 시간 최소화 · 8~16명 · 2코트부터', min:8, minCourts:2},
+  {k:'hanul',      n:'한울',     d:'조를 코트에 고정 · 코트 이동 없음 · 2코트부터', min:8, minCourts:2},
   {k:'monthly',    n:'월례대회', d:'같은 조끼리 리그 후 승강 · 조별 4명부터', min:8,
      check:()=>{
        const t=tgData();
@@ -12169,172 +12560,90 @@ async function cb2Gen(mode){
     teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade,glabel:p.glabel})), sa:null, sb:null});
 
   if(mode==='hanul'){
-    // 한울 AB 수기표: 한 시트 최대 16명 · 예약 코트 수만큼 동시 진행
+    /* 한울 = 조를 코트에 붙여놓고 그 안에서만 돌린다.
+       예전 편성은 게임마다 빈 코트를 찾아 넣는 방식이라 한 사람이
+       1코트·2코트를 오갔고, 같은 4명이 다시 묶이면 파트너도 반복됐다. */
     const n=sel.length;
-    /* 한울은 두 코트가 동시에 돌아가야 대기가 안 생긴다.
-       8명 2코트가 성립 최소 단위라 그 아래는 애초에 발행을 막는다. */
     if(n<8){ toast('한울 방식은 8명부터예요 · 지금 '+n+'명이에요'); return; }
     if(courts<2){ toast('한울 방식은 2코트부터예요 · 코트 수를 늘려주세요'); return; }
-    if(n%2 || n>16){
-      // AB 시트(8·10·12·14·16명) 밖 인원 — 회전식으로 전원 4게임을 맞춘다
-      const need={}; ps.forEach(p=>need[p.id]=GPP);
-      const pc={};
-      for(let gi2=0; gi2<n; gi2++){
-        const pool=ps.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||(pc[a.id]||0)-(pc[b.id]||0));
-        if(pool.length<4) break;
-        const four=pool.slice(0,4);
-        four.forEach(p=>{ need[p.id]--; pc[p.id]=(pc[p.id]||0)+1; });
-        const [t1,t2]=cb2Pairs(four, gi2);
-        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2);
-      }
-      groups=[{name:`참석 ${n}명 · 회전 편성`, members:ps.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))}];
-      if(n>16) toast(`${n}명은 AB 시트(최대 16명)를 넘어 회전식으로 편성했어요`);
-      else toast(`${n}명 · 회전식으로 전원 4게임씩 편성했어요`);
-      games.sort((a,b)=>a.r-b.r||a.c-b.c);
-      const rounds0=games.length?Math.max(...games.map(g=>g.r)):0;
-      const data0={date:new Date().toISOString().slice(0,10), courts, rounds:rounds0, mode, gpp:GPP,
-        made_by:state.userName, games, captains:null, groups,
-        late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
-        guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
-      if(TRIAL){ CB2={...data0,_trial:true,updated_at:Date.now()}; openClubBracketView(); return; }
-      try{ await api(`/clubs/${clubId()}/bracket2${CB2_EVENT?`?event=${CB2_EVENT}`:''}`,{method:'PUT',body:JSON.stringify(data0)});
-        CB2={...data0,updated_at:Date.now()}; openClubBracketView();
-      }catch(e){ toast('임원만 발행할 수 있어요'); }
-      return;
-    }
-    // 16명 초과면 8~16명 시트로 나눠서 전원 4게임을 보장한다
-    const chunks=[]; let rest=n;
-    while(rest>0){
-      let take=Math.min(16,rest);
-      if(rest-take>0 && rest-take<8) take=rest-8>=8?rest-8:Math.max(8,rest-8);
-      if(take%2) take--;
-      if(take<8){ take=rest; }
-      chunks.push(take); rest-=take;
-      if(chunks.length>6) break;
-    }
-    if(chunks.some(k=>!HANUL_AB[k])){ toast(`${n}명은 한울 AB 시트로 나눌 수 없어요 · 8·10·12·14·16명 단위로 맞춰주세요`); return; }
-    if(chunks.length>1) toast(`${n}명 → ${chunks.join('+')}명 시트 ${chunks.length}개로 나눠 편성했어요`);
-    let off0=0;
-    chunks.forEach((nn,ci)=>{
-      const tbl=HANUL_AB[nn], use=ps.slice(off0,off0+nn), half=nn/2; off0+=nn;
-      const NUM=use.filter((_,i)=>i%2===0), LET=use.filter((_,i)=>i%2===1);
-      const at=tok=>{ const k=tok[0]; return /[0-9]/.test(k)?NUM[+k-1]:LET[k.charCodeAt(0)-65]; };
-      if(ci===0) groups=[];
-      groups.push({name:`시트 ${ci+1} · 숫자조 (1~${half})`, members:NUM.map((p,i)=>({...p,tag:String(i+1)}))});
-      groups.push({name:`시트 ${ci+1} · 문자조 (A~${String.fromCharCode(64+half)})`, members:LET.map((p,i)=>({...p,tag:String.fromCharCode(65+i)}))});
-      tbl.forEach(g=>{
-        const [A,B]=g.split(':');
-        const t1=[at(A[0]),at(A[1])].filter(Boolean), t2=[at(B[0]),at(B[1])].filter(Boolean);
-        if(t1.length<2||t2.length<2) return;
-        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2);
-      });
+    const parts=hnSplit(ps, courts);
+    if(!parts.length){ toast('코트당 4명이 안 돼요 · 코트 수를 줄여주세요'); return; }
+    groups=[];
+    parts.forEach((mem,ci)=>{
+      const plan=hnPlanGroup(mem, {seed:CB2_SEED, lateAfter, past:PAST_PAIRS});
+      if(!plan.length) return;
+      groups.push({name:`${ci+1}코트 · ${mem.length}명`, court:ci+1,
+        members:mem.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))});
+      plan.forEach(([t1,t2],k)=> push(k+1, ci+1, t1, t2));
     });
-
-    // 숫자조(1~) = 등급 상위 · 문자조(A~) = 하위 → A그룹은 B그룹과만 파트너
-
+    const small=Math.min.apply(null, parts.map(g=>g.length));
+    if(parts.length<courts) toast(`${n}명이면 ${parts.length}코트가 알맞아요 · 조당 4명은 넘어야 해요`);
+    else if(small<6) toast(`코트당 ${small}명이라 파트너가 한 번은 겹쳐요 · 코트를 줄이면 조합이 다양해져요`);
   } else if(mode==='monthly'){
     /* 월례대회 — 같은 '대회 조'끼리만 경기.
-       구력 등급이 아니라 지난 대회 결과로 정해진 조를 쓴다. */
+       구력 등급이 아니라 지난 대회 결과로 정해진 조를 쓴다.
+       조가 코트 수 이하면 조를 코트에 고정한다 — 조별 리그는 그게 자연스럽다. */
     const tiers={}; ps.forEach(p=>{ const t=tgOf(p.id)||'미배정'; (tiers[t]=tiers[t]||[]).push(p); });
     const order=TG_NAMES.filter(t=>tiers[t]&&tiers[t].length);
     const thin=order.filter(t=>tiers[t].length<4);
     if(!order.length){ toast('먼저 대회 조를 나눠주세요 (운영진 도구 › 월례대회 설정)'); return; }
     if(thin.length) toast(`${thin.join('·')}조가 4명 미만이라 대진에서 빠졌어요`);
-    groups=[];
-    order.forEach(t=>{
-      const g=tiers[t]; if(g.length<4) return;
-      groups.push({name:`${t}조`, tier:t, members:g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:t}))});
-      const need={}; g.forEach(p=>need[p.id]=GPP); const pc={};
-      for(let k=0;k<g.length;k++){
-        const pool=g.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||(pc[a.id]||0)-(pc[b.id]||0));
-        if(pool.length<4) break;
-        const four=pool.slice(0,4);
-        four.forEach(p=>{ need[p.id]--; pc[p.id]=(pc[p.id]||0)+1; });
-        const [t1,t2]=cb2Pairs(four,k);
-        const pos=place(t1,t2); push(pos.r,pos.c,t1,t2,`${t}조`);
-      }
+    const live=order.filter(t=>tiers[t].length>=4);
+    const pinned=live.length<=courts;                    // 조 = 코트 고정 가능?
+    groups=[]; const loose=[];
+    live.forEach((t,ti)=>{
+      const g=tiers[t];
+      groups.push({name:`${t}조`, tier:t, court:pinned?ti+1:null,
+        members:g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:t}))});
+      const plan=hnPlanGroup(g, {seed:CB2_SEED, lateAfter, past:PAST_PAIRS});
+      if(pinned) plan.forEach(([t1,t2],k)=> push(k+1, ti+1, t1, t2, `${t}조`));
+      else loose.push(...plan.map(([t1,t2])=>({t1,t2,label:`${t}조`,ids:[...t1,...t2].map(p=>p.id)})));
     });
+    if(loose.length) cbPack(loose, courts).forEach(g=>push(g.r,g.c,g.t1,g.t2,g.label));
   } else if(mode==='gender'){
-    // 성비 대진 — 전원 정확히 4게임 보장 · 남 남복3+혼복1 / 여 혼복3+여복1 지향
+    /* 성비 대진 — 여성 혼복 3 + 여복 1 을 경기 수 산수로 먼저 확정하고,
+       그 틀 안에서 파트너·상대가 겹치지 않게 채운다. */
     const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
-    if(M.length+F.length<4){ toast('4명 이상이 필요해요'); return; }
-    /* 혼복은 한 코트에 여성 2명이 필요하다. 1명이면 그 사람이 어느 게임에도
-       못 들어가 혼자 남는다 — 아예 만들지 않는다. */
     if(F.length<2){ toast(`성비 대진은 여성 2명부터예요 · 지금 ${F.length}명이에요`); return; }
     if(M.length<2){ toast(`성비 대진은 남성 2명부터예요 · 지금 ${M.length}명이에요`); return; }
-    if(F.length<4) toast(`여성 ${F.length}명 — 여복 없이 혼복으로 채웠어요`);
-    const need={}, mq={}, wq={};
-    M.forEach(p=>{ need[p.id]=GPP; mq[p.id]=1; });          // 남: 혼복 1회 목표
-    F.forEach(p=>{ need[p.id]=GPP; wq[p.id]=3; });          // 여: 혼복 3회 목표
-    const total=ps.length;                                  // 총 게임 = 인원수 (4슬롯 × N게임 = 4N)
-    for(let gi2=0; gi2<total; gi2++){
-      const sM=M.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||mq[b.id]-mq[a.id]);
-      const sF=F.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]||wq[b.id]-wq[a.id]);
-      let four=null, label='';
-      const mixM=sM.filter(p=>mq[p.id]>0), mixF=sF.filter(p=>wq[p.id]>0);
-      if(mixM.length>=2 && mixF.length>=2){
-        const m=mixM.slice(0,2), f=mixF.slice(0,2);
-        four=[m[0],f[0],m[1],f[1]]; label='혼복';
-        m.forEach(p=>mq[p.id]--); f.forEach(p=>wq[p.id]--);
-      } else if(sM.length>=4){ four=sM.slice(0,4); label='남복'; }
-      else if(sF.length>=4){ four=sF.slice(0,4); label='여복'; }
-      else {
-        const all=ps.filter(p=>need[p.id]>0).sort((a,b)=>need[b.id]-need[a.id]);
-        if(all.length<4) break;
-        four=all.slice(0,4); label=cb2Label([four[0],four[1]],[four[2],four[3]]);
-      }
-      four.forEach(p=>need[p.id]--);
-      const t1=label==='혼복'?[four[0],four[1]]:[four[0],four[3]];
-      const t2=label==='혼복'?[four[2],four[3]]:[four[1],four[2]];
-      const pos=place(t1,t2); push(pos.r,pos.c,t1,t2,label);
-    }
+    const perR2=Math.max(1,Math.min(courts,Math.floor(ps.length/4)));
+    const plan=cbGenderPlan(F, M, PAST_PAIRS, CB2_SEED, lateAfter*perR2);
+    if(!plan.length){ toast('성비 대진을 만들지 못했어요 · 남녀 인원을 확인해 주세요'); return; }
+    cbPack(plan.map(g=>({...g, ids:[...g.t1,...g.t2].map(p=>p.id),
+        minR:[...g.t1,...g.t2].some(p=>p.late)?lateAfter+1:1 })), courts)
+      .forEach(g=>push(g.r,g.c,g.t1,g.t2,g.label));
+    const mix=cbGenderMix(F.length, M.length);
+    if(!mix.Y) toast(`여성 ${F.length}명 — 여복 없이 혼복으로 채웠어요`);
   } else if(mode==='cheongbaek'){
     if(sel.length%2){ toast('청백전은 짝수 인원이어야 해요'); return; }
     if(sel.length<8){ toast('청백전은 8명 이상이 좋아요'); return; }
+    /* 스네이크로 전력을 맞추되, 남녀를 따로 스네이크해야 한 팀에 여성이 몰리지 않는다.
+       예전엔 등급순 한 줄만 스네이크해서 청팀 여성 6·백팀 여성 2 같은 편성이 나왔다. */
     const blue=[], white=[];
-    ps.forEach((p,i)=>{ ((i%4===0||i%4===3)?blue:white).push(p); });   // 스네이크 = 전력 균형
-    captains={ blue:blue[Math.floor(Math.random()*blue.length)], white:white[Math.floor(Math.random()*white.length)] };
+    const snake4=list=>list.forEach((p,i)=>{ ((i%4===0||i%4===3)?blue:white).push(p); });
+    snake4(ps.filter(p=>!isF(p))); snake4(ps.filter(isF));
+    while(Math.abs(blue.length-white.length)>1){         // 인원이 어긋나면 한 명 옮긴다
+      const from=blue.length>white.length?blue:white, to=from===blue?white:blue;
+      to.push(from.pop());
+    }
+    const crnd=_rng((CB2_SEED)*577+ps.length);
+    captains={ blue:blue[Math.floor(crnd()*blue.length)], white:white[Math.floor(crnd()*white.length)] };
     groups=[{name:'청팀', side:'blue', members:blue.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))},
             {name:'백팀', side:'white', members:white.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))}];
     // 게임은 만들지 않는다 — 양 팀 캡틴이 오더 시트를 작성하면 그때 생성
   } else {
-    // 일반: 1인 4경기가 되도록 라운드를 자동 계산 · 등급 인접 + 휴식 순환
-    const perR=Math.min(courts*4, Math.floor(ps.length/4)*4);
-    if(!perR){ toast('코트를 줄이거나 인원을 늘려주세요'); return; }
-    const rounds=Math.max(GPP, Math.ceil(ps.length*GPP/perR));
-    let cursor=0;
-    for(let r=0;r<rounds;r++){
-      const pool=ps.filter(p=>!p.late||r+1>=lateAfter);
-      if(pool.length<4) continue;
-      const act=[]; for(let i=0;i<pool.length&&act.length<Math.min(perR,Math.floor(pool.length/4)*4);i++) act.push(pool[(cursor+i)%pool.length]);
-      cursor=(cursor+act.length)%Math.max(1,pool.length);
-      act.sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0)));
-      for(let c=0;c<act.length/4;c++){
-        const four=act.slice(c*4,c*4+4);
-        // 세 가지 짝 조합 중 과거에 덜 만난 쪽을 고른다
-        const opts=[[[four[0],four[1]],[four[2],four[3]]],
-                    [[four[0],four[2]],[four[1],four[3]]],
-                    [[four[0],four[3]],[four[1],four[2]]]];
-        opts.sort((x,y)=>(pairCost(x[0][0],x[0][1])+pairCost(x[1][0],x[1][1]))
-                        -(pairCost(y[0][0],y[0][1])+pairCost(y[1][0],y[1][1])));
-        const [t1,t2]=opts[0];
-        push(r+1,c+1,t1,t2);
-      }
-    }
-    // 4경기 미만인 사람 보정: 마지막 라운드 뒤에 추가 라운드로 채운다
-    const cnt={}; games.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1));
-    let guard=0, rr=Math.max(...games.map(g=>g.r),0);
-    while(ps.some(p=>(cnt[p.id]||0)<GPP) && guard++<12){
-      const short=ps.filter(p=>(cnt[p.id]||0)<GPP).sort((a,b)=>(cnt[a.id]||0)-(cnt[b.id]||0));
-      if(short.length<4) break;
-      rr++;
-      for(let c=0;c<courts&&short.length>=(c+1)*4;c++){
-        const four=short.slice(c*4,c*4+4);
-        const [t1,t2]=cb2Pairs(four,rr+c);
-        push(rr,c+1,t1,t2);
-        four.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);
-      }
-    }
+    /* 일반 — 등급이 붙어 있는 4명끼리, 전원 정확히 4경기.
+       예전엔 '명단을 창처럼 잘라 등급순 4명씩' 넣는 방식이라, 창이 한 바퀴
+       돌면 같은 4명이 그대로 다시 묶였다(18명 3코트면 4·5·6라운드가
+       1·2·3라운드의 복사본). 이제는 파트너·상대 중복을 비용으로 보고 고른다. */
+    if(ps.length<4){ toast('코트를 줄이거나 인원을 늘려주세요'); return; }
+    const perR=Math.max(1,Math.min(courts,Math.floor(ps.length/4)));
+    const plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:lateAfter*perR,
+      past:PAST_PAIRS, style:'level', budget:550});
+    if(!plan.length){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
+    cbPack(plan.map(([t1,t2])=>({t1,t2,ids:[...t1,...t2].map(p=>p.id),
+        minR:[...t1,...t2].some(p=>p.late)?lateAfter+1:1 })), courts)
+      .forEach(g=>push(g.r,g.c,g.t1,g.t2));
   }
   if(!games.length && mode!=='cheongbaek'){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
   games.sort((a,b)=>a.r-b.r||a.c-b.c);
@@ -12342,7 +12651,12 @@ async function cb2Gen(mode){
   const data={date:new Date().toISOString().slice(0,10), courts, rounds, mode, gpp:GPP,
     made_by:state.userName, games, captains,
     orders: mode==='cheongbaek' ? {blue:null, white:null} : null,
-    groups: groups?groups.map(g=>g.map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}))):null,
+    /* 조는 배열([선수…])일 수도, 이름이 붙은 객체({name, members})일 수도 있다.
+       예전엔 배열만 가정해 한울·월례대회에서 발행이 통째로 터졌다. */
+    groups: groups?groups.map(g=>{
+      const mem=(Array.isArray(g)?g:(g.members||[])).map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}));
+      return Array.isArray(g)?mem:{...g, members:mem};
+    }):null,
     late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
     guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
   const nm={hanul:'한울', gender:'성비', cheongbaek:'청백전', monthly:'월례대회'}[mode]||'일반';
@@ -12396,7 +12710,7 @@ function cb2Groups(){
   if(!CB2||!CB2.groups){ toast('한울 대진에서만 볼 수 있어요'); return; }
   const cols=['#efeafc','#e6f8f0','#fdf3dd'];
   let h=`<div class="om-detail"><div class="sh-top"><h3>${CB2.mode==='hanul'?'한울 조 명단':'조 명단'}</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
-    <div class="sd">${CB2.mode==='hanul'?'한울 AB · 한 시트 16명 · 코트는 동시 진행용':'조 편성'}</div>`;
+    <div class="sd">${CB2.mode==='hanul'?'조는 배정된 코트에 고정돼요 · 하루 종일 코트를 옮기지 않아요':'조 편성'}</div>`;
   CB2.groups.forEach((g,i)=>{
     const mem=Array.isArray(g)?g:(g.members||[]);
     const gname=Array.isArray(g)?`코트 ${i+1}`:(g.name||`${i+1}조`);
@@ -13272,7 +13586,7 @@ function drawPreview(){
       <button class="btn" style="flex:1.4" onclick="cbPublish()">이대로 발행</button></div></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function cbReshuffle(){ const m=CB2_DRAFT.mode; CB2_DRAFT=null; cb2Gen(m); }
+function cbReshuffle(){ const m=CB2_DRAFT.mode; CB2_DRAFT=null; CB2_SEED++; cb2Gen(m); }
 async function cbPublish(){
   const {data, nm}=CB2_DRAFT; CB2_DRAFT=null;
   data.sessionStart=Date.now();
@@ -13616,7 +13930,8 @@ function drawPastMeetings(){
       gs.forEach(g=>{
         /* 이름 하나하나가 눌린다 — 팀을 통째로 묶으면 누구를 보려는지 알 수 없다 */
         const nm=arr=>(arr||[]).map(p=>p&&p.name
-          ? (p.id ? `<span onclick="event.stopPropagation();openClubMember(${'$'}{jsArg(p.id)},${'$'}{jsArg(p.name)})" style="cursor:pointer">${'$'}{esc(p.name)}</span>`
+          ? (p.id ? '<span onclick="event.stopPropagation();openClubMember('
+                    + jsArg(p.id) + ',' + jsArg(p.name) + ')" style="cursor:pointer">' + esc(p.name) + '</span>'
                   : esc(p.name))
           : '').filter(Boolean).join(' · ');
         h+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid #faf8f4">
@@ -14839,8 +15154,15 @@ function openOmDetail(id){
         + omGradeMixHTML(ps);
     })()}
     ${m.note?`<div class="ch">안내</div><div style="font-size:14px;color:#4a463f;font-weight:500;line-height:1.6;padding:2px 2px 12px;white-space:pre-wrap">${esc(m.note)}</div>`:''}`;
+  if(omLateWindow(m) && (m.joined||isMgr)) h+=omLateBox(m);
   // ── 액션 ──
   const acts=[];
+  if(m.joined && !isMgr && omLateWindow(m)){
+    const mine=omLateOf(m.my_late);
+    acts.push(mine
+      ? `<button class="btn ghost" onclick="openOmLate(${m.id})">늦어요 · ${mine.min}분 뒤 도착으로 알림 보냄 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 변경</span></button>`
+      : `<button class="btn ghost" onclick="openOmLate(${m.id})">늦을 것 같아요 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 매니저에게 알리기</span></button>`);
+  }
   if(!closed&&!m.is_host&&!m.joined&&!m.full) acts.push(`<button class="btn" onclick="joinMatch(${m.id});closeOv()">신청하기${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</button>`);
   if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소</button>
     <div class="note" style="text-align:center;cursor:pointer" onclick="openRefundPolicy()">취소/환불 정책 보기 ›</div>`);
@@ -15031,29 +15353,124 @@ function omMixSplit(four){
   opts.forEach(o=>o.gap=Math.abs(o.t1[0].str+o.t1[1].str-o.t2[0].str-o.t2[1].str));
   return opts.sort((a,b)=>a.gap-b.gap)[0];
 }
+/* ═══ 늦어요 알림 ═══
+   오픈매치는 늦참을 '대진에 미리 반영'하지 않는다. 모르는 사람끼리 모이는 자리라
+   선언한 시간이 안 지켜지고, 대관 시간 때문에 1인 경기 수도 이미 빠듯해서
+   앞 라운드를 비워두면 정시에 온 사람이 손해를 본다.
+   대신 늦는 사람이 매니저에게 바로 알리고, 매니저가 현장에서 순서를 조정한다. */
+const OM_LATE_OPTS=[10,20,30,40];
+function omLateWindow(m){                                  // 알림을 띄울 시간대인가
+  const st=Date.parse(String(m.start_at||'').slice(0,16)+':00+09:00');
+  const en=Date.parse(String(m.end_at||'').slice(0,16)+':00+09:00');
+  const now=Date.now();
+  if(isNaN(st)) return false;
+  return now > st-90*60000 && (isNaN(en) ? now < st+4*3600e3 : now < en);
+}
+/* 서버는 eta 를 ms 로, 분을 minutes 로 준다. 낙관적 갱신으로 만든 로컬 값과
+   모양이 달라서 여기서 한 번 맞춰 쓴다. */
+function omLateOf(x){
+  if(!x) return null;
+  const eta = typeof x.eta==='number' ? x.eta : Date.parse(x.eta||'');
+  return { min: x.min!=null?x.min:x.minutes, eta: isNaN(eta)?null:eta,
+           name: x.name||'', user_id: x.user_id };
+}
+function omLateLeft(x){                                    // 도착까지 남은 분
+  const v=omLateOf(x); if(!v||v.eta==null) return null;
+  return Math.round((v.eta-Date.now())/60000);
+}
+function omLateLine(x){
+  const v=omLateOf(x), left=omLateLeft(x);
+  if(left==null) return `${v.min}분 뒤 도착`;
+  const hhmm=new Date(v.eta).toTimeString().slice(0,5);
+  return left>0 ? `${hhmm} 도착 예정 · ${left}분 남음`
+                : `${hhmm} 도착 예정 · ${-left}분 지났어요`;
+}
+function openOmLate(id){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
+  const mine=omLateOf(m.my_late);
+  let h=`<div class="om-detail"><div class="sh-top"><h3>늦어요</h3><div class="cl" role="button" tabindex="0" onclick="openOmDetail(${id})">×</div></div>
+    <div class="sd">매니저에게 바로 알림이 가요 · 도착 순서에 맞춰 경기를 조정해 줘요</div>`;
+  if(mine) h+=`<div style="background:#fdf2dd;border-radius:13px;padding:12px 14px;margin-top:12px;font-size:13px;font-weight:500;color:#8a6a1f">
+    이미 <b>${mine.min}분 뒤 도착</b>으로 알렸어요 · ${esc(omLateLine(mine))}</div>`;
+  h+=`<div class="ch" style="margin-top:14px">얼마나 늦으세요?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+      ${OM_LATE_OPTS.map(v=>`<button class="btn ${mine&&mine.min===v?'':'ghost'}" onclick="omSendLate(${id},${v})">${v}분 뒤 도착</button>`).join('')}
+    </div>`;
+  if(mine) h+=`<button class="btn ghost" style="margin-top:10px" onclick="omArrived(${id})">도착했어요 · 알림 내리기</button>`;
+  h+=`<div class="note" style="text-align:left;margin-top:12px">오픈매치는 늦참을 대진에 미리 반영하지 않아요.
+    대진은 정시 기준으로 짜여 있고, 매니저가 도착에 맞춰 경기 순서를 조정해요.</div></div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+async function omSendLate(id, min){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
+  const eta=new Date(Date.now()+min*60000).toISOString();
+  const me=(state.serverUser||{});
+  m.my_late={min, eta};                                    // 화면은 먼저 반영한다
+  m.lates=(m.lates||[]).filter(x=>String(x.user_id)!==String(me.id));
+  m.lates.push({user_id:me.id, name:me.name||'나', min, eta});
+  try{
+    const r=await api(`/open-matches/${id}/late`,{method:'POST',body:JSON.stringify({minutes:min})});
+    if(r&&r.lates){ m.lates=r.lates; m.my_late=r.lates.find(x=>String(x.user_id)===String(me.id))||m.my_late; }
+  }catch(e){
+    // 전용 알림이 아직 없으면 댓글로라도 매니저에게 남긴다
+    try{ await api(`/open-matches/${id}/comments`,{method:'POST',
+      body:JSON.stringify({body:`[늦어요] ${min}분 뒤 도착 예정이에요`})}); }catch(e2){}
+  }
+  toast(`매니저에게 ${min}분 뒤 도착으로 알렸어요`);
+  openOmDetail(id);
+}
+async function omArrived(id){
+  const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
+  const me=(state.serverUser||{});
+  m.my_late=null;
+  m.lates=(m.lates||[]).filter(x=>String(x.user_id)!==String(me.id));
+  try{ const r=await api(`/open-matches/${id}/late`,{method:'DELETE'}); if(r&&r.lates) m.lates=r.lates; }catch(e){}
+  toast('도착 알림을 내렸어요');
+  openOmDetail(id);
+}
+/* 매니저·참가자 모두에게 보이는 '늦는 사람' 카드 */
+function omLateBox(m){
+  const lates=(m.lates||[]).filter(x=>!x.arrived);
+  if(!lates.length) return '';
+  return `<div style="background:#fdf2dd;border-radius:14px;padding:12px 14px;margin:12px 0">
+    <div style="font-size:12px;font-weight:600;color:#8a6a1f;margin-bottom:7px">늦는 사람 ${lates.length}명</div>
+    ${lates.slice().sort((a,b)=>(omLateLeft(a)||0)-(omLateLeft(b)||0)).map(x=>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;font-weight:500">
+        <span>${esc(x.name||'')}</span>
+        <span style="font-size:11.5px;color:#8a6a1f;font-weight:500">${esc(omLateLine(x))}</span></div>`).join('')}
+    <div style="font-size:11px;color:#a5896a;font-weight:500;margin-top:6px;line-height:1.5">대진은 정시 기준이에요 · 도착 전이면 그 경기를 건너뛰고 다음 경기를 먼저 시작하세요</div>
+  </div>`;
+}
 function omMakeBracket(id){
   const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(!m) return;
   const players=omPlayers(m.players||[]);
   const courts=Math.max(1, +m.courts || Math.max(1, Math.round((m.cap||12)/6)));
-  if(players.length < courts*4){
-    toast(`${courts}코트를 채우려면 ${courts*4}명이 필요해요 · 지금 ${players.length}명`); return; }
-  const rot=omBuildRotation(players, courts);
+  if(players.length < 4){ toast(`대진은 4명부터예요 · 지금 ${players.length}명`); return; }
+  /* 대관 시간 안에 돌릴 수 있는 라운드 수 → 1인 경기 수 */
+  const maxRounds=omRoundsMax(m.start_at, m.end_at);
+  if(players.length < courts*4)
+    toast(`${courts}코트를 다 채우려면 ${courts*4}명이 필요해요 · 가능한 코트만 쓸게요`);
+  const rot=omBuildRotation(players, courts, null, maxRounds);
   if(!rot){ toast('대진을 만들지 못했어요 · 인원을 확인해 주세요'); return; }
+  const useC=rot.stats.courtsUsed;
 
   // 코트별 라운드 배열로 변환 — 화면(ombFlat)이 기대하는 모양
   const P={}; players.forEach(p=>P[p.id]=p);          // 성별·전력값을 다시 붙이기 위한 색인
   const full = t => (t||[]).map(x=>P[x.id]||x);
   const byCourt=[];
-  for(let c=0;c<courts;c++) byCourt.push({no:c+1, rounds:[]});
-  (rot.rounds||[]).forEach(round=>{
+  for(let c=0;c<useC;c++) byCourt.push({no:c+1, rounds:[]});
+  (rot.rounds||[]).forEach((round, ri)=>{
     (round.courts||[]).forEach((sp, ci)=>{
       const t1f=full(sp.t1), t2f=full(sp.t2), four=[...t1f,...t2f];
       const label=omLabelOf(four);
       let t1=t1f, t2=t2f;
       if(label==='혼복'){ const mx=omMixSplit(four); if(mx){ t1=mx.t1; t2=mx.t2; } }
-      const slot=byCourt[ci % courts];
-      slot.rounds.push({ a:t1.map(p=>p.name), b:t2.map(p=>p.name), label,
-        kind:round.name||'', ga:omTeamGrade(t1), gb:omTeamGrade(t2), bonus:!!round.isBonus });
+      const slot=byCourt[ci % useC];
+      /* 라운드 번호를 같이 실어야 한다 — 코트마다 경기 수가 다를 수 있어서
+         '배열 순번 = 라운드'로 읽으면 마지막 라운드에서 어긋난다 */
+      slot.rounds.push({ r:ri+1, a:t1.map(p=>p.name), b:t2.map(p=>p.name), label,
+        kind:round.name||'', ga:omTeamGrade(t1), gb:omTeamGrade(t2) });
     });
   });
 
@@ -15062,11 +15479,17 @@ function omMakeBracket(id){
   const rest=players.filter(p=>!played[p.name]).map(p=>p.name);
   const per=Math.min(...Object.values(played).filter(v=>v>0)) || 0;
 
-  const bracket={ courts:byCourt, rest, gameMin:OM_GAME_MIN,
-    made_by:(state.serverUser||{}).name||'',
+  const bracket={ courts:byCourt, rest, gameMin:OM_GAME_MIN, gpp:rot.stats.gpp,
+    rounds:rot.rounds.length, made_by:(state.serverUser||{}).name||'',
     at:new Date().toISOString().slice(0,16).replace('T',' ') };
+  const mins=rot.rounds.length*OM_GAME_MIN;
   api(`/open-matches/${id}/bracket`,{method:'POST',body:JSON.stringify({bracket})})
-    .then(()=>{ toast(`대진을 저장했어요 · ${courts}코트 · 1인 ${per}게임`); omReload();
+    .then(()=>{
+      const pMax=rot.stats.gppMax, pTxt=(per===pMax?`${per}`:`${per}~${pMax}`);
+      toast(pMax<4
+        ? `대관 ${maxRounds*OM_GAME_MIN}분에 맞춰 1인 ${pTxt}게임으로 짰어요 · ${useC}코트 · ${rot.rounds.length}라운드(약 ${mins}분)`
+        : `대진을 저장했어요 · ${useC}코트 · 1인 ${pTxt}게임 · 약 ${mins}분`);
+      omReload();
       setTimeout(()=>{ const mm=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id); if(mm){ mm.bracket=bracket; openOmBracket(id); } },300); })
     .catch(()=>toast('저장하지 못했어요'));
 }
@@ -15082,7 +15505,7 @@ function ombFlat(){                                  // 코트·라운드 → �
   const out=[];
   (OMB.bracket.courts||[]).forEach(ct=>{
     const rounds=ct.rounds||(ct.a?[{a:ct.a,b:ct.b}]:[]);
-    rounds.forEach((r,ri)=>out.push({c:ct.no, r:ri+1, label:r.label||ct.label||'', kind:r.kind||'',
+    rounds.forEach((r,ri)=>out.push({c:ct.no, r:(r.r!=null?r.r:ri+1), label:r.label||ct.label||'', kind:r.kind||'',
       a:r.a||[], b:r.b||[], ga:r.ga||null, gb:r.gb||null, bonus:!!r.bonus,
       sa:(r.sa!=null?r.sa:null), sb:(r.sb!=null?r.sb:null),
       startedAt:r.startedAt||null, endedAt:r.endedAt||null, _ct:ct, _ri:ri}));
@@ -15142,7 +15565,7 @@ function drawOmb(){
   const usedPct=(!isNaN(st)&&!isNaN(en)&&en>st)?Math.max(0,Math.min(100,Math.round((now-st)/(en-st)*100))):0;
   const doneN=gs.filter(done).length;
   const durs=gs.filter(g=>done(g)&&g.startedAt&&g.at).map(g=>(g.at-g.startedAt)/60000).filter(v=>v>0&&v<120);
-  const avg=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):18;
+  const avg=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):OM_GAME_MIN;   // 실측이 없으면 규정 시간(25분)으로 잡는다
   const etaMin=gs.length>doneN?Math.round((gs.length-doneN)/usable*avg):0;
   const over=leftMin!=null && etaMin>leftMin;
   const hhmm=v=>esc(String(v||'').slice(11,16));
@@ -15158,6 +15581,7 @@ function drawOmb(){
     <div class="rtbar"><i style="width:${usedPct}%"></i></div>
     <div class="sub"><span>${hhmm(m.start_at)} ~ ${hhmm(m.end_at)} · 게임당 ${OM_GAME_MIN}분</span>
       <span>${etaMin?`남은 경기 약 ${etaMin}분`:'모든 경기 완료'}</span></div></div>`;
+  h+=omLateBox(m);
   if(over && isMgr) h+=`<div style="display:flex;align-items:center;gap:9px;background:#fdeee6;border-radius:12px;padding:11px 13px;margin-top:8px">
     <span style="font-size:11.5px;font-weight:600;color:var(--coral-d);flex:1">시간 안에 못 끝낼 것 같아요 · 남은 경기를 줄이거나 서둘러 주세요</span></div>`;
 
