@@ -6686,14 +6686,30 @@ try {
 const DUEL_PLACE = 5;                      // 배치 경기 수
 const GRADE_MMR = { SS: 1300, S: 1200, A: 1100, B: 1000, C: 900 };
 
+/* 등급(grade)은 users 가 아니라 club_members 에 있다.
+   여러 클럽에 속해 있으면 가장 높은 등급을 쓴다 — 실력은 하나뿐이니까. */
+const GRADE_ORDER = ['SS', 'S', 'A', 'B', 'C'];
+function gradeOfUser(uid) {
+  let rows = [];
+  try { rows = db.prepare('SELECT grade FROM club_members WHERE user_id=? AND grade IS NOT NULL').all(uid); }
+  catch (e) { return ''; }
+  let best = '';
+  rows.forEach(r => {
+    const g = String(r.grade || '').replace(/[0-9]/g, '').toUpperCase();
+    if (!GRADE_ORDER.includes(g)) return;
+    if (!best || GRADE_ORDER.indexOf(g) < GRADE_ORDER.indexOf(best)) best = g;
+  });
+  return best;
+}
 /* 구력 등급으로 시작 MMR 을 정한다. 등급이 없으면 B(1000) */
 function seedMMR(u) {
-  const g = String(u && u.grade || '').replace(/[0-9]/g, '').toUpperCase();
+  const g = (u && u.grade) || gradeOfUser(u && u.id);
   return GRADE_MMR[g] || 1000;
 }
 function duelUser(uid) {
-  const u = db.prepare('SELECT id,name,gender,region,mmr,mmr_games,duel_mixed,duel_open_at,grade FROM users WHERE id=?').get(uid);
+  const u = db.prepare('SELECT id,name,gender,region,mmr,mmr_games,duel_open_at FROM users WHERE id=?').get(uid);
   if (!u) return null;
+  u.grade = gradeOfUser(uid);
   if (u.mmr == null) {
     u.mmr = seedMMR(u);
     try { db.prepare('UPDATE users SET mmr=? WHERE id=?').run(u.mmr, uid); } catch (e) {}
@@ -6730,12 +6746,14 @@ app.get('/duel/candidates', auth, (req, res) => {
   const me = duelUser(req.uid);
   if (!me) return res.status(404).json({ error: 'no_user' });
   const w = duelWindow(me.duel_open_at);
-  const rows = db.prepare(`SELECT id,name,gender,region,mmr,mmr_games,duel_mixed,grade
+  const rows = db.prepare(`SELECT id,name,gender,region,mmr,mmr_games
     FROM users WHERE id<>? AND duel_open_at IS NOT NULL AND suspended IS NOT 1`).all(req.uid);
+  rows.forEach(r => { r.grade = gradeOfUser(r.id); });
   const myCity = cityOf(me.region), myProv = provinceOf(me.region);
   const out = [];
   for (const r of rows) {
     if (r.mmr == null) r.mmr = seedMMR(r);
+    r.mmr_games = r.mmr_games || 0;
     /* 개인리그가 남자부·여자부로 나뉘므로 1:1 도 같은 성별끼리만 붙인다 */
     if (r.gender !== me.gender) continue;
     if (Math.abs((r.mmr || 1000) - me.mmr) > w.band) continue;
