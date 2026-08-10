@@ -6580,6 +6580,250 @@ app.post('/admin/venue-payouts/:id/paid', admin, (req, res) => {
   res.json({ ok: true, updated: r.changes });
 });
 
+/* ═══════════════════════════════════════════════════════════════
+   1:1 랭크 (MMR) — 상대 찾기 · 경기 · 스코어 확정
+   ───────────────────────────────────────────────────────────────
+   설계 근거
+   · 시작 MMR 은 구력 등급으로 준다. 전원 1000 에서 출발하면 초반 매칭이
+     어긋나 30경기를 뛰어도 실력과 오차가 남는다.
+   · K 는 32 고정, 30경기부터 24. 시작점이 좋으면 크게 흔들 이유가 없다.
+   · 배치(5경기) 전에는 MMR 을 공개하지 않는다. 표본이 없는 숫자다.
+   · 스코어는 '저장'과 '확정'을 나눈다. 잘못 넣으면 상대 MMR 까지 틀어진다.
+   ═══════════════════════════════════════════════════════════════ */
+
+try { db.exec('ALTER TABLE users ADD COLUMN mmr INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN mmr_games INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN duel_mixed INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN duel_open_at INTEGER'); } catch (e) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS duels (
+    id INTEGER PRIMARY KEY,
+    a_id INTEGER, b_id INTEGER, sport TEXT,
+    status TEXT,                 -- requested | accepted | scored | confirmed | declined | canceled
+    place TEXT, at TEXT,
+    sa INTEGER, sb INTEGER,
+    score_by INTEGER,            -- 스코어를 마지막으로 만진 사람
+    a_ok INTEGER DEFAULT 0, b_ok INTEGER DEFAULT 0,
+    mmr_a INTEGER, mmr_b INTEGER, d_a INTEGER, d_b INTEGER,
+    created_at INTEGER, scored_at INTEGER, confirmed_at INTEGER)`);
+} catch (e) {}
+
+const DUEL_PLACE = 5;                      // 배치 경기 수
+const GRADE_MMR = { SS: 1300, S: 1200, A: 1100, B: 1000, C: 900 };
+
+/* 구력 등급으로 시작 MMR 을 정한다. 등급이 없으면 B(1000) */
+function seedMMR(u) {
+  const g = String(u && u.grade || '').replace(/[0-9]/g, '').toUpperCase();
+  return GRADE_MMR[g] || 1000;
+}
+function duelUser(uid) {
+  const u = db.prepare('SELECT id,name,gender,region,mmr,mmr_games,duel_mixed,duel_open_at,grade FROM users WHERE id=?').get(uid);
+  if (!u) return null;
+  if (u.mmr == null) {
+    u.mmr = seedMMR(u);
+    try { db.prepare('UPDATE users SET mmr=? WHERE id=?').run(u.mmr, uid); } catch (e) {}
+  }
+  u.mmr_games = u.mmr_games || 0;
+  return u;
+}
+function kFactor(games) { return games >= 30 ? 24 : 32; }
+function expectedScore(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
+
+/* 대기 시간이 길수록 조건을 푼다. 작은 지역에서 좁게만 걸면 상대가 영영 안 나온다. */
+function duelWindow(openAt) {
+  const h = openAt ? (now() - openAt) / 3600000 : 0;
+  if (h < 24) return { band: 100, scope: 'city', label: '같은 시·군' };
+  if (h < 72) return { band: 150, scope: 'near', label: '인접 시·군' };
+  return { band: 200, scope: 'province', label: '같은 도' };
+}
+function cityOf(region) { return String(region || '').trim().split(/\s+/).slice(0, 2).join(' '); }
+function provinceOf(region) { return String(region || '').trim().split(/\s+/)[0] || ''; }
+
+/* ── 상대 찾기 열기 / 닫기 ── */
+app.post('/duel/open', auth, (req, res) => {
+  const mixed = req.body && req.body.mixed ? 1 : 0;
+  db.prepare('UPDATE users SET duel_mixed=?, duel_open_at=? WHERE id=?').run(mixed, now(), req.uid);
+  const u = duelUser(req.uid);
+  res.json({ ok: true, mmr: u.mmr, games: u.mmr_games, placing: u.mmr_games < DUEL_PLACE });
+});
+app.post('/duel/close', auth, (req, res) => {
+  db.prepare('UPDATE users SET duel_open_at=NULL WHERE id=?').run(req.uid);
+  res.json({ ok: true });
+});
+
+/* ── 후보 목록 ── */
+app.get('/duel/candidates', auth, (req, res) => {
+  const me = duelUser(req.uid);
+  if (!me) return res.status(404).json({ error: 'no_user' });
+  const w = duelWindow(me.duel_open_at);
+  const rows = db.prepare(`SELECT id,name,gender,region,mmr,mmr_games,duel_mixed,grade
+    FROM users WHERE id<>? AND duel_open_at IS NOT NULL AND suspended IS NOT 1`).all(req.uid);
+  const myCity = cityOf(me.region), myProv = provinceOf(me.region);
+  const out = [];
+  for (const r of rows) {
+    if (r.mmr == null) r.mmr = seedMMR(r);
+    /* 성별 — 양쪽 다 혼성을 열어야 섞인다 */
+    if (r.gender !== me.gender && !(me.duel_mixed && r.duel_mixed)) continue;
+    if (Math.abs((r.mmr || 1000) - me.mmr) > w.band) continue;
+    const rc = cityOf(r.region), rp = provinceOf(r.region);
+    let scope = null;
+    if (rc && rc === myCity) scope = 'city';
+    else if (rp && rp === myProv) scope = 'near';
+    if (w.scope === 'city' && scope !== 'city') continue;
+    if (w.scope === 'near' && !scope) continue;
+    if (w.scope === 'province' && rp !== myProv && myProv) continue;
+    out.push({
+      id: r.id, name: r.name, region: r.region, grade: r.grade,
+      mmr: r.mmr_games >= DUEL_PLACE ? r.mmr : null,     // 배치 중이면 숨긴다
+      games: r.mmr_games || 0, placing: (r.mmr_games || 0) < DUEL_PLACE,
+      gap: Math.abs(r.mmr - me.mmr),
+    });
+  }
+  out.sort((a, b) => a.gap - b.gap);
+  res.json({
+    me: { mmr: me.mmr_games >= DUEL_PLACE ? me.mmr : null, games: me.mmr_games,
+          placing: me.mmr_games < DUEL_PLACE, place_n: DUEL_PLACE,
+          open: !!me.duel_open_at, mixed: !!me.duel_mixed },
+    window: { band: w.band, label: w.label, low: me.mmr - w.band, high: me.mmr + w.band },
+    list: out.slice(0, 40),
+  });
+});
+
+/* ── 신청 · 수락 ── */
+app.post('/duel/request', auth, (req, res) => {
+  const opp = +(req.body && req.body.opponent_id || 0);
+  if (!opp || opp === req.uid) return res.status(400).json({ error: 'bad_opponent' });
+  const dup = db.prepare(`SELECT id FROM duels WHERE status IN ('requested','accepted','scored')
+    AND ((a_id=? AND b_id=?) OR (a_id=? AND b_id=?))`).get(req.uid, opp, opp, req.uid);
+  if (dup) return res.status(409).json({ error: 'already', id: dup.id });
+  const r = db.prepare(`INSERT INTO duels (a_id,b_id,sport,status,created_at) VALUES (?,?,?,'requested',?)`)
+    .run(req.uid, opp, String(req.body.sport || 'tennis'), now());
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+app.post('/duel/:id/accept', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status !== 'requested') return res.status(409).json({ error: 'bad_status' });
+  db.prepare("UPDATE duels SET status='accepted' WHERE id=?").run(d.id);
+  res.json({ ok: true });
+});
+app.post('/duel/:id/decline', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status === 'confirmed') return res.status(409).json({ error: 'already_confirmed' });
+  db.prepare("UPDATE duels SET status='declined' WHERE id=?").run(d.id);
+  res.json({ ok: true });
+});
+
+/* ── 코트·일시 — 제휴 구장이 아니어도 직접 적을 수 있다 ── */
+app.patch('/duel/:id/plan', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status === 'confirmed') return res.status(409).json({ error: 'already_confirmed' });
+  db.prepare('UPDATE duels SET place=?, at=? WHERE id=?')
+    .run(String(req.body.place || '').slice(0, 60), String(req.body.at || '').slice(0, 20), d.id);
+  res.json({ ok: true });
+});
+
+/* ── 스코어 저장 — 확정 전에는 양쪽 다 고칠 수 있다 ── */
+app.patch('/duel/:id/score', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status === 'confirmed') return res.status(409).json({ error: 'already_confirmed' });
+  const sa = Math.max(0, Math.min(99, +req.body.sa | 0));
+  const sb = Math.max(0, Math.min(99, +req.body.sb | 0));
+  if (sa === sb) return res.status(400).json({ error: 'no_draw' });   // 1:1 은 무승부가 없다
+  /* 스코어가 바뀌면 양쪽 확인을 모두 취소한다 — 예전 숫자를 보고 누른 확인이 남으면 안 된다 */
+  db.prepare(`UPDATE duels SET sa=?, sb=?, score_by=?, status='scored',
+    a_ok=?, b_ok=?, scored_at=? WHERE id=?`)
+    .run(sa, sb, req.uid, req.uid === d.a_id ? 1 : 0, req.uid === d.b_id ? 1 : 0, now(), d.id);
+  res.json({ ok: true });
+});
+
+/* ── 확정 — 양쪽이 누르면 MMR 반영 ── */
+function applyDuel(d) {
+  const A = duelUser(d.a_id), B = duelUser(d.b_id);
+  if (!A || !B) return null;
+  const ea = expectedScore(A.mmr, B.mmr);
+  const sA = d.sa > d.sb ? 1 : 0;
+  const dA = Math.round(kFactor(A.mmr_games) * (sA - ea));
+  const dB = Math.round(kFactor(B.mmr_games) * ((1 - sA) - (1 - ea)));
+  db.prepare('UPDATE users SET mmr=?, mmr_games=? WHERE id=?').run(A.mmr + dA, A.mmr_games + 1, A.id);
+  db.prepare('UPDATE users SET mmr=?, mmr_games=? WHERE id=?').run(B.mmr + dB, B.mmr_games + 1, B.id);
+  db.prepare(`UPDATE duels SET status='confirmed', confirmed_at=?,
+    mmr_a=?, mmr_b=?, d_a=?, d_b=? WHERE id=?`)
+    .run(now(), A.mmr, B.mmr, dA, dB, d.id);
+  return { dA, dB, a: A.mmr + dA, b: B.mmr + dB };
+}
+app.post('/duel/:id/confirm', auth, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d) return res.status(404).json({ error: 'no_duel' });
+  if (d.a_id !== req.uid && d.b_id !== req.uid) return res.status(403).json({ error: 'not_yours' });
+  if (d.status === 'confirmed') return res.json({ ok: true, already: true });
+  if (d.sa == null || d.sb == null) return res.status(400).json({ error: 'no_score' });
+  const col = req.uid === d.a_id ? 'a_ok' : 'b_ok';
+  db.prepare(`UPDATE duels SET ${col}=1 WHERE id=?`).run(d.id);
+  const d2 = db.prepare('SELECT * FROM duels WHERE id=?').get(d.id);
+  if (d2.a_ok && d2.b_ok) {
+    const r = applyDuel(d2);
+    return res.json({ ok: true, confirmed: true, result: r });
+  }
+  res.json({ ok: true, confirmed: false });
+});
+
+/* ── 7일이 지나면 자동 확정. 상대가 응답을 안 해 기록이 영영 안 남는 걸 막는다 ── */
+function duelAutoConfirm() {
+  const cut = now() - 7 * 86400000;
+  const rows = db.prepare(`SELECT * FROM duels WHERE status='scored' AND scored_at IS NOT NULL AND scored_at < ?`).all(cut);
+  rows.forEach(d => { try { applyDuel(d); } catch (e) {} });
+  return rows.length;
+}
+setInterval(() => { try { duelAutoConfirm(); } catch (e) {} }, 6 * 3600000);
+
+/* ── 내 경기 목록 ── */
+app.get('/duel/mine', auth, (req, res) => {
+  const rows = db.prepare(`SELECT d.*, ua.name AS a_name, ub.name AS b_name
+    FROM duels d LEFT JOIN users ua ON ua.id=d.a_id LEFT JOIN users ub ON ub.id=d.b_id
+    WHERE (d.a_id=? OR d.b_id=?) AND d.status<>'declined'
+    ORDER BY d.id DESC LIMIT 60`).all(req.uid, req.uid);
+  const me = duelUser(req.uid);
+  res.json({
+    me: { mmr: me.mmr_games >= DUEL_PLACE ? me.mmr : null, games: me.mmr_games,
+          placing: me.mmr_games < DUEL_PLACE, place_n: DUEL_PLACE, raw_mmr: me.mmr },
+    list: rows.map(d => {
+      const iamA = d.a_id === req.uid;
+      return {
+        id: d.id, status: d.status, place: d.place, at: d.at,
+        opponent: iamA ? d.b_name : d.a_name, opponent_id: iamA ? d.b_id : d.a_id,
+        my_score: iamA ? d.sa : d.sb, opp_score: iamA ? d.sb : d.sa,
+        my_ok: iamA ? !!d.a_ok : !!d.b_ok, opp_ok: iamA ? !!d.b_ok : !!d.a_ok,
+        delta: d.status === 'confirmed' ? (iamA ? d.d_a : d.d_b) : null,
+        mine: iamA,
+      };
+    }),
+  });
+});
+
+/* ── 운영진 정정 — 확정 후에도 고칠 수 있게. MMR 변동을 되돌린 뒤 다시 계산한다 ── */
+app.patch('/duel/:id/fix', admin, (req, res) => {
+  const d = db.prepare('SELECT * FROM duels WHERE id=?').get(req.params.id);
+  if (!d || d.status !== 'confirmed') return res.status(409).json({ error: 'not_confirmed' });
+  const A = duelUser(d.a_id), B = duelUser(d.b_id);
+  db.prepare('UPDATE users SET mmr=?, mmr_games=? WHERE id=?').run(A.mmr - (d.d_a || 0), Math.max(0, A.mmr_games - 1), A.id);
+  db.prepare('UPDATE users SET mmr=?, mmr_games=? WHERE id=?').run(B.mmr - (d.d_b || 0), Math.max(0, B.mmr_games - 1), B.id);
+  const sa = Math.max(0, Math.min(99, +req.body.sa | 0));
+  const sb = Math.max(0, Math.min(99, +req.body.sb | 0));
+  if (sa === sb) return res.status(400).json({ error: 'no_draw' });
+  db.prepare('UPDATE duels SET sa=?, sb=? WHERE id=?').run(sa, sb, d.id);
+  const r = applyDuel(db.prepare('SELECT * FROM duels WHERE id=?').get(d.id));
+  res.json({ ok: true, result: r });
+});
+
 // 연결된 웹 클라이언트 (public/) 서빙 — npm start 하면 http://localhost:PORT 에서 바로 동작
 app.use(express.static(new URL('./public', import.meta.url).pathname));
 // 에러는 JSON으로
