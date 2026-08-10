@@ -46,7 +46,6 @@
     input:not([type=range]):not([type=checkbox]):not([type=radio]),
     select, textarea{ font-size:16px !important; }
   }
-
 </style>
 </head>
 <body>
@@ -142,9 +141,10 @@ async function render(){
       v.innerHTML=`
       <div class="card"><b style="font-size:14px">① 매치 선택</b>
         ${rows.length? rows.map(m=>`
-        <div class="row" id="om${m.id}" style="cursor:pointer" onclick="pick(${m.id})">
-          <div style="flex:1;min-width:0"><b>${esc(m.loc||'오픈매치')}</b> ${SEL===m.id?'<span class="pill warn">선택됨</span>':''}
-            <div class="meta">#${m.id} · ${esc(m.dt||'')} · ${(m.players||[]).length}/${m.cap||0}명 · ${m.price?won(m.price):'무료'} · ${esc(m.status||'open')}</div></div></div>`).join('') : '<div class="meta">오픈매치가 없어요</div>'}
+        <div class="row" id="om${m.id}">
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="pick(${m.id})"><b>${esc(m.loc||'오픈매치')}</b> ${SEL===m.id?'<span class="pill warn">선택됨</span>':''}
+            <div class="meta">#${m.id} · ${esc(m.dt||'')} · ${(m.players||[]).length}/${m.cap||0}명 · ${m.price?won(m.price):'무료'} · ${esc(m.status||'open')}</div></div>
+          <button class="btn xs ghost" onclick="event.stopPropagation();delMatch(${m.id},'${esc(m.loc||'오픈매치')}','${esc(m.dt||'')}',${(m.players||[]).length})">삭제</button></div>`).join('') : '<div class="meta">오픈매치가 없어요</div>'}
       </div>
       <div class="card" id="botCard">
         <b style="font-size:14px">② 봇 참가자 추가</b>
@@ -636,6 +636,29 @@ async function drawUnderfilled(v){
         <button class="btn xs ghost" onclick="killMatch(${m.id},'${esc(m.loc||'매치')}',${m.have})">지금 접기</button>
       </div>`).join('') : '<div class="meta">인원 미달 매치가 없어요</div>'}
   </div>`;
+}
+/* 삭제와 '접기'는 다르다.
+   접기 = 참가자에게 환불하고 코트를 사장님께 돌려준다. 기록은 남는다.
+   삭제 = 흔적까지 지운다. 잘못 만든 매치나 테스트용에만 쓴다. */
+async function delMatch(id, loc, dt, n){
+  if(n>0 && !confirm(`${loc} · ${dt}\n\n참가자가 ${n}명 있어요.\n삭제하면 기록도 함께 사라집니다.\n(환불이 필요하면 '인원 미달' 탭에서 접기를 쓰세요)\n\n그래도 삭제할까요?`)) return;
+  if(n===0 && !confirm(`${loc} · ${dt}\n\n이 오픈매치를 삭제할까요?`)) return;
+  try{
+    await api(`/admin/open-matches/${id}`, {method:'DELETE'});
+    toast('삭제했어요'); if(SEL===id) SEL=null; render();
+  }catch(e){
+    const msg=String(e.message||'');
+    /* 정산이 끝났거나 수납액이 있으면 서버가 막는다. 이유를 그대로 보여주고 한 번 더 묻는다. */
+    if(/settled|has_payment/.test(msg)){
+      const why = /settled/.test(msg) ? '정산이 끝난 매치예요.' : '참가비가 수납된 매치예요.';
+      if(!confirm(`${why}\n\n회계 기록이 사라집니다.\n그래도 강제로 삭제할까요?`)) return;
+      try{ await api(`/admin/open-matches/${id}?force=1`, {method:'DELETE'});
+        toast('강제 삭제했어요'); if(SEL===id) SEL=null; render(); }
+      catch(e2){ toast(String(e2.message).replace(/[{}"]/g,'').slice(0,90)); }
+      return;
+    }
+    toast(msg.replace(/[{}"]/g,'').slice(0,90));
+  }
 }
 async function killMatch(id, loc, n){
   if(!confirm(`${loc}\n\n지금 접을까요?\n참가자 ${n}명에게 전액 캐시로 환불하고,\n코트는 사장님께 판매 대기로 돌려드립니다.`)) return;

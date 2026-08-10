@@ -353,7 +353,8 @@ function topBrand(right){
   $('top').innerHTML = `
     <div class="logo"><svg class="mk" viewBox="0 0 834 714" aria-label="맞수"><use href="#matsuMark"/></svg>
       <span class="wm">파트너센터</span></div>
-    ${right || `<button class="r" onclick="logout()">로그아웃</button>`}`;
+    ${right || `<button class="r" onclick="PAGE='pw';render()" style="margin-right:6px">비밀번호</button>
+      <button class="r" onclick="logout()">로그아웃</button>`}`;
 }
 function topBack(title, right){
   $('top').className = 'top sheet';
@@ -395,6 +396,7 @@ function render(){
     <button class="tb ${TAB === k && !PAGE ? 'on' : ''}" onclick="setTab('${k}')">
       <svg width="22" height="22" viewBox="0 0 24 24"><path d="${d}"/></svg>${l}</button>`).join('');
 
+  if (PAGE === 'pw') return drawPw();
   if (PAGE === 'bank') return drawBank();
   if (PAGE && PAGE.stmt) return drawStatement();
 
@@ -601,7 +603,12 @@ function drawOpen(keep){
           <div style="margin-top:4px">${stTag(s.status)}</div></div>
         ${s.status === 'open'
           ? `<button class="btn mini warn" onclick="closeSlot(${s.id})">닫기</button>`
-          : `<span class="num" style="font-size:13px;font-weight:600">${won(s.price)}</span>`}
+          : `<div style="text-align:right">
+              <span class="num" style="font-size:13px;font-weight:600">${won(s.price)}</span>
+              ${s.status === 'booked'
+                ? `<button class="btn mini warn" style="margin-top:5px;display:block"
+                     onclick="rainOff(${s.id},'${md(s.date)} ${s.start}–${s.end}')">우천 휴장</button>` : ''}
+            </div>`}
       </div>`).join('') : '<div class="empty">아직 열어둔 시간이 없어요</div>'}
   </div>`;
   if (keep) window.scrollTo(0, scroll);
@@ -694,6 +701,37 @@ async function openBank(){
   PAGE = 'bank';
   try { BANK = await api('/venue/bank'); } catch(e){ if (handle(e)) return; BANK = {}; }
   window.scrollTo(0, 0); render();
+}
+/* 비밀번호 변경 — 계정을 받은 뒤 초기 비밀번호를 바꿀 방법이 없었다 */
+async function savePw(){
+  const cur=($('pwCur')||{}).value||'', a=($('pwNew')||{}).value||'', b=($('pwNew2')||{}).value||'';
+  if(a.length<6) return toast('새 비밀번호는 6자 이상이어야 해요');
+  if(a!==b) return toast('새 비밀번호가 서로 달라요');
+  if(a===cur) return toast('지금 비밀번호와 같아요');
+  try{ await api('/venue/password',{method:'POST',body:JSON.stringify({current:cur,next:a})});
+    toast('비밀번호를 바꿨어요'); PAGE=null; render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,80)); }
+}
+/* 우천 휴장 — 실외 코트는 비가 오면 어쩔 수 없다. 전액 환불하고 자리를 닫는다 */
+async function rainOff(id, label){
+  if(!confirm(label+'\n\n우천으로 휴장할까요?\n예약하신 분께 전액 환불됩니다.')) return;
+  try{ const r=await api('/venue/slots/'+id+'/rain',{method:'POST',body:'{}'});
+    toast(r.canceled? r.canceled+'건 환불했어요' : '휴장 처리했어요'); await load(); render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,80)); }
+}
+function drawPw(){
+  var tb=$('tabbar'); if(tb) tb.style.display='none';
+  $('view').innerHTML=
+    '<div class="hd"><button class="l" onclick="PAGE=null;render()">\u2039</button><b>비밀번호 변경</b></div>'+
+    '<div class="card">'+
+      '<label class="lb">지금 비밀번호</label>'+
+      '<input id="pwCur" type="password" class="in" autocomplete="current-password">'+
+      '<label class="lb" style="margin-top:12px">새 비밀번호</label>'+
+      '<input id="pwNew" type="password" class="in" autocomplete="new-password" placeholder="6자 이상">'+
+      '<label class="lb" style="margin-top:12px">새 비밀번호 확인</label>'+
+      '<input id="pwNew2" type="password" class="in" autocomplete="new-password">'+
+      '<button class="btn coral" style="width:100%;margin-top:16px" onclick="savePw()">바꾸기</button>'+
+    '</div>';
 }
 function drawBank(){
   $('tabbar').style.display = 'none';

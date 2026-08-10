@@ -6736,7 +6736,7 @@ function renderLeague(){
   // 1:1 캐주얼 랭크(MMR) → 개인리그 언락
   { /* 리그를 상시 개방했으므로 MMR 은 잠금이 아니라 참고 지표다 */
     const unlocked=true;
-    h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;border:1px solid #e6e0f5;background:#fff" onclick="openMMR()">
+    h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;border:1px solid #e6e0f5;background:#fff" onclick="openDuelHub()">
       <div><div style="font-size:14px;font-weight:600">1:1 랭크 · <span style="color:#5b3fa8;font-weight:800;font-variant-numeric:tabular-nums">MMR ${state.mmr}</span></div><div style="font-size:12px;font-weight:500;color:var(--gray);margin-top:2px">캐주얼 1:1로 실력 가늠하기</div></div>
       <div style="color:#cdc8be;font-size:20px;line-height:1">›</div></div>`;
     if(SERVER_OK && authToken()){
@@ -14575,14 +14575,17 @@ function vnDetail(el){
       <span>내 캐시</span>
       <b style="color:${short?'#cf5418':'#1f7d4d'}">${cash.toLocaleString()}원</b></div>
     ${short?`<div class="vnwarn">캐시가 ${short.toLocaleString()}원 모자라요 ·
-      <button onclick="go('me')" style="color:#cf5418;font-weight:800;text-decoration:underline">충전하러 가기</button></div>`:''}
+      <button onclick="topUpAndReturn(${short},'venue:${s.slot_id||s.id||''}')" style="color:#cf5418;font-weight:800;text-decoration:underline">${Math.ceil(short/1000)*1000}원 충전하기</button></div>`:''}
   </div>
 
   <div class="vncard" style="background:#f7f5f0;border-style:dashed">
     <div style="font-size:13px;font-weight:800;margin-bottom:6px">이용 안내</div>
     <ul style="margin:0;padding-left:16px;font-size:12.5px;color:#6b6357;line-height:1.65">
       <li>결제는 충전해 두신 맞수 캐시에서 빠져나가요.</li>
-      <li>경기 24시간 전까지 취소하면 캐시로 전액 돌려드려요.</li>
+      <li>48시간 전까지 취소하면 전액 돌려드려요.</li>
+      <li>24~48시간 전에는 코트비만 돌려드려요 (수수료 제외).</li>
+      <li>24시간 이내에는 코트비의 절반만 돌려드려요.</li>
+      <li>비가 와서 구장이 쉬면 언제든 전액 돌려드려요.</li>
       <li>그 이후에는 취소가 어려우니 맞수로 연락 주세요.</li>
       <li>코트 상태나 편의시설은 구장에 따라 달라요.</li>
     </ul>
@@ -14645,8 +14648,52 @@ function myBookingsBlock(){
     </div>`;
   }).join('');
 }
+/* 취소 전에 얼마가 돌아오는지 먼저 보여준다.
+   눌러보고 알게 하면, 절반만 돌아온 걸 나중에 발견하고 화가 난다. */
+/* ═══ 부족분 충전 후 원래 자리로 ═══
+   "충전하러 가기"로 나갔다 오면 예약 화면이 초기화됐다. 돌아갈 곳을 주문에 실어 둔다. */
+async function topUpAndReturn(need, returnTo){
+  if(!SERVER_OK || !authToken()){ toast('로그인이 필요해요'); return; }
+  try{
+    const o=await api('/pay/order-for',{method:'POST',
+      body:JSON.stringify({need, return_to:returnTo||''})});
+    try{ localStorage.setItem('matsu_return_to', returnTo||''); }catch(e){}
+    if(CFG && CFG.toss_client_key){
+      window.open(`${API_BASE}/pay/checkout?clientKey=${encodeURIComponent(CFG.toss_client_key)}`
+        +`&amount=${o.amount}&orderId=${encodeURIComponent(o.orderId)}`
+        +`&orderName=${encodeURIComponent('맞수 캐시 충전')}`,'_blank');
+      toast(`${o.amount.toLocaleString()}원 충전 후 돌아오면 이어서 결제해요`);
+    } else {
+      toast('결제 준비 중이에요 · 내정보에서 충전해 주세요'); go('me');
+    }
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+/* 충전을 마치고 앱으로 돌아오면 원래 화면을 다시 연다 */
+function resumeAfterTopUp(){
+  let r=''; try{ r=localStorage.getItem('matsu_return_to')||''; }catch(e){}
+  if(!r) return;
+  try{ localStorage.removeItem('matsu_return_to'); }catch(e){}
+  if(r.startsWith('venue:')){
+    const sid=r.slice(6);
+    if(sid){ go('book'); setTimeout(()=>{ try{ vnOpen(+sid); }catch(e){} }, 500); }
+  } else if(r.startsWith('duel:')){
+    const id=r.slice(5);
+    go('league'); setTimeout(()=>{ try{ openDuel(+id); }catch(e){} }, 400);
+  }
+}
+window.addEventListener('focus', ()=>{ try{ resumeAfterTopUp(); }catch(e){} });
 async function cancelBooking(id){
-  if(!confirm('예약을 취소할까요?\n결제한 금액은 캐시로 전액 돌려드려요.')) return;
+  let q=null;
+  try{ q=await api(`/me/venue-bookings/${id}/cancel-quote`); }catch(e){}
+  let msg='예약을 취소할까요?';
+  if(q){
+    const lost=(q.paid||0)-(q.refund||0);
+    msg=`${q.label}\n\n결제 ${(q.paid||0).toLocaleString()}원`
+      + `\n환불 ${(q.refund||0).toLocaleString()}원`
+      + (lost>0?`\n미환급 ${lost.toLocaleString()}원`:'')
+      + `\n\n취소할까요?`;
+  }
+  if(!confirm(msg)) return;
   try{
     const d=await api(`/me/venue-bookings/${id}/cancel`,{method:'POST',body:JSON.stringify({})});
     toast(`취소했어요 · ${(d.refunded||0).toLocaleString()}원 환불`);
@@ -18305,6 +18352,298 @@ function openMatchArrange(name){ name=name||'상대'; const sp=SP();
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 // ── 1:1 M캐쉬 랭크(MMR) → 개인리그 언락 ──
+/* ═══════════ 1:1 랭크 ═══════════
+   상대 찾기 → 코트·일시 → 비용 나누기 → 스코어 저장 → 양쪽 확정 → MMR 반영
+   배치 5경기 전에는 서버가 MMR 을 null 로 내려준다. 표본이 없는 숫자는 안 보여준다. */
+let DUEL=null, DUEL_CAND=null, DUEL_ONE=null;
+
+async function loadDuel(){
+  try{ DUEL=await api('/duel/mine'); }catch(e){ DUEL={me:{},list:[]}; }
+}
+async function openDuelHub(){
+  if(!SERVER_OK||!authToken()){ toast('로그인이 필요해요'); return; }
+  document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top"><h3 class="gt4">1:1 랭크</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div></div>`;
+  document.getElementById('ov').classList.add('on');
+  await loadDuel(); drawDuelHub();
+}
+function drawDuelHub(){
+  const me=(DUEL&&DUEL.me)||{}, list=(DUEL&&DUEL.list)||[];
+  const placing=!!me.placing, done=me.games||0, need=me.place_n||5;
+  const live=list.filter(d=>['requested','accepted','scored'].includes(d.status));
+  const past=list.filter(d=>d.status==='confirmed').slice(0,10);
+
+  let h=`<div class="om-detail" id="duelhub"><div class="sh-top"><h3 class="gt4">1:1 랭크</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+
+  /* 배치 중에는 숫자 대신 진행도만 — 첫 경기에 진 걸로 실력을 판단하게 두지 않는다 */
+  h+=`<div class="rtprog" style="margin:10px 0 14px">
+    <div class="top">
+      ${placing?`<span class="n">${done}</span><span class="of">/ ${need}경기</span>
+        <span class="rt">배치 중</span>`
+       :`<span class="n">${me.mmr}</span><span class="of">MMR</span>
+         <span class="rt">${done}경기</span>`}</div>
+    <div class="rtbar"><i style="width:${placing?Math.round(done/need*100):100}%"></i></div>
+    <div class="sub"><span>${placing?'5경기를 마치면 MMR과 티어가 정해져요':'경기 결과로 오르내려요'}</span></div></div>`;
+
+  h+=`<button class="btn" onclick="openDuelFind()">상대 찾기</button>`;
+
+  if(live.length){
+    h+=`<div class="gt2" style="font-weight:600;letter-spacing:-.02em;margin:20px 2px 8px">진행 중</div>`;
+    live.forEach(d=>{ h+=duelRow(d); });
+  }
+  if(past.length){
+    h+=`<div class="gt2" style="font-weight:600;letter-spacing:-.02em;margin:20px 2px 8px">지난 경기</div>`;
+    past.forEach(d=>{ h+=duelRow(d); });
+  }
+  if(!live.length && !past.length){
+    h+=`<div class="card" style="text-align:center;padding:30px 20px;margin-top:14px">
+      <div class="gt2" style="font-weight:600">아직 경기가 없어요</div>
+      <p class="gt1 gmute" style="margin-top:6px;line-height:1.7">
+        비슷한 실력·지역인 분에게 신청해 보세요.</p></div>`;
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h;
+}
+function duelStatus(d){
+  if(d.status==='requested') return d.mine?['신청함','var(--lgray)']:['신청 받음','var(--coral-d)'];
+  if(d.status==='accepted')  return ['경기 예정','var(--coral-d)'];
+  if(d.status==='scored')    return d.my_ok?['상대 확인 대기','var(--lgray)']:['내 확인 필요','var(--coral-d)'];
+  if(d.status==='confirmed') return [(d.delta>=0?'+':'')+d.delta, d.delta>=0?'#2f9159':'#d1614f'];
+  if(d.status==='canceled')  return ['취소됨','var(--lgray)'];
+  return ['',''];
+}
+function duelRow(d){
+  const [lab,col]=duelStatus(d);
+  const sc=(d.my_score!=null&&d.opp_score!=null)?`${d.my_score} : ${d.opp_score}`:'';
+  return `<div class="mi-day" style="cursor:pointer" onclick="openDuel(${d.id})">
+    <div class="mi-dayhd" style="border-bottom:0">
+      <div style="flex:1;min-width:0">
+        <div class="mi-dayt">${esc(d.opponent||'상대')}</div>
+        <div class="mi-days">${esc(d.at||'일시 미정')}${d.place?` · ${esc(d.place)}`:''}</div></div>
+      ${sc?`<span class="cbsc done" style="margin-right:8px">${sc}</span>`:''}
+      <span class="gt1" style="font-weight:600;color:${col}">${lab}</span></div></div>`;
+}
+
+/* ── 상대 찾기 ── */
+async function openDuelFind(){
+  document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top">
+    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:21px;color:var(--lgray);margin-right:8px">‹</span>
+    <h3 class="gt4" style="flex:1">상대 찾기</h3></div>
+    <div class="card" style="text-align:center;color:var(--lgray);padding:26px">찾는 중…</div></div>`;
+  try{ await api('/duel/open',{method:'POST',body:JSON.stringify({mixed:false})}); }catch(e){}
+  try{ DUEL_CAND=await api('/duel/candidates'); }catch(e){ DUEL_CAND={list:[],me:{},window:{}}; }
+  drawDuelFind();
+}
+function drawDuelFind(){
+  const c=DUEL_CAND||{}, w=c.window||{}, me=c.me||{}, list=c.list||[];
+  let h=`<div class="om-detail"><div class="sh-top">
+    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:21px;color:var(--lgray);margin-right:8px">‹</span>
+    <h3 class="gt4" style="flex:1">상대 찾기</h3></div>
+
+    <div style="padding:12px 2px 14px;border-bottom:1px solid var(--line)">
+      <div class="gt1" style="font-weight:600">지금 조건 · ${esc(w.label||'같은 시·군')}</div>
+      <div class="gt1 gmute" style="margin-top:4px">
+        ${me.placing?'배치 중이라 비슷한 구력끼리 붙여요':`MMR ${w.low}~${w.high}`}
+        · 기다리면 범위가 넓어져요</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <div style="flex:1;min-width:0"><div class="gt1" style="font-weight:600">혼성도 괜찮아요</div>
+          <div class="gt1 gmute" style="margin-top:3px">양쪽 다 켜야 섞여요</div></div>
+        <div role="switch" aria-checked="${!!me.mixed}" tabindex="0" onclick="duelMixed(${!me.mixed})"
+          style="flex:none;width:42px;height:25px;border-radius:13px;background:${me.mixed?'var(--coral)':'#ddd7cb'};
+            position:relative;cursor:pointer;transition:.15s">
+          <div style="width:19px;height:19px;border-radius:50%;background:#fff;position:absolute;top:3px;
+            left:${me.mixed?'20px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div></div>`;
+
+  if(!list.length){
+    h+=`<div class="card" style="text-align:center;padding:32px 20px;margin-top:14px">
+      <div class="gt2" style="font-weight:600">지금은 상대가 없어요</div>
+      <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
+        상대 찾기를 열어뒀으니 그대로 두세요.<br>
+        24시간 뒤엔 인접 시·군까지, 3일 뒤엔 같은 도까지 넓어져요.</p></div>`;
+  } else {
+    list.forEach(p=>{
+      h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:1fr 60px 68px" onclick="duelRequest(${p.id},${jsArg(p.name)})">
+        <div style="min-width:0">
+          <div class="mi-nm">${esc(p.name)}</div>
+          <div class="gt1 gmute" style="margin-top:3px">${esc(p.region||'')}${p.grade?` · ${esc(p.grade)}`:''}</div></div>
+        <div class="gt1" style="text-align:center;color:var(--lgray)">${p.placing?'배치 중':'MMR '+p.mmr}</div>
+        <div style="text-align:right"><span class="gt1" style="font-weight:600;color:var(--coral-d)">신청 ›</span></div></div>`;
+    });
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h;
+}
+async function duelMixed(v){
+  try{ await api('/duel/open',{method:'POST',body:JSON.stringify({mixed:!!v})}); }catch(e){}
+  try{ DUEL_CAND=await api('/duel/candidates'); }catch(e){}
+  drawDuelFind();
+}
+async function duelRequest(uid,name){
+  if(!await appConfirm(`${name}님에게 1:1 경기를 신청할까요?`)) return;
+  try{ await api('/duel/request',{method:'POST',body:JSON.stringify({opponent_id:uid})});
+    toast(`${name}님에게 신청했어요`); await loadDuel(); drawDuelHub();
+  }catch(e){
+    if(/already/.test(String(e.message))) toast('이미 진행 중인 경기가 있어요');
+    else toast(String(e.message).slice(0,70));
+  }
+}
+
+/* ── 경기 상세 ── */
+async function openDuel(id){
+  if(!DUEL) await loadDuel();
+  DUEL_ONE=((DUEL&&DUEL.list)||[]).find(d=>d.id===id);
+  if(!DUEL_ONE){ toast('경기를 찾지 못했어요'); return; }
+  drawDuelOne();
+}
+function drawDuelOne(){
+  const d=DUEL_ONE; if(!d) return;
+  const canScore=['accepted','scored'].includes(d.status);
+  const [lab,col]=duelStatus(d);
+  let h=`<div class="om-detail"><div class="sh-top">
+    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:21px;color:var(--lgray);margin-right:8px">‹</span>
+    <h3 class="gt4" style="flex:1">${esc(d.opponent||'상대')}</h3>
+    <span class="gt1" style="font-weight:600;color:${col}">${lab}</span></div>`;
+
+  if(d.status==='requested' && !d.mine){
+    h+=`<div class="card" style="padding:18px;margin-top:12px">
+      <div class="gt2" style="font-weight:600">경기 신청이 왔어요</div>
+      <p class="gt1 gmute" style="margin-top:6px">수락하면 코트와 일시를 정할 수 있어요.</p>
+      <button class="btn" style="margin-top:14px" onclick="duelAccept(${d.id})">수락하기</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="duelCancel(${d.id})">거절</button></div>`;
+  }
+
+  if(d.status!=='requested'){
+    h+=`<div style="padding:14px 2px;border-bottom:1px solid var(--line)">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">코트 · 일시</div>
+      <div class="fld" style="margin-top:10px"><label>장소</label>
+        <input id="dPlace" maxlength="40" placeholder="예) 용인 테니스파크 2번 코트" value="${esc(d.place||'')}"></div>
+      <div class="fld"><label>일시</label>
+        <input id="dAt" type="datetime-local" value="${esc((d.at||'').slice(0,16))}"></div>
+      <div class="gt1 gmute">제휴 구장이 아니어도 직접 적으면 돼요.</div>
+      <button class="btn ghost" style="margin-top:10px" onclick="duelPlan(${d.id})">저장</button></div>`;
+
+    /* 비용 — 코트를 잡은 사람이 넣고, 상대가 절반을 보낸다 */
+    h+=`<div style="padding:16px 2px;border-bottom:1px solid var(--line)">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">코트비 나누기</div>
+      <div class="gt1 gmute" style="margin-top:5px">코트를 잡은 분이 넣으면 상대가 절반을 보내요.</div>
+      <div class="tmrow" style="margin-top:10px">
+        <div class="fld"><label>시간당 코트비</label>
+          <input id="dPer" type="number" inputmode="numeric" placeholder="28000" oninput="duelCostPreview()"></div>
+        <div class="fld"><label>이용 시간</label>
+          <input id="dHours" type="number" inputmode="decimal" step="0.5" placeholder="2" oninput="duelCostPreview()"></div></div>
+      <div class="fld"><label>캔볼값</label>
+        <input id="dBall" type="number" inputmode="numeric" placeholder="12000" oninput="duelCostPreview()"></div>
+      <div id="dCostSum" class="gt1 gmute"></div>
+      <button class="btn ghost" style="margin-top:10px" onclick="duelCost(${d.id})">비용 저장</button>
+      <button class="btn" style="margin-top:8px" onclick="duelSettle(${d.id})">내 몫 보내기</button></div>`;
+  }
+
+  if(canScore){
+    h+=`<div style="padding:16px 2px">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">스코어</div>
+      <div class="gt1 gmute" style="margin-top:5px">
+        저장하면 양쪽 다 고칠 수 있어요 · <b style="color:var(--ink);font-weight:600">둘 다 확인해야</b> MMR에 반영돼요.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <div class="fld" style="flex:1;margin:0"><label>나</label>
+          <input id="dMy" type="number" inputmode="numeric" value="${d.my_score!=null?d.my_score:''}"></div>
+        <span class="gt3" style="color:var(--lgray);padding-top:14px">:</span>
+        <div class="fld" style="flex:1;margin:0"><label>${esc(d.opponent||'상대')}</label>
+          <input id="dOpp" type="number" inputmode="numeric" value="${d.opp_score!=null?d.opp_score:''}"></div></div>
+      <button class="btn ghost" style="margin-top:12px" onclick="duelScore(${d.id})">스코어 저장</button>
+      ${d.status==='scored'?`
+        <div class="gt1 gmute" style="margin-top:12px">
+          내 확인 ${d.my_ok?'✓':'—'} · 상대 확인 ${d.opp_ok?'✓':'—'}</div>
+        ${!d.my_ok?`<button class="btn" style="margin-top:8px" onclick="duelConfirm(${d.id})">이 스코어가 맞아요</button>`:''}`:''}
+      <button class="btn ghost" style="margin-top:14px" onclick="duelCancel(${d.id})">경기 취소</button></div>`;
+  }
+  h+=`</div>`;
+  document.getElementById('sheet').innerHTML=h;
+  duelCostPreview();
+}
+function duelCostPreview(){
+  const el=document.getElementById('dCostSum'); if(!el) return;
+  const per=+((document.getElementById('dPer')||{}).value||0);
+  const hr=+((document.getElementById('dHours')||{}).value||0);
+  const ball=+((document.getElementById('dBall')||{}).value||0);
+  const total=Math.round(per*hr)+ball;
+  el.innerHTML = total>0
+    ? `합계 <b style="color:var(--ink);font-weight:600">${total.toLocaleString()}원</b> · 한 사람당 ${Math.round(total/2).toLocaleString()}원`
+    : '';
+}
+async function duelAccept(id){
+  try{ await api(`/duel/${id}/accept`,{method:'POST',body:'{}'}); toast('수락했어요');
+    await loadDuel(); openDuel(id); }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+async function duelPlan(id){
+  const place=((document.getElementById('dPlace')||{}).value||'').trim();
+  const at=((document.getElementById('dAt')||{}).value||'').trim();
+  try{ await api(`/duel/${id}/plan`,{method:'PATCH',body:JSON.stringify({place,at})});
+    toast('저장했어요'); await loadDuel(); openDuel(id); }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+async function duelCost(id){
+  const per_hour=+((document.getElementById('dPer')||{}).value||0);
+  const hours=+((document.getElementById('dHours')||{}).value||0);
+  const ball_fee=+((document.getElementById('dBall')||{}).value||0);
+  if(per_hour*hours+ball_fee<=0){ toast('금액을 넣어주세요'); return; }
+  try{ const r=await api(`/duel/${id}/cost`,{method:'PATCH',body:JSON.stringify({per_hour,hours,ball_fee})});
+    toast(`한 사람당 ${(r.half||0).toLocaleString()}원`); await loadDuel(); openDuel(id);
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+async function duelSettle(id){
+  try{ const r=await api(`/duel/${id}/settle`,{method:'POST',body:'{}'});
+    toast(`${(r.paid||0).toLocaleString()}원을 보냈어요`); await loadDuel(); openDuel(id);
+  }catch(e){
+    const m=String(e.message||'');
+    if(/not_enough_cash/.test(m)){
+      let need=0; try{ const j=m.match(/"need"\s*:\s*(\d+)/); if(j) need=+j[1]; }catch(e){}
+      if(await appConfirm('캐시가 모자라요. 충전할까요?')) topUpAndReturn(need||10000, 'duel:'+id);
+      return;
+    }
+    toast(m.slice(0,70));
+  }
+}
+async function duelScore(id){
+  const sa=+((document.getElementById('dMy')||{}).value||0);
+  const sb=+((document.getElementById('dOpp')||{}).value||0);
+  if(sa===sb){ toast('1:1은 무승부가 없어요'); return; }
+  const d=DUEL_ONE;
+  const body = d && d.mine ? {sa, sb} : {sa: sb, sb: sa};   // 서버는 A/B 기준으로 받는다
+  try{ await api(`/duel/${id}/score`,{method:'PATCH',body:JSON.stringify(body)});
+    toast('저장했어요 · 상대가 확인하면 반영돼요'); await loadDuel(); openDuel(id);
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+async function duelConfirm(id){
+  if(!await appConfirm('이 스코어로 확정할까요?\n확정 후에는 운영진만 고칠 수 있어요.')) return;
+  try{ const r=await api(`/duel/${id}/confirm`,{method:'POST',body:'{}'});
+    toast(r.confirmed?'확정했어요 · MMR에 반영됐어요':'확인했어요 · 상대를 기다려요');
+    await loadDuel(); drawDuelHub();
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
+const DUEL_REASONS=['비가 와서','코트 예약이 취소돼서','몸이 안 좋아서','일정이 안 맞아서','상대와 연락이 안 돼서'];
+/* 사유를 고르게 한다 — 상대는 왜 취소됐는지 알 권리가 있다 */
+async function duelCancel(id){
+  let h=`<div class="sh-top"><h3 class="gt4">취소 사유</h3>
+    <div class="cl" role="button" tabindex="0" onclick="openDuel(${id})">×</div></div>
+    <div class="sd">상대에게 사유가 전달돼요. 이미 보낸 코트비는 돌려드려요.</div>`;
+  DUEL_REASONS.forEach(r=>{
+    h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:1fr 20px" onclick="duelDoCancel(${id},${jsArg(r)})">
+      <div class="mi-nm">${esc(r)}</div><div style="color:#cdc8be">›</div></div>`;
+  });
+  h+=`<div class="fld" style="margin-top:14px"><label>직접 입력</label>
+      <input id="dReason" maxlength="40" placeholder="사유를 적어주세요"></div>
+    <button class="btn ghost" onclick="duelDoCancel(${id}, (document.getElementById('dReason')||{}).value||'')">이 사유로 취소</button>`;
+  document.getElementById('sheet').innerHTML=h;
+}
+async function duelDoCancel(id, reason){
+  reason=String(reason||'').trim();
+  if(!reason){ toast('사유를 알려주세요'); return; }
+  try{ const r=await api(`/duel/${id}/cancel`,{method:'POST',body:JSON.stringify({reason})});
+    toast(r.refunded?'취소했어요 · 코트비를 돌려드렸어요':'취소했어요');
+    await loadDuel(); drawDuelHub();
+  }catch(e){ toast(String(e.message).slice(0,70)); }
+}
 function openMMR(){
   const target=1300, pct=Math.min(100,Math.round(state.mmr/target*100)), unlocked=state.mmr>=target||state.plUnlocked;
   const wins=state.mmrWins||0, games=state.mmrGames||0;
@@ -18331,7 +18670,7 @@ function openMMR(){
             <div class="gt1 gmute" style="margin-top:2px">${d}</div></div></div>`).join('')}
     </div>
 
-    <button class="btn" style="margin-top:14px" onclick="closeOv();openMatchArrange('1:1 상대')">1:1 경기 잡기</button>
+    <button class="btn" style="margin-top:14px" onclick="closeOv();openDuelHub()">상대 찾기</button>
     <div class="gt1 gmute" style="padding:12px 2px;line-height:1.7">
       1:1 랭크(MMR)와 개인리그 레이팅은 따로 쌓여요.<br>
       코트비 같은 실제 비용은 예약 단계에서 정산해요.</div>`;

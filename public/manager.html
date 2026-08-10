@@ -281,6 +281,7 @@ const md = d => d ? `${+d.slice(5,7)}.${+d.slice(8,10)}` : '';
 const dt = ms => { if (!ms) return ''; const d = new Date(ms).toISOString(); return `${+d.slice(5,7)}.${+d.slice(8,10)}`; };
 
 let TAB = 'find', ME = null, OPEN = [], MINE = [], PAY = null, REGION = '';
+let PAGE = null;                          // 'pw' | null
 
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on');
   clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('on'),2400); }
@@ -367,6 +368,7 @@ const TABS=[
 ];
 function render(){
   $('app').classList.remove('login');
+  if (PAGE === 'pw') return drawPw();
   if (MAKE) return drawMake();
   $('view').className='body';
   $('foot').style.display='none';
@@ -378,6 +380,7 @@ function render(){
   $('top').innerHTML = `
     <div class="logo"><svg class="mk" viewBox="0 0 834 714" aria-label="맞수"><use href="#matsuMark"/></svg>
       <span class="wm">매니저센터</span></div>
+    <button class="r" onclick="PAGE='pw';render()" style="margin-right:6px">비밀번호</button>
     <button class="r" onclick="logout()">로그아웃</button>`;
   if(TAB==='find') return drawFind();
   if(TAB==='mine') return drawMine();
@@ -687,6 +690,30 @@ async function doMake(btn){
 }
 
 /* ═══ 정산 ═══ */
+/* 비밀번호 변경 — 계정을 받은 뒤 초기 비밀번호를 바꿀 방법이 없었다 */
+async function savePw(){
+  const cur=($('pwCur')||{}).value||'', a=($('pwNew')||{}).value||'', b=($('pwNew2')||{}).value||'';
+  if(a.length<6) return toast('새 비밀번호는 6자 이상이어야 해요');
+  if(a!==b) return toast('새 비밀번호가 서로 달라요');
+  if(a===cur) return toast('지금 비밀번호와 같아요');
+  try{ await api('/manager/password',{method:'POST',body:JSON.stringify({current:cur,next:a})});
+    toast('비밀번호를 바꿨어요'); PAGE=null; render(); }
+  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,80)); }
+}
+function drawPw(){
+  var tb=$('tabbar'); if(tb) tb.style.display='none';
+  $('view').innerHTML=
+    '<div class="hd"><button class="l" onclick="PAGE=null;render()">\u2039</button><b>비밀번호 변경</b></div>'+
+    '<div class="card">'+
+      '<label class="lb">지금 비밀번호</label>'+
+      '<input id="pwCur" type="password" class="in" autocomplete="current-password">'+
+      '<label class="lb" style="margin-top:12px">새 비밀번호</label>'+
+      '<input id="pwNew" type="password" class="in" autocomplete="new-password" placeholder="6자 이상">'+
+      '<label class="lb" style="margin-top:12px">새 비밀번호 확인</label>'+
+      '<input id="pwNew2" type="password" class="in" autocomplete="new-password">'+
+      '<button class="btn coral" style="width:100%;margin-top:16px" onclick="savePw()">바꾸기</button>'+
+    '</div>';
+}
 function drawPay(){
   if(!PAY){ $('view').innerHTML='<div class="empty">불러오는 중…</div>'; return; }
   const pend = PAY.list.filter(r=>r.status!=='paid');
