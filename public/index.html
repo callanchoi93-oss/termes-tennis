@@ -852,7 +852,9 @@
   .demo-tag{ background:#f2f1ee; color:#8b867c; font-weight:600; letter-spacing:.2px; }
 
   /* — top bar / logo — */
-  .appbar{ padding:18px 22px 4px; }
+  /* env() 를 뺀 값으로 덮어쓰면 iOS 앱에서 노치 아래로 헤더가 숨는다.
+     아이폰은 상단 안전영역이 47~59px 이라 18px 로는 로고·뒤로가기가 가려진다. */
+  .appbar{ padding:calc(18px + env(safe-area-inset-top, 0px)) 22px 4px; }
   .logo{ font-size:23px; font-weight:700; letter-spacing:-.7px; color:var(--ink); }
   .logo b{ color:var(--coral); }
   .bell{ width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-s); }
@@ -1149,6 +1151,17 @@
   .mi-mons{font-size:var(--t1);font-weight:400;color:var(--lgray);margin-top:3px}
   .mi-arr{flex:none;color:#cdc8be;font-size:17px;transition:.15s}
   .mi-arr.open{transform:rotate(90deg)}
+  /* 월례대회 조 설정 — 스텝퍼 */
+  .tgrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
+    border-radius:12px;padding:11px 13px;margin-bottom:8px}
+  .tgrow .l{flex:1;font-size:var(--t2);font-weight:600;letter-spacing:-.02em}
+  .tgrow .s{flex:none;width:26px;height:26px;border-radius:8px;background:var(--felt);
+    color:var(--gray);font-size:15px;font-weight:600;display:grid;place-items:center;cursor:pointer;user-select:none}
+  .tgrow .s:active{background:#e8e5dd}
+  .tgrow .v{flex:none;width:40px;text-align:center;font-size:var(--t2);font-weight:600;
+    font-variant-numeric:tabular-nums}
+  /* 대회 조 배지 */
+  .tgb{flex:none;font-size:var(--t1);font-weight:700;border-radius:7px;padding:3px 7px}
 
   /* 시즌 랭킹 — 기간 세그먼트 */
   .recseg{display:flex;background:var(--felt);border-radius:12px;padding:3px;margin:0 0 var(--s4)}
@@ -4569,8 +4582,8 @@ function openQuickStart(){
   let h=`<div class="sh-top"><h3>이렇게 시작하세요</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">3단계면 첫 경기까지 끝나요. 카드를 누르면 바로 이동해요.</div>
     ${stepc(1,ic('home',22),'클럽 찾아 가입하기','우리 동네 클럽을 둘러보고 가입해요',"closeOv();state.clubTab='find';go('club')")}
-    ${stepc(2,'✅','모임 참석 체크','이번 주 모임에 참석하면 대진에 자동 포함돼요',"closeOv();go('club')")}
-    ${stepc(3,SP().ic,'경기 결과 입력','결과를 입력·확정하면 레이팅이 올라요',"closeOv();go('league')")}
+    ${stepc(2,li('check',22),'모임 참석 체크','이번 주 모임에 참석하면 대진에 자동 포함돼요',"closeOv();go('club')")}
+    ${stepc(3,li('trendup',22),'경기 결과 입력','결과를 입력·확정하면 레이팅이 올라요',"closeOv();go('league')")}
     <button class="btn" style="margin-top:8px" onclick="closeOv()">둘러보기 시작</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -6763,9 +6776,7 @@ function renderLeague(){
         }
       }
     }
-    h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openMatchArrange('스마트 매칭 상대')">
-      <div style="display:flex;align-items:center;gap:11px"><span class="rowic">${ic('pin',19)}</span><div><div style="font-size:14px;font-weight:500">1:1 경기 잡기 · 코트 예약</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:1px">위치·일시 정하고 둘 중 한 명이 예약</div></div></div>
-      <div style="color:#cdc8be;font-size:20px;line-height:1">›</div></div>`;
+
   }
   h+=`<div class="info-banner" onclick="openPyramid()"><div class="ic">▲</div>
     <div class="x"><b>리그는 실력별로 나뉘어요</b><span>러브 · 퓨처스 · 챌린저 · 투어 · 그랜드슬램 — 자세히 보기</span></div><div class="arr">→</div></div>`;
@@ -7024,6 +7035,8 @@ function renderClub(){
     if(CS==='rec'){     h+=clubTabRecords(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='mem'){     h+=clubTabMembers(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='news'){    h+=clubTabNews();    document.getElementById('s-club').innerHTML=h; return; }
+    if(CS==='log'){     openPastMeetings(); state.clubSub='bracket';
+      h+=clubTabBracket(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='me'){      h+=clubTabMe();      document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='info'){    h+=clubTabInfo();    document.getElementById('s-club').innerHTML=h; return; }
     // ── 이하 '일정' 탭 ──
@@ -8355,7 +8368,7 @@ function openClubOps(){
       ${tool('모임 만들기','날짜·코트 정하고 참석 받기','openEventCreate()')}
       ${tool('대진 짜기','참석자로 자동 편성','openClubBracketBuild()')}
       ${tool('출석 · 노쇼','당일 체크 · 노쇼 기록','openClubBracketView()')}
-      ${tool('기록 · 시즌','모임별 종합 스코어 · 그날 순위','openPastMeetings()')}
+      ${tool('회비 관리','입회비 · 월 회비 · 게스트비','openFeeEdit()')}
     </div>
     <div class="opgl">회원 · 클럽</div>
     <div class="opgrid">
@@ -8363,6 +8376,7 @@ function openClubOps(){
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
+      ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
     </div>`;
   document.getElementById('opsBody').innerHTML=h;
   document.getElementById('opsClub').textContent=n;
@@ -8380,6 +8394,8 @@ function opIcon(t){
     case '가입 신청':   return S('userplus');
     case '회원 관리':   return S('users');
     case '공지 보내기': return S('megaphone');
+    case '회비 관리':   return S('trendup');
+    case '월례대회 설정': return S('bracket');
     case '클럽 소개':   return S('book');
     default:            return S('star');
   }
@@ -8533,7 +8549,7 @@ function clubHeroTabs(){
   const d=(state.clubData||{})[n]||{};
   const c=Object.assign({}, (state.clubs||[]).find(x=>x.n===n)||{}, AC()||{});
   const role = d.officer ? '운영진' : '회원';
-  const tabs=[['sched','일정'],['bracket','대진'],['rec','시즌 랭킹'],['mem','멤버'],['news','소식'],['me','내 정보'],['info','클럽 정보']];
+  const tabs=[['sched','일정'],['bracket','대진'],['log','모임 기록'],['rec','시즌 랭킹'],['mem','멤버'],['news','소식'],['me','내 정보'],['info','클럽 정보']];
   const cur=clubSub();
   return `<div class="chero">
       ${clubAvatar(n,52)||`<div class="cheroav">${esc(n.slice(0,1))}</div>`}
@@ -8721,13 +8737,62 @@ function clubTabRecords(){
     번개는 기록에 남지만 랭킹에는 안 들어가요.</div>`;
   return h;
 }
+let CLUBMEM_VIEW='all';
+function setClubMemView(v){ CLUBMEM_VIEW=v; renderClub(); }
+const TG_COLOR={A:['#f3edfd','#7028c4'],B:['var(--coral-s)','var(--coral-d)'],
+                C:['#eaf5ee','#2f9159'],D:['#f2f0ea','#6b6357']};
+/* 대회 조 보기 — 조별로 묶고, 옆에 구력 등급을 함께 둔다.
+   두 값이 서로 다른 것이라는 게 한 줄에서 읽히게. */
+function clubTabGroups(list, meId, t){
+  const off=((state.clubData||{})[state.activeClub||'']||{}).officer;
+  if(!t || !t.seeded){
+    return `<div class="card" style="text-align:center;padding:32px 22px">
+      <div class="gt3">아직 조가 없어요</div>
+      <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
+        월례대회는 같은 조끼리 붙어요.<br>처음 한 번만 구력 등급으로 조를 나눠요.</p>
+      ${off?`<button class="btn" style="max-width:230px;margin:16px auto 0" onclick="openTgSettings()">조 나누기</button>`
+           :`<div class="gt1 gmute" style="margin-top:12px">운영진이 조를 나누면 여기 보여요.</div>`}</div>`;
+  }
+  const by={};
+  list.forEach(r=>{ if(!r.user_id) return;
+    const g=tgOf(r.user_id)||'미배정'; (by[g]=by[g]||[]).push(r); });
+  const order=TG_NAMES.filter(g=>by[g]).concat(by['미배정']?['미배정']:[]);
+  let h='';
+  order.forEach(g=>{
+    const col=TG_COLOR[g]||TG_COLOR.D;
+    h+=`<div style="display:flex;align-items:baseline;gap:8px;padding:14px 2px 8px">
+      <span class="gt2" style="font-weight:700;color:${col[1]}">${g==='미배정'?'미배정':g+'조'}</span>
+      <span class="gt1 gmute">${by[g].length}명</span>
+      ${g!=='미배정'?`<span class="gt1 gmute" style="margin-left:auto">승강 ${t.promote}명</span>`:''}</div>`;
+    by[g].forEach(r=>{
+      const L=r.grade?gradeStepLabel(r.grade):null;
+      const mine=r.user_id===meId;
+      h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:1fr 42px 74px"
+          onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})">
+        <div class="mi-nm">${esc(r.name)}${mine?' <span class="gt1 gmute">(나)</span>':''}</div>
+        <div style="text-align:center">${r.grade?`<span class="tgb" style="background:var(--felt);color:${L?L.c:'var(--gray)'}">${esc(r.grade)}</span>`:''}</div>
+        <div style="text-align:right">${promoBadge(r.user_id)||promoBadge(r.name)}</div></div>`;
+    });
+  });
+  h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
+    대회 조는 <b style="color:var(--ink);font-weight:600">월례대회 결과</b>로만 움직여요 ·
+    구력 등급(SS~C)은 그대로예요.</div>`;
+  return h;
+}
 function clubTabMembers(){
   const n=state.activeClub||'';
   if(CLUB_ROSTER===null){ loadClubRoster(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
   const list=CLUB_ROSTER||[];
   if(!list.length) return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">멤버 정보가 아직 없어요</div>`;
   const meId=(state.serverUser||{}).id;
-  return `<div class="pvcnt">멤버 ${list.length}명
+  const t=tgData();
+  /* 조는 명단의 다른 보기 방식일 뿐이라 탭을 새로 만들지 않는다 */
+  const seg=`<div class="recseg" style="margin-bottom:var(--s3)">
+    <div class="${CLUBMEM_VIEW==='all'?'on':''}" onclick="setClubMemView('all')">전체 명단</div>
+    <div class="${CLUBMEM_VIEW==='tg'?'on':''}" onclick="setClubMemView('tg')">대회 조</div></div>`;
+
+  if(CLUBMEM_VIEW==='tg') return seg + clubTabGroups(list, meId, t);
+  return seg + `<div class="pvcnt">멤버 ${list.length}명
       <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
     <div class="card flush2">${list.map(r=>{
       const ph=photoOf(r.name);
@@ -11743,12 +11808,29 @@ function cb2All(){ return assignGradeRanks([ ...fillGradesByCareer(window._cb2Ro
    방식마다 색이 다른 버튼 다섯 개를 한 번에 늘어놓으면 무엇이 기본인지 알 수 없고,
    누르는 순간 바로 발행돼서 되돌아볼 지점이 없었다. 고르는 화면과 만드는 순간을 나눈다. */
 let CB2_STEP=1, CB2_MODE='normal', CB2_COURTS=3;
+/* 방식마다 성립 조건이 다르다. 매뉴얼에 적힌 조건을 그대로 코드에 옮겨
+   조건을 못 채우면 아예 고를 수 없게 한다. 발행하고 나서 이상한 대진을
+   받는 것보다, 고르기 전에 왜 안 되는지 아는 편이 낫다. */
 const CB2_MODES=[
-  {k:'normal',     n:'일반',     d:'비슷한 등급끼리 · 쉬는 사람 순환'},
+  {k:'normal',     n:'일반',     d:'비슷한 등급끼리 · 쉬는 사람 순환', min:4},
   {k:'hanul',      n:'한울',     d:'대기 시간 최소화 · 8~16명 · 2코트부터', min:8, minCourts:2},
-  {k:'monthly',    n:'월례대회', d:'등급별 리그 후 승강'},
-  {k:'gender',     n:'성비',     d:'남녀 섞어서 · 혼복 위주'},
-  {k:'cheongbaek', n:'청백전',   d:'두 팀으로 나눠 단체전'},
+  {k:'monthly',    n:'월례대회', d:'같은 조끼리 리그 후 승강 · 조별 4명부터', min:8,
+     check:()=>{
+       const t=tgData();
+       if(!t || !t.seeded) return '먼저 대회 조를 나눠주세요 (운영진 도구)';
+       const g={};
+       cb2All().forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
+         const k=tgOf(p.user_id)||'미배정'; (g[k]=g[k]||[]).push(p); });
+       if(g['미배정']) return `조가 없는 회원이 ${g['미배정'].length}명 있어요`;
+       const ks=Object.keys(g);
+       if(ks.length<2) return '조가 하나뿐이에요 · 2개 조 이상 필요해요';
+       const small=ks.filter(k=>g[k].length<4);
+       if(small.length) return `${small.sort().join('·')}조가 4명 미만이에요`;
+       return null;
+     }},
+  {k:'gender',     n:'성비',     d:'남녀 섞어서 · 혼복 위주 · 여성 4명부터', minF:4, minM:4},
+  {k:'cheongbaek', n:'청백전',   d:'두 팀으로 나눠 단체전 · 짝수 8명부터', min:8,
+     check:()=> (CB2_SEL.size%2) ? `짝수여야 해요 (지금 ${CB2_SEL.size}명)` : null},
 ];
 function cb2GoStep(n){
   if(n===2){
@@ -11760,15 +11842,30 @@ function cb2GoStep(n){
   setTimeout(()=>{const e=document.getElementById('sheet'); if(e) e.scrollTop=0;},0);
 }
 function cb2PickMode(k){ CB2_MODE=k; drawCB2Build(); }
-function cb2ModeOk(k){
-  const m=CB2_MODES.find(x=>x.k===k); if(!m) return true;
-  const courts=cb2Courts();
-  if(m.min && CB2_SEL.size<m.min) return false;
-  if(m.minCourts && courts<m.minCourts) return false;
-  return true;
+function cb2ModeWhy(k){
+  const m=CB2_MODES.find(x=>x.k===k); if(!m) return null;
+  const n=CB2_SEL.size, courts=cb2Courts();
+  if(m.min && n<m.min) return `${m.min}명부터 가능해요 (지금 ${n}명)`;
+  if(m.minCourts && courts<m.minCourts) return `${m.minCourts}코트부터 가능해요 (지금 ${courts}코트)`;
+  if(m.minF || m.minM){
+    const g=cb2GenderCount();
+    if(m.minF && g.f<m.minF) return `여성 ${m.minF}명부터 가능해요 (지금 ${g.f}명)`;
+    if(m.minM && g.m<m.minM) return `남성 ${m.minM}명부터 가능해요 (지금 ${g.m}명)`;
+  }
+  if(m.check){ try{ return m.check(); }catch(e){ return null; } }
+  return null;
 }
+function cb2ModeOk(k){ return !cb2ModeWhy(k); }
 /* 몇 경기가 나올지 미리 알려준다 — 코트 수와 인원으로 정해진다 */
 /* 1단계에선 select 값, 2단계에선 붙잡아 둔 값 */
+/* 선택된 참석자의 남녀 수 — 성비 대진 가능 여부를 판단한다 */
+function cb2GenderCount(){
+  const all=cb2All();
+  let m=0,f=0;
+  all.forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
+    if(String(p.gender||'').startsWith('여')) f++; else m++; });
+  return {m,f};
+}
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
   return el ? (+el.value||3) : CB2_COURTS;
@@ -11780,6 +11877,7 @@ function cb2GameCount(){
   return perRound*4;
 }
 function drawCB2Step2(){
+  try{ cbLoadBanner(); }catch(e){}          // 배너는 캐시되며 최초 1회만 요청한다
   const n=CB2_SEL.size;
   const courts=cb2Courts();
   const games=cb2GameCount();
@@ -11788,11 +11886,11 @@ function drawCB2Step2(){
       <span onclick="cb2GoStep(1)" style="cursor:pointer;font-size:21px;color:var(--lgray);line-height:1;margin-right:8px">‹</span>
       <h3 class="gt4" style="flex:1">대진 방식</h3>
       <span class="gt1 gmute">${n}명 · ${courts}코트</span></div>
-    <div style="margin-top:14px">`;
+    ${cbBannerHTML()}
+    <div style="margin-top:16px">`;
   CB2_MODES.forEach(m=>{
     /* 조건을 못 채운 방식은 고를 수 없게 두되, 왜 안 되는지 그 자리에서 알려준다 */
-    const why = (m.min && n<m.min) ? `${m.min}명부터 가능해요 (지금 ${n}명)`
-              : (m.minCourts && courts<m.minCourts) ? `${m.minCourts}코트부터 가능해요 (지금 ${courts}코트)` : null;
+    const why = cb2ModeWhy(m.k);
     const on = CB2_MODE===m.k && !why;
     h+=`<div onclick="${why?`toast('${why}')`:`cb2PickMode('${m.k}')`}" style="display:flex;align-items:center;gap:12px;cursor:pointer;
         border-radius:14px;padding:14px;margin-bottom:8px;${why?'opacity:.5;':''}
@@ -11809,12 +11907,6 @@ function drawCB2Step2(){
         border-radius:12px;padding:12px 13px;margin-top:4px">
         <span class="gt1" style="color:#2b62c9;font-weight:600;flex:none">번개</span>
         <span class="gt1" style="color:#2b62c9;flex:1">이 대진은 기록에 남지만 시즌 랭킹에는 안 들어가요.</span></div>` : ''; })()}
-    <div onclick="window.open('/bracketguide.html','_blank')" style="display:flex;align-items:center;gap:10px;
-        padding:14px 2px;border-top:1px solid var(--line);margin-top:6px;cursor:pointer">
-      <div style="flex:1;min-width:0">
-        <div class="gt2" style="font-weight:600;letter-spacing:-.02em">대진 매뉴얼</div>
-        <div class="gt1 gmute" style="margin-top:3px">5가지 방식을 예시로 설명해요</div></div>
-      <span style="color:#cdc8be;font-size:17px">›</span></div>
     <button class="btn" style="margin-top:18px" onclick="cb2Gen(CB2_MODE)">대진 만들기
       <span style="font-weight:500;font-size:11px;opacity:.85">${games}경기</span></button>
     <div class="note" style="text-align:center;margin-top:9px">발행하면 회원 화면이 즉시 바뀌어요</div>
@@ -11951,11 +12043,11 @@ let CB_BANNER=null;
 function cbBannerHTML(){
   const b=(CB_BANNER&&CB_BANNER[0])||null;
   const link=(b&&b.link)||'/bracketguide.html';
-  if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:18px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
+  if(b&&b.image) return `<div onclick="window.open('${esc(link)}','_blank')" style="margin-top:14px;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(40,32,20,.10);cursor:pointer">
       <img src="${esc(/^https?:|^data:/.test(b.image)?b.image:API_BASE+b.image)}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="대진 안내 배너"></div>
     <div style="font-size:11px;font-weight:500;color:var(--lgray);text-align:center;margin-top:7px">탭하면 대진 방식 설명이 열려요</div>`;
-  return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:18px;cursor:pointer">
-      <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;font-size:14px;flex:none">📖</span>
+  return `<div onclick="window.open('${esc(link)}','_blank')" style="display:flex;align-items:center;gap:11px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-top:14px;cursor:pointer">
+      <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:grid;place-items:center;color:var(--gray);flex:none">${li('book',17)}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:500">어떤 방식을 고를까요?</div>
         <div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:1px">5가지 대진 방식 설명 보기</div></div>
@@ -12022,6 +12114,7 @@ function cb2LoadPreset(){
   try{ return JSON.parse(localStorage.getItem('matsu_cb_preset_'+(clubId()||0))||'null'); }catch(e){ return null; }
 }
 async function cb2Gen(mode){
+  { const why=cb2ModeWhy(mode); if(why){ toast(why); return; } }
   await loadPastPairs();
   const all=cb2All();
   const sel=[...CB2_SEL].map(id=>all.find(r=>String(r.user_id)===String(id))).filter(Boolean);
@@ -12114,11 +12207,12 @@ async function cb2Gen(mode){
     // 숫자조(1~) = 등급 상위 · 문자조(A~) = 하위 → A그룹은 B그룹과만 파트너
 
   } else if(mode==='monthly'){
-    // 월례대회 — 같은 등급(조)끼리만 경기 · 조별 리그
-    const tiers={}; ps.forEach(p=>{ const t=p.grade||'C'; (tiers[t]=tiers[t]||[]).push(p); });
-    const order=['S','A','B','C'].filter(t=>tiers[t]&&tiers[t].length);
+    /* 월례대회 — 같은 '대회 조'끼리만 경기.
+       구력 등급이 아니라 지난 대회 결과로 정해진 조를 쓴다. */
+    const tiers={}; ps.forEach(p=>{ const t=tgOf(p.id)||'미배정'; (tiers[t]=tiers[t]||[]).push(p); });
+    const order=TG_NAMES.filter(t=>tiers[t]&&tiers[t].length);
     const thin=order.filter(t=>tiers[t].length<4);
-    if(!order.length){ toast('참석자 등급을 먼저 지정해 주세요 (등급 편집)'); return; }
+    if(!order.length){ toast('먼저 대회 조를 나눠주세요 (운영진 도구 › 월례대회 설정)'); return; }
     if(thin.length) toast(`${thin.join('·')}조가 4명 미만이라 대진에서 빠졌어요`);
     groups=[];
     order.forEach(t=>{
@@ -12138,7 +12232,11 @@ async function cb2Gen(mode){
     // 성비 대진 — 전원 정확히 4게임 보장 · 남 남복3+혼복1 / 여 혼복3+여복1 지향
     const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
     if(M.length+F.length<4){ toast('4명 이상이 필요해요'); return; }
-    if(F.length&&F.length<4) toast(`여성 ${F.length}명 — 여복은 4명부터예요. 가능한 만큼 혼복으로 채웠어요`);
+    /* 혼복은 한 코트에 여성 2명이 필요하다. 1명이면 그 사람이 어느 게임에도
+       못 들어가 혼자 남는다 — 아예 만들지 않는다. */
+    if(F.length<2){ toast(`성비 대진은 여성 2명부터예요 · 지금 ${F.length}명이에요`); return; }
+    if(M.length<2){ toast(`성비 대진은 남성 2명부터예요 · 지금 ${M.length}명이에요`); return; }
+    if(F.length<4) toast(`여성 ${F.length}명 — 여복 없이 혼복으로 채웠어요`);
     const need={}, mq={}, wq={};
     M.forEach(p=>{ need[p.id]=GPP; mq[p.id]=1; });          // 남: 혼복 1회 목표
     F.forEach(p=>{ need[p.id]=GPP; wq[p.id]=3; });          // 여: 혼복 3회 목표
@@ -12436,26 +12534,130 @@ function cb2TierRank(){
   });
   return out;
 }
+/* ═══ 월례대회 조 ═══
+   구력 등급은 시간이 지나면 늘기만 하고 경기 결과와 무관하다.
+   월례대회는 결과로 오르내리므로 '대회 조'를 등급과 분리해 따로 들고 간다.
+   등급 → 일반·한울·성비 대진에 계속 쓰임
+   대회 조 → 월례대회 전용 · 대회 결과로만 움직임 */
+const TG_NAMES=['A','B','C','D'];
+function tgData(){
+  const c=AC(); if(!c) return null;
+  c.tg = c.tg || {groups:{}, promote:2, relegate:2, skipFirst:true, seeded:false};
+  return c.tg;
+}
+function tgOf(uid){ const t=tgData(); return t ? (t.groups[String(uid)]||null) : null; }
+/* 구력 등급으로 첫 배정 — 그다음부터는 대회 결과가 조를 정한다 */
+function tgSeedByGrade(){
+  const t=tgData(); if(!t) return;
+  const roster=(CLUB_ROSTER||[]).filter(r=>r.user_id);
+  const bucket=g=>{ const k=String(g||'').replace(/[0-9]/g,'');
+    if(k==='SS'||k==='S') return 'A';
+    if(k==='A') return 'A';
+    if(k==='B') return 'B';
+    return 'C'; };
+  const gr={};
+  roster.forEach(r=>{ gr[String(r.user_id)] = bucket(r.grade); });
+  t.groups=gr; t.seeded=true;
+  try{ saveMatsu(); }catch(e){}
+  tgPush();
+}
+let TG_PUSH_T=null;
+function tgPush(){
+  const cid=clubId(), t=tgData();
+  if(!SERVER_OK||!cid||!t) return;
+  clearTimeout(TG_PUSH_T);
+  TG_PUSH_T=setTimeout(()=>{
+    api(`/clubs/${cid}/profile`,{method:'PATCH',body:JSON.stringify({tg:JSON.stringify(t)})}).catch(()=>{});
+  }, 700);
+}
+function tgSet(k,v){ const t=tgData(); if(!t) return; t[k]=v; try{ saveMatsu(); }catch(e){} tgPush(); }
+function tgAdj(k,d){ const t=tgData(); if(!t) return;
+  t[k]=Math.max(0,Math.min(6,(t[k]||0)+d)); try{ saveMatsu(); }catch(e){} tgPush(); openTgSettings(); }
+
+/* ── 운영진 도구 · 월례대회 설정 ── */
+function openTgSettings(){
+  const n=state.activeClub||'', d=(state.clubData||{})[n]||{};
+  if(!d.officer){ toast('운영진만 설정할 수 있어요'); return; }
+  const t=tgData(); if(!t){ toast('클럽 정보를 불러오지 못했어요'); return; }
+  const cnt={}; Object.values(t.groups||{}).forEach(g=>{ cnt[g]=(cnt[g]||0)+1; });
+  const used=TG_NAMES.filter(g=>cnt[g]);
+  const total=Object.keys(t.groups||{}).length;
+
+  const step=(label,key)=>`<div class="tgrow">
+    <span class="l">${label}</span>
+    <span class="s" onclick="tgAdj('${key}',-1)">−</span>
+    <span class="v">${t[key]}명</span>
+    <span class="s" onclick="tgAdj('${key}',1)">＋</span></div>`;
+
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3 class="gt4">월례대회 설정</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+
+    <div style="padding:14px 2px;border-bottom:1px solid var(--line)">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">조 나누기</div>
+      <div class="gt1 gmute" style="margin-top:5px;line-height:1.7">
+        처음 한 번만 구력 등급으로 자동 배정해요.<br>그다음부터는 대회 결과로 움직여요.</div>
+      <div onclick="tgReseed()" style="display:flex;align-items:center;gap:10px;margin-top:12px;
+          border:1px solid var(--line);border-radius:12px;padding:13px 14px;cursor:pointer">
+        <span class="gt2" style="flex:1;font-weight:600">등급으로 다시 나누기</span>
+        <span style="color:#cdc8be;font-size:17px">›</span></div>
+      ${t.seeded?`<div class="gt1 gmute" style="margin-top:8px">지금 ${used.length}개 조 · ${total}명 (${used.map(g=>`${g}조 ${cnt[g]}`).join(' · ')})</div>`:''}
+    </div>
+
+    <div style="padding:16px 2px;border-bottom:1px solid var(--line)">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">조별 승강 인원</div>
+      <div class="gt1 gmute" style="margin-top:5px;line-height:1.7">
+        대회가 끝나면 조 안에서 순위를 매기고,<br>위·아래 조와 이만큼 자리를 바꿔요.</div>
+      <div style="margin-top:12px">${step('승격','promote')}${step('강등','relegate')}</div>
+      ${used.length>1?`<div style="background:var(--coral-s);border-radius:12px;padding:12px 13px;margin-top:12px">
+        <div class="gt1" style="color:var(--coral-d);font-weight:600">${total}명 · ${used.length}개 조 기준</div>
+        <div class="gt1" style="color:#8a5230;margin-top:4px">
+          ${used[0]}조 하위 ${t.relegate}명 ↔ ${used[1]}조 상위 ${t.promote}명이 자리를 바꿔요.</div></div>`:''}
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;padding:16px 2px">
+      <div style="flex:1;min-width:0">
+        <div class="gt2" style="font-weight:600;letter-spacing:-.02em">첫 대회 회원은 제외</div>
+        <div class="gt1 gmute" style="margin-top:4px">들어온 지 얼마 안 된 회원은 한 번 쉬어요</div></div>
+      <div role="switch" aria-checked="${!!t.skipFirst}" tabindex="0"
+        onclick="tgSet('skipFirst',${!t.skipFirst});openTgSettings()"
+        style="flex:none;width:42px;height:25px;border-radius:13px;background:${t.skipFirst?'var(--coral)':'#ddd7cb'};
+          position:relative;cursor:pointer;transition:.15s">
+        <div style="width:19px;height:19px;border-radius:50%;background:#fff;position:absolute;top:3px;
+          left:${t.skipFirst?'20px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function tgReseed(){
+  if(!await appConfirm('구력 등급으로 조를 다시 나눌까요?\n지금까지의 승강 결과는 사라져요.')) return;
+  tgSeedByGrade(); openTgSettings(); toast('등급으로 조를 다시 나눴어요');
+}
+/* 승강 인원은 운영진이 정한 값을 쓴다. 조가 여러 개여도 이웃한 조끼리만 자리를 바꾼다.
+   올라가는 수와 내려오는 수를 같게 맞춰야 조 인원이 유지된다. */
 function cb2PromoPlan(){
   const rank=cb2TierRank();
-  const A=rank.A||[], B=rank.B||[], C=rank.C||[];
-  const aDown=A.length?Math.max(1,Math.round(A.length*0.2)):0;
-  const bUp=Math.min(aDown,B.length);
-  const bDown=B.length?Math.max(1,Math.round(B.length*0.2)):0;
-  const cUp=Math.min(bDown,C.length);
+  const t=tgData()||{promote:2,relegate:2};
+  const nUp=Math.max(0,t.promote|0), nDown=Math.max(0,t.relegate|0);
+  const used=TG_NAMES.filter(g=>(rank[g]||[]).length);
   const ch=[];
-  A.slice(-aDown).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'A',to:'B',dir:'down'}));
-  B.slice(0,bUp).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'B',to:'A',dir:'up'}));
-  B.slice(-bDown).forEach(s=>{ if(!ch.some(c=>c.user_id===s.id)) ch.push({user_id:s.id,name:s.name,from:'B',to:'C',dir:'down'}); });
-  C.slice(0,cUp).forEach(s=>ch.push({user_id:s.id,name:s.name,from:'C',to:'B',dir:'up'}));
-  return {rank, ch, counts:{aDown,bUp,bDown,cUp}};
+  for(let i=0;i<used.length-1;i++){
+    const hi=used[i], lo=used[i+1];
+    const H=rank[hi]||[], L=rank[lo]||[];
+    /* 자리를 맞바꾸므로 둘 중 작은 수만큼만 움직인다 */
+    const k=Math.min(nDown, nUp, H.length, L.length);
+    H.slice(-k).forEach(s=>{ if(!ch.some(c=>c.user_id===s.id))
+      ch.push({user_id:s.id,name:s.name,from:hi,to:lo,dir:'down'}); });
+    L.slice(0,k).forEach(s=>{ if(!ch.some(c=>c.user_id===s.id))
+      ch.push({user_id:s.id,name:s.name,from:lo,to:hi,dir:'up'}); });
+  }
+  return {rank, ch, counts:{up:nUp, down:nDown, pairs:Math.max(0,used.length-1)}};
 }
 function cb2PromoSheet(){
   if(!CB2||CB2.mode!=='monthly'){ toast('월례대회에서만 쓸 수 있어요'); return; }
   const {rank,ch,counts}=cb2PromoPlan();
   const tierC={S:['#f9e7b8','#8a6a1f'],A:['#fceee4','#cf5418'],B:['#e7f4ec','#1f7d4d'],C:['#f2f0ea','#6b6357']};
   let h=`<div class="om-detail"><div class="sh-top"><h3>월례대회 승강</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
-    <div class="sd">조별 순위에 따라 인원 비율을 유지하며 승격·강등돼요<br>A조 ↓${counts.aDown} · B조 ↑${counts.bUp} ↓${counts.bDown} · C조 ↑${counts.cUp}</div>`;
+    <div class="sd">이웃한 조끼리 <b>${counts.down}명씩 자리를 바꿔요</b> · 조 인원은 그대로 유지돼요<br>
+      승강 인원은 운영진 도구 › 월례대회 설정에서 바꿀 수 있어요.</div>`;
   ['S','A','B','C'].forEach(t=>{
     const list=rank[t]; if(!list||!list.length) return;
     const c=tierC[t]||tierC.C;
@@ -12483,7 +12685,10 @@ function cb2PromoSheet(){
 async function cb2PromoApply(){
   const {ch}=cb2PromoPlan();
   if(!ch.length){ toast('승강 대상이 없어요'); return; }
-  if(!await appConfirm(`${ch.length}명의 등급을 조정할까요?\n확정하면 되돌릴 수 없어요.`)) return;
+  if(!await appConfirm(`${ch.length}명의 대회 조를 바꿀까요?\n구력 등급은 그대로예요.`)) return;
+  /* 대회 조만 움직인다 — 구력 등급은 손대지 않는다 */
+  { const t=tgData(); if(t){ ch.forEach(c=>{ t.groups[String(c.user_id)]=c.to; });
+      try{ saveMatsu(); }catch(e){} tgPush(); } }
   if(TRIAL){ toast(`승강을 확정했어요 (체험) · ${ch.length}명`); drawCB2View(); return; }
   try{ await api(`/clubs/${clubId()}/promote`,{method:'POST',body:JSON.stringify({changes:ch})});
     PROMOS=null; await cb2LoadPromos();
@@ -18102,19 +18307,36 @@ function openMatchArrange(name){ name=name||'상대'; const sp=SP();
 // ── 1:1 M캐쉬 랭크(MMR) → 개인리그 언락 ──
 function openMMR(){
   const target=1300, pct=Math.min(100,Math.round(state.mmr/target*100)), unlocked=state.mmr>=target||state.plUnlocked;
-  let h=`<div class="sh-top"><h3>1:1 랭크 · MMR</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">일반게임처럼 <b>M캐쉬로 1:1</b>을 치르며 MMR을 올려요. <b>${target} 달성 시 개인리그 도전 자격</b>이 열려요. (코트비 같은 실제 비용은 없는 캐주얼 매치)</div>
-    <div class="card" style="background:linear-gradient(140deg,#8c6fd6,#6f86e2);border:none;color:#fff;text-align:center;padding:22px">
-      <div style="font-size:12px;font-weight:500;opacity:.9">내 MMR</div>
-      <div style="font-size:29px;font-weight:700;margin:2px 0">${state.mmr}</div>
-      <div style="height:8px;border-radius:5px;background:rgba(255,255,255,.35);margin:12px 0 6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--felt)"></div></div>
-      <div style="font-size:12px;font-weight:500;opacity:.92">${unlocked?'개인리그 도전 자격 획득 🎉':`개인리그까지 ${target-state.mmr} MMR`}</div></div>
-    <div class="card" style="display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:14px;font-weight:500">1:1 캐주얼 매칭</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">비슷한 MMR 상대와 즉시 매칭</div></div><button class="btn sm" style="width:auto;padding:9px 14px" onclick="playMMR()">매칭</button></div>
-    ${unlocked?`<div class="card" style="background:#eef7ee;border-color:#cfe2b8"><div style="font-size:14px;font-weight:500;color:#3f7a3f">✅ 개인리그 도전 가능</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">이제 개인리그(원 참가비)에 도전할 수 있어요.</div><button class="btn felt" style="margin-top:10px" onclick="closeOv();state.sport='tennis';state.leagueOpen=true;go('league')">개인리그로 가기</button></div>`:''}
-    <div class="note" style="text-align:left">MMR(캐주얼)과 레이팅(공식 리그)은 분리돼요. 캐주얼로 몸을 풀고, 준비되면 개인리그로 승부해요.</div>`;
+  const wins=state.mmrWins||0, games=state.mmrGames||0;
+  let h=`<div class="sh-top"><h3>1:1 랭크</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd">비슷한 실력끼리 1:1로 붙고, <b>양쪽이 결과를 확인하면</b> MMR이 오르내려요.
+      ${target} 이상이면 개인리그에 도전할 수 있어요.</div>
+    <div class="rtprog" style="margin:10px 0 14px">
+      <div class="top"><span class="n">${state.mmr}</span><span class="of">MMR</span>
+        <span class="rt">${unlocked?'개인리그 도전 가능':`${target}까지 ${target-state.mmr}`}</span></div>
+      <div class="rtbar"><i style="width:${pct}%"></i></div>
+      <div class="sub"><span>${games}경기 · ${wins}승 ${Math.max(0,games-wins)}패</span>
+        <span>${games?`승률 ${Math.round(wins/games*100)}%`:'아직 기록 없음'}</span></div></div>
+
+    <div style="padding:14px 2px;border-top:1px solid var(--line)">
+      <div class="gt2" style="font-weight:600;letter-spacing:-.02em">이렇게 진행돼요</div>
+      ${[['상대 찾기','비슷한 MMR인 사람에게 신청해요'],
+         ['코트·일시 정하기','둘 중 한 명이 코트를 예약해요'],
+         ['경기 후 결과 입력','양쪽이 확인하면 MMR에 반영돼요']]
+        .map(([t,d],i)=>`<div style="display:flex;gap:11px;padding:9px 0">
+          <span style="flex:none;width:20px;height:20px;border-radius:50%;background:var(--coral-s);
+            color:var(--coral-d);font-size:11px;font-weight:700;display:grid;place-items:center">${i+1}</span>
+          <div style="flex:1;min-width:0">
+            <div class="gt1" style="font-weight:600">${t}</div>
+            <div class="gt1 gmute" style="margin-top:2px">${d}</div></div></div>`).join('')}
+    </div>
+
+    <button class="btn" style="margin-top:14px" onclick="closeOv();openMatchArrange('1:1 상대')">1:1 경기 잡기</button>
+    <div class="gt1 gmute" style="padding:12px 2px;line-height:1.7">
+      1:1 랭크(MMR)와 개인리그 레이팅은 따로 쌓여요.<br>
+      코트비 같은 실제 비용은 예약 단계에서 정산해요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function playMMR(){ if(!spendCash('dm',5,'1:1 대화'))return; const win=Math.random()<0.55; const d=win?Math.round(12+Math.random()*10):-Math.round(8+Math.random()*8); state.mmr=Math.max(800,state.mmr+d); if(win)state.mmrWins++; if(state.mmr>=1300)state.plUnlocked=true; toast(`${win?'승리':'패배'} · MMR ${d>0?'+':''}${d} (${state.mmr})`); openMMR(); }
 // ── 용병/게스트 모집 (팀스포츠·지역) ──
 function openMercenary(){ const sp=SP(); const cls=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b'];
   const pos=sp.id==='soccer'?['FW','MF','GK']:sp.id==='basketball'?['가드','센터','포워드']:['투수','외야','내야'];
