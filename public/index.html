@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0811f';
+const BUILD='v1.0.7-0811j';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -2915,6 +2915,30 @@ function finishOnboard(){
 // (GitHub 가 Public 이라 코드에 키를 넣으면 그대로 노출된다)
 let CFG = { kakao_js_key:'', kakao_native_key:'', naver_client_id:'', naver_redirect_uri:'', apple_client_id:'', phone_auth:false };
 let CFG_ERROR = '';
+/* 앱은 index.html 을 통째로 품고 있어서, 서버만 올려도 앱 화면은 그대로다.
+   서버가 아는 최신 화면 버전과 내 것이 다르면 업데이트를 권한다. (웹은 늘 최신이라 해당 없음) */
+const nativeNow=()=>{ try{ return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }catch(e){ return false; } };
+function checkAppUpdate(){
+  if(!nativeNow()) return;
+  const latest=CFG&&CFG.web_build;
+  if(!latest || latest===BUILD) return;
+  if(sessionStorage.getItem('upd_seen')===latest) return;   // 한 세션에 한 번만
+  sessionStorage.setItem('upd_seen', latest);
+  const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));'
+    +'z-index:999;background:#1B1813;color:#fff;border-radius:16px;padding:14px 16px;'
+    +'display:flex;align-items:center;gap:12px;box-shadow:0 6px 22px rgba(0,0,0,.25)';
+  el.innerHTML=`<div style="flex:1;min-width:0;font-size:13px;line-height:1.55">
+      <b style="font-weight:700">새 버전이 나왔어요</b><br>
+      <span style="color:#C9C3B8">App Store에서 업데이트하면 새 기능을 쓸 수 있어요</span></div>
+    ${u?`<a href="${u}" target="_blank" rel="noopener" style="flex:none;background:#CF5418;color:#fff;
+      border-radius:11px;padding:9px 14px;font-size:13px;font-weight:700;text-decoration:none">업데이트</a>`:''}
+    <span style="flex:none;color:#8A857C;font-size:18px;cursor:pointer;padding:0 2px">×</span>`;
+  el.lastElementChild.onclick=()=>el.remove();
+  document.body.appendChild(el);
+  setTimeout(()=>{ if(el.parentNode) el.remove(); }, 12000);
+}
 async function loadConfig(){
   if(!API_BASE) return CFG;
   try{
@@ -2924,6 +2948,7 @@ async function loadConfig(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     CFG = await r.json();
     if(!ACTIVE_SPORTS().includes(state.sport)) state.sport = ACTIVE_SPORTS()[0] || 'tennis';
+    try{ setTimeout(checkAppUpdate, 1200); }catch(e){}
   }catch(e){
     CFG = {};
     CFG_ERROR = String(e.message||e);
@@ -7876,7 +7901,8 @@ async function openClubPreview(n){
   let roster=[], events=[];
   if(TRIAL) roster=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'}));
   else if(SERVER_OK&&cid){
-    try{ roster=cb2Roster(await api(`/clubs/${cid}/roster`)); }catch(e){}
+    // /roster 는 최근 모임 참석자만 준다 — 미리보기에는 클럽 전체 명단이 맞다
+    try{ roster=cb2Roster(await api(`/clubs/${cid}/members`)); }catch(e){}
     try{ events=(await api(`/clubs/${cid}/events`))||[]; }catch(e){}
   }
   PV={ n, c, cid, roster, events, tab:'info' };
@@ -7993,7 +8019,7 @@ function drawClubPreview(){
     const rows=list.map(r=>{
       const ph=photoOf(r.name);
       const role = r.role==='owner'?'회장':r.role==='officer'?'임원':'';
-      const code = r.grade || null;
+      const code = memberGradeCode(r);
       const L = code ? gradeStepLabel(code) : null;
       // 등급 범위(5~9년)가 아니라 그 사람의 실제 구력을 보여준다
       let career = '';
@@ -8465,6 +8491,7 @@ function openClubOps(){
     <div class="opgrid">
       ${tool('가입 신청','승인 · 거절','openAdmin()','',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
+      ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
       ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
@@ -8474,6 +8501,74 @@ function openClubOps(){
   document.getElementById('clubops').style.display='flex';
 }
 function closeClubOps(){ document.getElementById('clubops').style.display='none'; }
+/* ── 클럽 초대장 ──────────────────────────────────────────────
+   서버에는 초대 링크 기능이 있었는데 만드는 화면이 없어 쓸 수가 없었다.
+   링크를 받은 사람은 가입 신청 승인을 기다리지 않고 바로 회원이 된다. */
+async function openClubInvite(){
+  const cid=clubId(), n=state.activeClub||'';
+  if(!cid){ toast('클럽에 먼저 들어가 주세요'); return; }
+  const sheet=document.getElementById('sheet');
+  sheet.innerHTML=`<div class="om-detail"><div class="sh-top"><h3>클럽 초대장</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="card" style="text-align:center;color:var(--lgray);padding:26px">링크 만드는 중…</div></div>`;
+  document.getElementById('ov').classList.add('on');
+  let r;
+  try{ r=await api(`/clubs/${cid}/invite`,{method:'POST',body:'{}'}); }
+  catch(e){
+    closeOv();
+    toast(String(e.message).includes('officer_only')?'임원만 만들 수 있어요':'초대 링크를 만들지 못했어요');
+    return;
+  }
+  const url=location.origin+(r.url||('/?invite='+r.token));
+  window._clubInvUrl=url; window._clubInvName=n;
+  const c=AC()||{}, d=(state.clubData||{})[n]||{};
+  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(60,40,20,.18)';
+  const won=v=>v?Number(v).toLocaleString()+'원':'없음';
+  const kv=(k,v,col)=>`<div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">${k}</b>
+    <div style="font-size:14px;font-weight:500${col?';color:'+col:''}">${v}</div></div>`;
+  sheet.innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3>클럽 초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="border-radius:22px;overflow:hidden;border:1px solid #f0e6d4;background:#fff">
+      <div style="position:relative;height:210px">
+        ${OM_PAT}
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+          justify-content:center;gap:10px;padding:0 20px;text-align:center">
+          <span style="font-size:12px;font-weight:500;color:#cf5418;letter-spacing:.03em;${OL}">클럽 초대장</span>
+          <span style="font-size:29px;font-weight:700;letter-spacing:-.02em;color:#1c1b18;line-height:1.25;${OL}">${esc(n)}</span>
+          <span style="font-size:12px;font-weight:500;color:#6b5138;${OL}">함께 칠 사람을 찾고 있어요</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:20px 22px 6px">
+        ${kv('지역', esc(c.r||d.region||'지역 미지정'))}
+        ${kv('회원', (d.members||c.m||0)+'명')}
+        ${kv('정기 모임', esc(d.meet_days||c.meet_days||'미정'))}
+        ${kv('홈구장', esc(d.home_court||c.court||'미정'))}
+        ${kv('입회비', won(d.entry_fee!=null?d.entry_fee:c.entry), 'var(--coral-d)')}
+        ${kv('월 회비', won(d.season_fee!=null?d.season_fee:c.season))}
+      </div>
+      <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
+      <div style="padding:16px 18px 18px">
+        <button class="btn" onclick="shareClubInvite()">초대장 링크 공유하기</button>
+        <button class="btn ghost" style="margin-top:8px" onclick="copyClubInvite()">링크 복사</button>
+        <div class="note" style="text-align:center;margin-top:10px">링크를 받은 분에게 이 초대장이 먼저 보이고,
+          가입하기를 누르면 <b>승인 없이 바로</b> 회원이 돼요 · 7일 유효</div>
+      </div>
+    </div></div>`;
+}
+function copyClubInvite(){
+  const t=window._clubInvUrl||'';
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
+    .then(()=>toast('초대 링크를 복사했어요')).catch(()=>toast('복사하지 못했어요'));
+}
+async function shareClubInvite(){
+  const url=window._clubInvUrl||'', n=window._clubInvName||'클럽';
+  const text=`[${n}] 클럽 초대\n아래 링크로 들어오시면 바로 가입돼요.\n${url}`;
+  if(navigator.share){
+    try{ await navigator.share({title:`${n} 초대`, text}); return; }
+    catch(e){ if(e.name==='AbortError') return; }
+  }
+  copyClubInvite();
+}
 function opIcon(t){
   /* 전달받은 라인 아이콘 세트와 같은 결(24 그리드 · 1.5 스트로크)로 통일 */
   const S = n => li(n, 18);
@@ -8484,6 +8579,7 @@ function opIcon(t){
     case '기록 · 시즌': return S('chart');
     case '가입 신청':   return S('userplus');
     case '회원 관리':   return S('users');
+    case '클럽 초대장': return S('rocket');
     case '공지 보내기': return S('megaphone');
     case '회비 관리':   return S('trendup');
     case '월례대회 설정': return S('bracket');
@@ -8896,15 +8992,16 @@ function clubTabMembers(){
     <div class="card flush2">${list.map(r=>{
       const ph=photoOf(r.name);
       const role=r.role==='owner'?'회장':r.role==='officer'?'임원':'';
-      const L=r.grade?gradeStepLabel(r.grade):null;
+      const code=memberGradeCode(r);
+      const L=code?gradeStepLabel(code):null;
       let career=''; try{ career=careerTextFrom(JSON.parse(r.sport_started||'{}')[state.sport])||''; }catch(e){}
       const mine=r.user_id && r.user_id===meId;
       return `<div class="pvmem"${r.user_id?` onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})" style="cursor:pointer"`:''}>
         <div class="pvma" style="${ph?`background:url('${ph}') center/cover`:''}">${ph?'':esc(r.name.slice(0,1))}</div>
         <div style="flex:1;min-width:0">
           <div class="nm">${esc(r.name)}${mine?' <span style="font-size:11px;color:var(--lgray);font-weight:400">(나)</span>':''}</div>
-          <div class="gr">${r.grade?`<b class="gcode" style="${L?`color:${L.c}`:''}">${esc(r.grade)}</b>`:''}${
-            r.grade&&career?' · ':''}${esc(career)}${!r.grade&&!career?'등급 미정':''}</div>
+          <div class="gr">${code?`<b class="gcode" style="${L?`color:${L.c}`:''}">${esc(code)}</b>`:''}${
+            code&&career?' · ':''}${esc(career)}${!code&&!career?'등급 미정':''}</div>
         </div>
         ${role?`<span class="pvrole ${r.role==='owner'?'ow':'of'}">${role}</span>`:''}
         ${(!mine && r.user_id)?`<button class="cdm" onclick="event.stopPropagation();openDM(${r.user_id},'${esc(r.name)}')" aria-label="대화">
@@ -11860,6 +11957,25 @@ const gradeInfo = g => GRADE_INFO.find(x=>x.g===g) || GRADE_INFO[GRADE_INFO.leng
    서버의 GRADE_STEPS 와 순서·표기가 같아야 한다. 바꾸면 server.js 도 함께 고칠 것. */
 const GRADE_STEPS = ['C','B','A','S','SS'].flatMap(g=>[1,2,3].map(n=>g+n));
 const gradeStepBase = st => String(st||'').replace(/[0-9]/g,'') || 'C';
+/* 구력(개월) → 15단계 코드. 등급 구간을 3등분한다.
+   C 0~2년 · B 2~5년 · A 5~10년 · S 10~20년 · SS 20년~ (SS 는 7년 단위)
+   운영진이 등급을 직접 정하지 않은 회원도 구력만 있으면 등급이 보이게 한다. */
+const GRADE_SPAN=[['C',0,24],['B',24,60],['A',60,120],['S',120,240],['SS',240,null]];
+function gradeStepFromMonths(m){
+  if(m==null || m<0) return null;
+  for(const [g,a,b] of GRADE_SPAN){
+    if(b===null) return g+(Math.min(2, Math.floor((m-a)/84))+1);
+    if(m<b)      return g+(Math.min(2, Math.floor((m-a)/((b-a)/3)))+1);
+  }
+  return null;
+}
+/* 명단 한 줄에 쓸 등급 코드 — 운영진이 손으로 정한 값이 우선, 없으면 구력으로 */
+function memberGradeCode(r){
+  if(r && r.grade) return r.grade;
+  let m=null;
+  try{ m=careerMonthsFrom(JSON.parse((r&&r.sport_started)||'{}')[state.sport]); }catch(e){}
+  return gradeStepFromMonths(m);
+}
 function gradeStepLabel(st){
   const i=gradeInfo(gradeStepBase(st));
   return { code:st, base:i.g, desc:i.desc.split(' · ')[0], ntrp:i.ntrp, years:i.label, c:i.c, bg:i.bg };
@@ -14875,11 +14991,28 @@ async function openInviteCard(token){
     </div>
     <div class="gl-band"></div>
     <div class="gl-form">
-      <button class="btn" onclick="acceptInviteCard('${esc(token)}')">가입 신청하고 함께하기</button>
+      <button class="btn" onclick="acceptInviteCard('${esc(token)}')">가입하고 함께하기</button>
+      ${storeCta()}
       <button class="btn ghost" style="margin-top:8px" onclick="glClose()">둘러보기만 할게요</button>
-      <div class="note" style="text-align:left;margin-top:12px">${state.loggedIn?'신청하면 클럽 임원진이 확인 후 승인해요.':'로그인하면 가입 신청이 임원진에게 자동으로 전달돼요.'}</div>
+      <div class="note" style="text-align:left;margin-top:12px">${state.loggedIn?'가입하면 승인 없이 바로 회원이 돼요.':'로그인하면 바로 회원이 돼요.'}</div>
     </div>`;
   window.scrollTo(0,0);
+}
+/* 아이폰은 앱으로 쓰는 편이 낫다 — 앱이 없을 때만 스토어 버튼을 보여준다.
+   안드로이드·PC 는 웹앱이 그대로 최선이라 아무것도 붙이지 않는다. */
+function isIOSWeb(){
+  try{
+    if(nativeNow()) return false;                     // 이미 앱 안이면 필요 없다
+    const ua=navigator.userAgent||'';
+    return /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);   // 아이패드
+  }catch(e){ return false; }
+}
+function storeCta(){
+  if(!isIOSWeb()) return '';
+  const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
+  return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
+    style="display:block;margin-top:8px;text-align:center;text-decoration:none">App Store에서 앱으로 받기</a>`;
 }
 function acceptInviteCard(token){
   glClose();
