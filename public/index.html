@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0811c';
+const BUILD='v1.0.7-0811d';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -8687,7 +8687,7 @@ function clubTabBracket(){
         <span class="bkdate">${esc(b.date||'')}</span>
         ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`:''}</span>
-      <span class="bkmeta">${esc(b.mode||'일반')} · ${b.courts||0}코트</span>
+      <span class="bkmeta">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트</span>
       <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
       <span class="bkfoot"><b>${fin}</b><em>/${tot}게임</em>
         <span class="bkpct" style="${live?'':'color:var(--lgray);font-weight:500'}">${
@@ -10974,6 +10974,7 @@ async function openClubStats(){
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
 /* ═══ 클럽 대진 v2.1 — 테르메스 스타일 · 만들기/보기 분리 · 한울 포함 ═══ */
 let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null, CB2_EVENT=0, CB2_LIST=null;
+const CB2_MODE_NAME={normal:'일반', hanul:'한울', gender:'성비', monthly:'월례대회', cheongbaek:'청백전'};
 let CB2_SEED=1;
 let CB2_HSPLIT=false;           // 한울 · 여자 코트와 남자 코트를 갈라놓기                 // '다시 섞기'를 누르면 올라간다 — 같은 시드면 같은 대진이 나온다
 const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
@@ -11513,7 +11514,7 @@ async function openClubBracketList(){
     <div class="sd">모임별로 대진이 따로 저장돼요 · 진행 중인 대진이 위에 보여요</div>`;
   const card=b=>{
     const pct=b.games?Math.round(b.done/b.games*100):0;
-    const md={hanul:'한울',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[b.mode]||'일반';
+    const md=CB2_MODE_NAME[b.mode]||'일반';
     const tagC=b.tag==='번개'?['#eef4ff','#2b62c9']:['#fceee4','#cf5418'];
     const live=b.active&&b.done>0;
     return `<div onclick="cb2Open(${b.event_id})" style="border:1px solid ${b.active?'#e9dfcf':'#f0ede6'};border-radius:16px;padding:14px;margin-top:9px;cursor:pointer;${b.active?'':'opacity:.72'}">
