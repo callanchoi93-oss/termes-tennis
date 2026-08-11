@@ -341,12 +341,16 @@
     border-radius:20px;padding:11px 22px;font-size:13.5px;font-weight:600;color:#fff;
     font-family:inherit;cursor:pointer;box-shadow:0 4px 12px rgba(236,106,46,.24)}
   .mcbtn:active{background:var(--coral-d);box-shadow:none}
-  .mcrow{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 16px;margin-bottom:14px;
+  /* 버튼은 내용을 세로 가운데로 놓는 성질이 있다. 카드 높이가 이름 줄 수에 따라
+     달라지면(두 줄짜리 클럽 이름) 그 카드만 원이 위로 떠서 '만들기'와 어긋난다.
+     행은 위 정렬, 카드는 세로 스택으로 고정해 두 원의 윗변을 맞춘다. */
+  .mcrow{display:flex;align-items:flex-start;gap:8px;overflow-x:auto;padding:4px 2px 16px;margin-bottom:14px;
     border-bottom:1px solid var(--line);
     -webkit-overflow-scrolling:touch;scrollbar-width:none}
   .mcrow::-webkit-scrollbar{display:none}
   .mcard{flex:none;width:60px;background:none;border:none;padding:0;font-family:inherit;
-    cursor:pointer;text-align:center}
+    cursor:pointer;text-align:center;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
   .mcard:active{transform:scale(.96)}
   /* .clogo 는 기본이 inline-flex 라 글줄 베이스라인에 얹힌다.
      그 결과 로고 원만 위로 밀려 옆의 '만들기' 원과 수평이 어긋난다.
@@ -632,6 +636,11 @@
   .composer .post-btn{padding:9px 18px;border:none;border-radius:10px;background:var(--coral);color:#fff;font-weight:600;font-size:14px;font-family:inherit;cursor:pointer}
   .ph-mini{height:120px;border-radius:12px;margin-top:10px;background:linear-gradient(135deg,#dfe8e4,#cfe0d8);display:flex;align-items:center;justify-content:center;color:#9ab0a5;font-weight:600;font-size:12px}
   .fullov{position:absolute;inset:0;background:var(--cream);z-index:90;display:none;flex-direction:column}
+  /* 앱(노치·다이나믹 아일랜드)에서는 이 오버레이가 상태바 밑에서 시작한다.
+     .appbar 처럼 안전영역을 더해주지 않으면 '‹ 뒤로'가 상태바에 가려 안 보인다. */
+  .evtop{position:sticky;top:0;z-index:5;background:var(--cream);
+    padding:calc(16px + env(safe-area-inset-top,0px)) 20px 12px;
+    display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0ede6}
   .fullov.on{display:flex}
   .auth-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;background:linear-gradient(160deg,#1b1813,#2c2a24);color:#fff;position:relative;overflow:hidden}
   .auth-hero .court{position:absolute;inset:0;opacity:.08}
@@ -2314,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v0806-F1';
+const BUILD='v1.0.6-0811b';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -2349,7 +2358,7 @@ const LV_BANDS=[
  ['그랜드슬램',1460,1e9,'5.0+']];
 function levelOf(r){ const b=LV_BANDS.find(x=>r>=x[1]&&r<=x[2])||LV_BANDS[3]; return {full:b[0], tier:b[0].replace(/\d+$/,''), ntrp:b[3]}; }
 function tierByRating(r){ const l=levelOf(r); return l.full+' · NTRP '+l.ntrp; }
-const myTier=()=>{const n=state.played; return n>=2?{name:tierByRating(state.rating),placing:false}:{name:`러브 · 배치 ${n}/2경기`,placing:true};};
+const myTier=()=>{const n=state.played; return n>=PLACEMENT_GAMES?{name:tierByRating(state.rating),placing:false}:{name:`러브 · 배치 ${n}/${PLACEMENT_GAMES}경기`,placing:true};};
 /* 개인리그는 단식·복식이 따로다. 레이팅·티어·랭킹이 각각 관리된다. */
 let LG_MODE='singles';                                   // 'singles' | 'doubles'
 const myRatingD = () => { const v=(state.serverUser||{}).rating_doubles; return (v==null?1000:v); };
@@ -2358,8 +2367,8 @@ const myPlayedD = () => { const v=(state.serverUser||{}).played_doubles; return 
 const myTierFor = m => {
   if((m||LG_MODE)==='doubles'){
     const n=myPlayedD();
-    return n>=2 ? {name:tierByRating(myRatingD()), placing:false}
-                : {name:`러브 · 배치 ${n}/2경기`, placing:true};
+    return n>=PLACEMENT_GAMES ? {name:tierByRating(myRatingD()), placing:false}
+                : {name:`러브 · 배치 ${n}/${PLACEMENT_GAMES}경기`, placing:true};
   }
   return myTier();
 };
@@ -2674,7 +2683,14 @@ function clubAvatar(name, size, cls){
   const k = cls? ' '+cls : '';
   if(L.img){
     const u = L.img.startsWith('http') ? L.img : API_BASE + L.img;
-    return `<span class="clogo${k}" style="width:${size}px;height:${size}px;background:url('${u}') center/cover"></span>`;
+    /* 배경 이미지로 깔면 파일이 없어질 때(서버 교체·업로드 유실) 하얀 원만 남는다.
+       머리글자를 밑에 깔고 그 위에 <img> 를 얹어, 못 불러오면 글자가 드러나게 한다. */
+    const bg = L.bg || 'linear-gradient(150deg,#3f9e6b,#2c7d50)';
+    const ini = esc(String(name||'').trim().slice(0,1));
+    return `<span class="clogo${k}" style="width:${size}px;height:${size}px;background:${bg};
+      font-size:${Math.round(size*0.42)}px;overflow:hidden;position:relative">${ini}<img src="${u}" alt=""
+      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
+      onerror="this.remove()"></span>`;
   }
   if(!L.ic) return '';
   return `<span class="clogo${k}" style="width:${size}px;height:${size}px;background:${L.bg};font-size:${Math.round(size*0.52)}px">${L.ic}</span>`;
@@ -3217,7 +3233,7 @@ function applyAuthUI(){
 /* 배치 경기(5경기)를 마치기 전에는 레이팅을 숫자로 보여주지 않는다.
    0승 0패인데 1000점이 찍히면 그 숫자가 뭘 뜻하는지 아무도 모른다.
    내부 계산에는 계속 1000을 쓴다 (엘로 기준점). */
-const PLACEMENT_GAMES = 2;
+const PLACEMENT_GAMES = 5;      // 배치 경기 — 화면마다 2/5 가 섞여 있어 하나로 모았다
 const isPlaced = () => (state.played||0) >= PLACEMENT_GAMES;
 const ratingText = () => isPlaced() ? String(state.rating) : '—';
 const ratingSub  = () => isPlaced() ? '' : `배치 ${state.played||0}/${PLACEMENT_GAMES}`;
@@ -6088,7 +6104,7 @@ async function openSmartMatch(){
       h+=`<div class="card" style="display:flex;align-items:center;gap:13px;margin-bottom:10px">
         <div class="lb-av" style="width:46px;height:46px;border-radius:14px;background:${cls[i%3]};font-size:18px;cursor:pointer" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')">${esc(o.name[0])}</div>
         <div style="flex:1;min-width:0" onclick="openCompareSrv(${o.id},'${String(o.name).replace(/'/g,'')}')" style="cursor:pointer">
-          <div style="font-weight:500;font-size:14px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:500">· ${(o.games||0)>=5?'레이팅 '+o.rating:'배치 중'}</span></div>
+          <div style="font-weight:500;font-size:14px">${esc(o.name)} <span style="font-size:12px;color:var(--lgray);font-weight:500">· ${(o.games||0)>=PLACEMENT_GAMES?'레이팅 '+o.rating:'배치 중'}</span></div>
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">${esc(o.region||'지역 미정')} · 탭하면 전적 비교</div>
           <div style="font-size:11px;color:var(--coral-d);font-weight:500;margin-top:3px">예상 승률 ${exp}%</div></div>
         </div>`; });
@@ -6198,7 +6214,7 @@ async function openClubRank(){
       h+=`<div class="lrow ${me?'mine':''}" style="align-items:center">
         <div class="lrk" style="color:${medal};width:26px">${rank}</div>
         <div style="flex:1"><span style="font-weight:${me?'800':'700'};color:var(--ink);font-size:14px">${esc(p.name)}${me?' (나)':''}${p.grade?` <small style="color:#a8a49c">· ${p.grade}조</small>`:''}</span><br><small style="color:var(--lgray);font-size:11px">출석 ${p.attended||0}회</small></div>
-        <div style="color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-weight:700;font-size:${(p.games||0)>=5?'15px':'12px'}">${(p.games||0)>=5?(p.rating||1000):'배치 중'}</div></div>`; });
+        <div style="color:${(p.games||0)>=PLACEMENT_GAMES?'var(--coral-d)':'var(--lgray)'};font-weight:700;font-size:${(p.games||0)>=PLACEMENT_GAMES?'15px':'12px'}">${(p.games||0)>=PLACEMENT_GAMES?(p.rating||1000):'배치 중'}</div></div>`; });
     h+=`</div><button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button>`;
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
     return;
@@ -6797,7 +6813,7 @@ function renderLeague(){
           h+=`<div ${me?'':`onclick="openLeagueMatchup(${p.id})"`} style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid #f0efec;${me?'background:var(--coral-s);border-radius:10px;padding-left:8px;padding-right:8px':''}">
             <div style="width:24px;text-align:center;font-weight:700;color:${medal}">${i+1}</div>
             <div style="flex:1;font-weight:${me?'900':'700'};font-size:14px">${esc(p.name)}${(()=>{const r=restingOf(p);return r&&r!=='배치 전'?`<span class="lgrest">${r}</span>`:'';})()}${me?' (나)':''}</div>
-            <div style="font-weight:700;color:${(p.games||0)>=5?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=5?'inherit':'12px'}">${(p.games||0)>=5?p.rating:`배치 ${p.games||0}/5`}</div></div>`; });
+            <div style="font-weight:700;color:${(p.games||0)>=PLACEMENT_GAMES?'var(--coral-d)':'var(--lgray)'};font-size:${(p.games||0)>=PLACEMENT_GAMES?'inherit':'12px'}">${(p.games||0)>=PLACEMENT_GAMES?p.rating:`배치 ${p.games||0}/${PLACEMENT_GAMES}`}</div></div>`; });
         h+=`</div>`;
         }
       }
@@ -6811,7 +6827,7 @@ function renderLeague(){
     h+=renderRankingTable();
   }
   if(t.placing){
-    h+=`<div class="card" style="background:#e9f4ee;border:none"><div style="font-size:14px;font-weight:500;color:#5b3fa8">배치 중 · ${placedGames()}/5 경기 · 마치면 등급이 정해져요</div>
+    h+=`<div class="card" style="background:#e9f4ee;border:none"><div style="font-size:14px;font-weight:500;color:#5b3fa8">배치 중 · ${placedGames()}/${PLACEMENT_GAMES} 경기 · 마치면 등급이 정해져요</div>
       <div class="gprog vio"><i style="width:${Math.max(placedGames()/5*100,4)}%"></i></div>
       <div style="font-size:12px;color:#5b3fa8;font-weight:500">경기 결과를 입력하면 상대 수준을 반영해 레이팅이 오르내려요. 5경기 후 등급이 정해져요.</div></div>`;
   }
@@ -7549,10 +7565,10 @@ function openEditProfile(){
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">구력</div>
     <div style="display:flex;flex-wrap:wrap;gap:7px">${EXP.map(x=>`<div onclick="setEdit('exp','${x}')" class="ptag" style="cursor:pointer;border:1.5px solid ${state.exp===x?'var(--coral)':'#ece2d6'};background:${state.exp===x?'var(--coral-s)':'#fff'};color:${state.exp===x?'var(--coral-d)':'var(--ink)'};font-weight:700">${x}</div>`).join('')}</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">출생 연도</div>
-    <input id="pfBirth" class="sel-in" type="number" inputmode="numeric" min="1930" max="2020" value="${d.birth!=null?d.birth:((state.serverUser||{}).birth_year||'')}"
+    <input id="pfBirth" class="sel-in" type="number" inputmode="numeric" min="1930" max="2020" value="${(d.birth!=null&&d.birth!=='')?d.birth:((state.serverUser||{}).birth_year||'')}"
       placeholder="예) 1990" style="width:100%;box-sizing:border-box">
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">신장 (cm)</div>
-    <input id="pfHeight" class="sel-in" type="number" inputmode="numeric" min="120" max="220" value="${d.height!=null?d.height:((state.serverUser||{}).height||'')}"
+    <input id="pfHeight" class="sel-in" type="number" inputmode="numeric" min="120" max="220" value="${(d.height!=null&&d.height!=='')?d.height:((state.serverUser||{}).height||'')}"
       placeholder="예) 175" style="width:100%;box-sizing:border-box">
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">주 손</div>
     <div class="miniseg">${['오른손','왼손'].map(x=>`<div class="${((state.serverUser||{}).handed)===x?'on':''}" onclick="setEditSrv('handed','${x}')">${x}</div>`).join('')}</div>
@@ -7602,6 +7618,7 @@ function setEditSrv(k,v){
   state.serverUser[k] = (state.serverUser[k]===v) ? null : v;
   openEditProfile();
 }
+const pfNum=(v, fb)=>{ const n=parseInt(v,10); return isNaN(n) ? (fb==null?null:fb) : n; };
 /* 저장 전 입력값 그대로 개인리그 선수 카드를 렌더링 — 상대에게 보이는 모습을 확인한다 */
 function previewMyCard(){
   pfStash();
@@ -7609,8 +7626,10 @@ function previewMyCard(){
   const u=Object.assign({}, su, {
     name: su.name || meName(),
     gender: state.gender || su.gender,
-    birth_year: parseInt(d.birth,10)||null,
-    height: parseInt(d.height,10)||null,
+    /* 빈 칸이면 '지운다'가 아니라 '입력 안 함'이다. 예전엔 빈 문자열이 그대로
+       null 로 덮여, 저장해 둔 신장·출생 연도가 미리보기에서 사라졌다. */
+    birth_year: pfNum(d.birth, su.birth_year),
+    height:     pfNum(d.height, su.height),
     played: su.played!=null ? su.played : (state.played||0),
   });
   const h=`<div class="sh-top">
@@ -11920,11 +11939,11 @@ function leaguePlayerCard(u, opts){
   const dbl = o.mode==='doubles';
   const rt = dbl ? (u.rating_doubles==null?1000:u.rating_doubles) : (u.rating||1000);
   const rk = dbl ? u.rank_doubles : u.rank;
-  // 배치 경기(2경기) 전에는 티어를 확정하지 않는다. 전에는 무조건 레이팅→티어로 바꿔
+  // 배치 경기 전에는 티어를 확정하지 않는다. 전에는 무조건 레이팅→티어로 바꿔
   // 배치 중인 사람도 '챌린저1'로 보였다.
   const pl = dbl ? (u.played_doubles==null? (u.played||0) : u.played_doubles) : (u.played||0);
-  const placing = pl < 2;
-  const tier = placing ? `배치 중 ${pl}/2경기` : String(tierByRating(rt)).split(' · ')[0];
+  const placing = pl < PLACEMENT_GAMES;
+  const tier = placing ? `배치 중 ${pl}/${PLACEMENT_GAMES}경기` : String(tierByRating(rt)).split(' · ')[0];
   const fem = String(u.gender||'').startsWith('여') || u.gender==='F';
   const ac  = fem ? '#c9457e' : '#3d6fd6';
   const bg  = fem ? '#fdeef4' : '#eef4fd';
@@ -13449,7 +13468,7 @@ function drawStage(){
         <div style="font-size:29px;font-weight:800;letter-spacing:-.03em">${esc((g.teamB||[]).map(p=>p.name).join(' · '))}</div>
         <div style="font-size:13px;font-weight:700;color:#8a8272;margin-top:4px;letter-spacing:.02em">${esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '))}</div></div></div>`;
   };
-  document.getElementById('evPage').innerHTML=`<div id="cbStage" style="min-height:100vh;background:#17150f;color:#f2efe6;padding:22px 20px 40px;box-sizing:border-box">
+  document.getElementById('evPage').innerHTML=`<div id="cbStage" style="min-height:100vh;background:#17150f;color:#f2efe6;padding:calc(22px + env(safe-area-inset-top,0px)) 20px 40px;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:12px;font-weight:500;color:#8a8272">거치 모드 · ${esc(state.activeClub||'')}</span>
       <span onclick="clearInterval(STAGE_T);closeEventPage()" style="font-size:18px;color:#8a8272;cursor:pointer">×</span></div>
@@ -14065,7 +14084,7 @@ async function openPlayerReport(uid, name){
   const stat=(l,v,c)=>`<div style="background:#f9f7f3;border-radius:14px;padding:13px 8px;text-align:center">
     <div style="font-size:18px;font-weight:600;color:${c||'#1c1b18'}">${v}</div>
     <div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:3px">${l}</div></div>`;
-  let h=`<div style="position:sticky;top:0;z-index:5;background:var(--cream);padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0ede6">
+  let h=`<div class="evtop">
       <span onclick="closeEventPage()" style="cursor:pointer;font-size:23px;color:#8a857c;line-height:1">‹</span>
       <span style="font-size:14px;font-weight:500">${esc(name)} 리포트</span></div>
     <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
@@ -14349,7 +14368,7 @@ function drawEventDetail(){
   const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f7f5f0;border-radius:22px;padding:5px 12px 5px 5px;margin:0 6px 7px 0;cursor:pointer">
       ${evAvatar(n,ph,26)}<span style="font-size:12px;font-weight:500;color:#3a352e">${esc(n)}</span></span>`;
 
-  let h=`<div style="position:sticky;top:0;z-index:5;background:var(--cream);padding:16px 20px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0ede6">
+  let h=`<div class="evtop">
       <span onclick="closeEventPage()" style="cursor:pointer;font-size:23px;color:#8a857c;line-height:1">‹</span>
       <span style="font-size:14px;font-weight:500">모임 정보</span></div>
     <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
@@ -16068,7 +16087,7 @@ function ombStage(){
         <div style="font-size:29px;font-weight:700">${esc((g.a||[]).join(' · '))}</div>
         <div style="font-size:12px;color:#8a8272;margin:8px 0">vs</div>
         <div style="font-size:29px;font-weight:700">${esc((g.b||[]).join(' · '))}</div></div></div>`; };
-  document.getElementById('evPage').innerHTML=`<div style="min-height:100vh;background:#17150f;color:#f2efe6;padding:22px 20px 40px;box-sizing:border-box">
+  document.getElementById('evPage').innerHTML=`<div style="min-height:100vh;background:#17150f;color:#f2efe6;padding:calc(22px + env(safe-area-inset-top,0px)) 20px 40px;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:12px;font-weight:500;color:#8a8272">거치 모드 · ${esc(OMB.loc||'')}</span>
       <span onclick="closeEventPage();drawOmb()" style="font-size:18px;color:#8a8272;cursor:pointer">×</span></div>
@@ -17446,7 +17465,7 @@ async function openMyReport(scope){
     let h=`<div class="sh-top"><h3>내 리포트</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
       <div class="sd">서버에 쌓인 실제 기록이에요. 대진 결과를 확정할수록 정확해져요.</div>
       <div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:14px">
-        <div><div style="font-size:18px;font-weight:600">${wt<5?'배치 중':((p&&p.rating)||1000)}</div><div style="font-size:11px;color:var(--gray);font-weight:500">레이팅</div></div>
+        <div><div style="font-size:18px;font-weight:600">${wt<PLACEMENT_GAMES?'배치 중':((p&&p.rating)||1000)}</div><div style="font-size:11px;color:var(--gray);font-weight:500">레이팅</div></div>
         <div><div style="font-size:18px;font-weight:600;color:var(--coral-d)">${p?p.rank+'위':'—'}</div><div style="font-size:11px;color:var(--gray);font-weight:500">지역 순위</div></div>
         <div><div style="font-size:18px;font-weight:600;color:var(--green)">${wr}%</div><div style="font-size:11px;color:var(--gray);font-weight:500">승률 (${(p&&p.wins)||0}승 ${(p&&p.losses)||0}패)</div></div></div>
       <div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:14px">
@@ -20467,7 +20486,7 @@ function _renderMeCore(){
     else { rec={w:ME_PROF.wins||0,l:ME_PROF.losses||0}; rating=ME_PROF.rating||rating; peak=Math.max(ME_PROF.peak_mmr||0, rating); }
   }
   const wt=rec.w+rec.l,wr=wt?Math.round(rec.w/wt*100):0;
-  const placing=wt<2;                                   // 배치 5경기 전엔 숫자 대신 '배치 중'
+  const placing=wt<PLACEMENT_GAMES;                     // 배치 경기 전엔 숫자 대신 '배치 중'
   const ratingLabel=placing?'배치 중':rating, peakLabel=placing?'—':peak;
   const rel=relRecord(),relKeys=Object.keys(rel);
   const _td=new Date(), _mo=_td.getMonth()+1, _dy=_td.getDate();
