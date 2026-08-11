@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.6-0811f';
+const BUILD='v1.0.7-0811a';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -6805,7 +6805,7 @@ function renderLeague(){
           if(LG_JOIN && LG_JOIN.joined) h+=`<div class="card" style="text-align:center;padding:24px 18px">
             <div style="font-size:15px;font-weight:600">아직 순위가 없어요</div>
             <div style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.55">
-              경기를 하고 결과를 입력하면 순위에 올라가요.<br>5경기를 마치면 등급이 정해집니다.</div></div>`;
+              경기를 하고 결과를 입력하면 순위에 올라가요.<br>${PLACEMENT_GAMES}경기를 마치면 등급이 정해집니다.</div></div>`;
         } else {
         h+=`<div style="font-size:11.5px;color:var(--lgray);margin:2px 4px 8px">선수를 탭하면 통산 성적을 볼 수 있어요</div>`;
         h+=`<div class="card"><div class="ch" style="font-size:14px;display:flex;justify-content:space-between"><span>${SP().n} 레이팅 랭킹</span><span style="font-size:12px;color:var(--lgray);font-weight:500">참가자 ${played.length}명</span></div>`;
@@ -6829,7 +6829,7 @@ function renderLeague(){
   if(t.placing){
     h+=`<div class="card" style="background:#e9f4ee;border:none"><div style="font-size:14px;font-weight:500;color:#5b3fa8">배치 중 · ${placedGames()}/${PLACEMENT_GAMES} 경기 · 마치면 등급이 정해져요</div>
       <div class="gprog vio"><i style="width:${Math.max(placedGames()/5*100,4)}%"></i></div>
-      <div style="font-size:12px;color:#5b3fa8;font-weight:500">경기 결과를 입력하면 상대 수준을 반영해 레이팅이 오르내려요. 5경기 후 등급이 정해져요.</div></div>`;
+      <div style="font-size:12px;color:#5b3fa8;font-weight:500">경기 결과를 입력하면 상대 수준을 반영해 레이팅이 오르내려요. ${PLACEMENT_GAMES}경기 후 등급이 정해져요.</div></div>`;
   }
   state.matches.forEach(m=>{
     const fs=fundState(m),pct=Math.min(100,Math.round(m.cur/m.cap*100));
@@ -19397,7 +19397,7 @@ function drawDuelHub(){
        :`<span class="n">${me.mmr}</span><span class="of">MMR</span>
          <span class="rt">${done}경기</span>`}</div>
     <div class="rtbar"><i style="width:${placing?Math.round(done/need*100):100}%"></i></div>
-    <div class="sub"><span>${placing?'5경기를 마치면 MMR과 티어가 정해져요':'경기 결과로 오르내려요'}</span></div></div>`;
+    <div class="sub"><span>${placing?`${PLACEMENT_GAMES}경기를 마치면 MMR과 티어가 정해져요`:'경기 결과로 오르내려요'}</span></div></div>`;
 
   h+=`<button class="btn" onclick="openDuelFind()">상대 찾기</button>`;
 
@@ -20726,7 +20726,7 @@ function _renderMeCore(){
       <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 개인리그</span></div>
       ${(ts.placing&&td.placing)
         ? `<div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.45">
-             개인리그 3경기면 정해져요</div>`
+             개인리그 ${PLACEMENT_GAMES}경기면 정해져요</div>`
         : `<div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:6px;line-height:1.8">
              <div>단식 <b style="color:${ts.placing?'var(--lgray)':'var(--ink)'}">${tnm(ts)}</b></div>
              <div>복식 <b style="color:${td.placing?'var(--lgray)':'var(--ink)'}">${tnm(td)}</b></div></div>`}
@@ -20762,7 +20762,7 @@ function _renderMeCore(){
           <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">복식 티어</div></div></div>
       ${(ts.placing&&td.placing)
         ? `<div onclick="go('match')" style="display:flex;align-items:center;gap:8px;background:var(--coral-s);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#8a5230;cursor:pointer">
-             개인리그 3경기면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
+             개인리그 ${PLACEMENT_GAMES}경기면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
         : `<div style="display:flex;align-items:center;gap:8px;background:#f2f7f4;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#3f7a5c">
              최고 티어 <b style="margin-left:auto;color:var(--green);font-weight:600">${peakLabel}</b></div>`}`;
     })()}
@@ -21066,7 +21066,7 @@ function _renderHomeCore(){
     h+=`<div class="card" style="margin-top:11px;cursor:pointer" onclick="go('league')">
       <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:14px;font-weight:500">${si.name}</div><div style="font-size:12px;font-weight:500;color:var(--coral-d)">D-${si.dleft}</div></div>
       <div style="height:7px;border-radius:4px;background:#eceae6;margin:10px 0 8px;overflow:hidden"><div style="height:100%;width:${si.pct}%;background:var(--coral)"></div></div>
-      <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:12px;color:var(--gray);font-weight:500">${ME_PROF?((ME_PROF.wins||0)+(ME_PROF.losses||0)>=5?`우리 지역 ${ME_PROF.rank}위 · 레이팅 ${ME_PROF.rating}`:`배치 중 · 5경기 후 등급이 정해져요`):'내 순위 불러오는 중…'}</div><div style="font-size:12px;color:var(--coral-d);font-weight:500">랭킹 보기 →</div></div></div>`;
+      <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:12px;color:var(--gray);font-weight:500">${ME_PROF?((ME_PROF.wins||0)+(ME_PROF.losses||0)>=PLACEMENT_GAMES?`우리 지역 ${ME_PROF.rank}위 · 레이팅 ${ME_PROF.rating}`:`배치 중 · ${PLACEMENT_GAMES}경기 후 등급이 정해져요`):'내 순위 불러오는 중…'}</div><div style="font-size:12px;color:var(--coral-d);font-weight:500">랭킹 보기 →</div></div></div>`;
   } else { const si=seasonInfo(), rk=myRegionRank();
     h+=`<div class="card" style="margin-top:11px;cursor:pointer" onclick="openSeasonResult()">
       <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:14px;font-weight:500">${si.name}</div><div style="font-size:12px;font-weight:500;color:var(--coral-d)">D-${si.dleft}</div></div>
