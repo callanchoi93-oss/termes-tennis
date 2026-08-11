@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0811d';
+const BUILD='v1.0.7-0811f';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -8685,7 +8685,7 @@ function clubTabBracket(){
         <span class="bkt">${esc(b.title||'모임 미지정')}</span>
         ${live?`<span class="bklive">진행 중</span>`:`<span class="bkdone">종료</span>`}
         <span class="bkdate">${esc(b.date||'')}</span>
-        ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
+        ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`:''}</span>
       <span class="bkmeta">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트</span>
       <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
@@ -8697,13 +8697,21 @@ function clubTabBracket(){
     ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
     ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
 }
-async function delBracket(id, title){
-  if(!id){ toast('대진 정보를 찾을 수 없어요'); return; }
-  if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수도 함께 사라져요.`)) return;
+async function delBracket(eid, title){
+  if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수와 그날 기록도 함께 사라져요.`)) return;
   try{
-    await api(`/clubs/${clubId()}/brackets/${id}`,{method:'DELETE'});
-    CB2_LIST=null; toast('삭제했어요'); renderClub();
-  }catch(e){ toast(String(e.message).includes('officer_only')?'임원만 지울 수 있어요':'삭제하지 못했어요'); }
+    await api(`/clubs/${clubId()}/brackets/${eid||0}`,{method:'DELETE'});
+    CB2_LIST=null; PASTM=null; toast('삭제했어요'); renderClub();
+  }catch(e){ toast(String(e.message).includes('officer_only')?'임원만 지울 수 있어요'
+    :String(e.message).includes('not_found')?'이미 지워진 대진이에요':'삭제하지 못했어요'); }
+}
+/* 지난 모임에 남은 기록 지우기 — 대진을 지우기 전에 쌓인 옛 기록용 */
+async function delPastLog(date){
+  if(!await appConfirm(`${date} 기록을 지울까요?\n그날 순위와 스코어가 사라져요.`)) return;
+  try{
+    await api(`/clubs/${clubId()}/bracket2/logs/${encodeURIComponent(date)}`,{method:'DELETE'});
+    toast('기록을 지웠어요'); openPastMeetings();
+  }catch(e){ toast(String(e.message).includes('officer_only')?'임원만 지울 수 있어요':'지우지 못했어요'); }
 }
 function d0(){ return (state.clubData||{})[state.activeClub||'']||{}; }
 function loadBracketList(){
@@ -8911,7 +8919,9 @@ async function ensureClubRoster(){
   const cid=clubId();
   if(TRIAL){ CLUB_ROSTER=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'})); return CLUB_ROSTER; }
   if(!SERVER_OK||!cid){ CLUB_ROSTER=CLUB_ROSTER||[]; return CLUB_ROSTER; }
-  try{ CLUB_ROSTER=cb2Roster(await api(`/clubs/${cid}/roster`)); }catch(e){ CLUB_ROSTER=CLUB_ROSTER||[]; }
+  /* /roster 는 '오늘 대진용 명단'이라 최근 모임의 참석자만 준다.
+     멤버 탭·월례대회 조는 클럽 전체 명단이어야 하므로 /members 를 쓴다. */
+  try{ CLUB_ROSTER=cb2Roster(await api(`/clubs/${cid}/members`)); }catch(e){ CLUB_ROSTER=CLUB_ROSTER||[]; }
   CLUB_ROSTER_FOR=(state.activeClub||'')+'|'+cid;
   return CLUB_ROSTER;
 }
@@ -8921,7 +8931,7 @@ function loadClubRoster(){
   CLUB_ROSTER_FOR=key;
   if(TRIAL){ CLUB_ROSTER=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'})); renderClub(); return; }
   if(!SERVER_OK || !cid){ CLUB_ROSTER=[]; return; }
-  api(`/clubs/${cid}/roster`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
+  api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
     .catch(()=>{ CLUB_ROSTER=[]; });
 }
 function clubTabNews(){
@@ -14395,6 +14405,9 @@ function drawPastMeetings(){
           <div style="font-size:13px;font-weight:700;margin-top:2px">${esc(maskNum(top.name, top.name))}</div></div>`:''}
         <span style="flex:none;color:#cdc8be;font-size:17px;transform:rotate(${open?'90':'0'}deg);transition:.15s">›</span></div>`;
     if(open){
+      /* 대진을 지우기 전에 쌓인 기록은 여기서 직접 치울 수 있게 한다 */
+      if(cb2Officer()) h+=`<div style="border-top:1px solid #f4f2ed;padding:9px 14px;text-align:right">
+        <span onclick="delPastLog('${esc(l.date||'')}')" style="font-size:11.5px;font-weight:600;color:#c94343;cursor:pointer">이 기록 지우기</span></div>`;
       h+=`<div style="border-top:1px solid #f4f2ed;padding:12px 14px">
         <div style="font-size:11.5px;font-weight:600;color:var(--gray);margin-bottom:8px">그날 순위 · 승 ${PT_WIN}점 · 무 ${PT_DRAW}점</div>
         <div style="display:flex;font-size:10.5px;color:var(--lgray);font-weight:500;padding:0 2px 6px">
