@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0811a';
+const BUILD='v1.0.7-0811b';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -2730,16 +2730,20 @@ async function uploadClubLogo(name, file){
   try{
     toast('이미지를 올리는 중…');
     const dataUrl = await shrinkImage(file, 512, 0.9);
-    const r = await api('/upload',{method:'POST', body: JSON.stringify({dataUrl})});
+    const cid = (CLUB_IDS||{})[name];
+    /* 클럽 로고는 서버 DB 에 넣는다. 예전에는 /uploads 에 파일로 두고
+       주소만 기기에 저장해서, 컨테이너가 재시작되면 파일이 사라져
+       로고가 빈 원으로 바뀌었다. */
+    const r = cid
+      ? await api(`/clubs/${cid}/logo`, {method:'POST', body: JSON.stringify({dataUrl})})
+      : await api('/upload', {method:'POST', body: JSON.stringify({dataUrl})});
     if(!r || !r.url) throw new Error('no_url');
     state.clubLogos = state.clubLogos || {};
     const cur = state.clubLogos[name] || {};
     state.clubLogos[name] = { ic:null, bg:cur.bg||CLUB_LOGO_BGS[0], img:r.url };
     saveMatsu();
-    // 서버에도 올려둔다(엔드포인트가 없으면 조용히 기기 저장만 유지)
-    try{ const cid=(CLUB_IDS||{})[name]; if(cid) await api(`/clubs/${cid}`,{method:'PATCH', body: JSON.stringify({logo:r.url})}); }catch(e){}
     openClubLogoEdit(name);
-    toast('로고 이미지를 올렸어요');
+    toast(cid ? '로고를 저장했어요 · 회원 모두에게 보여요' : '로고 이미지를 올렸어요');
   }catch(e){
     const k=(()=>{ try{ return JSON.parse(e.message).error; }catch(_){ return ''; } })();
     toast(k==='too_large' ? '이미지가 너무 커요 · 3MB 이하로 올려주세요'
@@ -2747,15 +2751,25 @@ async function uploadClubLogo(name, file){
         : '이미지를 올리지 못했어요');
   }
 }
-function setClubLogo(name, ic, bg){
+async function setClubLogo(name, ic, bg){
   state.clubLogos=state.clubLogos||{};
   const cur=state.clubLogos[name]||{ic:CLUB_LOGO_OPTS[0],bg:CLUB_LOGO_BGS[0]};
-  state.clubLogos[name]={ic: ic||cur.ic, bg: bg||cur.bg, img: ic?null:cur.img};   // 아이콘 고르면 이미지 해제
+  const next={ic: ic||cur.ic, bg: bg||cur.bg, img: ic?null:cur.img};   // 아이콘 고르면 이미지 해제
+  state.clubLogos[name]=next; saveMatsu();
   openClubLogoEdit(name);
+  // 기기에만 두면 다른 회원 화면에는 안 보인다 — 서버에도 남긴다
+  const cid=(CLUB_IDS||{})[name];
+  if(cid) try{ await api(`/clubs/${cid}/profile`,{method:'PATCH',
+    body: JSON.stringify({logo_ic:next.ic||'', logo_bg:next.bg||''})}); }catch(e){}
 }
-function clearClubLogo(name){
-  state.clubLogos=state.clubLogos||{}; delete state.clubLogos[name];
+async function clearClubLogo(name){
+  state.clubLogos=state.clubLogos||{}; delete state.clubLogos[name]; saveMatsu();
   closeOv(); toast('로고를 지웠어요 · 클럽명만 표시돼요'); renderClub();
+  const cid=(CLUB_IDS||{})[name];
+  if(cid){
+    try{ await api(`/clubs/${cid}/logo`,{method:'DELETE'}); }catch(e){}
+    try{ await api(`/clubs/${cid}/profile`,{method:'PATCH', body: JSON.stringify({logo_ic:'', logo_bg:''})}); }catch(e){}
+  }
 }
 const SP_CATL={racket:'라켓 · 대진표',team:'팀 · 매치',record:'개인 · 기록'};
 function ACTIVE_SPORTS(){ return String((CFG&&CFG.active_sports)||'tennis').split(',').map(x=>x.trim()).filter(Boolean); }
