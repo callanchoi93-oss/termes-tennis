@@ -190,7 +190,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0811';
+const SRV_BUILD = 'sH-0811b';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1141,7 +1141,8 @@ app.get('/clubs/:id/brackets', auth, (req, res) => {
   const rows = db.prepare(`SELECT b.event_id, b.data, b.updated_at, e.title, e.date, e.tag
     FROM club_brackets_ev b LEFT JOIN club_events e ON e.id=b.event_id
     WHERE b.club_id=? ORDER BY b.updated_at DESC LIMIT 300`).all(cid);
-  const out = rows.map(r => { let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
+  // 모임이 이미 사라진 대진은 목록에 올리지 않는다 (지난 버전에서 남은 찌꺼기)
+  const out = rows.filter(r => !r.event_id || r.title != null).map(r => { let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
     const gs = d.games || [];
     const done = gs.filter(g => g.sa != null).length;
     return { event_id: r.event_id, title: r.title || '모임', date: r.date || d.date, tag: r.tag || '정기',
@@ -1392,6 +1393,11 @@ app.delete('/clubs/:id/events/:eid', auth, (req, res) => {
       { icon: '📅', title: '모임이 취소됐어요', body: `${ev.title}${ev.date ? ' · ' + ev.date : ''}` }); });
   db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(eid);
   db.prepare('DELETE FROM event_guests WHERE event_id=?').run(eid);
+  /* 모임에 딸린 것들도 같이 지운다 — 예전에는 대진이 남아
+     '진행 중' 목록에 없는 모임의 대진이 계속 떠 있었다 */
+  try { db.prepare('DELETE FROM club_brackets_ev WHERE club_id=? AND event_id=?').run(cid, eid); } catch (e) {}
+  try { db.prepare('DELETE FROM event_comments WHERE event_id=?').run(eid); } catch (e) {}
+  try { db.prepare('DELETE FROM event_reactions WHERE event_id=?').run(eid); } catch (e) {}
   db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
   res.json({ ok: true });
 });
