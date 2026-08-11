@@ -190,7 +190,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0810';
+const SRV_BUILD = 'sH-0811';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -2524,6 +2524,46 @@ app.patch('/clubs/:id/fees', auth, (req, res) => {
     .run(entry_fee, season_fee, guest_fee, guest_cap, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
+/* ═══ 클럽 로고 ═══════════════════════════════════════════════
+   업로드 폴더(/uploads)에 파일로 두면 컨테이너가 재시작될 때 사라진다.
+   로고는 작고(≤512px) 자주 안 바뀌므로 DB 안에 넣어 DB와 수명을 같이 하게 한다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS club_logos (
+    club_id INTEGER PRIMARY KEY, mime TEXT, data BLOB, updated_at INTEGER)`);
+} catch (e) {}
+
+app.post('/clubs/:id/logo', auth, limitUpload, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec((req.body && req.body.dataUrl) || '');
+  if (!m) return res.status(400).json({ error: 'bad_image' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length > 800 * 1024) return res.status(413).json({ error: 'too_large' });
+  db.prepare(`INSERT INTO club_logos (club_id,mime,data,updated_at) VALUES (?,?,?,?)
+    ON CONFLICT(club_id) DO UPDATE SET mime=excluded.mime, data=excluded.data, updated_at=excluded.updated_at`)
+    .run(cid, m[1], buf, now());
+  // ?v= 를 붙여 브라우저가 옛 로고를 붙잡고 있지 않게 한다
+  const url = `/clubs/${cid}/logo?v=${now()}`;
+  db.prepare('UPDATE clubs SET logo=?, logo_ic=NULL WHERE id=?').run(url, cid);
+  res.json({ ok: true, url });
+});
+
+app.get('/clubs/:id/logo', (req, res) => {
+  const r = db.prepare('SELECT mime,data FROM club_logos WHERE club_id=?').get(+req.params.id);
+  if (!r || !r.data) return res.status(404).end();
+  res.set('Content-Type', r.mime || 'image/png');
+  res.set('Cache-Control', 'public, max-age=604800');   // ?v= 가 바뀌면 새로 받는다
+  res.send(Buffer.from(r.data));
+});
+
+app.delete('/clubs/:id/logo', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM club_logos WHERE club_id=?').run(cid);
+  db.prepare('UPDATE clubs SET logo=NULL WHERE id=?').run(cid);
+  res.json({ ok: true });
+});
+
 /* 클럽 소개 정보 (클럽장/임원만) — 평균 등급 · 주 사용 코트 · 정기모임 요일 */
 app.patch('/clubs/:id/profile', auth, (req, res) => {
   const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(+req.params.id);
