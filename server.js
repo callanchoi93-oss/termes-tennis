@@ -190,7 +190,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0811b';
+const SRV_BUILD = 'sH-0811c';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1395,7 +1395,15 @@ app.delete('/clubs/:id/events/:eid', auth, (req, res) => {
   db.prepare('DELETE FROM event_guests WHERE event_id=?').run(eid);
   /* 모임에 딸린 것들도 같이 지운다 — 예전에는 대진이 남아
      '진행 중' 목록에 없는 모임의 대진이 계속 떠 있었다 */
-  try { db.prepare('DELETE FROM club_brackets_ev WHERE club_id=? AND event_id=?').run(cid, eid); } catch (e) {}
+  try {
+    const br = db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid);
+    db.prepare('DELETE FROM club_brackets_ev WHERE club_id=? AND event_id=?').run(cid, eid);
+    if (br) {
+      let day = ''; try { day = String(JSON.parse(br.data || '{}').date || '').slice(0, 10); } catch (e) {}
+      if (day && !dayStillHasBracket(cid, day))
+        db.prepare('DELETE FROM club_bracket_logs WHERE club_id=? AND date=?').run(cid, day);
+    }
+  } catch (e) {}
   try { db.prepare('DELETE FROM event_comments WHERE event_id=?').run(eid); } catch (e) {}
   try { db.prepare('DELETE FROM event_reactions WHERE event_id=?').run(eid); } catch (e) {}
   db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
@@ -3302,14 +3310,39 @@ function bracketPayload(b) {
 // 클럽의 최신 대진 (회원은 published=1 만)
 // 과거 대진 전체 (시즌 리포트용). 발행된 것만 집계한다.
 /* 대진 삭제 — 잘못 편성했거나 취소된 모임의 대진을 지운다. 임원만. */
+/* 그 클럽에 아직 그 날짜의 대진이 남아 있나 — 남아 있으면 기록은 지우지 않는다 */
+function dayStillHasBracket(cid, day) {
+  if (!day) return true;
+  const rows = [...db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=?').all(cid),
+                ...db.prepare('SELECT data FROM club_brackets WHERE club_id=?').all(cid)];
+  return rows.some(r => { try { return String(JSON.parse(r.data).date || '').slice(0, 10) === day; }
+                         catch (e) { return false; } });
+}
+/* :bid 는 모임 id. 0 이면 모임에 안 붙은 옛 대진.
+   예전에는 club_brackets(옛 표)만 지워서, 모임별 대진과 '지난 모임' 기록이 그대로 남았다. */
 app.delete('/clubs/:id/brackets/:bid', auth, (req, res) => {
-  const cid = +req.params.id;
+  const cid = +req.params.id, eid = +req.params.bid;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only',
     message: '임원만 대진을 지울 수 있어요' });
-  const b = db.prepare('SELECT * FROM club_brackets WHERE id=? AND club_id=?')
-    .get(+req.params.bid, cid);
-  if (!b) return res.status(404).json({ error: 'not_found' });
-  db.prepare('DELETE FROM club_brackets WHERE id=?').run(b.id);
+  const row = eid
+    ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  let day = '';
+  try { day = String(JSON.parse(row.data || '{}').date || '').slice(0, 10); } catch (e) {}
+  if (eid) db.prepare('DELETE FROM club_brackets_ev WHERE club_id=? AND event_id=?').run(cid, eid);
+  else     db.prepare('DELETE FROM club_brackets WHERE club_id=?').run(cid);
+  if (day && !dayStillHasBracket(cid, day))
+    db.prepare('DELETE FROM club_bracket_logs WHERE club_id=? AND date=?').run(cid, day);
+  res.json({ ok: true, date: day });
+});
+
+/* 지난 모임 기록 하나만 지우기 — 이미 쌓인 찌꺼기를 화면에서 치울 수단 */
+app.delete('/clubs/:id/bracket2/logs/:date', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const day = String(req.params.date || '').slice(0, 10);
+  db.prepare('DELETE FROM club_bracket_logs WHERE club_id=? AND date=?').run(cid, day);
   res.json({ ok: true });
 });
 
