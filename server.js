@@ -190,7 +190,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0811c';
+const SRV_BUILD = 'sH-0811e';
+/* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0811j';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -256,6 +258,10 @@ app.get('/config', (_, res) => {
     // APPLE_CLIENT_ID 는 "웹ServicesID,iOS번들ID" 형태 — 웹에는 첫 값만 내려준다
     apple_client_id: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim(),
     support_email: process.env.SUPPORT_EMAIL || '',
+    /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
+       서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
+    web_build: WEB_BUILD,
+    ios_app_url: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517',   // 맞수 App Store
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
     toss_ready: !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY),
