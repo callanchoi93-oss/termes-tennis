@@ -1286,7 +1286,27 @@
   .fc-g{ display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px; }
   .fc-d{ min-height:58px;display:flex;flex-direction:column;align-items:center;padding-top:7px;gap:3px; }
   .fc-n{ font-size:14px;font-weight:600;color:#333d4b; }
-  .fc-pz{ width:24px; }
+  .fc-pz{ width:24px;height:auto;aspect-ratio:220/187;flex:none;object-fit:contain; }
+  /* 일정 목록 — 클럽 모임과 오픈매치가 같은 모양을 쓴다 */
+  .schhd{ font-size:18px;font-weight:800;letter-spacing:-.03em;margin:18px 4px 10px;
+    display:flex;align-items:baseline;gap:6px }
+  .schhd b{ color:var(--coral-d) }
+  .schhd em{ font-style:normal;font-size:11.5px;font-weight:500;color:var(--lgray) }
+  .schrow{ display:flex;align-items:center;gap:13px;background:#fff;border:1px solid var(--line);
+    border-radius:16px;padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:transform .12s }
+  .schrow:active{ transform:scale(.99) }
+  .schday{ flex:none;text-align:center;min-width:38px }
+  .schday b{ font-size:20px;font-weight:800;letter-spacing:-.04em;line-height:1;display:block }
+  .schday i{ font-style:normal;font-size:11px;color:var(--lgray);font-weight:600 }
+  .schmid{ flex:1;min-width:0 }
+  .schmid>b{ font-size:14px;font-weight:700;letter-spacing:-.02em;display:block;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .schsub{ font-size:11.5px;color:var(--gray);font-weight:500;margin-top:3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .schdd{ flex:none;font-size:11px;font-weight:700;color:var(--coral-d) }
+  .schtag{ font-size:10.5px;font-weight:700;border-radius:7px;padding:2px 7px;margin-left:6px }
+  .schtag.host{ background:var(--coral-s);color:var(--coral-d) }
+  .schtag.done{ flex:none;background:#f2f0ea;color:#8a8378;margin:0 }
   .fc-cnt{ font-size:12px;font-weight:600;color:#b0b8c1; }
   .fc-today{ font-size:12px;font-weight:600;color:var(--coral); }
   @keyframes bootpulse{ 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.08);opacity:.85} }
@@ -2397,7 +2417,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812r';
+const BUILD='v1.0.7-0812y';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -7142,7 +7162,9 @@ function ensureClubEvents(){
     .then(list=>{
       if(clubId()!==cid){ window._evLoading=null; return; }  // 그 사이 클럽이 바뀌면 버림
       SRV_EVENTS=list||[]; SRV_EVENT=SRV_EVENTS[0]||null;
-      window._evFor=cid; window._evLoading=null; renderClub();
+      window._evFor=cid; window._evLoading=null;
+      // 일정 탭에서도 이 목록을 쓴다 — 보고 있는 화면을 다시 그린다
+      if(state.view==='sched') renderSched(); else renderClub();
     })
     .catch(()=>{ SRV_EVENTS=[]; window._evFor=cid; window._evLoading=null; });
 }
@@ -7402,6 +7424,14 @@ let PEOPLE=[
   {n:'오동현',g:'남',region:'경기 성남',exp:'3~5년',tier:'아마추어',w:70,l:72,manner:93,grade:'B',clubs:['분당 스매시 클럽']},
 ];
 const WD_KO=['일','월','화','수','목','금','토'];
+/* 오픈매치용 — Date 를 그대로 받는다 */
+function omDday(t){
+  if(!t||isNaN(+t)) return '';
+  const now=new Date(), today=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const d=Math.round((new Date(+t).setHours(0,0,0,0)-today)/864e5);
+  if(d===0) return '오늘'; if(d===1) return '내일'; if(d===2) return '모레';
+  return d>0?`D-${d}`:'';
+}
 /* 'D-6' · '내일' · '오늘' — 날짜만 보고 며칠 남았는지 세지 않아도 되게 */
 function evDday(e){
   const t=evTime(e); if(t>=8.64e15) return '';
@@ -15754,17 +15784,46 @@ function copyText(t){
 }
 /* ═══ 일정 탭 — 내 매치(신청·주최) + 내 대전 + 다이어리 달력 (플랩식) ═══ */
 let SCHED_OFF=0;
+/* 참석을 누른 클럽 모임 — 오픈매치와 나란히 보여준다 */
+function schedClubBlock(){
+  const evs=(SRV_EVENTS||[]).filter(e=>e.joined).sort((a,b)=>evTime(a)-evTime(b));
+  const up=evs.filter(e=>!evIsPast(e));
+  if(!up.length) return '';
+  const cn=state.activeClub||'클럽';
+  return `<div class="schhd">클럽 모임 <b>${up.length}</b></div>`
+    + up.slice(0,6).map(e=>{
+      const d=evParseDate(e.date);
+      const wd=d.day!=null?WD_KO[new Date(new Date().getFullYear(), d.m, d.day).getDay()]:'';
+      const title=String(e.title||'').replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim()||e.title||'모임';
+      return `<div class="schrow" onclick="go('club');setTimeout(()=>openEventDetail('${e.id}'),120)">
+        <div class="schday"><b>${d.day||'–'}</b><i>${wd}</i></div>
+        <div class="schmid">
+          <b>${esc(title)}</b>
+          <div class="schsub">${esc(cn)} · ${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}${
+            d.place?' · '+esc(d.place):''}</div></div>
+        <span class="schdd">${esc(evDday(e))}</span></div>`; }).join('');
+}
 function schedCal(){
   const base=new Date(); base.setDate(1); base.setMonth(base.getMonth()+SCHED_OFF);
   const y=base.getFullYear(), mo=base.getMonth();
   const first=new Date(y,mo,1).getDay(), days=new Date(y,mo+1,0).getDate();
   const today=new Date();
   const key=d=>`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  const att=new Set(), cnt={};
+  /* 프레첼은 '내가 나가는 날' 하나만 뜻한다 — 종류는 아래 목록에서 나눠 보여준다.
+     진한 프레첼 = 다녀온 날 · 연한 프레첼 = 신청해둔 앞날 */
+  const att=new Set(), cnt={}, up=new Set();
   (HOME_OM_ALL||[]).forEach(m=>{
     const d=new Date(m.start_at||0); if(isNaN(+d)) return;
-    if((m.joined||m.is_host) && +d<Date.now()) att.add(key(d));
-    if(!(m.status&&m.status!=='open')){ const k=key(d); cnt[k]=(cnt[k]||0)+1; }
+    const k=key(d), mine=m.joined||m.is_host;
+    if(mine){ if(+d<Date.now()) att.add(k); else up.add(k); }   // 신청한 오픈매치도 표시
+    else if(!(m.status&&m.status!=='open')) cnt[k]=(cnt[k]||0)+1;
+  });
+  /* 클럽 모임도 같은 규칙으로 */
+  (SRV_EVENTS||[]).forEach(e=>{
+    const t=evTime(e); if(t>=8.64e15) return;
+    const d=new Date(t), k=key(d);
+    if(e.joined){ if(+d<Date.now()) att.add(k); else up.add(k); }
+    else if(+d>=Date.now()) cnt[k]=(cnt[k]||0)+1;
   });
   if(TRIAL) [3,10,17].forEach(off=>att.add(key(new Date(Date.now()-off*86400e3))));
   let cells=''; for(let i=0;i<first;i++) cells+='<div class="fc-d"></div>';
@@ -15774,6 +15833,8 @@ function schedCal(){
     const isT=today.getFullYear()===y&&today.getMonth()===mo&&today.getDate()===d;
     let inner;
     if(att.has(k)){ attMonth++; inner=`<span class="fc-n">${d}</span><img class="fc-pz" src="${PZ_ORIG}" alt="참석">`; }
+    else if(up.has(k)) inner=`<span class="fc-n" style="color:var(--coral-d);font-weight:700">${d}</span>`
+      +`<img class="fc-pz" src="${PZ_ORIG}" alt="참석 예정" style="opacity:.45">`;   // 참석 눌러둔 앞날
     else if(isT) inner=`<span class="fc-today">TODAY</span>`;
     else inner=`<span class="fc-n">${d}</span>${cnt[k]?`<span class="fc-cnt">${cnt[k]}</span>`:'<span class="fc-cnt" style="visibility:hidden">0</span>'}`;
     cells+=`<div class="fc-d">${inner}</div>`;
@@ -15783,8 +15844,8 @@ function schedCal(){
     <div class="fc-wk"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
     <div class="fc-g">${cells}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;background:#faf6ee;border-radius:13px;padding:10px 13px;margin-top:10px">
-      <span style="font-size:12px;font-weight:500;color:#8a7550"><img src="${PZ_ORIG}" style="width:15px;vertical-align:-3px"> 이번 달 프레첼 ${attMonth}개 — 모아보세요</span>
-      <span style="font-size:11px;font-weight:500;color:var(--lgray)">회색 숫자 = 열리는 매치</span>
+      <span style="font-size:12px;font-weight:500;color:#8a7550"><img src="${PZ_ORIG}" style="width:16px;height:auto;aspect-ratio:220/187;flex:none;object-fit:contain;vertical-align:-3px"> 이번 달 프레첼 ${attMonth}개 — 모아보세요</span>
+      <span style="font-size:11px;font-weight:500;color:var(--lgray)">연한 프레첼 = 참석 예정</span>
     </div></div>`;
 }
 /* ══════════ 구장예약 — 캐시로 코트를 빌린다 ══════════ */
@@ -16132,29 +16193,42 @@ function renderSched(){
   const el=document.getElementById('s-sched'); if(!el) return;
   let h=`<h2 class="t">일정</h2><p class="sub">신청한 매치와 대전을 한곳에서.</p>`;
   if((SERVER_OK||TRIAL) && HOME_OM_ALL===null) homeOpenMatches();  // 캐시 채우기 (콜백이 다시 그림)
+  /* 클럽 모임도 이 화면에서 쓴다 — 아직 안 불러왔으면 지금 채운다 */
+  if(SERVER_OK && clubId() && SRV_EVENTS===null) ensureClubEvents();
   h+=schedCal();                                                   // 출석 캘린더 (참석일 프레첼)
+  h+=schedClubBlock();                                             // 참석 누른 클럽 모임
   h+=myBookingsBlock();                                            // 캐시로 빌린 코트
   const mine=(HOME_OM_ALL||[]).filter(m=>m.joined||m.is_host)
     .sort((a,b)=>Date.parse(b.start_at||0)-Date.parse(a.start_at||0));
-  h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px">매치 <b style="color:var(--coral-d)">${mine.length}</b></div>`;
+  h+=`<div class="schhd">오픈매치 <b>${mine.length}</b>
+    <em>여기 성적이 개인리그 티어가 돼요</em></div>`;
   if(!mine.length){
     h+=`<div class="card" style="text-align:center;padding:24px;cursor:pointer" onclick="go('home')">
       <div style="font-size:23px">🎾</div><b style="display:block;margin-top:6px">신청한 매치가 없어요</b>
       <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">홈에서 오늘의 매치를 둘러보세요 →</div></div>`;
   }else{
+    /* 클럽 모임 카드와 같은 뼈대 — 왼쪽에 날짜, 가운데 이름·정보, 오른쪽에 상태 */
     h+=mine.slice(0,10).map(m=>{
-      const closed=(m.status&&m.status!=='open')||(m.start_at&&Date.parse(m.start_at)<Date.now());
-      return `<div class="card" style="padding:14px 16px;cursor:pointer" onclick="openMatchCard(${m.id})">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div style="min-width:0">
-            <b style="font-size:14px">${fmtRange(m.start_at,m.end_at,m.dt)}</b>
-            ${m.is_host?`<span style="font-size:11px;font-weight:500;background:#fdeee7;color:var(--coral-d);border-radius:8px;padding:3px 7px;margin-left:6px">주최</span>`:''}
-            ${closed?`<span style="font-size:11px;font-weight:500;background:#f1eee8;color:#8a8378;border-radius:8px;padding:3px 7px;margin-left:6px">종료</span>`:''}
-            <div style="font-size:14px;font-weight:500;margin-top:4px;color:#3a352e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.loc||'')}</div>
-            <div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:2px">${esc(m.fmt||'')} · ${m.cur||0}/${m.cap||0}명${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</div>
-          </div>
-          ${closed&&(m.joined||m.is_host)?`<button class="btn sm ${m.my_mreview?'ghost':''}" style="width:auto;padding:8px 12px;flex-shrink:0" onclick="event.stopPropagation();openOmMatchReview(${m.id})">${m.my_mreview?'평가 수정':'매치 평가'}</button>`:''}
-        </div></div>`;
+      const t=m.start_at?new Date(m.start_at):null;
+      const closed=(m.status&&m.status!=='open')||(t&&+t<Date.now());
+      const day=t?t.getDate():'–', wd=t?WD_KO[t.getDay()]:'';
+      const hh=t?`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`:'';
+      const eh=m.end_at?new Date(m.end_at):null;
+      const time=hh?(eh?`${hh}~${String(eh.getHours()).padStart(2,'0')}:${String(eh.getMinutes()).padStart(2,'0')}`:hh):'시간 미정';
+      const right = closed
+        ? `<span class="schtag done">종료</span>`
+        : `<span class="schdd">${esc(omDday(t))}</span>`;
+      return `<div class="schrow" onclick="openMatchCard(${m.id})">
+        <div class="schday"><b>${day}</b><i>${wd}</i></div>
+        <div class="schmid">
+          <b>${esc(m.loc||'오픈매치')}${m.is_host?'<span class="schtag host">주최</span>':''}</b>
+          <div class="schsub">${esc(m.fmt||'')} · ${time} · ${m.cur||0}/${m.cap||0}명${
+            (m.price||0)?` · ${m.price.toLocaleString()}원`:''}</div></div>
+        ${right}</div>`
+        + (closed&&(m.joined||m.is_host)
+          ? `<div style="margin:-4px 0 8px 4px"><span style="font-size:11.5px;font-weight:600;color:var(--coral-d);cursor:pointer"
+              onclick="event.stopPropagation();openOmMatchReview(${m.id})">${m.my_mreview?'평가 수정 ›':'매치 평가하기 ›'}</span></div>`
+          : '');
     }).join('');
   }
   el.innerHTML=h;
