@@ -26,7 +26,7 @@ import { db, initSchema, now, rid } from './db.js';
    여기 SQL 을 테스트가 베껴 가면 서버만 고쳤을 때 조용히 어긋난다. */
 import { makeChatRules } from './chat-rules.js';
 const { isMember, isActiveMember, activeMembers,
-        threadExists, shareClub, duelPair, mgrOfSameMatch, canStartDM } = makeChatRules(db);
+        threadExists, canStartDM } = makeChatRules(db);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 4000;
@@ -866,7 +866,7 @@ app.get('/clubs', (req, res) => {
   let sql = `SELECT c.*,
       (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members,
       COALESCE((SELECT MAX(e.created_at) FROM club_events e WHERE e.club_id=c.id),
-               (SELECT MAX(ch.created_at) FROM club_chat ch WHERE ch.club_id=c.id), c.created_at) last_active
+               c.created_at) last_active
     FROM clubs c WHERE 1=1`, p = [];
   if (sport) { sql += ' AND c.sport=?'; p.push(sport); }
   if (region) { sql += ' AND c.region LIKE ?'; p.push('%' + region + '%'); }
@@ -4162,83 +4162,15 @@ app.post('/dm', auth, (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-//  클럽 단체 채팅 — 회원 전용. 폴링(GET ?since=) 방식.
-//  연락처 차단은 하지 않는다 (회원끼리의 사적 공간 · DM 과 같은 원칙).
+//  클럽 단체방은 두지 않는다.
+//  대화는 1:1 뿐이다 — 단체 공지는 클럽 '소식', 참석 확인은 '일정'이 맡는다.
+//  (club_chat / club_chat_reads 테이블은 만들지 않는다)
 // ══════════════════════════════════════════════════════════════
-db.exec(`CREATE TABLE IF NOT EXISTS club_chat (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
-  body TEXT NOT NULL, created_at BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_club_chat ON club_chat(club_id, id);
-CREATE TABLE IF NOT EXISTS club_chat_reads (
-  club_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
-  last_read_id INTEGER NOT NULL DEFAULT 0, updated_at BIGINT,
-  PRIMARY KEY (club_id, user_id)
-);`);
 
-const setChatRead = db.prepare(`INSERT INTO club_chat_reads (club_id,user_id,last_read_id,updated_at) VALUES (?,?,?,?)
-  ON CONFLICT(club_id,user_id) DO UPDATE SET
-    last_read_id=MAX(last_read_id, excluded.last_read_id), updated_at=excluded.updated_at`);
-
-app.get('/clubs/:id/chat', auth, (req, res) => {
-  const cid = +req.params.id;
-  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
-  const since = intOrNull(req.query.since) || 0;
-  const rows = db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.name
-    FROM club_chat c JOIN users u ON u.id=c.user_id
-    WHERE c.club_id=? AND c.id>? ORDER BY c.id DESC LIMIT 100`).all(cid, since).reverse();
-  // 메시지별 '안 읽은 사람 수' — 활성 회원 중 읽음 커서가 이 메시지에 못 미친 인원
-  const total = activeMembers(cid);
-  const readersUpTo = db.prepare('SELECT COUNT(*) n FROM club_chat_reads WHERE club_id=? AND last_read_id>=?');
-  res.json(rows.map(r => ({ ...r, mine: r.user_id === req.uid,
-    unread: Math.max(0, total - readersUpTo.get(cid, r.id).n) })));
-});
-
-app.post('/clubs/:id/chat', auth, limitWrite, (req, res) => {
-  const cid = +req.params.id;
-  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
-  const body = String((req.body || {}).body || '').trim().slice(0, 500);
-  if (!body) return res.status(400).json({ error: 'empty' });
-  const prevMax = (db.prepare('SELECT MAX(id) m FROM club_chat WHERE club_id=?').get(cid).m) || 0;
-  const r = db.prepare('INSERT INTO club_chat (club_id,user_id,body,created_at) VALUES (?,?,?,?)')
-    .run(cid, req.uid, body, now());
-  setChatRead.run(cid, req.uid, rid(r), now());          // 보낸 사람은 당연히 읽음
-  // 새 메시지 푸시 — 밀린 메시지가 없던(=다 읽고 있던) 회원에게만 보내 도배를 막는다
-  const me = getUser(req.uid);
-  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
-  db.prepare(`SELECT cm.user_id, COALESCE(cr.last_read_id,0) lr FROM club_members cm
-    LEFT JOIN club_chat_reads cr ON cr.club_id=cm.club_id AND cr.user_id=cm.user_id
-    WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') AND cm.user_id<>?`).all(cid, req.uid)
-    .forEach(m => { if (m.lr >= prevMax) sendPush(m.user_id,
-      { icon: '💬', title: `${club ? club.name : '클럽'} 단체방`, body: `${me.name}: ${body.slice(0, 40)}` },
-      { skipInbox: true }); });
-  res.json({ ok: true, id: rid(r) });
-});
-
-// 읽음 커서 갱신
-app.post('/clubs/:id/chat/read', auth, (req, res) => {
-  const cid = +req.params.id;
-  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
-  const lastId = intOrNull((req.body || {}).last_id) || 0;
-  setChatRead.run(cid, req.uid, lastId, now());
-  res.json({ ok: true });
-});
-
-// 안읽음 집계 — 헤더 배지용 (대화 아이콘)
+// 안읽음 집계 — 헤더 대화 버튼 배지용. 1:1 만 센다.
 app.get('/me/unread', auth, (req, res) => {
   const dm = db.prepare('SELECT COUNT(*) n FROM dms WHERE to_id=? AND read=0').get(req.uid).n;
-  const clubs = {};
-  db.prepare(`SELECT cm.club_id, COALESCE(cr.last_read_id,0) lr FROM club_members cm
-    LEFT JOIN club_chat_reads cr ON cr.club_id=cm.club_id AND cr.user_id=cm.user_id
-    WHERE cm.user_id=? AND (cm.status IS NULL OR cm.status='active')`).all(req.uid)
-    .forEach(m => {
-      const n = db.prepare('SELECT COUNT(*) n FROM club_chat WHERE club_id=? AND id>? AND user_id<>?')
-        .get(m.club_id, m.lr, req.uid).n;
-      if (n) clubs[m.club_id] = n;
-    });
-  const clubTotal = Object.values(clubs).reduce((a, b) => a + b, 0);
-  res.json({ dm, clubs, total: dm + clubTotal });
+  res.json({ dm, total: dm });
 });
 
 // 클럽 회원 랭킹 — 레이팅 + 출석 (대진 결과 확정 시 레이팅이 갱신된다)
