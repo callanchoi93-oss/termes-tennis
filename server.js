@@ -22,6 +22,11 @@ try {
   }
 } catch { console.log('[push] web-push 모듈 없음 · 알림함만 사용'); }
 import { db, initSchema, now, rid } from './db.js';
+/* 대화 권한 규칙 — test/chat-sim.js 와 같은 파일을 쓴다.
+   여기 SQL 을 테스트가 베껴 가면 서버만 고쳤을 때 조용히 어긋난다. */
+import { makeChatRules } from './chat-rules.js';
+const { isMember, isActiveMember, activeMembers,
+        threadExists, shareClub, duelPair, mgrOfSameMatch, canStartDM } = makeChatRules(db);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const PORT = process.env.PORT || 4000;
@@ -413,7 +418,14 @@ app.get('/users/:id/profile', (req, res) => {
   const rank = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND rating>?').get(u.sport, u.rating).n;
   const rd = db.prepare('SELECT COALESCE(rating_doubles,1000) r FROM users WHERE id=?').get(u.id).r;
   const rankD = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND COALESCE(rating_doubles,1000)>?').get(u.sport, rd).n;
-  res.json({ ...u, rank, rating_doubles: rd, rank_doubles: rankD });
+  /* 대화를 걸 수 있는 사이인지 함께 내려준다 — 앱이 눌러도 실패할 버튼을 그리지 않도록.
+     로그인하지 않았거나 자기 자신이면 판단하지 않는다. */
+  let canDm = null;
+  try {
+    const meId = tryUid(req);
+    if (meId && meId !== u.id) canDm = canStartDM(meId, u.id) || threadExists(meId, u.id);
+  } catch (e) {}
+  res.json({ ...u, rank, rating_doubles: rd, rank_doubles: rankD, can_dm: canDm });
 });
 
 // 데모 매칭용 사용자 목록
@@ -1781,6 +1793,9 @@ function omQuote(court, ball, courts, hours) {
    슬롯을 필수로 걸면 시간·장소·코트비가 전부 구장이 등록한 값에서 나온다.
    ══════════════════════════════════════════════════════════════ */
 const OM_ALLOW_FREE_LOC = process.env.OM_ALLOW_FREE_LOC === '1';   // 비상시에만 1
+/* 매치를 여는 사람은 매니저다. 앱에는 개설 화면이 없고, manager.html 에서만 연다.
+   여기를 열어두면 앱 화면만 감춘 셈이라 API 로는 그대로 만들 수 있다. */
+const OM_MANAGER_ONLY = process.env.OM_MANAGER_ONLY !== '0';
 const OM_MAX_BALL_PER_COURT = 20000;                               // 캔볼 1캔 상한
 const hhmmMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5));
 const WD_KR = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1792,6 +1807,14 @@ function omDt(date, start) {
 
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
+
+  /* 매니저 계정만 연다. 앱에서 개설 화면을 지운 것만으로는 API 가 그대로 열려 있다. */
+  if (OM_MANAGER_ONLY) {
+    const me = getUser(req.uid);
+    if (!me || me.provider !== 'manager')
+      return res.status(403).json({ error: 'manager_only',
+        message: '오픈매치는 매니저가 열어요' });
+  }
 
   /* ── 잡아둔 슬롯 확인 ── */
   const slotIds = Array.isArray(_b.slot_ids)
@@ -3495,9 +3518,6 @@ function isOfficer(clubId, uid) {
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(clubId, uid);
   return !!m && (m.role === 'owner' || m.role === 'officer');
 }
-function isMember(clubId, uid) {
-  return !!db.prepare('SELECT 1 FROM club_members WHERE club_id=? AND user_id=?').get(clubId, uid);
-}
 function bracketPayload(b) {
   const scores = {};
   db.prepare('SELECT court_key,a,b FROM bracket_scores WHERE bracket_id=?').all(b.id)
@@ -3739,9 +3759,6 @@ const monthKey = (t) => new Date(t || Date.now()).toISOString().slice(0, 7);
 function bracketsThisMonth(clubId) {
   const from = new Date(monthKey() + '-01T00:00:00Z').getTime();
   return db.prepare('SELECT COUNT(*) n FROM brackets WHERE club_id=? AND created_at>=?').get(clubId, from).n;
-}
-function activeMembers(clubId) {
-  return db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND (status IS NULL OR status='active')").get(clubId).n;
 }
 
 app.get('/clubs/:id/premium', (req, res) => {
@@ -4087,10 +4104,9 @@ app.post('/cash/ad-reward', auth, (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-//  1:1 쪽지 — 새 대화를 여는 첫 메시지에만 캐시 차감. 답장은 무료.
-//  (스팸 비용을 보내는 쪽에 지우고, 받은 사람은 부담 없이 답장)
+//  1:1 대화 — 전부 무료.
+//  스팸은 요금이 아니라 '누구에게 걸 수 있는가'(canStartDM)로 막는다.
 // ══════════════════════════════════════════════════════════════
-const DM_COST = 0;   // M캐쉬 폐지 — 대화 무료
 db.exec(`CREATE TABLE IF NOT EXISTS dms (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   from_id INTEGER NOT NULL, to_id INTEGER NOT NULL,
@@ -4099,9 +4115,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS dms (
 CREATE INDEX IF NOT EXISTS ix_dms_pair ON dms(from_id, to_id, id DESC);`);
 
 const threadKey = (a, b) => (a < b ? a + '_' + b : b + '_' + a);
-function threadExists(a, b) {
-  return !!db.prepare(`SELECT 1 FROM dms WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) LIMIT 1`).get(a, b, b, a);
-}
 
 app.get('/dm/threads', auth, (req, res) => {
   const rows = db.prepare(`SELECT * FROM dms WHERE from_id=? OR to_id=? ORDER BY id DESC LIMIT 200`).all(req.uid, req.uid);
@@ -4125,10 +4138,6 @@ app.get('/dm/with/:uid', auth, (req, res) => {
   res.json(rows.map(r => ({ ...r, mine: r.from_id === req.uid })));
 });
 
-db.exec(`CREATE TABLE IF NOT EXISTS dm_free_starts (
-  user_id INTEGER NOT NULL, day TEXT NOT NULL, created_at BIGINT
-);
-CREATE INDEX IF NOT EXISTS ix_dm_free ON dm_free_starts(user_id, day);`);
 
 app.post('/dm', auth, (req, res) => {
   const to = intOrNull(req.body && req.body.to);
@@ -4141,40 +4150,15 @@ app.post('/dm', auth, (req, res) => {
     return res.status(403).json({ error: 'blocked' });
 
   const isNew = !threadExists(req.uid, to);
-  // 성장 우선: 하루 3건까지는 새 대화도 무료, 그 이후부터 M캐쉬 차감
-  const DM_FREE_PER_DAY = 3;
-  let freeUsed = false;
-  if (isNew) {
-    const day = new Date().toISOString().slice(0, 10);
-    const used = db.prepare("SELECT COUNT(*) n FROM dm_free_starts WHERE user_id=? AND day=?").get(req.uid, day).n;
-    if (used < DM_FREE_PER_DAY) {
-      db.prepare('INSERT INTO dm_free_starts (user_id,day,created_at) VALUES (?,?,?)').run(req.uid, day, now());
-      freeUsed = true;
-    }
-  }
-  if (isNew && !freeUsed) {                            // 무료 소진 후 새 대화만 유료 · 이중 차감 방지 잠금
-    let after;
-    try {
-      after = tx(() => {
-        const me = getUser(req.uid);
-        if ((me.cash || 0) < DM_COST) throw new Error('insufficient_cash');
-        const a = me.cash - DM_COST;
-        db.prepare('UPDATE users SET cash=? WHERE id=?').run(a, req.uid);
-        db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-          .run(req.uid, -DM_COST, '대화 · 새 대화 시작', a, now());
-        return a;
-      });
-    } catch (e) {
-      if (e.message === 'insufficient_cash') {
-        const me = getUser(req.uid);
-        return res.status(402).json({ error: 'insufficient_cash', need: DM_COST, cash: me.cash || 0 });
-      }
-      throw e;
-    }
-  }
+  /* 이미 오가던 대화는 계속 이어간다. 막는 건 '새로 거는 것'뿐이다. */
+  if (isNew && !canStartDM(req.uid, to))
+    return res.status(403).json({ error: 'dm_not_allowed',
+      message: '같은 클럽 회원이거나 1:1 경기가 잡힌 상대에게만 대화를 걸 수 있어요' });
+  /* 대화는 무료다. 예전엔 새 대화를 열 때 캐시를 받았지만 폐지했다.
+     스팸은 돈이 아니라 '누구에게 걸 수 있는가'(canStartDM)로 막는다. */
   const r = db.prepare('INSERT INTO dms (from_id,to_id,body,created_at) VALUES (?,?,?,?)').run(req.uid, to, body, now());
   sendPush(to, { icon: '💬', title: '쪽지가 도착했어요', body: body.slice(0, 40) });
-  res.json({ ok: true, id: rid(r), charged: (isNew && !freeUsed) ? DM_COST : 0, cash: getUser(req.uid).cash });
+  res.json({ ok: true, id: rid(r), charged: 0, cash: getUser(req.uid).cash });
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -4199,7 +4183,7 @@ const setChatRead = db.prepare(`INSERT INTO club_chat_reads (club_id,user_id,las
 
 app.get('/clubs/:id/chat', auth, (req, res) => {
   const cid = +req.params.id;
-  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
   const since = intOrNull(req.query.since) || 0;
   const rows = db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.name
     FROM club_chat c JOIN users u ON u.id=c.user_id
@@ -4213,7 +4197,7 @@ app.get('/clubs/:id/chat', auth, (req, res) => {
 
 app.post('/clubs/:id/chat', auth, limitWrite, (req, res) => {
   const cid = +req.params.id;
-  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
   const body = String((req.body || {}).body || '').trim().slice(0, 500);
   if (!body) return res.status(400).json({ error: 'empty' });
   const prevMax = (db.prepare('SELECT MAX(id) m FROM club_chat WHERE club_id=?').get(cid).m) || 0;
@@ -4235,7 +4219,7 @@ app.post('/clubs/:id/chat', auth, limitWrite, (req, res) => {
 // 읽음 커서 갱신
 app.post('/clubs/:id/chat/read', auth, (req, res) => {
   const cid = +req.params.id;
-  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (!isActiveMember(cid, req.uid)) return res.status(403).json({ error: 'member_only', message: '클럽 정회원만 단체방을 쓸 수 있어요' });
   const lastId = intOrNull((req.body || {}).last_id) || 0;
   setChatRead.run(cid, req.uid, lastId, now());
   res.json({ ok: true });
@@ -6239,7 +6223,9 @@ app.post('/venue/slots/:id/rain', auth, (req, res) => {
 });
 
 /* 매니저가 잡기 — 아직 돈은 나가지 않는다 */
-app.post('/venue-slots/:id/hold', auth, (req, res) => {
+/* 코트 잡기는 매니저만. 일반 회원은 /venue-slots/:id/reserve 로 결제해 예약한다.
+   누구나 잡을 수 있으면 돈 한 푼 없이 코트를 묶어 판매대에서 빼버릴 수 있다. */
+app.post('/venue-slots/:id/hold', auth, mgrGuard, (req, res) => {
   const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(+req.params.id);
   if (!s) return res.status(404).json({ error: 'not_found' });
   if (s.status !== 'open') return res.status(400).json({ error: 'taken', message: '이미 지나간 자리예요' });
@@ -6256,7 +6242,7 @@ app.post('/venue-slots/:id/hold', auth, (req, res) => {
 
 /* 여러 면을 한 번에 잡는다 — 오픈매치는 코트 수로 정원이 정해지므로 묶어서 가져가야 한다.
    하나라도 이미 나갔으면 전부 되돌린다. 반쪽만 잡히면 매치를 열 수 없다. */
-app.post('/venue-slots/hold-many', auth, (req, res) => {
+app.post('/venue-slots/hold-many', auth, mgrGuard, (req, res) => {
   const ids = Array.isArray(req.body && req.body.ids)
     ? [...new Set(req.body.ids.map(Number).filter(Boolean))] : [];
   if (!ids.length) return res.status(400).json({ error: 'no_ids' });
@@ -6300,7 +6286,7 @@ app.post('/venue-slots/hold-many', auth, (req, res) => {
 });
 
 /* 잡은 코트 전체를 한 번에 놓는다 */
-app.post('/venue-slots/release-many', auth, (req, res) => {
+app.post('/venue-slots/release-many', auth, mgrGuard, (req, res) => {
   const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
   if (!ids.length) return res.status(400).json({ error: 'no_ids' });
   const r = db.prepare(`UPDATE venue_slots SET status='open', held_by=NULL, held_at=NULL, match_id=NULL
