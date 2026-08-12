@@ -2323,7 +2323,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0811j';
+const BUILD='v1.0.7-0812b';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -4354,11 +4354,37 @@ function editEvent(eid){
   const e = SRV_EVENT && SRV_EVENT.id===eid ? SRV_EVENT : (SRV_EVENTS||[]).find(x=>x.id===eid);
   if(!e) return;
   const t=new Date();
-  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', title:e.title||'', place:'', editId:eid };
-  // 기존 날짜 문자열에서 날짜·시간·장소 복원 시도 "M/D (요일) HH:MM · 장소"
-  const mm = String(e.date||'').match(/(\d{1,2})\/(\d{1,2}).*?(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?$/);
-  if(mm){ NE.m=+mm[1]-1; NE.day=+mm[2]; if(mm[3])NE.time=mm[3]; if(mm[4])NE.place=mm[4].trim(); }
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', end:'', title:e.title||'', place:'',
+         tag:e.tag||'정기', editId:eid };
+  Object.assign(NE, evParseDate(e.date));
   renderNewEvent();
+}
+/* "8/18 (화) 19:00~23:00 · 용인 테니스파크" 를 조각낸다.
+   예전 정규식은 종료 시간을 못 읽어서, 수정만 눌러도 시작 시간이 23:00 으로 바뀌었다. */
+function evParseDate(str){
+  const out={};
+  const m = String(str||'').match(/(\d{1,2})\/(\d{1,2})[^0-9]*(\d{1,2}:\d{2})?(?:\s*~\s*(\d{1,2}:\d{2}))?(?:\s*·\s*(.+))?$/);
+  if(!m) return out;
+  out.m=+m[1]-1; out.day=+m[2];
+  if(m[3]) out.time=m[3];
+  out.end = m[4] || '';
+  if(m[5]) out.place=m[5].trim();
+  return out;
+}
+/* ── 모임 복제 — 같은 시간·장소로 다음 모임을 연다 ──
+   매주 같은 요일에 같은 코트를 쓰는 클럽은 제목과 날짜만 바꾸면 된다. */
+function copyEvent(eid){
+  const e = (SRV_EVENT && SRV_EVENT.id===eid) ? SRV_EVENT : (SRV_EVENTS||[]).find(x=>x.id===eid);
+  if(!e){ toast('모임 정보를 찾을 수 없어요'); return; }
+  const t=new Date();
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', end:'',
+         title:e.title||'', place:'', tag:e.tag||'정기' };   // editId 없음 = 새 모임
+  Object.assign(NE, evParseDate(e.date));
+  NE.day=null;                                  // 날짜만 비워 새로 고르게 한다
+  NE._copied=true;
+  closeEventPage();
+  renderNewEvent();
+  toast('시간과 장소를 그대로 가져왔어요 · 날짜만 골라주세요');
 }
 /* ── 외부 공유용 초대장 이미지: 카톡방에 뿌리는 그래픽 카드 ── */
 async function makeInviteImage(eid){
@@ -7161,7 +7187,10 @@ function renderClub(){
       /* 날짜를 고르거나 지난 주를 보고 있으면 끝난 모임도 보여준다 —
          '그날 누가 왔고 대진이 어땠는지'를 찾아보려면 지난 모임이 보여야 한다 */
       const showPast=!!dayF || (state._clubWeek||0)!==0;
-      const evAll=showPast?evList.slice():evList.filter(e=>!evIsPast(e));
+      /* 가까운 모임이 위로 오게 한다 — 예전에는 서버가 준 순서(만든 순)를 그대로 썼다.
+         지난 모임을 볼 때는 최근 것이 위가 자연스럽다. */
+      const evAll=(showPast?evList.slice():evList.filter(e=>!evIsPast(e)))
+        .sort((a,b)=>{ const d=evTime(a)-evTime(b); return showPast? -d : d; });
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:'이번 주 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
@@ -7287,6 +7316,17 @@ let PEOPLE=[
   {n:'정지용',g:'남',region:'인천 연수',exp:'1년 미만',tier:'루키',w:8,l:20,manner:89,grade:'C',clubs:['송도 에이스']},
   {n:'오동현',g:'남',region:'경기 성남',exp:'3~5년',tier:'아마추어',w:70,l:72,manner:93,grade:'B',clubs:['분당 스매시 클럽']},
 ];
+/* 정렬용 — 모임 날짜·시간을 숫자로. 못 읽으면 맨 뒤로 보낸다. */
+function evTime(e){
+  const d=evParseDate(e&&e.date);
+  if(d.day==null) return 8.64e15;
+  const now=new Date(); let y=now.getFullYear();
+  const t=new Date(y, d.m, d.day, ...(String(d.time||'00:00').split(':').map(Number)));
+  const diff=(t-now)/864e5;                       // 연말·연초가 걸치면 연도를 보정
+  if(diff < -200) t.setFullYear(y+1);
+  if(diff >  200) t.setFullYear(y-1);
+  return t.getTime();
+}
 function evIsPast(e){
   const raw=String((e&&e.date)||'');
   const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -9030,6 +9070,7 @@ function loadClubRoster(){
   if(!SERVER_OK || !cid){ CLUB_ROSTER=[]; return; }
   api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
     .catch(()=>{ CLUB_ROSTER=[]; });
+  tgPull();
 }
 function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
@@ -9065,16 +9106,27 @@ function clubTabNews(){
     const pics=(()=>{ try{ const a=typeof p.photos==='string'?JSON.parse(p.photos||'[]'):(p.photos||[]);
       return (a.length?a:(p.photo?[p.photo]:[])).map(u=>u.startsWith('http')?u:API_BASE+u); }catch(e){ return p.photo?[p.photo]:[]; } })();
     const shown=pics.slice(0,4);
-    return `<div class="cpost">
-      <div class="hd"><div class="pvma" style="width:32px;height:32px;font-size:12px">${esc(String(p.name||p.by||'?').slice(0,1))}</div>
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(p.name||p.by||'회원')}</div>
+    /* 예전에는 p.name 을 찾았는데 서버는 author 로 준다 — 그래서 늘 '회원'으로 보였다 */
+    const who=p.author||p.name||p.by||'회원';
+    const ph=photoOf(who);
+    return `<div class="cpost" onclick="openFeedPost(${p.id})" style="cursor:pointer">
+      <div class="hd"><div class="pvma" style="width:32px;height:32px;font-size:12px;${
+        ph?`background:url('${ph}') center/cover;color:transparent`:''}">${esc(String(who).slice(0,1))}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600">${esc(who)}</span>${memberTag(who)}</div>
           <div style="font-size:11px;color:var(--lgray);margin-top:1px">${timeAgo(p.created_at||p.at)||''}</div></div>
-        ${(p.user_id&&p.user_id===meId)?`<span onclick="delClubPost(${p.id})" style="color:#cdc8be;font-size:15px;cursor:pointer">⋯</span>`:''}</div>
+        ${(p.mine||(p.user_id&&p.user_id===meId))?`<span onclick="event.stopPropagation();delClubPost(${p.id})" style="color:#cdc8be;font-size:15px;cursor:pointer">⋯</span>`:''}</div>
       ${p.title?`<div class="tx" style="font-weight:600">${esc(p.title)}</div>`:''}
       ${p.body?`<div class="tx">${esc(p.body)}</div>`:''}
       ${shown.length?`<div class="cpics ${shown.length===1?'one':''}">${shown.map((u,i)=>
         `<div class="cpic2" style="background:url('${u}') center/cover">${
           (i===3&&pics.length>4)?`<span class="more">+${pics.length-3}</span>`:''}</div>`).join('')}</div>`:''}
+      <div style="display:flex;align-items:center;gap:16px;margin-top:11px;padding-top:10px;border-top:1px solid #f4f2ed">
+        <span onclick="event.stopPropagation();likeFeedQuick(${p.id})" style="display:inline-flex;align-items:center;gap:5px;
+          font-size:12.5px;font-weight:600;cursor:pointer;color:${p.liked?'#cf5418':'#8a857c'}">${p.liked?'♥':'♡'} ${p.likes||0}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:#8a857c">💬 ${p.comments||0}</span>
+      </div>
     </div>`;}).join('');
   return h;
 }
@@ -10019,7 +10071,9 @@ async function openFeedPost(id){
     ${p.title?`<div style="font-size:18px;font-weight:600;letter-spacing:-.02em;line-height:1.3">${esc(p.title)}</div>`:``}
     <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
       <div class="av" style="width:34px;height:34px;border-radius:50%;background:${photoOf(p.author)?`url('${photoOf(p.author)}') center/cover`:'var(--coral)'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:500;font-size:14px">${photoOf(p.author)?'':esc((p.author||'?')[0])}</div>
-      <div style="flex:1"><b style="font-size:14px">${esc(p.author||'')}</b><div style="font-size:11px;color:var(--lgray);font-weight:500">${timeAgo(p.created_at)}</div></div>
+      <div style="flex:1"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+        <b style="font-size:14px">${esc(p.author||'')}</b>${memberTag(p.author)}</div>
+        <div style="font-size:11px;color:var(--lgray);font-weight:500">${timeAgo(p.created_at)}</div></div>
       ${(p.mine||officer)?`<span onclick="delClubPost(${p.id});" style="font-size:12px;font-weight:500;color:#cf5418;cursor:pointer;border:1.5px solid #e5b5ae;border-radius:11px;padding:6px 11px">삭제</span>`:''}</div>
     ${p.body?`<div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.65;margin-top:14px;white-space:pre-wrap">${esc(p.body)}</div>`:``}`;
   phs.forEach(u=>{ const full=u.startsWith('http')?u:API_BASE+u;
@@ -10029,12 +10083,33 @@ async function openFeedPost(id){
     <div class="ch" style="font-size:14px;margin:18px 4px 8px">댓글 ${cmts.length}</div>`;
   if(!cmts.length) h+=`<div class="note" style="text-align:left">첫 댓글을 남겨보세요.</div>`;
   cmts.forEach(c=>{ h+=`<div style="padding:10px 4px;border-top:1px solid #f0efec">
-    <div style="font-size:11px;font-weight:500;color:var(--lgray)"><b style="color:var(--ink)">${esc(c.name)}</b> · ${timeAgo(c.created_at)}</div>
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;font-weight:500;color:var(--lgray)">
+      <b style="color:var(--ink);font-size:12px">${esc(c.name)}</b>${memberTag(c.name)}<span>· ${timeAgo(c.created_at)}</span></div>
     <div style="font-size:14px;font-weight:500;line-height:1.55;margin-top:3px">${esc(c.body)}</div></div>`; });
   h+=`<div style="display:flex;gap:8px;margin-top:12px">
     <input id="fcIn" placeholder="댓글 달기" maxlength="300" style="flex:1;border:1.5px solid var(--line);border-radius:13px;padding:12px 13px;font-family:inherit;font-size:14px" onkeydown="if(event.key==='Enter')sendFeedCmt(${p.id})">
     <button class="btn sm" style="width:auto;padding:0 16px" onclick="sendFeedCmt(${p.id})">등록</button></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+}
+/* 목록에서 바로 누르는 좋아요 — 시트를 열지 않고 카드만 갱신한다 */
+async function likeFeedQuick(id){
+  try{
+    const r=await api(`/feed/${id}/like`,{method:'POST',body:'{}'});
+    const p=(CLUB_FEED||[]).find(x=>x.id===id);
+    if(p){ p.liked=r.liked; p.likes=r.likes; }
+    renderClub();
+  }catch(e){ toast('처리하지 못했어요'); }
+}
+/* 이름 옆 배지 — 등급과 역할(회장·임원) */
+function memberTag(name){
+  const r=(CLUB_ROSTER||[]).find(x=>x.name===name);
+  if(!r) return '';
+  const code=memberGradeCode(r), L=code?gradeStepLabel(code):null;
+  const role=r.role==='owner'?'회장':(r.role==='officer'?'임원':'');
+  return (code?`<span style="font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 6px;
+      background:#f2f0ea;${L?`color:${L.c}`:'color:#6b6357'}">${esc(code)}</span>`:'')
+    + (role?`<span style="font-size:10.5px;font-weight:600;border-radius:6px;padding:2px 6px;
+      background:var(--coral-s);color:var(--coral-d)">${role}</span>`:'');
 }
 async function likeFeedPost(id){
   try{
@@ -11971,10 +12046,16 @@ function gradeStepFromMonths(m){
 }
 /* 명단 한 줄에 쓸 등급 코드 — 운영진이 손으로 정한 값이 우선, 없으면 구력으로 */
 function memberGradeCode(r){
-  if(r && r.grade) return r.grade;
   let m=null;
   try{ m=careerMonthsFrom(JSON.parse((r&&r.sport_started)||'{}')[state.sport]); }catch(e){}
-  return gradeStepFromMonths(m);
+  const auto=gradeStepFromMonths(m);
+  const man=r && r.grade ? String(r.grade) : '';
+  if(!man) return auto;
+  if(/[0-9]/.test(man)) return man;              // 이미 세부 번호까지 정해진 값
+  /* 손으로 정한 값이 알파벳뿐이면(예전 데이터·운영진 조정) 구력으로 세부 번호를 채운다.
+     구력이 가리키는 등급과 글자가 같을 때만 — 다르면 운영진 판단을 그대로 둔다. */
+  if(auto && gradeStepBase(auto)===man) return auto;
+  return man;
 }
 function gradeStepLabel(st){
   const i=gradeInfo(gradeStepBase(st));
@@ -13289,6 +13370,15 @@ function tgData(){
   return c.tg;
 }
 function tgOf(uid){ const t=tgData(); return t ? (t.groups[String(uid)]||null) : null; }
+/* 서버에 저장된 대회 조를 가져온다 — 클럽에 들어갈 때 한 번 */
+async function tgPull(){
+  const cid=clubId(), c=AC();
+  if(!SERVER_OK||!cid||!c) return;
+  try{
+    const d=await api(`/clubs/${cid}/tiers`);
+    if(d && typeof d==='object'){ c.tg=Object.assign(tgData()||{}, d); try{ saveMatsu(); }catch(e){} }
+  }catch(e){}
+}
 /* 구력 등급으로 첫 배정 — 그다음부터는 대회 결과가 조를 정한다 */
 /* 등급만 보고 A/B/C 로 묶으면 조 인원이 들쭉날쭉해진다(전원 B등급이면 B조 하나).
    월례대회 대진은 조마다 4명이 있어야 만들어지므로,
@@ -13335,7 +13425,9 @@ function tgPush(){
   if(!SERVER_OK||!cid||!t) return;
   clearTimeout(TG_PUSH_T);
   TG_PUSH_T=setTimeout(()=>{
-    api(`/clubs/${cid}/profile`,{method:'PATCH',body:JSON.stringify({tg:JSON.stringify(t)})}).catch(()=>{});
+    /* 예전에는 /profile 로 보냈는데 서버가 tg 를 버려서 기기에만 남았다.
+       브라우저를 지우거나 다른 기기로 열면 조가 통째로 사라졌다. */
+    api(`/clubs/${cid}/tiers`,{method:'PUT',body:JSON.stringify(t)}).catch(()=>{});
   }, 700);
 }
 function tgSet(k,v){ const t=tgData(); if(!t) return; t[k]=v; try{ saveMatsu(); }catch(e){} tgPush(); }
@@ -13414,7 +13506,7 @@ async function openTgSettings(){
   document.getElementById('ov').classList.add('on');
 }
 async function tgReseed(){
-  await ensureClubRoster();
+  await ensureClubRoster(); await tgPull();
   const n=(CLUB_ROSTER||[]).filter(r=>r.user_id).length;
   if(!n){ toast('클럽 명단을 불러오지 못했어요 · 잠시 후 다시 시도해 주세요'); return; }
   if(n<4){ toast(`조를 나누려면 4명부터예요 · 지금 ${n}명`); return; }
@@ -14643,9 +14735,11 @@ function evAvatar(name, photos, size){
   try{ const a = typeof photos==='string' ? JSON.parse(photos||'[]') : (photos||[]); url=a[0]||''; }catch(e){}
   if(url && !url.startsWith('http')) url=API_BASE+url;
   const s=size||32;
+  const box=`width:${s}px;height:${s}px;border-radius:50%;flex:none;`
+    +`display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;overflow:hidden`;
   return url
-    ? `<span style="width:${s}px;height:${s}px;border-radius:50%;background:url('${url}') center/cover;flex:none;display:inline-block"></span>`
-    : `<span style="width:${s}px;height:${s}px;border-radius:50%;background:#efe9e0;color:#8a8378;flex:none;display:grid;place-items:center;font-size:${Math.round(s*0.42)}px;font-weight:600">${esc((name||'?')[0])}</span>`;
+    ? `<span style="${box};background:url('${url}') center/cover"></span>`
+    : `<span style="${box};background:#efe9e0;color:#8a8378;font-size:${Math.round(s*0.42)}px;font-weight:600">${esc((name||'?')[0])}</span>`;
 }
 /* ── 그날의 대진 — 코트별로 접어서 보여준다 ──
    지난 모임을 다시 열어보는 이유는 대부분 '누가 왔고 누구랑 쳤나'다.
@@ -14696,7 +14790,7 @@ function drawEventDetail(){
   const accentBg = isFlash ? '#eef3fb' : '#fdf1e8';
   const st=e.my_status||null;
   const btn=(v,l)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:11px;padding:9px 0;font-size:12px;font-weight:${st===v?'700':'500'};${st===v?`background:${accent};color:#fff`:'background:#f5f3ee;color:#6b6357'}">${l}</span>`;
-  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f7f5f0;border-radius:22px;padding:5px 12px 5px 5px;margin:0 6px 7px 0;cursor:pointer">
+  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f7f5f0;border-radius:22px;padding:5px 12px 5px 5px;cursor:pointer">
       ${evAvatar(n,ph,26)}<span style="font-size:12px;font-weight:500;color:#3a352e">${esc(n)}</span></span>`;
 
   let h=`<div class="evtop">
@@ -14706,6 +14800,7 @@ function drawEventDetail(){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <h3 style="font-size:23px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3>
       ${off?`<div style="display:flex;gap:6px;flex:none">
+        <span onclick="copyEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">복제</span>
         <span onclick="editEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#6b6357;border:1px solid #e2ded5;border-radius:9px;padding:6px 10px">수정</span>
         <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
       </div>`:''}</div>
@@ -14720,7 +14815,7 @@ function drawEventDetail(){
       <span style="font-size:14px;font-weight:500">참석</span>
       <span style="font-size:14px;font-weight:500;color:${accent}">${(e.attendees||[]).length}명</span>
       ${(e.guests||[]).length?`<span style="font-size:12px;font-weight:500;color:#8a857c">· 게스트 ${(e.guests||[]).length}명</span>`:''}</div>
-    <div style="margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="font-size:12px;color:#a8a29a;font-weight:500">아직 참석자가 없어요</span>'}</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="font-size:12px;color:#a8a29a;font-weight:500">아직 참석자가 없어요</span>'}</div>
     ${(e.guests||[]).length?`<div style="font-size:12px;font-weight:500;color:#8a857c;margin-top:2px">게스트 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
     ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:12px;font-weight:500;color:#a8a29a;margin-top:10px;line-height:1.7">
       ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(esc).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(esc).join(' · ')}`:''}</div>`:''}
