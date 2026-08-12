@@ -190,9 +190,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0812e';
+const SRV_BUILD = 'sH-0813';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812y';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0813a';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1364,7 +1364,9 @@ app.post('/clubs/:id/transfer-owner', auth, (req, res) => {
 
 // 내가 속한 클럽 목록 (역할·상태 포함)
 app.get('/me/clubs', auth, (req, res) => {
-  res.json(db.prepare(`SELECT c.*, cm.role, cm.status,
+  /* sport 가 비어 있는 옛 클럽은 앱에서 종목 필터에 걸려 목록에서 사라진다 —
+     기본 종목으로 채워서 내려준다 */
+  res.json(db.prepare(`SELECT c.*, COALESCE(NULLIF(c.sport,''),'tennis') AS sport, cm.role, cm.status,
       (SELECT COUNT(*) FROM club_members x WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')) member_count
     FROM club_members cm JOIN clubs c ON c.id=cm.club_id
     WHERE cm.user_id=? ORDER BY (cm.role='owner') DESC, c.id`).all(req.uid));
