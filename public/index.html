@@ -2417,7 +2417,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812y';
+const BUILD='v1.0.7-0813a';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -3764,7 +3764,9 @@ let SRV_MYCLUBS=[];
 // 클럽은 만든 종목에 속한다: 종목을 바꾸면 그 종목의 클럽으로 전환 (없으면 무소속)
 function syncActiveClub(){
   if(!(SERVER_OK && SRV_MYCLUBS.length)) return;
-  const mine = SRV_MYCLUBS.filter(c=>(c.sport||'')===state.sport);
+  /* 종목이 비어 있는 클럽(옛 데이터·초대로 들어온 클럽)을 걸러내면
+     가입했는데도 '가입한 클럽 0곳'이 된다 — 비어 있으면 지금 종목으로 본다 */
+  const mine = SRV_MYCLUBS.filter(c=>(c.sport||state.sport)===state.sport);
   state.myClubs = mine.map(c=>c.name);                   // 이 종목의 클럽만
   // 이미 보고 있던 서버 클럽이 있으면 유지, 없으면 첫 번째 서버 클럽으로 (데모 클럽으로 새지 않게)
   const keep = mine.find(c=>c.name===state.activeClub);
@@ -7170,6 +7172,7 @@ function ensureClubEvents(){
 }
 function renderClub(){
   ensureClubEvents();
+  askStartIfEmpty();          // 구력이 비어 있으면 물어본다 (탭과 무관하게)
   if(SERVER_OK && clubId() && SRV_MYSTATUS===undefined) { /* noop */ }
   if((SERVER_OK||TRIAL) && clubId() && PROMOS===null && !window._promoOnce){ window._promoOnce=true; cb2LoadPromos().then(()=>renderClub()).catch(()=>{}); }
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
@@ -9200,7 +9203,6 @@ function loadClubRoster(){
   api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
     .catch(()=>{ CLUB_ROSTER=[]; });
   tgPull();
-  askStartIfEmpty();
 }
 function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
@@ -21209,8 +21211,10 @@ function drawStartSheet(){
     ${YS.dismissible?`<button class="btn ghost" style="margin-top:8px" onclick="ysLater()">나중에 할게요</button>`:''}`;
 }
 function ysLater(){
+  /* 이번 방문에만 접어둔다 — 앱을 껐다 켜면 다시 물어본다 */
   try{ sessionStorage.setItem('ys_skip', String(clubId()||'1')); }catch(e){}
   closeOv();
+  toast('내정보 › 프로필 수정에서 언제든 넣을 수 있어요');
 }
 async function saveMyStart(){
   const y=+YS.y, mo=+YS.m;
@@ -21226,6 +21230,8 @@ async function saveMyStart(){
     const code=gradeStepFromMonths(careerMonthsFrom(map[state.sport]));
     toast(code?`구력을 저장했어요 · ${code} 등급이에요`:'구력을 저장했어요');
     closeOv();
+    YS_ASKED=true;
+    try{ sessionStorage.removeItem('ys_skip'); }catch(e){}
     CLUB_ROSTER=null; CLUB_ROSTER_FOR=null;      // 명단의 등급을 다시 계산하게
     try{ renderMe(); }catch(e){}
     try{ if(state.view==='club') renderClub(); }catch(e){}
@@ -21234,13 +21240,25 @@ async function saveMyStart(){
 }
 function editMyStart(){ openStartSheet({}); }
 /* 클럽에 들어왔는데 구력이 비어 있으면 한 번 물어본다 (나중에 하기 누르면 그 세션은 조용히) */
+/* 구력이 비어 있으면 클럽 화면에서 한 번 물어본다.
+   예전에는 명단을 '처음 불러올 때'만 확인해서, 다시 들어오면 뜨지 않았다.
+   지금은 클럽 화면을 그릴 때마다 보되, 이미 띄웠으면 조용히 넘어간다. */
+let YS_ASKED=false;
 function askStartIfEmpty(){
-  if(!SERVER_OK || !state.loggedIn) return;
-  if(sportStartedMap()[state.sport]) return;
-  const cid=String(clubId()||'1');
-  try{ if(sessionStorage.getItem('ys_skip')===cid) return; }catch(e){}
-  if(document.getElementById('ov').classList.contains('on')) return;
-  setTimeout(()=>{ if(state.view==='club' && !sportStartedMap()[state.sport]) openStartSheet({first:true}); }, 900);
+  if(YS_ASKED) return;
+  if(!SERVER_OK || !state.loggedIn || !clubId()) return;
+  if(!state.serverUser) return;                      // 내 정보를 아직 못 받았다
+  if(careerMonthsFrom(sportStartedMap()[state.sport])!=null) return;   // 이미 넣었다
+  const cid=String(clubId());
+  try{ if(sessionStorage.getItem('ys_skip')===cid) return; }catch(e){}   // 나중에 하기 누름
+  if(document.getElementById('ov').classList.contains('on')) return;     // 다른 시트가 열려 있다
+  YS_ASKED=true;
+  setTimeout(()=>{
+    if(state.view!=='club'){ YS_ASKED=false; return; }
+    if(careerMonthsFrom(sportStartedMap()[state.sport])!=null) return;
+    if(document.getElementById('ov').classList.contains('on')){ YS_ASKED=false; return; }
+    openStartSheet({first:true});
+  }, 900);
 }
 function openFairplayInfo(){
   document.getElementById('sheet').innerHTML=`
@@ -21310,6 +21328,11 @@ function meTeamCard(){
 }
 let _RM_BUSY=false;
 function renderMe(){
+  /* 다른 기기나 초대 링크로 클럽이 늘었을 수 있다 — 열 때 한 번 맞춰본다 */
+  if(SERVER_OK && authToken() && !window._meClubsOnce){
+    window._meClubsOnce=true;
+    adoptServerClubs().then(()=>{ if(state.view==='me') renderMe(); }).catch(()=>{});
+  }
   loadMyMvpCount();
   if(_RM_BUSY) return;
   _RM_BUSY=true;
@@ -21357,7 +21380,12 @@ function _renderMeCore(){
   }
   if(SERVER_OK && authToken() && MY_APPS && Date.now()-(MY_APPS._ts||0)>3e4){ MY_APPS=null; }
 
-  const joined=state.matches.filter(m=>m.joined).length,clubs=state.myClubs.length,t=myTier();
+  const joined=state.matches.filter(m=>m.joined).length, t=myTier();
+  /* 서버가 아는 내 클럽을 먼저 본다 — 기기에 저장된 목록만 보면
+     초대로 들어온 회원이 '0곳'으로 보였다 */
+  const clubs=(SERVER_OK && SRV_MYCLUBS.length)
+    ? SRV_MYCLUBS.filter(c=>(c.sport||state.sport)===state.sport).length
+    : state.myClubs.length;
   let rec=myRecord(),rating=state.rating,peak=Math.max(...state.ratingHist);
   if(SERVER_OK && state.serverUser){
     if(!ME_PROF){ loadMyProfile().then(p=>{ if(p && state.view==='me') renderMe(); }); }
