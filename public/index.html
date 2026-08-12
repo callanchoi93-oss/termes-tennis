@@ -3595,6 +3595,16 @@ function saveSession(d){
   if(typeof d.user.cash === 'number') state.cash = d.user.cash;   // 캐시는 서버가 진실
 }
 
+/* MMR 은 서버(users.mmr)가 진실이다.
+   예전엔 state.mmr 이 목업값 1180 에 고정돼 있어서, 리그 카드는 1180 인데
+   상대 찾기 창은 900~1100(서버 1000 기준)을 띄우는 일이 있었다. */
+function syncMMR(u){
+  if(!u) return;
+  if(typeof u.mmr === 'number') state.mmr = u.mmr;
+  if(typeof u.mmr_games === 'number') state.mmrGames = u.mmr_games;
+  state.mmrPlacing = (u.mmr_placing!=null) ? !!u.mmr_placing : ((state.mmrGames||0) < 5);
+}
+
 /* 서버의 내 정보(캐시 잔액 등)를 다시 읽어 화면과 맞춘다 */
 async function syncMe(){
   if(!SERVER_OK) return;
@@ -3602,6 +3612,7 @@ async function syncMe(){
     const u = await api('/me');
     state.serverUser = u;
     if(typeof u.cash === 'number') state.cash = u.cash;
+    syncMMR(u);                                     // 리그 카드와 상대 찾기가 같은 숫자를 보게
     prefetchMe();                                   // 내정보 카드 값을 미리 받아둔다
     if(state.view==='home') renderHome();
     if(state.view==='me') renderMe();
@@ -6941,7 +6952,7 @@ function renderLeague(){
   { /* 리그를 상시 개방했으므로 MMR 은 잠금이 아니라 참고 지표다 */
     const unlocked=true;
     h+=`<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;border:1px solid #e6e0f5;background:#fff" onclick="openDuelHub()">
-      <div><div style="font-size:14px;font-weight:600">1:1 랭크 · <span style="color:#5b3fa8;font-weight:800;font-variant-numeric:tabular-nums">MMR ${state.mmr}</span></div><div style="font-size:12px;font-weight:500;color:var(--gray);margin-top:2px">캐주얼 1:1로 실력 가늠하기</div></div>
+      <div><div style="font-size:14px;font-weight:600">1:1 랭크 · <span style="color:#5b3fa8;font-weight:800;font-variant-numeric:tabular-nums">${state.mmrPlacing?`배치 중 ${state.mmrGames||0}/5`:`MMR ${state.mmr}`}</span></div><div style="font-size:12px;font-weight:500;color:var(--gray);margin-top:2px">캐주얼 1:1로 실력 가늠하기</div></div>
       <div style="color:#cdc8be;font-size:20px;line-height:1">›</div></div>`;
     if(SERVER_OK && authToken()){
       if(!LG_RANKS || Date.now()-LG_TS>60e3){
@@ -17548,9 +17559,11 @@ const OM_PARTNER_RATE = 0.20;
 function omPartnerBonus(matsuShare){
   return Math.round(Math.max(0, matsuShare) * OM_PARTNER_RATE / 500) * 500;
 }
-function omQuote(hourCost, ballCost, courts, hours){
+/* hourCost = 코트 1면 1시간 단가. courtTotal 을 넘기면 그 값을 코트비 총액으로 쓴다
+   — 제휴 슬롯은 구장이 정한 총액이 이미 있어서, 시간당으로 되돌리면 반올림 오차가 난다. */
+function omQuote(hourCost, ballCost, courts, hours, courtTotal){
   const cap = courts*(hours===2?4:6);
-  const court = hourCost*courts*hours;
+  const court = (courtTotal!=null) ? courtTotal : hourCost*courts*hours;
   const ball  = ballCost*courts;              // 코트당 1캔 — 참가자가 그대로 나눈다
   const mgr   = omManagerFee(courts, hours);
   // 캔볼은 마진 계산에서 제외한다. 실비 그대로 넘기지 않으면
@@ -17566,14 +17579,22 @@ function omQuote(hourCost, ballCost, courts, hours){
   return { cap, court, ball, mgr, cost, per, rev, matsu: matsuShare,
            ballPer: Math.round(ball/cap),
            partnerBonus: pBonus, partnerFee: mgr+pBonus, matsuAfterPartner: matsuShare-pBonus,
-           pct: rev? matsuShare/rev*100 : 0, payout: court+ball+mgr };
+           pct: rev? matsuShare/rev*100 : 0, payout: court+ball+mgr,
+           /* 제휴 코트에서는 코트비를 맞수가 사장님께 직접 보낸다 —
+              매니저에게 가는 돈은 캔볼 실비 + 수고비뿐이다 */
+           payoutPartner: ball+mgr };
 }
 function omCalc(){
   const box=document.getElementById('omCalcBox'); if(!box) return;
   const num=id=>parseInt((((document.getElementById(id)||{}).value)||'').replace(/[^0-9]/g,''),10)||0;
-  const c=+((document.getElementById('omCourts')||{}).value||3);
-  const h=+((document.getElementById('omHours')||{}).value||3);
-  const q=omQuote(num('omHourCost'), num('omBallCost'), c, h);
+  if(!OM_SLOT){
+    box.innerHTML=`<div class="card" style="text-align:center;color:var(--lgray);padding:20px">
+      코트를 고르면 정원과 1인 참가비가 계산돼요</div>`;
+    return;
+  }
+  const c=OM_SLOT_N||2, h=OM_SLOT.hours;
+  const courtTotal=omCourtTotal(OM_SLOT, c);             // 실제로 고를 면들의 코트비 합
+  const q=omQuote(0, num('omBallCost'), c, h, courtTotal);
   const rule=h===2?'5:5는 동점 종료 (노 매치포인트)':'5:5면 6게임째로 승부';
   const won=n=>n.toLocaleString();
   const stars='***********';
@@ -17585,7 +17606,7 @@ function omCalc(){
       <div class="rcp-star" style="margin:4px 0 6px">${stars}</div>
       <div class="rcp-row" style="font-size:10.5px;font-weight:500;color:#a49b86;padding-bottom:3px">
         <span>내역</span><span>금액</span></div>
-      ${[['코트비', `시간당 ${won(num('omHourCost'))} × ${c}면 × ${h}h`, won(q.court)],
+      ${[['코트비', `${esc(OM_SLOT.venue)} · ${c}면 ${h}h`, won(q.court)],
          ['캔볼',   `코트당 1캔 · 1인 ${won(q.ballPer)}`, won(q.ball)],
          ['매니저 수고비', `시간당 ${won(omManagerFee(c,1))}`, won(q.mgr)]]
         .map(([k,d,v])=>`<div class="rcp-row">
@@ -17601,10 +17622,10 @@ function omCalc(){
       <div class="rcp-star" style="margin:5px 0 5px">${stars}</div>
       <div class="rcp-row">
         <span class="rcp-k" style="font-size:11.5px">매니저 정산</span>
-        <span class="rcp-v t-num" style="font-size:12.5px;color:#2c7a53">${won(q.payout)}원</span></div>
+        <span class="rcp-v t-num" style="font-size:12.5px;color:#2c7a53">${won(q.payoutPartner)}원</span></div>
       <div class="rcp-row">
         <span class="rcp-k" style="font-size:11.5px">환급</span>
-        <span class="rcp-d" style="font-size:10.5px">코트·캔볼 + 수고비 · 3일 내</span></div>
+        <span class="rcp-d" style="font-size:10.5px">캔볼 + 수고비 · 3일 내<br>코트비는 맞수가 구장에 직접 결제</span></div>
       <div class="rcp-row">
         <span class="rcp-k" style="font-size:11.5px">경기 룰</span>
         <span class="rcp-d" style="font-size:10.5px">${rule}</span></div>
@@ -17726,10 +17747,92 @@ function omTagPaint(){
   box.innerHTML=OM_AMEN_ALL.map(t=>
     `<span class="nchip ${OM_AMEN.includes(t)?'on':''}" onclick="omTagTog('${t}')">${OM_AMEN.includes(t)?'✓':'＋'} ${t}</span>`).join('');
 }
+/* ── 제휴 코트 고르기 ──
+   오픈매치는 구장이 등록한 슬롯 위에서만 열린다. 시각·장소·코트비를 손으로 적지 않는다.
+   OM_SLOT = 지금 고른 묶음 {venue, date, start, end, price, ids[]} */
+let OM_SLOTS_RAW=[], OM_SLOT=null, OM_SLOT_N=0;
+
+/* 같은 구장·같은 날·같은 시간대의 1면짜리 슬롯을 하나의 묶음으로 모은다 */
+function omGroupSlots(rows){
+  const g={};
+  (rows||[]).forEach(s=>{
+    if(!s || s.status!=='open' || s.holdable===false) return;
+    const k=`${s.venue_id}|${s.date}|${s.start}|${s.end}`;
+    if(!g[k]) g[k]={ key:k, venue:(s.venue&&s.venue.name)||'', venue_id:s.venue_id,
+      sigungu:(s.venue&&s.venue.sigungu)||'', date:s.date, start:s.start, end:s.end, slots:[] };
+    g[k].slots.push({id:s.id, price:s.price||0});
+  });
+  const hrs=x=>Math.round((+x.end.slice(0,2)*60+ +x.end.slice(3,5) - +x.start.slice(0,2)*60 - +x.start.slice(3,5))/60);
+  return Object.values(g)
+    .filter(x=>x.slots.length>=2 && [2,3].includes(hrs(x)))   // 2면 미만·2·3시간 외는 오픈매치가 안 된다
+    .map(x=>{
+      /* 같은 시간이라도 면마다 단가가 다를 수 있다. 싼 면부터 쓰고,
+         참가비는 실제로 고른 면의 합으로 계산한다 — 서버가 더하는 값과 같아야 한다. */
+      const slots=x.slots.slice().sort((a,b)=>a.price-b.price);
+      return {...x, slots, ids:slots.map(s=>s.id), hours:hrs(x), price:slots[0].price};
+    })
+    .sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+}
+/* 앞에서 N면을 골랐을 때의 코트비 합계 */
+function omCourtTotal(g, n){ return (g?g.slots:[]).slice(0, n).reduce((a,s)=>a+(s.price||0), 0); }
+async function omLoadSlots(){
+  const box=document.getElementById('omSlotBox'); if(!box) return;
+  const sido=(document.getElementById('omSido')||{}).value||'';
+  const sigungu=(document.getElementById('omSigungu')||{}).value||'';
+  box.innerHTML=`<div class="card" style="text-align:center;color:var(--lgray);padding:22px">코트를 찾는 중…</div>`;
+  OM_SLOT=null; omCalc();
+  try{
+    const qs=[]; if(sido) qs.push('sido='+encodeURIComponent(sido));
+    if(sigungu) qs.push('sigungu='+encodeURIComponent(sigungu));
+    OM_SLOTS_RAW=await api('/venue-slots/open'+(qs.length?'?'+qs.join('&'):''));
+  }catch(e){ OM_SLOTS_RAW=[];
+    box.innerHTML=`<div class="card" style="text-align:center;padding:22px">
+      <div class="gt1" style="font-weight:600">코트 목록을 불러오지 못했어요</div>
+      <div class="gt1 gmute" style="margin-top:5px">잠시 뒤 다시 시도해 주세요</div></div>`; return; }
+  omPaintSlots();
+}
+function omPaintSlots(){
+  const box=document.getElementById('omSlotBox'); if(!box) return;
+  const list=omGroupSlots(OM_SLOTS_RAW);
+  if(!list.length){
+    box.innerHTML=`<div class="card" style="text-align:center;padding:26px 18px">
+      <div class="gt1" style="font-weight:600">지금 잡을 수 있는 코트가 없어요</div>
+      <div class="gt1 gmute" style="margin-top:6px;line-height:1.7">
+        오픈매치는 제휴 구장의 코트를 잡아야 열 수 있어요.<br>
+        다른 지역을 골라보거나, 구장이 시간을 올릴 때까지 기다려 주세요.</div></div>`;
+    return;
+  }
+  box.innerHTML=list.map(x=>{
+    const on=OM_SLOT&&OM_SLOT.key===x.key;
+    return `<div class="mi-day tap" style="cursor:pointer;border:1px solid ${on?'var(--coral-d)':'var(--line)'}"
+        onclick="omPickSlot('${x.key}')">
+      <div class="mi-dayhd" style="border-bottom:0">
+        <div style="flex:1;min-width:0">
+          <div class="mi-dayt">${esc(x.venue)}</div>
+          <div class="mi-days">${esc(fmtMatchDate(x.date+'T'+x.start))} · ${x.hours}시간 · ${esc(x.sigungu||'')}</div></div>
+        <div style="text-align:right">
+          <div class="gt1" style="font-weight:600">${x.slots.length}면 가능</div>
+          <div class="gt1 gmute" style="margin-top:2px">면당 ${(x.price||0).toLocaleString()}원~</div></div></div>
+      ${on?`<div style="padding:10px 12px 12px;border-top:1px solid var(--line)">
+        <div class="gt1" style="font-weight:600;margin-bottom:7px">몇 면으로 열까요?</div>
+        <div style="display:flex;gap:7px">
+          ${[2,3].filter(n=>n<=x.slots.length).map(n=>
+            `<span class="nchip ${OM_SLOT_N===n?'on':''}" onclick="event.stopPropagation();omPickN(${n})">${OM_SLOT_N===n?'✓':'＋'} ${n}코트</span>`).join('')}
+        </div></div>`:''}</div>`;
+  }).join('');
+}
+function omPickSlot(key){
+  const x=omGroupSlots(OM_SLOTS_RAW).find(g=>g.key===key);
+  if(!x) return;
+  OM_SLOT=x; OM_SLOT_N=Math.min(3, x.slots.length);
+  omPaintSlots(); omCalc();
+}
+function omPickN(n){ if(!OM_SLOT) return; OM_SLOT_N=n; omPaintSlots(); omCalc(); }
+
 function openNewMatch(){
   const sidos = Object.keys(REGIONS);
   document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>오픈매치 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요. 연락처는 적을 수 없어요.</div>
+    <div class="sd">제휴 구장의 코트를 잡아 여는 매치예요. 최소 인원을 채우면 자동으로 <b>성사 알림</b>이 가요.</div>
 
     <div class="mgb" onclick="openManagerGuide()">
       ${OM_COURT_SVG(52)}
@@ -17738,45 +17841,29 @@ function openNewMatch(){
         <div class="mgb-d">모집부터 정산까지, 그림으로 3분이면 파악돼요</div></div>
       <span style="font-size:12px;font-weight:600;color:var(--coral-d);white-space:nowrap">가이드 →</span></div>
 
-    <div class="fld"><label>시작 <span style="font-weight:600;color:var(--lgray)">· 종료는 선택한 시간만큼 자동</span></label><input id="omStart" type="datetime-local" step="900"></div>
-
-    <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>코트 수</label>
-        <select id="omCourts" onchange="omCalc()">
-          <option value="2">2코트</option><option value="3" selected>3코트</option></select></div>
-      <div class="fld" style="flex:1"><label>진행 시간</label>
-        <select id="omHours" onchange="omCalc()"><option value="2">2시간</option><option value="3" selected>3시간</option></select></div>
-    </div>
-    <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>코트 시간당 비용 (원)</label><input id="omHourCost" inputmode="numeric" placeholder="예) 30000 · 무료면 0" oninput="omCalc()"></div>
-      <div class="fld" style="flex:1"><label>캔볼 가격 (원/캔)</label><input id="omBallCost" inputmode="numeric" placeholder="예) 7000 · 무료면 0" oninput="omCalc()"></div>
-    </div>
-    <div class="fld" style="margin-bottom:0">
-      <label style="display:flex;justify-content:space-between;align-items:baseline">
-        <span>예상 견적</span>
-        <span style="font-size:11px;font-weight:400;color:var(--lgray)">입력하면 자동 계산돼요</span></label>
-      <div id="omCalcBox" class="rcp-wrap"></div></div>
-
     <div class="fld"><label>지역</label>
       <div style="display:flex;gap:8px">
-        <select id="omSido" onchange="fillSigungu()" style="flex:1;min-width:0">
+        <select id="omSido" onchange="fillSigungu();omLoadSlots()" style="flex:1;min-width:0">
           <option value="">시/도</option>
           ${sidos.map(x=>`<option value="${x}">${x}</option>`).join('')}
         </select>
-        <select id="omSigungu" style="flex:1;min-width:0"><option value="">시/군/구</option></select>
+        <select id="omSigungu" onchange="omLoadSlots()" style="flex:1;min-width:0"><option value="">시/군/구</option></select>
       </div>
     </div>
-    <div class="fld"><label>읍/면/동 (선택)</label><input id="omDong" placeholder="예) 구갈동"></div>
-    <div class="fld"><label>장소</label><input id="omLoc" placeholder="예) ${OM_EX().loc}"></div>
+
+    <div class="fld"><label>코트 고르기 <span style="color:var(--lgray);font-weight:400">· 시간·장소·코트비가 함께 정해져요</span></label>
+      <div id="omSlotBox"></div></div>
+
+    <div class="fld"><label>캔볼 가격 (원/캔) <span style="color:var(--lgray);font-weight:400">· 코트당 1캔</span></label>
+      <input id="omBallCost" inputmode="numeric" placeholder="예) 7000 · 무료면 0" oninput="omCalc()"></div>
 
     <div class="fld" style="margin-bottom:0">
       <label style="display:flex;justify-content:space-between;align-items:baseline">
-        <span>구장 사진 <span style="color:var(--lgray);font-weight:400">· 선택</span></span>
-        <span id="omPhCnt" style="font-size:11px;font-weight:400;color:var(--lgray)">0 / 6</span></label>
-      <input id="omPhotoFile" type="file" accept="image/*" multiple style="display:none" onchange="omPhPick(this)">
-      <div id="omPhBox"></div></div>
+        <span>예상 견적</span>
+        <span style="font-size:11px;font-weight:400;color:var(--lgray)">코트를 고르면 계산돼요</span></label>
+      <div id="omCalcBox" class="rcp-wrap"></div></div>
 
-    <div class="fld"><label>조건·편의 <span style="color:var(--lgray);font-weight:400">· 선택</span></label>
+    <div class="fld" style="margin-top:14px"><label>조건·편의 <span style="color:var(--lgray);font-weight:400">· 선택</span></label>
       <div id="omTagBox" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div class="hint" style="margin-top:8px">고른 항목은 매치 상세의 <b>매치 정보</b>에 표시돼요</div></div>
 
@@ -17786,16 +17873,9 @@ function openNewMatch(){
     <button class="btn" onclick="createMatch()">오픈매치 열기</button>`;
   document.getElementById('ov').classList.add('on');
 
-  // 기본값: 다가오는 토요일 09:00 ~ 12:00
-  const pad = n => String(n).padStart(2,'0');
-  const fmt = x => `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
-  const d = new Date();
-  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
-  d.setHours(9,0,0,0);
-  const S=document.getElementById('omStart');
-  S.value=fmt(d); S.min=fmt(new Date());
+  OM_SLOTS_RAW=[]; OM_SLOT=null; OM_SLOT_N=0;
   omCalc();                                              // 정원·인당가 초기 표시
-  OM_PHOTOS=[]; omPhPaint();                             // 사진 선택 초기화
+  OM_PHOTOS=[];                                          // 구장 사진은 구장이 등록한 것을 쓴다
   OM_AMEN=[]; omTagPaint();                              // 조건·편의 초기화
 
   // 내 지역을 기본 선택
@@ -17804,7 +17884,8 @@ function openNewMatch(){
     const hit = Object.keys(REGIONS).find(sd=>my.startsWith(sd.slice(0,2)));
     if(hit){ document.getElementById('omSido').value=hit; fillSigungu(); }
   }
-  ['omLoc','omNote','omDong'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+  ['omNote'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',()=>contactWarn(id,'omWarn')); });
+  omLoadSlots();                                         // 코트 목록 먼저 띄운다
 }
 /* 오픈매치 작성 예시 — 종목별 */
 function OM_EX(){
@@ -17844,60 +17925,58 @@ function fmtMatchDate(iso){
 }
 async function createMatch(){
   const v = id => ((document.getElementById(id)||{}).value||'').trim();
-  const start=v('omStart'), loc=v('omLoc'), note=v('omNote'), dong=v('omDong');
-  if(!start){ toast('시작 시각을 골라주세요'); return; }
-  if(!loc){ toast('장소를 입력해 주세요'); return; }
+  const note=v('omNote');
+  if(!OM_SLOT){ toast('코트를 먼저 골라주세요'); return; }
+  const courts=OM_SLOT_N||2, hours=OM_SLOT.hours;
+  if(courts<2){ toast('오픈매치는 2면부터 열 수 있어요'); return; }
+  const num = id => parseInt((v(id)||'').replace(/[^0-9]/g,''),10) || 0;
+  const ball_cost = num('omBallCost')*courts;             // 캔볼 — 코트당 1캔, 마진 없이 실비
+  const startIso = `${OM_SLOT.date}T${OM_SLOT.start}`;
+
   if(TRIAL){
-    const num=id=>parseInt((v(id)||'').replace(/[^0-9]/g,''),10)||0;
-    const hours=num('omHours')||3, courts=+((document.getElementById('omCourts')||{}).value||3);
-    const q=omQuote(num('omHourCost'), num('omBallCost'), courts, hours);   // 영수증과 같은 계산식
-    const cap=q.cap, per=q.per;
-    const end=new Date(Date.UTC(+start.slice(0,4),+start.slice(5,7)-1,+start.slice(8,10),+start.slice(11,13)+hours,+start.slice(14,16))).toISOString().slice(0,16);
-    OM_LIST.unshift({id:Date.now()%1e6, loc, dt:start.slice(5,10).replace('-','.')+' '+start.slice(11,16),
-      start_at:start, end_at:end, price:per, cap, cur:0, joined:false, is_host:true, status:'open',
-      sido:'경기도', sigungu:'용인시 처인구', dong, likes:0, comments:0, players:[], manager_fee:q.payout});
+    const q=omQuote(0, num('omBallCost'), courts, hours, omCourtTotal(OM_SLOT, courts));
+    const end=`${OM_SLOT.date}T${OM_SLOT.end}`;
+    OM_LIST.unshift({id:Date.now()%1e6, loc:OM_SLOT.venue, dt:fmtMatchDate(startIso),
+      start_at:startIso, end_at:end, price:q.per, cap:q.cap, cur:0, joined:false, is_host:true, status:'open',
+      sido:'경기도', sigungu:OM_SLOT.sigungu||'', likes:0, comments:0, players:[], manager_fee:q.payoutPartner});
     toast('매치를 열었어요 (체험 모드)'); closeOv(); renderMatch(); return; }
-  if(new Date(start) < new Date()){ toast('지난 시각은 고를 수 없어요'); return; }
-  const bad = findContact(`${loc} ${note} ${dong}`);
+
+  if(new Date(startIso) < new Date()){ toast('지난 시각은 고를 수 없어요'); return; }
+  const bad = findContact(note);
   if(bad){ toast(`${bad}는 모집글에 올릴 수 없어요 · 1:1 대화를 이용해 주세요`); return; }
-  const num = id => parseInt(v(id).replace(/[^0-9]/g,''),10) || 0;
-  const courts = +((document.getElementById('omCourts')||{}).value||3), hours = num('omHours')||3;
-  const court_cost = num('omHourCost')*courts*hours;      // 코트비 총액
-  const ball_cost  = num('omBallCost')*courts;            // 캔볼 — 코트당 1캔, 마진 없이 실비
+
+  const ids = OM_SLOT.ids.slice(0, courts);
+  let held=false;
   try{
     try{
       const fp=await api('/me/fairplay');
       if(fp && fp.score<55 && !await appConfirm(`현재 페어플레이 ${fp.score}점이에요.\n점수가 낮으면 참가율이 떨어질 수 있어요.\n좋은 경기로 회복한 뒤 열어도 좋아요. 계속할까요?`,'계속하기')) return;
     }catch(e){}
-    await api('/open-matches',{method:'POST',body:JSON.stringify({
-      sport:state.sport, dt:fmtMatchDate(start), start_at:start,
-      sido:v('omSido')||null, sigungu:v('omSigungu')||null, dong:dong||null,
-      loc, fmt:'', gd:'남녀 모두',
-      courts, court_cost, ball_cost, hours, note, tags:OM_AMEN.join(',') })}).then(async cm=>{
-      const fl=OM_PHOTOS.slice(0,6);
-      if(cm&&cm.id&&fl.length){
-        const urls=[];
-        for(const file of fl){
-          await new Promise(done=>{ const rd=new FileReader();
-            rd.onload=()=>{ const img=new Image(); img.onload=async()=>{
-              try{ const cv=document.createElement('canvas'); const sc=Math.min(1,1000/img.width);
-                cv.width=img.width*sc; cv.height=img.height*sc; cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-                const up=await api('/upload',{method:'POST',body:JSON.stringify({dataUrl:cv.toDataURL('image/jpeg',0.75)})});
-                if(up&&up.url) urls.push(up.url);
-              }catch(e){} done(); }; img.src=rd.result; }; rd.readAsDataURL(file); });
-        }
-        if(urls.length) await api(`/open-matches/${cm.id}/photos`,{method:'POST',body:JSON.stringify({urls})}).catch(()=>{});
-      }
-    });
+
+    /* 먼저 코트를 잡고, 그 위에 매치를 만든다.
+       매치 생성이 실패하면 잡아둔 코트를 반드시 놓아준다 — 안 그러면 아무도 못 쓰는 코트가 남는다. */
+    await api('/venue-slots/hold-many',{method:'POST',body:JSON.stringify({ids})});
+    held=true;
+    const cm = await api('/open-matches',{method:'POST',body:JSON.stringify({
+      sport:state.sport, slot_ids:ids, fmt:'', gd:'남녀 모두',
+      ball_cost, note, tags:OM_AMEN.join(',') })});
+    held=false;                                          // 매치에 묶였으므로 반납 대상이 아니다
+    if(cm && cm.id){ /* 구장 사진은 구장이 등록한 것을 그대로 쓴다 */ }
     toast('오픈매치를 열었어요'); closeOv(); go('match');
   }catch(e){
+    if(held){ try{ await api('/venue-slots/release-many',{method:'POST',body:JSON.stringify({ids})}); }catch(_){} }
     const m = String(e.message||'');
     toast( m.includes('contact_blocked') ? '연락처는 모집글에 올릴 수 없어요'
+         : m.includes('slot_required') ? '제휴 구장의 코트를 먼저 골라주세요'
+         : m.includes('taken') ? '방금 다른 분이 가져간 코트가 있어요 · 다시 골라주세요'
+         : m.includes('too_few') ? '오픈매치는 2면부터 열 수 있어요'
+         : m.includes('bad_hours') ? '2시간 또는 3시간 코트만 열 수 있어요'
+         : m.includes('partner_only') ? '아직 파트너 매니저만 잡을 수 있는 기간이에요'
          : m.includes('end_before_start') ? '종료가 시작보다 빨라요'
-         : m.includes('dt_loc_required') ? '시각과 장소를 모두 입력해 주세요'
          : m.includes('401') || m.includes('no_token') ? '다시 로그인해 주세요'
          : m.includes('Failed to fetch') ? '서버에 연결할 수 없어요'
          : `개설 실패 · ${m.slice(0,40)}` );
+    if(/taken|linked/.test(m)) omLoadSlots();
   }
 }
 async function joinMatch(id){
@@ -19970,7 +20049,10 @@ let DUEL=null, DUEL_CAND=null, DUEL_ONE=null;
 async function loadDuel(){
   /* 서버가 아직 이 API 를 모르면 화면을 그리지 않는다.
      빈 객체로 떨어뜨리면 undefined 가 그대로 찍힌다. */
-  try{ DUEL=await api('/duel/mine'); DUEL._ok=true; }
+  try{ DUEL=await api('/duel/mine'); DUEL._ok=true;
+    /* 허브에서 받은 값으로 리그 카드 숫자도 맞춰 둔다 */
+    if(DUEL.me) syncMMR({ mmr: DUEL.me.raw_mmr, mmr_games: DUEL.me.games, mmr_placing: DUEL.me.placing });
+  }
   catch(e){ DUEL={_ok:false, err:String((e&&e.message)||'')}; }
 }
 async function openDuelHub(){
@@ -20072,27 +20154,65 @@ function drawDuelFind(){
       <div class="gt1" style="font-weight:600">지금 조건 · ${esc(w.label||'같은 시·군')}</div>
       <div class="gt1 gmute" style="margin-top:4px">
         ${(w.low!=null&&w.high!=null)?`MMR ${w.low}~${w.high}`:'비슷한 실력끼리'}
-        · 기다리면 범위가 넓어져요</div>
+        ${w.next_at?` · ${duelNextTxt(w)}`:''}</div>
+      <div class="gt1" style="margin-top:8px">
+        <span style="color:var(--lgray)">지금 상대 찾기를 열어둔 사람 ${(c.stats&&c.stats.open_total!=null)?c.stats.open_total:'–'}명</span>
+        ${me.open?` · <span role="button" tabindex="0" onclick="duelStopFind()" style="cursor:pointer;font-weight:600;color:var(--lgray);text-decoration:underline">그만 찾기</span>`:''}</div>
     </div>`;
+
+  /* 프로필이 비어 있으면 매칭 품질이 떨어진다 — 막지는 않되 채우라고 말해 준다.
+     카카오로 가입하면 성별·지역이 아예 안 들어온다. */
+  if(me.need_region||me.need_gender){
+    h+=`<div class="card tap" style="margin-top:12px;display:flex;align-items:center;gap:10px" onclick="closeOv();go('me')">
+      <div style="flex:1"><div class="gt1" style="font-weight:600">${me.need_region&&me.need_gender?'지역과 성별':me.need_region?'지역':'성별'}이 비어 있어요</div>
+      <div class="gt1 gmute" style="margin-top:3px">채우면 가까운 사람부터 보여드려요</div></div>
+      <span class="gt1" style="color:var(--coral-d);font-weight:600">채우기 ›</span></div>`;
+  }
 
   if(!list.length){
     h+=`<div class="card" style="text-align:center;padding:32px 20px;margin-top:14px">
       <div class="gt2" style="font-weight:600">지금은 상대가 없어요</div>
-      <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
-        상대 찾기를 열어뒀으니 그대로 두세요.<br>
-        24시간 뒤엔 인접 시·군까지, 3일 뒤엔 같은 도까지 넓어져요.</p></div>`;
+      <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">${duelEmptyWhy(c)}</p></div>`;
   } else {
     list.forEach(p=>{
       h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:1fr 60px 68px" onclick="duelRequest(${p.id},${jsArg(p.name)})">
         <div style="min-width:0">
           <div class="mi-nm">${esc(p.name)}</div>
-          <div class="gt1 gmute" style="margin-top:3px">${esc(p.region||'')}${p.grade?` · ${esc(p.grade)}`:''}</div></div>
+          <div class="gt1 gmute" style="margin-top:3px">${esc(p.region||'지역 미입력')}${p.grade?` · ${esc(p.grade)}`:''}</div></div>
         <div class="gt1" style="text-align:center;color:var(--lgray)">${p.placing?'배치 중':'MMR '+p.mmr}</div>
         <div style="text-align:right"><span class="gt1" style="font-weight:600;color:var(--coral-d)">신청 ›</span></div></div>`;
     });
   }
   h+=`</div>`;
   document.getElementById('sheet').innerHTML=h;
+}
+/* 다음 확장까지 남은 시간 — '기다리면 넓어져요' 만으로는 언제인지 알 수 없다 */
+function duelNextTxt(w){
+  const ms=(+w.next_at||0)-Date.now();
+  if(!(ms>0)) return `곧 ${esc(w.next_label||'')}까지 넓어져요`;
+  const hh=Math.ceil(ms/3600000);
+  return hh>=24 ? `${Math.ceil(hh/24)}일 뒤 ${esc(w.next_label||'')}까지`
+                : `${hh}시간 뒤 ${esc(w.next_label||'')}까지`;
+}
+/* 비었을 때 진짜 이유를 말한다. '기다리세요' 만 띄우면 고장인지 아닌지 알 수 없다. */
+function duelEmptyWhy(c){
+  const s=c.stats||{}, d=s.dropped||{};
+  if(!s.open_total){
+    return `아직 상대 찾기를 열어둔 사람이 없어요.<br>
+      상대도 <b>리그 참가</b>가 아니라 <b>상대 찾기</b> 화면을 한 번 열어야 후보에 올라와요.`;
+  }
+  const why=[];
+  if(d.region) why.push(`${d.region}명은 지역이 멀어요`);
+  if(d.mmr)    why.push(`${d.mmr}명은 실력 차가 커요`);
+  if(d.gender) why.push(`${d.gender}명은 성별이 달라요`);
+  if(d.busy)   why.push(`${d.busy}명과는 이미 경기가 잡혀 있어요`);
+  if(!why.length) return `조건에 맞는 상대가 아직 없어요.<br>열어두면 범위가 넓어져요.`;
+  return `찾는 중인 ${s.open_total}명 중 ${why.join(', ')}.<br>열어두면 조건이 넓어져요.`;
+}
+async function duelStopFind(){
+  try{ await api('/duel/close',{method:'POST',body:'{}'}); }catch(e){}
+  toast('상대 찾기를 껐어요');
+  drawDuelHub();
 }
 async function duelRequest(uid,name){
   if(!await appConfirm(`${name}님에게 1:1 경기를 신청할까요?`)) return;
