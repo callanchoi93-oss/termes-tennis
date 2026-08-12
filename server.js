@@ -1397,15 +1397,22 @@ app.get('/clubs/:id/my-status', auth, (req, res) => {
 app.get('/clubs/:id/events', (req, res) => {
   const cid = +req.params.id; const uid = tryUid(req);
   const evs = db.prepare('SELECT * FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 20').all(cid);
-  const byStatus = (eid, st) => db.prepare(`SELECT u.name FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+  /* 지금 이 클럽 회원인 사람만 명단에 올린다.
+     탈퇴 시 응답을 지우지만(purgeClubRsvp), 그 전에 쌓인 행이 남아 있을 수 있다.
+     여기서 한 번 더 거르면 예전 데이터도 따로 손대지 않고 정리된다. */
+  const byStatus = (eid, st) => db.prepare(`SELECT u.name FROM event_attendees ea
+    JOIN users u ON u.id=ea.user_id
+    JOIN club_members cm ON cm.user_id=ea.user_id AND cm.club_id=?
+      AND (cm.status IS NULL OR cm.status='active')
     WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'} ORDER BY u.name`)
-    .all(...(st === 'going' ? [eid] : [eid, st])).map(r => r.name);
+    .all(...(st === 'going' ? [cid, eid] : [cid, eid, st])).map(r => r.name);
   res.json(evs.map(e => {
     const my = uid ? db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, uid) : null;
+    const going = byStatus(e.id, 'going');
     return {
       ...e,
-      count: goingCount(e.id),
-      attendees: byStatus(e.id, 'going'),
+      count: going.length,                 // 명단과 같은 기준으로 센다 — 숫자만 남고 이름이 없으면 안 된다
+      attendees: going,
       absent: byStatus(e.id, 'absent'),
       undecided: byStatus(e.id, 'undecided'),
       guests: db.prepare('SELECT id,name,gender,grade,fee,paid FROM event_guests WHERE event_id=? ORDER BY id').all(e.id),
@@ -1538,7 +1545,15 @@ app.post('/events/:id/rsvp', auth, (req, res) => {
   const g = eventGuard(eid, req.uid);
   if (g.err) return res.status(g.err).json({ error: g.msg });
   const st = ['going', 'absent', 'undecided'].includes(req.body && req.body.status) ? req.body.status : 'going';
-  const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  const has = db.prepare('SELECT id,status FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  /* 같은 걸 한 번 더 누르면 응답을 지운다 — 잘못 눌렀을 때 되돌릴 방법이 있어야 한다.
+     '불참'과 '아직 대답 안 함'은 총무에게 다른 정보라, 취소를 '불참'으로 두면 안 된다.
+     (기존 행이 status NULL 이면 예전 데이터라 'going' 으로 본다) */
+  const cur = has ? (has.status === null ? 'going' : has.status) : null;
+  if (cur === st) {
+    db.prepare('DELETE FROM event_attendees WHERE id=?').run(has.id);
+    return res.json({ ok: true, status: null, count: goingCount(eid) });
+  }
   if (has) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(st, has.id);
   else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, st);
   if (st === 'going') settleReferral(req.uid);
@@ -2080,6 +2095,8 @@ app.delete('/me', auth, (req, res) => {
     db.prepare(`DELETE FROM clubs WHERE owner_id=? AND
       (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id AND user_id<>?)=0`).run(uid, uid);
     db.prepare('DELETE FROM club_members WHERE user_id=?').run(uid);
+    // 다가올 모임의 참석 응답도 함께 지운다 — 안 그러면 명단에 '탈퇴한 회원'이 남는다
+    db.prepare('DELETE FROM event_attendees WHERE user_id=? AND showed IS NULL').run(uid);
     db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);          // 푸시 구독 파기
     db.prepare('DELETE FROM dms WHERE from_id=? OR to_id=?').run(uid, uid);   // 대화 파기
     db.prepare('DELETE FROM open_match_joins WHERE user_id=?').run(uid);
@@ -2108,6 +2125,15 @@ app.post('/me/logout-all', auth, (req, res) => {
 // ══════════════════════════════════════════════════════════════
 //  클럽 탈퇴 · 강퇴 · 임원 임명
 // ══════════════════════════════════════════════════════════════
+/* 클럽을 떠난 사람의 참석 응답을 지운다.
+   응답이 남아 있으면 다가올 모임 명단에 '탈퇴한 회원'이 뜨고, 그 인원으로 대진이 짜인다.
+   출석 체크가 끝난 기록(showed)은 출석률 통계의 근거라 남긴다 —
+   showed 가 비어 있는 행은 어차피 통계에 한 건도 기여하지 않는다. */
+function purgeClubRsvp(cid, uid) {
+  return db.prepare(`DELETE FROM event_attendees WHERE user_id=? AND showed IS NULL
+    AND event_id IN (SELECT id FROM club_events WHERE club_id=?)`).run(uid, cid).changes;
+}
+
 app.delete('/clubs/:id/leave', auth, (req, res) => {
   const cid = +req.params.id;
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
@@ -2118,6 +2144,7 @@ app.delete('/clubs/:id/leave', auth, (req, res) => {
   }
   const unpaid = db.prepare("SELECT COUNT(*) n FROM dues WHERE club_id=? AND user_id=? AND status='unpaid'").get(cid, req.uid).n;
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, req.uid);
+  purgeClubRsvp(cid, req.uid);
   if (m.role === 'owner') db.prepare('DELETE FROM clubs WHERE id=?').run(cid);       // 마지막 사람이면 클럽도 정리
   res.json({ ok: true, unpaid_left: unpaid });
 });
@@ -2134,6 +2161,7 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
     db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
       .run(cid, target, u ? u.name : '', '탈퇴', now()); }
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
+  purgeClubRsvp(cid, target);
   /* 나간 회원이 대회 조에 남아 있으면 조 인원이 실제와 어긋난다 */
   try {
     const r = db.prepare('SELECT data FROM club_tiers WHERE club_id=?').get(cid);
