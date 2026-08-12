@@ -393,6 +393,29 @@
   .cpics.one .cpic2{aspect-ratio:16/10}
   .cpic2 .more{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(20,14,8,.45);color:#fff;font-size:17px;font-weight:600;border-radius:10px}
+  /* 구력 입력 — 프로필과 클럽 첫 방문에서 같은 화면을 쓴다 */
+  .ymrow{display:flex;gap:8px}
+  .ymrow .fld{flex:1;margin-bottom:0}
+  .ymrow select{width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;
+    padding:12px 14px;font-size:14px;font-family:inherit;font-weight:600;outline:none;background:#fff;
+    color:var(--ink);appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b3aea4' stroke-width='2.4' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 13px center}
+  .ymrow select:focus{border-color:var(--coral)}
+  .ymrow select.ph{color:var(--lgray);font-weight:400}
+  /* 지금 몇 년 몇 개월인지 바로 보여준다 */
+  .ycar{margin-top:12px;background:var(--coral-s);border-radius:12px;padding:12px 14px;
+    display:flex;align-items:center;gap:9px}
+  .ycar .cd{font-size:15px;font-weight:700;letter-spacing:-.02em}
+  .ycar .tx{font-size:12.5px;color:#8a6a4a;font-weight:500}
+  .gnote{margin-top:16px;background:var(--felt);border-radius:14px;padding:14px 16px}
+  .gnote .gt{font-size:12px;font-weight:600;color:var(--gray);margin-bottom:9px}
+  .gnote .gg{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+  .gline{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--gray)}
+  .gline b{font-size:13px;font-weight:700;min-width:18px}
+  .gsub{margin-top:11px;padding-top:11px;border-top:1px solid #ece7dd;
+    font-size:11.5px;color:var(--lgray);line-height:1.7}
+  .gsub b{color:var(--gray);font-weight:600}
   /* 소식 올리기 — 다른 입력 화면(.fld)과 같은 규격을 쓴다 */
   .npbody{width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;
     padding:12px 14px;font-size:14px;font-family:inherit;line-height:1.6;outline:none;
@@ -2350,7 +2373,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812g';
+const BUILD='v1.0.7-0812i';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -9028,18 +9051,19 @@ function clubTabGroups(list, meId, t){
       <span class="gt1 gmute">${by[g].length}명</span>
       ${g!=='미배정'?`<span class="gt1 gmute" style="margin-left:auto">승강 ${t.promote}명</span>`:''}</div>`;
     by[g].forEach(r=>{
-      const L=r.grade?gradeStepLabel(r.grade):null;
+      const code=memberGradeCode(r);            // 손입력 없으면 구력으로 계산
+      const L=code?gradeStepLabel(code):null;
       const mine=r.user_id===meId;
       h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:1fr 42px 74px"
           onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})">
         <div class="mi-nm">${esc(r.name)}${mine?' <span class="gt1 gmute">(나)</span>':''}</div>
-        <div style="text-align:center">${r.grade?`<span class="tgb" style="background:var(--felt);color:${L?L.c:'var(--gray)'}">${esc(r.grade)}</span>`:''}</div>
+        <div style="text-align:center">${code?`<span class="tgb" style="background:var(--felt);color:${L?L.c:'var(--gray)'}">${esc(code)}</span>`:''}</div>
         <div style="text-align:right">${promoBadge(r.user_id)||promoBadge(r.name)}</div></div>`;
     });
   });
   h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
-    대회 조는 <b style="color:var(--ink);font-weight:600">월례대회 결과</b>로만 움직여요 ·
-    구력 등급(SS~C)은 그대로예요.</div>`;
+    월례대회 조는 <b style="color:var(--ink);font-weight:600">월례대회 결과</b>로만 움직여요 ·
+    구력 등급(SS1~C3)은 그대로예요.</div>`;
   return h;
 }
 function clubTabMembers(){
@@ -9052,7 +9076,7 @@ function clubTabMembers(){
   /* 조는 명단의 다른 보기 방식일 뿐이라 탭을 새로 만들지 않는다 */
   const seg=`<div class="recseg" style="margin-bottom:var(--s3)">
     <div class="${CLUBMEM_VIEW==='all'?'on':''}" onclick="setClubMemView('all')">전체 명단</div>
-    <div class="${CLUBMEM_VIEW==='tg'?'on':''}" onclick="setClubMemView('tg')">대회 조</div></div>`;
+    <div class="${CLUBMEM_VIEW==='tg'?'on':''}" onclick="setClubMemView('tg')">월례대회 조</div></div>`;
 
   if(CLUBMEM_VIEW==='tg') return seg + clubTabGroups(list, meId, t);
   return seg + `<div class="pvcnt">멤버 ${list.length}명
@@ -9099,6 +9123,7 @@ function loadClubRoster(){
   api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
     .catch(()=>{ CLUB_ROSTER=[]; });
   tgPull();
+  askStartIfEmpty();
 }
 function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
@@ -20877,16 +20902,96 @@ function myCareerTxt(){
   const t=careerTextFrom(ym);
   return t? `${ym} 시작 · ${t}` : '';
 }
-async function editMyStart(){
+/* ── 구력 입력 ────────────────────────────────────────────────
+   프로필에서도, 클럽에 처음 들어올 때도 이 화면 하나를 쓴다.
+   예전에는 prompt 로 "YYYY-MM" 을 받아서 형식을 틀리는 사람이 많았다. */
+let YS={ y:'', m:'', onDone:null, dismissible:true };
+/* 프리셋('3~4년')은 한 점으로 찍혀서 세부 등급을 틀리게 만든다 —
+   3년 0개월은 B2, 4년 11개월은 B3 인데 같은 칩이 되어버린다. 연·월만 정확히 받는다. */
+const YEARS=Array.from({length:56},(_,i)=>new Date().getFullYear()-i);
+function openStartSheet(opt){
+  const o=opt||{};
+  const cur=sportStartedMap()[state.sport]||'';
+  const mm=/^(\d{4})(?:-(\d{1,2}))?$/.exec(cur);
+  YS={ y: mm?mm[1]:'', m: mm&&mm[2]?String(+mm[2]):'', onDone:o.onDone||null,
+       dismissible:o.dismissible!==false, first:!!o.first };
+  drawStartSheet();
+  document.getElementById('ov').classList.add('on');
+}
+function drawStartSheet(){
+  const ready=!!YS.y && !!YS.m;                 // 연·월을 둘 다 골라야 저장된다
+  const code=ready?gradeStepFromMonths(careerMonthsFrom(`${YS.y}-${YS.m||1}`)):null;
+  const L=code?gradeStepLabel(code):null;
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>구력을 알려주세요</h3>
+      ${YS.dismissible?`<div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div>`:''}</div>
+    <div class="sd">대진이 <b>구력에 맞춰</b> 짜여요. 비슷한 실력끼리 붙도록 등급이 자동으로 정해집니다.</div>
+
+    <div class="fld" style="margin-bottom:0"><label>${esc(SP().n)}를 처음 시작한 때</label>
+      <div class="ymrow">
+        <div class="fld"><select id="ysY" class="${YS.y?'':'ph'}" onchange="YS.y=this.value;drawStartSheet()">
+          <option value="">연도</option>
+          ${YEARS.map(y=>`<option value="${y}" ${String(YS.y)===String(y)?'selected':''}>${y}년</option>`).join('')}
+        </select></div>
+        <div class="fld"><select id="ysM" class="${YS.m?'':'ph'}" onchange="YS.m=this.value;drawStartSheet()">
+          <option value="">월</option>
+          ${Array.from({length:12},(_,i)=>i+1).map(m=>`<option value="${m}" ${String(YS.m)===String(m)?'selected':''}>${m}월</option>`).join('')}
+        </select></div>
+      </div></div>
+
+    ${ready?`<div class="ycar">
+      <span class="cd" style="color:${L.c}">${code}</span>
+      <span class="tx">구력 ${careerTextFrom(`${YS.y}-${YS.m||1}`)||'0개월'} · ${esc(L.desc)}</span></div>`:''}
+
+    <div class="gnote">
+      <div class="gt">구력으로 등급이 정해져요</div>
+      <div class="gg">
+        <div class="gline"><b style="color:#2c7a53">C</b><span>2년 미만</span></div>
+        <div class="gline"><b style="color:#2b62c9">B</b><span>2~4년</span></div>
+        <div class="gline"><b style="color:#cf5418">A</b><span>5~9년</span></div>
+        <div class="gline"><b style="color:#8a6a1f">S</b><span>10~19년</span></div>
+      </div>
+      <div class="gsub">한 등급을 다시 <b>3칸</b>으로 나눠 모두 15단계예요 —
+        <b>C1·C2·C3 · B1·B2·B3 …</b> 숫자가 클수록 구력이 길어요.<br>
+        같은 B등급이라도 B1과 B3을 다르게 보고 짜서, 전원이 같은 등급인 클럽에서도 밸런스가 맞아요.</div>
+    </div>
+
+    <button class="btn" style="margin-top:16px${ready?'':';opacity:.45'}" onclick="saveMyStart()">저장하기</button>
+    ${YS.dismissible?`<button class="btn ghost" style="margin-top:8px" onclick="ysLater()">나중에 할게요</button>`:''}`;
+}
+function ysLater(){
+  try{ sessionStorage.setItem('ys_skip', String(clubId()||'1')); }catch(e){}
+  closeOv();
+}
+async function saveMyStart(){
+  const y=+YS.y, mo=+YS.m;
+  if(!(y>=1950 && y<=new Date().getFullYear())){ toast('시작한 연도를 골라주세요'); return; }
+  if(!(mo>=1 && mo<=12)){ toast('시작한 달도 골라주세요'); return; }
+  const t=new Date();
+  if(y===t.getFullYear() && mo>t.getMonth()+1){ toast('아직 오지 않은 달이에요'); return; }
   const map=sportStartedMap();
-  const v=prompt(`${SP().n} 시작 시점 (YYYY-MM)\n연명부의 ${SP().cat==='record'?'경력':'구력'}으로 표시돼요`, map[state.sport]||'');
-  if(v===null) return;
-  const t=v.trim();
-  if(t && !/^\d{4}(-\d{1,2})?$/.test(t)){ toast('예: 2021-03 또는 2021'); return; }
-  if(t) map[state.sport]=t.length===4?t+'-01':t; else delete map[state.sport];
-  try{ const u=await api('/me',{method:'PATCH',body:JSON.stringify({sport_started:map})});
-    state.serverUser=u; toast(t?'구력을 저장했어요':'구력을 지웠어요'); renderMe(); if(document.getElementById('ov').classList.contains('on')) renderProfileEditSrv();
+  map[state.sport]=`${y}-${String(mo).padStart(2,'0')}`;
+  try{
+    const u=await api('/me',{method:'PATCH',body:JSON.stringify({sport_started:map})});
+    state.serverUser=u;
+    const code=gradeStepFromMonths(careerMonthsFrom(map[state.sport]));
+    toast(code?`구력을 저장했어요 · ${code} 등급이에요`:'구력을 저장했어요');
+    closeOv();
+    CLUB_ROSTER=null; CLUB_ROSTER_FOR=null;      // 명단의 등급을 다시 계산하게
+    try{ renderMe(); }catch(e){}
+    try{ if(state.view==='club') renderClub(); }catch(e){}
+    if(YS.onDone) try{ YS.onDone(); }catch(e){}
   }catch(e){ toast('저장하지 못했어요'); }
+}
+function editMyStart(){ openStartSheet({}); }
+/* 클럽에 들어왔는데 구력이 비어 있으면 한 번 물어본다 (나중에 하기 누르면 그 세션은 조용히) */
+function askStartIfEmpty(){
+  if(!SERVER_OK || !state.loggedIn) return;
+  if(sportStartedMap()[state.sport]) return;
+  const cid=String(clubId()||'1');
+  try{ if(sessionStorage.getItem('ys_skip')===cid) return; }catch(e){}
+  if(document.getElementById('ov').classList.contains('on')) return;
+  setTimeout(()=>{ if(state.view==='club' && !sportStartedMap()[state.sport]) openStartSheet({first:true}); }, 900);
 }
 function openFairplayInfo(){
   document.getElementById('sheet').innerHTML=`
