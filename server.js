@@ -190,9 +190,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0812d';
+const SRV_BUILD = 'sH-0812e';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812i';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812l';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -819,8 +819,14 @@ app.get('/me', auth, (req, res) => {
   res.json({ ...u, played_doubles: pd });
 });
 app.patch('/me', auth, (req, res) => {
-  const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
+  /* name 추가 — 카카오 닉네임이 영문이거나 별명이면 본인이 고칠 수 있어야 한다 */
+  const allow = ['name','gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
                  'birth_year','handed','backhand','style','phone','sport_started'];
+  if ('name' in req.body) {
+    const nm = String(req.body.name || '').trim().slice(0, 20);
+    if (!nm) return res.status(400).json({ error: 'bad_name', message: '이름을 입력해 주세요' });
+    req.body.name = nm;
+  }
   const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
   const sets = [], vals = [];
   for (const k of allow) if (k in req.body) {
@@ -930,10 +936,24 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.joined_at, u.name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.name AS real_name, cm.alias,
+    u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
-    ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
+    ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, name`).all(+req.params.id);
   res.json(rows);
+});
+
+/* 클럽에서 부르는 이름 — 카카오 닉네임이 'KANGTAEMIN' 처럼 영문이어도
+   클럽 명단·대진에는 우리가 부르는 이름으로 보이게 한다. 본인 계정 이름은 그대로. */
+try { db.exec('ALTER TABLE club_members ADD COLUMN alias TEXT'); } catch (e) {}
+app.patch('/clubs/:id/members/:uid/alias', auth, (req, res) => {
+  const cid = +req.params.id, target = +req.params.uid;
+  if (!isOfficer(cid, req.uid) && req.uid !== target)
+    return res.status(403).json({ error: 'officer_only', message: '임원이나 본인만 바꿀 수 있어요' });
+  const nm = String(req.body && req.body.alias || '').trim().slice(0, 20);
+  db.prepare('UPDATE club_members SET alias=? WHERE club_id=? AND user_id=?')
+    .run(nm || null, cid, target);
+  res.json({ ok: true, alias: nm || null });
 });
 
 // 회원 등급 일괄 설정 (임원진) — { grades: { "12": "A", "34": "B" } }  키는 user_id
@@ -1264,17 +1284,17 @@ app.get('/clubs/:id/roster', (req, res) => {
   let rows;
   let guests = [];
   if (ev) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM event_attendees ea JOIN users u ON u.id=ea.user_id
       LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
-      WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
+      WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY name`).all(cid, ev.id);
     guests = db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(ev.id)
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
   if (!rows || !rows.length) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
-      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY name`).all(cid);
   }
   res.json({ event_id: ev ? ev.id : null, members: [...rows, ...guests] });
 });
