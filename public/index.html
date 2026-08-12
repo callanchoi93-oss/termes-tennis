@@ -6476,7 +6476,7 @@ function timeAgo(t){
   if(s<86400e3) return Math.floor(s/3600e3)+'시간 전';
   return Math.floor(s/86400e3)+'일 전';
 }
-let UNREAD={dm:0, clubs:{}, total:0}, UNREAD_POLL=null;
+let UNREAD={dm:0, total:0}, UNREAD_POLL=null;   // 1:1 만 센다
 /* 상단 대화 버튼 — 탭바는 이미 6개라 더 못 넣는다.
    대화와 알림은 둘 다 '나에게 온 것'이라 나란히 두는 편이 찾기 쉽다. */
 function goChat(){
@@ -6493,7 +6493,7 @@ function paintUnreadBadge(){
 }
 async function pollUnread(){
   if(!SERVER_OK || !authToken()) return;
-  try{ const u=await api('/me/unread'); UNREAD={dm:u.dm||0, clubs:u.clubs||{}, total:u.total||0}; paintUnreadBadge(); }catch(e){}
+  try{ const u=await api('/me/unread'); UNREAD={dm:u.dm||0, total:u.total||0}; paintUnreadBadge(); }catch(e){}
 }
 function startUnreadPoll(){
   if(UNREAD_POLL) return;
@@ -8092,7 +8092,6 @@ async function createClub(){
     schedule:{dt:'일정 미정 · 첫 모임을 잡아보세요',attendees:[],attend:null},
     feed: DEMO ? [{who:state.userName||'나',when:'방금',cap:`${n} 클럽을 만들었어요! 함께 칠 회원을 모아요`,ph:null,like:0,cm:0}] : []};
   if(!state.myClubs.includes(n)) state.myClubs.push(n); state.activeClub=n;
-  state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'시스템',t:'클럽 단체방이 만들어졌어요.'}]};
   state.clubTab='my'; renderClub(); renderChat(); go('club');
   c.step=5; openCreateClub();                      // 완료 화면 — 닫으면 초기화된다
   toast(n+' 클럽을 만들었어요! 회장이 되셨어요');
@@ -8335,7 +8334,6 @@ function approveMember(n){
     feed:[{who:'운영진',when:'방금',cap:`${n}에 오신 걸 환영합니다! 🎾 정회원이 되셨어요.`,ph:null,like:5,cm:1}]};
   state.myClubs.push(n);state.activeClub=n;
   // 클럽 단체 채팅방 생성
-  state.chats['grp:'+n]={name:n+' 단체방',type:'group',color:'#1f7d62',msgs:[{them:1,who:'운영진',t:'새 회원님 환영합니다! 👏'},{them:1,who:'이석용',t:'반가워요~ 다음 모임에서 봬요'}]};
   closeOv();state.clubTab='my';renderClub();renderChat();go('club');
   toast(n+' 정회원 가입 완료!');
 }
@@ -20614,10 +20612,9 @@ async function loadDMThreads(){
 }
 function renderChat(){
   if(state.chatRoom){ renderRoom(); return; }
-  /* 1:1 전용 화면.
-     클럽 단체방은 클럽 탭 안에 맥락이 있어서 거기서 연다 — 여기 섞어두면
-     클럽이 없는 사람에겐 안내문만 남는 화면이 된다. */
-  let h=`<h2 class="t">대화</h2><p class="sub">클럽 단체방과 1:1 대화.</p>`;
+  /* 1:1 전용 화면. 단체방은 두지 않는다 —
+     클럽 공지는 '소식', 참석 확인은 '일정'이 이미 맡고 있다. */
+  let h=`<h2 class="t">대화</h2><p class="sub">1:1로 주고받는 대화예요.</p>`;
   const ids=Object.keys(state.chats);
   const dms=SERVER_OK?[]:ids.filter(id=>state.chats[id].type==='dm');
   const row=(id)=>{const r=state.chats[id];const last=r.msgs[r.msgs.length-1];const lt=last?(last.me?'나: ':'')+last.t:'';
@@ -20650,40 +20647,23 @@ function renderChat(){
 }
 let CHAT_POLL=null, CHAT_MSGS=[];
 function stopChatPoll(){ if(CHAT_POLL){ clearInterval(CHAT_POLL); CHAT_POLL=null; } }
-function isSrvRoom(id){ return !!id && (id.startsWith('dm:') || id.startsWith('club:')); }
+/* 서버 대화방은 1:1 뿐이다. 클럽 단체방은 두지 않는다 —
+   단체 공지는 클럽 '소식', 참석 확인은 '일정'이 맡는다. */
+function isSrvRoom(id){ return !!id && id.startsWith('dm:'); }
 
 async function loadRoomMsgs(){
   const id=state.chatRoom; if(!isSrvRoom(id)) return;
   try{
-    if(id.startsWith('dm:')){
-      const ms = await api(`/dm/with/${+id.slice(3)}`);
-      CHAT_MSGS = ms.map(m=>({me:m.mine, t:m.body, at:m.created_at, read:!!m.read}));
-      UNREAD.dm = 0; paintUnreadBadge();
-    } else {
-      const cid = +id.slice(5);
-      const ms = await api(`/clubs/${cid}/chat`);
-      CHAT_MSGS = ms.map(m=>({me:m.mine, who:m.name, t:m.body, at:m.created_at, unread:m.unread||0}));
-      const lastId = ms.length ? ms[ms.length-1].id : 0;
-      if(lastId) api(`/clubs/${cid}/chat/read`,{method:'POST',body:JSON.stringify({last_id:lastId})}).catch(()=>{});
-      if(UNREAD.clubs){ delete UNREAD.clubs[cid]; paintUnreadBadge(); }
-    }
+    const ms = await api(`/dm/with/${+id.slice(3)}`);
+    CHAT_MSGS = ms.map(m=>({me:m.mine, t:m.body, at:m.created_at, read:!!m.read}));
+    UNREAD.dm = 0; paintUnreadBadge();
   }catch(e){}
 }
-function roomBubbles(msgs, isGroup){
-  let h=''; let lastWho=null;
+function roomBubbles(msgs){
+  let h='';
   msgs.forEach(m=>{
-    if(m.me){
-      const meta = isGroup
-        ? (m.unread>0 ? `안읽음 ${m.unread}` : '읽음')
-        : (m.read ? '읽음' : '');
-      h+=`<div class="msg me">${esc(m.t)}</div>${meta?`<div class="msg-meta">${meta}</div>`:''}`;
-      lastWho=null;
-    }
-    else {
-      const showWho = isGroup && m.who && m.who!==lastWho;
-      h+=`<div class="msg them">${showWho?`<div class="who2">${esc(m.who)}</div>`:''}${esc(m.t)}</div>`;
-      lastWho = m.who||null;
-    }
+    if(m.me) h+=`<div class="msg me">${esc(m.t)}</div>${m.read?`<div class="msg-meta">읽음</div>`:''}`;
+    else h+=`<div class="msg them">${esc(m.t)}</div>`;
   });
   if(!msgs.length) h=`<div class="note" style="text-align:left;margin:8px 4px">아직 대화가 없어요. 첫 메시지를 보내보세요.</div>`;
   return h;
@@ -20692,23 +20672,19 @@ function paintMsgs(){
   const id=state.chatRoom; if(!id) return;
   const box=document.getElementById('msgsBox'); if(!box) return;
   const srv=isSrvRoom(id);
-  const isGroup = srv ? id.startsWith('club:') : (state.chats[id]||{}).type==='group';
-  box.innerHTML = roomBubbles(srv?CHAT_MSGS:(state.chats[id]||{msgs:[]}).msgs, isGroup);
+  box.innerHTML = roomBubbles(srv?CHAT_MSGS:(state.chats[id]||{msgs:[]}).msgs);
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=sc.scrollHeight;
 }
 function renderRoom(){
   const id=state.chatRoom;
   const srv=isSrvRoom(id);
-  let name, sub, isGroup, isDM;
-  if(srv){
-    isGroup=id.startsWith('club:'); isDM=!isGroup;
-    name = state._roomName || (isGroup ? (state.activeClub||'클럽')+' 단체방' : '대화');
-    sub = isGroup ? '클럽 단체방 · 회원 전용' : '1:1 대화';
-  } else {
+  let name;
+  if(srv){ name = state._roomName || '대화'; }
+  else {
     const r=state.chats[id]; if(!r){ state.chatRoom=null; return renderChat(); }
-    name=r.name; isGroup=r.type==='group'; isDM=!isGroup; sub=isGroup?'클럽 단체방':'1:1 대화';
+    name=r.name;
   }
-  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">${sub}</div></div>${isDM?`<span onclick="openReport('${String(name).replace(/'/g,'')}')" style="font-size:12px;color:var(--lgray);font-weight:500;cursor:pointer">⚠ 신고</span>`:''}</div>`;
+  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">1:1 대화</div></div><span onclick="openReport('${String(name).replace(/'/g,'')}')" style="font-size:12px;color:var(--lgray);font-weight:500;cursor:pointer">⚠ 신고</span></div>`;
   h+=`<div class="msgs" id="msgsBox"></div>
       <div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." maxlength="500" onkeydown="if(event.key==='Enter')sendChat()"><button onclick="sendChat()">전송</button></div>`;
   document.getElementById('s-chat').innerHTML=h;
@@ -20727,25 +20703,6 @@ function renderRoom(){
   }
 }
 function openRoom(id){state.chatRoom=id;renderChat();}
-function openClubRoomId(cid, name){
-  if(!SERVER_OK || !cid){ toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요'); return; }
-  go('chat');                                         // 같은 탭에서 탭하면 go()가 방을 초기화하므로, 이동 '뒤에' 방을 지정한다
-  state.chatRoom='club:'+cid; state._roomName=(name||'클럽')+' 단체방';
-  renderChat();
-  loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); })
-    .catch(()=>{ toast('메시지를 불러오지 못했어요 · 아래로 당겨 새로고침'); });
-}
-function openClubRoom(){
-  const cid=clubId();
-  if(SERVER_OK && cid){
-    go('chat');
-    state.chatRoom='club:'+cid; state._roomName=(state.activeClub||'클럽')+' 단체방';
-    renderChat();                            // 방을 먼저 연다 (낙관적)
-    loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); })
-      .catch(()=>{ toast('메시지를 불러오지 못했어요 · 아래로 당겨 새로고침'); });
-  } else if(state.chats['grp:'+state.activeClub]) openRoomGo('grp:'+state.activeClub);
-  else toast('클럽 단체방은 클럽 가입 후 이용할 수 있어요');
-}
 function openRoomGo(id){ go('chat'); state.chatRoom=id; renderChat(); }
 function backChat(){stopChatPoll();state.chatRoom=null;renderChat();}
 async function sendChat(){
@@ -20757,12 +20714,8 @@ async function sendChat(){
     CHAT_MSGS.push({me:1,t});                                  // 낙관적 표시
     paintMsgs();
     try{
-      if(id.startsWith('dm:')){
-        // 대화는 무료다 — 보낼 때마다 안내를 띄우지 않는다
-        await api('/dm',{method:'POST',body:JSON.stringify({to:+id.slice(3), body:t})});
-      } else {
-        await api(`/clubs/${+id.slice(5)}/chat`,{method:'POST',body:JSON.stringify({body:t})});
-      }
+      // 대화는 무료다 — 보낼 때마다 안내를 띄우지 않는다
+      await api('/dm',{method:'POST',body:JSON.stringify({to:+id.slice(3), body:t})});
       await loadRoomMsgs(); paintMsgs();
       loadDMThreads && loadDMThreads();
     }catch(e){
@@ -20770,7 +20723,6 @@ async function sendChat(){
       const m=String(e.message);
       if(m.includes('dm_not_allowed')) toast('같은 클럽 회원이거나 1:1 경기가 잡힌 상대에게만 대화를 걸 수 있어요');
       else if(m.includes('blocked')) toast('상대가 대화를 받지 않아요');
-      else if(m.includes('member_only')) toast('클럽 정회원만 단체방을 쓸 수 있어요');
       else toast('보내지 못했어요');
     }
     return;
@@ -20780,8 +20732,7 @@ async function sendChat(){
   renderRoom();
   setTimeout(()=>{
     const rep=REPLIES[Math.floor(Math.random()*REPLIES.length)];
-    const who=r.type==='group'?'이석용':null;
-    r.msgs.push(who?{them:1,who,t:rep}:{them:1,t:rep});
+    r.msgs.push({them:1,t:rep});
     if(state.view==='chat'&&state.chatRoom)renderRoom();
   },900);
 }
