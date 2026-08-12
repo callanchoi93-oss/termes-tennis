@@ -816,7 +816,10 @@ app.get('/me', auth, (req, res) => {
   // 복식 배치 판정용 — rating_log 의 '복식' 기록 수를 센다
   let pd = 0;
   try { pd = db.prepare("SELECT COUNT(*) n FROM rating_log WHERE user_id=? AND reason='복식'").get(req.uid).n; } catch (e) {}
-  res.json({ ...u, played_doubles: pd });
+  /* MMR 을 여기서도 채워 준다. 리그 화면과 상대 찾기 화면이 서로 다른 숫자를 보여주면 안 된다. */
+  let mmr = u.mmr, mmrGames = u.mmr_games || 0;
+  try { const du = duelUser(req.uid); if (du) { mmr = du.mmr; mmrGames = du.mmr_games; } } catch (e) {}
+  res.json({ ...u, mmr, mmr_games: mmrGames, mmr_placing: mmrGames < DUEL_PLACE, played_doubles: pd });
 });
 app.patch('/me', auth, (req, res) => {
   /* name 추가 — 카카오 닉네임이 영문이거나 별명이면 본인이 고칠 수 있어야 한다 */
@@ -1735,6 +1738,9 @@ function releaseSlotOfMatch(matchId) {
 }
 try { db.exec('ALTER TABLE open_matches ADD COLUMN courts INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN court_cost INTEGER'); } catch (e) {}
+/* 캔볼값을 코트비와 따로 둔다. 제휴 코트에서는 코트비를 맞수가 사장님께 직접 보내므로
+   매니저에게 환급할 실비는 캔볼뿐이다. 한 칸에 합쳐두면 이 둘을 나눌 수 없다. */
+try { db.exec('ALTER TABLE open_matches ADD COLUMN ball_cost INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at TEXT'); } catch (e) {}
 /* 소셜 매치 요금 공식 — 앱 영수증(index.html의 omQuote)과 동일한 계산.
    두 곳이 어긋나면 매니저가 본 견적과 참가자가 내는 금액이 달라지므로 반드시 함께 고칠 것. */
@@ -1764,8 +1770,77 @@ function omQuote(court, ball, courts, hours) {
   const per = Math.round((cost + matsu) / cap / 500) * 500;
   return { cap, per, mgr, payout: (+court || 0) + (+ball || 0) + mgr };
 }
+/* ══════════════════════════════════════════════════════════════
+   오픈매치는 제휴 구장 슬롯 위에서만 열린다.
+
+   자유 입력을 막는 이유는 세 가지다.
+   ① 코트의 존재를 서버가 알 수 없다 — 참가비를 다 걷고 코트가 없는 사고를 막을 길이 없다.
+   ② 코트비가 자기신고면 참가비를 스스로 정하는 것과 같다. 가격을 서버가 계산해도
+      입력값이 신고라면 의미가 없다.
+   ③ 매니저 등급·파트너 우선기간(canHoldNow)이 통째로 우회된다.
+   슬롯을 필수로 걸면 시간·장소·코트비가 전부 구장이 등록한 값에서 나온다.
+   ══════════════════════════════════════════════════════════════ */
+const OM_ALLOW_FREE_LOC = process.env.OM_ALLOW_FREE_LOC === '1';   // 비상시에만 1
+const OM_MAX_BALL_PER_COURT = 20000;                               // 캔볼 1캔 상한
+const hhmmMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5));
+const WD_KR = ['일', '월', '화', '수', '목', '금', '토'];
+/* 앱의 fmtMatchDate 와 같은 표기: "08.15(토) 09:00" */
+function omDt(date, start) {
+  const d = new Date(`${date}T00:00:00Z`);           // 요일은 날짜에서만 뽑는다 (시각·TZ 영향 없음)
+  return `${date.slice(5, 7)}.${date.slice(8, 10)}(${WD_KR[isNaN(d) ? 0 : d.getUTCDay()]}) ${start}`;
+}
+
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
+
+  /* ── 잡아둔 슬롯 확인 ── */
+  const slotIds = Array.isArray(_b.slot_ids)
+    ? [...new Set(_b.slot_ids.map(Number).filter(Boolean))] : [];
+  let slots = null, venue = null;
+  if (!slotIds.length && !OM_ALLOW_FREE_LOC)
+    return res.status(400).json({ error: 'slot_required',
+      message: '제휴 구장에서 코트를 먼저 잡아야 매치를 열 수 있어요' });
+  if (slotIds.length) {
+    const rows = db.prepare(`SELECT * FROM venue_slots WHERE id IN (${slotIds.map(() => '?').join(',')})`)
+      .all(...slotIds);
+    if (rows.length !== slotIds.length)
+      return res.status(404).json({ error: 'no_slot', message: '없는 코트가 섞여 있어요' });
+    if (rows.some(r => r.status !== 'held' || r.held_by !== req.uid))
+      return res.status(400).json({ error: 'not_holder', message: '내가 잡은 코트가 아니에요' });
+    if (rows.some(r => r.match_id))
+      return res.status(409).json({ error: 'linked', message: '이미 매치가 연결된 코트예요' });
+    const base = rows[0];
+    if (!rows.every(r => r.venue_id === base.venue_id && r.date === base.date
+                      && r.start === base.start && r.end === base.end))
+      return res.status(400).json({ error: 'mixed', message: '같은 구장·같은 시간의 코트만 함께 쓸 수 있어요' });
+    if (rows.length < 2)
+      return res.status(400).json({ error: 'too_few', message: '오픈매치는 2면부터 열 수 있어요' });
+    if (rows.length > 6)
+      return res.status(400).json({ error: 'too_many', message: '한 번에 6면까지예요' });
+    if (Date.parse(`${base.date}T${base.start}:00+09:00`) <= Date.now())
+      return res.status(400).json({ error: 'past', message: '이미 지난 시간이에요' });
+    const hours = Math.round((hhmmMin(base.end) - hhmmMin(base.start)) / 60);
+    if (hours !== 2 && hours !== 3)
+      return res.status(400).json({ error: 'bad_hours', message: '소셜 매치는 2시간 또는 3시간만 열려요' });
+    venue = db.prepare('SELECT * FROM venues WHERE id=?').get(base.venue_id) || {};
+
+    /* 시간·장소·코트비는 전부 슬롯에서 가져온다. 앱이 보낸 값은 쓰지 않는다. */
+    _b.hours = hours;
+    _b.courts = rows.length;
+    _b.court_cost = rows.reduce((s, r) => s + (r.price || 0), 0);
+    _b.start_at = `${base.date}T${base.start}`;
+    _b.end_at = `${base.date}T${base.end}`;
+    _b.dt = omDt(base.date, base.start);
+    _b.loc = venue.name || '';
+    _b.sido = venue.sido || null;
+    _b.sigungu = venue.sigungu || null;
+    _b.dong = null;
+    /* 캔볼만 매니저가 정한다 — 실비이고 마진도 붙지 않는다 */
+    _b.ball_cost = Math.min(Math.max(0, +_b.ball_cost || 0), OM_MAX_BALL_PER_COURT * rows.length);
+    slots = rows;
+    req._slots = rows;
+  }
+
   let _courts = Math.min(3, Math.max(0, +_b.courts || 0));
   if (_courts) {                                          // 코트 기반 소셜 매치 규칙
     _courts = (_courts <= 2) ? 2 : 3;                     // 2코트(2h 8명·3h 12명) · 3코트(2h 12명·3h 18명)
@@ -1779,8 +1854,9 @@ app.post('/open-matches', auth, (req, res) => {
     _b.cap = _q.cap;                                      // 2시간 코트당 4명 · 3시간 코트당 6명 (로테이션 시간 기준)
     _b.min_cnt = _b.cap;                                  // 전원 모여야 확정
     _b.price = _q.per;                                    // 가격은 서버가 산정 (신뢰 지점) — 앱 영수증과 같은 식
-    _b.court_cost = _court + _ball;                       // 정산 환급 대상은 코트비+캔볼 실비 합
-    if (_b.start_at) {                                    // 로컬 벽시계 그대로 +N시간 (서버 TZ 영향 제거)
+    _b.court_cost = _court;                               // 코트비만 (캔볼은 ball_cost 로 따로 둔다)
+    _b.ball_cost = _ball;
+    if (_b.start_at && !slots) {                          // 로컬 벽시계 그대로 +N시간 (서버 TZ 영향 제거)
       const mm = String(_b.start_at).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
       if (mm) {
         const d0 = new Date(Date.UTC(+mm[1], +mm[2] - 1, +mm[3], +mm[4] + _hours, +mm[5]));
@@ -1790,10 +1866,11 @@ app.post('/open-matches', auth, (req, res) => {
     _b.account = null;                                    // 현장 계좌 입금 제거 — 앱 결제로 일원화
     req.body = _b;
     req._autoManager = true;                              // 개설자 = 매니저 (지원·지정 없음)
-    // 매니저 정산 = 코트·캔볼 실비 환급 + 수고비(2코트 시간당 12,000 · 3코트 15,000)
+    // 매니저 정산 = 실비 환급 + 수고비(2코트 시간당 12,000 · 3코트 15,000)
+    // 제휴 코트에서는 코트비를 맞수가 사장님께 직접 보내므로 환급 실비는 캔볼뿐이다
     // 지급은 매치 종료 후 영업일 3일 내 — PG 정산이 들어온 뒤에 내보내야 자금이 꼬이지 않는다
-    // 매니저 = 이 매치의 개설자 1명뿐 · 다른 매치에 참가자로 들어가면 그 매치 정산과는 무관하다
     req._mgrPay = _q.mgr;
+    req._expense = slots ? _ball : (_court + _ball);
   }
   const { sport, dt, loc, fmt, gd, price, cap, min_cnt, note, start_at, end_at, sido, sigungu, dong, account } = req.body || {};
   if (!dt || !loc) return res.status(400).json({ error: 'dt_loc_required' });
@@ -1805,16 +1882,35 @@ app.post('/open-matches', auth, (req, res) => {
   const OM_AMEN = ['초급 환영','여성 환영','주차 가능','야간 조명','샤워 가능','실내 코트'];
   const tags = String((req.body && req.body.tags) || '').split(',')
     .map(t => t.trim()).filter(t => OM_AMEN.includes(t)).join(',') || null;
-  const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account, courts, court_cost, tags) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?, ?, ?, ?)`)
-    .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
-         intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
-         start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
-         String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts), intOrNull(req.body.court_cost), tags);
-  if (req._autoManager) {                                 // 매니저 정산액 = 코트·캔볼 환급 + 수고비 (영업일 3일 내 지급)
-    db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
-      .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 0), rid(r));
+  let mid = 0;
+  try {
+    tx(() => {
+      const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,sido,sigungu,dong,account, courts, court_cost, ball_cost, tags) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?, ?, ?, ?, ?)`)
+        .run(sport || 'tennis', dt, loc, fmt || '단식', gd || '남자부', intOrNull(price) || 0,
+             intOrNull(cap) || 8, intOrNull(min_cnt) || 6, now(), req.uid, note || '',
+             start_at || null, end_at || null, sido || null, sigungu || null, dong || null,
+             String(account || '').trim().slice(0, 60) || null, intOrNull(req.body.courts),
+             intOrNull(req.body.court_cost), intOrNull(req.body.ball_cost), tags);
+      mid = rid(r);
+      if (req._autoManager) {   // 매니저 정산액 = 실비 환급 + 수고비 (영업일 3일 내 지급)
+        db.prepare('UPDATE open_matches SET manager_id=?, manager_fee=? WHERE id=?')
+          .run(req.uid, (req._expense || 0) + (req._mgrPay || 0), mid);
+      }
+      /* 잡아둔 코트를 이 매치에 묶는다. 여기서 실패하면 매치도 만들지 않는다 —
+         코트 없는 매치가 모집을 시작하면 참가비부터 걷힌다. */
+      if (slots) {
+        slots.forEach(s => {
+          const c = db.prepare("UPDATE venue_slots SET match_id=? WHERE id=? AND status='held' AND held_by=? AND match_id IS NULL")
+            .run(mid, s.id, req.uid);
+          if (!c.changes) throw new Error('slot_taken');
+        });
+      }
+    });
+  } catch (e) {
+    if (String(e.message) === 'slot_taken')
+      return res.status(409).json({ error: 'slot_taken', message: '코트 상태가 바뀌었어요. 새로고침해 주세요' });
+    return res.status(500).json({ error: String(e.message || e) });
   }
-  const mid = rid(r);
   // 매니저는 운영만 하고 경기에 참여하지 않는다 — 자동 참가 없음
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
@@ -4581,13 +4677,14 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
     const e = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
     return (!isNaN(s) && !isNaN(e) && e > s) ? Math.round((e - s) / 3600e3) : 3;
   })();
-  /* 실비 환급은 '매니저가 자기 돈으로 코트비를 냈을 때'만 준다.
-     맞수 계약 구장에서 열린 매치는 코트비를 맞수가 사장님께 직접 보내므로,
-     여기서 또 환급하면 코트비를 두 번 내는 셈이 된다. */
+  /* 실비 환급은 '매니저가 자기 돈으로 냈을 때'만 준다.
+     맞수 계약 구장에서 열린 매치는 코트비를 맞수가 사장님께 직접 보내므로
+     코트비를 또 환급하면 두 번 내는 셈이 된다. 캔볼은 매니저가 직접 사 오므로 환급 대상이다. */
   const onPartnerCourt = !!db.prepare('SELECT 1 FROM venue_slots WHERE match_id=?').get(m.id);
+  const ballCost = Math.max(0, m.ball_cost || 0);
   const expense = onPartnerCourt
-    ? 0
-    : Math.min(Math.max(0, m.court_cost || 0), OM_MAX_COURT_COST);   // 실비 상한
+    ? Math.min(ballCost, OM_MAX_COURT_COST)                          // 캔볼 실비만
+    : Math.min(Math.max(0, m.court_cost || 0) + ballCost, OM_MAX_COURT_COST);
   const fee = courts ? omManagerFee(courts <= 2 ? 2 : 3, hours === 2 ? 2 : 3) : 0;
 
   /* 파트너 매니저 보너스 — 맞수가 남긴 몫의 20%.
@@ -4595,7 +4692,7 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
      참가비에는 영향이 없다(이미 걷은 돈을 나누는 것이라). */
   const mgrUser = getUser(m.manager_id) || {};
   const isPartner = mgrUser.manager_tier === 'partner';
-  const realCourt = Math.max(0, m.court_cost || 0);
+  const realCourt = Math.max(0, m.court_cost || 0) + ballCost;   // 코트비 + 캔볼 = 실제로 나가는 돈
   const matsuShare = Math.max(0, collected - realCourt - fee);
   const bonus = isPartner ? Math.round(matsuShare * PARTNER_BONUS_RATE / 100) * 100 : 0;
 
@@ -6317,38 +6414,56 @@ app.post('/venue-slots/:id/create-match', auth, mgrGuard, (req, res) => {
   if (s.match_id) return res.status(409).json({ error: 'linked', message: '이미 매치가 연결돼 있어요' });
 
   const v = db.prepare('SELECT * FROM venues WHERE id=?').get(s.venue_id) || {};
-  const ids = jparse(s.court_ids, []);
   const hours = Math.round((Number(s.end.slice(0, 2)) * 60 + Number(s.end.slice(3, 5))
                           - Number(s.start.slice(0, 2)) * 60 - Number(s.start.slice(3, 5))) / 60);
   if (hours !== 2 && hours !== 3)
     return res.status(400).json({ error: 'bad_hours', message: '소셜 매치는 2시간 또는 3시간만 열려요' });
-  const held = db.prepare("SELECT COUNT(*) n FROM venue_slots WHERE held_by=? AND status='held' AND date=? AND start=? AND venue_id=?")
-    .get(req.uid, s.date, s.start, s.venue_id).n;
-  if (held < 2) return res.status(400).json({ error: 'too_few',
+  /* 같은 구장·같은 시간에 내가 잡아둔 면을 전부 이 매치에 묶는다.
+     예전에는 면 수만 세고 슬롯 하나에만 match_id 를 넣어서, 나머지 면이
+     'held' 인 채로 남아 확정도 반납도 되지 않았다. */
+  const mine = db.prepare(`SELECT * FROM venue_slots
+    WHERE held_by=? AND status='held' AND match_id IS NULL
+      AND venue_id=? AND date=? AND start=? AND end=? ORDER BY id`)
+    .all(req.uid, s.venue_id, s.date, s.start, s.end);
+  if (mine.length < 2) return res.status(400).json({ error: 'too_few',
     message: '오픈매치는 2면부터 열 수 있어요' });
-  const courts = held <= 2 ? 2 : 3;                 // 요금표는 2코트·3코트 두 가지
-  const ball = Math.max(0, +((req.body && req.body.ball_cost) || 0));
-  const q = omQuote(s.price, ball, courts, hours);
+  const use = mine.slice(0, 3);                     // 요금표는 2코트·3코트 두 가지
+  const courts = use.length;
+  const courtCost = use.reduce((a, r) => a + (r.price || 0), 0);
+  const ball = Math.min(Math.max(0, +((req.body && req.body.ball_cost) || 0)), OM_MAX_BALL_PER_COURT * courts);
+  const q = omQuote(courtCost, ball, courts, hours);
 
   const b = req.body || {};
-  const dt = `${s.date} ${s.start}`;
+  const dt = omDt(s.date, s.start);
   const loc = v.name || '';
   const startAt = `${s.date}T${s.start}`;
   const endAt = `${s.date}T${s.end}`;
 
-  const r = db.prepare(`INSERT INTO open_matches
-    (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,
-     sido,sigungu,dong,account,courts,court_cost,tags,manager_id,manager_fee)
-    VALUES (?,?,?,?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,NULL,?,?,?,?,?)`)
-    .run('tennis', dt, loc, String(b.fmt || '복식').slice(0, 10), String(b.gd || '남녀부').slice(0, 10),
-         q.per, q.cap, q.cap, now(), req.uid, String(b.note || '').slice(0, 300),
-         startAt, endAt, v.sido || null, v.sigungu || null, null,
-         courts, s.price + ball, JSON.stringify([]), req.uid, s.price + ball + q.mgr);
-
-  const mid = rid(r);
-  db.prepare('UPDATE venue_slots SET match_id=? WHERE id=?').run(mid, s.id);
+  let mid = 0;
+  try {
+    tx(() => {
+      const r = db.prepare(`INSERT INTO open_matches
+        (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,start_at,end_at,
+         sido,sigungu,dong,account,courts,court_cost,ball_cost,tags,manager_id,manager_fee)
+        VALUES (?,?,?,?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,NULL,?,?,?,?,?,?)`)
+        .run('tennis', dt, loc, String(b.fmt || '복식').slice(0, 10), String(b.gd || '남녀부').slice(0, 10),
+             q.per, q.cap, q.cap, now(), req.uid, String(b.note || '').slice(0, 300),
+             startAt, endAt, v.sido || null, v.sigungu || null, null,
+             courts, courtCost, ball, JSON.stringify([]), req.uid, ball + q.mgr);
+      mid = rid(r);
+      use.forEach(r2 => {
+        const c = db.prepare("UPDATE venue_slots SET match_id=? WHERE id=? AND status='held' AND held_by=? AND match_id IS NULL")
+          .run(mid, r2.id, req.uid);
+        if (!c.changes) throw new Error('slot_taken');
+      });
+    });
+  } catch (e) {
+    if (String(e.message) === 'slot_taken')
+      return res.status(409).json({ error: 'slot_taken', message: '코트 상태가 바뀌었어요. 새로고침해 주세요' });
+    return res.status(500).json({ error: String(e.message || e) });
+  }
   res.json({ ok: true, match_id: mid, price: q.per, cap: q.cap, hours, courts,
-             mgr_fee: q.mgr, payout: s.price + ball + q.mgr });
+             mgr_fee: q.mgr, payout: ball + q.mgr });
 });
 
 /* 만들기 전 미리보기 — 매니저가 "얼마 받고 몇 명 모으는지" 먼저 본다 */
@@ -6982,18 +7097,51 @@ function expectedScore(a, b) { return 1 / (1 + Math.pow(10, (b - a) / 400)); }
 /* 대기 시간이 길수록 조건을 푼다. 작은 지역에서 좁게만 걸면 상대가 영영 안 나온다. */
 function duelWindow(openAt) {
   const h = openAt ? (now() - openAt) / 3600000 : 0;
-  if (h < 24) return { band: 100, scope: 'city', label: '같은 시·군' };
-  if (h < 72) return { band: 150, scope: 'near', label: '인접 시·군' };
-  return { band: 200, scope: 'province', label: '같은 도' };
+  if (h < 24) return { band: 100, scope: 'city', label: '같은 시·군',
+    next_at: openAt ? openAt + 24 * 3600000 : null, next_label: '인접 시·군' };
+  if (h < 72) return { band: 150, scope: 'near', label: '인접 시·군',
+    next_at: openAt ? openAt + 72 * 3600000 : null, next_label: '같은 도' };
+  return { band: 200, scope: 'province', label: '같은 도', next_at: null, next_label: null };
 }
-function cityOf(region) { return String(region || '').trim().split(/\s+/).slice(0, 2).join(' '); }
-function provinceOf(region) { return String(region || '').trim().split(/\s+/)[0] || ''; }
+/* 지역 문자열은 사람마다 다르게 들어온다 — '서울 강남', '서울특별시 강남구', '경기도 용인시 수지구'.
+   행정구역 접미사를 떼서 비교한다. 안 그러면 같은 동네인데 영영 안 만난다.
+   '대구' '광주' 처럼 접미사를 떼면 한 글자가 되는 지명은 그대로 둔다. */
+function regionTokens(region) {
+  return String(region || '').trim().split(/\s+/).filter(Boolean).map(t => {
+    let s = t.replace(/(특별자치도|특별자치시|광역시|특별시|자치시|자치구|자치도)$/, '');
+    if (s.length > 2) s = s.replace(/(도|시|군|구)$/, '');
+    return s;
+  }).filter(Boolean);
+}
+/* 한쪽이 시·도까지만 적었으면 거기까지만 비교한다. '서울' 과 '서울 강남' 은 남남이 아니다. */
+function sameCity(a, b) {
+  if (!a.length || !b.length) return false;
+  if (a[0] !== b[0]) return false;
+  if (a.length < 2 || b.length < 2) return true;
+  return a[1] === b[1];
+}
+function sameProvince(a, b) { return !!(a.length && b.length && a[0] === b[0]); }
+function cityOf(region) { return regionTokens(region).slice(0, 2).join(' '); }
+function provinceOf(region) { return regionTokens(region)[0] || ''; }
+
+/* users.gender 는 '남성'/'여성' 인데 다른 표(event_guests)는 'M'/'F' 를 쓴다.
+   카카오 가입은 아예 비어 있다. 한 가지 키로 눌러서 비교한다. */
+function genderKey(g) {
+  const s = String(g == null ? '' : g).trim();
+  if (!s) return '';
+  if (/^(m|남)/i.test(s)) return 'M';
+  if (/^(f|w|여)/i.test(s)) return 'F';
+  return '';
+}
 
 /* ── 상대 찾기 열기 / 닫기 ── */
 app.post('/duel/open', auth, (req, res) => {
-  db.prepare('UPDATE users SET duel_open_at=? WHERE id=?').run(now(), req.uid);
+  /* 이미 열려 있으면 시각을 덮어쓰지 않는다.
+     화면을 다시 볼 때마다 리셋되면 '24시간 뒤 인접 시·군' 이 영원히 안 온다. */
+  db.prepare('UPDATE users SET duel_open_at=? WHERE id=? AND duel_open_at IS NULL').run(now(), req.uid);
   const u = duelUser(req.uid);
-  res.json({ ok: true, mmr: u.mmr, games: u.mmr_games, placing: u.mmr_games < DUEL_PLACE });
+  res.json({ ok: true, mmr: u.mmr, games: u.mmr_games, placing: u.mmr_games < DUEL_PLACE,
+             open_at: u.duel_open_at });
 });
 app.post('/duel/close', auth, (req, res) => {
   db.prepare('UPDATE users SET duel_open_at=NULL WHERE id=?').run(req.uid);
@@ -7006,36 +7154,62 @@ app.get('/duel/candidates', auth, (req, res) => {
   if (!me) return res.status(404).json({ error: 'no_user' });
   const w = duelWindow(me.duel_open_at);
   const rows = db.prepare(`SELECT id,name,gender,region,mmr,mmr_games
-    FROM users WHERE id<>? AND duel_open_at IS NOT NULL AND suspended IS NOT 1`).all(req.uid);
+    FROM users WHERE id<>? AND duel_open_at IS NOT NULL AND suspended IS NOT 1
+      AND provider NOT IN ('bot','venue','manager')`).all(req.uid);
   rows.forEach(r => { r.grade = gradeOfUser(r.id); });
-  const myCity = cityOf(me.region), myProv = provinceOf(me.region);
+
+  /* 이미 신청·진행 중인 상대는 목록에서 뺀다 — 눌러도 409 만 돌아온다 */
+  const busy = new Set();
+  db.prepare(`SELECT a_id,b_id FROM duels WHERE status IN ('requested','accepted','scored')
+    AND (a_id=? OR b_id=?)`).all(req.uid, req.uid)
+    .forEach(d => busy.add(d.a_id === req.uid ? d.b_id : d.a_id));
+
+  const myTok = regionTokens(me.region), myG = genderKey(me.gender);
+  const drop = { gender: 0, mmr: 0, region: 0, busy: 0 };   // 왜 비었는지 알 수 있게 센다
   const out = [];
   for (const r of rows) {
     if (r.mmr == null) r.mmr = seedMMR(r);
     r.mmr_games = r.mmr_games || 0;
-    /* 개인리그가 남자부·여자부로 나뉘므로 1:1 도 같은 성별끼리만 붙인다 */
-    if (r.gender !== me.gender) continue;
-    if (Math.abs((r.mmr || 1000) - me.mmr) > w.band) continue;
-    const rc = cityOf(r.region), rp = provinceOf(r.region);
-    let scope = null;
-    if (rc && rc === myCity) scope = 'city';
-    else if (rp && rp === myProv) scope = 'near';
-    if (w.scope === 'city' && scope !== 'city') continue;
-    if (w.scope === 'near' && !scope) continue;
-    if (w.scope === 'province' && rp !== myProv && myProv) continue;
+    if (busy.has(r.id)) { drop.busy++; continue; }
+    /* 개인리그가 남자부·여자부로 나뉘므로 1:1 도 같은 성별끼리만 붙인다.
+       단, 한쪽이 성별을 안 넣었으면(카카오 가입) 그걸로 거르지 않는다 —
+       프로필이 비었다는 이유로 아무도 못 만나는 게 더 나쁘다. */
+    const rG = genderKey(r.gender);
+    if (myG && rG && rG !== myG) { drop.gender++; continue; }
+    if (Math.abs((r.mmr || 1000) - me.mmr) > w.band) { drop.mmr++; continue; }
+
+    const rTok = regionTokens(r.region);
+    let scope;
+    if (!myTok.length || !rTok.length) scope = 'unknown';          // 지역 미입력 — 막지 않는다
+    else if (sameCity(myTok, rTok)) scope = 'city';
+    else if (sameProvince(myTok, rTok)) scope = 'near';
+    else scope = 'far';
+    if (scope === 'far') {
+      if (w.scope !== 'province') { drop.region++; continue; }     // 3일 지나면 도 밖도 허용
+    }
+    if (scope === 'near' && w.scope === 'city') { drop.region++; continue; }
+
     out.push({
-      id: r.id, name: r.name, region: r.region, grade: r.grade,
+      id: r.id, name: r.name, region: r.region, grade: r.grade, scope,
       mmr: r.mmr_games >= DUEL_PLACE ? r.mmr : null,     // 배치 중이면 숨긴다
       games: r.mmr_games || 0, placing: (r.mmr_games || 0) < DUEL_PLACE,
       gap: Math.abs(r.mmr - me.mmr),
     });
   }
-  out.sort((a, b) => a.gap - b.gap);
+  /* 같은 시·군 → 같은 도 → 지역 미상 순, 그 안에서는 실력이 가까운 순 */
+  const SCOPE_ORDER = { city: 0, near: 1, unknown: 2, far: 3 };
+  out.sort((a, b) => (SCOPE_ORDER[a.scope] - SCOPE_ORDER[b.scope]) || (a.gap - b.gap));
   res.json({
     me: { mmr: me.mmr_games >= DUEL_PLACE ? me.mmr : null, games: me.mmr_games,
           placing: me.mmr_games < DUEL_PLACE, place_n: DUEL_PLACE,
-          open: !!me.duel_open_at },
-    window: { band: w.band, label: w.label, low: me.mmr - w.band, high: me.mmr + w.band },
+          open: !!me.duel_open_at, open_at: me.duel_open_at || null,
+          region: me.region || null, gender: me.gender || null,
+          need_region: !myTok.length, need_gender: !myG },
+    window: { band: w.band, label: w.label, low: me.mmr - w.band, high: me.mmr + w.band,
+              next_at: w.next_at || null, next_label: w.next_label || null },
+    /* 비어 있을 때 원인을 화면에서 바로 말해 줄 수 있게 — 지금 상대 찾기를 열어둔 사람 수와
+       어느 조건에서 걸러졌는지. 테스트할 때 DB 를 안 봐도 된다. */
+    stats: { open_total: rows.length, shown: out.length, dropped: drop },
     list: out.slice(0, 40),
   });
 });
