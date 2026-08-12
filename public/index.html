@@ -393,13 +393,28 @@
   .cpics.one .cpic2{aspect-ratio:16/10}
   .cpic2 .more{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(20,14,8,.45);color:#fff;font-size:17px;font-weight:600;border-radius:10px}
-  .npics{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
-  .npic{width:70px;height:70px;border-radius:11px;background:var(--felt);position:relative}
-  .npic span{position:absolute;top:-5px;right:-5px;width:20px;height:20px;border-radius:50%;
-    background:var(--ink);color:#fff;font-size:12px;display:flex;align-items:center;
+  /* 소식 올리기 — 다른 입력 화면(.fld)과 같은 규격을 쓴다 */
+  .npbody{width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;
+    padding:12px 14px;font-size:14px;font-family:inherit;line-height:1.6;outline:none;
+    background:#fff;min-height:104px;resize:none;color:var(--ink)}
+  .npbody:focus{border-color:var(--coral)}
+  .npbody::placeholder{color:var(--lgray)}
+  .npics{display:flex;gap:7px;margin-top:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .npics::-webkit-scrollbar{display:none}
+  .npic{flex:none;width:70px;height:70px;border-radius:12px;background:var(--felt);
+    position:relative;background-size:cover;background-position:center}
+  .npic span{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;
+    background:rgba(20,18,12,.55);color:#fff;font-size:11px;display:flex;align-items:center;
     justify-content:center;cursor:pointer}
-  .npadd{width:70px;height:70px;border-radius:11px;border:1.5px dashed #ddd7cb;display:flex;
-    align-items:center;justify-content:center;font-size:20px;color:var(--lgray);cursor:pointer}
+  .npadd{flex:none;width:70px;height:70px;border-radius:12px;border:1.5px solid var(--line);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--lgray);background:#fff}
+  .npadd svg{width:19px;height:19px}
+  .npfoot{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .npcnt{margin-left:auto;font-size:12px;color:var(--lgray);font-weight:500}
+  .npic-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line);
+    background:#fff;border-radius:11px;padding:8px 12px;cursor:pointer;
+    font-family:inherit;font-size:12px;font-weight:600;color:var(--gray)}
+  .npic-btn svg{width:16px;height:16px}
   .cnotice{background:var(--amber-s);border-radius:12px;padding:12px 14px;margin-bottom:14px}
   .cnotice .t{font-size:11px;font-weight:600;color:var(--amber)}
   .cnotice .b{font-size:13.5px;font-weight:400;margin-top:3px;line-height:1.55;color:#6b5a2e}
@@ -408,10 +423,22 @@
     font-family:inherit;font-size:13px;color:var(--lgray);text-align:left}
   .cwbar svg{flex:none;color:#bdb8ae}
   .cwbar:active{background:var(--felt)}
-  .cpost{padding:2px 2px 18px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+  .cpost{padding:2px 2px 16px;margin-bottom:14px;border-bottom:1px solid var(--line)}
   .cpost:last-child{border-bottom:0}
   .cpost .hd{display:flex;align-items:center;gap:9px;margin-bottom:8px}
   .cpost .tx{font-size:14px;line-height:1.6}
+  /* 반응 줄 — 아이콘 + 숫자. 누른 것만 코랄로 채워진다 */
+  .cact{display:flex;align-items:center;gap:6px;margin-top:11px}
+  .cbtn{display:inline-flex;align-items:center;gap:5px;border:0;background:none;
+    font-family:inherit;font-size:12.5px;font-weight:600;color:#8a857c;
+    padding:7px 11px;border-radius:11px;cursor:pointer;line-height:1;transition:background .12s}
+  .cbtn:active{background:#f4f2ed}
+  .cbtn.on{color:var(--coral-d)}
+  .cbtn svg{width:16px;height:16px;flex:none}
+  .cbtn .n{min-width:7px}
+  /* 반응 요약 — 누가 눌렀는지 한 줄로 */
+  .cwho{font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:8px;line-height:1.5}
+  .cwho b{color:#6b6357;font-weight:600}
   .cpic{margin-top:9px;background:var(--felt);border-radius:11px;padding:22px;text-align:center;
     font-size:12.5px;color:var(--gray)}
   .kvrow{display:flex;justify-content:space-between;gap:12px;padding:11px 0;
@@ -2323,7 +2350,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812b';
+const BUILD='v1.0.7-0812g';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -4617,11 +4644,12 @@ let SRV_UID = {};           // 이름 → user_id
 (function(){ // 서버 로그인 상태면 안읽음 배지 폴링 시작 (지연 시작으로 부팅 간섭 없음)
   setTimeout(()=>{ try{ if(SERVER_OK && authToken()) startUnreadPoll(); }catch(e){} }, 3000);
 })();
-async function loadRoster(){
+async function loadRoster(eid){
   const cid = clubId();
   if(!SERVER_OK || !cid){ SRV_ROSTER=null; return false; }
   try{
-    const r = await api(`/clubs/${cid}/roster`);
+    // 모임을 지정하면 그 모임 참석자로 — 안 주면 서버가 오늘 모임을 고른다
+    const r = await api(`/clubs/${cid}/roster${eid?`?event=${eid}`:''}`);
     const ms = (r.members||[]).filter(m=>m.name);
     if(!ms.length){ SRV_ROSTER=null; return false; }
     SRV_ROSTER = ms; SRV_UID = {};
@@ -9122,10 +9150,12 @@ function clubTabNews(){
       ${shown.length?`<div class="cpics ${shown.length===1?'one':''}">${shown.map((u,i)=>
         `<div class="cpic2" style="background:url('${u}') center/cover">${
           (i===3&&pics.length>4)?`<span class="more">+${pics.length-3}</span>`:''}</div>`).join('')}</div>`:''}
-      <div style="display:flex;align-items:center;gap:16px;margin-top:11px;padding-top:10px;border-top:1px solid #f4f2ed">
-        <span onclick="event.stopPropagation();likeFeedQuick(${p.id})" style="display:inline-flex;align-items:center;gap:5px;
-          font-size:12.5px;font-weight:600;cursor:pointer;color:${p.liked?'#cf5418':'#8a857c'}">${p.liked?'♥':'♡'} ${p.likes||0}</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:#8a857c">💬 ${p.comments||0}</span>
+      ${feedWho(p)}
+      <div class="cact">
+        <button class="cbtn ${p.liked?'on':''}" onclick="event.stopPropagation();likeFeedQuick(${p.id})"
+          aria-label="좋아요">${icHeart(p.liked)}<span class="n">${p.likes||0}</span></button>
+        <button class="cbtn" onclick="event.stopPropagation();openFeedPost(${p.id})"
+          aria-label="댓글">${icChat()}<span class="n">${p.comments||0}</span></button>
       </div>
     </div>`;}).join('');
   return h;
@@ -9138,26 +9168,53 @@ function openClubPost(){
   drawClubPost();
   document.getElementById('ov').classList.add('on');
 }
+const NP_MAX=20;                       // 사진 최대 장수
 function drawClubPost(){
+  const n=NP.photos.length, len=(NP.body||'').length;
+  const ready = !!(NP.body||'').trim() || n>0;
   const h=`<div class="sh-top"><h3>소식 올리기</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">오늘 경기 사진과 한 줄을 남겨보세요.</div>
-    <textarea id="npBody" rows="4" placeholder="오늘 복식 재밌었어요 🎾"
-      oninput="NP.body=this.value" style="margin-top:12px">${esc(NP.body)}</textarea>
-    <div class="npics">
-      ${NP.photos.map((u,i)=>`<div class="npic" style="background:url('${u}') center/cover">
-        <span onclick="NP.photos.splice(${i},1);drawClubPost()">×</span></div>`).join('')}
-      ${NP.photos.length<6?`<label class="npadd">＋<input type="file" accept="image/*" multiple
-        style="display:none" onchange="addPostPhotos(this.files)"></label>`:''}
+
+    <div class="fld"><label>내용</label>
+      <textarea id="npBody" class="npbody" placeholder="무슨 이야기를 나눌까요?" maxlength="2000"
+        oninput="NP.body=this.value;npTick()">${esc(NP.body)}</textarea>
     </div>
-    <div class="note" style="text-align:left;margin-top:6px">사진은 최대 6장까지 올릴 수 있어요</div>
-    <button class="btn" style="margin-top:12px" onclick="submitClubPost()">올리기</button>`;
+
+    ${n?`<div class="npics">
+      ${NP.photos.map((u,i)=>`<div class="npic" style="background-image:url('${u}')">
+        <span onclick="NP.photos.splice(${i},1);drawClubPost()" aria-label="사진 빼기">×</span></div>`).join('')}
+      ${n<NP_MAX?`<label class="npadd">${icImage()}
+        <input type="file" accept="image/*" multiple style="display:none" onchange="addPostPhotos(this.files)"></label>`:''}
+    </div>`:''}
+
+    <div class="npfoot">
+      <label class="npic-btn">${icImage()}<span>${n?`사진 ${n}`:'사진'}</span>
+        <input type="file" accept="image/*" multiple style="display:none" onchange="addPostPhotos(this.files)"></label>
+      <span class="npcnt" id="npCnt">${len?`${len}자`:''}</span>
+    </div>
+
+    <button class="btn" style="margin-top:16px${ready?'':';opacity:.45'}" onclick="submitClubPost()">올리기</button>`;
   document.getElementById('sheet').innerHTML=h;
 }
+function icImage(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:17px;height:17px;flex:none">
+    <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/>
+    <path d="m3.5 17 4.6-4.3a1.6 1.6 0 0 1 2.2 0L15 17"/><path d="m14 14.5 1.9-1.7a1.6 1.6 0 0 1 2.2 0l2.4 2.2"/></svg>`;
+}
+/* 글자 수만 갱신 — 입력할 때마다 전체를 다시 그리면 커서가 튄다 */
+function npTick(){
+  const el=document.getElementById('npCnt'); if(!el) return;
+  const n=(NP.body||'').length; el.textContent=n?`${n}자`:'';
+}
 async function addPostPhotos(files){
-  const list=[...(files||[])].slice(0, 6-NP.photos.length);
-  if(!list.length) return;
-  toast('사진을 올리는 중…');
+  const room=NP_MAX-NP.photos.length;
+  const all=[...(files||[])];
+  const list=all.slice(0, room);
+  if(!list.length){ toast(`사진은 ${NP_MAX}장까지 올릴 수 있어요`); return; }
+  if(all.length>room) toast(`${NP_MAX}장까지만 올려요 · ${list.length}장 담는 중…`);
+  else toast(list.length>1?`사진 ${list.length}장 올리는 중…`:'사진을 올리는 중…');
   for(const f of list){
     try{
       const dataUrl=await shrinkImage(f, 1280, 0.85);
@@ -9674,11 +9731,11 @@ async function joinEvent(id){
 async function useEventForBracket(id){
   if(SERVER_OK && clubId()){
     const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id));
-    if(ev){ try{ SRV_EVENT = await api(`/clubs/${clubId()}/events/${id}`); }catch(e){} }
+    if(ev) SRV_EVENT = ev;              // 목록에 이미 있는 정보를 쓴다 (없는 API 를 부르지 않는다)
     toast(ev?`${ev.title} 참석자로 대진을 준비할게요`:'참석자 명단으로 대진을 준비할게요');
     const key=state.activeClub||'_';
     if(state._attSel) delete state._attSel[key];
-    await loadRoster();
+    await loadRoster(id);
     CB2_SEL=new Set();                 // 참석자 기준으로 새로 선택
     CB2_STEP=1; openClubBracketBuild();
     return;
@@ -10078,10 +10135,14 @@ async function openFeedPost(id){
     ${p.body?`<div style="font-size:14px;color:var(--ink2);font-weight:500;line-height:1.65;margin-top:14px;white-space:pre-wrap">${esc(p.body)}</div>`:``}`;
   phs.forEach(u=>{ const full=u.startsWith('http')?u:API_BASE+u;
     h+=`<div style="border-radius:16px;overflow:hidden;margin-top:10px"><img src="${esc(full)}" alt="사진" loading="lazy" style="width:100%;display:block"></div>`; });
-  h+=`<div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
-    <button class="btn ${p.liked?'':'ghost'} sm" style="flex:1;${p.liked?'background:var(--coral)':''}" onclick="likeFeedPost(${p.id})">♥ 좋아요 ${p.likes||0}</button></div>
-    <div class="ch" style="font-size:14px;margin:18px 4px 8px">댓글 ${cmts.length}</div>`;
-  if(!cmts.length) h+=`<div class="note" style="text-align:left">첫 댓글을 남겨보세요.</div>`;
+  h+=`${feedWho(p)}
+    <div class="cact" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <button class="cbtn ${p.liked?'on':''}" style="font-size:13.5px;padding:9px 13px" onclick="likeFeedPost(${p.id})">
+        ${icHeart(p.liked)}<span class="n">좋아요${p.likes?` ${p.likes}`:''}</span></button>
+      <button class="cbtn" style="font-size:13.5px;padding:9px 13px" onclick="document.getElementById('fcIn').focus()">
+        ${icChat()}<span class="n">댓글${cmts.length?` ${cmts.length}`:''}</span></button>
+    </div>`;
+  if(!cmts.length) h+=`<div class="note" style="text-align:left;margin-top:12px">첫 댓글을 남겨보세요.</div>`;
   cmts.forEach(c=>{ h+=`<div style="padding:10px 4px;border-top:1px solid #f0efec">
     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;font-weight:500;color:var(--lgray)">
       <b style="color:var(--ink);font-size:12px">${esc(c.name)}</b>${memberTag(c.name)}<span>· ${timeAgo(c.created_at)}</span></div>
@@ -10091,12 +10152,32 @@ async function openFeedPost(id){
     <button class="btn sm" style="width:auto;padding:0 16px" onclick="sendFeedCmt(${p.id})">등록</button></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
+/* 하트·말풍선 — 선으로 그린 아이콘. 좋아요는 누르면 채워진다 */
+function icHeart(on){
+  return `<svg viewBox="0 0 24 24" fill="${on?'currentColor':'none'}" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M20.8 8.6c0 4.6-8.8 10.2-8.8 10.2S3.2 13.2 3.2 8.6a4.6 4.6 0 0 1 8.8-1.8 4.6 4.6 0 0 1 8.8 1.8Z"/></svg>`;
+}
+function icChat(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M20 4H4a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 4 16h3v4l4.5-4H20a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 20 4Z"/></svg>`;
+}
+/* '홍길동 님 외 2명이 좋아해요' — 아무도 안 눌렀으면 아무것도 안 보인다 */
+function feedWho(p){
+  const n=p.likes||0; if(!n) return '';
+  const who=(p.likers&&p.likers.length)?p.likers:null;
+  const txt = who
+    ? `<b>${esc(who[0])}</b>${n>1?` 님 외 ${n-1}명`:' 님'}이 좋아해요`
+    : `${n}명이 좋아해요`;
+  return `<div class="cwho">${txt}</div>`;
+}
 /* 목록에서 바로 누르는 좋아요 — 시트를 열지 않고 카드만 갱신한다 */
 async function likeFeedQuick(id){
   try{
     const r=await api(`/feed/${id}/like`,{method:'POST',body:'{}'});
     const p=(CLUB_FEED||[]).find(x=>x.id===id);
-    if(p){ p.liked=r.liked; p.likes=r.likes; }
+    if(p){ p.liked=r.liked; p.likes=r.likes; p.likers=r.likers||p.likers; }
     renderClub();
   }catch(e){ toast('처리하지 못했어요'); }
 }
@@ -10115,7 +10196,7 @@ async function likeFeedPost(id){
   try{
     const r=await api(`/feed/${id}/like`,{method:'POST',body:'{}'});
     const p=(CLUB_FEED||[]).find(x=>x.id===id);
-    if(p){ p.liked=r.liked; p.likes=r.likes; }
+    if(p){ p.liked=r.liked; p.likes=r.likes; p.likers=r.likers||p.likers; }
     openFeedPost(id);
   }catch(e){ toast('처리하지 못했어요'); }
 }
