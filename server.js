@@ -190,9 +190,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0811e';
+const SRV_BUILD = 'sH-0812';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0811j';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812b';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -2544,6 +2544,39 @@ app.patch('/clubs/:id/fees', auth, (req, res) => {
     .run(entry_fee, season_fee, guest_fee, guest_cap, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
+/* ═══ 월례대회 조 ═══════════════════════════════════════════
+   예전에는 기기(localStorage)에만 있어서 브라우저를 지우거나 다른 기기로 열면
+   조가 통째로 사라졌다. 클럽 전체가 함께 보는 정보이므로 서버에 둔다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS club_tiers (
+    club_id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)`);
+} catch (e) {}
+
+app.get('/clubs/:id/tiers', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const r = db.prepare('SELECT data FROM club_tiers WHERE club_id=?').get(cid);
+  let d = null; try { d = r ? JSON.parse(r.data) : null; } catch (e) {}
+  res.json(d || { groups: {}, promote: 2, relegate: 2, skipFirst: true, seeded: false });
+});
+
+app.put('/clubs/:id/tiers', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const b = req.body || {};
+  const groups = {};
+  Object.entries(b.groups || {}).slice(0, 400).forEach(([k, v]) => {
+    if (/^\d+$/.test(String(k)) && ['A', 'B', 'C', 'D'].includes(v)) groups[String(k)] = v;
+  });
+  const clamp = (v, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.max(0, Math.min(10, n)); };
+  const data = { groups, promote: clamp(b.promote, 2), relegate: clamp(b.relegate, 2),
+    skipFirst: b.skipFirst !== false, seeded: !!b.seeded };
+  db.prepare(`INSERT INTO club_tiers (club_id,data,updated_at) VALUES (?,?,?)
+    ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+    .run(cid, JSON.stringify(data), now());
+  res.json({ ok: true, ...data });
+});
+
 /* ═══ 클럽 로고 ═══════════════════════════════════════════════
    업로드 폴더(/uploads)에 파일로 두면 컨테이너가 재시작될 때 사라진다.
    로고는 작고(≤512px) 자주 안 바뀌므로 DB 안에 넣어 DB와 수명을 같이 하게 한다. */
