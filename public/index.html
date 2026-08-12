@@ -1225,6 +1225,13 @@
     font-variant-numeric:tabular-nums}
   /* 대회 조 배지 */
   .tgb{flex:none;font-size:var(--t1);font-weight:700;border-radius:7px;padding:3px 7px}
+  /* 회원 화면 상단 동작 — 명단 대신 여기에 모은다 */
+  .macts{display:flex;gap:8px;margin-bottom:14px}
+  .mact{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:11px;
+    font-family:inherit;font-size:13px;font-weight:600;color:var(--gray);cursor:pointer}
+  .mact:active{background:var(--felt)}
+  .mact svg{width:16px;height:16px;flex:none}
 
   /* 시즌 랭킹 — 기간 세그먼트 */
   .recseg{display:flex;background:var(--felt);border-radius:12px;padding:3px;margin:0 0 var(--s4)}
@@ -2384,7 +2391,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812l';
+const BUILD='v1.0.7-0812n';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -9131,10 +9138,7 @@ function clubTabMembers(){
             code&&career?' · ':''}${esc(career)}${!code&&!career?'등급 미정':''}</div>
         </div>
         ${role?`<span class="pvrole ${r.role==='owner'?'ow':'of'}">${role}</span>`:''}
-        ${((cb2Officer()||mine) && r.user_id)?`<button class="cdm" onclick="event.stopPropagation();openAliasSheet(${r.user_id},${jsArg(r.name)})" aria-label="이름 바꾸기" title="이름 바꾸기">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg></button>`:''}
-        ${(!mine && r.user_id)?`<button class="cdm" onclick="event.stopPropagation();openDM(${r.user_id},'${esc(r.name)}')" aria-label="대화">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg></button>`:''}
+        <span style="flex:none;color:#d6d1c7;font-size:15px">›</span>
       </div>`;}).join('')}</div>`;
 }
 let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null;
@@ -9360,10 +9364,24 @@ function clubTabMe(){
       date:g.date||'' };
   }).filter(Boolean);
 
-  const backBar = isMe ? '' : `<div style="display:flex;align-items:center;gap:9px;padding:2px 2px 14px">
+  /* 대화·이름 바꾸기는 명단에 늘어놓지 않고 이 화면에 모아둔다.
+     명단은 훑어보는 곳이라 버튼이 줄마다 붙으면 눈이 피로하다. */
+  const who = isMe ? null : (CLUB_ROSTER||[]).find(r=>String(r.user_id)===String(uid));
+  const canRename = !isMe && (cb2Officer() || String(uid)===String(meId));
+  const act=(label,ic,fn)=>`<button class="mact" onclick="${fn}">${ic}<span>${label}</span></button>`;
+  const backBar = isMe ? '' : `<div style="display:flex;align-items:center;gap:9px;padding:2px 2px 12px">
     <span onclick="clubMeBack()" style="cursor:pointer;font-size:19px;color:var(--lgray);line-height:1">‹</span>
     <span class="gt3">${esc(CLUBME_WHO.name)}</span>
-    <span class="gt1 gmute" style="margin-left:auto">클럽 기록</span></div>`;
+    ${who&&who.role?`<span class="pvrole ${who.role==='owner'?'ow':'of'}" style="margin-left:2px">${who.role==='owner'?'회장':'임원'}</span>`:''}
+    <span class="gt1 gmute" style="margin-left:auto">클럽 기록</span></div>
+    <div class="macts">
+      ${act('대화하기',
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg>',
+        `openDM(${uid},${jsArg(CLUBME_WHO.name)})`)}
+      ${canRename?act('이름 바꾸기',
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg>',
+        `openAliasSheet(${uid},${jsArg(CLUBME_WHO.name)})`):''}
+    </div>`;
 
   if(!my.length) return backBar+`<div class="card" style="text-align:center;padding:34px 22px">
     <div class="gt3">아직 기록이 없어요</div>
@@ -11404,6 +11422,21 @@ function hnSnake(list, k){
 /* 코트 수만큼 조 나누기 — 실력은 스네이크로, 성비는 전체 비율에 맞춰서.
    opts.separate 면 여자 코트와 남자 코트를 아예 갈라놓는다
    (여성끼리 여복만, 남성끼리 남복만 — 혼복은 나오지 않는다). */
+/* 늦참자가 한 조에 몰리면 그 조는 앞 게임에 4명을 못 채운다.
+   조를 나눈 뒤 늦참자 수가 고른지 보고, 몰린 조와 적은 조끼리 사람을 맞바꾼다. */
+function hnBalanceLate(parts){
+  const nL=g=>g.filter(p=>p.late).length;
+  for(let pass=0; pass<parts.length*3; pass++){
+    let hi=0, lo=0;
+    parts.forEach((g,i)=>{ if(nL(g)>nL(parts[hi])) hi=i; if(nL(g)<nL(parts[lo])) lo=i; });
+    if(nL(parts[hi]) - nL(parts[lo]) <= 1) break;                  // 충분히 고르다
+    const a=parts[hi].findIndex(p=>p.late);
+    const b=parts[lo].findIndex(p=>!p.late);
+    if(a<0 || b<0) break;
+    const t=parts[hi][a]; parts[hi][a]=parts[lo][b]; parts[lo][b]=t;   // 등급 순서는 유지된다
+  }
+  return parts;
+}
 function hnSplit(ps, courts, opts){
   const n=ps.length;
   const G=Math.max(1, Math.min(courts, Math.floor(n/4)));
@@ -11416,17 +11449,17 @@ function hnSplit(ps, courts, opts){
       while(wc>1 && women.length/wc<4) wc--;
       let mc=G-wc;
       while(mc>1 && men.length/mc<4) mc--;
-      const out=hnSnake(women,wc).concat(hnSnake(men,mc)).filter(g=>g.length>=4);
+      const out=hnBalanceLate(hnSnake(women,wc).concat(hnSnake(men,mc)).filter(g=>g.length>=4));
       out.separated=true; out.womenCourts=wc; out.menCourts=mc;
       return out;                                   // 여자 코트가 1코트부터
     }
     const why = G<2 ? '코트가 2개 이상이어야 해요'
       : women.length<4 ? `여성이 4명부터예요 (지금 ${women.length}명)`
       : `남성이 4명부터예요 (지금 ${men.length}명)`;
-    const mixed=hnSplitMixed(ps, G); mixed.separated=false; mixed.why=why;
+    const mixed=hnBalanceLate(hnSplitMixed(ps, G)); mixed.separated=false; mixed.why=why;
     return mixed;
   }
-  return hnSplitMixed(ps, G);
+  return hnBalanceLate(hnSplitMixed(ps, G));
 }
 function hnSplitMixed(ps, G){
   const n=ps.length;
@@ -13188,7 +13221,33 @@ async function cb2Gen(mode){
       grade:p.grade||'',rating:p.rating||1000,
       late:CB2_LATE.has(String(p.user_id))}))
     .sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0)));
-  const lateAfter=CB2_LATE.size?CB2_LATEAFTER:0;
+  let lateAfter=CB2_LATE.size?CB2_LATEAFTER:0;
+  /* 늦참자를 빼고 남는 사람이 코트를 채우지 못하면 그 라운드는 아예 만들 수 없다.
+     예전에는 그대로 밀어붙여서 늦참자가 앞 게임에 나오거나 1인 경기 수가 무너졌다.
+     가능한 만큼만 미룬다. */
+  if(lateAfter>0){
+    const nOn=ps.filter(p=>!p.late).length, lateN=ps.length-nOn;
+    const G=Math.max(1, Math.min(courts, Math.floor(ps.length/4)));
+    let cap=lateAfter, why='';
+    /* ① 늦참자도 4경기를 채워야 한다. 조(또는 전체)에서 열리는 경기 수가 R 이면
+       x게임부터 합류한 사람은 R-x+1 경기밖에 못 뛴다 → x ≤ R-3 */
+    const R = (mode==='hanul')
+      ? Math.floor(ps.length/G)                       // 가장 작은 조의 경기 수
+      : Math.ceil(ps.length/G);                       // 일반·성비는 전체 라운드 수
+    cap=Math.min(cap, R-3);
+    if(cap<lateAfter) why='늦참자도 4경기를 뛰려면';
+    /* ② 늦참자를 뺀 사람들만으로 코트를 채울 수 있어야 한다 */
+    if(Math.floor(nOn/4) < 1){ cap=0; why='처음부터 계신 분이 4명이 안 돼서'; }
+    else if(mode==='hanul' && Math.floor(ps.length/G) - Math.ceil(lateN/G) < 4){
+      cap=0; why=`코트를 ${Math.max(1,Math.floor(nOn/4))}개로 줄이면 반영할 수 있어요 ·`;
+    }
+    if(cap!==lateAfter){
+      const before=lateAfter;
+      lateAfter=Math.max(0, cap);
+      toast(lateAfter>0 ? `${why} ${lateAfter}게임부터 합류로 바꿨어요 (${before}게임 요청)`
+                        : `${why} 늦참 없이 짰어요`);
+    }
+  }
   const isF=p=>String(p.gender||'').startsWith('여');
   const games=[]; let captains=null, groups=null, genderNote=null;
   const slots=[];                                            // 라운드별 배정 (겹치는 선수 없이 코트 채우기)
