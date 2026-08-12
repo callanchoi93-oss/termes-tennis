@@ -1225,6 +1225,12 @@
     font-variant-numeric:tabular-nums}
   /* 대회 조 배지 */
   .tgb{flex:none;font-size:var(--t1);font-weight:700;border-radius:7px;padding:3px 7px}
+  /* 늦참 안내 — 박스 대신 점 하나 */
+  .lhint{position:relative;margin-top:8px;padding-left:13px;font-size:12px;font-weight:500;
+    line-height:1.65;color:var(--gray)}
+  .lhint::before{content:'';position:absolute;left:0;top:7px;width:5px;height:5px;
+    border-radius:50%;background:currentColor;opacity:.55}
+  .lhint b{font-weight:600;color:var(--ink)}
   /* 회원 화면 상단 동작 — 명단 대신 여기에 모은다 */
   .macts{display:flex;gap:8px;margin-bottom:14px}
   .mact{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
@@ -2391,7 +2397,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0812n';
+const BUILD='v1.0.7-0812r';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -11498,7 +11504,9 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
   const pastCost=(a,b)=>{ if(!past) return 0; const k=[mem[a].id,mem[b].id].sort().join('-'); return past[k]||0; };
   for(let k=0;k<N;k++){
     let elig=[]; for(let i=0;i<m;i++) if(played[i]<GPP && (!lateSet.has(i)||k>=lateAfter)) elig.push(i);
-    if(elig.length<4){ for(let i=0;i<m;i++) if(played[i]<GPP && elig.indexOf(i)<0) elig.push(i); }
+    /* 자리가 모자라면 이미 목표 경기를 채운 사람을 한 번 더 쓴다.
+       (예전에는 아직 도착 안 한 늦참자를 끌어왔다 — 실제로는 빈 코트가 된다) */
+    if(elig.length<4) for(let i=0;i<m;i++) if(!lateSet.has(i)||k>=lateAfter){ if(elig.indexOf(i)<0) elig.push(i); }
     if(elig.length<4) break;
     // 적게 뛴 사람이 반드시 먼저 들어간다 — 전원 4게임이 여기서 보장된다
     const thr=elig.map(i=>played[i]).sort((a,b)=>a-b)[3];
@@ -13014,10 +13022,17 @@ function drawCB2Build(){
     return `<span onclick="cb2Tog('${id}')" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;${sty}"><i style="width:7px;height:7px;border-radius:50%;background:${dot};${ring}flex:none"></i>${esc(p.name)}${gb}${guest}${promoBadge(p.user_id)}</span>`;
   };
   const selArr=[...CB2_SEL].map(id=>all.find(p=>String(p.user_id)===id)).filter(Boolean);
+  /* 더 지정하면 전원 4경기가 깨지는 경우, 아직 안 고른 사람은 눌리지 않게 한다 */
+  const lateLocked=!lateCanAdd();
   const lateChips=selArr.map(p=>{
     const id=String(p.user_id), lt=CB2_LATE.has(id);
-    return `<span onclick="cb2LateTog('${id}')" style="display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:18px;font-size:12px;font-weight:500;cursor:pointer;${lt?'background:#fdf2dd;color:#a5750d;border:1.5px solid #eed9a8':'background:#faf8f4;color:#b3aea4;border:1.5px solid #f0ede6'}">${esc(p.name)}${lt?' · 늦':''}</span>`;
+    const off=lateLocked && !lt;
+    return `<span ${off?'':`onclick="cb2LateTog('${id}')"`} style="display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:18px;font-size:12px;font-weight:500;${off?'opacity:.4;cursor:default':'cursor:pointer'};${lt?'background:#fdf2dd;color:#a5750d;border:1.5px solid #eed9a8':'background:#faf8f4;color:#b3aea4;border:1.5px solid #f0ede6'}">${esc(p.name)}${lt?' · 늦':''}</span>`;
   }).join('');
+  /* 인원·코트·늦참 인원이 바뀌면 고른 값이 한계를 넘을 수 있다 — 조용히 맞춰둔다 */
+  { const M=lateMaxNow();
+    if(CB2_LATE.size && M>=2 && CB2_LATEAFTER>M) CB2_LATEAFTER=M;
+    if(CB2_LATEAFTER<2) CB2_LATEAFTER=2; }
   /* 대진 성별을 바꿔둔 사람은 여기서 한눈에 보이고, 탭해서 되돌릴 수 있다 */
   const sexChips=selArr.map(p=>{
     const id=String(p.user_id), adj=cbSexAdj(p), g=cbSexOf(p);
@@ -13073,10 +13088,17 @@ function drawCB2Build(){
       <input id="cb2Gmonths" class="sel-in" type="number" inputmode="numeric" min="0" max="11" placeholder="개월" style="flex:.8;min-width:0">
       <button class="btn sm" style="width:auto;padding:0 16px" onclick="cb2AddGuest()">추가</button></div>
 
-    <div class="ch" style="font-size:14px;margin-top:12px">늦참자 <span style="font-size:11px;color:var(--lgray);font-weight:500">· 탭해서 지정</span></div>
+    ${(()=>{ const M=lateMaxNow(), addOk=lateCanAdd();
+      const sub = M<2 ? '지금 인원·코트로는 늦참을 받을 수 없어요'
+        : !addOk ? '더 지정하면 4경기가 깨져요'
+        : '탭해서 지정';
+      return `<div class="ch" style="font-size:14px;margin-top:12px">늦참자
+        <span style="font-size:11px;color:${(M<2||!addOk)?'#b8792a':'var(--lgray)'};font-weight:500">· ${sub}</span></div>`; })()}
     <div style="margin:6px 0 2px">${lateChips||'<span class="note">참석자를 먼저 선택하면 여기서 늦참을 지정할 수 있어요</span>'}</div>
     ${CB2_LATE.size?`<div class="fld" style="margin-top:4px"><label>늦참자 합류 라운드</label>
-      <select id="cb2LateAfter" onchange="CB2_LATEAFTER=+this.value">${Array.from({length:rounds-1},(_,k)=>k+2).map(r=>`<option value="${r}" ${r===CB2_LATEAFTER?'selected':''}>${r}게임부터 합류</option>`).join('')}</select></div>`:''}
+      <select id="cb2LateAfter" onchange="CB2_LATEAFTER=+this.value;drawCB2Build()">${
+        lateOpts().map(o=>`<option value="${o.r}" ${o.r===CB2_LATEAFTER?'selected':''}>${o.r}게임부터 합류</option>`).join('')}</select>
+      <div class="lhint">전원 4경기가 되는 <b>${lateMaxNow()}게임</b>까지 고를 수 있어요</div></div>`:''}
 
     <div class="ch" style="font-size:14px;margin-top:14px">대진 성별
       <span style="font-size:11px;color:var(--lgray);font-weight:500">· 탭해서 바꾸기${sexN?` · ${sexN}명 바꿈`:''}</span></div>
@@ -13110,6 +13132,38 @@ async function cb2SaveGrades(){
   if(TRIAL){ toast('등급을 저장했어요 (체험)'); return; }
   try{ await api(`/clubs/${clubId()}/grades`,{method:'PATCH',body:JSON.stringify({grades})}); toast('등급을 저장했어요'); }
   catch(e){ toast('등급 저장은 임원만 할 수 있어요'); }
+}
+/* ── 늦참 합류 시점의 한계 ────────────────────────────────
+   전원 4경기를 지키려면 인원·코트·늦참 인원이 모두 맞아야 한다.
+     한울  조가 코트에 묶인다. 조 인원 m 이면 m게임이라 m-3 이 한계고,
+           늦참자를 뺀 인원이 조마다 4명은 남아야 한다.
+     일반·성비  라운드를 늘려 대응한다. 앞 라운드를 정시 참석자만으로 채워야 하므로
+           (정시 인원 ÷ 코트) 만큼만 앞 라운드를 만들 수 있다.
+   실측값(1,150여 조합)과 대조해 항상 실측 이하가 되도록 잡았다. */
+/* 늦참 합류 시점의 한계 — 방식을 나누지 않고 가장 빡빡한 기준 하나로 잡는다.
+   (조가 코트에 묶이는 한울이 가장 빡빡하므로 그 기준을 전부에 적용한다.
+    그래서 어떤 방식을 골라도 전원 정확히 4경기가 나온다.)
+     G = 코트에 들어갈 조 수 · mMin = 가장 작은 조의 인원(= 그 조의 경기 수)
+     ① 늦참자를 빼도 조마다 4명은 남아야 한다
+     ② 늦참자도 4경기를 뛰려면 mMin-3 게임까지만 미룰 수 있다 */
+function lateMax(n, courts, lateN){
+  const G=Math.max(1, Math.min(courts, Math.floor(n/4)));
+  const mMin=Math.floor(n/G);
+  if(mMin - Math.ceil(lateN/G) < 4) return 0;
+  const v=mMin-3;
+  return v<2 ? 0 : v;
+}
+function lateMaxNow(){
+  return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size);
+}
+/* 한 명 더 지정해도 되는지 — 안 되면 칩을 잠근다 */
+function lateCanAdd(){
+  return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size+1) >= 2;
+}
+function lateOpts(){
+  const M=lateMaxNow(), out=[];
+  for(let r=2;r<=M;r++) out.push({r});
+  return out;
 }
 function cb2LateTog(id){ id=String(id); CB2_LATE.has(id)?CB2_LATE.delete(id):CB2_LATE.add(id); drawCB2Build(); }
 /* 게스트는 프로필이 없으니 구력(년)만 받는다. 등급·레이팅은 회원과 같은 규칙으로 계산. */
@@ -13225,28 +13279,15 @@ async function cb2Gen(mode){
   /* 늦참자를 빼고 남는 사람이 코트를 채우지 못하면 그 라운드는 아예 만들 수 없다.
      예전에는 그대로 밀어붙여서 늦참자가 앞 게임에 나오거나 1인 경기 수가 무너졌다.
      가능한 만큼만 미룬다. */
+  /* 코트 수는 대관으로 정해져 바꿀 수 없다. 늦게 오는 분을 앞 게임에 넣으면
+     그 코트는 3명이 되어버리므로, 그분만 경기 수가 줄어드는 쪽을 택한다.
+     나머지 분들은 그대로 4경기다. */
+  /* 화면에서 이미 막아뒀지만, 값이 어긋난 채 넘어오면 여기서 한 번 더 잡는다 */
+  let lateNote='';
   if(lateAfter>0){
-    const nOn=ps.filter(p=>!p.late).length, lateN=ps.length-nOn;
-    const G=Math.max(1, Math.min(courts, Math.floor(ps.length/4)));
-    let cap=lateAfter, why='';
-    /* ① 늦참자도 4경기를 채워야 한다. 조(또는 전체)에서 열리는 경기 수가 R 이면
-       x게임부터 합류한 사람은 R-x+1 경기밖에 못 뛴다 → x ≤ R-3 */
-    const R = (mode==='hanul')
-      ? Math.floor(ps.length/G)                       // 가장 작은 조의 경기 수
-      : Math.ceil(ps.length/G);                       // 일반·성비는 전체 라운드 수
-    cap=Math.min(cap, R-3);
-    if(cap<lateAfter) why='늦참자도 4경기를 뛰려면';
-    /* ② 늦참자를 뺀 사람들만으로 코트를 채울 수 있어야 한다 */
-    if(Math.floor(nOn/4) < 1){ cap=0; why='처음부터 계신 분이 4명이 안 돼서'; }
-    else if(mode==='hanul' && Math.floor(ps.length/G) - Math.ceil(lateN/G) < 4){
-      cap=0; why=`코트를 ${Math.max(1,Math.floor(nOn/4))}개로 줄이면 반영할 수 있어요 ·`;
-    }
-    if(cap!==lateAfter){
-      const before=lateAfter;
-      lateAfter=Math.max(0, cap);
-      toast(lateAfter>0 ? `${why} ${lateAfter}게임부터 합류로 바꿨어요 (${before}게임 요청)`
-                        : `${why} 늦참 없이 짰어요`);
-    }
+    const M=lateMax(ps.length, courts, ps.filter(p=>p.late).length);
+    if(M<2){ lateAfter=0; toast('지금 인원·코트로는 늦참을 반영할 수 없어요 · 늦참 없이 짰어요'); }
+    else if(lateAfter>M){ lateAfter=M; toast(`전원 4경기를 지키려고 ${M}게임부터로 맞췄어요`); }
   }
   const isF=p=>String(p.gender||'').startsWith('여');
   const games=[]; let captains=null, groups=null, genderNote=null;
@@ -13378,7 +13419,7 @@ async function cb2Gen(mode){
       const mem=(Array.isArray(g)?g:(g.members||[])).map(p=>({id:p.id,name:p.name,gender:p.gender,grade:p.grade}));
       return Array.isArray(g)?mem:{...g, members:mem};
     }):null,
-    late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter}:null,
+    late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter, note:lateNote}:null,
     guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
   const nm={hanul:'한울', gender:'성비', cheongbaek:'청백전', monthly:'월례대회'}[mode]||'일반';
   if(mode!=='cheongbaek'){ CB2_DRAFT={data, nm, mode}; drawPreview(); return; }   // 청백은 오더 단계가 따로
@@ -14395,6 +14436,9 @@ function drawPreview(){
   if(lb) h+=`<div style="font-size:11px;font-weight:500;color:var(--lgray);margin-top:9px">${esc(lb)}</div>`;
   if(data.note) h+=`<div style="background:#f6f4ef;border-radius:11px;padding:10px 12px;margin-top:8px;
     font-size:11.5px;font-weight:500;color:#5a544b;line-height:1.6">${esc(data.note)}</div>`;
+  /* 늦참자가 4경기를 못 채우면 발행 전에 알려준다 — 현장에서 알면 늦다 */
+  if(data.late && data.late.note) h+=`<div style="background:#fdf2dd;border-radius:11px;padding:10px 12px;margin-top:8px;
+    font-size:11.5px;font-weight:600;color:#8a6a1f;line-height:1.6">${esc(data.late.note)}</div>`;
   h+=`<div style="max-height:230px;overflow-y:auto;margin-top:12px">`;
   (data.games||[]).slice(0,12).forEach(g=>{
     h+=`<div style="display:flex;align-items:center;gap:7px;background:#f8f6f1;border-radius:10px;padding:8px 10px;margin-top:6px">
