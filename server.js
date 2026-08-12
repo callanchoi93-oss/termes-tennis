@@ -192,7 +192,7 @@ const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + Str
 
 const SRV_BUILD = 'sH-0812e';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812l';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812n';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
