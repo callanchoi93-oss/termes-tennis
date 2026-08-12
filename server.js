@@ -104,7 +104,7 @@ function rateLimit({ windowMs, max }) {
 }
 const limitLogin  = rateLimit({ windowMs: 60_000, max: 10 });
 const limitWrite  = rateLimit({ windowMs: 60_000, max: 30 });
-const limitUpload = rateLimit({ windowMs: 60_000, max: 12 });
+const limitUpload = rateLimit({ windowMs: 60_000, max: 80 });   // 소식에 사진 여러 장을 한 번에 올린다
 
 
 /* 동시 요청 경합 방지 — 검사와 쓰기를 한 덩어리로 묶는다.
@@ -190,9 +190,9 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0812';
+const SRV_BUILD = 'sH-0812d';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812b';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.7-0812g';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1229,9 +1229,38 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   cbLog(cid, data);
   res.json({ ok: true, game: g });
 });
+/* '오늘 대진에 쓸 모임'을 고른다.
+   예전에는 id 가 가장 큰 모임(= 마지막에 만든 모임)을 썼다. 다음 주 모임을 미리 만들어두면
+   오늘 대진 명단이 그 모임 참석자로 잡히는 문제가 있었다.
+   이제 오늘 것 > 가장 가까운 앞날 > 가장 최근 지난 모임 순으로 고른다. */
+function pickTodayEvent(cid) {
+  const rows = db.prepare('SELECT id, date FROM club_events WHERE club_id=?').all(cid);
+  if (!rows.length) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const scored = rows.map(r => {
+    const m = String(r.date || '').match(/(\d{1,2})\/(\d{1,2})/);
+    if (!m) return { id: r.id, t: null };
+    const d = new Date(now.getFullYear(), +m[1] - 1, +m[2]);
+    const diff = (d - today) / 864e5;                 // 연말·연초 보정
+    if (diff < -200) d.setFullYear(now.getFullYear() + 1);
+    if (diff > 200) d.setFullYear(now.getFullYear() - 1);
+    return { id: r.id, t: d.getTime() };
+  });
+  const dated = scored.filter(x => x.t != null);
+  if (!dated.length) return rows[rows.length - 1];
+  const todayEv = dated.filter(x => x.t === today).sort((a, b) => b.id - a.id)[0];
+  if (todayEv) return todayEv;
+  const future = dated.filter(x => x.t > today).sort((a, b) => a.t - b.t || a.id - b.id)[0];
+  if (future) return future;
+  return dated.sort((a, b) => b.t - a.t || b.id - a.id)[0];
+}
+
 app.get('/clubs/:id/roster', (req, res) => {
   const cid = +req.params.id;
-  const ev = db.prepare('SELECT id FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 1').get(cid);
+  const eid = evOf(req);                              // 모임을 지정하면 그 모임을 본다
+  const ev = eid ? db.prepare('SELECT id FROM club_events WHERE id=? AND club_id=?').get(eid, cid)
+                 : pickTodayEvent(cid);
   let rows;
   let guests = [];
   if (ev) {
@@ -1964,6 +1993,15 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
     db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
       .run(cid, target, u ? u.name : '', '탈퇴', now()); }
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
+  /* 나간 회원이 대회 조에 남아 있으면 조 인원이 실제와 어긋난다 */
+  try {
+    const r = db.prepare('SELECT data FROM club_tiers WHERE club_id=?').get(cid);
+    if (r) { const d = JSON.parse(r.data || '{}');
+      if (d.groups && d.groups[String(target)]) {
+        delete d.groups[String(target)];
+        db.prepare('UPDATE club_tiers SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(d), now(), cid);
+      } }
+  } catch (e) {}
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
   sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
   res.json({ ok: true });
@@ -2033,8 +2071,12 @@ app.get('/clubs/:id/feed', auth, (req, res) => {
   const nLikes = db.prepare('SELECT COUNT(*) n FROM feed_likes WHERE post_id=?');
   const myLike = db.prepare('SELECT 1 FROM feed_likes WHERE post_id=? AND user_id=?');
   const nCmts  = db.prepare('SELECT COUNT(*) n FROM feed_comments WHERE post_id=?');
+  // '홍길동 님 외 2명이 좋아해요' 를 만들려면 이름이 필요하다 — 최근 순 3명만
+  const likers = db.prepare(`SELECT u.name FROM feed_likes fl JOIN users u ON u.id=fl.user_id
+    WHERE fl.post_id=? ORDER BY fl.rowid DESC LIMIT 3`);
   res.json(rows.map(p => ({ ...p,
     likes: nLikes.get(p.id).n, liked: !!myLike.get(p.id, req.uid),
+    likers: likers.all(p.id).map(x => x.name),
     comments: nCmts.get(p.id).n, mine: p.user_id === req.uid })));
 });
 
@@ -2044,7 +2086,7 @@ app.post('/clubs/:id/feed', auth, limitWrite, (req, res) => {
   const title = String((req.body || {}).title || '').trim().slice(0, 60);
   const body = String((req.body || {}).body || '').trim();
   let photos = (req.body || {}).photos;
-  photos = Array.isArray(photos) ? photos.filter(u => typeof u === 'string').slice(0, 10) : [];
+  photos = Array.isArray(photos) ? photos.filter(u => typeof u === 'string').slice(0, 20) : [];
   const photo = photos[0] || String((req.body || {}).photo || '').trim() || null;
   if (!title && !body && !photo) return res.status(400).json({ error: 'empty' });
   const bad = findContact(title + ' ' + body);
@@ -2062,7 +2104,9 @@ app.post('/feed/:id/like', auth, (req, res) => {         // 좋아요 토글
   if (has) db.prepare('DELETE FROM feed_likes WHERE post_id=? AND user_id=?').run(pid, req.uid);
   else db.prepare('INSERT INTO feed_likes (post_id,user_id) VALUES (?,?)').run(pid, req.uid);
   res.json({ ok: true, liked: !has,
-    likes: db.prepare('SELECT COUNT(*) n FROM feed_likes WHERE post_id=?').get(pid).n });
+    likes: db.prepare('SELECT COUNT(*) n FROM feed_likes WHERE post_id=?').get(pid).n,
+    likers: db.prepare(`SELECT u.name FROM feed_likes fl JOIN users u ON u.id=fl.user_id
+      WHERE fl.post_id=? ORDER BY fl.rowid DESC LIMIT 3`).all(pid).map(x => x.name) });
 });
 
 app.get('/feed/:id/comments', auth, (req, res) => {
