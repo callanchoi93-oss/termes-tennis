@@ -1450,11 +1450,16 @@ app.get('/clubs/:id/events', (req, res) => {
   /* 지금 이 클럽 회원인 사람만 명단에 올린다.
      탈퇴 시 응답을 지우지만(purgeClubRsvp), 그 전에 쌓인 행이 남아 있을 수 있다.
      여기서 한 번 더 거르면 예전 데이터도 따로 손대지 않고 정리된다. */
-  const byStatus = (eid, st) => db.prepare(`SELECT u.name FROM event_attendees ea
+  /* 이름은 반드시 /clubs/:id/members 와 같은 규칙으로 만든다 —
+     클럽에서 쓰는 별칭(alias)이 있으면 그것이 그 사람의 이름이다.
+     여기서만 u.name 을 쓰면 명단엔 '서기훈', 참석자엔 '기훈' 으로 갈리고,
+     이름으로 찾는 것들(멤버 카드·게스트 표시·사진)이 전부 빗나간다. */
+  const byStatus = (eid, st) => db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) AS name
+    FROM event_attendees ea
     JOIN users u ON u.id=ea.user_id
     JOIN club_members cm ON cm.user_id=ea.user_id AND cm.club_id=?
       AND (cm.status IS NULL OR cm.status='active')
-    WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'} ORDER BY u.name`)
+    WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'} ORDER BY name`)
     .all(...(st === 'going' ? [cid, eid] : [cid, eid, st])).map(r => r.name);
   res.json(evs.map(e => {
     const my = uid ? db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, uid) : null;
@@ -2049,9 +2054,12 @@ app.get('/events/:id/attendance', auth, (req, res) => {
   if (!ev) return res.status(404).json({ error: 'not_found' });
   if (!isMember(ev.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(ev.club_id, req.uid);
-  const rows = db.prepare(`SELECT ea.user_id, u.name, ea.status, ea.showed
+  /* 이름은 클럽 별칭 우선 — 멤버 목록·참석 명단과 같은 규칙 */
+  const rows = db.prepare(`SELECT ea.user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name,
+      ea.status, ea.showed
     FROM event_attendees ea JOIN users u ON u.id=ea.user_id
-    WHERE ea.event_id=? ORDER BY u.name`).all(eid);
+    LEFT JOIN club_members cm ON cm.user_id=ea.user_id AND cm.club_id=?
+    WHERE ea.event_id=? ORDER BY name`).all(ev.club_id, eid);
   res.json({
     event: { id: ev.id, title: ev.title, date: ev.date },
     is_officer: !!(m && ['owner', 'officer'].includes(m.role)),
@@ -2086,7 +2094,7 @@ app.patch('/events/:eid/attendance/:uid', auth, (req, res) => {
 app.get('/clubs/:id/attendance/summary', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare(`SELECT u.id user_id, u.name,
+  const rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name,
       SUM(CASE WHEN ea.showed=1 THEN 1 ELSE 0 END) attended,
       SUM(CASE WHEN ea.showed=0 THEN 1 ELSE 0 END) noshow,
       SUM(CASE WHEN ea.status='going' THEN 1 ELSE 0 END) signed_up
@@ -3850,12 +3858,14 @@ app.get('/clubs/:id/bank', auth, (req, res) => {
 app.get('/clubs/:id/rankings', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare(`SELECT u.id user_id, u.name, u.rating, (u.wins+u.losses) AS games, cm.grade,
+  /* 이름은 클럽 별칭 우선 — 클럽 안에서는 한 사람이 한 이름으로만 보여야 한다 */
+  const rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name,
+      u.rating, (u.wins+u.losses) AS games, cm.grade,
       (SELECT COUNT(*) FROM event_attendees ea JOIN club_events e ON e.id=ea.event_id
         WHERE ea.user_id=u.id AND e.club_id=cm.club_id AND ea.showed=1) attended
     FROM club_members cm JOIN users u ON u.id=cm.user_id
     WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
-    ORDER BY u.rating DESC, attended DESC, u.name`).all(cid);
+    ORDER BY u.rating DESC, attended DESC, name`).all(cid);
   res.json(rows);
 });
 
