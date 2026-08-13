@@ -429,7 +429,19 @@ app.get('/users/:id/profile', (req, res) => {
     const meId = tryUid(req);
     if (meId && meId !== u.id) canDm = canStartDM(meId, u.id) || threadExists(meId, u.id);
   } catch (e) {}
-  res.json({ ...u, rank, rating_doubles: rd, rank_doubles: rankD, can_dm: canDm });
+  /* 상대 카드도 같은 값으로 배치 여부를 판단해야 한다 */
+  let pd = 0;
+  try { pd = db.prepare("SELECT COUNT(*) n FROM rating_log WHERE user_id=? AND reason='복식'").get(u.id).n; } catch (e) {}
+  /* 매너는 원래 /users/:id/manner 로 따로 있었다. 카드를 그릴 때마다 한 번 더 부르면
+     목록에서 사람 수만큼 요청이 늘어난다 — 여기 같이 실어 보낸다. */
+  let manner = null, mannerN = 0;
+  try {
+    const r = db.prepare('SELECT ROUND(AVG(stars),1) avg, COUNT(*) n FROM om_reviews WHERE to_user=?').get(u.id);
+    manner = r.avg || null; mannerN = r.n || 0;
+  } catch (e) {}
+  res.json({ ...u, rank, rating_doubles: rd, rank_doubles: rankD, can_dm: canDm,
+             played: playedSingles(u.id), played_doubles: pd,
+             manner, manner_n: mannerN });
 });
 
 // 데모 매칭용 사용자 목록
@@ -826,16 +838,33 @@ app.post('/admin/withdrawals/:id/paid', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+/* 확정된 단식 경기 수 — 개인리그 배치(5경기) 판정에 쓴다.
+   /me 와 공개 프로필이 같은 기준을 써야 내 카드와 상대가 보는 카드가 어긋나지 않는다. */
+function playedSingles(uid) {
+  try {
+    return db.prepare(`SELECT COUNT(*) n FROM matches
+      WHERE status='confirmed' AND (home_user_id=? OR away_user_id=?)`).get(uid, uid).n;
+  } catch (e) { return 0; }
+}
+
 app.get('/me', auth, (req, res) => {
   const u = getUser(req.uid);
   if (!u) return res.status(404).json({ error: 'not_found' });
-  // 복식 배치 판정용 — rating_log 의 '복식' 기록 수를 센다
-  let pd = 0;
+  /* 배치 판정용 경기 수. 앱은 played / played_doubles 로 '배치 중'을 가른다.
+     예전에는 단식(played)을 아무도 내려주지 않아, 몇 경기를 치든 늘 '배치 중'으로 보였다. */
+  let pd = 0, ps = 0;
   try { pd = db.prepare("SELECT COUNT(*) n FROM rating_log WHERE user_id=? AND reason='복식'").get(req.uid).n; } catch (e) {}
+  try { ps = playedSingles(req.uid); } catch (e) {}
   /* MMR 을 여기서도 채워 준다. 리그 화면과 상대 찾기 화면이 서로 다른 숫자를 보여주면 안 된다. */
   let mmr = u.mmr, mmrGames = u.mmr_games || 0;
   try { const du = duelUser(req.uid); if (du) { mmr = du.mmr; mmrGames = du.mmr_games; } } catch (e) {}
-  res.json({ ...u, mmr, mmr_games: mmrGames, mmr_placing: mmrGames < DUEL_PLACE, played_doubles: pd });
+  let manner = null, mannerN = 0;
+  try {
+    const r = db.prepare('SELECT ROUND(AVG(stars),1) avg, COUNT(*) n FROM om_reviews WHERE to_user=?').get(req.uid);
+    manner = r.avg || null; mannerN = r.n || 0;
+  } catch (e) {}
+  res.json({ ...u, mmr, mmr_games: mmrGames, mmr_placing: mmrGames < DUEL_PLACE,
+             played: ps, played_doubles: pd, manner, manner_n: mannerN });
 });
 app.patch('/me', auth, (req, res) => {
   /* name 추가 — 카카오 닉네임이 영문이거나 별명이면 본인이 고칠 수 있어야 한다 */
