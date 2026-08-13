@@ -7,6 +7,19 @@ cd "$(dirname "$0")/.."
 SEEDS="${*:-1 7 42 1234 99991 20260812 555 8080 31337 777 2468 13579}"
 fail=0
 
+# 문법부터. 여기서 막히면 아래 테스트는 볼 필요도 없다.
+echo "문법"
+if ./test/syntax.sh >/tmp/_syn 2>&1; then
+  echo "  통과"
+else
+  sed 's/^/  /' /tmp/_syn
+  echo ""
+  echo "문법 오류 — 배포하지 마세요"
+  exit 1
+fi
+echo ""
+echo "대화 규칙"
+
 for s in $SEEDS; do
   out=$(node test/chat-sim.js "$s" 2>&1 | grep -v "ExperimentalWarning\|trace-warnings")
   if echo "$out" | grep -q "오류 없음"; then
@@ -24,6 +37,24 @@ if node test/rsvp-sim.js 2>&1 | grep -v "ExperimentalWarning\|trace-warnings" | 
   echo "  통과"
 else
   node test/rsvp-sim.js 2>&1 | grep -v "ExperimentalWarning\|trace-warnings" | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "월례대회 조 · 게스트 제외"
+if node test/tier-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/tier-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "직책 · 권한 이름표"
+if node test/title-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/title-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
   fail=1
 fi
 
