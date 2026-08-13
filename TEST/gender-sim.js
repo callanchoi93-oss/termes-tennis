@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 /* 여성/남성 클럽 배지 판정 테스트
 
    배지는 선언이 아니라 실제 명단으로 판정한다.
@@ -71,5 +72,41 @@ console.log('\n■ 명단으로 판정이 안 될 때만 선언을 쓴다');
 k(tag2({g_f:2,g_m:0,g_unknown:0,gender_pref:'여자'})==='여성 클럽','여성 2명 + 여자 선언 → 여성 클럽');
 k(tag2({g_f:3,g_m:0,g_unknown:0,gender_pref:'남녀 모두'})==='여성 클럽','명단이 확실하면 명단이 이긴다');
 k(tag2({g_f:1,g_m:1,g_unknown:0,gender_pref:'남녀 모두'})===null,'혼성 선언 + 혼성 명단 → 배지 없음');
-console.log(b2?`\n${b2}건 실패`:'\n전부 통과');
-process.exit(b2?1:0);
+
+/* ── SQL 회귀 ──
+   /clubs 의 성별 집계는 상관 서브쿼리다. OR 조건을 괄호로 감싸지 않으면
+   SQL 이 AND 를 먼저 묶어 OR 뒤쪽이 클럽 조건을 벗어나고,
+   DB 전체에서 그 성별인 사람을 모두 세어버린다.
+   증상: 모든 클럽이 똑같은 숫자를 갖고, 1인 클럽이 '남성 클럽'이 된다. */
+console.log('\n■ 성별 집계 SQL (클럽 경계를 벗어나지 않는가)');
+const db = new DatabaseSync(':memory:');
+db.exec(`CREATE TABLE users(id INTEGER PRIMARY KEY, gender TEXT);
+CREATE TABLE clubs(id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE club_members(club_id INTEGER, user_id INTEGER, role TEXT, status TEXT);
+INSERT INTO clubs VALUES (1,'제이온'),(2,'공감'),(3,'다른클럽');
+INSERT INTO users VALUES (1,'M'),(2,'F'),(3,'F'),(4,'F'),
+                         (5,'M'),(6,'M'),(7,'F'),(8,'F'),(9,'F');
+INSERT INTO club_members VALUES
+  (1,1,'member','active'),
+  (2,2,'member','active'),(2,3,'member','active'),(2,4,'member','active'),
+  (3,5,'member','active'),(3,6,'member','active'),(3,7,'member','active'),
+  (3,8,'member','active'),(3,9,'member','active');`);
+
+const G = (test) => `(SELECT COUNT(*) FROM club_members m JOIN users u ON u.id=m.user_id
+  WHERE m.club_id=c.id AND m.role<>'guest' AND (m.status IS NULL OR m.status='active')
+    AND (${test}))`;
+const gRows = db.prepare(`SELECT c.name,
+  ${G("u.gender LIKE '여%' OR u.gender='F'")} g_f,
+  ${G("u.gender LIKE '남%' OR u.gender='M'")} g_m,
+  ${G("u.gender IS NULL OR TRIM(u.gender)=''")} g_unknown
+  FROM clubs c`).all();
+const by = Object.fromEntries(gRows.map(r => [r.name, r]));
+let b3 = 0; const q = (c, m) => { if (!c) { b3++; console.log('FAIL', m); } else console.log('ok  ', m); };
+q(by['제이온'].g_m === 1 && by['제이온'].g_f === 0, `제이온 · 남1 여0 (실제 ${by['제이온'].g_m}/${by['제이온'].g_f})`);
+q(by['공감'].g_f === 3 && by['공감'].g_m === 0, `공감 · 여3 남0 (실제 ${by['공감'].g_f}/${by['공감'].g_m})`);
+q(by['다른클럽'].g_m === 2 && by['다른클럽'].g_f === 3, '다른클럽 · 남2 여3');
+q(new Set(gRows.map(r => r.g_f + ':' + r.g_m)).size === 3, '클럽마다 숫자가 다르다 (전역 집계가 아니다)');
+q(tag2(by['제이온']) === null, '남성 1명뿐 → 배지 없음');
+q(tag2(by['공감']) === '여성 클럽', '여성 3명 → 여성 클럽');
+console.log(b3 ? `\n${b3}건 실패` : '\n전부 통과');
+process.exit(b3 ? 1 : 0);
