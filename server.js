@@ -367,6 +367,10 @@ try { db.exec('ALTER TABLE users ADD COLUMN exp TEXT'); } catch (e) {}          
 db.exec(`CREATE TABLE IF NOT EXISTS member_exits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
   reason TEXT, left_at INTEGER)`);
+/* 누가 내보냈는지 남긴다. 강퇴는 되돌릴 수 없는 일이라, 조용히 처리되면
+   당사자도 다른 회원도 나중에 확인할 방법이 없다. */
+try { db.exec('ALTER TABLE member_exits ADD COLUMN by_user_id INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE member_exits ADD COLUMN by_name TEXT'); } catch (e) {}
 db.exec(`CREATE TABLE IF NOT EXISTS rest_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
   rtype TEXT, start TEXT, end TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at INTEGER)`);                    // 연명부 연락처 (본인 입력)
@@ -1030,7 +1034,8 @@ app.get('/clubs/:id/roster-logs', auth, (req, res) => {
   const rests = db.prepare(`SELECT r.rtype, r.start, r.end, r.reason, r.created_at, r.status, u.name
     FROM rest_requests r JOIN users u ON u.id=r.user_id
     WHERE r.club_id=? AND r.status='approved' ORDER BY r.id DESC LIMIT 200`).all(cid);
-  const exits = db.prepare('SELECT name, reason, left_at FROM member_exits WHERE club_id=? ORDER BY id DESC LIMIT 200').all(cid);
+  const exits = db.prepare(`SELECT name, reason, left_at, by_name
+    FROM member_exits WHERE club_id=? ORDER BY id DESC LIMIT 200`).all(cid);
   res.json({ rests, exits });
 });
 
@@ -2192,6 +2197,49 @@ function purgeClubRsvp(cid, uid) {
     AND event_id IN (SELECT id FROM club_events WHERE club_id=?)`).run(uid, cid).changes;
 }
 
+/* 클럽 이름 바꾸기 — 클럽장만.
+   실수로 만든 클럽을 지우지 않고 고칠 수 있어야 한다. */
+app.patch('/clubs/:id/name', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only', message: '클럽 이름은 클럽장이 바꿔요' });
+  const club = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'not_found' });
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 20);
+  if (!name) return res.status(400).json({ error: 'bad_name', message: '클럽 이름을 입력해 주세요' });
+  if (findContact(name)) return res.status(400).json({ error: 'contact_blocked' });
+  /* 같은 종목에 같은 이름이 있으면 안 된다 — 클럽 찾기에서 구분이 안 된다 */
+  const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport IS ? AND id<>?').get(name, club.sport, cid);
+  if (dup) return res.status(409).json({ error: 'name_taken', message: '이 종목에 같은 이름의 클럽이 있어요' });
+  if (name === club.name) return res.json({ ok: true, name });
+  db.prepare('UPDATE clubs SET name=? WHERE id=?').run(name, cid);
+  notifyClub(cid, req.uid, '\u270F\uFE0F', '클럽 이름이 바뀌었어요', `${club.name} → ${name}`);
+  res.json({ ok: true, name, before: club.name });
+});
+
+/* 클럽 삭제 — 클럽장만, 그리고 '나 말고 아무도 없을 때'만.
+   회원이 남아 있는데 지우면 그 사람들의 기록·일정이 예고 없이 사라진다.
+   회원을 내보내고 나서 지우게 하면, 최소한 그 사람들이 먼저 알게 된다. */
+app.delete('/clubs/:id', auth, (req, res) => {
+  const cid = +req.params.id;
+  const owner = db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, req.uid);
+  if (!owner) return res.status(403).json({ error: 'owner_only', message: '클럽 삭제는 클럽장만 할 수 있어요' });
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'not_found' });
+  /* 가입 신청 중인 사람도 '남아 있는 사람'이다 — 신청해 두고 기다리는 중이다 */
+  const others = db.prepare('SELECT COUNT(*) n FROM club_members WHERE club_id=? AND user_id<>?').get(cid, req.uid).n;
+  if (others > 0) return res.status(400).json({ error: 'members_left', left: others,
+    message: `아직 ${others}명이 남아 있어요 · 회원 관리에서 모두 내보낸 뒤 지울 수 있어요` });
+  tx(() => {
+    ['club_members', 'club_events', 'club_posts', 'notices', 'club_brackets',
+     'club_tiers', 'club_accounts', 'member_exits', 'club_expenses']
+      .forEach(t => { try { db.prepare(`DELETE FROM ${t} WHERE club_id=?`).run(cid); } catch (e) {} });
+    try { db.prepare('DELETE FROM event_attendees WHERE event_id IN (SELECT id FROM club_events WHERE club_id=?)').run(cid); } catch (e) {}
+    db.prepare('DELETE FROM clubs WHERE id=?').run(cid);
+  });
+  res.json({ ok: true, name: club.name });
+});
+
 app.delete('/clubs/:id/leave', auth, (req, res) => {
   const cid = +req.params.id;
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
@@ -2214,9 +2262,11 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
   if (!t) return res.status(404).json({ error: 'not_member' });
   if (t.role === 'owner') return res.status(403).json({ error: 'cannot_kick_owner' });
   if (t.role === 'officer' && me.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
-  { const u = getUser(target);
-    db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
-      .run(cid, target, u ? u.name : '', '탈퇴', now()); }
+  const reason = String((req.body && req.body.reason) || '').trim().slice(0, 60);
+  { const u = getUser(target), by = getUser(req.uid);
+    db.prepare(`INSERT INTO member_exits (club_id,user_id,name,reason,left_at,by_user_id,by_name)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(cid, target, u ? u.name : '', reason || '내보냄', now(), req.uid, by ? by.name : ''); }
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
   purgeClubRsvp(cid, target);
   /* 나간 회원이 대회 조에 남아 있으면 조 인원이 실제와 어긋난다 */
@@ -2229,7 +2279,10 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
       } }
   } catch (e) {}
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
-  sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
+  /* 당사자에게는 누가·왜 인지까지 알린다 — 이유를 모른 채 사라지면 오해만 남는다 */
+  { const by = getUser(req.uid);
+    sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요',
+      body: `${c ? c.name : '클럽'} · ${by ? by.name : '임원'}님이 처리했어요${reason ? ` · ${reason}` : ''}` }); }
   res.json({ ok: true });
 });
 
