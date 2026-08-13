@@ -17,6 +17,19 @@ else
   echo "문법 오류 — 배포하지 마세요"
   exit 1
 fi
+
+# 정의 없이 참조되는 이름 — 함수를 지울 때 옆 상수까지 딸려 나갔는지 본다.
+# 문법 검사로는 안 잡힌다 (문법은 멀쩡하고 실행할 때 터진다).
+echo "정의 누락"
+if node test/undef-sim.js >/tmp/_undef 2>&1; then
+  echo "  통과"
+else
+  sed 's/^/  /' /tmp/_undef
+  echo ""
+  echo "정의가 사라진 이름이 있습니다 — 배포하지 마세요"
+  exit 1
+fi
+
 echo ""
 echo "대화 규칙"
 
@@ -55,6 +68,15 @@ if node test/title-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
 else
   node test/title-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "여성/남성 클럽 배지"
+if node test/gender-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/gender-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
   fail=1
 fi
 
