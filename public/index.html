@@ -2416,7 +2416,7 @@ function obSportExp(){ return SPORT_EXP[state._obSport]||EXP; }
 function obExpTitle(){ const m=spMeta(state._obSport); return m.cat==='racket'?`${m.n} 구력이 어느 정도예요?`:m.cat==='team'?`${m.n} 경력이 어느 정도예요?`:`${m.n}, 어느 정도 하세요?`; }
 const state={
   view:'league', loggedIn:false, provider:null, gender:null, exp:null, card:false,
-  _obStep:1, _obGender:null, _obExp:null, _pendPay:null, rating:1000, played:0, ratingHist:[1000], streak:3, season:{no:3,name:'2026 여름 시즌',end:'2026-08-31',start:'2026-06-01'}, seasonTrophies:[], invited:2, cheer:{clap:24,fire:18,muscle:9}, a11y:{big:false,contrast:false}, cash:5, free:{bracket:3, dm:2}, sport:'tennis', premium:false, leagueGender:'남자부', soccerMode:'futsal', photos:null, anonNick:null, verified:{phone:false,real:false,skill:false}, mmr:1180, mmrWins:0, plUnlocked:false, reports:[], leagueTab:'solo', leagueOpen:true, leagueNotified:false, regionMembers:32, regionTarget:50,
+  _obStep:1, _obGender:null, _obExp:null, _obY:'', _obM:'', _pendPay:null, rating:1000, played:0, ratingHist:[1000], streak:3, season:{no:3,name:'2026 여름 시즌',end:'2026-08-31',start:'2026-06-01'}, seasonTrophies:[], invited:2, cheer:{clap:24,fire:18,muscle:9}, a11y:{big:false,contrast:false}, cash:0, free:{bracket:3, dm:2}, sport:'tennis', premium:false, leagueGender:'남자부', soccerMode:'futsal', photos:null, anonNick:null, verified:{phone:false,real:false,skill:false}, mmr:1180, mmrWins:0, plUnlocked:false, reports:[], leagueTab:'solo', leagueOpen:true, leagueNotified:false, regionMembers:32, regionTarget:50,
   clubDivView:'2부',
   clubStandings:[
     {n:'강남 에이스 클럽',div:'1부',p:6,w:5,l:1,pt:15},
@@ -3017,12 +3017,47 @@ function renderOnboard(){
     f=`<button class="btn" ${state._obGender?'':'style="background:#d9d3c7"'} onclick="${state._obGender?'nextOb()':'toast(\'성별을 선택해 주세요\')'}">다음</button>`;
 
   }else{
-    b+=`<h3>구력</h3><div class="obs">첫 조 편성에만 참고해요. 등급은 경기 결과로 다시 정해져요.</div>
-      <div class="ob-list">${obSportExp().map(([g,d])=>`
-        <div class="ob-row ${state._obExp===g?'on':''}" role="button" tabindex="0" onclick="pickOb('e','${g}')">
-          <div style="flex:1;min-width:0"><b>${g}</b><span>${d}</span></div>
-          <i class="ob-dot"></i></div>`).join('')}</div>`;
-    f=`<button class="btn" ${state._obExp?'':'style="background:#d9d3c7"'} onclick="${state._obExp?'finishOnboard()':'toast(\'하나를 선택해 주세요\')'}">시작하기</button>`;
+    /* 프로필의 구력 입력 시트와 같은 화면을 쓴다 —
+       같은 걸 두 벌 만들면 나중에 한쪽만 고치게 되고, 사용자도 두 번째에 다시 배운다.
+       연·월을 고르는 즉시 등급을 보여줘야 "그래서 내 등급이 뭔데?" 가 남지 않는다. */
+    const ready = !!state._obY && !!state._obM;
+    const ym = ready ? `${state._obY}-${state._obM}` : null;
+    const code = ready ? gradeStepFromMonths(careerMonthsFrom(ym)) : null;
+    const L = code ? gradeStepLabel(code) : null;
+    b+=`<h3>구력을 알려주세요</h3>
+      <div class="obs" style="margin-bottom:4px">클럽 대진과 오픈매치에서 <b>구력에 맞춰</b> 짜여요.
+        비슷한 실력끼리 붙도록 등급이 자동으로 정해집니다.</div>
+      <div class="fld" style="margin:18px 0 0"><label>${esc(m.n)}를 처음 시작한 때</label>
+        <div class="ymrow">
+          <div class="fld"><select class="${state._obY?'':'ph'}" onchange="state._obY=this.value;renderOnboard()">
+            <option value="">연도</option>
+            ${YEARS.map(y=>`<option value="${y}" ${String(state._obY)===String(y)?'selected':''}>${y}년</option>`).join('')}
+          </select></div>
+          <div class="fld"><select class="${state._obM?'':'ph'}" onchange="state._obM=this.value;renderOnboard()">
+            <option value="">월</option>
+            ${Array.from({length:12},(_,i)=>i+1).map(x=>`<option value="${x}" ${String(state._obM)===String(x)?'selected':''}>${x}월</option>`).join('')}
+          </select></div>
+        </div></div>
+      ${ready?`<div class="ycar">
+        <span class="cd" style="color:${L.c}">${code}</span>
+        <span class="tx">구력 ${careerTextFrom(ym)||'0개월'} · ${esc(L.desc)}</span></div>`:''}
+      <div class="gnote">
+        <div class="gt">구력으로 등급이 정해져요</div>
+        <div class="gg">
+          <div class="gline"><b style="color:#2c7a53">C</b><span>2년 미만</span></div>
+          <div class="gline"><b style="color:#2b62c9">B</b><span>2~4년</span></div>
+          <div class="gline"><b style="color:#cf5418">A</b><span>5~9년</span></div>
+          <div class="gline"><b style="color:#8a6a1f">S</b><span>10~19년</span></div>
+        </div>
+        <div class="gsub">클럽 대진·월례대회·오픈매치에서 <b>비슷한 구력끼리</b> 붙도록 쓰여요.
+          나중에 내정보에서 고칠 수 있어요.</div>
+      </div>`;
+    /* 첫 화면에서 막지 않는다. 가입 직후엔 앱이 뭔지도 몰라, 답을 강요하면
+       아무 값이나 찍거나 그냥 나간다. 건너뛰면 클럽에 들어갈 때 다시 물어본다. */
+    f=`<button class="btn" ${ready?'':'style="background:#d9d3c7"'}
+         onclick="${ready?'finishOnboard()':'toast(\'시작한 연도와 월을 골라주세요\')'}">시작하기</button>
+       <div onclick="skipObExp()" role="button" tabindex="0"
+         style="text-align:center;font-size:12.5px;font-weight:600;color:var(--gray);margin-top:13px;cursor:pointer">나중에 할게요</div>`;
   }
   document.getElementById('obBody').innerHTML=b;document.getElementById('obFoot').innerHTML=f;
 }
@@ -3031,11 +3066,23 @@ function pickOb(k,v){if(k==='g')state._obGender=v;else state._obExp=v;renderOnbo
 function nextOb(){ if(state._obStep<5) state._obStep++; renderOnboard(); }
 /* 로그인 직후 — 서버 프로필이 이미 완성돼 있으면 온보딩을 건너뛴다.
    처음 가입한 사람만 온보딩을 본다. */
+/* 성별은 서버에 'F'/'M' 로도, '여성'/'남성' 으로도 들어와 있다 —
+   온보딩은 한글을, 프로필 편집은 F/M 을 보내고 있었다.
+   화면은 늘 한글로 다루고, 서버로 보낼 때만 F/M 으로 바꾼다. */
+const genderKo = v => { const t=String(v||'').trim();
+  if(!t) return '';
+  return (t==='F' || t.startsWith('여')) ? '여성' : (t==='M' || t.startsWith('남')) ? '남성' : ''; };
+const genderSrv = v => genderKo(v)==='여성' ? 'F' : 'M';
+
 function resumeOrOnboard(){
   const u = state.serverUser || {};
-  if(u.gender && u.exp && u.sport){
+  /* 구력(exp)은 건너뛸 수 있으므로 조건에서 뺀다 —
+     넣지 않았다고 다음 로그인 때 온보딩을 처음부터 다시 보여주면
+     '나중에 할게요'가 아니라 '다음에 또 물어보기'가 된다.
+     구력은 클럽에 들어갈 때 시트로 다시 묻는다. */
+  if(u.gender && u.sport){
     state.loggedIn = true;
-    state.gender = u.gender; state.exp = u.exp;
+    state.gender = genderKo(u.gender); state.exp = u.exp || '';
     state.sport = u.sport; if(SM()) {}      // sport 유효성은 SM() 이 기본값 처리
     saveMatsu();
     renderHome();renderLeague();renderClub();renderBracket();renderLounge();renderChat();renderMe();
@@ -3047,11 +3094,25 @@ function resumeOrOnboard(){
   return false;
 }
 
+/* 구력을 건너뛴다 — 클럽에 들어갈 때 다시 물어본다 */
+function skipObExp(){ state._obY=''; state._obM=''; finishOnboard(); }
+
 function finishOnboard(){
-  state.loggedIn=true;state.gender=state._obGender;state.exp=state._obExp;state.sport=state._obSport;state.mainSport=state._obSport;
-  // 서버에 저장해야 다음 로그인 때 온보딩을 건너뛸 수 있다
+  state.loggedIn=true; state.gender=state._obGender;
+  state.sport=state._obSport; state.mainSport=state._obSport;
+  /* 시작 시점(연-월)이 곧 구력이다. 구간을 따로 저장하지 않는다 —
+     '3~5년' 같은 구간과 시작 시점 두 값이 어긋나면 어느 쪽이 맞는지 알 수 없다. */
+  const ym = (state._obY && state._obM) ? `${state._obY}-${String(state._obM).padStart(2,'0')}` : null;
+  state.exp = ym ? (careerTextFrom(ym)||'') : '';
   if(SERVER_OK && authToken()){
-    api('/me',{method:'PATCH',body:JSON.stringify({gender:state.gender, exp:state.exp, sport:state.sport})}).catch(()=>{});
+    const body = { gender: genderSrv(state.gender), exp: state.exp, sport: state.sport };
+    if(ym){
+      let all={}; try{ all=JSON.parse((state.serverUser||{}).sport_started||'{}'); }catch(e){}
+      all[state.sport]=ym;
+      body.sport_started = JSON.stringify(all);
+    }
+    api('/me',{method:'PATCH',body:JSON.stringify(body)})
+      .then(u=>{ state.serverUser=u; }).catch(()=>{});
   }
   document.getElementById('onboard').classList.remove('on');
   renderHome();renderLeague();renderClub();renderBracket();
@@ -3679,6 +3740,7 @@ async function syncMe(){
        서버와 이어지지 않았고, 그래서 몇 경기를 치든 '배치 중'으로 보였다. */
     if(typeof u.played === 'number') state.played = u.played;
     if(typeof u.rating === 'number') state.rating = u.rating;
+    if(u.gender) state.gender = genderKo(u.gender);      // 서버 표기(F/M)를 화면 표기로
     syncMMR(u);                                     // 리그 카드와 상대 찾기가 같은 숫자를 보게
     prefetchMe();                                   // 내정보 카드 값을 미리 받아둔다
     if(state.view==='home') renderHome();
@@ -7982,7 +8044,7 @@ function openEditProfile(){
   let h=`<div class="sh-top"><h3>프로필 편집</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">내 정보를 바꿔요. 리그·클럽 매칭에 쓰여요.</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:8px 2px 7px">성별</div>
-    <div class="miniseg">${GEN.map(x=>`<div class="${state.gender===x?'on':''}" onclick="setEdit('gender','${x}')">${x}</div>`).join('')}</div>
+    <div class="miniseg">${GEN.map(x=>`<div class="${genderKo(state.gender)===x?'on':''}" onclick="setEdit('gender','${x}')">${x}</div>`).join('')}</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">구력</div>
     <div style="display:flex;flex-wrap:wrap;gap:7px">${EXP.map(x=>`<div onclick="setEdit('exp','${x}')" class="ptag" style="cursor:pointer;border:1.5px solid ${state.exp===x?'var(--coral)':'#ece2d6'};background:${state.exp===x?'var(--coral-s)':'#fff'};color:${state.exp===x?'var(--coral-d)':'var(--ink)'};font-weight:700">${x}</div>`).join('')}</div>
     <div style="font-size:12px;font-weight:500;color:var(--gray);margin:16px 2px 7px">출생 연도</div>
@@ -8046,7 +8108,7 @@ function previewMyCard(){
   const d=state._pfDraft||{}, su=state.serverUser||{};
   const u=Object.assign({}, su, {
     name: su.name || meName(),
-    gender: state.gender || su.gender,
+    gender: genderKo(state.gender || su.gender),
     /* 빈 칸이면 '지운다'가 아니라 '입력 안 함'이다. 예전엔 빈 문자열이 그대로
        null 로 덮여, 저장해 둔 신장·출생 연도가 미리보기에서 사라졌다. */
     birth_year: pfNum(d.birth, su.birth_year),
@@ -8082,7 +8144,7 @@ async function saveProfile(){
   if(SERVER_OK && authToken()){
     try{
       await api('/me',{method:'PATCH', body: JSON.stringify({
-        gender: (state.gender==='여성'||state.gender==='F')?'F':'M',
+        gender: genderSrv(state.gender),
         exp: state.exp||'',
         birth_year: birthVal,
         height: heightVal,
@@ -21025,7 +21087,8 @@ function drawStartSheet(){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>구력을 알려주세요</h3>
       ${YS.dismissible?`<div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div>`:''}</div>
-    <div class="sd">대진이 <b>구력에 맞춰</b> 짜여요. 비슷한 실력끼리 붙도록 등급이 자동으로 정해집니다.</div>
+    <div class="sd">클럽 대진과 오픈매치에서 <b>구력에 맞춰</b> 짜여요.
+      비슷한 실력끼리 붙도록 등급이 자동으로 정해집니다.</div>
 
     <div class="fld" style="margin-bottom:0"><label>${esc(SP().n)}를 처음 시작한 때</label>
       <div class="ymrow">
@@ -21051,7 +21114,8 @@ function drawStartSheet(){
         <div class="gline"><b style="color:#cf5418">A</b><span>5~9년</span></div>
         <div class="gline"><b style="color:#8a6a1f">S</b><span>10~19년</span></div>
       </div>
-      <div class="gsub">한 등급을 다시 <b>3칸</b>으로 나눠 모두 15단계예요 —
+      <div class="gsub">클럽 대진·월례대회·오픈매치에서 <b>비슷한 구력끼리</b> 붙도록 쓰여요.<br>
+        한 등급을 다시 <b>3칸</b>으로 나눠 모두 15단계예요 —
         <b>C1·C2·C3 · B1·B2·B3 …</b> 숫자가 클수록 구력이 길어요.<br>
         같은 B등급이라도 B1과 B3을 다르게 보고 짜서, 전원이 같은 등급인 클럽에서도 밸런스가 맞아요.</div>
     </div>
