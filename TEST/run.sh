@@ -116,5 +116,14 @@ else
   fail=1
 fi
 
+echo ""
+echo "온보딩 → 내정보"
+if node test/onboard-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/onboard-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then echo "" && echo "전부 통과"; else echo "" && echo "실패한 항목이 있습니다"; fi
 exit $fail
