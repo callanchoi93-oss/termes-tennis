@@ -2117,6 +2117,29 @@
   .lopt.bgopt{ border:3px solid transparent; box-shadow:0 0 0 2px var(--line2); }
   .lopt.bgopt.on{ box-shadow:0 0 0 3px var(--coral); }
   /* — 프로필 사진 원형 그리드 — */
+  /* ── 프로필 수정 ──
+     사진은 앱 어디서나 동그랗다. 편집 화면만 네모로 보여주면 "왜 잘렸지?" 가 된다.
+     항목은 한 장의 카드 안에 줄로 넣는다 — 카드가 따로 떠 있으면 한 묶음으로 안 보인다. */
+  .pfhead{ text-align:center; padding:6px 0 18px; }
+  .pfav{ width:96px; height:96px; border-radius:50%; margin:0 auto; cursor:pointer;
+         background-size:cover; background-position:center; background-color:#efeae1;
+         box-shadow:0 2px 10px rgba(40,32,20,.10); }
+  .pfav.empty{ display:flex; align-items:center; justify-content:center;
+               border:1.5px dashed #d8d2c6; box-shadow:none; }
+  .pfav:active{ transform:scale(.97); }
+  .pfname{ font-size:17px; font-weight:700; letter-spacing:-.025em; margin-top:11px; }
+  .pfsub{ font-size:12.5px; font-weight:600; color:var(--coral-d); margin-top:5px; cursor:pointer; }
+  .pflist{ background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .pfrow{ display:flex; align-items:center; gap:10px; padding:14px 15px; cursor:pointer;
+          border-top:1px solid #f4f1eb; }
+  .pfrow:first-child{ border-top:0; }
+  .pfrow:active{ background:#faf8f4; }
+  .pfrow .k{ font-size:12px; font-weight:600; color:var(--gray); }
+  .pfrow .k .s{ font-weight:400; color:var(--lgray); margin-left:6px; }
+  .pfrow .v{ font-size:14.5px; font-weight:500; margin-top:4px; letter-spacing:-.02em;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pfrow .w{ font-size:12px; font-weight:500; color:var(--coral-d); margin-top:5px; line-height:1.5; }
+  .pfrow .go{ flex:none; color:#d6d1c7; font-size:16px; }
   .phgrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
   .phc{ position:relative; aspect-ratio:1; border-radius:22px; cursor:pointer;
         display:flex; align-items:center; justify-content:center; overflow:visible;
@@ -7734,30 +7757,41 @@ async function openProfileEdit(){
 }
 function renderProfileEditSrv(){
   const photos=state._myPhotos||[];
-  const cell=(i)=>{ const url=photos[i], main=i===0;
-    return url
-      ? `<div class="phc on" style="background-image:url('${url.startsWith('http')?url:API_BASE+url}');background-size:cover;background-position:center" onclick="openPhotoMenu(${i})" role="button" aria-label="사진 옵션">
-           ${main?`<span class="ph-main">대표</span>`:''}<span class="ph-x">×</span></div>`
-      : `<div class="phc" onclick="pickMyPhoto()" role="button" aria-label="사진 추가"><span class="ph-plus">＋</span></div>`; };
+  const url=photos[0] ? (photos[0].startsWith('http')?photos[0]:API_BASE+photos[0]) : null;
+  const u=state.serverUser||{};
+  /* 사진은 앱 어디서나 동그랗게 쓰인다. 편집 화면에서만 네모로 보여주면
+     "왜 잘렸지?" 가 된다 — 실제로 쓰이는 모양 그대로 보여준다. */
+  const avatar = url
+    ? `<div class="pfav" style="background-image:url('${url}')" onclick="openPhotoMenu(0)" role="button" aria-label="사진 바꾸기"></div>`
+    : `<div class="pfav empty" onclick="pickMyPhoto()" role="button" aria-label="사진 추가">${ic('user',34,'#b8b3a9')}</div>`;
+  /* 항목은 한 장의 카드 안에 줄로 넣는다. 따로 떠 있으면 무엇이 한 묶음인지 안 보인다. */
+  const row=(label, value, fn, sub, warn)=>`<div class="pfrow" onclick="${fn}" role="button">
+      <div style="flex:1;min-width:0">
+        <div class="k">${label}${sub?`<span class="s">${sub}</span>`:''}</div>
+        <div class="v">${value}</div>
+        ${warn?`<div class="w">${warn}</div>`:''}</div>
+      <span class="go">›</span></div>`;
   let h=`<div class="sh-top"><h3>프로필 수정</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">프로필 사진 한 장이 앱 전체의 내 아바타로 쓰여요. 사진을 탭하면 바꾸거나 지울 수 있어요.</div>
-    <div class="ch" style="font-size:14px;margin:0 4px 12px">프로필 사진</div>
-    <div class="phgrid" style="grid-template-columns:repeat(3,1fr)">${[0].map(cell).join('')}</div>
+    <div class="sd">여기서 정한 <b>사진과 이름</b>이 앱 전체에서 나로 보여요.</div>
+
+    <div class="pfhead">
+      ${avatar}
+      <div class="pfname">${esc(u.name||'')||'이름 없음'}</div>
+      <div class="pfsub" onclick="${url?'openPhotoMenu(0)':'pickMyPhoto()'}">${url?'사진 바꾸기':'사진 올리기'}</div>
+    </div>
     <input type="file" id="myPhotoFile" accept="image/*" style="display:none" onchange="uploadMyPhoto(this.files[0])">
-    <div class="card" onclick="editMyName()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
-      <div><div style="font-size:14px;font-weight:500">이름</div>
-        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${esc((state.serverUser&&state.serverUser.name)||'')||'탭해서 입력'} · 클럽 명단·대진·1:1 경기에 쓰여요</div>
-        ${!hasHangul((state.serverUser&&state.serverUser.name)||'')?`<div style="font-size:12px;font-weight:500;color:var(--coral-d);margin-top:4px">구글·애플 이름이 그대로 들어왔어요 · 국문 이름으로 바꾸시겠어요?</div>`:''}</div>
-      <span style="color:var(--lgray);font-weight:600">›</span></div>
-    <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
-      <div><div style="font-size:14px;font-weight:500">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
-        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${myCareerTxt()||'<b style="color:var(--coral-d)">탭해서 시작 시점 입력</b> · 입력하면 등급이 정해져요'}</div></div>
-      <span style="color:var(--lgray);font-weight:600">›</span></div>
-    <div class="card" onclick="editMyPhone()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
-      <div><div style="font-size:14px;font-weight:500">연락처 <span style="font-size:11px;color:var(--lgray)">연명부용 · 임원에게만</span></div>
-        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${(state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)'}</div></div>
-      <span style="color:var(--lgray);font-weight:600">›</span></div>
-    <button class="btn ghost" style="margin-top:6px" onclick="openEditProfile()">내 정보 수정 (성별·나이·신장·주손·${SP().n} 정보) →</button>`;
+
+    <div class="pflist">
+      ${row('이름', esc(u.name||'')||'탭해서 입력', 'editMyName()', '클럽 명단·대진·1:1 경기',
+            !hasHangul(u.name||'') ? '구글·애플 이름이 그대로 들어왔어요 · 국문 이름으로 바꾸시겠어요?' : '')}
+      ${row(`${SP().n} ${SP().cat==='record'?'경력':'구력'}`,
+            myCareerTxt()||'<b style="color:var(--coral-d)">탭해서 시작 시점 입력</b>',
+            'editMyStart()', '등급이 자동으로 정해져요')}
+      ${row('연락처', (state.serverUser&&state.serverUser.phone)||'탭해서 입력 (선택)',
+            'editMyPhone()', '연명부용 · 임원에게만')}
+    </div>
+
+    <button class="btn ghost" style="margin-top:12px" onclick="openEditProfile()">내 정보 수정 (성별·나이·신장·주손·${SP().n} 정보) →</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 function pickMyPhoto(){
