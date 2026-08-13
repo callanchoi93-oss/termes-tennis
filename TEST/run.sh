@@ -80,5 +80,14 @@ else
   fail=1
 fi
 
+echo ""
+echo "클럽 별칭 · 이름 일관성"
+if node test/alias-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/alias-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then echo "" && echo "전부 통과"; else echo "" && echo "실패한 항목이 있습니다"; fi
 exit $fail
