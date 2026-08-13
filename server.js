@@ -3801,8 +3801,6 @@ try { db.exec('ALTER TABLE clubs ADD COLUMN gender_pref TEXT'); } catch (e) {}
 
 const monthKey = (t) => new Date(t || Date.now()).toISOString().slice(0, 7);
 
-});
-
 // ══════════════════════════════════════════════════════════════
 //  클럽 계좌 — 앱은 계좌번호를 '보여주기만' 한다.
 //  회비·게스트비는 회원이 클럽 계좌로 직접 입금한다. 앱은 돈을 들지도,
@@ -4868,15 +4866,6 @@ app.post('/admin/clubs/:id/owner', admin, (req, res) => {
   if (prev && prev.user_id !== uid) sendPush(prev.user_id, { icon: '🔧', title: '클럽장 변경 안내', body: `${club.name} 클럽장이 운영자에 의해 변경됐어요 · 임원으로 남아요` });
   res.json({ ok: true, club_id: cid, new_owner: uid });
 });
-app.post('/admin/clubs/:id/premium', admin, (req, res) => {
-  const cid = +req.params.id;
-  const c = db.prepare('SELECT id FROM clubs WHERE id=?').get(cid);
-  if (!c) return res.status(404).json({ error: 'not_found' });
-  const months = Math.min(24, Math.max(1, intOrNull(req.body && req.body.months) || 1));
-  const until = activatePremium(cid, months);
-  res.json({ ok: true, club_id: cid, premium_until: until, granted_by: 'admin' });
-});
-
 // 클럽 영구 삭제 — 연관 데이터까지 전부 (복구 불가)
 app.delete('/admin/clubs/:id', admin, (req, res) => {
   const cid = +req.params.id;
