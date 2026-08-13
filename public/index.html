@@ -410,9 +410,12 @@
   .ymrow select:focus{border-color:var(--coral)}
   .ymrow select.ph{color:var(--lgray);font-weight:400}
   /* 지금 몇 년 몇 개월인지 바로 보여준다 */
+  /* 간격은 gap 이 아니라 margin 으로 준다.
+     flex 의 gap 을 지원하지 않는 옛 WebView 가 있고, 그런 곳에서는
+     '좋아요코트에서…' 처럼 두 글자가 붙어버린다. margin 은 어디서나 먹는다. */
   .ycar{margin-top:12px;background:var(--coral-s);border-radius:12px;padding:12px 14px;
-    display:flex;align-items:center;gap:9px}
-  .ycar .cd{font-size:15px;font-weight:700;letter-spacing:-.02em}
+    display:flex;align-items:center}
+  .ycar .cd{font-size:15px;font-weight:700;letter-spacing:-.02em;flex:none;margin-right:9px}
   .ycar .tx{font-size:12.5px;color:#8a6a4a;font-weight:500}
   .gnote{margin-top:16px;background:var(--felt);border-radius:14px;padding:14px 16px}
   .gnote .gt{font-size:12px;font-weight:600;color:var(--gray);margin-bottom:9px}
@@ -21097,22 +21100,60 @@ function openFairplayInfo(){
    1:1 경기는 처음 만나는 사람과 코트에서 이름을 부르는 자리라, 국문 이름이 낫다.
    막지는 않는다 — 영문 이름을 쓰는 사람도 있다. 한 번 물어보고 본인이 정한다. */
 function hasHangul(s){ return /[가-힣]/.test(String(s||'')); }
-async function editMyName(){
+
+let NM=null;                              // 이름 바꾸기 시트 상태
+function editMyName(){
+  NM={ v:(state.serverUser&&state.serverUser.name)||'' };
+  drawNameSheet();
+  document.getElementById('ov').classList.add('on');
+}
+function nmSet(v){ NM.v=v; drawNameSheet(true); }
+function drawNameSheet(keepFocus){
+  const v=(NM.v||'').trim();
+  const ko=hasHangul(v);
+  const ready=!!v;
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>이름을 알려주세요</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">클럽 명단·대진·1:1 경기에 <b>이 이름</b>으로 나와요.</div>
+
+    <div class="fld" style="margin-bottom:0"><label>이름</label>
+      <input id="nmIn" maxlength="20" placeholder="예) 최민혁" value="${esc(NM.v||'')}"
+        oninput="NM.v=this.value" onchange="nmSet(this.value)"></div>
+
+    ${v?`<div class="ycar" style="${ko?'':'background:#f4f2ee'}">
+      <span class="cd" style="color:${ko?'#2c7a53':'#8a857c'}">${ko?'좋아요':'영문'}</span>
+      <span class="tx" style="${ko?'':'color:#8a857c'}">${ko
+        ? `코트에서 <b>${esc(v)}</b> 님으로 불러요`
+        : `국문 이름을 권해요 · 그대로 쓰셔도 괜찮아요`}</span></div>`:''}
+
+    <div class="gnote">
+      <div class="gt">국문 이름을 권하는 이유</div>
+      <div class="gsub" style="margin-top:0;padding-top:0;border-top:0">
+        구글·애플로 가입하면 <b>Minhyuk Choi</b> 처럼 영문 이름이 그대로 들어와요.<br>
+        1:1 경기는 처음 만나는 분과 코트에서 서로 이름을 부르는 자리예요.
+        국문 이름이 부르기도, 알아보기도 쉬워요.<br>
+        영문 이름을 쓰셔도 괜찮아요 — 정하는 건 본인이에요.</div>
+    </div>
+
+    <button class="btn" style="margin-top:16px${ready?'':';opacity:.45'}" onclick="saveMyName()">저장하기</button>`;
+  const el=document.getElementById('nmIn');
+  if(el && keepFocus){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+async function saveMyName(){
+  const el=document.getElementById('nmIn');
+  const name=((el?el.value:NM.v)||'').trim().slice(0,20);
+  if(!name){ toast('이름을 입력해 주세요'); const i=document.getElementById('nmIn'); if(i) i.focus(); return; }
   const cur=(state.serverUser&&state.serverUser.name)||'';
-  const v=prompt('이름 (클럽 명단·대진·1:1 경기에 이 이름으로 나와요)\n코트에서 부르는 국문 이름을 권해요 · 예) 최민혁', cur);
-  if(v===null) return;
-  const name=v.trim().slice(0,20);
-  if(!name){ toast('이름을 입력해 주세요'); return; }
-  if(name===cur) return;
-  if(!hasHangul(name) && !await appConfirm(
-      `'${name}' 로 저장할까요?\n\n1:1 경기에서는 처음 만나는 분과 코트에서 이름을 부르게 돼요.\n국문 이름이 서로 알아보기 쉬워요.`,'이대로 저장')) return;
+  if(name===cur){ closeOv(); return; }
   try{
     const u=await api('/me',{method:'PATCH',body:JSON.stringify({name})});
     state.serverUser=u; state.userName=u.name;
     try{ saveMatsu(); }catch(e){}
     CLUB_ROSTER=null; MB_CACHE=[];          // 명단 캐시를 비워 새 이름으로 다시 받는다
+    NM=null; closeOv();
     toast('이름을 바꿨어요');
-    renderMe(); if(document.getElementById('ov').classList.contains('on')) renderProfileEditSrv();
+    renderMe();
   }catch(e){
     toast(String(e.message).includes('bad_name')?'이름을 입력해 주세요':'저장하지 못했어요');
   }
