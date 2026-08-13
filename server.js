@@ -866,8 +866,14 @@ app.get('/clubs', (req, res) => {
   /* 성별 구성 — '여성 클럽' 배지는 선언이 아니라 실제 명단으로 판정한다.
      게스트는 손님이라 세지 않고, 성별을 안 밝힌 회원(카카오 가입)이 있으면
      '전원 여성'이라고 단정할 수 없으므로 unknown 을 따로 센다. */
+  /* ${test} 를 반드시 괄호로 감싼다.
+     SQL 에서 AND 가 OR 보다 먼저 묶이므로, 괄호가 없으면
+       (클럽조건 AND gender LIKE '여%') OR (gender='F')
+     로 읽혀 뒤쪽 OR 가 클럽 조건을 벗어난다 —
+     즉 DB 전체에서 gender='F' 인 사람을 모두 세어버린다. */
   const G = (test) => `(SELECT COUNT(*) FROM club_members m JOIN users u ON u.id=m.user_id
-      WHERE m.club_id=c.id AND m.role<>'guest' AND (m.status IS NULL OR m.status='active') AND ${test})`;
+      WHERE m.club_id=c.id AND m.role<>'guest' AND (m.status IS NULL OR m.status='active')
+        AND (${test}))`;
   let sql = `SELECT c.*,
       (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members,
       ${G("u.gender LIKE '여%' OR u.gender='F'")} g_f,
