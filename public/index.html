@@ -4211,8 +4211,35 @@ function openMemberEdit(uid){
     if(isOwner) h+=`<button class="btn ghost" style="margin-top:8px" onclick="setMemberRole(${uid},'${role==='officer'?'member':'officer'}')">${role==='officer'?'임원 해제':'임원으로 임명'}</button>
       <button class="btn ghost" style="margin-top:8px" onclick="transferOwner(${uid},'${esc(m.name)}')">클럽장 양도</button>`;
     h+=`<button class="btn ghost" style="margin-top:8px" onclick="toggleResting(${uid},${m.resting?0:1})">${m.resting?'휴회 해제':'휴회 처리'}</button>`;
+    /* 내보내기는 되돌릴 수 없다 — 맨 아래에 따로 떼어두고, 왜 내보내는지 남기게 한다 */
+    if(isOwner || role!=='officer')
+      h+=`<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+        <button class="btn ghost" style="color:var(--coral-d)" onclick="kickMember(${uid},${jsArg(m.name)})">클럽에서 내보내기</button>
+        <div class="note" style="text-align:left;margin-top:8px">내보내면 본인에게 <b>누가 처리했는지</b> 알림이 가고,
+          연명부 기록에도 남아요.</div></div>`;
   }
   document.getElementById('sheet').innerHTML=h;
+}
+/* 강퇴 — 흔적을 남기는 것이 악용을 막는 가장 현실적인 방법이다.
+   기능을 없애면 노쇼·괴롭힘을 정리할 방법이 사라져 피해자가 대신 나가게 된다. */
+async function kickMember(uid, name){
+  const cid=clubId(); if(!cid) return;
+  const why=prompt(`${name} 님을 클럽에서 내보낼까요?\n\n사유를 적어주세요 (본인에게 그대로 전달돼요)\n예) 노쇼 반복 · 회비 장기 미납 · 본인 요청`, '');
+  if(why===null) return;
+  const reason=why.trim().slice(0,60);
+  if(!reason){ toast('사유를 적어주세요 · 기록에 남습니다'); return; }
+  if(!await appConfirm(`${name} 님을 내보냅니다.\n사유: ${reason}\n\n본인에게 알림이 가고 되돌릴 수 없어요.`,'내보내기')) return;
+  try{
+    await api(`/clubs/${cid}/members/${uid}`,{method:'DELETE',body:JSON.stringify({reason})});
+    MB_CACHE=MB_CACHE.filter(x=>x.user_id!==uid); CLUB_ROSTER=null;
+    toast(`${name} 님을 내보냈어요`);
+    openMembers();
+  }catch(e){
+    const msg=String(e.message||'');
+    toast(msg.includes('cannot_kick_owner')?'클럽장은 내보낼 수 없어요'
+        : msg.includes('owner_only')?'임원은 클럽장만 내보낼 수 있어요'
+        : msg.includes('officer_only')?'임원만 할 수 있어요':'처리하지 못했어요');
+  }
 }
 const REST_REASONS=['부상·건강','업무·학업','임신·출산','장기 여행·출장','개인 사정'];
 let RA={type:'rest', reason:REST_REASONS[0]};
@@ -4329,9 +4356,9 @@ async function exportRoster(){
         (logs.rests||[]).map(r=>[r.name, r.rtype==='rest'?'휴회':'복회', r.start||'', r.end||'', r.reason||'', dt(r.created_at)]),
         [{wch:10},{wch:6},{wch:12},{wch:12},{wch:14},{wch:12}]), '휴회복회');
       XLSX.utils.book_append_sheet(wb, mk(`${state.activeClub||''} 탈퇴 회원`,
-        ['이름','구분','탈퇴일'],
-        (logs.exits||[]).map(e=>[e.name, e.reason||'탈퇴', dt(e.left_at)]),
-        [{wch:10},{wch:10},{wch:12}]), '탈퇴회원');
+        ['이름','구분','처리한 사람','탈퇴일'],
+        (logs.exits||[]).map(e=>[e.name, e.reason||'탈퇴', e.by_name||'본인', dt(e.left_at)]),
+        [{wch:10},{wch:14},{wch:10},{wch:12}]), '탈퇴회원');
     }catch(e){}
     XLSX.writeFile(wb, fname+'.xlsx');
     toast('연명부 Excel을 내려받았어요');
@@ -7714,7 +7741,12 @@ function renderProfileEditSrv(){
     <div class="ch" style="font-size:14px;margin:0 4px 12px">프로필 사진</div>
     <div class="phgrid" style="grid-template-columns:repeat(3,1fr)">${[0].map(cell).join('')}</div>
     <input type="file" id="myPhotoFile" accept="image/*" style="display:none" onchange="uploadMyPhoto(this.files[0])">
-    <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
+    <div class="card" onclick="editMyName()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:13px 15px">
+      <div><div style="font-size:14px;font-weight:500">이름</div>
+        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${esc((state.serverUser&&state.serverUser.name)||'')||'탭해서 입력'} · 클럽 명단·대진·1:1 경기에 쓰여요</div>
+        ${!hasHangul((state.serverUser&&state.serverUser.name)||'')?`<div style="font-size:12px;font-weight:500;color:var(--coral-d);margin-top:4px">구글·애플 이름이 그대로 들어왔어요 · 국문 이름으로 바꾸시겠어요?</div>`:''}</div>
+      <span style="color:var(--lgray);font-weight:600">›</span></div>
+    <div class="card" onclick="editMyStart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 15px">
       <div><div style="font-size:14px;font-weight:500">${SP().n} ${SP().cat==='record'?'경력':'구력'}</div>
         <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${myCareerTxt()||'<b style="color:var(--coral-d)">탭해서 시작 시점 입력</b> · 입력하면 등급이 정해져요'}</div></div>
       <span style="color:var(--lgray);font-weight:600">›</span></div>
@@ -8806,7 +8838,12 @@ function openClubOps(){
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
       ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
-    </div>`;
+    </div>
+    ${cb2Owner()?`<div class="opgl">클럽 관리</div>
+    <div class="opgrid">
+      ${tool('클럽 이름 변경','오타·잘못 만든 이름 고치기','renameClub()')}
+      ${tool('클럽 삭제','나 혼자 남았을 때만','deleteClub()')}
+    </div>`:''}`;
   document.getElementById('opsBody').innerHTML=h;
   document.getElementById('opsClub').textContent=n;
   document.getElementById('clubops').style.display='flex';
@@ -11501,6 +11538,72 @@ let CB2_SEED=1;
 let CB2_HSPLIT=false;           // 한울 · 여자 코트와 남자 코트를 갈라놓기                 // '다시 섞기'를 누르면 올라간다 — 같은 시드면 같은 대진이 나온다
 const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
 function cb2Officer(){ if(TRIAL) return true; const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return c&&(c.role==='owner'||c.role==='officer'); }
+/* 클럽 이름 변경·삭제는 클럽장만 — 임원과 구분해야 한다 */
+function cb2Owner(){ if(TRIAL) return true; const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return !!(c&&c.role==='owner'); }
+
+async function renameClub(){
+  const cid=clubId(); const cur=state.activeClub||'';
+  if(!cid){ toast('서버 연결이 필요해요'); return; }
+  const v=prompt('클럽 이름 (20자까지)\n같은 종목에 같은 이름은 쓸 수 없어요', cur);
+  if(v===null) return;
+  const name=v.trim().slice(0,20);
+  if(!name){ toast('클럽 이름을 입력해 주세요'); return; }
+  if(name===cur) return;
+  if(!await appConfirm(`클럽 이름을 바꿀까요?\n\n${cur}\n→ ${name}\n\n회원 전원에게 알림이 가요.`,'바꾸기')) return;
+  try{
+    await api(`/clubs/${cid}/name`,{method:'PATCH',body:JSON.stringify({name})});
+    /* 이 앱은 클럽을 '이름'으로 찾는 곳이 많다 — 캐시를 통째로 갈아준다 */
+    renameClubLocal(cur, name);
+    toast('클럽 이름을 바꿨어요');
+    closeOv(); renderClub();
+  }catch(e){
+    const m=String(e.message||'');
+    toast(m.includes('name_taken')?'이 종목에 같은 이름의 클럽이 있어요'
+        : m.includes('owner_only')?'클럽장만 바꿀 수 있어요'
+        : m.includes('contact_blocked')?'연락처는 이름에 넣을 수 없어요'
+        : '바꾸지 못했어요');
+  }
+}
+/* 이름이 열쇠로 쓰이는 자리를 모두 갈아끼운다 */
+function renameClubLocal(before, after){
+  if(!before || before===after) return;
+  state.myClubs=(state.myClubs||[]).map(n=>n===before?after:n);
+  if(state.activeClub===before) state.activeClub=after;
+  if(state.clubOpen===before)   state.clubOpen=after;
+  if(state.clubData && state.clubData[before]){
+    state.clubData[after]=state.clubData[before]; delete state.clubData[before];
+  }
+  if(state.clubLogos && state.clubLogos[before]){
+    state.clubLogos[after]=state.clubLogos[before]; delete state.clubLogos[before];
+  }
+  (state.clubs||[]).forEach(c=>{ if(c.n===before) c.n=after; });
+  (SRV_MYCLUBS||[]).forEach(c=>{ if(c.name===before) c.name=after; });
+  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; MB_CACHE=[];
+  try{ saveMatsu(); }catch(e){}
+}
+
+async function deleteClub(){
+  const cid=clubId(); const nm=state.activeClub||'';
+  if(!cid){ toast('서버 연결이 필요해요'); return; }
+  if(!await appConfirm(`${nm} 클럽을 지울까요?\n\n일정·대진·소식·기록이 모두 사라지고 되돌릴 수 없어요.\n나 말고 회원이 한 명이라도 있으면 지워지지 않아요.`,'지우기')) return;
+  try{
+    await api(`/clubs/${cid}`,{method:'DELETE'});
+    /* 남은 흔적을 정리한다 — 이름으로 찾는 곳이 많아 하나라도 남으면 빈 화면이 뜬다 */
+    state.myClubs=(state.myClubs||[]).filter(n=>n!==nm);
+    if(state.clubData) delete state.clubData[nm];
+    state.clubs=(state.clubs||[]).filter(c=>c.n!==nm);
+    SRV_MYCLUBS=(SRV_MYCLUBS||[]).filter(c=>c.name!==nm);
+    state.activeClub=state.myClubs[0]||''; state.clubOpen=null;
+    CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; MB_CACHE=[];
+    try{ saveMatsu(); }catch(e){}
+    closeOv(); toast(`${nm} 클럽을 지웠어요`);
+    go('club'); renderClub();
+  }catch(e){
+    const m=String(e.message||'');
+    if(m.includes('members_left')) toast('아직 회원이 남아 있어요 · 회원 관리에서 모두 내보낸 뒤 지울 수 있어요');
+    else toast(m.includes('owner_only')?'클럽장만 지울 수 있어요':'지우지 못했어요');
+  }
+}
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
   return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]]; }
 function cb2Label(t1,t2){ const g=x=>String(x.gender||'').startsWith('여');
@@ -20986,6 +21089,33 @@ function openFairplayInfo(){
         · 한 매치당 같은 상대에게 한 번만 남길 수 있어요</div></div>
     <div class="note" style="text-align:left">참고: 1점 후기 3번이면 주의 구간(70 미만)에 들어가요. 점수는 차단이 아니라 신뢰 신호예요 — 회복 경로는 항상 열려 있어요.</div>`;
   document.getElementById('ov').classList.add('on');
+}
+/* 이름은 본인이 고친다.
+   카카오로 가입하면 닉네임이 그대로 이름이 되는데, 그 상태로 클럽에 들어가면
+   임원이 일일이 별칭을 달아줘야 했다. 본인이 바꾸면 그 일이 사라진다. */
+/* 구글·애플로 가입하면 이름이 'Minhyuk Choi' 나 'Minh' 로 들어온다.
+   1:1 경기는 처음 만나는 사람과 코트에서 이름을 부르는 자리라, 국문 이름이 낫다.
+   막지는 않는다 — 영문 이름을 쓰는 사람도 있다. 한 번 물어보고 본인이 정한다. */
+function hasHangul(s){ return /[가-힣]/.test(String(s||'')); }
+async function editMyName(){
+  const cur=(state.serverUser&&state.serverUser.name)||'';
+  const v=prompt('이름 (클럽 명단·대진·1:1 경기에 이 이름으로 나와요)\n코트에서 부르는 국문 이름을 권해요 · 예) 최민혁', cur);
+  if(v===null) return;
+  const name=v.trim().slice(0,20);
+  if(!name){ toast('이름을 입력해 주세요'); return; }
+  if(name===cur) return;
+  if(!hasHangul(name) && !await appConfirm(
+      `'${name}' 로 저장할까요?\n\n1:1 경기에서는 처음 만나는 분과 코트에서 이름을 부르게 돼요.\n국문 이름이 서로 알아보기 쉬워요.`,'이대로 저장')) return;
+  try{
+    const u=await api('/me',{method:'PATCH',body:JSON.stringify({name})});
+    state.serverUser=u; state.userName=u.name;
+    try{ saveMatsu(); }catch(e){}
+    CLUB_ROSTER=null; MB_CACHE=[];          // 명단 캐시를 비워 새 이름으로 다시 받는다
+    toast('이름을 바꿨어요');
+    renderMe(); if(document.getElementById('ov').classList.contains('on')) renderProfileEditSrv();
+  }catch(e){
+    toast(String(e.message).includes('bad_name')?'이름을 입력해 주세요':'저장하지 못했어요');
+  }
 }
 async function editMyPhone(){
   const cur=(state.serverUser&&state.serverUser.phone)||'';
