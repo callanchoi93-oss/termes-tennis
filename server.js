@@ -416,7 +416,7 @@ app.put('/me/sport-profile/:sport', auth, (req, res) => {
 
 // 선수 비교용 공개 프로필 (민감정보 제외)
 app.get('/users/:id/profile', (req, res) => {
-  const u = db.prepare(`SELECT id,name,gender,region,sport,rating,mmr,peak_mmr,birth_year,handed,backhand,style,
+  const u = db.prepare(`SELECT id,name,gender,region,sport,rating,mmr,peak_mmr,birth_year,height,handed,backhand,style,
     wins,losses,photos,skill_verified,real_verified FROM users WHERE id=?`).get(intOrNull(req.params.id));
   if (!u) return res.status(404).json({ error: 'not_found' });
   const rank = db.prepare('SELECT COUNT(*)+1 n FROM users WHERE sport=? AND rating>?').get(u.sport, u.rating).n;
@@ -840,13 +840,13 @@ app.get('/me', auth, (req, res) => {
 app.patch('/me', auth, (req, res) => {
   /* name 추가 — 카카오 닉네임이 영문이거나 별명이면 본인이 고칠 수 있어야 한다 */
   const allow = ['name','gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
-                 'birth_year','handed','backhand','style','phone','sport_started'];
+                 'birth_year','height','handed','backhand','style','phone','sport_started'];
   if ('name' in req.body) {
     const nm = String(req.body.name || '').trim().slice(0, 20);
     if (!nm) return res.status(400).json({ error: 'bad_name', message: '이름을 입력해 주세요' });
     req.body.name = nm;
   }
-  const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
+  const nums = ['birth_year','height','phone_verified','real_verified','skill_verified'];
   const sets = [], vals = [];
   for (const k of allow) if (k in req.body) {
     sets.push(`${k}=?`);
@@ -3622,7 +3622,9 @@ CREATE TABLE IF NOT EXISTS bracket_timers (
 } catch (e) { console.error('[boot] brackets 마이그레이션 실패:', e && e.message); }
 
 // 선수 프로필 (선수 비교 화면용)
-['birth_year INTEGER', 'handed TEXT', 'backhand TEXT', 'style TEXT', 'peak_mmr INTEGER', 'wins INTEGER DEFAULT 0', 'losses INTEGER DEFAULT 0']
+/* height 는 앱이 오래전부터 보내고 있었는데 컬럼도 허용 목록도 없어서
+   조용히 버려지고 있었다 — 저장했다고 뜨는데 카드에는 안 나왔다. */
+['birth_year INTEGER', 'height INTEGER', 'handed TEXT', 'backhand TEXT', 'style TEXT', 'peak_mmr INTEGER', 'wins INTEGER DEFAULT 0', 'losses INTEGER DEFAULT 0']
   .forEach(col => { try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch (e) {} });
 
 // event_attendees.status : going | absent | undecided  (기존 행은 going 으로 간주)
