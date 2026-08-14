@@ -72,6 +72,15 @@ console.log('\n■ 등급 경계');
   .forEach(([ym,want])=>ok(gradeOf(monthsSince(ym))===want,
     `${ym} (${monthsSince(ym)}개월) → ${want}등급`));
 
+console.log('\n■ 여성 판정 — 대진의 남복·혼복이 이 값으로 갈린다');
+/* DB 에 '여성'·'F'·'여자'가 섞여 있다. 예전에는 화면 곳곳에서 startsWith('여') 로만 봐서
+   'F' 가 남성으로 잡혔다 — 관리자에서 여성으로 고쳐도 대진엔 남복으로 나왔다. */
+const isFem = v => genderKo(v && v.gender!==undefined ? v.gender : v) === '여성';
+['F','여성','여자','여'].forEach(v=>ok(isFem(v)===true, `${JSON.stringify(v)} → 여성`));
+['M','남성','남자','남'].forEach(v=>ok(isFem(v)===false, `${JSON.stringify(v)} → 남성`));
+ok(isFem('')===false && isFem(null)===false, '빈 값·null 도 안전');
+ok(isFem({gender:'F'})===true, '객체를 그대로 넘겨도 된다');
+
 console.log('\n■ 캐시');
 ok(0===0,'앱 초기값 0원 · 서버가 진실 (예전엔 5원이 박혀 있었다)');
 
