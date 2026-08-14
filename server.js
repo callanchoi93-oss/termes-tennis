@@ -1402,11 +1402,17 @@ app.get('/clubs/:id/roster', (req, res) => {
     guests = db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(ev.id)
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
-  if (!rows || !rows.length) {
+  /* 모임을 콕 집어 물었으면 그 모임의 참석자만 답한다.
+     아무도 참석을 안 눌렀으면 빈 명단이 맞는 답이다 —
+     예전엔 회원 전체로 되돌려서, 참석자 0명인 번개를 골라도
+     오늘 정기모임 인원이 딸려 나왔다.
+     모임을 안 지정했을 때(서버가 알아서 고를 때)만 회원 전체로 되돌린다. */
+  if ((!rows || !rows.length) && !evOf(req)) {
     rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY name`).all(cid);
   }
+  rows = rows || [];
   res.json({ event_id: ev ? ev.id : null, members: [...rows, ...guests] });
 });
 // 가입 신청 목록 (임원진)
