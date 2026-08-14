@@ -5347,8 +5347,30 @@ app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
     .run(+req.params.id, +req.params.uid);
   res.json({ ok: true });
 });
-app.get('/admin/users', admin, (_req, res) => {
-  res.json(db.prepare('SELECT id,name,provider,region,sport,rating,cash,premium,created_at FROM users ORDER BY id DESC LIMIT 200').all());
+app.get('/admin/users', admin, (req, res) => {
+  /* 성별을 함께 내려준다 — 대진의 남복·혼복 판정이 이 값으로 갈린다.
+     이름으로 찾을 수 있어야 200명 넘는 목록에서 한 사람을 고칠 수 있다. */
+  const q = String((req.query && req.query.q) || '').trim();
+  const sql = `SELECT id,name,provider,region,sport,gender,rating,cash,premium,created_at
+    FROM users ${q ? 'WHERE name LIKE ?' : ''} ORDER BY id DESC LIMIT 200`;
+  res.json(q ? db.prepare(sql).all('%' + q + '%') : db.prepare(sql).all());
+});
+
+/* 성별 고치기 — 본인이 안 넣었거나 잘못 넣으면 대진이 어긋난다.
+   클럽 안에서만 다르게 보고 싶을 때는 club_members.gender_ov 를 쓴다(멤버 관리).
+   여기서는 계정 자체의 값을 고친다. */
+app.patch('/admin/users/:id/gender', admin, (req, res) => {
+  const uid = intOrNull(req.params.id);
+  const u = db.prepare('SELECT id,name FROM users WHERE id=?').get(uid);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const raw = String((req.body && req.body.gender) || '').trim();
+  /* 'F'/'M' 로 통일해 저장한다 — 앱은 어느 쪽이든 읽지만 한 가지로 모아둬야 헷갈리지 않는다.
+     빈 값이면 '미입력'으로 되돌린다. */
+  const g = !raw ? null : (raw === 'F' || raw.startsWith('여')) ? 'F'
+          : (raw === 'M' || raw.startsWith('남')) ? 'M' : null;
+  if (raw && !g) return res.status(400).json({ error: 'bad_gender' });
+  db.prepare('UPDATE users SET gender=? WHERE id=?').run(g, uid);
+  res.json({ ok: true, id: uid, name: u.name, gender: g });
 });
 app.get('/admin/reports', admin, (_req, res) => {
   const rows = db.prepare("SELECT * FROM reports WHERE status='open' ORDER BY id DESC LIMIT 200").all();
