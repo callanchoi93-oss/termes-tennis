@@ -3073,6 +3073,10 @@ const genderKo = v => { const t=String(v||'').trim();
   if(!t) return '';
   return (t==='F' || t.startsWith('여')) ? '여성' : (t==='M' || t.startsWith('남')) ? '남성' : ''; };
 const genderSrv = v => genderKo(v)==='여성' ? 'F' : 'M';
+/* 여성인가? — DB 에 '여성'·'F'·'여자'가 섞여 있다.
+   예전에는 곳곳에서 startsWith('여') 로만 봐서 'F' 는 남성으로 잡혔고,
+   관리자 화면에서 여성으로 고쳐도 대진에는 남복으로 나왔다. */
+const isFem = v => genderKo(v && v.gender!==undefined ? v.gender : v) === '여성';
 
 function resumeOrOnboard(){
   const u = state.serverUser || {};
@@ -3652,7 +3656,7 @@ async function loadPublicData(){
     LOUNGE_POSTS = (ps||[]).map(p=>{
       const psp = SPORTS.find(s=>s.id===p.sport) || SP();   // 글에 저장된 종목 (없으면 현재)
       return { id:p.id, cat:p.category||'자유', sp:psp.n, ic:psp.ic, sportId:psp.id,
-        t:p.title, b:p.body||'', g:p.gender==='여성'?'여':'남', r:p.region||'',
+        t:p.title, b:p.body||'', g:isFem(p.gender)?'여':'남', r:p.region||'',
         nick:p.anon_nick||'익명', region:p.region||'전국', time:timeAgo(p.created_at)||'방금',
         v:p.views||0, l:p.likes||0, c:p.comments||0 };
     });
@@ -4979,7 +4983,7 @@ async function loadRoster(eid){
     ms.forEach(m=>{
       if(m.user_id) SRV_UID[m.name] = m.user_id;
       if(m.grade) c.grades[m.name] = m.grade;
-      if(m.gender) c.genders[m.name] = (m.gender==='여성'||m.gender==='F') ? 'F' : 'M';
+      if(m.gender) c.genders[m.name] = isFem(m.gender) ? 'F' : 'M';
     });
     c.schedule.attendees = ms.map(m=>m.name);
     c.m = ms.length;
@@ -6852,7 +6856,7 @@ function tierMeta(r){
   const C={'그랜드슬램':['#1b1813','#4a3f66','G'],'투어':['#e5493a','#c6892a','T'],'챌린저':['#2f6fed','#5b3fa8','C'],'퓨처스':['#f2b90d','#c98f06','F']}[l.tier]||['#8a8378','#6b655c','L'];
   return {name:l.full+' · NTRP '+l.ntrp, c1:C[0], c2:C[1], sh:C[2]};
 }function renderRankingTable(){
-  const div=state.gender==='여성'?'여자부':'남자부';
+  const div=isFem(state.gender)?'여자부':'남자부';
   const rec=myRecord();
   const my={n:'곽주영',w:rec.w,l:rec.l,r:state.rating,me:true};
   const rivals=[
@@ -7081,7 +7085,7 @@ function renderPreLaunch(){
 }
 function notifyLeague(){state.leagueNotified=!state.leagueNotified;renderLeague();toast(state.leagueNotified?'리그가 열리면 알려드릴게요':'알림을 취소했어요');}
 function openLeagueNow(){state.regionMembers=state.regionTarget;state.leagueOpen=true;renderLeague();toast('회원이 모였어요! 개인 리그가 열렸어요 🎾');}
-function genderSeg(){ const g=state.leagueGender||(state.gender==='여성'?'여자부':'남자부'); state.leagueGender=g;
+function genderSeg(){ const g=state.leagueGender||(isFem(state.gender)?'여자부':'남자부'); state.leagueGender=g;
   return `<div class="miniseg" style="margin:0 0 14px"><div class="${g==='남자부'?'on':''}" onclick="state.leagueGender='남자부';renderLeague()">남자부</div><div class="${g==='여자부'?'on':''}" onclick="state.leagueGender='여자부';renderLeague()">여자부</div></div>`; }
 function soccerRoles(){ return state.soccerMode==='full'?['GK','DF','DF','DF','DF','MF','MF','MF','FW','FW','FW']:['GK','DF','DF','MF','FW']; }
 function teamFmt(sp){ if(sp.id==='soccer') return state.soccerMode==='full'?'축구 11:11':'풋살 5:5'; return sp.fmt; }
@@ -8499,7 +8503,7 @@ function drawClubPreview(){
           <span style="font-size:19px;font-weight:700;letter-spacing:-.03em;min-width:0;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>
           ${clubGenderChip(Object.assign({}, c, {genders:(()=>{ const g={};
-            (roster||[]).forEach(m=>{ if(m.gender) g[m.name]=String(m.gender).startsWith('여')?'F':'M'; }); return g; })()}), 11)}</div>
+            (roster||[]).forEach(m=>{ if(m.gender) g[m.name]=isFem(m.gender)?'F':'M'; }); return g; })()}), 11)}</div>
         <div style="font-size:12.5px;color:var(--lgray);margin-top:2px">
           ${esc(c.r)} · 회원 ${(roster&&roster.length)||c.m}명</div>
       </div>
@@ -11709,7 +11713,7 @@ async function deleteClub(){
 }
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
   return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]]; }
-function cb2Label(t1,t2){ const g=x=>String(x.gender||'').startsWith('여');
+function cb2Label(t1,t2){ const g=x=>isFem(x.gender);
   const all=[...t1,...t2], f=all.filter(g).length;
   return f===0?'남복':f===all.length?'여복':'혼복'; }
 function seedTrialBracket(){
@@ -11748,7 +11752,7 @@ const HANUL_AB = {
    4게임 중 한 조합이 한 번 반복된다(수학적으로 불가피). */
 const HN_GV={SS:5,S:4,A:3,B:2,C:1};
 const hnG=p=>HN_GV[String(p.grade||'B').toUpperCase()]||2;
-const hnF=p=>String(p.gender||'').startsWith('여');
+const hnF=p=>isFem(p.gender);
 const hnK=(a,b)=>a<b?a+'_'+b:b+'_'+a;
 function hnCombos(arr,k){
   const out=[]; const rec=(s,acc)=>{ if(acc.length===k){ out.push(acc.slice()); return; }
@@ -12238,7 +12242,7 @@ function cb2CourtMix(c, gs){
   (gs||(CB2&&CB2.games)||[]).filter(g=>g.c===c).forEach(g=>
     [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(p&&p.id!=='-') seen[p.id]=p.gender||''; }));
   const v=Object.values(seen);
-  const f=v.filter(x=>String(x).startsWith('여')).length;
+  const f=v.filter(x=>isFem(x)).length;
   return {m:v.length-f, f, n:v.length};
 }
 function cb2MixChip(c, big){
@@ -12737,7 +12741,7 @@ function cbSexAdj(p){ return !!cbSexMap()[cbSexKey(p)]; }   // 바꿔둔 사람�
 function cb2SexTog(id){
   const m=cbSexMap(), all=cb2All();
   const p=all.find(x=>String(x.user_id)===String(id)); if(!p) return;
-  const real=String(p.gender||'').startsWith('여')?'F':'M';
+  const real=isFem(p.gender)?'F':'M';
   if(m[String(id)]) delete m[String(id)];               // 되돌리기
   else m[String(id)] = real==='F' ? 'M' : 'F';          // 반대쪽으로
   saveMatsu(); drawCB2Build();
@@ -12761,7 +12765,7 @@ function leaguePlayerCard(u, opts){
   const pl = dbl ? (u.played_doubles==null? (u.played||0) : u.played_doubles) : (u.played||0);
   const placing = pl < PLACEMENT_GAMES;
   const tier = placing ? `배치 중 ${pl}/${PLACEMENT_GAMES}경기` : String(tierByRating(rt)).split(' · ')[0];
-  const fem = String(u.gender||'').startsWith('여') || u.gender==='F';
+  const fem = isFem(u.gender);
   const ac  = fem ? '#c9457e' : '#3d6fd6';
   const bg  = fem ? '#fdeef4' : '#eef4fd';
 
@@ -12865,7 +12869,7 @@ function omGradeMixHTML(players, opts){
   const o=opts||{};
   const m=omGradeMix(players);
   const gi=m.avgGrade?gradeInfo(m.avgGrade):null;
-  const women=(players||[]).filter(p=>String(p.gender||'').startsWith('여')).length;
+  const women=(players||[]).filter(p=>isFem(p.gender)).length;
   /* 세로 기둥 차트 — 트랙은 항상 꽉 찬 높이로 서 있고 그 안이 아래에서 위로 차오른다.
      참가자가 0명이어도 자리가 그대로라 화면이 튀지 않는다.
      비율(%)로 보여준다: 인원 수는 정원이 매치마다 달라 비교가 안 된다. */
@@ -12919,7 +12923,7 @@ function omPlayers(members){
   const list=(members||[]).map(p=>{
     const g = p.assessed || p.grade || gradeFromCareer(careerYearsOf(p)) || 'C';
     return { id:String(p.user_id), name:p.name, g,
-             fem:String(p.gender||'').startsWith('여'),
+             fem:isFem(p.gender),
              mo:Math.max(0,careerMonthsOf(p)) };
   });
   // 등급 → 개월 순으로 정렬한 뒤, 전력값을 순위로 부여 (같은 등급 안에서도 순서가 갈린다)
@@ -13289,7 +13293,7 @@ function cb2GenderCount(){
   const all=cb2All();
   let m=0,f=0;
   all.forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
-    if(String(p.gender||'').startsWith('여')) f++; else m++; });
+    if(isFem(p.gender)) f++; else m++; });
   return {m,f};
 }
 function cb2Courts(){
@@ -13366,7 +13370,7 @@ function drawCB2Build(){
   /* 고르면 맞수 브랜드 컬러로 채운다. 성별은 앞의 점으로 남겨 두어
      '누가 선택됐나'와 '남녀 구성'을 한 칩에서 동시에 읽게 한다. */
   const chip=p=>{
-    const id=String(p.user_id), on=CB2_SEL.has(id), fem=String(p.gender||'').startsWith('여');
+    const id=String(p.user_id), on=CB2_SEL.has(id), fem=isFem(p.gender);
     /* 코랄 위에 연한 분홍·하늘색을 얹으면 묻힌다. 색은 그대로 두고 흰 테를 둘러 띄운다. */
     const dot = fem?'#e0618c':'#3182f6';
     const ring = on ? 'box-shadow:0 0 0 1.6px #fff;' : '';
@@ -13392,7 +13396,7 @@ function drawCB2Build(){
   /* 대진 성별을 바꿔둔 사람은 여기서 한눈에 보이고, 탭해서 되돌릴 수 있다 */
   const sexChips=selArr.map(p=>{
     const id=String(p.user_id), adj=cbSexAdj(p), g=cbSexOf(p);
-    const fem=g.startsWith('여');
+    const fem=isFem(g);
     return `<span onclick="cb2SexTog('${id}')" style="display:inline-flex;align-items:center;gap:5px;margin:0 6px 6px 0;padding:6px 12px;border-radius:18px;font-size:12px;font-weight:500;cursor:pointer;${
       adj ? (fem?'background:#fdeef4;color:#a8395f;border:1.5px solid #f2cfda':'background:#eaf0ff;color:#3b53a8;border:1.5px solid #ccd8f5')
           : 'background:#faf8f4;color:#b3aea4;border:1.5px solid #f0ede6'}">${esc(p.name)}${adj?` · ${fem?'여':'남'}`:''}</span>`;
@@ -13646,7 +13650,7 @@ async function cb2Gen(mode){
     if(M<2){ lateAfter=0; toast('지금 인원·코트로는 늦참을 반영할 수 없어요 · 늦참 없이 짰어요'); }
     else if(lateAfter>M){ lateAfter=M; toast(`전원 4경기를 지키려고 ${M}게임부터로 맞췄어요`); }
   }
-  const isF=p=>String(p.gender||'').startsWith('여');
+  const isF=p=>isFem(p.gender);
   const games=[]; let captains=null, groups=null, genderNote=null;
   const slots=[];                                            // 라운드별 배정 (겹치는 선수 없이 코트 채우기)
   const place=(t1,t2,label)=>{
@@ -13838,7 +13842,7 @@ function cb2Groups(){
   CB2.groups.forEach((g,i)=>{
     const mem=Array.isArray(g)?g:(g.members||[]);
     const gname=Array.isArray(g)?`코트 ${i+1}`:(g.name||`${i+1}조`);
-    const m=mem.filter(p=>!String(p.gender||'').startsWith('여')), f=mem.filter(p=>String(p.gender||'').startsWith('여'));
+    const m=mem.filter(p=>!isFem(p.gender)), f=mem.filter(p=>isFem(p.gender));
     h+=`<div style="background:${cols[i%3]};border-radius:18px;padding:14px;margin-top:10px">
       <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:14px">${esc(gname)}</b><span style="font-size:12px;font-weight:500;color:var(--gray)">${mem.length}명</span></div>
       ${m.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:9px"><span style="font-size:11px;font-weight:500;background:#dfe6ff;color:#3b53a8;border-radius:9px;padding:4px 9px">남 ${m.length}</span>${m.map(p=>`<span style="background:#fff;border-radius:11px;padding:7px 12px;font-size:12px;font-weight:500">${p.tag?`<b style="color:#3b53a8;margin-right:4px">${esc(p.tag)}</b>`:''}${esc(p.name)}</span>`).join('')}</div>`:''}
