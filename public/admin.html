@@ -113,12 +113,35 @@ async function render(){
       </div>`;
     }
     else if(TAB==='users'){
-      const rows=await api('/admin/users');
-      v.innerHTML='<div class="card">'+ (rows.length? rows.map(u=>`
-        <div class="row"><div style="flex:1;min-width:0"><b>${esc(u.name)}</b>
+      const rows=await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
+      /* 성별이 비어 있으면 대진에서 남복·혼복이 잘못 잡힌다.
+         목록을 훑을 때 그런 사람이 먼저 눈에 띄어야 한다. */
+      const noG = rows.filter(u=>!gLabel(u.gender)).length;
+      v.innerHTML=`<div class="card">
+        <div style="display:flex;gap:7px;align-items:center">
+          <input id="uq" placeholder="이름으로 찾기" value="${esc(UQ)}"
+            style="flex:1;border:1px solid #e6e2da;border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit"
+            onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
+          <button class="btn xs" onclick="UQ=document.getElementById('uq').value.trim();render()">찾기</button>
+          ${UQ?`<button class="btn xs ghost" onclick="UQ='';render()">전체</button>`:''}
+        </div>
+        ${noG?`<div class="meta" style="margin-top:9px;color:#cf5418">성별이 비어 있는 회원 ${noG}명 · 대진에서 남복·혼복이 잘못 잡혀요</div>`:''}
+      </div>
+      <div class="card">`+ (rows.length? rows.map(u=>{
+        const g=gLabel(u.gender);
+        return `<div class="row"><div style="flex:1;min-width:0"><b>${esc(u.name)}</b>
+          <span class="pill ${g==='여성'?'warn':g==='남성'?'ok':'gray'}">${g||'성별 없음'}</span>
           <span class="pill gray">${esc(u.provider||'')}</span>${u.premium?'<span class="pill warn">프리미엄</span>':''}
-          <div class="meta">#${u.id} · ${esc(u.region||'지역 없음')} · ${esc(u.sport||'')} · 레이팅 ${u.rating??'—'} · 캐시 ${won(u.cash)} · 가입 ${fdate(u.created_at)}</div></div>
-          <button class="btn xs ghost" onclick="delUser(${u.id},'${esc(u.name)}')">삭제</button></div>`).join('') : '<div class="meta">회원이 없어요</div>') + '</div>';
+          <div class="meta">#${u.id} · ${esc(u.region||'지역 없음')} · ${esc(u.sport||'')} · 레이팅 ${u.rating??'—'} · 캐시 ${won(u.cash)} · 가입 ${fdate(u.created_at)}</div>
+          <div style="margin-top:6px;display:flex;gap:5px">
+            ${['남성','여성','없음'].map(x=>{
+              const on=(x==='없음')?!g:(g===x);
+              return `<button class="btn xs ${on?'':'ghost'}" style="padding:4px 10px"
+                onclick="setGender(${u.id},'${esc(u.name)}','${x==='없음'?'':x}')">${x}</button>`;
+            }).join('')}
+          </div></div>
+          <button class="btn xs ghost" onclick="delUser(${u.id},'${esc(u.name)}')">삭제</button></div>`;
+      }).join('') : '<div class="meta">회원이 없어요</div>') + '</div>';
     }
     else if(TAB==='clubs'){
       const rows=await api('/admin/clubs');
@@ -204,6 +227,25 @@ async function render(){
 }
 
 /* ── 액션들 ── */
+let UQ='';                     // 회원 탭 검색어
+/* 서버에는 'F'/'M' 으로도, '여성'/'남성' 으로도 들어와 있다 — 화면은 한글 하나로 읽는다 */
+function gLabel(v){ const t=String(v||'').trim();
+  if(!t) return '';
+  return (t==='F'||t.startsWith('여')) ? '여성' : (t==='M'||t.startsWith('남')) ? '남성' : ''; }
+
+/* 성별을 고치면 그 사람이 낀 대진의 남복·혼복 표기가 바뀐다.
+   이미 만들어진 대진표는 그대로이고, 새로 짜는 것부터 반영된다. */
+async function setGender(id, name, g){
+  if(gLabel(g)===''&&g) return;
+  const cur=g||'없음';
+  if(!confirm(`${name} 님을 ${cur}(으)로 바꿀까요?\n\n대진의 남복·혼복 표기에 쓰이는 값이에요.\n이미 만든 대진표는 바뀌지 않고, 새로 짜는 것부터 반영돼요.`)) return;
+  try{
+    await api('/admin/users/'+id+'/gender',{method:'PATCH',body:JSON.stringify({gender:g})});
+    toast(g?`${name} → ${g}`:`${name} 성별을 비웠어요`);
+    render();
+  }catch(e){ toast('바꾸지 못했어요 ('+String(e.message).slice(0,60)+')'); }
+}
+
 async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`))return;
   try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요 ('+String(e.message).slice(0,60)+')'); } }
 async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`))return;
