@@ -30,7 +30,26 @@ else
   exit 1
 fi
 
-echo ""
+
+# 진짜 서버를 띄우고 주요 API 를 눌러본다. 문법 검사가 못 잡는 500·404 를 여기서 잡는다.
+# node_modules 가 없으면 건너뛴다 (CI 가 아닌 곳에서도 나머지는 돌아야 한다).
+if [ -d node_modules/express ]; then
+  echo "서버 연기 테스트"
+  if ./test/smoke.sh >/tmp/_smoke 2>&1; then
+    echo "  통과"
+  else
+    sed 's/^/  /' /tmp/_smoke | tail -25
+    echo ""
+    echo "API 가 실패했습니다 — 배포하지 마세요"
+    exit 1
+  fi
+  echo ""
+else
+  echo "서버 연기 테스트"
+  echo "  건너뜀 (npm install 후 다시 실행하세요)"
+  echo ""
+fi
+
 echo "대화 규칙"
 
 for s in $SEEDS; do
