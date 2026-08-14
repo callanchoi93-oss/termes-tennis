@@ -1296,10 +1296,21 @@ function cbLog(cid, data, tag) {                               // 같은 날짜�
     .run(cid, String(data.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
       JSON.stringify(data), now(), tag || '정기'); } catch (e) {}
 }
-app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원만
+/* 번개를 연 사람은 그 번개의 대진을 짤 수 있다.
+   번개는 회원 누구나 열 수 있는데 대진은 임원만 짤 수 있으면,
+   연 사람이 임원을 붙잡아야 모임이 굴러간다. 자기가 연 번개에 한해서만 연다. */
+function canEditBracket(cid, uid, eid) {
+  const role = cbRole(cid, uid);
+  if (role === 'owner' || role === 'officer') return true;
+  if (!eid) return false;                         // 모임을 지정하지 않은 대진은 임원만
+  const ev = db.prepare('SELECT tag, created_by FROM club_events WHERE id=? AND club_id=?').get(eid, cid);
+  return !!(ev && ev.tag === '번개' && ev.created_by === uid);
+}
+
+app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원 또는 번개를 연 사람
   const cid = +req.params.id;
-  const role = cbRole(cid, req.uid);
-  if (role !== 'owner' && role !== 'officer') return res.status(403).json({ error: 'officer_only' });
+  if (!canEditBracket(cid, req.uid, evOf(req)))
+    return res.status(403).json({ error: 'officer_only', message: '대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요' });
   const data = req.body || {};
   const eid = evOf(req);
   if (eid) {
