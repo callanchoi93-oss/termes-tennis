@@ -1629,6 +1629,52 @@ app.delete('/events/:id/comments/:cid', auth, (req, res) => {
   db.prepare('DELETE FROM event_comments WHERE id=?').run(c.id);
   res.json({ ok: true });
 });
+/* ── 되살린 블록 ──────────────────────────────────────────────
+   프리미엄·회비를 걷어낼 때 블록 경계를 잘못 잡아 함께 지워진 것들.
+   문법은 멀쩡해서 검사에 안 걸렸고, 실행할 때만 터졌다:
+     · settleReferral 없음 → '참석'을 누르면 500 (저장하지 못했어요)
+   isMember·threadExists 는 chat-rules.js 에서 import 하고 있어 무사했다.
+   ──────────────────────────────────────────────────────────── */
+const INVITE_REWARD = 10;     // 초대한 사람
+const INVITEE_REWARD = 5;     // 가입한 사람
+const AD_REWARD = 1;          // 광고 1회
+const AD_DAILY_CAP = 1;       // 하루 1회. 리워드 광고 1회 수익은 3~8원이라 그 이상은 순손실
+
+['referral_code TEXT', 'referred_by INTEGER', 'referral_rewarded INTEGER DEFAULT 0'].forEach(c => { try { db.exec(`ALTER TABLE users ADD COLUMN ${c}`); } catch (e) {} });
+db.exec(`CREATE TABLE IF NOT EXISTS ad_views (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, day TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_adviews_user_day ON ad_views(user_id, day);`);
+
+const dayKey = (t) => new Date(t || Date.now()).toISOString().slice(0, 10);
+function grantCash(uid, amount, reason) {
+  const u = getUser(uid);
+  const bal = (u.cash || 0) + amount;
+  db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, uid);
+  db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+    .run(uid, amount, reason, bal, now());
+  return bal;
+}
+function myReferralCode(uid) {
+  let u = getUser(uid);
+  if (u.referral_code) return u.referral_code;
+  let code;
+  do { code = crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6); }
+  while (db.prepare('SELECT 1 FROM users WHERE referral_code=?').get(code));
+  db.prepare('UPDATE users SET referral_code=? WHERE id=?').run(code, uid);
+  return code;
+}
+
+// 초대받은 사람이 첫 모임에 '참석'하면 그때 초대자에게 보상
+function settleReferral(uid) {
+  const u = getUser(uid);
+  if (!u || !u.referred_by || u.referral_rewarded) return;
+  db.prepare('UPDATE users SET referral_rewarded=1 WHERE id=?').run(uid);
+  grantCash(u.referred_by, INVITE_REWARD, '친구 초대 확정 (첫 참석)');
+  sendPush(u.referred_by, { icon: '🎁', title: '초대 보상이 지급됐어요', body: `${u.name} 님이 첫 모임에 참석했어요 · M캐쉬 ${INVITE_REWARD}개` });
+}
+
+
 app.post('/events/:id/rsvp', auth, (req, res) => {
   const eid = +req.params.id;
   const g = eventGuard(eid, req.uid);
@@ -3939,6 +3985,209 @@ app.get('/clubs/:id/bank', auth, (req, res) => {
 });
 
 // 이번 달 회비 고지 생성 (임원진 · 프리미엄)
+/* ── 되살린 API ───────────────────────────────────────────────
+   회비·프리미엄·클럽 단체 대화를 걷어낼 때 블록 경계를 잘못 잡아
+   1:1 대화(DM)·알림함·초대 보상·광고 보상까지 함께 지워졌다.
+   문법은 멀쩡해서 검사에 안 걸리고, 그 화면을 열 때만 404 가 났다.
+   ──────────────────────────────────────────────────────────── */
+app.get('/me/referral', auth, (req, res) => {
+  const u = getUser(req.uid);
+  const invited = db.prepare('SELECT COUNT(*) n FROM users WHERE referred_by=?').get(req.uid).n;
+  const settled = db.prepare('SELECT COUNT(*) n FROM users WHERE referred_by=? AND referral_rewarded=1').get(req.uid).n;
+  res.json({ code: myReferralCode(req.uid), invited, settled, pending: invited - settled,
+             earned: settled * INVITE_REWARD, used: !!u.referred_by,
+             invite_reward: INVITE_REWARD, invitee_reward: INVITEE_REWARD });
+});
+
+// 초대 코드 입력 (가입자가 1회만)
+app.post('/me/referral/claim', auth, (req, res) => {
+  const code = String((req.body && req.body.code) || '').trim().toUpperCase();
+  const me = getUser(req.uid);
+  if (me.referred_by) return res.status(400).json({ error: 'already_used' });
+  const host = db.prepare('SELECT id FROM users WHERE referral_code=?').get(code);
+  if (!host) return res.status(404).json({ error: 'bad_code' });
+  if (host.id === req.uid) return res.status(400).json({ error: 'self_invite' });
+  db.prepare('UPDATE users SET referred_by=? WHERE id=?').run(host.id, req.uid);
+  const cash = grantCash(req.uid, INVITEE_REWARD, '친구 초대 코드 입력');
+  // 초대한 사람 보상은 '초대받은 사람이 실제로 모임에 참석'할 때 지급한다.
+  // 즉시 주면 부계정으로 자기 자신을 초대해 무한 캐시를 만들 수 있다.
+  sendPush(host.id, { icon: '🎁', title: '친구가 가입했어요', body: `${me.name} 님이 첫 모임에 참석하면 M캐쉬 ${INVITE_REWARD}개를 받아요` });
+  res.json({ ok: true, cash, reward: INVITEE_REWARD });
+});
+
+// 광고 시청 보상 (하루 5회)
+app.get('/cash/ad-status', auth, (req, res) => {
+  const used = db.prepare('SELECT COUNT(*) n FROM ad_views WHERE user_id=? AND day=?').get(req.uid, dayKey()).n;
+  res.json({ used, cap: AD_DAILY_CAP, left: Math.max(0, AD_DAILY_CAP - used), reward: AD_REWARD, cash: getUser(req.uid).cash });
+});
+app.post('/cash/ad-reward', auth, (req, res) => {
+  const day = dayKey();
+  const used = db.prepare('SELECT COUNT(*) n FROM ad_views WHERE user_id=? AND day=?').get(req.uid, day).n;
+  if (used >= AD_DAILY_CAP) return res.status(429).json({ error: 'daily_cap', cap: AD_DAILY_CAP });
+  db.prepare('INSERT INTO ad_views (user_id,day,created_at) VALUES (?,?,?)').run(req.uid, day, now());
+  const cash = grantCash(req.uid, AD_REWARD, '광고 시청 보상');
+  res.json({ ok: true, cash, reward: AD_REWARD, left: AD_DAILY_CAP - used - 1 });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  1:1 쪽지 — 새 대화를 여는 첫 메시지에만 캐시 차감. 답장은 무료.
+//  (스팸 비용을 보내는 쪽에 지우고, 받은 사람은 부담 없이 답장)
+// ══════════════════════════════════════════════════════════════
+const DM_COST = 0;   // M캐쉬 폐지 — 대화 무료
+db.exec(`CREATE TABLE IF NOT EXISTS dms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  from_id INTEGER NOT NULL, to_id INTEGER NOT NULL,
+  body TEXT NOT NULL, read INTEGER DEFAULT 0, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_dms_pair ON dms(from_id, to_id, id DESC);`);
+
+const threadKey = (a, b) => (a < b ? a + '_' + b : b + '_' + a);
+/* threadExists 는 chat-rules.js 에서 import 한다 */
+app.get('/dm/threads', auth, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM dms WHERE from_id=? OR to_id=? ORDER BY id DESC LIMIT 200`).all(req.uid, req.uid);
+  const seen = {}, out = [];
+  rows.forEach(m => {
+    const other = m.from_id === req.uid ? m.to_id : m.from_id;
+    if (seen[other]) return;
+    seen[other] = 1;
+    const u = db.prepare('SELECT id,name,anon_nick,rating FROM users WHERE id=?').get(other);
+    const unread = db.prepare('SELECT COUNT(*) n FROM dms WHERE from_id=? AND to_id=? AND read=0').get(other, req.uid).n;
+    out.push({ user: u, last: m.body, last_at: m.created_at, mine: m.from_id === req.uid, unread });
+  });
+  res.json(out);
+});
+
+app.get('/dm/with/:uid', auth, (req, res) => {
+  const other = intOrNull(req.params.uid);
+  const rows = db.prepare(`SELECT id,from_id,to_id,body,created_at,read FROM dms
+    WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) ORDER BY id`).all(req.uid, other, other, req.uid);
+  db.prepare('UPDATE dms SET read=1 WHERE from_id=? AND to_id=? AND read=0').run(other, req.uid);
+  res.json(rows.map(r => ({ ...r, mine: r.from_id === req.uid })));
+});
+
+db.exec(`CREATE TABLE IF NOT EXISTS dm_free_starts (
+  user_id INTEGER NOT NULL, day TEXT NOT NULL, created_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS ix_dm_free ON dm_free_starts(user_id, day);`);
+
+app.post('/dm', auth, (req, res) => {
+  const to = intOrNull(req.body && req.body.to);
+  const body = String((req.body && req.body.body) || '').trim().slice(0, 500);
+  if (!to || to === req.uid) return res.status(400).json({ error: 'bad_target' });
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const target = getUser(to);
+  if (!target) return res.status(404).json({ error: 'no_user' });
+  if (db.prepare('SELECT 1 FROM blocks WHERE user_id=? AND blocked_user_id=?').get(to, req.uid))
+    return res.status(403).json({ error: 'blocked' });
+
+  const isNew = !threadExists(req.uid, to);
+  // 성장 우선: 하루 3건까지는 새 대화도 무료, 그 이후부터 M캐쉬 차감
+  const DM_FREE_PER_DAY = 3;
+  let freeUsed = false;
+  if (isNew) {
+    const day = new Date().toISOString().slice(0, 10);
+    const used = db.prepare("SELECT COUNT(*) n FROM dm_free_starts WHERE user_id=? AND day=?").get(req.uid, day).n;
+    if (used < DM_FREE_PER_DAY) {
+      db.prepare('INSERT INTO dm_free_starts (user_id,day,created_at) VALUES (?,?,?)').run(req.uid, day, now());
+      freeUsed = true;
+    }
+  }
+  if (isNew && !freeUsed) {                            // 무료 소진 후 새 대화만 유료 · 이중 차감 방지 잠금
+    let after;
+    try {
+      after = tx(() => {
+        const me = getUser(req.uid);
+        if ((me.cash || 0) < DM_COST) throw new Error('insufficient_cash');
+        const a = me.cash - DM_COST;
+        db.prepare('UPDATE users SET cash=? WHERE id=?').run(a, req.uid);
+        db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+          .run(req.uid, -DM_COST, '대화 · 새 대화 시작', a, now());
+        return a;
+      });
+    } catch (e) {
+      if (e.message === 'insufficient_cash') {
+        const me = getUser(req.uid);
+        return res.status(402).json({ error: 'insufficient_cash', need: DM_COST, cash: me.cash || 0 });
+      }
+      throw e;
+    }
+  }
+  const r = db.prepare('INSERT INTO dms (from_id,to_id,body,created_at) VALUES (?,?,?,?)').run(req.uid, to, body, now());
+  sendPush(to, { icon: '💬', title: '쪽지가 도착했어요', body: body.slice(0, 40) });
+  res.json({ ok: true, id: rid(r), charged: (isNew && !freeUsed) ? DM_COST : 0, cash: getUser(req.uid).cash });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  클럽 단체 채팅 — 회원 전용. 폴링(GET ?since=) 방식.
+//  연락처 차단은 하지 않는다 (회원끼리의 사적 공간 · DM 과 같은 원칙).
+// ══════════════════════════════════════════════════════════════
+db.exec(`CREATE TABLE IF NOT EXISTS club_chat (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  body TEXT NOT NULL, created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_club_chat ON club_chat(club_id, id);
+CREATE TABLE IF NOT EXISTS club_chat_reads (
+  club_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  last_read_id INTEGER NOT NULL DEFAULT 0, updated_at BIGINT,
+  PRIMARY KEY (club_id, user_id)
+);`);
+
+const setChatRead = db.prepare(`INSERT INTO club_chat_reads (club_id,user_id,last_read_id,updated_at) VALUES (?,?,?,?)
+  ON CONFLICT(club_id,user_id) DO UPDATE SET
+    last_read_id=MAX(last_read_id, excluded.last_read_id), updated_at=excluded.updated_at`);
+
+app.get('/clubs/:id/chat', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const since = intOrNull(req.query.since) || 0;
+  const rows = db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.name
+    FROM club_chat c JOIN users u ON u.id=c.user_id
+    WHERE c.club_id=? AND c.id>? ORDER BY c.id DESC LIMIT 100`).all(cid, since).reverse();
+  // 메시지별 '안 읽은 사람 수' — 활성 회원 중 읽음 커서가 이 메시지에 못 미친 인원
+  const total = activeMembers(cid);
+  const readersUpTo = db.prepare('SELECT COUNT(*) n FROM club_chat_reads WHERE club_id=? AND last_read_id>=?');
+  res.json(rows.map(r => ({ ...r, mine: r.user_id === req.uid,
+    unread: Math.max(0, total - readersUpTo.get(cid, r.id).n) })));
+});
+
+app.post('/clubs/:id/chat', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const body = String((req.body || {}).body || '').trim().slice(0, 500);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const prevMax = (db.prepare('SELECT MAX(id) m FROM club_chat WHERE club_id=?').get(cid).m) || 0;
+  const r = db.prepare('INSERT INTO club_chat (club_id,user_id,body,created_at) VALUES (?,?,?,?)')
+    .run(cid, req.uid, body, now());
+  setChatRead.run(cid, req.uid, rid(r), now());          // 보낸 사람은 당연히 읽음
+  // 새 메시지 푸시 — 밀린 메시지가 없던(=다 읽고 있던) 회원에게만 보내 도배를 막는다
+  const me = getUser(req.uid);
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  db.prepare(`SELECT cm.user_id, COALESCE(cr.last_read_id,0) lr FROM club_members cm
+    LEFT JOIN club_chat_reads cr ON cr.club_id=cm.club_id AND cr.user_id=cm.user_id
+    WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') AND cm.user_id<>?`).all(cid, req.uid)
+    .forEach(m => { if (m.lr >= prevMax) sendPush(m.user_id,
+      { icon: '💬', title: `${club ? club.name : '클럽'} 단체방`, body: `${me.name}: ${body.slice(0, 40)}` },
+      { skipInbox: true }); });
+  res.json({ ok: true, id: rid(r) });
+});
+
+// 읽음 커서 갱신
+app.post('/clubs/:id/chat/read', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const lastId = intOrNull((req.body || {}).last_id) || 0;
+  setChatRead.run(cid, req.uid, lastId, now());
+  res.json({ ok: true });
+});
+
+// 안읽음 집계 — 헤더 배지용 (대화 아이콘)
+/* 알림함 뱃지 — 클럽 단체 대화를 없앴으므로 1:1 대화만 센다. */
+app.get('/me/unread', auth, (req, res) => {
+  const dm = db.prepare('SELECT COUNT(*) n FROM dms WHERE to_id=? AND read=0').get(req.uid).n;
+  res.json({ dm, total: dm });
+});
+
 app.get('/clubs/:id/rankings', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
