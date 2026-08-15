@@ -686,7 +686,11 @@
   .search{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 15px;margin-bottom:12px}
   .search input{border:none;outline:none;font-size:14px;font-family:inherit;flex:1;background:none;color:var(--ink)}
   .chips{display:flex;gap:8px;overflow-x:auto;padding:0 0 12px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
-  .chip{flex-shrink:0;padding:8px 15px;border-radius:18px;font-size:14px;font-weight:600;background:#fff;border:1.5px solid var(--line);color:var(--gray);cursor:pointer}
+  /* 글자가 캡슐 안에서 위로 붙어 보였다 — 줄높이가 상속돼 위아래 여백이 달랐다.
+     flex 로 가운데 맞추고 줄높이를 1 로 고정한다. */
+  .chip{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;
+    line-height:1;padding:9px 15px;border-radius:18px;font-size:14px;font-weight:600;
+    background:#fff;border:1.5px solid var(--line);color:var(--gray);cursor:pointer}
   .chip.on{background:var(--coral);border-color:var(--coral);color:#fff}
   .clubrow{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px}
   .clubrow .ci{width:46px;height:46px;border-radius:13px;background:var(--coral-s);color:var(--coral-d);font-weight:600;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -1263,8 +1267,8 @@
   /* 내 정보 서브탭 — 네 개가 나란히 서니 기본 칩(14px · 좌우 15px)은 화면을 다 먹는다 */
   /* 경기기록·파트너·상대전적·리포트 — 네 칸이라 캡슐이 크면 화면을 다 먹는다 */
   .chips.mi-sub{gap:5px;padding-bottom:12px}
-  .chips.mi-sub .chip{padding:6px 11px;border-radius:11px;font-size:12px;
-    font-weight:600;border-width:1px}
+  .chips.mi-sub .chip{padding:8px 11px;border-radius:11px;font-size:12px;
+    font-weight:600;border-width:1px;line-height:1}
   /* 월례대회 조 설정 — 스텝퍼 */
   .tgrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
     border-radius:12px;padding:11px 13px;margin-bottom:8px}
@@ -7576,6 +7580,14 @@ function renderClub(){
             <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}</b>
             <span style="font-size:11.5px;color:var(--gray);font-weight:600;margin-left:8px">${
               wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></span>
+        </div>
+        <div style="display:flex;background:#f4f2ee;border-radius:12px;padding:3px;margin:0 4px 10px">
+          ${[['다가오는',false],['지난 모임',true]].map(([t,v])=>{
+            const on=!!state._clubPast===v;
+            return `<span onclick="clubPast(${v})" style="flex:1;text-align:center;cursor:pointer;
+              font-size:12.5px;padding:8px 0;border-radius:9px;letter-spacing:-.02em;
+              ${on?'background:#fff;color:var(--ink);font-weight:800;box-shadow:0 1px 3px rgba(60,50,35,.10)'
+                  :'color:var(--gray);font-weight:600'}">${t}</span>`; }).join('')}
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
@@ -14045,7 +14057,9 @@ function drawCB2Build(){
   const lateLocked=!lateCanAdd();
   const lateChips=selArr.map(p=>{
     const id=String(p.user_id), lt=CB2_LATE.has(id);
-    const off=lateLocked && !lt;
+    /* 그 사람을 빼면 남은 사람으로 코트를 못 채우거나
+       남복·혼복·여복이 안 떨어지는 경우가 있어 한 명씩 따로 본다 */
+    const off=!lt && !lateCanAdd(p);
     return `<span ${off?'':`onclick="cb2LateTog('${id}')"`} style="display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:18px;font-size:12px;font-weight:500;${off?'opacity:.4;cursor:default':'cursor:pointer'};${lt?'background:#fdf2dd;color:#a5750d;border:1.5px solid #eed9a8':'background:#faf8f4;color:#b3aea4;border:1.5px solid #f0ede6'}">${esc(p.name)}${lt?' · 늦':''}</span>`;
   }).join('');
   /* 인원·코트·늦참 인원이 바뀌면 고른 값이 한계를 넘을 수 있다 — 조용히 맞춰둔다 */
@@ -14108,7 +14122,9 @@ function drawCB2Build(){
       <button class="btn sm" style="width:auto;padding:0 16px" onclick="cb2AddGuest()">추가</button></div>
 
     ${(()=>{ const M=lateMaxNow(), addOk=lateCanAdd();
-      const sub = M<2 ? '지금 인원·코트로는 늦참을 받을 수 없어요'
+      const sexWhy=lateSexWhy();
+      const sub = sexWhy ? sexWhy
+        : M<2 ? '지금 인원·코트로는 늦참을 받을 수 없어요'
         : !addOk ? '더 지정하면 4경기가 깨져요'
         : '탭해서 지정';
       return `<div class="ch" style="font-size:14px;margin-top:12px">늦참자
@@ -14219,12 +14235,59 @@ function lateMax(n, courts, lateN){
   }
   return best;
 }
+/* 한 바퀴를 남복·혼복·여복으로만 채울 수 있는가.
+   한 경기의 여성 수는 0·2·4 뿐이라, 한 바퀴에 뛰는 여성 수는 짝수여야 하고
+   나머지 자리는 남성으로 채워져야 한다.
+   예) 남7 여1 로 2코트(8자리) → 여성은 0명만 뛸 수 있는데 남자가 7명뿐이라 못 채운다. */
+function cbSexFits(nM, nF, courts){
+  const per=courts*4;
+  if(nM+nF < per) return false;
+  for(let f=Math.min(nF,per) - (Math.min(nF,per)%2); f>=0; f-=2)
+    if(per-f <= nM) return true;
+  return false;
+}
+/* 지금 고른 참석자의 남녀 수 (게스트 포함) */
+function cbSexNow(){
+  let m=0,f=0;
+  cb2All().forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
+    if(isFem(p.gender)) f++; else m++; });
+  CB2_GUESTS.forEach(g=>{ if(isFem(g.gender)) f++; else m++; });
+  return {m,f};
+}
+/* 늦참자를 뺀 정시 인원의 남녀 수 */
+function cbSexOnTime(){
+  let m=0,f=0;
+  cb2All().forEach(p=>{ const id=String(p.user_id);
+    if(!CB2_SEL.has(id) || CB2_LATE.has(id)) return;
+    if(isFem(p.gender)) f++; else m++; });
+  CB2_GUESTS.forEach(g=>{ if(CB2_LATE.has(String(g.gid))) return;
+    if(isFem(g.gender)) f++; else m++; });
+  return {m,f};
+}
+/* 늦참을 지금 구성으로 반영할 수 있나 — 인원과 성별을 함께 본다 */
+function lateSexWhy(){
+  if(!CB2_LATE.size) return null;
+  const t=cbSexOnTime(), c=cb2Courts();
+  if(t.m+t.f < c*4) return `늦참을 빼면 ${t.m+t.f}명이라 ${c*4}명을 못 채워요`;
+  if(!cbSexFits(t.m, t.f, c))
+    return `늦참을 빼면 남${t.m} 여${t.f} 라 남복·혼복·여복으로 안 떨어져요`;
+  return null;
+}
 function lateMaxNow(){
+  if(lateSexWhy()) return 0;                       // 성별이 안 맞으면 미룰 수 없다
   return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size);
 }
-/* 한 명 더 지정해도 되는지 — 안 되면 칩을 잠근다 */
-function lateCanAdd(){
-  return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size+1) >= 2;
+/* 한 명 더 지정해도 되는지 — 안 되면 칩을 잠근다.
+   그 사람을 뺐을 때 성별이 떨어지는지까지 본다. */
+function lateCanAdd(p){
+  const n=CB2_SEL.size + CB2_GUESTS.length, c=cb2Courts();
+  if(lateMax(n, c, CB2_LATE.size+1) < 2) return false;
+  if(p){
+    const t=cbSexOnTime();
+    if(isFem(p.gender)) t.f--; else t.m--;
+    if(!cbSexFits(t.m, t.f, c)) return false;
+  }
+  return true;
 }
 function lateOpts(){
   /* lateMax 는 '몇 바퀴까지 미룰 수 있나' 를 준다 → 합류는 그다음 게임부터 */
@@ -14532,12 +14595,29 @@ async function cb2Gen(mode){
       if(idleFree){ idleFree.forEach(g=>push(g.r,g.c,g.t1,g.t2)); done=true; }
     }
     if(!done){
-      const plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:lateAfter*perR,
-        past:PAST_PAIRS, style:'level', budget:550});
-      if(!plan.length){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
-      cbPack(plan.map(([t1,t2])=>({t1,t2,ids:[...t1,...t2].map(p=>p.id),
-          minR:[...t1,...t2].some(p=>p.late)?lateAfter+1:1 })), courts)
-        .forEach(g=>push(g.r,g.c,g.t1,g.t2));
+      /* 늦참 합류 시점을 최대치로 잡으면 남은 바퀴가 빠듯해서
+         늦참자가 합류 전 경기에 끼어 나오는 일이 있었다(시뮬 3,759건 중 451건).
+         만든 뒤에 확인하고, 어긋나면 합류를 한 게임씩 당겨 다시 짠다.
+         1게임 합류에서는 한 번도 어긋나지 않았으니 반드시 답이 나온다. */
+      const lateIds=new Set(ps.filter(p=>p.late).map(p=>String(p.id)));
+      let packed=null, usedAfter=lateAfter;
+      for(let A=lateAfter; A>=0; A--){
+        const plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:A*perR,
+          past:PAST_PAIRS, style:'level', budget:550});
+        if(!plan.length) continue;
+        const out=cbPack(plan.map(([t1,t2])=>({t1,t2,ids:[...t1,...t2].map(p=>p.id),
+          minR:[...t1,...t2].some(p=>p.late)?A+1:1 })), courts);
+        const early = A>0 && out.some(g=>g.r<=A &&
+          [...(g.t1||[]),...(g.t2||[])].some(p=>lateIds.has(String(p.id))));
+        if(!early){ packed=out; usedAfter=A; break; }
+      }
+      if(!packed){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
+      if(usedAfter!==lateAfter){
+        lateAfter=usedAfter;
+        toast(usedAfter ? `늦참 합류를 ${usedAfter+1}게임부터로 맞췄어요 · 전원 4경기를 지키려고요`
+                        : '이 인원으로는 늦참을 미룰 수 없어 반영하지 않았어요');
+      }
+      packed.forEach(g=>push(g.r,g.c,g.t1,g.t2));
     }
   }
   if(!games.length && mode!=='cheongbaek'){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
