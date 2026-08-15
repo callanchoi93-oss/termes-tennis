@@ -345,6 +345,16 @@
   .cbwide td.bad u{ text-decoration:underline; text-decoration-color:#e07b7b;
     text-underline-offset:2px; font-weight:800 }
   .cbwide td.r.bad{ background:transparent; box-shadow:none; color:#c14545 }
+  /* 이동 안내로 덮은 칸 — 그 넷에게만 보인다. 눌러서 점수와 번갈아 본다. */
+  .cbwide td.mvcell{ background:#f6f1e6; color:#7a6238 }
+  .cbwide td.mvcell.go{ background:#fbe6c2; color:#8a5a12 }
+  .cbwide td.mvcell b{ display:block; font-size:12px; font-weight:800; letter-spacing:-.03em }
+  .cbwide td.mvcell span{ display:block; font-size:10.5px; font-weight:600; margin-top:3px; opacity:.85 }
+  .cbwide td.mvcell i{ display:block; font-style:normal; font-size:9.5px; font-weight:600;
+    margin-top:6px; opacity:.55 }
+  .cbwide td.flipped{ box-shadow:inset 0 0 0 1.5px #e0cfa8 }
+  .cbwide td i.back{ display:block; font-style:normal; font-size:9.5px; font-weight:600;
+    color:#a2916f; margin-top:5px }
   .cbwide .lg{ font-size:11.5px; color:var(--gray); padding:10px 12px; background:#faf8f4;
     border-top:1px solid var(--line); line-height:1.6 }
   .cbwide .lg b{ color:var(--coral-d); font-weight:700 }
@@ -1306,8 +1316,9 @@
   .hallrow{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;
     margin:0 -2px var(--s4);padding:0 2px 2px}
   .hallrow::-webkit-scrollbar{display:none}
+  /* 가운데 정렬이 없어서 글자가 왼쪽에 붙어 있었다 */
   .hallc{flex:0 0 auto;width:94px;border:1px solid var(--line);border-radius:14px;
-    padding:13px 11px;cursor:pointer;background:#fff}
+    padding:13px 9px;cursor:pointer;background:#fff;text-align:center}
   .hallc:active{background:var(--felt)}
   .hallc .hl{font-size:var(--t1);font-weight:700;color:var(--coral-d);letter-spacing:-.01em}
   .hallc .hn{font-size:var(--t2);font-weight:600;letter-spacing:-.02em;margin-top:7px;
@@ -4708,6 +4719,34 @@ function openNewEvent(){
 function neMonth(d){ NE.m+=d; if(NE.m<0){NE.m=11;NE.y--;} if(NE.m>11){NE.m=0;NE.y++;} NE.day=null; renderNewEvent(); }
 function nePick(day){ NE.day=day; renderNewEvent(); }
 function neTime(t){ NE.time=t; renderNewEvent(); }
+/* 시간을 직접 적게 한다 — 폰의 시계 굴림판보다 타이핑이 빠르다는 분이 많다.
+   19:30 · 1930 · 19시30분 · 오후 7시 30분 을 모두 19:30 으로 읽는다. */
+function neParseTime(v){
+  const raw=String(v||'').trim();
+  if(!raw) return null;
+  const t=raw.replace(/오전|오후|아침|저녁|밤/g,'').trim();   // 앞뒤 말은 떼고 숫자만 본다
+  let m;
+  if((m=t.match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/))){ }
+  else if((m=t.match(/^(\d{1,2})\s*시\s*(\d{1,2})\s*분?$/))){ }
+  else if((m=t.match(/^(\d{1,2})\s*시$/))){ m=[t,m[1],'0']; }
+  else if((m=t.match(/^(\d{3,4})$/))){ const n=m[1];
+    m=[t, n.slice(0,n.length-2), n.slice(-2)]; }
+  else return null;
+  let hh=+m[1], mm=+m[2];
+  /* 오후/저녁을 붙였으면 12를 더한다 */
+  if(/오후|저녁|밤/.test(raw) && hh<12) hh+=12;
+  if(/오전|아침/.test(raw) && hh===12) hh=0;
+  if(!(hh>=0&&hh<=23) || !(mm>=0&&mm<=59)) return null;
+  return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+}
+/* 입력창에서 빠져나올 때 다듬는다 — 못 읽으면 그대로 두고 알려준다 */
+function neTimeBlur(el, which){
+  const v=neParseTime(el.value);
+  if(v){ if(which==='end') NE.end=v; else NE.time=v; renderNewEvent(); return; }
+  if(String(el.value||'').trim()===''){ if(which==='end') NE.end=''; return; }
+  toast('예) 19시 30분은 19:30 으로 적어주세요');
+  el.focus(); el.select&&el.select();
+}
 function drawNewEvent(){ renderNewEvent(); }
 function renderNewEvent(){
   const today=new Date(); today.setHours(0,0,0,0);
@@ -4741,9 +4780,15 @@ function renderNewEvent(){
       </div>
       ${!_off?`<div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:7px;line-height:1.6">정기 모임은 임원만 만들 수 있어요. 번개는 회원 누구나 열 수 있어요.</div>`:''}</div>
     <div class="fld" style="margin-top:12px"><label>시작 시간</label>
-      <input id="evStart" type="time" step="60" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
-    <div class="fld" style="margin-top:12px"><label>종료 시간 <span style="font-weight:500;color:var(--lgray)">· 선택</span></label>
-      <input id="evEnd" type="time" step="60" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
+      <input id="evStart" type="text" inputmode="numeric" placeholder="00:00" maxlength="7"
+        value="${esc(NE.time||'')}" oninput="NE.time=this.value" onblur="neTimeBlur(this,'start')"
+        style="width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums"></div>
+    <div class="fld" style="margin-top:12px"><label>종료 시간</label>
+      <input id="evEnd" type="text" inputmode="numeric" placeholder="00:00" maxlength="7"
+        value="${esc(NE.end||'')}" oninput="NE.end=this.value" onblur="neTimeBlur(this,'end')"
+        style="width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums"></div>
+    <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px">
+      19시 30분은 <b style="color:var(--gray)">19:30</b> 으로 적어주세요</div>
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
@@ -12746,6 +12791,31 @@ function cbMyCard(){
   const FIXED = MODE==='hanul' || MODE==='monthly';
   const TEAMGAME = MODE==='cheongbaek';
 
+  /* 청백전은 캡틴이 오더를 짜야 경기가 생긴다 — 그 전에는 대진이 비어 있다.
+     캡틴에게는 짜라고, 나머지에게는 기다리라고 알린다. */
+  if(TEAMGAME && !gs.length){
+    const side=(typeof cb2MySide==='function') ? cb2MySide() : null;
+    const o=(CB2.orders||{}), cap=(CB2.captains||{});
+    if(side){
+      const mineDone=!!(o[side]&&o[side].length);
+      const other=side==='blue'?'white':'blue';
+      const otherDone=!!(o[other]&&o[other].length);
+      const teamNm=side==='blue'?'청팀':'백팀';
+      if(!mineDone) return {kind:'now', lb:`${teamNm} 캡틴`,
+        big:'대진을 짜주세요',
+        m:`우리 팀 순서를 정하면 경기가 만들어져요\n한 사람이 정확히 4경기예요`,
+        btn:'대진 짜기 ›', act:'cb2OrderSheet()'};
+      return {kind:'rest', lb:`${teamNm} 캡틴 · 우리 팀 완료`,
+        big: otherDone ? '대진이 만들어졌어요' : '상대 팀을 기다려요',
+        m: otherDone ? '곧 경기가 시작돼요'
+                     : `${side==='blue'?'백팀':'청팀'} 캡틴이 짜는 중이에요`,
+        btn:'우리 팀 다시 보기 ›', act:'cb2OrderSheet()'};
+    }
+    return {kind:'rest', lb:'청백전',
+      big:'캡틴이 대진을\n짜는 중이에요',
+      m:`청팀 ${esc((cap.blue||{}).name||'-')} · 백팀 ${esc((cap.white||{}).name||'-')}\n곧 시작해요`};
+  }
+
   if(!mine.length) return {kind:'rest', lb:'오늘 대진',
     big:'오늘 대진에 안 계세요', m:'참석하셨다면 경기이사에게 말씀해 주세요'};
 
@@ -12827,7 +12897,7 @@ function cbMyCard(){
     const bigTxt = freeCourt
       ? `${CT(freeCourt)}에서\n몸 푸세요`
       : `${CT(next.c)}로 가서\n몸 푸세요`;
-    const moveTxt = freeCourt ? `${CT(next.c)}가 나면 그리로 옮겨요\n` : '';
+    const moveTxt = freeCourt ? `${CT(next.c)} 경기가 끝나면 그리로 옮겨요\n` : '';
     return {kind:'go', lb:`곧 나가요 · ${leftTxt}`,
       big:bigTxt,
       m:`${moveTxt}${why}\n${RD(next.r)} · ${who}`};
@@ -12836,6 +12906,105 @@ function cbMyCard(){
   return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
     big:`다음은 ${RD(next.r)}\n${CT(next.c)}예요`,
     m:`${ahead}경기 뒤예요\n${who}`};
+}
+
+/* 뒤집어 놓은 칸 — 키는 "게임-코트" */
+let CB2_FLIP={};
+function cb2Flip(k){ CB2_FLIP[k]=!CB2_FLIP[k]; drawCB2View(); }
+
+/* ── 대진표 이동 안내 ─────────────────────────────────────
+   카드에서 <2번 코트에서 몸 풀다 3번 코트로> 안내를 받은 넷에게만,
+   그 두 칸을 안내로 덮는다. 나머지 회원 표는 아무것도 안 바뀐다.
+   경기를 시작하거나 점수가 들어가면 안내가 걷힌다. */
+function cbMoveHint(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return null;
+  const gs=(CB2.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
+  /* 내 다음 경기 — 아직 시작 안 한 것 */
+  const next=gs.filter(g=>inG(g) && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+  if(!next) return null;
+  /* 그 코트에서 내 앞에 안 한 경기가 있으면 아직 내 차례가 아니다 */
+  if(gs.some(g=>g.c===next.c && !done(g) && !g.startedAt && g.r<next.r)) return null;
+  /* 내 코트가 지금 돌고 있어야 <기다렸다 옮기는> 상황이 된다 */
+  const busyMine=gs.find(g=>g.c===next.c && g.startedAt && !done(g));
+  if(!busyMine) return null;
+  /* 지금 비어 있는 다른 코트 = 몸 풀 곳 */
+  let warmC=0;
+  for(let cc=1;cc<=(CB2.courts||0);cc++){
+    if(cc===next.c) continue;
+    if((CB2.offCourts||[]).includes(cc)) continue;
+    if(gs.some(g=>g.c===cc && g.startedAt && !done(g))) continue;
+    warmC=cc; break;
+  }
+  if(!warmC) return null;
+  /* 그 코트에서 가장 최근 칸 — 거기에 안내를 얹는다 */
+  const warmG=gs.filter(g=>g.c===warmC).sort((a,b)=>b.r-a.r)
+    .find(g=>done(g) || g.r<=next.r) || gs.filter(g=>g.c===warmC)[0];
+  if(!warmG) return null;
+  return {
+    warm:{r:warmG.r, c:warmC},
+    warmTxt:{ t1:'① 여기서 몸 푸세요', t2:`${next.c}번 코트 경기가 끝날 때까지` },
+    go:{r:next.r, c:next.c}, 
+    goTxt:{ t1:'② 여기로 옮겨주세요', t2:`${warmC}번 코트에서 · ${next.r}번째 게임`, go:1 }
+  };
+}
+
+/* ── 홈 화면 요약 카드 ────────────────────────────────────
+   대진 화면 카드는 <지금 할 일> 하나만 말한다.
+   홈에서는 <어느 모임에서 · 몇 경기째 · 다음은 누구와> 를 한 장에 담는다.
+   경기가 도는 동안에는 내 차례가 아니어도 계속 떠 있다. */
+function cbHomeCard(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return null;
+  const gs=(CB2.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
+  const mine=gs.filter(inG);
+  if(!mine.length) return null;
+  /* 오늘 모임이 아니면 안 띄운다 — 어제 대진이 홈에 남아 있으면 헷갈린다 */
+  const today=new Date().toISOString().slice(0,10);
+  if(CB2.date && CB2.date!==today) return null;
+  const allDone=gs.every(done);
+  const last=mine.filter(done).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0))[0];
+  if(allDone && last && last.startedAt && Date.now()-last.startedAt > 3*3600000) return null;
+
+  const CT=n=>`${n}번 코트`, RD=n=>`${n}번째 게임`;
+  const nmOf=g=>{ const inA=(g.teamA||[]).some(p=>String(p.id)===me);
+    const mate=(inA?(g.teamA||[]):(g.teamB||[])).find(p=>String(p.id)!==me);
+    const opp=inA? (g.teamB||[]) : (g.teamA||[]);
+    return (mate?`파트너 ${mate.name} `:'') + (opp.length?`vs ${opp.map(p=>p.name).join(' · ')}`:''); };
+
+  const myDone=mine.filter(done).length;
+  const title=(CB2.event&&CB2.event.title)||'오늘 모임';
+  const run=mine.find(g=>g.startedAt && !done(g));
+  const next=mine.filter(g=>!done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+
+  let big, m;
+  if(run){
+    big=`${CT(run.c)}에서 경기 중`;
+    m=`${RD(run.r)} · ${nmOf(run)}`;
+    /* 한 줄에 다 넣으면 39자가 되어 이름이 다음 줄로 넘어간다 — 줄을 나눈다 */
+    if(next) m+=`\n\n다음 · ${RD(next.r)} ${CT(next.c)}\n${nmOf(next)}`;
+    else m+='\n이 경기가 마지막이에요';
+  } else if(next){
+    big=`다음은 ${RD(next.r)} ${CT(next.c)}`;
+    m=nmOf(next);
+    const ahead=gs.filter(g=>!done(g) && g.r<next.r).length;
+    m+= ahead? `\n${ahead}경기 뒤예요` : '\n곧 시작해요';
+  } else {
+    let w=0,l=0;
+    mine.filter(done).forEach(g=>{ const a=(g.teamA||[]).some(p=>String(p.id)===me);
+      const ms=a?g.sa:g.sb, os=a?g.sb:g.sa; if(ms>os) w++; else if(ms<os) l++; });
+    big='오늘 경기 다 끝났어요';
+    m=`${w}승 ${l}패 · 수고하셨어요`;
+  }
+  return { kind: run?'now' : next?'go' : 'done',
+    lb:`${title} · 내 경기 ${myDone}/${mine.length} · 전체 ${gs.filter(done).length}/${gs.length}`,
+    big, m };
 }
 
 /* ── 운영진 카드 ──────────────────────────────────────────
@@ -12942,7 +13111,7 @@ function cbOfficerCard(){
         : '앞 경기가 끝나면 시작해요';
       /* 몸 풀 코트와 실제 뛸 코트가 다를 수 있다 — 둘 다 적어야 헷갈리지 않는다 */
       const bigTxt=`${who}\n${CT(c0)}에서 몸 푸세요`;
-      const move = (nx.c===c0) ? '' : `${CT(nx.c)}가 나면 그리로 옮겨요\n`;
+      const move = (nx.c===c0) ? '' : `${CT(nx.c)} 경기가 끝나면 그리로 옮겨요\n`;
       found.push({p:3, kind:'warn',
         lb:`${CT(c0)}가 비어 있어요 · ${gs.filter(done).length}/${gs.length}`,
         big:bigTxt, m:`${move}${RD(nx.r)} · ${wait}`, more:idle.length-1});
@@ -12991,7 +13160,7 @@ function cbOfficerCard(){
         found.push({p:6, kind:'ok',
           lb:`${CT(cur.c)}가 ${mins(cur.startedAt)}분째예요 · ${gs.filter(done).length}/${gs.length}`,
           big: spare ? `${nm}\n${CT(spare)}에서 몸 푸세요` : `${nm}\n미리 몸 푸세요`,
-          m:`${spare&&spare!==nx.c?`${CT(nx.c)}가 나면 그리로 옮겨요\n`:''}${CT(cur.c)}가 끝나면 ${CT(nx.c)}에서 ${RD(nx.r)}`});
+          m:`${spare&&spare!==nx.c?`${CT(nx.c)} 경기가 끝나면 그리로 옮겨요\n`:''}${CT(cur.c)}가 끝나면 ${CT(nx.c)}에서 ${RD(nx.r)}`});
       }
     }
   }
@@ -13257,6 +13426,8 @@ function drawCB2View(){
         const dupBy={}; rs.forEach(r=>{ dupBy[r]=cb2ClashAt(CB2.games||[], r).map(d=>d.name); });
         const nm=(arr,r)=>(arr||[]).map(p=>
           (dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name)).join('·');
+        /* 이동 안내 — 그 넷에게만 칸을 덮는다. 탭하면 점수, 다시 탭하면 안내. */
+        const MV=cbMoveHint();
         h+=`<div class="cbwide"><table>
           <tr><th></th>${cs.map(({c})=>`<th>${c}번 코트</th>`).join('')}</tr>
           ${rs.map(r=>`<tr><td class="r${(dupBy[r]||[]).length?' bad':''}">${r}</td>${cs.map(({c})=>{
@@ -13266,10 +13437,19 @@ function drawCB2View(){
             const mine=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name);
             const bad=(dupBy[r]||[]).some(n=>mine.includes(n));
             const cls=bad?'bad':done(g)?'dn':run?'on':'';
-            return `<td class="${cls}" onclick="cb2Menu(${g.gi})">
+            /* 덮을 칸인가 — 몸 풀 곳(step 1)과 내가 갈 곳(step 2) */
+            const hint = MV && (MV.warm && MV.warm.r===r && MV.warm.c===c ? MV.warmTxt
+                              : MV.go && MV.go.r===r && MV.go.c===c ? MV.goTxt : null);
+            if(hint && !CB2_FLIP[`${r}-${c}`]){
+              return `<td class="${cls} mvcell${hint.go?' go':''}" onclick="cb2Flip('${r}-${c}')">
+                <b>${esc(hint.t1)}</b><span>${esc(hint.t2)}</span>
+                <i>눌러서 점수 보기</i></td>`;
+            }
+            return `<td class="${cls}${hint?' flipped':''}" onclick="${hint?`cb2Flip('${r}-${c}')`:`cb2Menu(${g.gi})`}">
               ${nm(g.teamA,r)}
               <em>${done(g)?`${g.sa}:${g.sb}`:run?'경기 중':'vs'}</em>
-              ${nm(g.teamB,r)}</td>`;
+              ${nm(g.teamB,r)}
+              ${hint?`<i class="back">눌러서 안내 보기</i>`:''}</td>`;
           }).join('')}</tr>`).join('')}
         </table>
         <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 게임에 안 쓰는 코트
@@ -15226,6 +15406,22 @@ function cb2OrderAuto(){
 }
 async function cb2OrderSave(){
   const o=window._cb2Order;
+  /* ── 안전장치 ──────────────────────────────────────────
+     전원 정확히 4경기여야 한다. 3경기도 5경기도 안 된다.
+     화면에서 버튼을 잠그고 있지만, 어떤 경로로 들어와도 여기서 한 번 더 막는다. */
+  { const cnt={};
+    o.cur.forEach(pr=>pr.forEach(id=>{ if(id) cnt[id]=(cnt[id]||0)+1; }));
+    const bad=o.team.filter(p=>(cnt[p.id]||0)!==4);
+    if(bad.length){
+      const t=bad.slice(0,3).map(p=>`${p.name} ${cnt[p.id]||0}경기`).join(' · ');
+      toast(`전원 4경기가 되어야 해요 · ${t}${bad.length>3?` 외 ${bad.length-3}명`:''}`);
+      return;
+    }
+    const half=o.cur.filter(pr=>!pr[0]||!pr[1]);
+    if(half.length){ toast(`${half.length}게임에 자리가 비어 있어요`); return; }
+    const same=o.cur.filter(pr=>String(pr[0])===String(pr[1]));
+    if(same.length){ toast('한 게임에 같은 사람이 두 번 들어갔어요'); return; }
+  }
   CB2.orders=CB2.orders||{blue:null,white:null};
   CB2.orders[o.side]=o.cur;
   const B=CB2.orders.blue, W=CB2.orders.white;
@@ -23258,17 +23454,9 @@ function _renderHomeCore(){
     HOME_BANNERS=[]; api('/banners').then(r=>{ HOME_BANNERS=r||[]; if(state.view==='home') renderHome(); }).catch(()=>{});
   }
   let h='';
-  /* ── 오늘 경기 중이면 맨 위에 내 차례 카드 ──
-     앱을 켜자마자 <어디로 · 언제 · 누구와> 가 보이게. 누르면 대진으로 간다.
-     대진 화면과 같은 함수를 쓰니 문구가 어긋날 일이 없다. */
-  if(typeof CB2!=='undefined' && CB2 && (CB2.games||[]).length){
-    const c=cbMyCard();
-    if(c) h+=`<div onclick="openClubBracketView()" style="cursor:pointer">${cbBigCard(c,false)}</div>`;
-    else if(cb2Officer&&cb2Officer()){
-      const o=cbOfficerCard();
-      if(o) h+=`<div onclick="openClubBracketView()" style="cursor:pointer">${cbBigCard(o,true)}</div>`;
-    }
-  }
+  /* 오늘 경기가 도는 동안 홈 맨 위에 요약 한 장 — 누르면 대진으로 */
+  { const c=(typeof cbHomeCard==='function') ? cbHomeCard() : null;
+    if(c) h+=`<div onclick="openClubBracketView()" style="cursor:pointer">${cbBigCard(c,false)}</div>`; }
   // 상대 경로(/uploads/..)는 앱(capacitor://)에서 깨진다 — 서버 절대주소로 바꾼다
   const bnSrc = u => /^https?:|^data:/.test(u||'') ? u : API_BASE + u;
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
