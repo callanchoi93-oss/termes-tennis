@@ -33,7 +33,7 @@ console.log('\n■ 겹친 대진은 잡힌다');
                        g(2,3,'서기훈','최민혁','이평화','이정욱')]);
   ok(r.length===3, `2게임에 세 명 겹침 → ${r.length}건`);
   ok(r.some(x=>x.includes('서기훈')), '서기훈 이름이 메시지에 나온다');
-  ok(r[0].includes('1코트')&&r[0].includes('3코트'), '어느 코트끼리인지 적힌다');
+  ok(r[0].includes('1번 코트')&&r[0].includes('3번 코트'), '어느 코트끼리인지 적힌다');
   console.log('     예: '+r[0]);
 }
 { const r=cbFindClash([g(1,1,'A','B','C','D'), g(1,1,'E','F','G','H')]);
@@ -55,7 +55,7 @@ console.log('\n■ 8/14 실제 대진 (손으로 순서를 바꾼 뒤)');
    g(4,2,'박희진','유승은','정윤희','강혜선')];
   const r=cbFindClash(real);
   ok(r.length===7, `겹침 ${r.length}건 (2게임 4명 · 4게임 3명)`);
-  ok(r.some(x=>x.startsWith('2게임')) && r.some(x=>x.startsWith('4게임')),
+  ok(r.some(x=>x.startsWith('2번째 게임')) && r.some(x=>x.startsWith('4번째 게임')),
      '두 바퀴 모두 잡는다');
 }
 
