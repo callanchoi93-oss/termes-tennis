@@ -12739,6 +12739,12 @@ function cbMyCard(){
   const vsLine=g=>{ const w=nmOf(g);
     return (w.mate?`파트너 ${w.mate} `:'') + (w.opp?`vs ${w.opp}`:''); };
   const RD=n=>`${n}번째 게임`, CT=n=>`${n}번 코트`;
+  const MODE=(CB2&&CB2.mode)||'normal';
+  /* 한울·월례대회는 조를 코트에 고정한다 — 코트를 옮길 일이 없다.
+     청백전은 두 팀 단체전이라 팀 점수가 궁금하고,
+     대회 준비는 조가 고정이라 '우리 조' 로 부르는 게 자연스럽다. */
+  const FIXED = MODE==='hanul' || MODE==='monthly';
+  const TEAMGAME = MODE==='cheongbaek';
 
   if(!mine.length) return {kind:'rest', lb:'오늘 대진',
     big:'오늘 대진에 안 계세요', m:'참석하셨다면 경기이사에게 말씀해 주세요'};
@@ -12763,9 +12769,16 @@ function cbMyCard(){
     mine.filter(done).forEach(g=>{ const a=(g.teamA||[]).some(p=>String(p.id)===me);
       const ms=a?g.sa:g.sb, os=a?g.sb:g.sa;
       gf+=ms; ga+=os; if(ms>os) w++; else if(ms<os) l++; });
+    let extra='';
+    if(TEAMGAME){
+      /* 청백전 — 내가 어느 팀이고 팀 점수가 어떤지 */
+      let A=0,B=0;
+      gs.filter(done).forEach(g=>{ if(g.sa>g.sb) A++; else if(g.sb>g.sa) B++; });
+      extra=`\n우리 팀 ${A}승 · 상대 팀 ${B}승`;
+    }
     return {kind:'done', lb:'오늘 수고하셨어요',
       big:`${mine.length}경기 다 하셨어요`,
-      m:`${w}승 ${l}패 · 득실 ${gf-ga>=0?'+':''}${gf-ga}`,
+      m:`${w}승 ${l}패 · 득실 ${gf-ga>=0?'+':''}${gf-ga}${extra}`,
       btn:'내 기록 보기 ›',
       act:`closeOv();openClubMember(${jsArg(String((state.serverUser||{}).id||''))},${jsArg(String((state.serverUser||{}).name||'나'))})`};
   }
@@ -12802,7 +12815,7 @@ function cbMyCard(){
         ? `${CT(blockG[0].c)}가 끝나면 시작해요`
         : '앞 경기가 끝나면 시작해요';
     /* 비어 있는 코트가 있으면 거기서 몸 풀다가 내 코트가 나면 옮기라고 안내한다 */
-    const freeCourt=(()=>{
+    const freeCourt=FIXED ? 0 : (()=>{
       for(let cc=1;cc<=(CB2.courts||0);cc++){
         if(cc===next.c) continue;
         if((CB2.offCourts||[]).includes(cc)) continue;
@@ -23245,6 +23258,17 @@ function _renderHomeCore(){
     HOME_BANNERS=[]; api('/banners').then(r=>{ HOME_BANNERS=r||[]; if(state.view==='home') renderHome(); }).catch(()=>{});
   }
   let h='';
+  /* ── 오늘 경기 중이면 맨 위에 내 차례 카드 ──
+     앱을 켜자마자 <어디로 · 언제 · 누구와> 가 보이게. 누르면 대진으로 간다.
+     대진 화면과 같은 함수를 쓰니 문구가 어긋날 일이 없다. */
+  if(typeof CB2!=='undefined' && CB2 && (CB2.games||[]).length){
+    const c=cbMyCard();
+    if(c) h+=`<div onclick="openClubBracketView()" style="cursor:pointer">${cbBigCard(c,false)}</div>`;
+    else if(cb2Officer&&cb2Officer()){
+      const o=cbOfficerCard();
+      if(o) h+=`<div onclick="openClubBracketView()" style="cursor:pointer">${cbBigCard(o,true)}</div>`;
+    }
+  }
   // 상대 경로(/uploads/..)는 앱(capacitor://)에서 깨진다 — 서버 절대주소로 바꾼다
   const bnSrc = u => /^https?:|^data:/.test(u||'') ? u : API_BASE + u;
   { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
