@@ -226,6 +226,24 @@ else
 fi
 
 echo ""
+echo "내 차례 카드"
+if node test/mycard-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/mycard-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "운영진 카드"
+if node test/officer-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/officer-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
 echo "발행 안전장치"
 if node test/guard-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
