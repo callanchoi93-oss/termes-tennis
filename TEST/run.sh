@@ -162,5 +162,41 @@ else
   fail=1
 fi
 
+echo ""
+echo "대진 겹침 검사"
+if node test/clash-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/clash-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "예상 종료 시각"
+if node test/eta-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/eta-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "명단 조정 (늦참·노쇼)"
+if node test/adjust-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/adjust-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "기록 화면 표기"
+if node test/stats-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/stats-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then echo "" && echo "전부 통과"; else echo "" && echo "실패한 항목이 있습니다"; fi
 exit $fail
