@@ -1261,8 +1261,9 @@
   .mi-arr{flex:none;color:#cdc8be;font-size:17px;transition:.15s}
   .mi-arr.open{transform:rotate(90deg)}
   /* 내 정보 서브탭 — 네 개가 나란히 서니 기본 칩(14px · 좌우 15px)은 화면을 다 먹는다 */
-  .chips.mi-sub{gap:6px;padding-bottom:14px}
-  .chips.mi-sub .chip{padding:6px 12px;border-radius:14px;font-size:var(--t1);
+  /* 경기기록·파트너·상대전적·리포트 — 네 칸이라 캡슐이 크면 화면을 다 먹는다 */
+  .chips.mi-sub{gap:5px;padding-bottom:12px}
+  .chips.mi-sub .chip{padding:6px 11px;border-radius:11px;font-size:12px;
     font-weight:600;border-width:1px}
   /* 월례대회 조 설정 — 스텝퍼 */
   .tgrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
@@ -7445,24 +7446,6 @@ async function repairClubServer(){
 }
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
-/* 모임이 없던 때까지 하염없이 넘어가지 않게 — 가장 이른 모임과 가장 늦은 모임 사이로 묶는다 */
-function clubWeekRange(){
-  const evs=((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]))
-    .map(e=>evTime(e)).filter(Boolean);
-  if(!evs.length) return {min:0, max:0};
-  const wk=t=>{ const d=new Date(t); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay());
-    const n=new Date(); n.setHours(0,0,0,0); n.setDate(n.getDate()-n.getDay());
-    return Math.round((d-n)/(7*86400000)); };
-  return { min:Math.min(0,...evs.map(wk)), max:Math.max(0,...evs.map(wk)) };
-}
-function clubWeek(d){
-  const r=clubWeekRange();
-  const v=(state._clubWeek||0)+d;
-  if(v<r.min || v>r.max){
-    toast(d<0 ? '더 지난 모임이 없어요' : '더 예정된 모임이 없어요'); return;
-  }
-  state._clubWeek=v; state._clubDay=null; renderClub();
-}
 /* 다가오는 · 지난 모임 — 한 목록에 섞으면 매번 스크롤로 오늘을 찾아야 한다.
    기본은 다가오는 쪽. 기록을 보려는 사람은 목적이 분명해 한 번 더 누르는 게 부담이 아니다. */
 function clubPast(v){ state._clubPast = !!v; state._clubDay=null; renderClub(); }
@@ -7578,56 +7561,21 @@ function renderClub(){
     if(SERVER_OK && c.officer && (state._joinReqN||0)>0){
       h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openJoinRequests()"><div><div style="font-size:14px;font-weight:500;color:#fff">임원진 · 가입 신청 ${state._joinReqN}건</div><div style="font-size:12px;color:#cbb8a6;font-weight:500;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--coral);font-weight:600;font-size:18px">→</div></div>`;
     } else if(!SERVER_OK && c.officer && (c.pending||[]).length){ h+=`<div class="card" style="background:#1b1813;border:none;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openAdmin()"><div><div style="font-size:14px;font-weight:500;color:#fff">임원진 · 가입 신청 ${c.pending.length}건</div><div style="font-size:12px;color:#cbb8a6;font-weight:500;margin-top:2px">신청을 확인하고 승인·거절하세요</div></div><div style="color:var(--felt);font-weight:600;font-size:18px">→</div></div>`; }
-    // ⑤ 주간 날짜 핀 (이번 주 일~토 · 오늘 강조 · 모임 있는 날 점)
-    { const W=['일','월','화','수','목','금','토'];
-      const wOff=state._clubWeek||0;                       // 0=이번 주 · 음수=지난 주
-      const base=new Date(today); base.setDate(today.getDate()-today.getDay()+wOff*7);
-      const evList0 = ((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]));
-      const evDays=new Map(); evList0.forEach(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/);
-        if(mm){ const k=+mm[1]+'/'+ +mm[2]; const t=e.tag==='번개'?'b':'r'; evDays.set(k, evDays.has(k)&&evDays.get(k)!==t?'m':t); } });
-      let pins=''; for(let i=0;i<7;i++){ const d=new Date(base); d.setDate(base.getDate()+i); const mo=d.getMonth()+1,da=d.getDate();
-        const key=mo+'/'+da, isSel=(state._clubDay===key)||(!state._clubDay&&mo===MON&&da===DAY), tp=evDays.get(key);
-        const dots = tp==='m' ? `<span style="width:5px;height:5px;border-radius:50%;background:var(--coral);display:inline-block"></span><span style="width:5px;height:5px;border-radius:50%;background:#3182f6;display:inline-block;margin-left:3px"></span>`
-          : tp ? `<span style="width:5px;height:5px;border-radius:50%;background:${tp==='b'?'#3182f6':'var(--coral)'};display:inline-block"></span>` : '';
-        pins+=`<div class="dpin ${isSel?'on':''}" onclick="clubDay('${key}')"><div class="dp-w">${W[i]}</div><div class="dp-d">${da}</div><div style="height:9px;margin-top:4px;line-height:0">${dots}</div></div>`; }
-      const wEnd=new Date(base); wEnd.setDate(base.getDate()+6);
-      const wLabel=wOff===0?'이번 주':`${base.getMonth()+1}/${base.getDate()} ~ ${wEnd.getMonth()+1}/${wEnd.getDate()}`;
-      /* 지난 주로 넘길 수 있어야 '그날 뭐 했더라'를 찾아볼 수 있다 */
-      /* 요일 띠는 걷어냈다.
-         화·금으로 고정된 클럽에서 날짜를 눌러 고를 일이 거의 없고,
-         띠가 보여주던 '이 날 모임 있음' 은 아래 카드가 더 자세히 말한다.
-         띠와 범례가 카드 두 장 자리를 먹고 있었다.
-         범례도 뺐다 — 이제 색은 '다음 모임인가'를 뜻하고
-         정기·번개는 카드 안 딱지가 맡는다. 같은 색이 두 가지를 말하면 안 된다.
-
-         대신 오늘 날짜와 이번 주 상황을 한 줄로 남긴다. */
-      const wkEv=evList0.filter(e=>{ const t=evTime(e); if(!t) return false;
-        const b0=+new Date(base.getFullYear(),base.getMonth(),base.getDate());
-        return t>=b0 && t < b0+7*86400000; });
+    // ⑤ 오늘 날짜 한 줄
+    { const evList0 = ((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]));
+      const b0=+new Date(today.getFullYear(), today.getMonth(), today.getDate()-today.getDay());
+      const wkEv=evList0.filter(e=>{ const t=evTime(e); return t && t>=b0 && t < b0+7*86400000; });
       const wkLeft=wkEv.filter(e=>!evIsPast(e)).length;
+      /* 주 넘기기를 뺐다.
+         목록은 이미 <다가오는 · 지난 모임> 탭과 <연월 접기>로 나뉘는데
+         주 이동은 목록을 거르지 않고 라벨만 바꿔서, 6/14~6/20 이라 적힌 화면에
+         8월 모임이 늘어서는 일이 있었다. 오늘 날짜 한 줄만 남긴다. */
       h+=`<div style="display:flex;align-items:center;gap:8px;background:#faf8f4;
             border-radius:13px;padding:11px 13px;margin:0 4px 10px">
-          ${(()=>{ /* 갈 곳이 없으면 화살표를 아예 안 그린다 —
-                       흐린 화살표는 '뭔가 있는데 안 눌린다' 처럼 보여 더 신경 쓰인다 */
-            const r=clubWeekRange(), v=state._clubWeek||0;
-            return v<=r.min ? '' :
-              `<span onclick="clubWeek(-1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">‹</span>`; })()}
           <span style="flex:1;min-width:0">
-            <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${
-              wOff===0 ? `${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}` : esc(wLabel)}</b>
+            <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}</b>
             <span style="font-size:11.5px;color:var(--gray);font-weight:600;margin-left:8px">${
               wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></span>
-          ${(()=>{ const r=clubWeekRange(), v=state._clubWeek||0;
-            return v>=r.max ? '' :
-              `<span onclick="clubWeek(1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">›</span>`; })()}
-        </div>
-        <div style="display:flex;background:#f4f2ee;border-radius:12px;padding:3px;margin:0 4px 10px">
-          ${[['다가오는',false],['지난 모임',true]].map(([t,v])=>{
-            const on=!!state._clubPast===v;
-            return `<span onclick="clubPast(${v})" style="flex:1;text-align:center;cursor:pointer;
-              font-size:12.5px;padding:8px 0;border-radius:9px;letter-spacing:-.02em;
-              ${on?'background:#fff;color:var(--ink);font-weight:800;box-shadow:0 1px 3px rgba(60,50,35,.10)'
-                  :'color:var(--gray);font-weight:600'}">${t}</span>`; }).join('')}
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
@@ -7647,14 +7595,17 @@ function evAgoText(ev){
       const dayF=state._clubDay;
       /* 날짜를 고르거나 지난 주를 보고 있으면 끝난 모임도 보여준다 —
          '그날 누가 왔고 대진이 어땠는지'를 찾아보려면 지난 모임이 보여야 한다 */
-      const showPast=!!state._clubPast || !!dayF || (state._clubWeek||0)!==0;
+      const showPast=!!state._clubPast || !!dayF;
       /* 가까운 모임이 위로 오게 한다 — 예전에는 서버가 준 순서(만든 순)를 그대로 썼다.
          지난 모임을 볼 때는 최근 것이 위가 자연스럽다. */
-      /* 지난 모임 탭에서는 끝난 것만, 다가오는 탭에서는 앞으로 올 것만 */
+      /* 지난 모임 탭 = 끝난 것만(최근 순) · 다가오는 탭 = 앞으로 올 것만(가까운 순).
+         날짜를 콕 집었을 때만 그 날 것을 전부 보여준다.
+         예전엔 주를 넘기면 showPast 가 켜져서 다가오는 탭에 지난 모임이 섞이고
+         순서까지 뒤집혔다(25 · 21 · 18 · 15 · 14). */
       const evAll=(state._clubPast ? evList.filter(e=>evIsPast(e))
-                  : showPast ? evList.slice()
+                  : dayF ? evList.slice()
                   : evList.filter(e=>!evIsPast(e)))
-        .sort((a,b)=>{ const d=evTime(a)-evTime(b); return (state._clubPast||showPast)? -d : d; });
+        .sort((a,b)=>{ const d=evTime(a)-evTime(b); return state._clubPast ? -d : d; });
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
         <span>${dayF?`${dayF} 일정`:(state._clubPast?'지난 모임':'다가오는 일정')}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
