@@ -33,7 +33,7 @@ console.log('■ 일반 — 빈 코트에서 몸 풀다가 옮긴다');
 CB2=layout('normal');
 { const r=call();
   ok(r.big.includes('2번 코트'), `빈 2번 코트로 안내 → ${show(r)}`);
-  ok(r.m.includes('3번 코트가 나면'), '내 코트가 나면 옮기라고 한다');
+  ok(r.m.includes('3번 코트 경기가 끝나면 그리로 옮겨요'), '내 코트 경기가 끝나면 옮기라고 한다');
 }
 
 console.log('\n■ 성비 — 일반과 같다');
@@ -69,11 +69,11 @@ console.log('\n■ 대회 준비 — 조가 고정이지만 코트는 옮길 수
 CB2=layout('tourney');
 ok(call().big.includes('2번 코트'), `빈 코트에서 몸 푼다 — ${show(call())}`);
 
-console.log('\n■ 홈 화면에도 같은 함수를 쓴다');
-ok(/cbMyCard\(\)/.test(SRC.slice(SRC.indexOf('function _renderHomeCore'), SRC.indexOf('function _renderHomeCore')+2000)),
-   '홈에서 cbMyCard 를 부른다');
-ok(/openClubBracketView\(\)/.test(SRC.slice(SRC.indexOf('function _renderHomeCore'), SRC.indexOf('function _renderHomeCore')+2000)),
-   '누르면 대진으로 간다');
+console.log('\n■ 홈은 따로 요약 카드를 쓴다');
+/* 대진 화면 카드는 <지금 할 일> 하나만, 홈은 <어느 모임 · 몇 경기째 · 다음은 누구와>.
+   목적이 달라 함수를 나눴다 — test/homecard-sim.js 가 홈 쪽을 본다. */
+ok(/cbHomeCard\(\)/.test(SRC.slice(SRC.indexOf('function _renderHomeCore'), SRC.indexOf('function _renderHomeCore')+2000)),
+   '홈에서 cbHomeCard 를 부른다');
 
 console.log(bad?`\n${bad}건 실패`:'\n전부 통과');
 process.exit(bad?1:0);

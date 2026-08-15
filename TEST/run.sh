@@ -244,6 +244,42 @@ else
 fi
 
 echo ""
+echo "대진표 이동 안내"
+if node test/movehint-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/movehint-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "모임 시간 입력"
+if node test/time-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/time-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "홈 요약 카드"
+if node test/homecard-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/homecard-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "청백전 캡틴 오더"
+if node test/cheongbaek-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/cheongbaek-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
 echo "운영진 카드"
 if node test/officer-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
