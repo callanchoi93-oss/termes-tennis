@@ -806,13 +806,7 @@
   .hmstrip .m{font-size:12px;font-weight:500;color:#7a6a58;margin-top:3px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hmstrip .chev{flex:none;color:var(--coral-d);font-weight:600}
-  /* 내 경기가 지금 돌고 있을 때만 잉크로 — 코트에서 멀리 봐도 걸린다 */
-  .hmstrip.now{background:#241d16}
-  .hmstrip.now .n{background:#f0a93b;color:#241d16;font-weight:800}
-  .hmstrip.now .l{color:#f0a93b}
-  .hmstrip.now .b{color:#fff}
-  .hmstrip.now .m{color:#c4b6a0}
-  .hmstrip.now .chev{color:#8a7d68}
+
   /* 모임 만들기 · 시간과 코트를 눌러 고르는 칩 */
   .nechips{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
   .nechips.four{grid-template-columns:repeat(4,1fr)}
@@ -4001,7 +3995,12 @@ async function devLogin(name){
    저장 형태: data = { fmt, cfg, attendees }
    대진 편성은 cfg.seed 기반 결정론이라, 임원진이 발행한 cfg 로
    회원 기기에서 같은 대진이 그대로 재현된다 (전체 라운드를 전송할 필요 없음).   */
-let CLUB_IDS = {};          // 클럽 이름 → 서버 id
+/* 클럽 이름 → 서버 id. 기기에 남겨둔다 — 이 표가 없으면 앱을 켠 직후
+   내가 어느 클럽인지 몰라서 오늘 대진도 못 물어본다(홈 카드가 늦게 뜨던 이유 중 하나). */
+let CLUB_IDS = {};
+try{ const _ci=JSON.parse(localStorage.getItem('matsu_club_ids')||'{}');
+     if(_ci && typeof _ci==='object') CLUB_IDS=_ci; }catch(e){}
+function saveClubIds(){ try{ localStorage.setItem('matsu_club_ids', JSON.stringify(CLUB_IDS)); }catch(e){} }
 let BK_ID = null;           // 현재 대진 id
 let BK_POLL = null, BK_SEEN = 0;
 const _scoreDebounce = {};
@@ -4033,8 +4032,9 @@ async function loadClubIds(){
   /* 전체 클럽 목록과 '내 클럽'을 동시에 부른다.
      예전에는 목록을 다 받은 뒤에야 내 클럽을 물어서, 남의 클럽은 이미 떠 있는데
      정작 내가 가입한 클럽만 한 박자 늦게 나타났다. */
-  const all  = api('/clubs').then(r=>{ (r||[]).forEach(c=>{ CLUB_IDS[c.name]=c.id; }); }).catch(()=>{});
+  const all  = api('/clubs').then(r=>{ (r||[]).forEach(c=>{ CLUB_IDS[c.name]=c.id; }); saveClubIds(); }).catch(()=>{});
   const mine = adoptServerClubs().then(()=>{
+    saveClubIds();
     /* 내 클럽이 도착하면 그 자리에서 다시 그린다 — 목록을 기다리지 않는다 */
     try{ if(state.view==='club') renderClub(); }catch(e){}
     try{ loadMyNext(); }catch(e){}          // 클럽을 알게 된 순간 오늘 대진도 바로 받는다
@@ -13129,7 +13129,8 @@ function cbHomeStrip(c){
   if(!c) return '';
   const s=c.strip;
   if(!s) return '';
-  return `<div class="hmstrip ${c.kind==='now'?'now':''}" onclick="openClubBracketView()"
+  /* 홈 띠는 회원이 보는 것이므로 늘 밝은 카드다 — 검정은 운영진 몫으로 비워둔다 */
+  return `<div class="hmstrip" onclick="openClubBracketView()"
       role="button" tabindex="0">
     <span class="n">${esc(String(s.n||''))}</span>
     <div class="tx">
@@ -13149,28 +13150,19 @@ function cbHomeStrip(c){
    높이를 못 박고, 라벨 줄은 <운영진 배지가 있든 없든> 같은 자리를 차지한다. */
 function cbBigCard(c, isOfficer){
   if(!c) return '';
-  /* 색은 대비를 재서 정했다 — 본문 4.5 · 큰 글씨 3.0 이상.
-     예전 값은 rest 카드 설명이 2.08 이라 거의 안 보였다.
+  /* 색은 <무엇이 급한가>가 아니라 <누가 해야 하는가>로 정한다.
+     운영진이 손봐야 할 것은 언제나 잉크, 회원이 볼 것은 언제나 흰 종이.
+     상황마다 색이 바뀌면 코트에서 폰을 들여다볼 때마다 다시 읽어야 한다 —
+     색이 고정되어 있으면 "검정이 떴네 = 내가(총무가) 뭘 해야 하는구나"로 한 번에 안다.
      [배경, 라벨, 큰글씨, 설명, 버튼배경, 버튼글씨, 테두리] */
-  /* 색은 세 단계로만 쓴다 — 지금 손대야 하는 일은 잉크에 금색,
-     곧 일어날 일은 흰 종이, 지나간 일과 안내는 옅은 종이.
-     예전에는 급한 카드와 다음 차례 카드가 둘 다 살구빛이라 온도가 같았다. */
-  const SK={
-    /* ① 지금 — 잉크 */
-    now :['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''],
-    ask :['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''],
-    late:['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''],
-    bad :['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''],
-    /* ② 곧 — 흰 종이 */
-    /* 시트 배경이 흰색이라 테두리만으로는 카드가 종이에서 안 떠 보인다 — 그림자를 얕게 준다 */
-    go  :['#fff','#8a5a13','#1c1b18','#6b6357','#241d16','#fff',';border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)'],
-    warn:['#fff','#8a5a13','#1c1b18','#6b6357','#241d16','#fff',';border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)'],
-    /* ③ 지난 일·안내 — 옅은 종이 */
-    rest:['#faf8f4','#736e66','#57503f','#736e66','#fff','#57503f',';border:1px solid var(--line)'],
-    ok  :['#faf8f4','#7a6238','#4f4530','#736e66','#fff','#57503f',';border:1px solid #f0ece3'],
-    done:['#faf8f4','#7a6238','#4f4530','#736e66','#fff','#57503f',';border:1px solid #f0ece3']
-  };
-  const [bg,lbc,bigc,mc,btnBg,btnC,extra]=SK[c.kind]||SK.rest;
+  const OFFICER=['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''];
+  /* 시트 배경이 흰색이라 테두리만으로는 카드가 종이에서 안 떠 보인다 — 그림자를 얕게 준다 */
+  const LIFT=';border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)';
+  const MEMBER =['#fff','#8a5a13','#1c1b18','#6b6357','#241d16','#fff',LIFT];
+  /* 쉬는 차례·다 끝남처럼 할 일이 없는 안내는 같은 흰 카드에 글자만 낮춘다 */
+  const MEMBER_Q=['#fff','#8a857c','#3a352d','#7d7870','#241d16','#fff',LIFT];
+  const quiet={rest:1, ok:1, done:1};
+  const [bg,lbc,bigc,mc,btnBg,btnC,extra]= isOfficer ? OFFICER : (quiet[c.kind]?MEMBER_Q:MEMBER);
   const br=t=>esc(String(t||'')).replace(/\n/g,'<br>');
   /* 글자 — 21 ÷ φ = 13 으로 제목과 본문을 가른다.
      라벨까지 φ 로 내리면 8px 이라 못 읽으니 거기서는 얕게 간다.
@@ -24123,9 +24115,16 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ l
 checkServer().then(async ok=>{
   setTimeout(maybeShowNews, 400);
   if(!ok){ hideBoot(); return; }
+  /* 기기에 남아 있는 값으로 먼저 그리고 화면을 연다.
+     네트워크를 다 받은 뒤에 열면, 코트에서 폰을 켠 사람은 로딩만 보다가
+     "내가 몇 번째냐"를 못 본 채 기다리게 된다. 받아온 값은 도착하는 대로 갈아끼운다. */
+  renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
+  if(state.view) go(state.view);
+  hideBoot();
   // 저장된 세션으로 다시 연 경우에도 서버 가입 정보를 반드시 동기화한다.
   // (이게 빠져 있어서 "정회원인데 클럽이 없다고 나오는" 버그가 있었다)
   if(authToken()){
+    try{ loadMyNext(); }catch(e){}                      // 클럽 목록보다 먼저 — 홈이 제일 급하다
     try{
       await loadClubIds();                              // → adoptServerClubs 포함
       /* 명부·클럽 상세는 홈을 막지 않는다 — 받는 대로 각자 다시 그린다 */
@@ -24135,10 +24134,7 @@ checkServer().then(async ok=>{
       }
     }catch(e){}
   }
-  try{ loadMyNext(); }catch(e){}
-  renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
-  if(state.view) go(state.view);
-  hideBoot();                                             // 진짜 데이터가 그려진 뒤에 화면을 연다
+  renderHome();renderClub();
   const _mid = new URL(location.href).searchParams.get('match');
   if(_mid){
     try{ sessionStorage.setItem('pending_match', _mid); }catch(e){}
