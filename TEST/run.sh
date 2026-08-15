@@ -235,6 +235,15 @@ else
 fi
 
 echo ""
+echo "대진 방식별 카드"
+if node test/mode-card-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/mode-card-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
 echo "운영진 카드"
 if node test/officer-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
