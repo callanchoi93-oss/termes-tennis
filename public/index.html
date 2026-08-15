@@ -323,15 +323,16 @@
   /* 대진 전체 보기 — 코트가 열, 게임이 행. 세로로 훑으면 내 다음 경기가 보인다. */
   .cbwide{ border:1px solid var(--line); border-radius:13px; overflow:hidden; margin-top:10px; background:#fff }
   .cbwide table{ width:100%; border-collapse:collapse; table-layout:fixed }
-  .cbwide th{ font-size:10.5px; font-weight:700; color:var(--lgray); padding:8px 4px;
+  /* 코트 이름이 이름보다 작아 잘 안 보였다 — 머리글을 이름 크기에 맞춘다 */
+  .cbwide th{ font-size:12.5px; font-weight:700; color:var(--gray); padding:10px 4px;
     background:#faf8f4; border-bottom:1px solid var(--line) }
-  .cbwide th:first-child{ width:24px }
-  .cbwide td{ padding:8px 5px; text-align:center; border-bottom:1px solid #f4f2ee;
-    font-size:10.5px; font-weight:600; letter-spacing:-.03em; line-height:1.45; cursor:pointer }
+  .cbwide th:first-child{ width:26px }
+  .cbwide td{ padding:9px 5px; text-align:center; border-bottom:1px solid #f4f2ee;
+    font-size:12.5px; font-weight:600; letter-spacing:-.03em; line-height:1.5; cursor:pointer }
   .cbwide tr:last-child td{ border-bottom:0 }
-  .cbwide td em{ display:block; font-style:normal; font-size:9px; font-weight:700;
+  .cbwide td em{ display:block; font-style:normal; font-size:10px; font-weight:700;
     color:var(--lgray); margin:2px 0 }
-  .cbwide td.r{ font-size:11px; font-weight:800; color:var(--lgray); cursor:default }
+  .cbwide td.r{ font-size:13px; font-weight:800; color:var(--lgray); cursor:default }
   .cbwide td.dn{ color:#c9c3b9 } .cbwide td.dn em{ color:#a8a29a }
   .cbwide td.on{ background:var(--coral-s); color:var(--coral-d) }
   .cbwide td.on em{ color:var(--coral-d) }
@@ -342,7 +343,7 @@
   .cbwide td.bad u{ text-decoration:underline; text-decoration-color:#e07b7b;
     text-underline-offset:2px; font-weight:800 }
   .cbwide td.r.bad{ background:transparent; box-shadow:none; color:#c14545 }
-  .cbwide .lg{ font-size:10.5px; color:var(--lgray); padding:9px 11px; background:#faf8f4;
+  .cbwide .lg{ font-size:11.5px; color:var(--gray); padding:10px 12px; background:#faf8f4;
     border-top:1px solid var(--line); line-height:1.6 }
   .cbwide .lg b{ color:var(--coral-d); font-weight:700 }
   .bkbar{display:block;height:5px;border-radius:9px;background:var(--felt);margin-top:11px;overflow:hidden}
@@ -7443,6 +7444,16 @@ async function repairClubServer(){
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
 function clubWeek(d){ state._clubWeek=(state._clubWeek||0)+d; state._clubDay=null; renderClub(); }
+/* 다가오는 · 지난 모임 — 한 목록에 섞으면 매번 스크롤로 오늘을 찾아야 한다.
+   기본은 다가오는 쪽. 기록을 보려는 사람은 목적이 분명해 한 번 더 누르는 게 부담이 아니다. */
+function clubPast(v){ state._clubPast = !!v; state._clubDay=null; renderClub(); }
+/* 연월 묶음 접기 — 모임이 쌓이면 목록이 끝없이 길어진다 */
+function clubYm(k){
+  state._clubOpenYm = state._clubOpenYm || {};
+  const cur = state._clubOpenYm[k];
+  state._clubOpenYm[k] = (cur===undefined) ? false : !cur;
+  renderClub();
+}
 /* 서버 클럽인데 일정이 아직 안 실렸으면 한 번 더 불러온다 (임원·회원 공통) */
 function reloadClubEvents(){
   window._evFor=null; window._evLoading=null; SRV_EVENTS=null;
@@ -7584,6 +7595,14 @@ function renderClub(){
             <span style="font-size:11.5px;color:var(--gray);font-weight:600;margin-left:8px">${
               wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></span>
           <span onclick="clubWeek(1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">›</span>
+        </div>
+        <div style="display:flex;background:#f4f2ee;border-radius:12px;padding:3px;margin:0 4px 10px">
+          ${[['다가오는',false],['지난 모임',true]].map(([t,v])=>{
+            const on=!!state._clubPast===v;
+            return `<span onclick="clubPast(${v})" style="flex:1;text-align:center;cursor:pointer;
+              font-size:12.5px;padding:8px 0;border-radius:9px;letter-spacing:-.02em;
+              ${on?'background:#fff;color:var(--ink);font-weight:800;box-shadow:0 1px 3px rgba(60,50,35,.10)'
+                  :'color:var(--gray);font-weight:600'}">${t}</span>`; }).join('')}
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
@@ -7603,23 +7622,31 @@ function evAgoText(ev){
       const dayF=state._clubDay;
       /* 날짜를 고르거나 지난 주를 보고 있으면 끝난 모임도 보여준다 —
          '그날 누가 왔고 대진이 어땠는지'를 찾아보려면 지난 모임이 보여야 한다 */
-      const showPast=!!dayF || (state._clubWeek||0)!==0;
+      const showPast=!!state._clubPast || !!dayF || (state._clubWeek||0)!==0;
       /* 가까운 모임이 위로 오게 한다 — 예전에는 서버가 준 순서(만든 순)를 그대로 썼다.
          지난 모임을 볼 때는 최근 것이 위가 자연스럽다. */
-      const evAll=(showPast?evList.slice():evList.filter(e=>!evIsPast(e)))
-        .sort((a,b)=>{ const d=evTime(a)-evTime(b); return showPast? -d : d; });
+      /* 지난 모임 탭에서는 끝난 것만, 다가오는 탭에서는 앞으로 올 것만 */
+      const evAll=(state._clubPast ? evList.filter(e=>evIsPast(e))
+                  : showPast ? evList.slice()
+                  : evList.filter(e=>!evIsPast(e)))
+        .sort((a,b)=>{ const d=evTime(a)-evTime(b); return (state._clubPast||showPast)? -d : d; });
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
       h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
-        <span>${dayF?`${dayF} 일정`:'다가오는 일정'}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
+        <span>${dayF?`${dayF} 일정`:(state._clubPast?'지난 모임':'다가오는 일정')}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
         <button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid ${off?'var(--coral)':'#c3d2f0'};background:#ffffff;color:${off?'var(--coral-d)':'#2b62c9'};font-weight:500;font-size:12px;border-radius:11px;padding:7px 12px;font-family:inherit">${off?'＋ 만들기':'⚡ 번개 열기'}</button></div>`;
       if(SERVER_OK && clubId() && SRV_EVENTS===null){
         h+=`<div class="note" style="text-align:left">일정을 불러오는 중이에요…</div>`;
       } else if(dayF && !evShow.length){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
-        h+=`<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
+        h+= state._clubPast
+          ? `<div class="card" style="text-align:center;padding:26px 18px;background:#faf8f4;border-color:#efece5">
+              <b style="display:block;font-size:14px;color:var(--gray)">아직 지난 모임이 없어요</b>
+              <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.6">
+                모임이 끝나면 여기에 쌓여요 · 그날 참석자와 대진을 볼 수 있어요</div></div>`
+          : `<div class="card" style="text-align:center;padding:22px 18px;background:#faf8f4;border-color:#efece5">
           <div style="font-size:29px">📅</div>
-          <b style="display:block;margin-top:6px;font-size:14px">이번 주 모임이 아직 없어요</b>
+          <b style="display:block;margin-top:6px;font-size:14px">다가오는 모임이 아직 없어요</b>
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
           ${off?`<button class="btn" style="max-width:220px;margin:13px auto 0" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">＋ 첫 모임 만들기</button>`:''}</div>`; }
       else {
@@ -7628,16 +7655,40 @@ function evAgoText(ev){
            오늘 모임과 열흘 뒤 모임이 같은 무게로 보였다.
            종류(정기·번개)는 색이 아니라 딱지가 맡는다. */
         const CNEXT='#f9c9a4', CUP='#fdf3ec', CPAST='#efe9e0';
-        h+=`<div class="plan2">`;
-        evShow.slice(0,4).forEach((ev,i)=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
+        /* 연월로 묶고 접을 수 있게 — 모임이 쌓이면 목록이 끝없이 길어진다.
+           가장 가까운 달만 펼쳐두고 나머지는 접는다. */
+        const ymOf=ev=>{ const t=evTime(ev);
+          if(!t) return '기타';
+          const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+        const groups=[]; const seen={};
+        evShow.forEach(ev=>{ const k=ymOf(ev);
+          if(!seen[k]){ seen[k]={k, list:[]}; groups.push(seen[k]); }
+          seen[k].list.push(ev); });
+        state._clubOpenYm = state._clubOpenYm || {};
+        groups.forEach((G,gi)=>{
+          const open = state._clubOpenYm[G.k]!==undefined ? state._clubOpenYm[G.k] : (gi===0);
+          const [yy,mm]=G.k.split('-');
+          const thisY=String(new Date().getFullYear());
+          const label = G.k==='기타' ? '날짜 미정'
+                      : (yy===thisY ? `${+mm}월` : `${yy}년 ${+mm}월`);
+          h+=`<div onclick="clubYm('${G.k}')" style="display:flex;align-items:center;gap:8px;
+              cursor:pointer;margin:${gi?'16px':'2px'} 4px 8px">
+            <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${label}</b>
+            <span style="font-size:11.5px;color:var(--lgray);font-weight:600">${G.list.length}개</span>
+            <span style="flex:1;height:1px;background:#efece6"></span>
+            <span style="font-size:12px;color:var(--lgray);transition:.15s;display:inline-block;
+              transform:rotate(${open?'0':'-90'}deg)">▾</span></div>`;
+          if(!open) return;
+          h+=`<div class="plan2">`;
+          G.list.forEach((ev,ii)=>{ const i=ii; const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const d=evParseDate(ev.date); const done=evIsPast(ev);
           const day = d.day!=null ? d.day : '';
           const wd  = d.day!=null ? WD_KO[new Date(new Date().getFullYear(), d.m, d.day).getDay()] : '';
           /* 제목에 [08/14] 처럼 날짜를 넣어둔 모임이 많다 — 날짜를 크게 따로 보여주니 제목에서는 지운다 */
           const title=String(ev.title||'').replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim() || ev.title || '모임';
           const place=[d.place, '클럽 코트'].filter(Boolean).join(' · ');
-          /* 다가오는 것 중 첫 장만 진하게 */
-          const isNext = !done && evShow.slice(0,i).every(x=>evIsPast(x));
+          /* 다가오는 것 중 첫 장만 진하게 — 달을 나눠도 전체에서 하나만 */
+          const isNext = !done && evShow.indexOf(ev)===evShow.findIndex(x=>!evIsPast(x));
           h+=`<div class="psess" style="background:${done?CPAST:isNext?CNEXT:CUP}" onclick="openEventDetail('${ev.id}')">
             <div class="ps-top">
               <span class="ps-date"><b>${day||'–'}</b><i>${wd}</i></span>
@@ -7651,11 +7702,13 @@ function evAgoText(ev){
             <div class="ps-m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}<br>${esc(place)}</div>
             <div class="ps-foot"><div class="ps-av">${esc((ev.attendees[0]||'?')[0])}</div>
               <div class="ps-who">${ev.attendees.length}명 참여</div></div></div>`; });
-        h+=`</div>`;
-
+          h+=`</div>`;
+        });
       }
       /* 이번 주 화면 아래에 최근 끝난 모임 몇 개 — 탭하면 그날 참석자와 대진이 나온다 */
-      if(!dayF && !(state._clubWeek||0)){
+      /* 지난 모임은 이제 위쪽 탭이 맡는다 — 아래에 또 쌓으면 같은 걸 두 번 보게 된다.
+         다가오는 탭에서만, 그것도 최근 것 몇 개만 곁들인다. */
+      if(!dayF && !state._clubPast && !(state._clubWeek||0)){
         const past=evList.filter(e=>evIsPast(e)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,3);
         if(past.length){
           h+=`<div style="display:flex;align-items:center;gap:8px;margin:18px 4px 8px">
@@ -12917,12 +12970,19 @@ function drawCB2View(){
         const scBox = done(g)
           ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}>${g.sa} : ${g.sb}</span>`
           : `<span onclick="cb2Score(${g.gi})" class="cbsc">－ : －</span>`;
-        h+=`<div style="background:#f8f6f1;border-radius:11px;padding:8px 10px;margin-top:6px${nextUp?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
+        /* 진행 중·다음 차례가 작은 글자 딱지뿐이라 눈에 안 띄었다.
+           진행 중은 코랄로 칠하고 왼쪽에 굵은 띠를, 다음 차례는 테두리만 —
+           칠한 것 하나, 테두리 하나로 무엇이 지금이고 무엇이 다음인지 갈린다. */
+        const running = g.startedAt && !done(g);
+        h+=`<div style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
+            background:${running?'#fdeee4':'#f8f6f1'}${
+            running?';box-shadow:inset 4px 0 0 var(--coral)'
+                  : nextUp?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:11px;font-weight:500;color:${g.r===live?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
+            <span style="font-size:11px;font-weight:${running?700:500};color:${running||g.r===live?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
             <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
-            ${nextUp?`<span style="font-size:10.5px;font-weight:700;border-radius:7px;padding:3px 8px;background:var(--coral-s);color:var(--coral-d)">다음 차례</span>`:''}
-            ${g.startedAt&&!done(g)?`<span style="font-size:10.5px;font-weight:700;color:var(--coral-d)">● 진행 중</span>`:''}
+            ${running?`<span style="font-size:11px;font-weight:800;border-radius:7px;padding:3px 9px;background:var(--coral);color:#fff">지금 경기 중</span>`:''}
+            ${nextUp&&!running?`<span style="font-size:11px;font-weight:800;border-radius:7px;padding:3px 9px;background:#fff;color:var(--coral-d);border:1.5px solid var(--coral)">다음 차례</span>`:''}
             <span style="flex:1"></span>${sc}
             ${off&&!done(g)?`<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:var(--lgray);cursor:pointer;padding:0 2px 0 6px;line-height:1" title="경기 바꾸기">⋮</span>`:''}
           </div>
