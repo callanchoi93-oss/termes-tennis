@@ -217,6 +217,15 @@ else
 fi
 
 echo ""
+echo "참석 인원 세기"
+if node test/head-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/head-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
 echo "발행 안전장치"
 if node test/guard-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
