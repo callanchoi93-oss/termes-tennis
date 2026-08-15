@@ -262,6 +262,15 @@ else
 fi
 
 echo ""
+echo "알림 점 · 대화 숫자"
+if node test/badge-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/badge-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
 echo "홈 요약 카드"
 if node test/homecard-sim.js 2>&1 | grep -q "전부 통과"; then
   echo "  통과"
