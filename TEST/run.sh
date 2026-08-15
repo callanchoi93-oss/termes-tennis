@@ -198,5 +198,23 @@ else
   fail=1
 fi
 
+echo ""
+echo "코트가 비지 않는 대진"
+if node test/idlefree-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/idlefree-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "일반·성비 가능 조건"
+if node test/mode-gate-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/mode-gate-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then echo "" && echo "전부 통과"; else echo "" && echo "실패한 항목이 있습니다"; fi
 exit $fail
