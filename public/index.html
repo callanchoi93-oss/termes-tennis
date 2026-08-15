@@ -12428,6 +12428,29 @@ function cbEaseIdle(out, courts){
    못 지키면 null 을 돌려주고 기존 방식으로 물러난다(대진을 못 만드는 것보다 낫다).
 
    (8/14 인원으로 확인: 막히는 경우 5건 → 0건, 파트너 겹침 0쌍) */
+/* ── 안전장치 ──────────────────────────────────────────────
+   한 사람이 같은 바퀴에 두 코트에 들어간 대진은 코트에서 진행이 통째로 꼬인다.
+   편성기가 어떻게 바뀌든 이 문은 늘 닫혀 있어야 한다 —
+   대진을 만들 때, 저장할 때 모두 여기를 지난다.
+   문제가 없으면 빈 배열을 돌려준다. */
+function cbFindClash(games){
+  const bad=[];
+  [...new Set((games||[]).map(g=>g.r))].forEach(r=>{
+    const seen={}, cs=new Set();
+    (games||[]).filter(g=>g.r===r).forEach(g=>{
+      if(cs.has(g.c)) bad.push(`${r}게임에 ${g.c}코트가 두 번`);
+      cs.add(g.c);
+      [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
+        if(!p || p.id==='-') return;
+        const k=String(p.id);
+        if(seen[k]) bad.push(`${r}게임 · ${p.name} 님이 ${seen[k]}코트와 ${g.c}코트 양쪽에`);
+        else seen[k]=g.c;
+      });
+    });
+  });
+  return bad;
+}
+
 function cbPlanIdleFree(mem, courts, seed){
   const N=mem.length, per=courts*4;
   if(N<per || N-per<4) return null;               // 쉬는 사람이 4명은 돼야 한 경기가 나온다
@@ -13961,7 +13984,10 @@ function cb2GenderCount(){
     if(isFem(p.gender)) f++; else m++; });
   return {m,f};
 }
-function cb2Head(){ return CB2_SEL.size + CB2_GUESTS.length; }
+/* 참석 인원.
+   게스트를 추가할 때 CB2_SEL 에도 그 id 를 넣으므로 CB2_SEL 만 세면 된다.
+   예전엔 CB2_GUESTS.length 를 더해서 게스트를 두 번 셌다 — 18명이 35명으로 나왔다. */
+function cb2Head(){ return CB2_SEL.size; }
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
   return el ? (+el.value||3) : CB2_COURTS;
@@ -14247,11 +14273,11 @@ function cbSexFits(nM, nF, courts){
   return false;
 }
 /* 지금 고른 참석자의 남녀 수 (게스트 포함) */
+/* cb2All() 은 명부와 게스트를 합쳐서 돌려준다 — 게스트를 따로 또 더하면 두 번 센다 */
 function cbSexNow(){
   let m=0,f=0;
   cb2All().forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
     if(isFem(p.gender)) f++; else m++; });
-  CB2_GUESTS.forEach(g=>{ if(isFem(g.gender)) f++; else m++; });
   return {m,f};
 }
 /* 늦참자를 뺀 정시 인원의 남녀 수 */
@@ -14260,8 +14286,6 @@ function cbSexOnTime(){
   cb2All().forEach(p=>{ const id=String(p.user_id);
     if(!CB2_SEL.has(id) || CB2_LATE.has(id)) return;
     if(isFem(p.gender)) f++; else m++; });
-  CB2_GUESTS.forEach(g=>{ if(CB2_LATE.has(String(g.gid))) return;
-    if(isFem(g.gender)) f++; else m++; });
   return {m,f};
 }
 /* 늦참을 지금 구성으로 반영할 수 있나 — 인원과 성별을 함께 본다 */
@@ -14275,12 +14299,12 @@ function lateSexWhy(){
 }
 function lateMaxNow(){
   if(lateSexWhy()) return 0;                       // 성별이 안 맞으면 미룰 수 없다
-  return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size);
+  return lateMax(cb2Head(), cb2Courts(), CB2_LATE.size);
 }
 /* 한 명 더 지정해도 되는지 — 안 되면 칩을 잠근다.
    그 사람을 뺐을 때 성별이 떨어지는지까지 본다. */
 function lateCanAdd(p){
-  const n=CB2_SEL.size + CB2_GUESTS.length, c=cb2Courts();
+  const n=cb2Head(), c=cb2Courts();
   if(lateMax(n, c, CB2_LATE.size+1) < 2) return false;
   if(p){
     const t=cbSexOnTime();
@@ -14622,6 +14646,17 @@ async function cb2Gen(mode){
   }
   if(!games.length && mode!=='cheongbaek'){ toast('대진을 만들지 못했어요 · 인원·코트를 확인해 주세요'); return; }
   games.sort((a,b)=>a.r-b.r||a.c-b.c);
+  /* ── 안전장치 ──────────────────────────────────────────────
+     어떤 방식으로 짰든, 한 사람이 같은 바퀴에 두 코트에 들어간 대진은
+     코트에서 진행이 통째로 꼬인다. 발행 직전에 마지막으로 막는다.
+     편성기가 아무리 바뀌어도 이 문은 늘 닫혀 있어야 한다. */
+  { const bad=cbFindClash(games);
+    if(bad.length){
+      console.error('대진 겹침', bad);
+      toast(`대진에 겹치는 사람이 있어 발행하지 않았어요 · ${bad[0]}`);
+      return;
+    }
+  }
   const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
   const data={date:new Date().toISOString().slice(0,10), courts, rounds, mode, gpp:GPP,
     made_by:state.userName, games, captains, note:genderNote,
