@@ -1367,8 +1367,10 @@
   .yhero .yh-foot{ display:flex; align-items:center; gap:10px; margin-top:18px; }
   .yhero .yh-deco{ position:absolute; right:42px; top:50%; transform:translateY(-50%) rotate(8deg); font-size:29px; line-height:1; filter:drop-shadow(0 8px 12px rgba(0,0,0,.14)); pointer-events:none; }
 
-  .plan2{ display:grid; grid-template-columns:1fr 1fr; gap:11px; }
-  .psess{ border-radius:24px; padding:16px; cursor:pointer; position:relative; min-height:158px; display:flex; flex-direction:column; transition:transform .12s ease; }
+  /* 한 줄에 두 장이면 날짜·D-3·종류·참여중이 좁은 칸에서 줄바꿈된다.
+     한 줄에 한 장이면 배지가 한 줄에 다 들어가고 이름도 안 잘린다. */
+  .plan2{ display:flex; flex-direction:column; gap:9px; }
+  .psess{ border-radius:20px; padding:15px 16px; cursor:pointer; position:relative; display:flex; flex-direction:column; transition:transform .12s ease; }
   .psess:active{ transform:scale(.985); }
   /* 날짜를 카드 왼쪽 위에 크게 — 제목·본문에서 날짜가 세 번 겹치던 걸 한 번으로 */
   .psess .ps-top{ display:flex; align-items:center; gap:6px; margin-bottom:8px; }
@@ -7443,7 +7445,24 @@ async function repairClubServer(){
 }
 let _NPOP_DONE=false;
 function clubDay(k){ state._clubDay = (state._clubDay===k) ? null : k; renderClub(); }
-function clubWeek(d){ state._clubWeek=(state._clubWeek||0)+d; state._clubDay=null; renderClub(); }
+/* 모임이 없던 때까지 하염없이 넘어가지 않게 — 가장 이른 모임과 가장 늦은 모임 사이로 묶는다 */
+function clubWeekRange(){
+  const evs=((SERVER_OK && clubId()) ? (SRV_EVENTS||[]) : ((AC()||{}).events||[]))
+    .map(e=>evTime(e)).filter(Boolean);
+  if(!evs.length) return {min:0, max:0};
+  const wk=t=>{ const d=new Date(t); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay());
+    const n=new Date(); n.setHours(0,0,0,0); n.setDate(n.getDate()-n.getDay());
+    return Math.round((d-n)/(7*86400000)); };
+  return { min:Math.min(0,...evs.map(wk)), max:Math.max(0,...evs.map(wk)) };
+}
+function clubWeek(d){
+  const r=clubWeekRange();
+  const v=(state._clubWeek||0)+d;
+  if(v<r.min || v>r.max){
+    toast(d<0 ? '더 지난 모임이 없어요' : '더 예정된 모임이 없어요'); return;
+  }
+  state._clubWeek=v; state._clubDay=null; renderClub();
+}
 /* 다가오는 · 지난 모임 — 한 목록에 섞으면 매번 스크롤로 오늘을 찾아야 한다.
    기본은 다가오는 쪽. 기록을 보려는 사람은 목적이 분명해 한 번 더 누르는 게 부담이 아니다. */
 function clubPast(v){ state._clubPast = !!v; state._clubDay=null; renderClub(); }
@@ -7588,13 +7607,19 @@ function renderClub(){
       const wkLeft=wkEv.filter(e=>!evIsPast(e)).length;
       h+=`<div style="display:flex;align-items:center;gap:8px;background:#faf8f4;
             border-radius:13px;padding:11px 13px;margin:0 4px 10px">
-          <span onclick="clubWeek(-1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">‹</span>
+          ${(()=>{ /* 갈 곳이 없으면 화살표를 아예 안 그린다 —
+                       흐린 화살표는 '뭔가 있는데 안 눌린다' 처럼 보여 더 신경 쓰인다 */
+            const r=clubWeekRange(), v=state._clubWeek||0;
+            return v<=r.min ? '' :
+              `<span onclick="clubWeek(-1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">‹</span>`; })()}
           <span style="flex:1;min-width:0">
             <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${
               wOff===0 ? `${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}` : esc(wLabel)}</b>
             <span style="font-size:11.5px;color:var(--gray);font-weight:600;margin-left:8px">${
               wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></span>
-          <span onclick="clubWeek(1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">›</span>
+          ${(()=>{ const r=clubWeekRange(), v=state._clubWeek||0;
+            return v>=r.max ? '' :
+              `<span onclick="clubWeek(1)" style="cursor:pointer;color:var(--lgray);font-size:16px;padding:0 4px">›</span>`; })()}
         </div>
         <div style="display:flex;background:#f4f2ee;border-radius:12px;padding:3px;margin:0 4px 10px">
           ${[['다가오는',false],['지난 모임',true]].map(([t,v])=>{
@@ -7705,42 +7730,8 @@ function evAgoText(ev){
           h+=`</div>`;
         });
       }
-      /* 이번 주 화면 아래에 최근 끝난 모임 몇 개 — 탭하면 그날 참석자와 대진이 나온다 */
-      /* 지난 모임은 이제 위쪽 탭이 맡는다 — 아래에 또 쌓으면 같은 걸 두 번 보게 된다.
-         다가오는 탭에서만, 그것도 최근 것 몇 개만 곁들인다. */
-      if(!dayF && !state._clubPast && !(state._clubWeek||0)){
-        const past=evList.filter(e=>evIsPast(e)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,3);
-        if(past.length){
-          h+=`<div style="display:flex;align-items:center;gap:8px;margin:18px 4px 8px">
-            <span class="ch" style="font-size:14px;margin:0">지난 모임</span>
-            <span style="font-size:11px;color:var(--lgray);font-weight:500">참석자·대진을 볼 수 있어요</span></div>`;
-          /* 지난 모임도 같은 카드 모양으로 — 예전엔 한 줄짜리 목록이라
-             다가오는 일정과 다른 화면처럼 보였다. 색만 모래색으로 낮춘다.
-             지나간 모임에 '5명 참여' 는 뜻이 없으니 무엇을 했는지로 바꾼다. */
-          past.forEach(ev=>{
-            const d=evParseDate(ev.date);
-            const day=d.day!=null?d.day:'';
-            const wd = d.day!=null ? WD_KO[new Date(new Date().getFullYear(), d.m, d.day).getDay()] : '';
-            const title=String(ev.title||'').replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim() || ev.title || '모임';
-            const nAtt=(ev.attendees||[]).length;
-            h+=`<div class="psess" style="background:#efe9e0;width:100%;margin-bottom:8px"
-                onclick="openEventDetail('${ev.id}')">
-              <div class="ps-top">
-                <span class="ps-date" style="color:#8a7660"><b>${day||'–'}</b><i>${wd}</i></span>
-                <span class="ps-badges">
-                  <span class="ps-dd" style="color:#a99981;font-weight:700">${esc(evAgoText(ev))}</span>
-                  ${ev.joined?'<span class="ps-chk" style="background:#f7f3ec;color:#8a7660">참석</span>':''}
-                </span></div>
-              <div class="ps-n" style="color:#6e6152;font-weight:600">${esc(title)}</div>
-              <div class="ps-m" style="color:#a99981">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'')}${
-                d.place?`<br>${esc(d.place)}`:''}</div>
-              <div class="ps-foot" style="justify-content:space-between">
-                <span style="font-size:12.5px;font-weight:600;color:#6e6152">참석 ${nAtt}명${
-                  (ev.guests||[]).length?` · 게스트 ${(ev.guests||[]).length}명`:''}</span>
-                <span style="font-size:11.5px;font-weight:700;color:#8a7660">대진 보기 ›</span></div></div>`;
-          });
-        }
-      }
+      /* 지난 모임은 위쪽 '지난 모임' 탭이 맡는다.
+         다가오는 탭 아래에 또 쌓으면 같은 카드를 두 번 보게 된다. */
     }
     /* 운영 도구·공지·피드는 각각 '운영진 도구' 페이지와 '소식' 탭으로 옮겼다.
        일정 탭에 다 쌓아두면 스크롤만 길어지고 무엇이 중요한지 안 보인다. */
@@ -12957,8 +12948,13 @@ function drawCB2View(){
           nextUp = !cg.some(x=>!done(x) && !x.startedAt && x.r < g.r);
           const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.id);
           const busy=ids.some(i=>RUN.ids.has(i));
-          if(RUN.n>=(CB2.courts||1)) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 코트 만석</span>`;
-          else if(busy) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 선수 경기 중</span>`;
+          /* 한 코트에서 두 경기가 동시에 돌 수는 없다.
+             예전엔 코트별 검사가 없어서 1코트 4게임과 5게임이 같이 '경기 중' 이 됐다. */
+          const courtBusy=cg.some(x=>x.startedAt && !done(x));
+          const wait=t=>`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">${t}</span>`;
+          if(courtBusy)                    sc=wait('대기 · 이 코트 경기 중');
+          else if(RUN.n>=(CB2.courts||1))  sc=wait('대기 · 코트 만석');
+          else if(busy)                    sc=wait('대기 · 선수 경기 중');
           else sc=`<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`;
         }
         const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
@@ -12974,15 +12970,18 @@ function drawCB2View(){
            진행 중은 코랄로 칠하고 왼쪽에 굵은 띠를, 다음 차례는 테두리만 —
            칠한 것 하나, 테두리 하나로 무엇이 지금이고 무엇이 다음인지 갈린다. */
         const running = g.startedAt && !done(g);
+        /* 알약을 겹쳐 붙이면 시끄럽다. 진행 중은 <왼쪽 띠 + 경과 시간>,
+           다음 차례는 <테두리>만. 글자 딱지는 하나도 안 쓴다. */
+        const mins = running ? Math.max(0, Math.round((Date.now()-g.startedAt)/60000)) : 0;
         h+=`<div style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
-            background:${running?'#fdeee4':'#f8f6f1'}${
-            running?';box-shadow:inset 4px 0 0 var(--coral)'
+            background:${running?'#fdf3ec':'#f8f6f1'}${
+            running?';box-shadow:inset 3px 0 0 var(--coral)'
                   : nextUp?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:11px;font-weight:${running?700:500};color:${running||g.r===live?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
+            <span style="font-size:11px;font-weight:${running?700:500};color:${running||nextUp?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
             <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
-            ${running?`<span style="font-size:11px;font-weight:800;border-radius:7px;padding:3px 9px;background:var(--coral);color:#fff">지금 경기 중</span>`:''}
-            ${nextUp&&!running?`<span style="font-size:11px;font-weight:800;border-radius:7px;padding:3px 9px;background:#fff;color:var(--coral-d);border:1.5px solid var(--coral)">다음 차례</span>`:''}
+            ${running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">${mins}분째</span>`:''}
+            ${nextUp&&!running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">다음</span>`:''}
             <span style="flex:1"></span>${sc}
             ${off&&!done(g)?`<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:var(--lgray);cursor:pointer;padding:0 2px 0 6px;line-height:1" title="경기 바꾸기">⋮</span>`:''}
           </div>
@@ -16031,6 +16030,9 @@ async function cb2StartGame(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||g.startedAt||g.sa!=null) return;
   if((CB2.offCourts||[]).includes(g.c)){ toast(`${g.c}코트는 사용 중지 상태예요`); return; }
   const runG=(CB2.games||[]).filter(x=>x.startedAt&&x.sa==null);
+  /* 한 코트에서 두 경기가 동시에 돌 수는 없다 — 버튼을 못 눌러도 여기서 한 번 더 막는다 */
+  if(runG.some(x=>x.c===g.c)){
+    toast(`${g.c}코트는 지금 경기 중이에요 · 그 경기 점수를 먼저 넣어주세요`); return; }
   const usable=Math.max(1,(CB2.courts||1)-(CB2.offCourts||[]).length);
   if(runG.length>=usable){ toast(`코트 ${CB2.courts}개가 모두 사용 중이에요 · 끝난 경기 스코어를 먼저 입력해 주세요`); return; }
   const busy=new Set(runG.flatMap(x=>[...(x.teamA||[]),...(x.teamB||[])].map(p=>p.id)));
@@ -18045,7 +18047,9 @@ function drawOmb(){
       } else {
         mid='－ : －';
         nextUp = !cg.some(x=>!done(x) && !x.startedAt && !off.includes(x.c) && x.r < g.r);
-        if(runG.length>=usable) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 코트 만석</span>`;
+        const courtBusy=cg.some(x=>x.startedAt && !done(x));   // 한 코트에 한 경기만
+        if(courtBusy) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 이 코트 경기 중</span>`;
+        else if(runG.length>=usable) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 코트 만석</span>`;
         else if([...(g.a||[]),...(g.b||[])].some(n=>busy.has(n))) sc=`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">대기 · 선수 경기 중</span>`;
         else sc=`<span onclick="${isMgr?`ombStart(${g.gi})`:''}" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:600;font-size:11px;${isMgr?'cursor:pointer':'opacity:.5'}">시작 ▶</span>`;
       }
