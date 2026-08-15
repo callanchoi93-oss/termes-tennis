@@ -216,5 +216,34 @@ else
   fail=1
 fi
 
+echo ""
+echo "발행 안전장치"
+if node test/guard-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/guard-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+echo ""
+echo "늦참 성별 조건"
+if node test/latesex-sim.js 2>&1 | grep -q "전부 통과"; then
+  echo "  통과"
+else
+  node test/latesex-sim.js 2>&1 | grep FAIL | sed 's/^/  /'
+  fail=1
+fi
+
+if [ "${SWEEP:-0}" = "1" ]; then
+  echo ""
+  echo "대진 전수 검사 (오래 걸림 · SWEEP=1 일 때만)"
+  if node test/bracket-sweep.js 2>&1 | grep -q "전부 통과"; then
+    echo "  통과"
+  else
+    node test/bracket-sweep.js 2>&1 | grep FAIL | sed 's/^/  /'
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then echo "" && echo "전부 통과"; else echo "" && echo "실패한 항목이 있습니다"; fi
 exit $fail
