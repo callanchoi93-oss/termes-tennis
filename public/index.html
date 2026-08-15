@@ -2574,7 +2574,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.8-0816a';
+const BUILD='v1.0.8-0816b';
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -13413,7 +13413,18 @@ async function openClubBracketView(){
     try{ const d=await api(`/clubs/${cid}/bracket2${cbQ()}`);
       if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; drawCB2View(); } }catch(e){} }, 12000);
 }
-let CB2_COURT=0;
+let CB2_COURT=0, CB2_FOCUS=null;
+/* 전체 표에서 칸을 누르면 그 코트 탭으로 옮겨 그 경기 앞에 세워준다.
+   여기서부터는 코트 하나만 보이니, 위에서 아래로 순서대로 점수를 넣을 수 있다.
+   예전에는 임원에게만 '게임 내 선수 변경' 시트가 떠서, 정작 점수를 넣으려면
+   탭을 다시 눌러 코트를 찾아 들어가야 했다. */
+function cb2GoGame(gi){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  CB2_COURT=g.c; CB2_FOCUS=gi;
+  drawCB2View();
+  setTimeout(()=>{ const el=document.getElementById('cbg'+gi);
+    if(el && el.scrollIntoView) el.scrollIntoView({block:'center', behavior:'smooth'}); }, 80);
+}
 /* 대진 도구 — 상단을 채우던 버튼들을 한곳에 모은다.
    거치·수기표·공유는 자주 쓰는 기능이 아니라 코트 화면을 밀어낼 이유가 없다. */
 function cb2More(){
@@ -13540,13 +13551,13 @@ function drawCB2View(){
         /* '전체' 를 맨 앞에 둔다 — 내 다음 경기를 보려고 탭을 세 번 누르지 않게.
            점수를 넣을 때는 한 코트만 보는 게 나으니 코트별 탭도 그대로 둔다. */
         h+=`<div class="rtcts">
-          <div class="${CB2_COURT===0?'on':''}" onclick="CB2_COURT=0;drawCB2View()">
+          <div class="${CB2_COURT===0?'on':''}" onclick="CB2_COURT=0;CB2_FOCUS=null;drawCB2View()">
             <span class="t">전체</span><span class="s">${(CB2.games||[]).filter(done).length}/${(CB2.games||[]).length}</span></div>
           ${cs.map(({c,cg})=>{
           const offc=(CB2.offCourts||[]).includes(c);
           const running=cg.some(g=>g.startedAt&&!done(g));
           const fin=cg.filter(done).length;
-          return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};drawCB2View()">
+          return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};CB2_FOCUS=null;drawCB2View()">
             <span class="t">${c}번 코트</span>
             <span class="s">${offc?'중지':running?'진행 중':`${fin}/${cg.length}`}</span></div>`;
         }).join('')}</div>`;
@@ -13577,7 +13588,7 @@ function drawCB2View(){
                 <b>${esc(hint.t1)}</b><span>${esc(hint.t2)}</span>
                 <i>눌러서 점수 보기</i></td>`;
             }
-            return `<td class="${cls}${hint?' flipped':''}" onclick="${hint?`cb2Flip('${r}-${c}')`:`cb2Menu(${g.gi})`}">
+            return `<td class="${cls}${hint?' flipped':''}" onclick="${hint?`cb2Flip('${r}-${c}')`:`cb2GoGame(${g.gi})`}">
               ${nm(g.teamA,r)}
               <em>${done(g)?`${g.sa}:${g.sb}`:run?'경기 중':'vs'}</em>
               ${nm(g.teamB,r)}
@@ -13585,9 +13596,9 @@ function drawCB2View(){
           }).join('')}</tr>`).join('')}
         </table>
         <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 게임에 안 쓰는 코트
+          <br>칸을 누르면 <b>그 코트로 옮겨가요</b> · 거기서 점수를 넣어요
           ${Object.values(dupBy).some(v=>v.length)
-            ? `<br><b style="color:#c14545">붉은 칸</b>이 겹치는 경기 · 밑줄이 겹치는 사람 ·
-               칸을 누르면 <b style="color:#c14545">순서 바꾸기</b>가 나와요` : ''}</div></div>`;
+            ? `<br><b style="color:#c14545">붉은 칸</b>이 겹치는 경기 · 밑줄이 겹치는 사람` : ''}</div></div>`;
       }
     }
     /* 같은 바퀴에 같은 사람이 두 코트에 있으면 진행이 불가능하다.
@@ -13659,17 +13670,25 @@ function drawCB2View(){
         /* 알약을 겹쳐 붙이면 시끄럽다. 진행 중은 <왼쪽 띠 + 경과 시간>,
            다음 차례는 <테두리>만. 글자 딱지는 하나도 안 쓴다. */
         const mins = running ? Math.max(0, Math.round((Date.now()-g.startedAt)/60000)) : 0;
-        h+=`<div style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
-            background:${running?'#fdf3ec':'#f8f6f1'}${
+        const focused = CB2_FOCUS===g.gi;
+        h+=`<div id="cbg${g.gi}" style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
+            background:${running?'#fdf3ec':focused?'#fdf8f0':'#f8f6f1'}${
             running?';box-shadow:inset 3px 0 0 var(--coral)'
-                  : nextUp?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
+                  : (nextUp||focused)?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-size:11px;font-weight:${running?700:500};color:${running||nextUp?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
             <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
             ${running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">${mins}분째</span>`:''}
             ${nextUp&&!running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">다음</span>`:''}
             <span style="flex:1"></span>${sc}
-            ${off&&!done(g)?`<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:var(--lgray);cursor:pointer;padding:0 2px 0 6px;line-height:1" title="경기 바꾸기">⋮</span>`:''}
+            ${(()=>{ /* 겹침을 되돌릴 때만 나오는 통로. 평소에는 아무것도 안 보여준다 —
+                        점수 넣으러 온 사람에게 편성 도구를 들이밀 이유가 없다. */
+              if(!off || done(g)) return '';
+              const dup=cb2ClashAt(CB2.games||[], g.r);
+              const mine=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name);
+              if(!dup.some(d=>mine.includes(d.name))) return '';
+              return `<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:#c14545;cursor:pointer;padding:0 2px 0 6px;line-height:1" title="순서 바꾸기">⋮</span>`;
+            })()}
           </div>
           <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
             <div style="flex:1;min-width:0">
@@ -16644,9 +16663,8 @@ function cb2Menu(gi){
       return row('게임 순서 바꾸기','겹침을 되돌릴 때만 써요 · 같은 코트의 다른 게임과 자리를 맞바꿔요',
                  'cb2SwapPick('+gi+')');
     })()}
-    ${row('게임 내 선수 변경','네 명은 그대로 · 팀만 다시 나눠요','cb2Reteam('+gi+')')}
-    <div class="note" style="text-align:left;margin-top:13px">선수를 빼고 다른 사람을 넣는 건 안 돼요 ·
-      누군가는 3경기, 누군가는 5경기가 되거든요. 모두 4경기를 뛰어야 해요.</div></div>`;
+    <div class="note" style="text-align:left;margin-top:13px">겹침을 되돌릴 때만 쓰는 화면이에요 ·
+      점수는 코트 화면에서 <b>－ : －</b> 를 눌러 넣어주세요.</div></div>`;
   document.getElementById('ov').classList.add('on');
 }
 /* ① 순서 바꾸기 — 같은 코트의 게임을 목록에서 고른다 */
