@@ -6,6 +6,9 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
+<!-- 대진 공유 이미지 전용 — 화면 본문에는 쓰지 않는다 -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <title>MATSU · 맞수</title>
@@ -317,6 +320,25 @@
   .bkmeta{display:block;font-size:12.5px;color:var(--lgray);margin-top:5px;
     font-variant-numeric:tabular-nums}
   .bkmeta + .bkmeta{margin-top:2px}
+  /* 대진 전체 보기 — 코트가 열, 게임이 행. 세로로 훑으면 내 다음 경기가 보인다. */
+  .cbwide{ border:1px solid var(--line); border-radius:13px; overflow:hidden; margin-top:10px; background:#fff }
+  .cbwide table{ width:100%; border-collapse:collapse; table-layout:fixed }
+  .cbwide th{ font-size:10.5px; font-weight:700; color:var(--lgray); padding:8px 4px;
+    background:#faf8f4; border-bottom:1px solid var(--line) }
+  .cbwide th:first-child{ width:24px }
+  .cbwide td{ padding:8px 5px; text-align:center; border-bottom:1px solid #f4f2ee;
+    font-size:10.5px; font-weight:600; letter-spacing:-.03em; line-height:1.45; cursor:pointer }
+  .cbwide tr:last-child td{ border-bottom:0 }
+  .cbwide td em{ display:block; font-style:normal; font-size:9px; font-weight:700;
+    color:var(--lgray); margin:2px 0 }
+  .cbwide td.r{ font-size:11px; font-weight:800; color:var(--lgray); cursor:default }
+  .cbwide td.dn{ color:#c9c3b9 } .cbwide td.dn em{ color:#a8a29a }
+  .cbwide td.on{ background:var(--coral-s); color:var(--coral-d) }
+  .cbwide td.on em{ color:var(--coral-d) }
+  .cbwide td.no{ color:#e4e0d8; cursor:default }
+  .cbwide .lg{ font-size:10.5px; color:var(--lgray); padding:9px 11px; background:#faf8f4;
+    border-top:1px solid var(--line); line-height:1.6 }
+  .cbwide .lg b{ color:var(--coral-d); font-weight:700 }
   .bkbar{display:block;height:5px;border-radius:9px;background:var(--felt);margin-top:11px;overflow:hidden}
   .bkbar i{display:block;height:100%;background:var(--coral);border-radius:9px;transition:width .3s}
   .bkfoot{display:flex;align-items:baseline;gap:2px;margin-top:8px}
@@ -9247,7 +9269,26 @@ function clubTabBracket(){
         <span class="bkpct" style="${live?'':'color:var(--lgray);font-weight:500'}">${
           live?pct+'%':'완료'}</span></span></div>`;
   };
+  /* 점수가 비어 있으면 알려준다.
+     기록 화면이 허전한 건 지표가 적어서가 아니라 점수가 안 들어가서다 —
+     8/14 모임은 18경기 중 8경기만 들어갔다. 아무도 알려주지 않으면 그냥 넘어간다. */
+  const _today=new Date().toISOString().slice(0,10);
+  const pending = (list||[])
+    .map(b=>({b, miss:Math.max(0,(b.games||0)-(b.done||0)), tot:b.games||0}))
+    .filter(x=>x.tot>0 && x.miss>0 && x.b.date && x.b.date < _today);   // 오늘 것은 아직 진행 중일 수 있다
+
   return `${d0().officer?`<button class="btn" style="margin-bottom:14px" onclick="openClubBracketBuild()">＋ 대진 짜기</button>`:''}
+    ${pending.length?`<div style="border:1px solid #f0d9c6;background:#fdf6f1;border-radius:14px;
+        padding:13px 15px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#a5470f">점수가 비어 있어요</div>
+      ${pending.slice(0,3).map(x=>`<div onclick="CB2_EVENT=${x.b.event_id||0};openClubBracketView()"
+        style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer">
+        <span style="font-size:12.5px;font-weight:600;color:#8a5a35;flex:1;min-width:0;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.b.title||x.b.date||'모임')}</span>
+        <span style="font-size:12px;font-weight:700;color:#a5470f;flex:none">${x.miss}경기 ›</span></div>`).join('')}
+      <div style="font-size:11px;color:#a06a3a;margin-top:9px;line-height:1.6">
+        점수를 넣어야 <b>내 정보 · 시즌 랭킹</b>에 기록이 쌓여요.</div>
+    </div>`:''}
     ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
     ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
 }
@@ -9690,6 +9731,9 @@ function clubTabMe(){
     return { win:ms>os, draw:ms===os, ms, os,
       partner:pt?{id:pt.id,name:pt.name}:null,
       opp:opp.filter(Boolean).map(p=>({id:p.id,name:p.name})),
+      /* 남복·혼복·여복 — 대진에 이미 붙어 있어 그대로 들고 온다 */
+      label:g.label||cb2Label(g.teamA||[], g.teamB||[]),
+      r:g.r||0,                                  // 뒷심 계산에 쓴다 (그날 몇 번째 게임인지)
       date:g.date||'' };
   }).filter(Boolean);
 
@@ -9746,15 +9790,22 @@ function clubTabMe(){
     `<div class="chip ${CLUBME_TAB===k?'on':''}" onclick="setClubMeTab('${k}')" style="cursor:pointer">${l}</div>`).join('')}</div>`;
 
   const wrCol=w=>w>=60?'#2f9159':w>=40?'var(--coral-d)':'#d1614f';
+  /* 승률을 보여주는 최소 경기 수. 한 경기로 100%·0% 는 뜻이 없고,
+     이름 옆의 0% 는 낙인처럼 보인다. 파트너·상대 전적·리포트가 같은 기준을 쓴다. */
+  const MINW=2;
+  const wrCell=(g,w)=> g<MINW ? '—' : Math.round(w/g*100)+'%';
   const thead=(a,b,cc,d)=>`<div class="mi-tb mi-th"><span>${a}</span>
     <span style="text-align:center">${b}</span><span style="text-align:center">${cc}</span>
     <span style="text-align:right">${d}</span></div>`;
   /* 이름을 누르면 그 사람 기준의 기록으로 들어간다 */
-  const trow=(id,nm,n,wr,rec)=>`<div class="mi-tb mi-tr${id?' tap':''}"${id?` onclick="openClubMember(${jsArg(id)},${jsArg(nm)})"`:''}>
+  const trow=(id,nm,n,wr,rec)=>{
+    const few = n<MINW;                      // 표본이 적으면 승률을 비워 둔다
+    return `<div class="mi-tb mi-tr${id?' tap':''}"${id?` onclick="openClubMember(${jsArg(id)},${jsArg(nm)})"`:''}>
     <div class="mi-nm">${esc(nm)}</div>
     <div class="mi-n">${n}</div>
-    <div class="mi-wr" style="color:${wrCol(wr)}">${maskNum(wr+'%',nm)}</div>
-    <div class="mi-rec">${maskNum(rec,nm)}</div></div>`;
+    <div class="mi-wr" style="color:${few?'var(--lgray)':wrCol(wr)};font-weight:${few?500:600}">${
+      few ? '—' : maskNum(wr+'%',nm)}</div>
+    <div class="mi-rec">${maskNum(rec,nm)}</div></div>`; };
 
   if(CLUBME_TAB==='report'){
     /* 계산식
@@ -9771,17 +9822,32 @@ function clubTabMe(){
     const totalDays=allDays.size||myDays.size||1;
     const attScore=Math.round(clamp(myDays.size/totalDays*100,0,100));
 
+    /* 날짜별로 '뒤쪽 게임'의 경계를 잡는다 — 그날 라운드 수의 절반 */
+    const lateR={};
+    { const mx={}; (CLUBME_GAMES||[]).forEach(g=>{ if(!g.date||!g.r) return;
+        mx[g.date]=Math.max(mx[g.date]||0, g.r); });
+      Object.keys(mx).forEach(d=>{ lateR[d]=Math.ceil(mx[d]/2); }); }
+
     const allS={};
     (CLUBME_GAMES||[]).forEach(g=>{ [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(!p) return;
       const inA=(g.teamA||[]).some(x=>x&&x.id===p.id);
       const mf=inA?g.sa:g.sb, ma=inA?g.sb:g.sa;
-      const t=allS[p.id]=allS[p.id]||{g:0,w:0,gf:0,ga:0,days:new Set()};
-      t.g++; t.gf+=mf; t.ga+=ma; if(g.date)t.days.add(g.date); if(mf>ma)t.w++; }); });
+      const t=allS[p.id]=allS[p.id]||{g:0,w:0,gf:0,ga:0,days:new Set(),d:0,d2:0,lg:0,lw:0};
+      t.g++; t.gf+=mf; t.ga+=ma; if(g.date)t.days.add(g.date); if(mf>ma)t.w++;
+      /* 안정감 — 득실 편차. 6:0 이기고 0:6 지는 사람과 매번 6:4 하는 사람은 다르다 */
+      const d=mf-ma; t.d+=d; t.d2+=d*d;
+      /* 뒷심 — 그날 뒤쪽 게임 성적. 지쳤을 때도 되는가 */
+      if(g.r && lateR[g.date] && g.r>lateR[g.date]){ t.lg++; if(mf>ma) t.lw++; } }); });
     const pool=Object.values(allS).filter(x=>x.g>=3);
     const avgOf=f=>pool.length?Math.round(pool.reduce((a,x)=>a+f(x),0)/pool.length):50;
     const clubWr=avgOf(x=>Math.round(x.w/x.g*100));
     const clubGd=avgOf(x=>clamp(50+((x.gf-x.ga)/x.g/3)*50,0,100));
     const clubAtt=avgOf(x=>clamp(x.days.size/totalDays*100,0,100));
+    const sdOf=x=>Math.sqrt(Math.max(0, x.d2/x.g - Math.pow(x.d/x.g,2)));
+    const avgOfF=f=>pool.length? pool.reduce((a,x)=>a+f(x),0)/pool.length : 0;
+    const clubSd=avgOfF(sdOf);
+    const clubLate=(()=>{ const p2=pool.filter(x=>x.lg>0);
+      return p2.length? p2.reduce((a,x)=>a+x.lw/x.lg*100,0)/p2.length : 50; })();
 
     [['승률',wr,clubWr,`${W}승 ${L}패`],
      ['득실',gdScore,clubGd,`경기당 ${gdAvg>=0?'+':''}${gdAvg.toFixed(1)}점`],
@@ -9789,9 +9855,9 @@ function clubTabMe(){
       const good=v>=avg;
       h+=`<div style="padding:14px 2px;border-top:1px solid #f4f2ed">
         <div style="display:flex;align-items:baseline;gap:9px">
-          <span style="flex:none;width:34px;font-size:var(--t2);font-weight:600">${l}</span>
-          <span class="gt1 gmute" style="flex:1">${sub}</span>
-          <span style="flex:none;font-size:var(--t3);font-weight:600;font-variant-numeric:tabular-nums;
+          <span style="flex:none;width:34px;font-size:var(--t2);font-weight:500">${l}</span>
+          <span class="gt1 gmute" style="flex:1">${sub} · 클럽 평균 ${avg}</span>
+          <span style="flex:none;font-size:var(--t3);font-weight:700;font-variant-numeric:tabular-nums;
             color:${good?'#2f9159':'var(--coral-d)'}">${v}</span></div>
         <div style="position:relative;height:8px;border-radius:5px;background:#f2f0ea;margin-top:10px">
           <div style="position:absolute;left:0;top:0;bottom:0;width:${v}%;border-radius:5px;
@@ -9802,14 +9868,111 @@ function clubTabMe(){
       <span style="width:2px;height:12px;background:#8a857c;border-radius:1px;display:inline-block"></span>
       세로선은 클럽 평균이에요 · 득실은 경기당 ±3점을 0~100으로 환산한 값</div>`;
 
+    /* 한 덩어리에 굵은 것은 하나만 둔다. 값은 글자 크기로 이미 두드러지니
+       굵기까지 주면 여섯 칸이 서로 다툰다. */
     const tile=(l,v,col)=>`<div style="flex:1;min-width:0;background:var(--paper,#faf8f4);border-radius:12px;padding:13px 6px;text-align:center">
-      <div style="font-size:var(--t3);font-weight:600;color:${col||'var(--ink)'}">${v}</div>
+      <div style="font-size:var(--t3);font-weight:500;color:${col||'var(--ink)'}">${v}</div>
       <div class="gt1 gmute" style="margin-top:4px">${l}</div></div>`;
     const close=my.filter(x=>Math.abs(x.ms-x.os)<=1);
     const closeWr=close.length?Math.round(close.filter(x=>x.win).length/close.length*100):0;
+    const closeN=close.length;                 // 접전 경기 수 — 적으면 승률을 숨긴다
     const last5=my.slice(-5);
-    h+=`<div style="display:flex;gap:8px">${tile('평균 득점',(gf/my.length).toFixed(1))}${tile('평균 실점',(ga/my.length).toFixed(1))}${tile('접전 승률',closeWr+'%',closeWr>=50?'#2f9159':'var(--coral-d)')}</div>
-      <div style="display:flex;gap:8px;margin-top:8px">${tile('최근 5경기',last5.filter(x=>x.win).length+'승')}${tile('클럽 평균 대비',(wr-clubWr>=0?'+':'')+(wr-clubWr)+'%p',wr>=clubWr?'#2f9159':'var(--coral-d)')}${tile('참여 모임',myDays.size+'회')}</div>`;
+    h+=`<div style="display:flex;gap:8px">${tile('평균 득점',(gf/my.length).toFixed(1))}${tile('평균 실점',(ga/my.length).toFixed(1))}${closeN>=2 ? tile('접전 승률',closeWr+'%',closeWr>=50?'#2f9159':'var(--coral-d)')
+                    : tile('접전 승률','—','#b3aea4')}</div>
+      <div style="display:flex;gap:8px;margin-top:8px">${tile(`최근 ${last5.length}경기`,last5.filter(x=>x.win).length+'승')}${(()=>{ /* 0 인데 부호가 붙으면 한 번 더 생각해야 한다 — 같으면 같다고 적는다 */
+        const d=wr-clubWr;
+        return d===0 ? tile('클럽 평균','같아요','#8a857c')
+                     : tile('클럽 평균 대비',(d>0?'+':'')+d+'%p', d>0?'#2f9159':'var(--coral-d)'); })()}${tile('참여 모임',myDays.size+'회')}</div>`;
+
+    /* ── 육각형 · 강점과 약점 ────────────────────────────────
+       여섯 축을 모두 0~100 으로 맞추고, 클럽 평균을 50 자리에 둔다.
+       표본이 적으면 모양이 운으로 흔들린다 — 5경기 전에는 흐리게 그리고
+       '강점·약점' 이라고 부르지 않는다. */
+    { const RN=5;                                   // 또렷해지는 경기 수
+      const cl=v=>clamp(Math.round(v),0,100);
+      const avgF=gf/my.length, avgA=ga/my.length;
+      /* 클럽 평균과 견줘 0~100 으로. 평균이면 50 */
+      const rel=(mine,avg,span)=>cl(50+((mine-avg)/span)*50);
+      const clubAvgF=avgOfF(x=>x.gf/x.g), clubAvgA=avgOfF(x=>x.ga/x.g);
+      /* 안정감 — 득실이 들쭉날쭉하지 않은가. 편차가 작을수록 높다 */
+      const dl=my.map(x=>x.ms-x.os);
+      const mean=dl.reduce((a,b)=>a+b,0)/(dl.length||1);
+      const mySd=Math.sqrt(Math.max(0, dl.reduce((a,b)=>a+(b-mean)*(b-mean),0)/(dl.length||1)));
+      /* 뒷심 — 그날 뒤쪽 게임 승률 */
+      const lateG=my.filter(x=>x.r && lateR[x.date] && x.r>lateR[x.date]);
+      const myLate=lateG.length? Math.round(lateG.filter(x=>x.win).length/lateG.length*100) : null;
+      const AX=[
+        ['승률', wr,                                        clubWr],
+        ['공격', rel(avgF, clubAvgF||avgF, 3),               50],
+        ['수비', rel(clubAvgA||avgA, avgA, 3),               50],   // 실점이 적을수록 높다
+        ['접전', closeN? closeWr : 50,                       50],
+        ['뒷심', myLate==null? 50 : rel(myLate, clubLate, 40), 50],
+        ['안정감', rel(clubSd||mySd, mySd, 3),                50],   // 편차가 작을수록 높다
+      ];
+      /* 라벨이 바깥에 붙으므로 그림보다 상자를 크게 잡는다 —
+         예전 값(R64·CY80)에서는 맨 위 '승률' 이 잘렸다. */
+      const R=58, CX=88, CY=84, LR=R+14;
+      const ang=i=>-Math.PI/2 + i*Math.PI/3;
+      const pt=(i,v)=>{ const a=ang(i), r=R*v/100;
+        return [CX+r*Math.cos(a), CY+r*Math.sin(a)]; };
+      const lp=i=>[CX+LR*Math.cos(ang(i)), CY+LR*Math.sin(ang(i))];
+      const poly=vals=>vals.map((v,i)=>pt(i,v).map(n=>n.toFixed(1)).join(',')).join(' ');
+      const solid = my.length>=RN;
+      const sorted=AX.slice().sort((a,b)=>b[1]-a[1]);
+      h+=`<div style="display:flex;gap:14px;align-items:center;margin-top:16px;
+          background:var(--paper,#faf8f4);border-radius:14px;padding:14px">
+        <svg width="176" height="172" viewBox="0 0 176 172" style="flex:none">
+          ${[100,66,33].map(k=>`<polygon points="${poly(AX.map(()=>k))}"
+            fill="none" stroke="#e8e4dc" stroke-width="1"/>`).join('')}
+          <polygon points="${poly(AX.map(()=>50))}" fill="none" stroke="#cfc7bb"
+            stroke-width="1" stroke-dasharray="3 3"/>
+          ${AX.map((_,i)=>{ const [x2,y2]=pt(i,100);
+            return `<line x1="${CX}" y1="${CY}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="#eee9e1" stroke-width="1"/>`; }).join('')}
+          <polygon points="${poly(AX.map(a=>a[1]))}"
+            fill="${solid?'rgba(236,106,46,.20)':'rgba(160,150,138,.14)'}"
+            stroke="${solid?'#ec6a2e':'#b3aea4'}" stroke-width="${solid?2:1.5}"/>
+          ${AX.map((a,i)=>{ const [lx,ly]=lp(i);
+            return `<text x="${lx.toFixed(1)}" y="${(ly+3.4).toFixed(1)}"
+              text-anchor="middle" font-size="10" font-weight="500"
+              fill="#a8a29a">${a[0]}</text>`; }).join('')}
+        </svg>
+        <div style="flex:1;min-width:0">
+          ${solid
+            ? `<div class="gt1" style="color:#2f9159;font-weight:500">강점</div>
+               <div class="gt2" style="font-weight:700;margin-top:2px">${sorted[0][0]} <span
+                 style="font-size:12px;font-weight:500;color:var(--lgray)">${sorted[0][1]}</span></div>
+               <div class="gt1" style="color:var(--coral-d);font-weight:500;margin-top:11px">약점</div>
+               <div class="gt2" style="font-weight:700;margin-top:2px">${sorted[5][0]} <span
+                 style="font-size:12px;font-weight:500;color:var(--lgray)">${sorted[5][1]}</span></div>`
+            : `<div class="gt2" style="font-weight:700;color:var(--lgray)">아직 흐려요</div>
+               <div class="gt1 gmute" style="margin-top:5px;line-height:1.65">
+                 ${RN}경기부터 또렷해져요 · 지금 ${my.length}경기<br>
+                 몇 경기로는 모양이 운으로 흔들려요</div>`}
+          <div class="gt1 gmute" style="margin-top:11px;line-height:1.6">
+            점선이 클럽 평균이에요</div>
+        </div>
+      </div>`;
+    }
+
+    /* 종목별 — 대회에 어떤 종목으로 나갈지 정할 때 쓴다 */
+    { const K={};
+      my.forEach(x=>{ const k=x.label||'남복'; K[k]=K[k]||{g:0,w:0}; K[k].g++; if(x.win)K[k].w++; });
+      const ORD=[['남복','#2b62c9'],['혼복','#7a5cc4'],['여복','#c2437a']];
+      h+=`<div style="display:flex;gap:8px;margin-top:11px">${ORD.map(([k,c])=>{
+        const v=K[k];
+        return `<div style="flex:1;background:var(--paper,#faf8f4);border-radius:12px;padding:12px 6px;text-align:center">
+          <div style="font-size:10.5px;font-weight:700;color:${v?c:'#c9c3b9'}">${k}</div>
+          <div style="font-size:var(--t3);font-weight:500;margin-top:4px;color:${v?'var(--ink)':'var(--lgray)'}">${
+            v? `${v.w}승 ${v.g-v.w}패` : '—'}</div>
+          <div class="gt1 gmute" style="margin-top:3px">${v? wrCell(v.g,v.w) : '아직 없어요'}</div></div>`;
+      }).join('')}</div>`;
+      const mates=new Set(); my.forEach(x=>{ if(x.partner) mates.add(x.partner.id||x.partner.name); });
+      const rn=Math.max(0,(CLUB_ROSTER||[]).length-1);
+      if(rn) h+=`<div class="gt1 gmute" style="margin-top:10px;line-height:1.6">
+        클럽 ${rn}명 중 <b style="color:var(--ink);font-weight:600">${mates.size}명</b>과 함께 뛰었어요
+        ${rn-mates.size>0?` · ${rn-mates.size}명과는 아직`:''}</div>`;
+    }
 
     const P={}, O={};
     my.forEach(x=>{ if(x.partner){ const k=x.partner.id||x.partner.name;
@@ -9820,12 +9983,12 @@ function clubTabMe(){
     const wr2=Object.values(O).filter(p=>p.g>=2).sort((a,b)=>(a.w/a.g)-(b.w/b.g)||b.g-a.g)[0];
     h+=`<div style="display:flex;gap:8px;margin-top:16px">
       <div ${bp&&bp.id?`onclick="openClubMember(${jsArg(bp.id)},${jsArg(bp.n)})" style="cursor:pointer;`:'style="'}flex:1;background:#eef7f1;border-radius:13px;padding:13px">
-        <div class="gt1" style="color:#4d8a68;font-weight:600">최고의 파트너</div>
-        <div class="gt2" style="font-weight:600;margin-top:4px">${bp?esc(bp.n):'-'}</div>
+        <div class="gt1" style="color:#4d8a68;font-weight:500">최고의 파트너</div>
+        <div class="gt2" style="font-weight:700;margin-top:4px">${bp?esc(bp.n):'-'}</div>
         <div class="gt1" style="color:#2f9159;margin-top:3px">${bp?`${bp.g}회 · ${bp.w}승 (${Math.round(bp.w/bp.g*100)}%)`:'2경기 이상 필요'}</div></div>
       <div ${wr2&&wr2.id?`onclick="openClubMember(${jsArg(wr2.id)},${jsArg(wr2.n)})" style="cursor:pointer;`:'style="'}flex:1;background:#fdf0ea;border-radius:13px;padding:13px">
-        <div class="gt1" style="color:#b3714c;font-weight:600">천적</div>
-        <div class="gt2" style="font-weight:600;margin-top:4px">${wr2?esc(wr2.n):'-'}</div>
+        <div class="gt1" style="color:#b3714c;font-weight:500">천적</div>
+        <div class="gt2" style="font-weight:700;margin-top:4px">${wr2?esc(wr2.n):'-'}</div>
         <div class="gt1" style="color:var(--coral-d);margin-top:3px">${wr2?`${wr2.g}회 만나 ${wr2.w}승 ${wr2.g-wr2.w}패`:'2경기 이상 필요'}</div></div></div>`;
     return h;
   }
@@ -9839,12 +10002,20 @@ function clubTabMe(){
     const list=Object.values(P).map(p=>({...p,wr:Math.round(p.w/p.g*100)}))
       .sort((a,b)=>b.g-a.g||b.wr-a.wr);
     if(!list.length) return h+`<div class="card" style="text-align:center;padding:26px"><span class="gt1 gmute">아직 복식 기록이 없어요</span></div>`;
-    const best=list.slice().sort((a,b)=>b.wr-a.wr||b.g-a.g)[0];
-    h+=`<div ${best.id?`onclick="openClubMember(${jsArg(best.id)},${jsArg(best.n)})" style="cursor:pointer;`:'style="'}background:var(--coral-s);border-radius:14px;padding:13px 14px;margin-bottom:var(--s3)">
+    /* 리포트 탭과 같은 기준(MINW)을 쓴다 — 예전엔 파트너 탭만 1경기로도 뽑아
+       같은 사람에 대해 두 화면이 다르게 말했다. */
+    const best=list.filter(p=>p.g>=MINW).sort((a,b)=>b.wr-a.wr||b.g-a.g)[0];
+    h+= best
+      ? `<div ${best.id?`onclick="openClubMember(${jsArg(best.id)},${jsArg(best.n)})" style="cursor:pointer;`:'style="'}background:var(--coral-s);border-radius:14px;padding:13px 14px;margin-bottom:var(--s3)">
       <div class="gt1" style="color:var(--coral-d);font-weight:600">최고의 파트너</div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:5px">
         <span class="gt3">${esc(best.n)}</span>
-        <span class="gt1" style="margin-left:auto;font-weight:600;color:var(--coral-d)">승률 ${best.wr}% · ${best.w}승 ${best.g-best.w}패</span></div></div>`;
+        <span class="gt1" style="margin-left:auto;font-weight:600;color:var(--coral-d)">승률 ${best.wr}% · ${best.w}승 ${best.g-best.w}패</span></div></div>`
+      : `<div style="background:var(--felt);border-radius:14px;padding:13px 14px;margin-bottom:var(--s3)">
+      <div class="gt1 gmute" style="font-weight:600">최고의 파트너</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:5px">
+        <span class="gt3" style="color:var(--lgray)">아직 몰라요</span>
+        <span class="gt1 gmute" style="margin-left:auto">${MINW}경기 이상 함께 뛰면 나와요</span></div></div>`;
     h+=thead('파트너','횟수','승률','전적');
     list.forEach(p=>{ h+=trow(p.id,p.n,p.g,p.wr,`${p.w}승 ${p.g-p.w}패`); });
     return h;
@@ -9892,7 +10063,11 @@ function clubTabMe(){
           <div style="font-size:var(--t2);font-weight:600;color:var(--coral-d);font-variant-numeric:tabular-nums">+${got} PTS</div>
           <div class="mi-days" style="color:${dgd>=0?'#2f9159':'#d1614f'}">득실 ${dgd>=0?'+':''}${dgd}</div></div></div>`;
     d.rows.forEach(r=>{
-      const names=[r.partner?`${esc(r.partner.name)} · `:'', 'vs ', esc(r.opp.map(o=>o.name).join(', '))].join('');
+      /* 예전: '이기훈 · vs 진성천, 김진수B' — 파트너 뒤 점이 갈 곳이 없고
+         파트너는 · 상대는 , 로 구분자가 섞였다. 파트너를 분명히 하고 · 하나로 통일한다. */
+      const names = (r.partner
+        ? `<b>${esc(r.partner.name)}</b><span style="color:var(--lgray);font-weight:500"> 님과 · </span>`
+        : '') + esc(r.opp.map(o=>o.name).join(' · '));
       o+=`<div class="mi-g">
         <span class="mi-gs" style="color:${r.win?'var(--coral-d)':'var(--gray)'}">${r.ms} : ${r.os}</span>
         <span class="mi-gw" style="color:${r.draw?'var(--gray)':r.win?'#2f9159':'#d1614f'}">${r.draw?'무':r.win?'승':'패'}</span>
@@ -12220,6 +12395,34 @@ async function cb2Load(){
   try{ CB2=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); }catch(e){ CB2=null; }
   return CB2;
 }
+/* 예상 종료 시각 — 실제 진행 속도로 계산한다.
+   경기 하나하나의 길이를 재는 대신 '지금까지 몇 경기를 해냈나'로 본다.
+   그래야 코트가 논 시간·쉬는 시간·늦어진 것이 전부 반영된다.
+   games: [{startedAt, ...}] · done: 끝났는지 판정하는 함수 */
+function cbEta(games, done, courts){
+  const gs=games||[];
+  const starts=gs.map(g=>g.startedAt).filter(Boolean);
+  const doneN=gs.filter(done).length, tot=gs.length;
+  if(!starts.length || doneN<2 || doneN>=tot) return null;   // 두 경기는 끝나야 속도를 잰다
+  const t0=Math.min(...starts), now=Date.now();
+  const elapsed=now-t0;
+  if(elapsed<60000) return null;
+  const perGame=elapsed/doneN;                 // 경기 하나가 나오는 데 걸린 실제 시간
+  const left=tot-doneN;
+  const restMs=perGame*left;
+  const end=new Date(now+restMs);
+  const hh=String(end.getHours()).padStart(2,'0'), mm=String(end.getMinutes()).padStart(2,'0');
+  /* 한 코트가 한 경기에 쓴 시간 — '평균 26분' 처럼 보여주는 값 */
+  const avgMin=Math.round(perGame*Math.max(1,courts||1)/60000);
+  return { end:`${hh}:${mm}`, avgMin, leftN:left,
+           restMin:Math.round(restMs/60000), doneN, tot };
+}
+function cbEtaText(e){
+  if(!e) return '';
+  const h=Math.floor(e.restMin/60), m=e.restMin%60;
+  return h? `${h}시간 ${m}분` : `${m}분`;
+}
+
 function cb2Stats(){
   const gs=(CB2&&CB2.games)||[], done=g=>g.sa!=null&&g.sb!=null;
   const st={};
@@ -12332,7 +12535,8 @@ function cb2More(){
     ${row('공유하기','대진 이미지로 내보내기','cb2Share()')}`;
   if(off){
     h+=row('다시 짜기','참석자를 바꿔 새로 편성','cb2Redo()');
-    h+=row('명단 조정 · 노쇼','늦참·노쇼 반영','cb2Swap2()');
+    h+=row('명단 조정','늦게 와요 · 못 와요 · 사람 바꾸기','cb2Swap2()');
+    if(CB2_UNDO) h+=row('되돌리기','마지막 명단 조정을 되돌려요','cb2Undo()');
     h+=row('오늘의 당번','네트·공 정리 담당','cb2Duty()');
     if(CB2 && CB2.mode==='hanul') h+=row('한울 조 편성','A조·B조 나누기','cb2Groups()');
     if(CB2 && CB2.mode==='monthly')
@@ -12396,6 +12600,15 @@ function drawCB2View(){
           const tot=(CB2.games||[]).length, left=tot-(CB2.games||[]).filter(done).length;
           return left? `<span class="rt">${left}경기 남음</span>` : `<span class="rt">모든 경기 완료</span>`; })()}</div>
       <div class="rtbar"><i style="width:${(CB2.games||[]).length?Math.round((CB2.games||[]).filter(done).length/(CB2.games||[]).length*100):0}%"></i></div>
+      ${(()=>{ /* 총무가 가장 자주 묻는 것 — "이 속도면 몇 시에 끝나지?" */
+        const e=cbEta(CB2.games||[], done, CB2.courts);
+        if(!e) return '';
+        return `<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;
+            padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
+          <span style="font-size:11px;color:#bfae99">이 속도면</span>
+          <span style="font-size:15px;font-weight:800;color:#f7b98a;letter-spacing:-.03em">${e.end}</span>
+          <span style="font-size:11px;color:#bfae99">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}</span></div>`;
+      })()}
     </div>`;
 
     /* 진행 중 경기·선수 집계 → 시작 게이팅 (아래 코트 카드에서 쓴다) */
@@ -12406,7 +12619,9 @@ function drawCB2View(){
     { const cs=[]; for(let c=1;c<=(CB2.courts||0);c++){
         const cg=(CB2.games||[]).map((g,gi)=>({...g,gi})).filter(g=>g.c===c);
         if(cg.length) cs.push({c, cg}); }
-      if(!CB2_COURT || !cs.some(x=>x.c===CB2_COURT)) CB2_COURT=(cs[0]||{}).c||1;
+      /* 0 = 전체 보기. 코트가 하나뿐이면 전체 탭이 없으니 그 코트로 보낸다. */
+      if(CB2_COURT!==0 && !cs.some(x=>x.c===CB2_COURT)) CB2_COURT=(cs[0]||{}).c||1;
+      if(cs.length<=1) CB2_COURT=(cs[0]||{}).c||1;
       /* 조가 코트에 고정되는 방식은 코트마다 성비가 다르다 — 세 코트를 한 줄에 보여준다 */
       if(cs.length>1 && (CB2.mode==='hanul'||CB2.mode==='monthly')){
         h+=`<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin:2px 2px 9px;font-size:11px;font-weight:500;color:var(--gray)">
@@ -12415,7 +12630,12 @@ function drawCB2View(){
             : ''; }).join('')}</div>`;
       }
       if(cs.length>1){
-        h+=`<div class="rtcts">${cs.map(({c,cg})=>{
+        /* '전체' 를 맨 앞에 둔다 — 내 다음 경기를 보려고 탭을 세 번 누르지 않게.
+           점수를 넣을 때는 한 코트만 보는 게 나으니 코트별 탭도 그대로 둔다. */
+        h+=`<div class="rtcts">
+          <div class="${CB2_COURT===0?'on':''}" onclick="CB2_COURT=0;drawCB2View()">
+            <span class="t">전체</span><span class="s">${(CB2.games||[]).filter(done).length}/${(CB2.games||[]).length}</span></div>
+          ${cs.map(({c,cg})=>{
           const offc=(CB2.offCourts||[]).includes(c);
           const running=cg.some(g=>g.startedAt&&!done(g));
           const fin=cg.filter(done).length;
@@ -12424,12 +12644,45 @@ function drawCB2View(){
             <span class="s">${offc?'중지':running?'진행 중':`${fin}/${cg.length}`}</span></div>`;
         }).join('')}</div>`;
       }
+      /* 전체 보기 — 공유 이미지와 같은 배치. 세로로 훑으면 내 다음 경기가 보인다. */
+      if(CB2_COURT===0 && cs.length>1){
+        const rs=[...new Set((CB2.games||[]).map(g=>g.r))].sort((a,b)=>a-b);
+        h+=`<div class="cbwide"><table>
+          <tr><th></th>${cs.map(({c})=>`<th>${c}코트</th>`).join('')}</tr>
+          ${rs.map(r=>`<tr><td class="r">${r}</td>${cs.map(({c})=>{
+            const g=(CB2.games||[]).map((x,gi)=>({...x,gi})).find(x=>x.r===r&&x.c===c);
+            if(!g) return `<td class="no">—</td>`;
+            const run=g.startedAt&&!done(g);
+            const cls=done(g)?'dn':run?'on':'';
+            return `<td class="${cls}" onclick="CB2_COURT=${c};drawCB2View()">
+              ${esc((g.teamA||[]).map(p=>p.name).join('·'))}
+              <em>${done(g)?`${g.sa}:${g.sb}`:run?'경기 중':'vs'}</em>
+              ${esc((g.teamB||[]).map(p=>p.name).join('·'))}</td>`;
+          }).join('')}</tr>`).join('')}
+        </table>
+        <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 게임에 안 쓰는 코트</div></div>`;
+      }
+    }
+    /* 같은 바퀴에 같은 사람이 두 코트에 있으면 진행이 불가능하다.
+       순서를 손으로 바꾸다 생기는 일이라, 코트에 나가기 전에 눈에 띄어야 한다. */
+    { const cl=cb2ClashAll(CB2.games||[]);
+      if(cl.length){
+        h+=`<div style="border:1.5px solid #f0c9c9;background:#fdf3f3;border-radius:14px;
+            padding:13px 15px;margin-top:10px">
+          <div style="font-size:13px;font-weight:800;color:#a33">겹치는 사람이 있어요 · 이대로는 진행할 수 없어요</div>
+          ${cl.map(x=>`<div style="font-size:12px;color:#a44;margin-top:6px;line-height:1.6">
+            <b>${x.r}게임</b> · ${x.dup.map(d=>`${esc(d.name)} 님이 ${d.a}코트와 ${d.b}코트 양쪽에`).join(' , ')}</div>`).join('')}
+          <div style="font-size:11.5px;color:#b08;margin-top:8px;color:#a06a3a">
+            순서를 바꾸다 생긴 것 같아요 · 해당 게임에서 <b>순서 바꾸기</b>로 되돌려 주세요</div>
+        </div>`;
+      }
     }
     // 코트별 카드 — 탭으로 고른 코트만 보여준다
     for(let c=1;c<=(CB2.courts||0);c++){
       const cg=(CB2.games||[]).map((g,gi)=>({...g,gi})).filter(g=>g.c===c);
       if(!cg.length) continue;
-      if((CB2.courts||0)>1 && CB2_COURT && c!==CB2_COURT) continue;
+      /* 전체 보기(0)에서는 위의 표만 보여준다 — 코트 카드까지 다 쌓으면 화면 세 개 분량이다 */
+      if((CB2.courts||0)>1 && (CB2_COURT===0 || c!==CB2_COURT)) continue;
       h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px;${(CB2.offCourts||[]).includes(c)?'opacity:.45':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <b style="font-size:var(--t2);font-weight:600">${c}코트${(CB2.mode==='hanul'||CB2.mode==='monthly')?cb2MixChip(c,true):''}${(CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>':cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>':''}</b>
@@ -13384,11 +13637,13 @@ function trPanel(){
   /* 몇 조까지 되는지 미리 알려준다 — 혼복은 적은 쪽 성별이 한계다 */
   const cap = TR_KIND==='mixed' ? Math.min(g.m,g.f)
             : TR_KIND==='men'   ? Math.floor(g.m/2) : Math.floor(g.f/2);
+  /* 세 칸이 붙어 있으면 한 덩어리처럼 보여 무엇이 골라졌는지 흐려진다 */
   const chip=(k,label)=>`<span onclick="trKind('${k}')" class="nchip ${TR_KIND===k?'on':''}"
-    style="padding:8px 14px;font-size:13px">${label}</span>`;
+    style="padding:9px 17px;font-size:13px;margin-right:9px">${label}</span>`;
   const nameOf=id=>{ const p=byId(id); return p?esc(p.name):'?'; };
   const femOf =id=>{ const p=byId(id); return p&&isFem(cbSexOf(p)); };
-  let h=`<div style="margin:-4px 0 8px 14px;background:#faf8f4;border:1px solid var(--line);
+  /* 방식 카드와 좌우를 맞춘다. 왼쪽만 14px 들여써서 수평이 어긋나 보였다. */
+  let h=`<div style="margin:-2px 0 8px;background:#faf8f4;border:1px solid var(--line);
       border-radius:14px;padding:14px">
     <div class="gt1 gmute" style="margin-bottom:8px">종목</div>
     <div>${chip('mixed','혼복')}${chip('men','남복')}${chip('women','여복')}</div>
@@ -14661,17 +14916,23 @@ async function cb2ShareImage(){
     /* 카카오톡 말풍선 안에서 읽혀야 한다 — 세로로 길면 썸네일이 작아져
        탭하기 전엔 이름이 안 보인다. 두 칸으로 1:1 에 가깝게 맞춘다.
        흰 배경에 얇은 선만 쓴다 — 상자를 겹치면 그만큼 안쪽이 좁아진다. */
-    const INK='#1c1b18', GRAY='#7d7870', LGRAY='#b3aea4',
-          HAIR='#f0ede8', RULE='#e4e0d8', CORAL='#ec6a2e', CORAL_D='#cf5418';
-    /* 복식 종류 — 앱의 그날 대진과 같은 색을 쓴다 */
-    const TYPE={ '남복':{c:'#2b62c9', bg:'#e9effb'},
-                 '혼복':{c:'#7a5cc4', bg:'#efeafa'},
-                 '여복':{c:'#c2437a', bg:'#fdeaf1'} };
+    /* 회색을 쓰지 않는다 — 따뜻한 갈색 계열로만 낮춘다.
+       회색이 섞이면 화면이 식어 보이고, 코랄과도 겉돈다. */
+    const INK='#241d16', WARM='#8a7359', SOFT='#c4b39c',
+          HAIR='#efe7dc', RULE='#e2d5c3', CORAL='#ec6a2e', CORAL_D='#c24f16';
+    /* 복식 종류 — 알약을 빼고 색 글자만. 상자를 씌우면 이름보다 무거워진다. */
+    const TYPE={ '남복':'#2b62c9', '혼복':'#7a5cc4', '여복':'#c2437a' };
 
     const W=1080, PAD=60;
     /* 글자 크기·굵기는 여기서만 정한다 — 본문에 숫자를 흩어두면 금방 어긋난다 */
     const T={ kick:18, club:46, meta:21, rd:26, rdsub:19, ct:19, name:27, vs:16, tag:17, note:19, foot:20 };
-    const ROW=62, RHEAD=58, RGAP=22, HEAD=200, FOOT=92, GAP=40;
+    /* 세로 간격은 황금비(1.618)로 잡는다.
+         줄 ↔ 줄            = 62
+         라운드 머리 ↔ 첫 줄 = 62   (같은 박자로 이어 붙는다)
+         라운드 ↔ 라운드     = 100  ( = 62 × 1.618 )
+       기준선 사이 거리로 계산했다 — 상자 높이로 맞추면 글자가 어긋난다.
+       RHEAD·RGAP 은 그 거리에서 역산한 값이라 ROW 를 바꾸면 함께 고쳐야 한다. */
+    const ROW=62, RHEAD=53, RGAP=50, HEAD=200, FOOT=92, GAP=40;
 
     const who=new Set();
     games.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>who.add(String(p.name||''))));
@@ -14679,25 +14940,34 @@ async function cb2ShareImage(){
     const lateNames=[...new Set(games.flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])])
       .filter(p=>CB2_LATE && CB2_LATE.has(String(p.id))).map(p=>String(p.name||'')))];
 
-    const rh = r => RHEAD + games.filter(g=>g.r===r).length*ROW + RGAP;
-    const total = rounds.reduce((a,r)=>a+rh(r),0);
-    let cut=1, best=Infinity;
-    for(let i=1;i<rounds.length;i++){
-      const L=rounds.slice(0,i).reduce((a,r)=>a+rh(r),0);
-      const d=Math.abs(L-(total-L));
-      if(d<best){ best=d; cut=i; }
-    }
+    /* 라운드 한 칸의 높이를 '가장 경기가 많은 라운드'에 맞춰 고정한다.
+       그래야 왼쪽 2게임과 오른쪽 5게임이 같은 높이에 선다.
+       경기가 적은 라운드는 아래가 비는데, 그 빈자리가 곧 '그때 쉬는 코트'다. */
+    const maxG = Math.max(...rounds.map(r=>games.filter(g=>g.r===r).length));
+    const BLOCK = RHEAD + maxG*ROW;          // 머리 + 최대 경기 수
+    const PITCH = BLOCK + RGAP;              // 다음 라운드까지
+    /* 라운드 수를 반씩 나눈다 — 높이가 같으니 개수만 맞추면 된다 */
     const COLS = rounds.length>=4 ? 2 : 1;
+    const cut = COLS===2 ? Math.ceil(rounds.length/2) : rounds.length;
     const colRounds = COLS===2 ? [rounds.slice(0,cut), rounds.slice(cut)] : [rounds];
-    const bodyH = Math.max(...colRounds.map(c=>c.reduce((a,r)=>a+rh(r),0)));
+    const bodyH = Math.max(...colRounds.map(c=>c.length))*PITCH - RGAP;
     const noteH = lateNames.length ? 46 : 0;
     const H = HEAD + noteH + bodyH + FOOT;
     const CW = (W - PAD*2 - (COLS-1)*GAP) / COLS;
 
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
     const x=cv.getContext('2d');
-    const FAM="'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
-    const F=(w,sz)=>{ x.font=`${w} ${sz}px ${FAM}`; };
+    /* 제목과 이름은 명조 — 대진표는 코트에 붙여두고 보는 인쇄물에 가깝다.
+       작은 글자(코트 번호·종류·메타)는 고딕이 또렷해 그대로 둔다. */
+    const SANS="'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+    const SERIF="'Gowun Batang','Nanum Myeongjo','Apple SD Gothic Neo',"+SANS;
+    /* 웹폰트가 아직 안 받아졌으면 캔버스가 고딕으로 그려버린다 — 먼저 기다린다 */
+    try{ if(document.fonts && document.fonts.load){
+      await Promise.all([document.fonts.load("700 46px 'Gowun Batang'"),
+                         document.fonts.load("400 27px 'Gowun Batang'")]);
+    } }catch(e){}
+    const F=(w,sz)=>{ x.font=`${w} ${sz}px ${SANS}`; };
+    const M=(w,sz)=>{ x.font=`${w} ${sz}px ${SERIF}`; };
     const MONO=(w,sz)=>{ x.font=`${w} ${sz}px ui-monospace,'SF Mono',Menlo,monospace`; };
     const rr=(X,Y,w,h,r)=>{ x.beginPath(); x.moveTo(X+r,Y); x.arcTo(X+w,Y,X+w,Y+h,r);
       x.arcTo(X+w,Y+h,X,Y+h,r); x.arcTo(X,Y+h,X,Y,r); x.arcTo(X,Y,X+w,Y,r); x.closePath(); };
@@ -14705,12 +14975,12 @@ async function cb2ShareImage(){
     x.fillStyle='#ffffff'; x.fillRect(0,0,W,H);
 
     /* 머리글 */
-    F(800,T.kick); x.fillStyle=CORAL_D;
-    try{ x.letterSpacing='4px'; }catch(e){}
+    F(700,T.kick); x.fillStyle=CORAL_D;
+    try{ x.letterSpacing='5px'; }catch(e){}
     x.fillText('오늘의 대진', PAD, 58);
     try{ x.letterSpacing='0px'; }catch(e){}
-    F(800,T.club); x.fillStyle=INK;
-    x.fillText(state.activeClub||'클럽', PAD, 118);
+    M(700,T.club); x.fillStyle=INK;
+    x.fillText(state.activeClub||'클럽', PAD, 122);
     /* 2026-08-14 → 8월 14일 (금) · 단톡방에서 읽는 글이라 사람 말로 적는다 */
     const prettyDate = (d)=>{
       const m=String(d||'').match(/(\d{4})[-.\/]?(\d{1,2})[-.\/]?(\d{1,2})/);
@@ -14723,15 +14993,15 @@ async function cb2ShareImage(){
     { const parts=[prettyDate(CB2.date), modeNm, `${CB2.courts}코트`, `${games.length}경기`, `${who.size}명`];
       let cx=PAD;
       parts.forEach((t,i)=>{
-        if(i){ x.fillStyle='#d6d1c7'; x.fillText('·', cx, 162); cx += x.measureText('·').width + 12; }
-        x.fillStyle=GRAY; x.fillText(t, cx, 162); cx += x.measureText(t).width + 12;
+        if(i){ x.fillStyle=SOFT; x.fillText('·', cx, 164); cx += x.measureText('·').width + 12; }
+        x.fillStyle=WARM; x.fillText(t, cx, 164); cx += x.measureText(t).width + 12;
       });
     }
     let topY = HEAD;
     if(lateNames.length){
       F(700,T.note); x.fillStyle=CORAL_D; x.fillText('늦참', PAD, HEAD+4);
       const lw=x.measureText('늦참').width;
-      F(500,T.note); x.fillStyle=GRAY;
+      F(500,T.note); x.fillStyle=WARM;
       x.fillText(lateNames.join(' · '), PAD+lw+12, HEAD+4);
       topY = HEAD + noteH;
     }
@@ -14744,11 +15014,11 @@ async function cb2ShareImage(){
     const teamStr = t => (t||[]).map(p=>String(p.name||'')).join(' · ');
     let NF=T.name;
     for(; NF>=17; NF-=1){
-      F(600,NF);
+      M(400,NF);
       if(games.every(g=> x.measureText(teamStr(g.teamA)).width<=AVAIL
                       && x.measureText(teamStr(g.teamB)).width<=AVAIL)) break;
     }
-    F(600,NF);
+    M(400,NF);
     let half=0;
     games.forEach(g=>{ half=Math.max(half,
       x.measureText(teamStr(g.teamA)).width, x.measureText(teamStr(g.teamB)).width); });
@@ -14758,10 +15028,10 @@ async function cb2ShareImage(){
       const gs=games.filter(g=>g.r===r);
       let y=oy;
       x.fillStyle=CORAL; x.beginPath(); x.arc(ox+5, y+20, 5, 0, Math.PI*2); x.fill();
-      F(800,T.rd); x.fillStyle=INK;
-      x.fillText(`${r}게임`, ox+20, y+30);
+      M(700,T.rd); x.fillStyle=INK;
+      x.fillText(`${r}게임`, ox+20, y+31);
       const tw=x.measureText(`${r}게임`).width;
-      F(600,T.rdsub); x.fillStyle=LGRAY;
+      F(600,T.rdsub); x.fillStyle=SOFT;
       x.fillText(gs.length>1?`${gs.length}코트 동시`:`${gs[0]?gs[0].c:1}코트`, ox+20+tw+12, y+29);
       y += RHEAD;
 
@@ -14772,31 +15042,28 @@ async function cb2ShareImage(){
         const aWin = done && +g.sa > +g.sb, bWin = done && +g.sb > +g.sa;
         const mid = y + ROW/2 + Math.round(NF*0.34);
 
-        F(700,T.ct); x.fillStyle='#d6d1c7'; x.textAlign='center';
+        F(700,T.ct); x.fillStyle=SOFT; x.textAlign='center';
         x.fillText(String(g.c), ox+CTW/2, mid);
 
         /* 남복 · 혼복 · 여복 — 앱의 그날 대진과 같은 색 */
         { const lb = g.label || cb2Label(g.teamA||[], g.teamB||[]);
-          const st = TYPE[lb] || TYPE['남복'];
-          F(700,T.tag);
-          const tw2 = x.measureText(lb).width + 22;
-          x.fillStyle = st.bg; rr(tagX, mid-T.tag-9, tw2, T.tag+18, (T.tag+18)/2); x.fill();
-          x.fillStyle = st.c; x.fillText(lb, tagX+tw2/2, mid-2);
+          F(700,T.tag); x.fillStyle = TYPE[lb] || TYPE['남복'];
+          x.fillText(lb, tagX+TAGW/2-8, mid-1);
         }
 
         const drawTeam=(tm, ax, align, win)=>{
           const arr=(tm||[]);
-          let total=0; F(600,NF);
+          let total=0; M(400,NF);
           arr.forEach((pl,i)=>{ if(i) total+=x.measureText(' · ').width;
             total+=x.measureText(String(pl.name||'')).width; });
           let cx = align==='right' ? ax-total : ax;
           x.textAlign='left';
           arr.forEach((pl,i)=>{
-            if(i){ F(500,NF); x.fillStyle='#d6d1c7'; x.fillText(' · ', cx, mid);
+            if(i){ M(400,NF); x.fillStyle=SOFT; x.fillText(' · ', cx, mid);
                    cx += x.measureText(' · ').width; }
             const nm=String(pl.name||'');
-            F(win?800:600, NF);
-            x.fillStyle = done&&!win ? '#c1bbb1' : INK;
+            M(win?700:400, NF);
+            x.fillStyle = done&&!win ? SOFT : INK;
             x.fillText(nm, cx, mid); cx += x.measureText(nm).width;
           });
         };
@@ -14808,7 +15075,7 @@ async function cb2ShareImage(){
           MONO(700, Math.round(NF*0.9)); x.fillStyle=INK;
           x.fillText(`${g.sa}:${g.sb}`, BX+half+VSW/2, mid);
         } else {
-          F(700, T.vs); x.fillStyle='#d6d1c7';
+          F(600, T.vs); x.fillStyle=SOFT;
           x.fillText('vs', BX+half+VSW/2, mid);
         }
         x.textAlign='left';
@@ -14819,7 +15086,7 @@ async function cb2ShareImage(){
         }
         y += ROW;
       });
-      return y + RGAP;
+      return oy + PITCH;                     // 경기 수와 무관하게 같은 자리
     };
 
     colRounds.forEach((rs, ci)=>{
@@ -14831,8 +15098,8 @@ async function cb2ShareImage(){
     /* 꼬리 */
     x.strokeStyle=RULE; x.lineWidth=2;
     x.beginPath(); x.moveTo(PAD, H-FOOT+22); x.lineTo(W-PAD, H-FOOT+22); x.stroke();
-    F(800,T.foot); x.fillStyle=CORAL; x.fillText('맞수', PAD, H-30);
-    F(500,T.foot); x.fillStyle=LGRAY; x.textAlign='right';
+    M(700,T.foot); x.fillStyle=CORAL; x.fillText('맞수', PAD, H-30);
+    F(500,T.foot); x.fillStyle=SOFT; x.textAlign='right';
     x.fillText('matsu.app', W-PAD, H-30);
     x.textAlign='left';
 
@@ -14893,46 +15160,212 @@ function cb2ShareNative(){
   if(navigator.share) navigator.share({title:'오늘 대진표', text:t}).catch(()=>{});
   else cb2Copy();
 }
-/* ── 선수 교체 · 노쇼 ── */
-async function cb2Swap2(){
-  if(!cb2Officer()){ toast('임원만 할 수 있어요'); return; }
-  const ids={}; (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>ids[p.id]=p.name));
-  const list=Object.entries(ids);
-  let h=`<div class="om-detail"><div class="sh-top"><h3>명단 조정</h3><div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
-    <div class="sd">노쇼가 생기거나 사람이 바뀌었을 때 · 남은 경기만 바뀌어요</div>
-    <div class="ch" style="font-size:14px;margin-top:14px">누구를 바꿀까요?</div>
-    <div style="margin-top:6px">${list.map(([id,n])=>`<span onclick="cb2PickOut('${id}','${esc(n)}')" style="display:inline-block;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;background:#f2f0ea;color:#5a544b;cursor:pointer">${esc(n)}</span>`).join('')}</div>
-    <div class="note" style="text-align:left;margin-top:10px">이미 점수가 확정된 경기는 그대로 남아요.</div></div>`;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+/* ── 명단 조정 · 늦참 · 노쇼 ─────────────────────────────────
+   대진을 발행한 뒤에 연락이 온다: "30분 늦어요", "못 가요".
+   예전에는 '다른 사람으로 교체'만 있어서, 늦는 사람은 손으로 순서를 옮겨야 했고
+   그러다 같은 사람이 한 바퀴에 두 코트로 들어가 대진이 꼬였다.
+
+   세 갈래로 나눈다 — 늦게 와요 / 못 와요 / 사람 바꾸기.
+   어느 쪽이든 <끝난 경기와 진행 중인 경기는 건드리지 않는다>. */
+let ADJ={mode:'late', who:null, from:2, sub:null};
+let CB2_UNDO=null;                       // 되돌리기용 직전 상태
+
+function cb2Swap2(){
+  if(!cb2CanEdit()){ toast('대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요'); return; }
+  ADJ={mode:ADJ.mode||'late', who:null, from:2, sub:null};
+  drawAdj();
 }
-async function cb2PickOut(id,name){
-  const roster=(window._cb2Roster||[]).concat(CB2_GUESTS.map(g=>({user_id:g.gid,name:g.name})));
-  const inGame={}; (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>inGame[p.id]=1));
-  const cands=roster.filter(p=>!inGame[p.user_id]);
-  let h=`<div class="om-detail"><div class="sh-top"><h3>${esc(name)} 님 대신</h3><div class="cl" role="button" tabindex="0" onclick="cb2Swap2()">×</div></div>
-    <div class="sd">남은 경기에 들어갈 사람을 골라주세요</div>`;
-  if(cands.length) h+=`<div style="margin-top:12px">${cands.map(p=>`<span onclick="cb2DoSwap('${id}','${p.user_id}','${esc(p.name)}')" style="display:inline-block;margin:0 6px 7px 0;padding:8px 13px;border-radius:20px;font-size:12px;font-weight:500;background:var(--coral);color:#fff;cursor:pointer">${esc(p.name)}</span>`).join('')}</div>`;
-  else h+=`<div class="note" style="text-align:left;margin-top:12px">대기 중인 사람이 없어요. 게스트를 먼저 추가해 주세요.</div>`;
-  h+=`<button class="btn ghost" style="margin-top:14px" onclick="cb2DoSwap('${id}',null,null)">빼기만 하기 (남은 경기 제외)</button>
-    <button class="btn ghost" style="margin-top:9px" onclick="cb2Swap2()">뒤로</button></div>`;
+function adjSet(k,v){ ADJ[k]=v; if(k==='mode'){ ADJ.who=null; ADJ.sub=null; } drawAdj(); }
+function adjPlayers(){
+  const ids={};
+  (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])]
+    .forEach(p=>{ if(p.id!=='-') ids[p.id]=p.name; }));
+  return Object.entries(ids);
+}
+/* 아직 안 끝나고 안 시작한 경기 = 다시 짤 수 있는 것 */
+function adjOpen(){ return (CB2.games||[]).filter(g=>g.sa==null && !g.startedAt); }
+function adjLocked(){ return (CB2.games||[]).filter(g=>g.sa!=null || g.startedAt); }
+/* 조정 뒤 각자 몇 경기가 되는지 — 4경기가 깨지면 미리 말해야 한다 */
+function adjCount(games){
+  const c={};
+  games.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])]
+    .forEach(p=>{ if(p.id!=='-') c[p.id]=(c[p.id]||0)+1; }));
+  return c;
+}
+function drawAdj(){
+  const list=adjPlayers();
+  const open=adjOpen().length, locked=adjLocked().length;
+  const rounds=[...new Set((CB2.games||[]).map(g=>g.r))].sort((a,b)=>a-b);
+  const nameOf=id=>{ const f=list.find(x=>String(x[0])===String(id)); return f?f[1]:''; };
+  const tab=(k,t)=>`<span onclick="adjSet('mode','${k}')" class="nchip ${ADJ.mode===k?'on':''}"
+    style="padding:9px 15px;font-size:12.5px;margin-right:8px">${t}</span>`;
+  const chip=(id,n)=>`<span onclick="adjSet('who','${id}')"
+    style="display:inline-block;margin:0 6px 6px 0;padding:8px 13px;border-radius:11px;
+    font-size:12.5px;font-weight:600;cursor:pointer;${String(ADJ.who)===String(id)
+      ?'background:var(--coral);color:#fff'
+      :'background:#fff;border:1px solid var(--line);color:var(--ink)'}">${esc(n)}</span>`;
+
+  let h=`<div class="om-detail"><div class="sh-top"><h3>명단 조정</h3>
+      <div class="cl" role="button" tabindex="0" onclick="drawCB2View()">×</div></div>
+    <div class="sd">남은 <b>${open}경기</b>만 바뀌어요 ·
+      끝났거나 진행 중인 <b>${locked}경기</b>는 그대로예요.</div>
+    <div class="gt1 gmute" style="margin:14px 0 8px">무엇을 할까요</div>
+    <div>${tab('late','늦게 와요')}${tab('out','못 와요')}${tab('swap','사람 바꾸기')}</div>
+
+    <div class="gt1 gmute" style="margin:15px 0 8px">누가</div>
+    <div>${list.map(([id,n])=>chip(id,n)).join('')}</div>`;
+
+  if(ADJ.who!=null){
+    if(ADJ.mode==='late'){
+      const opts=rounds.filter(r=>r>=2);
+      h+=`<div class="gt1 gmute" style="margin:15px 0 8px">언제부터</div>
+        <div class="fld"><select onchange="adjSet('from',+this.value)">
+          ${opts.map(r=>`<option value="${r}" ${ADJ.from===r?'selected':''}>${r}게임부터 합류</option>`).join('')}
+        </select></div>`;
+    }
+    if(ADJ.mode==='swap'){
+      const roster=(window._cb2Roster||[]).concat(CB2_GUESTS.map(g=>({user_id:g.gid,name:g.name})));
+      const inGame={}; (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>inGame[p.id]=1));
+      const cands=roster.filter(p=>!inGame[p.user_id]);
+      h+=`<div class="gt1 gmute" style="margin:15px 0 8px">대신 들어올 사람</div>`;
+      h+= cands.length
+        ? `<div>${cands.map(p=>`<span onclick="adjSet('sub','${p.user_id}')"
+            style="display:inline-block;margin:0 6px 6px 0;padding:8px 13px;border-radius:11px;
+            font-size:12.5px;font-weight:600;cursor:pointer;${String(ADJ.sub)===String(p.user_id)
+              ?'background:var(--coral);color:#fff'
+              :'background:#fff;border:1px solid var(--line);color:var(--ink)'}">${esc(p.name)}</span>`).join('')}</div>`
+        : `<div class="gt1 gmute">대기 중인 사람이 없어요 · 참석자 화면에서 게스트를 먼저 추가해 주세요</div>`;
+    }
+    h+=`<div class="gnote" style="margin-top:14px">${adjPreview()}</div>`;
+  }
+
+  const ready = ADJ.who!=null && (ADJ.mode!=='swap' || ADJ.sub!=null);
+  h+=`<button class="btn" style="margin-top:14px${ready?'':';opacity:.45'}"
+      onclick="${ready?'adjApply()':`toast('${ADJ.who==null?'누구인지 골라주세요':'대신 들어올 사람을 골라주세요'}')`}">
+      ${ADJ.mode==='swap'?'바꾸기':'다시 짜기'}</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">닫기</button></div>`;
   document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
 }
-async function cb2DoSwap(outId, inId, inName){
-  let n=0;
-  (CB2.games||[]).forEach(g=>{
-    if(g.sa!=null) return;                                  // 확정 경기는 보존
-    ['teamA','teamB'].forEach(k=>{
-      (g[k]||[]).forEach((p,i)=>{ if(String(p.id)===String(outId)){
-        if(inId){ g[k][i]={id:isNaN(+inId)?inId:+inId, name:inName}; } else { g[k][i]={id:'-', name:'(공석)'}; }
-        n++; } });
-    });
+/* 무엇이 어떻게 바뀌는지 미리 계산해 보여준다 */
+function adjPreview(){
+  const r=adjPlan();
+  if(!r.ok) return `<span style="color:#c14545;font-weight:600">${r.msg}</span>`;
+  const nm=id=>{ const f=adjPlayers().find(x=>String(x[0])===String(id)); return f?f[1]:''; };
+  const short=r.short.map(id=>`${nm(id)} ${r.after[id]||0}경기`);
+  return `<div class="gt1" style="line-height:1.75">${r.msg}
+    ${short.length?`<div style="margin-top:7px;color:var(--coral-d);font-weight:700">
+      ${short.join(' · ')} — 4경기가 안 돼요</div>`:''}</div>`;
+}
+/* 실제 배치를 계산한다. 끝나거나 진행 중인 경기는 손대지 않는다. */
+function adjPlan(){
+  const who=String(ADJ.who);
+  const open=adjOpen(), locked=adjLocked();
+  if(!open.length) return {ok:false, msg:'다시 짤 수 있는 경기가 없어요 · 모두 끝났거나 진행 중이에요'};
+
+  if(ADJ.mode==='swap'){
+    const n=open.filter(g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===who)).length;
+    if(!n) return {ok:false, msg:'남은 경기에 그분이 없어요'};
+    return {ok:true, msg:`남은 ${n}경기에서 사람만 바뀝니다 · 순서와 코트는 그대로예요`,
+            short:[], after:{}, kind:'swap'};
+  }
+  /* 늦참·노쇼 — 그 사람이 낀 남은 경기를 빼고, 뒤쪽 경기와 자리를 맞바꿔 채운다 */
+  const has=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===who);
+  const bad = ADJ.mode==='late'
+    ? open.filter(g=>has(g) && g.r < ADJ.from)      // 합류 전에 잡힌 경기
+    : open.filter(g=>has(g));                        // 노쇼는 남은 전부
+  if(!bad.length) return {ok:true,
+    msg: ADJ.mode==='late' ? `${ADJ.from}게임 전에 잡힌 경기가 없어요 · 그대로 두셔도 돼요`
+                           : '남은 경기에 그분이 없어요 · 그대로 두셔도 돼요',
+    short:[], after:{}, kind:'none'};
+
+  /* 바꿔 넣을 후보 = 그 사람이 안 낀, 합류 이후 라운드의 남은 경기 */
+  const pool = open.filter(g=>!bad.includes(g) && !has(g) &&
+    (ADJ.mode!=='late' || g.r >= ADJ.from));
+  const moves=[]; const used=new Set();
+  bad.forEach(b=>{
+    /* b 자리에 넣을 경기: 그 라운드에 이미 뛰는 사람이 없어야 한다 */
+    const busy=new Set((CB2.games||[]).filter(g=>g.r===b.r && g!==b)
+      .flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>String(p.id))));
+    const cand=pool.find(g=>!used.has(g) &&
+      [...(g.teamA||[]),...(g.teamB||[])].every(p=>!busy.has(String(p.id))));
+    if(cand){ used.add(cand); moves.push([b,cand]); }
   });
+  const after=adjCount(
+    (CB2.games||[]).map(g=>{
+      if(ADJ.mode==='out' && open.includes(g) && has(g)) return {teamA:[],teamB:[]};
+      return g;
+    }).filter(g=>ADJ.mode!=='out' || !(open.includes(g)&&has(g)))
+  );
+  const short=Object.keys(after).filter(id=>after[id]<4);
+  const msg = ADJ.mode==='late'
+    ? `${bad.length}경기를 ${ADJ.from}게임 뒤로 옮겨요` +
+      (moves.length<bad.length ? ` · ${bad.length-moves.length}경기는 자리를 못 찾아 <b>빼둡니다</b>` : ' · 뒤 경기와 자리를 맞바꿔요')
+    : `남은 ${bad.length}경기에서 빼요 · 그 자리는 <b>비워둡니다</b>`;
+  return {ok:true, msg, short, after, kind:ADJ.mode, bad, moves};
+}
+async function adjApply(){
+  const r=adjPlan();
+  if(!r.ok){ toast(r.msg.replace(/<[^>]+>/g,'')); return; }
+  if(r.short.length){
+    const nm=id=>{ const f=adjPlayers().find(x=>String(x[0])===String(id)); return f?f[1]:''; };
+    const ok=await appConfirm(
+      `이렇게 바꾸면 4경기가 안 되는 분이 있어요.\n\n` +
+      r.short.map(id=>`${nm(id)} ${r.after[id]||0}경기`).join('\n') +
+      `\n\n그대로 진행할까요?`, '진행하기');
+    if(!ok) return;
+  }
+  CB2_UNDO=JSON.parse(JSON.stringify(CB2));        // 되돌리기용
+  const who=String(ADJ.who);
+
+  if(r.kind==='swap'){
+    const inId=ADJ.sub, roster=(window._cb2Roster||[]).concat(CB2_GUESTS.map(g=>({user_id:g.gid,name:g.name})));
+    const inName=(roster.find(p=>String(p.user_id)===String(inId))||{}).name||'';
+    adjOpen().forEach(g=>['teamA','teamB'].forEach(k=>(g[k]||[]).forEach((p,i)=>{
+      if(String(p.id)===who) g[k][i]={id:isNaN(+inId)?inId:+inId, name:inName};
+    })));
+    await adjSave(`${inName} 님으로 바꿨어요`);
+    return;
+  }
+  if(r.kind==='none'){ toast(r.msg.replace(/<[^>]+>/g,'')); return; }
+
+  if(r.kind==='out'){
+    adjOpen().forEach(g=>['teamA','teamB'].forEach(k=>(g[k]||[]).forEach((p,i)=>{
+      if(String(p.id)===who) g[k][i]={id:'-', name:'(공석)'};
+    })));
+    await adjSave(`남은 경기에서 뺐어요`);
+    return;
+  }
+  /* 늦참 — 자리를 맞바꾼다 */
+  (r.moves||[]).forEach(([b,c])=>{
+    const br=b.r, bc=b.c; b.r=c.r; b.c=c.c; c.r=br; c.c=bc;
+  });
+  const stuck=(r.bad||[]).filter(b=>!(r.moves||[]).some(([x])=>x===b));
+  stuck.forEach(g=>['teamA','teamB'].forEach(k=>(g[k]||[]).forEach((p,i)=>{
+    if(String(p.id)===who) g[k][i]={id:'-', name:'(공석)'};
+  })));
+  CB2.games.sort((a,b)=>a.r-b.r||a.c-b.c);
+  await adjSave(`${ADJ.from}게임부터 합류로 바꿨어요`);
+}
+async function adjSave(msg){
   CB2.updated_at=Date.now();
-  toast(inId?`${inName} 님으로 ${n}경기 교체했어요`:`남은 ${n}경기에서 제외했어요`);
   drawCB2View();
+  /* 되돌릴 수 있게 알려준다 — 대진을 다시 짜는 일은 겁이 나야 정상이다 */
+  toast(msg + ' · 대진 도구에서 되돌릴 수 있어요');
+  if(TRIAL) return;
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }
+  catch(e){ toast('저장하지 못했어요'); }
+}
+async function cb2Undo(){
+  if(!CB2_UNDO){ toast('되돌릴 것이 없어요'); return; }
+  if(!await appConfirm('마지막 명단 조정을 되돌릴까요?','되돌리기')) return;
+  CB2=JSON.parse(JSON.stringify(CB2_UNDO)); CB2_UNDO=null;
+  CB2.updated_at=Date.now();
+  drawCB2View(); toast('되돌렸어요');
   if(TRIAL) return;
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }catch(e){}
 }
+
 /* ── 당번 배정 ── */
 function cb2Duty(){
   const ids={}; (CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(p.id!=='-') ids[p.id]=p.name; }));
@@ -15090,14 +15523,46 @@ function cb2SwapPick(gi){
   h+=`<button class="btn ghost" style="margin-top:12px" onclick="cb2Menu(${gi})">뒤로</button></div>`;
   document.getElementById('sheet').innerHTML=h;
 }
+/* 같은 바퀴에 같은 사람이 두 코트로 들어가는지 본다.
+   한 사람이 동시에 두 코트에 설 수는 없으므로, 그런 대진은 진행 자체가 불가능하다.
+   (늦참자를 뒤로 미루려고 순서를 바꾸다 실제로 이 일이 났다.) */
+function cb2ClashAt(games, r, ignore){
+  const seen={}, dup=[];
+  games.forEach(g=>{
+    if(g.r!==r || (ignore&&ignore.includes(g))) return;
+    [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
+      const k=String(p.id||p.name);
+      if(seen[k]) { if(!dup.some(d=>d.name===p.name)) dup.push({name:p.name, a:seen[k], b:g.c}); }
+      else seen[k]=g.c;
+    });
+  });
+  return dup;
+}
+function cb2ClashAll(games){
+  return [...new Set(games.map(g=>g.r))].sort((a,b)=>a-b)
+    .map(r=>({r, dup:cb2ClashAt(games,r)})).filter(x=>x.dup.length);
+}
+
 async function cb2DoOrderSwap(gi, oi){          // 이름이 겹치던 노쇼 교체(cb2DoSwap)와 구분한다
   const gs=(CB2&&CB2.games)||[]; const g=gs[gi], other=gs[oi];
   if(!g||!other) return;
   if(g.sa!=null||other.sa!=null){ toast('스코어가 확정된 경기는 바꿀 수 없어요'); return; }
+  /* 바꾼 결과를 미리 만들어 겹침을 확인한다 — 바꾸고 나서 알려주면 늦다 */
+  const after = gs.map(x=> x===g ? {...g, r:other.r} : x===other ? {...other, r:g.r} : x);
+  const bad = [...new Set([g.r, other.r])].flatMap(r=>{
+    const dup=cb2ClashAt(after, r);
+    return dup.map(d=>`${r}게임 · ${d.name} 님이 ${d.a}코트와 ${d.b}코트 양쪽에`);
+  });
+  if(bad.length){
+    const ok = await appConfirm(
+      `바꾸면 같은 사람이 한 바퀴에 두 코트에 서게 돼요.\n\n${bad.join('\n')}\n\n` +
+      `이대로는 경기를 진행할 수 없어요. 그래도 바꿀까요?`, '그래도 바꾸기');
+    if(!ok) return;
+  }
   const t=g.r; g.r=other.r; other.r=t;
   CB2.games.sort((a,b)=>a.r-b.r||a.c-b.c);
   closeOv(); drawCB2View();
-  await cb2Persist('순서를 바꿨어요');
+  await cb2Persist(bad.length?'순서를 바꿨어요 · 겹치는 사람이 있어요':'순서를 바꿨어요');
 }
 /* ② 팀 다시 나누기 — 같은 네 명, 세 가지 편 가르기 */
 function cb2Reteam(gi){
@@ -17126,7 +17591,11 @@ function drawOmb(){
       ${leftMin!=null?`<span class="rt">${leftMin>60?`${Math.floor(leftMin/60)}시간 ${leftMin%60}분`:`${leftMin}분`} 남음</span>`:''}</div>
     <div class="rtbar"><i style="width:${usedPct}%"></i></div>
     <div class="sub"><span>${hhmm(m.start_at)} ~ ${hhmm(m.end_at)} · 게임당 ${OM_GAME_MIN}분</span>
-      <span>${etaMin?`남은 경기 약 ${etaMin}분`:'모든 경기 완료'}</span></div></div>`;
+      <span>${etaMin?`남은 경기 약 ${etaMin}분${(()=>{
+        /* 분만 적으면 머릿속으로 더해야 한다 — 몇 시에 끝나는지 바로 적는다 */
+        const d=new Date(now+etaMin*60000);
+        return ` · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}쯤`;
+      })()}`:'모든 경기 완료'}</span></div></div>`;
   h+=omLateBox(m);
   if(over && isMgr) h+=`<div style="display:flex;align-items:center;gap:9px;background:#fdeee6;border-radius:12px;padding:11px 13px;margin-top:8px">
     <span style="font-size:11.5px;font-weight:600;color:var(--coral-d);flex:1">시간 안에 못 끝낼 것 같아요 · 남은 경기를 줄이거나 서둘러 주세요</span></div>`;
@@ -17141,18 +17610,40 @@ function drawOmb(){
   { const cs=[]; for(let c=1;c<=courts;c++){
       const cg=gs.map((g,gi)=>({...g,gi})).filter(g=>g.c===c);
       if(cg.length) cs.push({c,cg}); }
-    if(!OMB_COURT || !cs.some(x=>x.c===OMB_COURT)) OMB_COURT=(cs[0]||{}).c||1;
-    if(cs.length>1) h+=`<div class="rtcts">${cs.map(({c,cg})=>{
+    /* 0 = 전체 보기 */
+    if(OMB_COURT!==0 && !cs.some(x=>x.c===OMB_COURT)) OMB_COURT=(cs[0]||{}).c||1;
+    if(cs.length<=1) OMB_COURT=(cs[0]||{}).c||1;
+    if(cs.length>1) h+=`<div class="rtcts">
+      <div class="${OMB_COURT===0?'on':''}" onclick="OMB_COURT=0;drawOmb()">
+        <span class="t">전체</span><span class="s">${doneN}/${gs.length}</span></div>
+      ${cs.map(({c,cg})=>{
       const offc=off.includes(c), running=cg.some(g=>g.startedAt&&!done(g));
       return `<div class="${OMB_COURT===c?'on':''}${offc?' off':''}" onclick="OMB_COURT=${c};drawOmb()">
         <span class="t">${c}코트</span>
         <span class="s">${offc?'중지':running?'진행 중':`${cg.filter(done).length}/${cg.length}`}</span></div>`;}).join('')}</div>`;
+    /* 전체 보기 — 코트가 열, 게임이 행. 내 이름을 세로로 훑으면 다음 경기가 보인다. */
+    if(OMB_COURT===0 && cs.length>1){
+      const rs=[...new Set(gs.map(g=>g.r))].sort((a,b)=>a-b);
+      h+=`<div class="cbwide"><table>
+        <tr><th></th>${cs.map(({c})=>`<th>${c}코트</th>`).join('')}</tr>
+        ${rs.map(r=>`<tr><td class="r">${r}</td>${cs.map(({c})=>{
+          const g=gs.map((x,gi)=>({...x,gi})).find(x=>x.r===r&&x.c===c);
+          if(!g) return `<td class="no">—</td>`;
+          const run=g.startedAt&&!done(g);
+          return `<td class="${done(g)?'dn':run?'on':''}" onclick="OMB_COURT=${c};drawOmb()">
+            ${esc((g.teamA||[]).map(p=>p.name).join('·'))}
+            <em>${done(g)?`${g.sa}:${g.sb}`:run?'경기 중':'vs'}</em>
+            ${esc((g.teamB||[]).map(p=>p.name).join('·'))}</td>`;
+        }).join('')}</tr>`).join('')}
+      </table>
+      <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 게임에 안 쓰는 코트</div></div>`;
+    }
   }
 
   for(let c=1;c<=courts;c++){
     const cg=gs.map((g,gi)=>({...g,gi})).filter(g=>g.c===c);
     if(!cg.length) continue;
-    if(courts>1 && OMB_COURT && c!==OMB_COURT) continue;
+    if(courts>1 && (OMB_COURT===0 || c!==OMB_COURT)) continue;   // 전체 보기에선 표만
     const isOff=off.includes(c);
     h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px;${isOff?'opacity:.45':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
