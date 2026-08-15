@@ -215,7 +215,9 @@
   .rtprog .rt{margin-left:auto;font-size:12px;opacity:.75}
   .rtbar{height:5px;border-radius:9px;background:rgba(255,255,255,.18);margin-top:12px;overflow:hidden}
   .rtbar i{display:block;height:100%;background:var(--coral);border-radius:9px;transition:width .3s}
-  .rtcts{display:flex;gap:7px;margin-bottom:14px}
+  /* 위쪽 간격이 없어서 바로 앞의 카드와 붙어 보였다.
+     카드 안쪽 여백(18)에 맞춰 위아래를 둔다. */
+  .rtcts{display:flex;gap:7px;margin:18px 0 14px}
   .rtcts>div{flex:1;min-height:42px;border-radius:12px;background:#fff;border:1px solid var(--line);
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer}
   .rtcts>div.on{background:var(--coral);border-color:var(--coral);color:#fff}
@@ -11146,7 +11148,7 @@ function drawArchiveOne(){
         const done=g.sa!=null&&g.sb!=null;
         const aWin=done&&g.sa>g.sb, bWin=done&&g.sb>g.sa;
         return `<div class="card" style="padding:13px 15px">
-          <div class="t-lbl">${esc(String(g.court))}코트</div>
+          <div class="t-lbl">${esc(String(g.court))}번 코트</div>
           <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
             <div class="t-bdy" style="flex:1;min-width:0;font-weight:${aWin?800:500};color:${done&&!aWin?'var(--lgray)':'var(--ink)'}">${(g.A||[]).map(esc).join(' + ')||'—'}</div>
             <div style="flex:none;text-align:center;min-width:56px">
@@ -11413,7 +11415,7 @@ function pickOrder(ri,ci,team,si){
   const cap=team==='b'?bw.capB:bw.capW;
   const cur=(state.bw.order[ri+'-'+ci]||bw.rounds[ri].courts[ci]);
   let h=`<div class="sh-top"><h3>${team==='b'?'청팀':'백팀'} 선수 배치</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">${ri+1}라운드 ${ci+1}코트 · ${si+1}번 자리에 넣을 선수를 고르세요. (팀장 ${cap} 작성)</div>
+    <div class="sd">${ri+1}번째 게임 ${ci+1}번 코트 · ${si+1}번 자리에 넣을 선수를 고르세요. (팀장 ${cap} 작성)</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">`;
   pool.forEach(nm=>{ const on=cur[team][si]===nm; h+=`<div onclick="setOrder(${ri},${ci},'${team}',${si},'${nm}')" class="ptag" style="cursor:pointer;border:1.5px solid ${on?'var(--coral)':'#ece2d6'};background:${on?'var(--coral-s)':'#fff'};color:${on?'var(--coral-d)':'var(--ink)'};font-weight:700">${nm}${nm===cap?' (C)':''}</div>`; });
   h+=`</div>`;
@@ -12447,12 +12449,12 @@ function cbFindClash(games){
   [...new Set((games||[]).map(g=>g.r))].forEach(r=>{
     const seen={}, cs=new Set();
     (games||[]).filter(g=>g.r===r).forEach(g=>{
-      if(cs.has(g.c)) bad.push(`${r}게임에 ${g.c}코트가 두 번`);
+      if(cs.has(g.c)) bad.push(`${r}번째 게임에 ${g.c}번 코트가 두 번`);
       cs.add(g.c);
       [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
         if(!p || p.id==='-') return;
         const k=String(p.id);
-        if(seen[k]) bad.push(`${r}게임 · ${p.name} 님이 ${seen[k]}코트와 ${g.c}코트 양쪽에`);
+        if(seen[k]) bad.push(`${r}번째 게임 · ${p.name} 님이 ${seen[k]}번 코트와 ${g.c}번 코트 양쪽에`);
         else seen[k]=g.c;
       });
     });
@@ -13217,7 +13219,7 @@ function drawCB2View(){
       if(cs.length>1 && (CB2.mode==='hanul'||CB2.mode==='monthly')){
         h+=`<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin:2px 2px 9px;font-size:11px;font-weight:500;color:var(--gray)">
           ${cs.map(({c})=>{ const x=cb2CourtMix(c); return x.n
-            ? `<span>${c}코트 <b style="color:#3b53a8;font-weight:600">남 ${x.m}</b><span style="color:#d8d2c6"> · </span><b style="color:#a8395f;font-weight:600">여 ${x.f}</b><span style="color:var(--lgray);font-weight:500"> (${x.n}명)</span></span>`
+            ? `<span>${c}번 코트 <b style="color:#3b53a8;font-weight:600">남 ${x.m}</b><span style="color:#d8d2c6"> · </span><b style="color:#a8395f;font-weight:600">여 ${x.f}</b><span style="color:var(--lgray);font-weight:500"> (${x.n}명)</span></span>`
             : ''; }).join('')}</div>`;
       }
       if(cs.length>1){
@@ -13231,7 +13233,7 @@ function drawCB2View(){
           const running=cg.some(g=>g.startedAt&&!done(g));
           const fin=cg.filter(done).length;
           return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};drawCB2View()">
-            <span class="t">${c}코트</span>
+            <span class="t">${c}번 코트</span>
             <span class="s">${offc?'중지':running?'진행 중':`${fin}/${cg.length}`}</span></div>`;
         }).join('')}</div>`;
       }
@@ -13243,7 +13245,7 @@ function drawCB2View(){
         const nm=(arr,r)=>(arr||[]).map(p=>
           (dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name)).join('·');
         h+=`<div class="cbwide"><table>
-          <tr><th></th>${cs.map(({c})=>`<th>${c}코트</th>`).join('')}</tr>
+          <tr><th></th>${cs.map(({c})=>`<th>${c}번 코트</th>`).join('')}</tr>
           ${rs.map(r=>`<tr><td class="r${(dupBy[r]||[]).length?' bad':''}">${r}</td>${cs.map(({c})=>{
             const g=(CB2.games||[]).map((x,gi)=>({...x,gi})).find(x=>x.r===r&&x.c===c);
             if(!g) return `<td class="no">—</td>`;
@@ -13291,7 +13293,7 @@ function drawCB2View(){
       if((CB2.courts||0)>1 && (CB2_COURT===0 || c!==CB2_COURT)) continue;
       h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px;${(CB2.offCourts||[]).includes(c)?'opacity:.45':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <b style="font-size:var(--t2);font-weight:600">${c}코트${(CB2.mode==='hanul'||CB2.mode==='monthly')?cb2MixChip(c,true):''}${(CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>':cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>':''}</b>
+          <b style="font-size:var(--t2);font-weight:600">${c}번 코트${(CB2.mode==='hanul'||CB2.mode==='monthly')?cb2MixChip(c,true):''}${(CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>':cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>':''}</b>
       ${off?`<span onclick="cb2ToggleCourt(${c})" style="font-size:11px;font-weight:500;color:var(--lgray);cursor:pointer;margin-left:6px">${(CB2.offCourts||[]).includes(c)?'사용 재개':'중지'}</span>`:''}
           <span class="gt1 gmute">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
@@ -14325,7 +14327,7 @@ function cbLateWhy(){
 function cbRoundWhy(){
   const n=cb2Head(), c=cb2Courts();
   const r=cbCourtOk(n, c);
-  if(!r.ok) return `${n}명 · ${c}코트는 ${r.why}`;
+  if(!r.ok) return `${n}명 · ${c}번 코트는 ${r.why}`;
   return cbLateWhy();
 }
 
@@ -14545,7 +14547,7 @@ function drawCB2Build(){
     <div style="display:flex;gap:10px;margin-top:10px">
       <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
         ${[1,2,3,4].map(c=>{ const r=cbCourtOk(cb2Head(), c);
-          return `<option value="${c}" ${courts===c?'selected':''}>${c}코트${r.ok?'':' · 안 돼요'}</option>`;
+          return `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 안 돼요'}</option>`;
         }).join('')}</select></div>
       <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:12px;font-weight:500;background:#faf8f4">1인 4경기 보장</div></div></div>
     ${(()=>{ /* 인원·코트가 안 맞으면 왜 안 되는지와 대안을 적는다 */
