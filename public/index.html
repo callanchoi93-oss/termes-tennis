@@ -359,11 +359,10 @@
   .bkc-ln b{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums}
   .bkc-ln span{font-size:11.5px;color:var(--gray)}
   .bkc-my{font-size:12px;font-weight:800;color:var(--coral-t,#b8460f)}
-  /* 총무에게만 — 점수가 빈 대진. 잉크는 <운영진이 손봐야 하는 것> 자리다. */
-  .bkc-warn{display:flex;align-items:baseline;gap:6px;background:#241d16;border-radius:11px;
-    padding:9px 11px;margin-top:9px}
-  .bkc-warn b{font-size:11.5px;font-weight:800;color:#f0a93b}
-  .bkc-warn span{font-size:11px;color:#c4b6a0}
+  /* 총무에게만 — 점수가 빈 대진. 배경 없이 글자만 두 단계로 낮췄다.
+     짧은 안내가 카드 하나만큼 자리를 차지하던 걸 내용만큼만 쓰게 한다. */
+  .bkc-warn{margin-top:8px;font-size:11px;font-weight:700;color:var(--coral-t,#b8460f)}
+  .bkc-warn span{font-weight:500;color:#a5804a}
   .bkgrp{display:flex;align-items:center;gap:8px;margin:18px 4px 9px;cursor:pointer}
   .bkgrp b{font-size:13px;font-weight:800}
   .bkgrp span{font-size:11.5px;color:var(--lgray);font-weight:700}
@@ -2662,7 +2661,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.8-0816g';
+const BUILD='v1.0.8-0816i';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9711,7 +9710,7 @@ function clubTabBracket(){
       .replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim() || '모임 미지정';
     /* 점수가 비어 있으면 총무에게만 알린다 — 시즌 랭킹이 그만큼 비뚤어진다 */
     const warn = (off && miss>0 && !isToday)
-      ? `<div class="bkc-warn"><b>점수 ${miss}경기 비어 있어요</b><span>· 넣어야 기록에 쌓여요</span></div>` : '';
+      ? `<div class="bkc-warn"><b>점수 ${miss}경기 비어요</b><span>· 넣어야 기록에 쌓여요</span></div>` : '';
     /* 내 경기가 남았을 때만 '다음은' — 다 끝난 사람에게 다음을 말하면 안 된다.
        strip.n 이 숫자면 아직 뛸 경기가 있다는 뜻이다. */
     /* 내 경기가 남았을 때만 '다음은'. 다 뛴 사람에게 다음을 말하면 안 되고,
