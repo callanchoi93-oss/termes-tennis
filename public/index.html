@@ -215,7 +215,8 @@
   .rtprog.lite{background:#faf8f4;color:var(--ink);border:1px solid #eee9e0}
   .rtprog.lite .of,.rtprog.lite .rt{opacity:1;color:#8c877f}
   .rtprog.lite .rtbar{background:#eae5db}
-  .rtprog.lite .rtbar i{background:var(--ink)}
+  /* 막대는 화면에서 제일 오래 보는 곳이자 누르는 곳이 아니라, 브랜드 색을 놓기 좋은 자리다 */
+  .rtprog.lite .rtbar i{background:var(--coral)}
   .rtprog .top{display:flex;align-items:baseline;gap:6px}
   .rtprog .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
   .rtprog .of{font-size:13px;opacity:.6}
@@ -330,6 +331,48 @@
   .bkmeta{display:block;font-size:12.5px;color:var(--lgray);margin-top:5px;
     font-variant-numeric:tabular-nums}
   .bkmeta + .bkmeta{margin-top:2px}
+  /* 대진 목록 카드 — 일정 탭과 같은 모양. 왼쪽 기둥에 날짜, 띠는 <지금 볼 것>에만. */
+  .bkc{display:flex;gap:11px;background:#fff;border:1px solid #eee9e0;border-radius:16px;
+    padding:12px;margin-bottom:9px;cursor:pointer;box-shadow:0 1px 2px rgba(40,30,18,.04);
+    transition:transform .12s ease}
+  .bkc:active{transform:scale(.99)}
+  .bkc.act{border-left:4px solid var(--coral)}
+  .bkc.past{background:#fbfaf7;border-color:#f0ece3;box-shadow:none}
+  .bkc-dt{flex:none;width:44px;text-align:center}
+  .bkc-dt b{display:block;font-size:20px;font-weight:800;letter-spacing:-.04em;line-height:1}
+  .bkc-dt i{display:block;font-style:normal;font-size:11px;font-weight:600;color:var(--gray);margin-top:2px}
+  .bkc-dt u{display:block;text-decoration:none;font-size:10px;font-weight:700;color:var(--coral-t,#b8460f);margin-top:5px}
+  .bkc.past .bkc-dt b{color:#8c877f} .bkc.past .bkc-dt u{color:var(--lgray)}
+  .bkc-bd{flex:1;min-width:0}
+  .bkc-ti{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;letter-spacing:-.03em}
+  .bkc-ti .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bkc.past .bkc-ti .n{color:#57503f}
+  .bkc-tag{flex:none;font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;
+    background:#fceee4;color:var(--coral-d)}
+  .bkc-tag.live{background:var(--coral);color:#fff}
+  .bkc-tag.gray{background:#f2efe9;color:var(--gray)}
+  .bkc-dots{flex:none;color:#c9c4bb;font-size:16px;font-weight:700;padding:0 2px;line-height:1}
+  .bkc-m{font-size:11.5px;font-weight:500;color:#6b6357;margin-top:4px;line-height:1.5}
+  .bkc-bar{height:6px;border-radius:4px;background:#eee9e0;margin-top:9px;overflow:hidden}
+  .bkc-bar i{display:block;height:100%;background:var(--coral);border-radius:4px;transition:width .3s}
+  .bkc-ln{display:flex;align-items:center;gap:6px;margin-top:7px}
+  .bkc-ln b{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums}
+  .bkc-ln span{font-size:11.5px;color:var(--gray)}
+  .bkc-my{font-size:12px;font-weight:800;color:var(--coral-t,#b8460f)}
+  /* 총무에게만 — 점수가 빈 대진. 잉크는 <운영진이 손봐야 하는 것> 자리다. */
+  .bkc-warn{display:flex;align-items:baseline;gap:6px;background:#241d16;border-radius:11px;
+    padding:9px 11px;margin-top:9px}
+  .bkc-warn b{font-size:11.5px;font-weight:800;color:#f0a93b}
+  .bkc-warn span{font-size:11px;color:#c4b6a0}
+  .bkgrp{display:flex;align-items:center;gap:8px;margin:18px 4px 9px;cursor:pointer}
+  .bkgrp b{font-size:13px;font-weight:800}
+  .bkgrp span{font-size:11.5px;color:var(--lgray);font-weight:700}
+  .bkgrp i{flex:1;height:1px;background:#efece6;display:block}
+  .bkgrp em{font-style:normal;font-size:12px;color:var(--lgray);display:inline-block;transition:.15s}
+  .bkmk{display:flex;align-items:center;justify-content:center;margin-top:11px;cursor:pointer;
+    border:1.5px dashed #dcd6ca;border-radius:14px;padding:13px 0;
+    font-size:13px;font-weight:800;color:var(--coral-d);background:#fff}
+  .bkmk:active{transform:scale(.99)}
   /* 대진 전체 보기 — 코트가 열, 게임이 행. 세로로 훑으면 내 다음 경기가 보인다. */
   .cbwide{ border:1px solid var(--line); border-radius:13px; overflow:hidden; margin-top:10px; background:#fff }
   .cbwide table{ width:100%; border-collapse:collapse; table-layout:fixed }
@@ -792,20 +835,24 @@
   .ob-row.on b{color:var(--coral-d)}
   .ob-dot{flex:none;width:19px;height:19px;border-radius:50%;border:1.5px solid #ddd7cb;background:#fff}
   .ob-row.on .ob-dot{border:6px solid var(--coral);background:#fff}
-  /* 홈 · 오늘 대진 띠 — 예전 '다음은 내 차례예요' 카드와 같은 크기를 그대로 쓴다 */
-  .hmstrip{display:flex;align-items:center;gap:11px;cursor:pointer;
-    background:linear-gradient(135deg,#fff3ea,#ffe9db);border-radius:18px;padding:14px;margin:4px 0 12px}
-  .hmstrip .n{flex:none;width:44px;height:44px;border-radius:13px;background:#fff;
+  /* 홈 · 오늘 대진 띠 — 대진 화면의 회원 카드와 같은 규칙.
+     흰 종이에 왼쪽 코랄 띠, 크기는 예전 '다음은 내 차례예요' 카드 그대로. */
+  .hmstrip{display:flex;align-items:center;gap:11px;cursor:pointer;background:#fff;
+    border:1px solid #eee9e0;border-left:4px solid var(--coral);border-radius:16px;
+    padding:13px 14px;margin:4px 0 12px;
+    box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)}
+  .hmstrip .n{flex:none;width:44px;height:44px;border-radius:13px;background:#fdf1e9;
     display:flex;align-items:center;justify-content:center;
-    font-size:14px;font-weight:600;color:var(--coral-d);font-variant-numeric:tabular-nums}
+    font-size:16px;font-weight:800;color:var(--coral-d);font-variant-numeric:tabular-nums;
+    letter-spacing:-.03em}
   .hmstrip .tx{flex:1;min-width:0}
-  .hmstrip .l{font-size:11px;font-weight:500;color:#a86a3a;
+  .hmstrip .l{font-size:11px;font-weight:700;color:#b8460f;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hmstrip .b{font-size:14px;font-weight:600;color:var(--ink);margin-top:2px;
+  .hmstrip .b{font-size:14.5px;font-weight:800;letter-spacing:-.03em;color:var(--ink);margin-top:2px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hmstrip .m{font-size:12px;font-weight:500;color:#7a6a58;margin-top:3px;
+  .hmstrip .m{font-size:12px;font-weight:500;color:#6b6357;margin-top:3px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hmstrip .chev{flex:none;color:var(--coral-d);font-weight:600}
+  .hmstrip .chev{flex:none;color:var(--coral);font-weight:700;font-size:18px}
 
   /* 모임 만들기 · 시간과 코트를 눌러 고르는 칩 */
   .nechips{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
@@ -1456,6 +1503,47 @@
   .psess .ps-who{ font-size:11.5px;font-weight:600;color:rgba(27,24,19,.7);line-height:1.2; }
   .psess .ps-chk{ font-size:11px; font-weight:600; color:#1b7a4d; white-space:nowrap;
     background:rgba(255,255,255,.75); border-radius:20px; padding:3px 8px; }
+
+  /* 일정 카드 — 왼쪽 기둥에 날짜, 오른쪽에 내용.
+     배경으로 상태를 칠하지 않는다. 예전엔 참석한 모임이 제일 진해서
+     정작 답을 안 한 모임이 조용했다. 이제 <왼쪽 띠 = 내가 할 일> 하나로만 말한다. */
+  .evc{ display:flex; gap:11px; background:#fff; border:1px solid #eee9e0; border-radius:16px;
+    padding:12px; cursor:pointer; box-shadow:0 1px 2px rgba(40,30,18,.04); transition:transform .12s ease; }
+  .evc:active{ transform:scale(.985); }
+  .evc-act{ border-left:4px solid var(--coral); }
+  .evc-bolt{ border-left:4px solid #f0a93b; }
+  .evc-past{ background:#fbfaf7; border-color:#f0ece3; box-shadow:none; }
+  .evc-dt{ flex:none; width:44px; text-align:center; }
+  .evc-dt b{ display:block; font-size:20px; font-weight:800; letter-spacing:-.04em; line-height:1; }
+  .evc-dt i{ display:block; font-style:normal; font-size:11px; font-weight:600; color:var(--gray); margin-top:2px; }
+  .evc-dt u{ display:block; text-decoration:none; font-size:10px; font-weight:700; color:var(--coral-t); margin-top:5px; }
+  .evc-bolt .evc-dt u{ color:#8a5a13; }
+  .evc-past .evc-dt b{ color:#8c877f; } .evc-past .evc-dt u{ color:var(--lgray); }
+  .evc-bd{ flex:1; min-width:0; }
+  .evc-ti{ font-size:14px; font-weight:800; letter-spacing:-.03em; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .evc-past .evc-ti{ color:#57503f; }
+  .evc-tag{ display:inline-block; font-size:10px; font-weight:700; border-radius:6px; padding:2px 7px;
+    background:#fceee4; color:var(--coral-d); margin-left:6px; vertical-align:2px; }
+  .evc-tag.bolt{ background:#fdf1dc; color:#8a5a13; }
+  .evc-past .evc-tag{ background:#f2efe9; color:var(--gray); }
+  .evc-m{ font-size:11.5px; font-weight:500; color:#6b6357; margin-top:3px; line-height:1.5; }
+  .evc-ft{ display:flex; align-items:center; gap:7px; margin-top:9px; }
+  .evc-face{ display:flex; }
+  .evc-face span{ width:21px; height:21px; border-radius:50%; background:#efe9df; border:1.5px solid #fff;
+    margin-left:-6px; display:flex; align-items:center; justify-content:center;
+    font-size:9px; font-weight:700; color:#6b6357; }
+  .evc-face span:first-child{ margin-left:0; }
+  .evc-ft em{ font-style:normal; font-size:11.5px; font-weight:600; color:#6b6357; }
+  /* 버튼을 없앴다 — 카드를 누르면 어차피 그 화면으로 들어간다.
+     참석 여부는 왼쪽 띠가 이미 말하고 있어, 확인용 글자만 오른쪽에 둔다. */
+  .evc-on{ margin-left:auto; font-size:11.5px; font-weight:700; color:#4a8f6b; white-space:nowrap; }
+  /* 만들기는 목록 끝 · 점선으로 한 단계 낮춘다 — 참석 버튼과 무게가 같으면 안 된다 */
+  .evmk{ display:flex; gap:8px; margin:11px 0 2px; }
+  .evmk span{ flex:1; text-align:center; border:1.5px dashed #dcd6ca; border-radius:14px;
+    padding:13px 0; font-size:13px; font-weight:800; color:var(--coral-d); cursor:pointer; background:#fff; }
+  .evmk span.g{ color:#8a5a13; border-color:#e7d5b4; background:#fffdf8; }
+  .evmk span:active{ transform:scale(.985); }
 
   .qlinks{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-top:11px; }
   .qlink{ background:#ffffff; border:1px solid var(--line2); border-radius:18px; padding:13px 4px; text-align:center; cursor:pointer; box-shadow:var(--shadow-s); transition:transform .12s ease; }
@@ -2574,7 +2662,20 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.8-0816b';
+const BUILD='v1.0.8-0816g';
+/* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
+   toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
+   그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
+   "오늘 대진이 없다"고 판단해 홈 카드가 통째로 사라졌다. 새벽까지 치는 클럽에서 매번 겪는다. */
+function ymd(d){ const t=d||new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+/* 저녁에 시작해 자정을 넘긴 모임은 아침까지 '오늘 것'으로 본다 */
+function cbTodayish(ds){
+  if(!ds) return true;
+  if(ds===ymd()) return true;
+  const y=ymd(new Date(Date.now()-86400000));
+  return ds===y && new Date().getHours()<10;
+}
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -4512,7 +4613,7 @@ async function toggleResting(uid, v){
 
 /* 연명부 Excel 내보내기 — 원본 연명부 서식 재현 (남색 헤더·연하늘 임원행·눈금선 없음) */
 async function exportRoster(){
-  const fname=`${state.activeClub||'클럽'}_연명부_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+  const fname=`${state.activeClub||'클럽'}_연명부_${ymd().replace(/-/g,'')}`;
   const careerOf=(m)=>{ try{ return careerTextFrom(JSON.parse(m.sport_started||'{}')[state.sport])||''; }catch(e){ return ''; } };
   const jdOf=(m)=>{ const d=m.joined_at?new Date(m.joined_at):null;
     return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:''; };
@@ -4680,8 +4781,8 @@ async function syncGameDiary(list){
     let added=0;
     for(const m of done.slice(0,10)){
       if(have.has(m.id)) continue;
-      let ymd=new Date().toISOString().slice(0,10);
-      if(m.start_at){ const d=new Date(m.start_at); if(!isNaN(d)) ymd=d.toISOString().slice(0,10); }
+      let ymd=ymd();
+      if(m.start_at){ const d=new Date(m.start_at); if(!isNaN(d)) ymd=ymd(d); }
       await api('/records',{method:'POST',body:JSON.stringify({
         sport:SP().id, ymd, dist_m:1, rtype:'race',
         note:`오픈매치 · ${(m.title||m.place||'').slice(0,40)}`,
@@ -4744,7 +4845,7 @@ async function autoClubDiary(){
     if(!SERVER_OK || !SRV_EVENT) return;
     const ev=SRV_EVENT;
     // 모임 날짜 추출 (YYYY-MM-DD) — 없으면 오늘
-    let ymd=new Date().toISOString().slice(0,10);
+    let ymd=ymd();
     const m=String(ev.date||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
     if(m) ymd=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
     // 이미 이 모임 엔트리가 있으면 스킵
@@ -4762,11 +4863,15 @@ async function autoClubDiary(){
 
 /* 일정 만들기 (임원진) */
 let NE = null;   // 새 모임 선택 상태 {y,m(0~11), day, time}
-function openNewEvent(){
+function openNewEvent(tag){
   const t=new Date();
+  const off=(AC()||{}).officer;
+  /* 목록 밖에서 <정기 / 번개>를 이미 골랐으면 그걸 그대로 연다.
+     회원은 어떤 경로로 들어와도 번개만 만들 수 있다. */
+  const want = (tag==='정기'||tag==='번개') ? tag : (off?'정기':'번개');
   NE = { y:t.getFullYear(), m:t.getMonth(), day:null,
          time:neTopTimes()[0]||'19:00', dur:neTopDur(), end:'', courts:[],
-         tag:((AC()||{}).officer?'정기':'번개') };
+         tag: off ? want : '번개' };
   NE.end=neAdd(NE.time, NE.dur);
   renderNewEvent();
 }
@@ -5460,7 +5565,7 @@ async function maybeNoticePopup(){
   try{
     if(!SERVER_OK || !clubId()) return;
     const list = await api(`/clubs/${clubId()}/notices`);
-    const now=Date.now(), today=new Date().toISOString().slice(0,10);
+    const now=Date.now(), today=ymd();
     const n=(list||[]).find(x=>x.popup_days>0 && now < x.created_at + x.popup_days*86400e3);
     if(!n) return;
     if(localStorage.getItem('npop:'+n.id)===today) return;
@@ -6121,7 +6226,7 @@ function endSeason(){
   state.rating=nr; state.ratingHist.push(nr); state.played=Math.max(state.played,5);
   // 새 시즌
   const nm=nextSeasonName(seasonName); const now=new Date(); const end=new Date(now.getTime()+90*864e5);
-  state.season={no:state.season.no+1,name:nm,start:now.toISOString().slice(0,10),end:end.toISOString().slice(0,10)};
+  state.season={no:state.season.no+1,name:nm,start:ymd(now),end:ymd(end)};
   state.streak=0;
   pushNotif('🏁','시즌이 종료됐어요',`${seasonName} 정산 완료 · ${promote?'승격':relegate?'강등':'유지'} · ${nm} 시작`);
   openSeasonEnd(finalRank,rk.total,promote,relegate,badge,seasonName,nm);
@@ -7705,7 +7810,7 @@ function renderClub(){
   if((SERVER_OK||TRIAL) && clubId() && PROMOS===null && !window._promoOnce){ window._promoOnce=true; cb2LoadPromos().then(()=>renderClub()).catch(()=>{}); }
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
     cb2Load().then(()=>{
-      const today=new Date().toISOString().slice(0,10);
+      const today=ymd();
       if(CB2 && CB2.date && CB2.date!==today) CB2=null;    // 지난 대진은 들고 있지 않는다
       if(CB2 && CB2.mode==='cheongbaek') renderClub();
     }).catch(()=>{}); }
@@ -7791,12 +7896,29 @@ function renderClub(){
          목록은 이미 <다가오는 · 지난 모임> 탭과 <연월 접기>로 나뉘는데
          주 이동은 목록을 거르지 않고 라벨만 바꿔서, 6/14~6/20 이라 적힌 화면에
          8월 모임이 늘어서는 일이 있었다. 오늘 날짜 한 줄만 남긴다. */
-      h+=`<div style="display:flex;align-items:center;gap:8px;background:#faf8f4;
-            border-radius:13px;padding:11px 13px;margin:0 4px 10px">
+      /* 개수를 세는 대신 <다음 모임이 언제인지>를 말한다 — 회원이 이 화면에서 제일 먼저 찾는 것이다.
+         운영진에게는 아직 답을 안 한 회원 수까지. 독촉할지 말지를 여기서 정한다. */
+      const upN=evList0.filter(e=>!evIsPast(e)).length;
+      const nx=evList0.filter(e=>!evIsPast(e)).sort((a,b)=>evTime(a)-evTime(b))[0];
+      const cInfo=AC()||{};
+      const memN=cInfo.members||0, isOff=!!cInfo.officer;
+      let sumL='이번 주', sumV='남은 모임이 없어요', sumR='';
+      if(nx){
+        const nd=evParseDate(nx.date);
+        const wdN=nd.day!=null ? WD_KO[new Date(new Date().getFullYear(), nd.m, nd.day).getDay()] : '';
+        sumL='다음 모임';
+        sumV=`${esc(evDdayWord(nx))} ${wdN?wdN+'요일 ':''}${esc(nd.time||'')}`.trim();
+        const jn=(nx.attendees||[]).length;
+        sumR=`참석 ${jn}명`;
+        if(isOff && memN>jn) sumR+=`<br><span style="color:var(--coral-t);font-weight:700">안 누른 회원 ${memN-jn}명</span>`;
+      } else if(wkLeft){ sumL='이번 주'; sumV=`남은 모임 ${wkLeft}개`; }
+      h+=`<div style="display:flex;align-items:center;gap:10px;background:#faf8f4;border:1px solid #eee9e0;
+            border-radius:14px;padding:11px 13px;margin:0 4px 10px">
+          <span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--coral)"></span>
           <span style="flex:1;min-width:0">
-            <b style="font-size:13px;font-weight:800;letter-spacing:-.03em">${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}</b>
-            <span style="font-size:11.5px;color:var(--gray);font-weight:600;margin-left:8px">${
-              wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></span>
+            <span style="display:block;font-size:10.5px;font-weight:800;color:var(--coral-t)">${sumL}</span>
+            <b style="display:block;font-size:13.5px;font-weight:800;letter-spacing:-.03em;margin-top:2px">${sumV}</b></span>
+          ${sumR?`<span style="font-size:11px;color:var(--gray);text-align:right;line-height:1.45;font-weight:600">${sumR}</span>`:''}
         </div>
         <div style="display:flex;background:#f4f2ee;border-radius:12px;padding:3px;margin:0 4px 10px">
           ${[['다가오는',false],['지난 모임',true]].map(([t,v])=>{
@@ -7804,7 +7926,7 @@ function renderClub(){
             return `<span onclick="clubPast(${v})" style="flex:1;text-align:center;cursor:pointer;
               font-size:12.5px;padding:8px 0;border-radius:9px;letter-spacing:-.02em;
               ${on?'background:#fff;color:var(--ink);font-weight:800;box-shadow:0 1px 3px rgba(60,50,35,.10)'
-                  :'color:var(--gray);font-weight:600'}">${t}</span>`; }).join('')}
+                  :'color:var(--gray);font-weight:600'}">${t}${(!v&&upN)?` ${upN}`:''}</span>`; }).join('')}
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
@@ -7836,9 +7958,12 @@ function evAgoText(ev){
                   : evList.filter(e=>!evIsPast(e)))
         .sort((a,b)=>{ const d=evTime(a)-evTime(b); return state._clubPast ? -d : d; });
       const evShow=dayF ? evAll.filter(e=>{ const mm=(e.date||'').match(/(\d+)\/(\d+)/); return mm && (+mm[1]+'/'+ +mm[2])===dayF; }) : evAll;
-      h+=`<div class="ch" style="font-size:18px;margin:16px 4px 10px;display:flex;justify-content:space-between;align-items:center">
-        <span>${dayF?`${dayF} 일정`:(state._clubPast?'지난 모임':'다가오는 일정')}${dayF?` <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span>`:''}</span>
-        <button onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}" style="cursor:pointer;border:1.5px solid ${off?'var(--coral)':'#c3d2f0'};background:#ffffff;color:${off?'var(--coral-d)':'#2b62c9'};font-weight:500;font-size:12px;border-radius:11px;padding:7px 12px;font-family:inherit">${off?'＋ 만들기':'⚡ 번개 열기'}</button></div>`;
+      /* 제목은 날짜를 콕 집었을 때만 — 바로 위 토글이 이미 <다가오는/지난 모임>을 말하고 있다.
+         만들기 버튼은 목록 맨 아래로 내렸다. 읽는 것이 먼저, 만드는 것은 다 읽은 뒤. */
+      if(dayF){
+        h+=`<div class="ch" style="font-size:18px;margin:14px 4px 10px">
+          ${dayF} 일정 <span onclick="clubDay('${dayF}')" style="font-size:12px;font-weight:500;color:var(--coral-d);cursor:pointer">· 전체보기</span></div>`;
+      }
       if(SERVER_OK && clubId() && SRV_EVENTS===null){
         h+=`<div class="note" style="text-align:left">일정을 불러오는 중이에요…</div>`;
       } else if(dayF && !evShow.length){
@@ -7855,11 +7980,6 @@ function evAgoText(ev){
           <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
           ${off?`<button class="btn" style="max-width:220px;margin:13px auto 0" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">＋ 첫 모임 만들기</button>`:''}</div>`; }
       else {
-        /* D안 — 다음 한 장만 진하게, 나머지는 같은 크림색.
-           예전엔 카드마다 색이 달랐는데 그 색에 뜻이 없어서
-           오늘 모임과 열흘 뒤 모임이 같은 무게로 보였다.
-           종류(정기·번개)는 색이 아니라 딱지가 맡는다. */
-        const CNEXT='#f9c9a4', CUP='#fdf3ec', CPAST='#efe9e0';
         /* 연월로 묶고 접을 수 있게 — 모임이 쌓이면 목록이 끝없이 길어진다.
            가장 가까운 달만 펼쳐두고 나머지는 접는다. */
         const ymOf=ev=>{ const t=evTime(ev);
@@ -7885,30 +8005,46 @@ function evAgoText(ev){
               transform:rotate(${open?'0':'-90'}deg)">▾</span></div>`;
           if(!open) return;
           h+=`<div class="plan2">`;
-          G.list.forEach((ev,ii)=>{ const i=ii; const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
+          G.list.forEach(ev=>{ const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const d=evParseDate(ev.date); const done=evIsPast(ev);
           const day = d.day!=null ? d.day : '';
           const wd  = d.day!=null ? WD_KO[new Date(new Date().getFullYear(), d.m, d.day).getDay()] : '';
           /* 제목에 [08/14] 처럼 날짜를 넣어둔 모임이 많다 — 날짜를 크게 따로 보여주니 제목에서는 지운다 */
           const title=String(ev.title||'').replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim() || ev.title || '모임';
-          const place=[d.place, '클럽 코트'].filter(Boolean).join(' · ');
-          /* 다가오는 것 중 첫 장만 진하게 — 달을 나눠도 전체에서 하나만 */
-          const isNext = !done && evShow.indexOf(ev)===evShow.findIndex(x=>!evIsPast(x));
-          h+=`<div class="psess" style="background:${done?CPAST:isNext?CNEXT:CUP}" onclick="openEventDetail('${ev.id}')">
-            <div class="ps-top">
-              <span class="ps-date"><b>${day||'–'}</b><i>${wd}</i></span>
-              <span class="ps-badges">
-                ${done?'':`<span class="ps-dd">${esc(evDday(ev))}</span>`}
-                ${done?'<span class="ps-chk" style="background:#e6e2da;color:#7d7669">지난 모임</span>'
-                     :`<span class="ps-tag" style="${(ev.tag==='번개')?'background:#eef4ff;color:#2b62c9':'background:#fff;color:#a5470f'}">${esc(ev.tag||'정기')}</span>${
-                        joined?'<span class="ps-chk">참여중</span>':''}`}
-              </span></div>
-            <div class="ps-n">${esc(title)}</div>
-            <div class="ps-m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}<br>${esc(place)}</div>
-            <div class="ps-foot"><div class="ps-av">${esc((ev.attendees[0]||'?')[0])}</div>
-              <div class="ps-who">${ev.attendees.length}명 참여</div></div></div>`; });
+          const bolt = ev.tag==='번개';
+          /* 코트를 골라 만든 모임은 '1·2·3번 코트'가 장소 뒤에 붙어 있다 */
+          const place=[d.place, (d.courts||[]).length?`${d.courts.join('·')}번 코트`:'클럽 코트'].filter(Boolean).join(' · ');
+          const att=(ev.attendees||[]);
+          /* 이름 동그라미를 겹쳐 놓는다 — 누가 오는지가 숫자보다 참석을 부른다 */
+          const faces=att.slice(0,3).map(n=>`<span>${esc(String(n||'?')[0])}</span>`).join('')
+            + (att.length>3?`<span>+${att.length-3}</span>`:'');
+          /* 왼쪽 띠 = 내가 할 일. 참석을 누르면 사라진다.
+             번개는 금색 — 정기(코랄)와 성격이 다른 모임이라 훑을 때 갈려야 한다. */
+          const rail = done ? '' : (bolt?'evc-bolt':(joined?'':'evc-act'));
+          h+=`<div class="evc ${done?'evc-past':''} ${rail}" onclick="openEventDetail('${ev.id}')">
+            <div class="evc-dt"><b>${day||'–'}</b><i>${wd}</i>
+              <u>${esc(done?evAgoText(ev):evDdayWord(ev))}</u></div>
+            <div class="evc-bd">
+              <div class="evc-ti">${esc(title)}<span class="evc-tag ${bolt?'bolt':''}">${bolt?'⚡ 번개':esc(ev.tag||'정기')}</span></div>
+              <div class="evc-m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')} · ${esc(place)}${
+                bolt&&ev.made_by?`<br>${esc(ev.made_by)} 님이 열었어요`:''}</div>
+              <div class="evc-ft">
+                <span class="evc-face">${faces||'<span>?</span>'}</span>
+                <em>${att.length}명</em>
+                ${(!done&&joined)?`<span class="evc-on">참여중</span>`:''}
+              </div>
+            </div></div>`; });
           h+=`</div>`;
         });
+      }
+      /* 만들기는 목록을 다 읽은 뒤. 지난 모임 탭에서는 감춘다 —
+         지난 목록을 보다가 새 모임을 여는 일은 드물다.
+         회원은 번개만, 운영진은 정기와 번개를 밖에서 바로 고른다. */
+      if(!state._clubPast && !dayF){
+        /* 종류는 시트 안에서 고른다 — 밖에서 둘로 나누면 버튼만 늘고 하는 일은 같다.
+           회원이 눌러도 시트가 알아서 번개로 열린다. */
+        const open=(SERVER_OK&&clubId())?'openNewEvent':'openEventCreate';
+        h+=`<div class="evmk"><span onclick="${open}()">＋ 모임 만들기</span></div>`;
       }
       /* 지난 모임은 위쪽 '지난 모임' 탭이 맡는다.
          다가오는 탭 아래에 또 쌓으면 같은 카드를 두 번 보게 된다. */
@@ -8005,6 +8141,15 @@ function evDday(e){
   const d=Math.round((new Date(t).setHours(0,0,0,0)-today)/864e5);
   if(d===0) return '오늘'; if(d===1) return '내일'; if(d===2) return '모레';
   return d>0 ? `D-${d}` : '';
+}
+/* D-5 보다 '5일 뒤'가 읽기 쉽다 — 목록 왼쪽 기둥과 맨 윗줄에 쓴다 */
+function evDdayWord(e){
+  const t=evTime(e); if(t>=8.64e15) return '';
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const d=Math.round((new Date(t).setHours(0,0,0,0)-today)/864e5);
+  if(d===0) return '오늘'; if(d===1) return '내일'; if(d===2) return '모레';
+  return d>0 ? `${d}일 뒤` : '';
 }
 /* 정렬용 — 모임 날짜·시간을 숫자로. 못 읽으면 맨 뒤로 보낸다. */
 function evTime(e){
@@ -9504,67 +9649,118 @@ function clubHeroTabs(){
       `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}</div>`).join('')}</div>`;
 }
 function clubTabBracket(){
-  const c=AC()||{}; const evs=clubEvents();
   const d=(state.clubData||{})[state.activeClub||'']||{};
-  if(false){
-    return `<div class="card" style="text-align:center;padding:30px 20px">
-      <div style="font-size:15px;font-weight:600">아직 대진이 없어요</div>
-      <p style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.6">
-        모임을 먼저 만들고 참석을 받으면<br>참석자로 대진을 짤 수 있어요.</p>
-      ${d.officer?`<button class="btn" style="max-width:220px;margin:14px auto 0" onclick="openEventCreate()">모임 만들기</button>`:''}
-    </div>`;
-  }
+  const off=!!d0().officer;
   if(CB2_LIST===null){ loadBracketList(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
   const list=CB2_LIST||[];
-  if(!list.length){
-    return `<div class="card" style="text-align:center;padding:28px 20px">
-      <div style="font-size:15px;font-weight:600">발행된 대진이 없어요</div>
-      <p style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.6">
-        운영진이 모임 참석자로 대진을 짜면 여기에 보여요.</p>
-      ${d0().officer?`<button class="btn" style="max-width:200px;margin:14px auto 0" onclick="openClubBracketBuild()">대진 짜기</button>`:''}
-    </div>`;
+  const mkBtn = off ? `<div class="bkmk" onclick="openClubBracketBuild()">＋ 대진 짜기</div>` : '';
+
+  /* 오늘 모임은 있는데 대진만 없을 때 — 총무에게 제일 흔한 상황이다.
+     참석 인원이 이미 있으니 여기서 바로 짜게 한다. 예전에는 빈 목록과 버튼만 남았다. */
+  const haveEid = new Set((list||[]).map(b=>String(b.event_id||0)));
+  const todayEv = (clubEvents()||[]).filter(e=>{
+    if(evIsPast(e)) return false;
+    const t=evTime(e); if(!t) return false;
+    return ymd(new Date(t))===ymd() && !haveEid.has(String(e.id));
+  })[0];
+  let ask='';
+  if(off && todayEv){
+    const td=evParseDate(todayEv.date);
+    const wd = td.day!=null ? WD_KO[new Date(new Date().getFullYear(), td.m, td.day).getDay()] : '';
+    const att=(todayEv.attendees||[]).length;
+    const title=String(todayEv.title||'').replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim()||'오늘 모임';
+    ask=`<div class="bkc act" onclick="CB2_EVENT=${todayEv.id&&!isNaN(+todayEv.id)?+todayEv.id:0};window._bracketEventPicked=true;openClubBracketBuild()">
+      <div class="bkc-dt"><b>${td.day||'–'}</b><i>${wd}</i><u>오늘</u></div>
+      <div class="bkc-bd">
+        <div class="bkc-ti"><span class="n">${esc(title)}</span><span class="bkc-tag">참석 ${att}명</span></div>
+        <div class="bkc-m">${esc(td.time?(td.end?`${td.time}~${td.end}`:td.time):'')}${
+          (td.courts||[]).length?` · ${td.courts.join('·')}번 코트`:''}<br>대진이 아직 없어요</div>
+        <div class="bkc-ln"><span class="bkc-my">${att>=4?`참석자 ${att}명으로 짜기`:'눌러서 대진 짜기'} ›</span></div>
+      </div></div>`;
   }
-  const live=list.filter(b=>!b.finished), done=list.filter(b=>b.finished);
+
+  if(!list.length){
+    return `${ask}
+      <div class="card" style="text-align:center;padding:26px 18px;background:#faf8f4;border-color:#efece5">
+        <b style="display:block;font-size:14px">아직 대진이 없어요</b>
+        <span style="display:block;font-size:12px;color:var(--gray);margin-top:5px;line-height:1.6">
+          ${off?'모임에 참석 체크가 모이면<br>버튼 한 번으로 대진이 나와요'
+                :'운영진이 참석자로 대진을 짜면 여기에 보여요'}</span>
+      </div>${mkBtn}`;
+  }
+
+  /* 회원에게는 <내가 몇 번째 경기인가>가 제일 급하다 — 오늘 도는 대진에만 붙인다 */
+  const myNext=(()=>{ try{ const c=cbHomeCard(); return (c&&c.strip)?c.strip:null; }catch(e){ return null; } })();
+
   const row=b=>{
     const tot=b.games||0, fin=b.done||0;
     const pct=tot?Math.round(fin/tot*100):0;
     const live=!b.finished;
-    const off=d0().officer;
-    return `<div class="bkrow${live?'':' past'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
-      <span class="bkhd">
-        <span class="bkt">${esc(b.title||'모임 미지정')}</span>
-        ${live?`<span class="bklive">진행 중</span>`:`<span class="bkdone">종료</span>`}
-        ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`:''}</span>
-      ${b.date?`<span class="bkmeta">${esc(b.date)}</span>`:''}
-      <span class="bkmeta">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트</span>
-      <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
-      <span class="bkfoot"><b>${fin}</b><em>/${tot}게임</em>
-        <span class="bkpct" style="${live?'':'color:var(--lgray);font-weight:500'}">${
-          live?pct+'%':'완료'}</span></span></div>`;
+    const miss=Math.max(0,tot-fin);
+    const bd=b.date?evParseDate(String(b.date).replace(/^(\d{4})-(\d{1,2})-(\d{1,2}).*$/,'$2/$3')):{};
+    const dObj=b.date?new Date(String(b.date).slice(0,10)+'T00:00:00'):null;
+    const day=dObj&&!isNaN(dObj)?dObj.getDate():(bd.day||'');
+    const wd =dObj&&!isNaN(dObj)?WD_KO[dObj.getDay()]:'';
+    const isToday = b.date && String(b.date).slice(0,10)===ymd();
+    let rel='';
+    if(dObj&&!isNaN(dObj)){
+      const dd=Math.round((new Date(ymd()+'T00:00:00')-dObj)/864e5);
+      rel = dd<=0?'오늘' : dd===1?'어제' : `${dd}일 전`;
+    }
+    const title=String(b.title||'모임 미지정')
+      .replace(/^\s*[\[(]?\s*\d{1,2}\s*[\/.-]\s*\d{1,2}\s*[\])]?\s*/,'').trim() || '모임 미지정';
+    /* 점수가 비어 있으면 총무에게만 알린다 — 시즌 랭킹이 그만큼 비뚤어진다 */
+    const warn = (off && miss>0 && !isToday)
+      ? `<div class="bkc-warn"><b>점수 ${miss}경기 비어 있어요</b><span>· 넣어야 기록에 쌓여요</span></div>` : '';
+    /* 내 경기가 남았을 때만 '다음은' — 다 끝난 사람에게 다음을 말하면 안 된다.
+       strip.n 이 숫자면 아직 뛸 경기가 있다는 뜻이다. */
+    /* 내 경기가 남았을 때만 '다음은'. 다 뛴 사람에게 다음을 말하면 안 되고,
+       대진은 아직 도는 중이라 '끝났어요'라고 해도 안 된다 — 그럴 땐 아무 말도 않는다. */
+    const mine = (live && isToday && myNext && /^\d+$/.test(String(myNext.n||'')))
+      ? `<span class="bkc-my">다음은 ${esc(myNext.big||'')}</span>` : '';
+    return `<div class="bkc ${live?'act':'past'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
+      <div class="bkc-dt"><b>${day||'–'}</b><i>${wd}</i><u>${esc(rel)}</u></div>
+      <div class="bkc-bd">
+        <div class="bkc-ti"><span class="n">${esc(title)}</span>
+          <span class="bkc-tag ${live?'live':'gray'}">${live?'진행 중':'끝남'}</span>
+          ${off?`<span class="bkc-dots" onclick="event.stopPropagation();bkMenu(${b.event_id||0},'${esc(title).replace(/'/g,'')}')">⋮</span>`:''}</div>
+        <div class="bkc-m">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트 · ${tot}경기</div>
+        <div class="bkc-bar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></div>
+        <div class="bkc-ln"><b>${fin}/${tot}경기</b><span>${live?(miss?`${miss}경기 남음`:'곧 끝나요'):'완료'}</span></div>
+        ${warn}
+        ${mine?`<div class="bkc-ln" style="margin-top:8px">${mine}</div>`:''}
+      </div></div>`;
   };
-  /* 점수가 비어 있으면 알려준다.
-     기록 화면이 허전한 건 지표가 적어서가 아니라 점수가 안 들어가서다 —
-     8/14 모임은 18경기 중 8경기만 들어갔다. 아무도 알려주지 않으면 그냥 넘어간다. */
-  const _today=new Date().toISOString().slice(0,10);
-  const pending = (list||[])
-    .map(b=>({b, miss:Math.max(0,(b.games||0)-(b.done||0)), tot:b.games||0}))
-    .filter(x=>x.tot>0 && x.miss>0 && x.b.date && x.b.date < _today);   // 오늘 것은 아직 진행 중일 수 있다
 
-  return `${d0().officer?`<button class="btn" style="margin-bottom:14px" onclick="openClubBracketBuild()">＋ 대진 짜기</button>`:''}
-    ${pending.length?`<div style="border:1px solid #f0d9c6;background:#fdf6f1;border-radius:14px;
-        padding:13px 15px;margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;color:#a5470f">점수가 비어 있어요</div>
-      ${pending.slice(0,3).map(x=>`<div onclick="CB2_EVENT=${x.b.event_id||0};openClubBracketView()"
-        style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer">
-        <span style="font-size:12.5px;font-weight:600;color:#8a5a35;flex:1;min-width:0;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.b.title||x.b.date||'모임')}</span>
-        <span style="font-size:12px;font-weight:700;color:#a5470f;flex:none">${x.miss}경기 ›</span></div>`).join('')}
-      <div style="font-size:11px;color:#a06a3a;margin-top:9px;line-height:1.6">
-        점수를 넣어야 <b>내 정보 · 시즌 랭킹</b>에 기록이 쌓여요.</div>
-    </div>`:''}
-    ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
-    ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
+  const live=list.filter(b=>!b.finished), fini=list.filter(b=>b.finished);
+  const pastOpen = state._bkPastOpen!==false;
+  return `${ask}
+    ${live.map(row).join('')}
+    ${fini.length?`<div class="bkgrp" onclick="state._bkPastOpen=${!pastOpen};renderClub()">
+        <b>지난 대진</b><span>${fini.length}개</span><i></i>
+        <em style="transform:rotate(${pastOpen?'0':'-90'}deg)">▾</em></div>
+      ${pastOpen?fini.map(row).join(''):''}`:''}
+    ${mkBtn}`;
+}
+/* 삭제는 메뉴 안으로 — 진행 중인 대진 옆에 휴지통이 늘 떠 있으면
+   경기 도는 중에 잘못 눌러 그날 기록이 통째로 날아간다. */
+function bkMenu(eid, title){
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3>${esc(title||'대진')}</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">이 대진을 어떻게 할까요</div>
+    <div onclick="closeOv();CB2_EVENT=${eid};openClubBracketView()" style="display:flex;align-items:center;
+        border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">대진 열기</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">점수를 넣거나 진행 상황을 봐요</div></div>
+      <span style="color:#cdc8be;font-size:17px">›</span></div>
+    <div onclick="closeOv();delBracket(${eid},'${esc(title||'대진').replace(/'/g,'')}')" style="display:flex;align-items:center;
+        border:1px solid #f0d9d9;border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#c14545">대진 삭제</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">입력한 점수와 그날 기록도 함께 사라져요</div></div>
+      <span style="color:#e2b8b8;font-size:17px">›</span></div>
+    <button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function delBracket(eid, title){
   if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수와 그날 기록도 함께 사라져요.`)) return;
@@ -10538,7 +10734,7 @@ function switchClub(nm){state.activeClub=nm;state._draft='';state._photo=false;r
 function setAttend(v){ setRsvp(v===true?'going':'absent'); }
 /* 모임 만들기 시트는 한 벌만 둔다 — 예전에는 여기와 renderNewEvent 두 곳이 따로 있어
    한쪽만 고치면 회원이 보는 화면은 그대로였다. */
-function openEventCreate(){ openNewEvent(); }
+function openEventCreate(tag){ openNewEvent(tag); }
 async function joinEvent(id){
   if(SERVER_OK && clubId()){
     // 서버 모임: 탭하면 참석 ↔ 취소 (rsvp)
@@ -12115,7 +12311,7 @@ function seedTrialBracket(){
   }
   games.filter(g=>g.r===1).forEach((g,i)=>{ g.sa=[6,5,3][i]; g.sb=[4,5,6][i]; });
   const g21=games.find(g=>g.r===2&&g.c===1); if(g21){ g21.sa=6; g21.sb=4; }
-  CB2={_trial:true, date:new Date().toISOString().slice(0,10), courts:3, rounds:4, mode:'normal', made_by:'체험 게스트', games, updated_at:Date.now()};
+  CB2={_trial:true, date:ymd(), courts:3, rounds:4, mode:'normal', made_by:'체험 게스트', games, updated_at:Date.now()};
   TRIAL_ROSTER.forEach(p=>CB2_SEL.add(String(p.user_id)));
 }
 /* 한울 AB 게임방식 [4Game, 8~16명] — 수기표 원본 그대로
@@ -13044,7 +13240,7 @@ function cbMoveHint(){
 let HOME_BK=null;
 try{ const _raw=localStorage.getItem('matsu_home_bk');
      if(_raw){ const _d=JSON.parse(_raw);
-       if(_d && _d.date===new Date().toISOString().slice(0,10)) HOME_BK=_d; } }catch(e){}
+       if(_d && cbTodayish(_d.date)) HOME_BK=_d; } }catch(e){}
 function cbHomeSrc(){ return (CB2 && (CB2.games||[]).length) ? CB2 : HOME_BK; }
 
 /* ── 홈 화면 요약 카드 ────────────────────────────────────
@@ -13061,9 +13257,9 @@ function cbHomeCard(){
   const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
   const mine=gs.filter(inG);
   if(!mine.length) return null;
-  /* 오늘 모임이 아니면 안 띄운다 — 어제 대진이 홈에 남아 있으면 헷갈린다 */
-  const today=new Date().toISOString().slice(0,10);
-  if(BK.date && BK.date!==today) return null;
+  /* 오늘 모임이 아니면 안 띄운다 — 어제 대진이 홈에 남아 있으면 헷갈린다.
+     다만 자정을 넘겨 새벽까지 이어지는 모임은 아침까지 오늘 것으로 본다. */
+  if(!cbTodayish(BK.date)) return null;
   const allDone=gs.every(done);
   const last=mine.filter(done).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0))[0];
   if(allDone && last && last.startedAt && Date.now()-last.startedAt > 3*3600000) return null;
@@ -13158,7 +13354,11 @@ function cbBigCard(c, isOfficer){
   const OFFICER=['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''];
   /* 시트 배경이 흰색이라 테두리만으로는 카드가 종이에서 안 떠 보인다 — 그림자를 얕게 준다 */
   const LIFT=';border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)';
-  const MEMBER =['#fff','#8a5a13','#1c1b18','#6b6357','#241d16','#fff',LIFT];
+  /* 흰 배경은 그대로 두고 가장자리에만 브랜드 색을 넣는다 — 검정 카드엔 없는 표시라
+     둘이 나란히 떠도 <총무가 손볼 것 / 내가 움직일 것>이 한눈에 갈린다.
+     라벨은 코랄을 조금 눌러 흰 바탕에서 대비 5.3을 맞췄다(작은 글씨 기준 4.5 이상). */
+  const RAIL=LIFT+';border-left:4px solid #ec6a2e';
+  const MEMBER =['#fff','#b8460f','#1c1b18','#6b6357','#241d16','#fff',RAIL];
   /* 쉬는 차례·다 끝남처럼 할 일이 없는 안내는 같은 흰 카드에 글자만 낮춘다 */
   const MEMBER_Q=['#fff','#8a857c','#3a352d','#7d7870','#241d16','#fff',LIFT];
   const quiet={rest:1, ok:1, done:1};
@@ -13464,7 +13664,7 @@ function drawCB2View(){
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span>
       <div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
   // 예전 날짜 대진은 자동으로 감춘다 (오늘 것만 실시간 화면에 노출)
-  const _today=new Date().toISOString().slice(0,10);
+  const _today=ymd();
   if(CB2 && CB2.date && CB2.date!==_today && !CB2_EVENT){
     h+=`<div class="empty" style="padding:28px 20px"><div class="et">오늘 발행된 대진이 없어요</div>
       <div class="es">${esc(CB2.date)} 대진은 <b>클럽 기록 · 시즌</b>에서 볼 수 있어요.</div></div>
@@ -15382,7 +15582,7 @@ async function cb2Gen(mode){
     }
   }
   const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
-  const data={date:new Date().toISOString().slice(0,10), courts, rounds, mode, gpp:GPP,
+  const data={date:ymd(), courts, rounds, mode, gpp:GPP,
     made_by:state.userName, games, captains, note:genderNote,
     orders: mode==='cheongbaek' ? {blue:null, white:null} : null,
     /* 조는 배열([선수…])일 수도, 이름이 붙은 객체({name, members})일 수도 있다.
@@ -15475,7 +15675,7 @@ function cb2Finished(){
 /* 오더 시트를 지금 보여줄지 — ①오늘 발행 ②청백전 ③아직 안 끝남 ④내가 캡틴(또는 임원) */
 function cb2OrderOpen(){
   if(!CB2 || CB2.mode!=='cheongbaek') return false;
-  const today=new Date().toISOString().slice(0,10);
+  const today=ymd();
   if(CB2.date && CB2.date!==today) return false;          // 지난 날짜 대진이면 숨김
   if(cb2Finished()) return false;                         // 전 경기 종료면 숨김
   return !!cb2MySide();                                   // 캡틴(또는 임원 대행)만
@@ -15903,8 +16103,7 @@ async function loadMyNext(){
   if(!(state.serverUser||{}).id) return;
   try{
     const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`);
-    const today=new Date().toISOString().slice(0,10);
-    const ok = d && (d.games||[]).length && (!d.date || d.date===today);
+    const ok = d && (d.games||[]).length && cbTodayish(d.date);
     HOME_BK = ok ? d : null;
     try{ ok ? localStorage.setItem('matsu_home_bk', JSON.stringify(d))
             : localStorage.removeItem('matsu_home_bk'); }catch(e){}
@@ -17448,7 +17647,7 @@ async function openMemberCard(name){
   const gd=rec.gf-rec.ga, wr=rec.g?Math.round(rec.w/rec.g*100):0;
   const roleL={owner:'회장',officer:'임원'}[mem.role]||'회원';
   const jts = mem.joined_at || mem.user_created || null;                 // 가입 승인일 없으면 계정 생성일
-  const jd = jts ? new Date(+jts).toISOString().slice(0,10).replace(/-/g,'.') : '기록 없음';
+  const jd = jts ? ymd(new Date(+jts)).replace(/-/g,'.') : '기록 없음';
   const me=(state.serverUser||{}).id;
   const yr=new Date().getFullYear();
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
@@ -17897,7 +18096,7 @@ function schedCal(){
 }
 /* ══════════ 구장예약 — 캐시로 코트를 빌린다 ══════════ */
 /* 첫 화면은 오늘 하루만 본다. 전체를 펼치면 구장이 늘어날수록 감당이 안 된다. */
-let VN_SIDO='', VN_DATE=new Date().toISOString().slice(0,10), VN_GU='', VN_OPEN=null, VN_PICK=null, VN_BUSY=false;
+let VN_SIDO='', VN_DATE=ymd(), VN_GU='', VN_OPEN=null, VN_PICK=null, VN_BUSY=false;
 let VN_HALL=null, VN_HDATE='', VN_HSLOTS=null, VN_HR='';
 function vnHr(v){ VN_HR=v; renderVenues(); }
 const VN_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광역시':'대구','인천광역시':'인천',
@@ -17908,7 +18107,7 @@ const VN_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광
 function vnDays(){
   const out=[]; const base=new Date(); base.setHours(12,0,0,0);
   for(let i=0;i<14;i++){ const d=new Date(base.getTime()+i*864e5);
-    out.push({v:d.toISOString().slice(0,10), d:d.getDate(),
+    out.push({v:ymd(d), d:d.getDate(),
       w:['일','월','화','수','목','금','토'][d.getDay()], i}); }
   return out;
 }
@@ -20729,7 +20928,7 @@ async function renderRecordLeague(){
   {
     const days=[]; const t=new Date();
     for(let i=6;i>=0;i--){ const d=new Date(t); d.setDate(t.getDate()-i);
-      days.push({ymd:d.toISOString().slice(0,10), dow:'일월화수목금토'[d.getDay()], m:0}); }
+      days.push({ymd:ymd(d), dow:'일월화수목금토'[d.getDay()], m:0}); }
     (REC_MINE||[]).forEach(r=>{ const d=days.find(x=>x.ymd===r.ymd); if(d)d.m+=r.dist_m; });
     const mx=Math.max(1,...days.map(d=>d.m));
     if(days.some(d=>d.m>0)){
@@ -20863,7 +21062,7 @@ function recCalendarCard(){
   const monName=(mm)=>['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][((mm-1)%12+12)%12];
   const byDay={};
   (REC_MINE||[]).forEach(r=>{ if(r.ymd&&r.ymd.startsWith(REC_CAL_YM)){ (byDay[r.ymd]=byDay[r.ymd]||[]).push(r); } });
-  const today=new Date().toISOString().slice(0,10);
+  const today=ymd();
 
   /* ── 필터 칩 (레퍼런스 1·2화면 상단) ── */
   const chip=(id,label)=>`<span onclick="DIARY_FILTER='${id}';diaryRefresh()" style="font-size:12px;font-weight:500;border-radius:20px;padding:9px 14px;cursor:pointer;white-space:nowrap;
@@ -21300,7 +21499,7 @@ function openEditRecord(id){
 }
 function openAddRecord(presetM, presetLabel, presetYmd){
   REC_EDIT_ID=null;
-  const sp=SP(); const today=new Date().toISOString().slice(0,10);
+  const sp=SP(); const today=ymd();
   const isRec = sp.cat==='record';
   REC_PHOTOS=[]; RC_SLIDE=0;
   REC_TYPE = presetLabel ? 'race' : 'train';
@@ -21503,7 +21702,7 @@ async function openTeamRecord(mode){
 
   // ── 입력 (임원) : 자체전 / 대외전 토글 ──
   if(officer){
-    const today=new Date().toISOString().slice(0,10);
+    const today=ymd();
     h+=`<div class="ch" style="font-size:14px;margin:16px 4px 8px">경기 기록하기</div>
       <div style="display:flex;gap:7px;margin-bottom:11px">
         <span onclick="openTeamRecord('intra')" style="flex:1;text-align:center;font-size:12px;font-weight:500;border-radius:12px;padding:10px;cursor:pointer;${TR_MODE==='intra'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">자체전</span>
@@ -23642,7 +23841,7 @@ function _renderHomeCore(){
   // ✍️ 운동 다이어리 — 모든 종목에서 홈 최상단급 노출
   { ensureRecs();
     const ymNow=new Date().toISOString().slice(0,7);
-    const todayY=new Date().toISOString().slice(0,10);
+    const todayY=ymd();
     const daysSet=new Set((REC_MINE||[]).filter(r=>r.ymd&&r.ymd.startsWith(ymNow)).map(r=>r.ymd));
     const doneToday=daysSet.has(todayY);
     const pal=MONTH_PAL[(new Date().getMonth())%12];
