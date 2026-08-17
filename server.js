@@ -941,7 +941,7 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.joined_at, u.name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
   res.json(rows);
@@ -981,6 +981,26 @@ app.patch('/clubs/:id/genders', auth, (req, res) => {
     st.run(gv, cid, intOrNull(uid));
   });
   res.json({ ok: true, n: Object.keys(g).length });
+});
+
+/* 클럽에서 부를 이름 (임원, 또는 본인) — 계정 이름은 건드리지 않는다.
+   빈 값으로 보내면 지워지고 계정 이름으로 돌아간다. */
+app.patch('/clubs/:id/members/:uid/alias', auth, (req, res) => {
+  const cid = +req.params.id, uid = +req.params.uid;
+  const mine = uid === req.uid;
+  if (!mine && !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const m = db.prepare('SELECT user_id FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!m) return res.status(404).json({ error: 'not_member' });
+  const raw = (req.body && req.body.alias) || '';
+  /* cleanName 은 빈 값에 '회원' 을 채워 준다 — 여기서는 그 기본값이 오히려 방해가 된다.
+     빈 값은 <부를 이름 지우기> 라는 뜻이므로 그대로 비워 계정 이름으로 돌려보낸다. */
+  const alias = String(raw).trim() ? cleanName(raw, '') : '';
+  try { db.prepare('UPDATE club_members SET alias=? WHERE club_id=? AND user_id=?').run(alias || null, cid, uid); }
+  catch (e) {
+    try { db.exec('ALTER TABLE club_members ADD COLUMN alias TEXT'); } catch (_) {}
+    db.prepare('UPDATE club_members SET alias=? WHERE club_id=? AND user_id=?').run(alias || null, cid, uid);
+  }
+  res.json({ ok: true, alias: alias || null });
 });
 
 // 휴회 토글 (임원)
@@ -1238,15 +1258,30 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
      넣은 사람 id 를 남기므로 장난은 되짚을 수 있다. */
   const inBracket = (data.games || []).some(x =>
     [...(x.teamA || []), ...(x.teamB || [])].some(p => p && p.id === req.uid));
+  /* 한울·월례대회는 조가 코트에 고정이라 다른 코트 사람은 그 경기를 보지 못한다.
+     못 본 경기의 점수를 넣게 두면 잘못된 값이 들어가고, 그걸 되짚기도 어렵다.
+     그래서 이 두 방식에서는 <같은 코트에서 뛴 사람>만 대신 넣을 수 있게 한다. */
+  const fixedMode = data.mode === 'hanul' || data.mode === 'monthly';
+  /* 청백전·대회 준비는 팀(조)끼리 붙는 방식이라 남이 대신 넣을 자리가 아니다.
+     승패가 팀 성적으로 바로 이어져서, 당사자 아닌 사람이 넣으면 시비가 생긴다.
+     이 두 방식은 <당사자 또는 운영진>만 넣는다. */
+  const soloMode = data.mode === 'cheongbaek' || data.mode === 'tourney';
+  const at = x => x.playCourt || x.c;
+  const sameCourt = (data.games || []).some(x => at(x) === at(g) &&
+    [...(x.teamA || []), ...(x.teamB || [])].some(p => p && p.id === req.uid));
+  const helper = soloMode ? false : (fixedMode ? sameCourt : inBracket);
   const empty = g.sa == null || g.sb == null;
   /* 이미 들어간 점수를 고치는 것은 다른 문제다 — 남의 기록이 바뀌기 때문이다.
      당사자·임원은 언제든, 대신 넣어준 사람은 10분 안에만 고칠 수 있다. */
   const mineRecent = g.by === req.uid && g.atMs && (Date.now() - g.atMs) < 10 * 60 * 1000;
-  const may = officer || inGame || (inBracket && empty) || mineRecent;
+  const may = officer || inGame || (helper && empty) || mineRecent;
   if (!may) {
-    return res.status(403).json(empty
-      ? { error: 'bracket_only', message: '오늘 대진에 있는 회원만 대신 넣을 수 있어요' }
-      : { error: 'edit_locked', message: '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요' });
+    if (!empty) return res.status(403).json({ error: 'edit_locked', message: '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요' });
+    return res.status(403).json(soloMode
+      ? { error: 'player_only', message: '그 경기를 뛴 분이나 운영진이 넣을 수 있어요' }
+      : fixedMode
+        ? { error: 'court_only', message: `${at(g)}번 코트에서 뛴 분이나 운영진이 넣을 수 있어요` }
+        : { error: 'bracket_only', message: '오늘 대진에 있는 회원만 대신 넣을 수 있어요' });
   }
   g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
   g.by = req.uid; g.at = now(); g.atMs = Date.now();
@@ -1313,31 +1348,30 @@ app.patch('/clubs/:id/bracket2/court', auth, (req, res) => {
 
   if (!(c >= 1 && c <= (data.courts || 0))) return res.status(400).json({ error: 'bad_court' });
   if ((data.offCourts || []).includes(c)) return res.status(400).json({ error: 'court_off', message: '사용 중지된 코트예요' });
-  if (g.c === c) return res.json({ ok: true, game: g });
+  if ((g.playCourt || g.c) === c) return res.json({ ok: true, game: g });
   if (done(g) || g.startedAt) return res.status(400).json({ error: 'already_started', message: '이미 시작한 경기는 옮길 수 없어요' });
 
   const officer = role === 'owner' || role === 'officer';
   const mine = ids(g).includes(req.uid);
   if (!officer && !mine) return res.status(403).json({ error: 'player_only', message: '그 경기 선수나 운영진이 옮길 수 있어요' });
 
-  /* 옮길 코트가 정말 비어 있나 */
-  if (games.some(x => x.c === c && x.startedAt && !done(x)))
+  /* 옮길 코트가 정말 비어 있나 — 그 코트에서 뛰는 중인 경기가 없어야 한다.
+     playCourt 로 옮겨와 뛰는 경기까지 함께 본다. */
+  const at = x => x.playCourt || x.c;
+  if (games.some(x => at(x) === c && x.startedAt && !done(x) && !x.endedAt))
     return res.status(400).json({ error: 'court_busy', message: '그 코트는 지금 경기 중이에요' });
   /* 이 경기 넷이 다른 코트에서 뛰고 있으면 옮겨도 못 시작한다 */
   const busy = new Set(games.filter(x => x.startedAt && !done(x)).flatMap(ids));
   if (ids(g).some(i => busy.has(i)))
     return res.status(400).json({ error: 'player_busy', message: '이 경기 선수 중에 지금 뛰고 있는 분이 있어요' });
 
-  /* 같은 바퀴에 그 코트를 쓰는 경기가 있으면 맞바꾼다 */
-  const other = games.find(x => x !== g && x.r === g.r && x.c === c);
-  if (other) {
-    if (done(other) || other.startedAt)
-      return res.status(400).json({ error: 'slot_taken', message: '그 자리에 이미 진행된 경기가 있어요' });
-    other.c = g.c;
-  }
-  g.movedFrom = g.c;                       // 원래 코트를 남긴다 — 표에 <원래 N번> 으로 적는다
-  g.c = c;
+  /* 대진표의 칸은 <순서>, 코트는 <어디서 뛰는지> — 원래 다른 정보다.
+     칸을 옮기면 이미 끝난 경기가 엉뚱한 코트로 밀려나 기록이 틀어지고,
+     줄을 새로 만들면 표에 빈 칸이 생겨 종이 대진표와 어긋난다.
+     그래서 칸(r·c)은 그대로 두고 <이번엔 어디서 뛰는지>만 따로 남긴다. */
+  g.playCourt = c;
   g.movedBy = req.uid; g.movedAtMs = Date.now();
+  if (g.playCourt === g.c) { delete g.playCourt; delete g.movedBy; delete g.movedAtMs; }
 
   if (eid) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?').run(JSON.stringify(data), now(), cid, eid);
   else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
@@ -1378,7 +1412,7 @@ app.get('/clubs/:id/roster', (req, res) => {
   let rows;
   let guests = [];
   if (ev) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM event_attendees ea JOIN users u ON u.id=ea.user_id
       LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
       WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going') ORDER BY u.name`).all(cid, ev.id);
@@ -1386,7 +1420,7 @@ app.get('/clubs/:id/roster', (req, res) => {
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
   if (!rows || !rows.length) {
-    rows = db.prepare(`SELECT u.id user_id, u.name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
+    rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
   }
@@ -3478,6 +3512,10 @@ CREATE INDEX IF NOT EXISTS ix_guests_event ON event_guests(event_id);`);
 // club_members.grade (A/B/C) — 대진 편성용 실력 등급. db.js를 건드리지 않고 여기서 추가.
 try { db.exec('ALTER TABLE club_members ADD COLUMN grade TEXT'); } catch (e) { /* 이미 있음 */ }
 try { db.exec('ALTER TABLE club_members ADD COLUMN gender_ov TEXT'); } catch (e) { /* 이미 있음 */ }
+/* 클럽에서 부를 이름 — 계정 이름은 그대로 두고 이 클럽에서만 다르게 부른다.
+   구글로 가입해 <Ian Suh> 로 들어온 회원을 명단·대진에서 <서기훈> 으로 보이게 하는 용도다.
+   화면과 저장 요청은 있었는데 서버에 받는 곳이 없어 늘 실패하고 있었다. */
+try { db.exec('ALTER TABLE club_members ADD COLUMN alias TEXT'); } catch (e) { /* 이미 있음 */ }
 
 // node:sqlite는 boolean/undefined 바인딩을 거부한다 → 정수 또는 null 로 정규화
 function intOrNull(v) {
