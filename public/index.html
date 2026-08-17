@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.8-0818m';
+const BUILD='v1.0.9-0818a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -13611,7 +13611,10 @@ function cbMyCard(){
   const blockG=gs.filter(g=>g.startedAt && !done(g) &&
     [...(g.teamA||[]),...(g.teamB||[])].some(p=>ids.includes(String(p.id))));
   const stuck=gs.find(g=>g.c===next.c && g.startedAt && !done(g));
-  if(aheadOnCourt<=1 || courtBusy){
+  /* <곧 나가요>는 내 코트에 남은 앞 경기가 없을 때만.
+     예전에는 앞에 한 경기가 더 있어도 곧 나가요로 묶여서,
+     두 경기를 코트 옆에 서서 기다리게 만들었다. */
+  if(aheadOnCourt===0){
     const why = stuck
       ? `${CT(stuck.c)} 점수가 들어오면 시작해요`
       : blockG.length
@@ -13620,26 +13623,35 @@ function cbMyCard(){
     /* 비어 있는 코트가 있으면 거기서 몸 풀다가 내 코트가 나면 옮기라고 안내한다.
        한울·월례는 조가 코트에 고정이지만, 비어 있는 코트에서 몸을 푸는 것까지
        막을 이유는 없다 — 다른 조 코트라는 것만 밝혀준다. */
+    /* 몸 풀 곳은 <내 코트가 비었으면 거기> → <빈 다른 코트> → <없으면 코트 밖> 순이다.
+       예전에는 내 코트를 아예 빼고 찾아서, 정작 내가 뛸 코트가 비어 있는데도
+       "코트 옆에서 기다리세요"가 나왔다. */
+    const courtFree=cc=>!(CB2.offCourts||[]).includes(cc)
+      && !gs.some(g=>cbAt(g)===cc && g.startedAt && !done(g) && !g.endedAt);
+    const myCourtFree = courtFree(next.c);
     const freeCourt=(()=>{
+      if(myCourtFree) return next.c;
       for(let cc=1;cc<=(CB2.courts||0);cc++){
         if(cc===next.c) continue;
-        if((CB2.offCourts||[]).includes(cc)) continue;
-        if(gs.some(g=>cbAt(g)===cc && g.startedAt && !done(g) && !g.endedAt)) continue;
-        return cc;
+        if(courtFree(cc)) return cc;
       }
       return 0;
     })();
     /* 빈 코트가 없으면 <코트로 가서 몸 푸세요> 라고 하면 안 된다 —
        그 코트에서는 경기가 돌고 있어서 들어갈 수가 없다.
        그럴 때는 코트 밖에서 기다리는 상황이므로 그대로 말한다. */
-    const bigTxt = freeCourt
-      ? `${CT(freeCourt)}가 비었어요\n거기서 몸 푸세요`
-      : `${CT(next.c)} 옆에서\n기다려주세요`;
+    const bigTxt = myCourtFree
+      ? `${CT(next.c)}에서\n몸 푸세요`
+      : freeCourt
+        ? `${CT(freeCourt)}가 비었어요\n거기서 몸 푸세요`
+        : `${CT(next.c)} 옆에서\n기다려주세요`;
     /* 몇 분 쓸 수 있는지 — 이 말이 없으면 라켓 들고 눈치만 보게 된다.
        코트 카드·코트 탭과 같은 함수를 써서 값이 어긋나지 않게 한다. */
     const freeTxt = freeCourt ? (()=>{ const t=cbCourtFreeTxt(freeCourt);
       return t && !/지금|비어 있어요/.test(t) ? t : ''; })() : '';
-    const moveTxt = freeCourt
+    const moveTxt = myCourtFree
+      ? `여기가 내 코트예요 · 지금 비어 있어요\n`
+      : freeCourt
       ? `${freeTxt?freeTxt+' · ':''}${CT(next.c)} 경기가 끝나면 그리로 옮겨요\n`
       + (FIXED?'비어 있는 다른 조 코트예요\n':'')
       /* 빈 코트가 없을 때 — 왜 기다려야 하는지, 얼마나 남았는지를 적는다 */
@@ -13698,9 +13710,19 @@ function cbMyCard(){
     ...scoreBtn(blame.gi, `${CT(blame.court)} 점수 넣어주기`)};
   const running = gs.filter(g=>g.startedAt && !done(g))
     .sort((a,b)=>(a.startedAt||0)-(b.startedAt||0))[0];
+  /* <몇 경기 뒤>만으로는 얼마나 기다릴지 감이 안 온다 — 대략 몇 분인지 함께 적는다.
+     내 코트에 남은 앞 경기 수 × 평균 경기 시간으로 어림한다. */
+  const waitTxt=(()=>{
+    const avg=cbAvgGameMin();
+    if(!avg || !aheadOnCourt) return '';
+    const run=gs.find(g=>cbAt(g)===next.c && g.startedAt && !done(g) && !g.endedAt);
+    const el=run ? Math.round((Date.now()-run.startedAt)/60000) : 0;
+    const mins=Math.max(0, avg-el) + Math.max(0, aheadOnCourt-(run?1:0))*avg;
+    return mins>=3 ? ` · ${mins}분쯤 뒤예요` : '';
+  })();
   return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
     big:`다음은 ${RD(next.r)}\n${CT(next.c)}예요`,
-    m:`${ahead}경기 뒤예요\n${who}`,
+    m:`앞에 ${aheadOnCourt||ahead}경기 남았어요${waitTxt}\n${who}`,
     ...(running ? scoreBtn(running.gi, `${CT(running.c)} 점수 넣어주기`) : {})};
 }
 
@@ -18206,6 +18228,13 @@ function cb2CanScore(gi){
 async function cb2ScoreSave(){
   const gi=SC_EDIT.gi, g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   const a=SC_EDIT.a, b=SC_EDIT.b;
+  /* 점수 시트는 0:0 으로 열린다 — 잘못 눌러 그대로 저장하면 무승부(양쪽 1점)로 남고,
+     시즌 랭킹이 조용히 바뀐다. 테니스에서 0:0 은 결과가 아니라 <아직 안 함>이다.
+     진짜 무승부(5:5 처럼)는 그대로 저장된다. */
+  if(a===0 && b===0){
+    toast('0 : 0 은 저장할 수 없어요 · 아직 안 한 경기면 그냥 닫아주세요');
+    return;
+  }
   const m=[null,a,b];
   /* 내 경기가 아니면 '넣어준 것'으로 센다 */
   const me=String((state.serverUser||{}).id||'');
@@ -18220,8 +18249,9 @@ async function cb2ScoreSave(){
   }catch(e){
     const msg=String(e.message||'');
     const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
-      || (msg.match(/player_only|bracket_only|edit_locked|court_only/)||[''])[0];
-    toast(k==='court_only'   ? '같은 코트에서 뛴 분이나 운영진이 넣을 수 있어요'
+      || (msg.match(/player_only|bracket_only|edit_locked|court_only|zero_score/)||[''])[0];
+    toast(k==='zero_score'   ? '0 : 0 은 저장할 수 없어요'
+        : k==='court_only'   ? '같은 코트에서 뛴 분이나 운영진이 넣을 수 있어요'
         : k==='bracket_only' ? '오늘 대진에 있는 회원만 대신 넣을 수 있어요'
         : k==='edit_locked'  ? '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요'
         : k==='player_only'  ? '그 경기를 뛴 분이나 운영진이 넣어주세요'
