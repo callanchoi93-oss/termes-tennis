@@ -2706,7 +2706,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.8-0816x';
+const BUILD='v1.0.8-0817g';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -3125,7 +3125,7 @@ async function uploadClubLogo(name, file){
   if(!SERVER_OK || !authToken()){ toast('로그인 후 이미지를 올릴 수 있어요'); return; }
   try{
     toast('이미지를 올리는 중…');
-    const dataUrl = await shrinkImage(file, 512, 0.9);
+    const dataUrl = await shrinkLogo(file, 640);
     const cid = (CLUB_IDS||{})[name];
     /* 클럽 로고는 서버 DB 에 넣는다. 예전에는 /uploads 에 파일로 두고
        주소만 기기에 저장해서, 컨테이너가 재시작되면 파일이 사라져
@@ -5136,7 +5136,11 @@ async function makeInviteImage(eid){
   // 날짜 문자열 분해: "7/12 (토) 09:00 · 장소"
   const m=String(ev.date||'').match(/(\d{1,2}\/\d{1,2})\s*(?:\(([^)]+)\))?\s*(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?/);
   const dTxt=m?`${m[1]}${m[2]?` (${m[2]})`:''}`:(ev.date||'일정 공지 참고');
-  const tTxt=m&&m[3]?m[3]:'', pTxt=m&&m[4]?m[4]:'';
+  const tTxt=m&&m[3]?m[3]:'';
+  /* 장소 뒤에 <· 1·2·3번 코트> 가 붙어 저장된다 — 초대장에서는 장소만 크게 쓴다 */
+  const _sp=(typeof neSplitPlace==='function') ? neSplitPlace(m&&m[4]?m[4]:'') : {place:(m&&m[4])||'',courts:[]};
+  const pTxt=_sp.place || (m&&m[4]?m[4]:'');
+  const ctTxt=(_sp.courts||[]).length ? `${_sp.courts.join('·')}번 코트` : '';
 
   const W=1080,H=1350, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const x=cv.getContext('2d');
@@ -5192,6 +5196,8 @@ async function makeInviteImage(eid){
   x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText(tTxt||'공지 참고', 640, 818);
   x.fillStyle='#1c1b18'; x.font=F(400,33,"'GmarketSansBold',Pretendard,sans-serif"); x.fillText('Venue', L, 926);
   x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText((pTxt||'클럽 공지 참고').slice(0,18), L, 984);
+  /* 코트는 장소 아래 작은 줄로 — 장소 이름과 붙여 쓰면 한 줄이 잘린다 */
+  if(ctTxt){ x.fillStyle='#8a7550'; x.font=F(500,28); x.fillText(ctTxt, L, 1026); }
   x.fillStyle='#1c1b18'; x.font=F(400,33,"'GmarketSansBold',Pretendard,sans-serif"); x.fillText('Type', L, 1092);
   x.fillStyle='#2c2a24'; x.font=F(700,40);
   x.fillText(`${(SPORTS.find(s=>s.id===(state.sport))||{}).n||''} 게스트`, L, 1150);
@@ -7957,15 +7963,6 @@ function renderClub(){
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
-/* 지난 모임은 D-3 대신 '이틀 전' 처럼 말로 적는다 */
-function evAgoText(ev){
-  const t=evTime(ev); if(!t) return '';
-  const d=Math.round((Date.now()-t)/86400000);
-  if(d<=0) return '오늘';
-  if(d===1) return '어제';
-  const KO=['','하루','이틀','사흘','나흘','닷새','엿새','이레','여드레','아흐레','열흘'];
-  return (KO[d]||`${d}일`)+' 전';
-}
 // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
@@ -8147,6 +8144,31 @@ function omDday(t){
   return d>0?`D-${d}`:'';
 }
 /* 'D-6' · '내일' · '오늘' — 날짜만 보고 며칠 남았는지 세지 않아도 되게 */
+/* 2026-08-14 를 '8월 14일 (금)' 으로 — 어르신 회원에게 ISO 날짜는 안 읽힌다.
+   모임 기록·지난 모임 시트가 이 두 함수를 쓴다. */
+function ymdKo(v){
+  const m=String(v||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return String(v||'');
+  const d=new Date(+m[1],+m[2]-1,+m[3]);
+  return `${+m[2]}월 ${+m[3]}일 (${WD_KO[d.getDay()]})`;
+}
+function pastDayTitle(l){
+  const t=String((l&&l.title)||'').trim();
+  const d=ymdKo((l&&l.date)||'');
+  if(!t) return d || '모임';
+  /* 제목이 날짜뿐이면(2026-08-14) 한글 날짜로 바꿔 보여준다 */
+  if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(t)) return d;
+  return t;
+}
+/* 지난 모임은 D-3 대신 '이틀 전' 처럼 말로 적는다 */
+function evAgoText(ev){
+  const t=evTime(ev); if(!t) return '';
+  const d=Math.round((Date.now()-t)/86400000);
+  if(d<=0) return '오늘';
+  if(d===1) return '어제';
+  const KO=['','하루','이틀','사흘','나흘','닷새','엿새','이레','여드레','아흐레','열흘'];
+  return (KO[d]||`${d}일`)+' 전';
+}
 function evDday(e){
   const t=evTime(e); if(t>=8.64e15) return '';
   const now=new Date();
@@ -8648,11 +8670,16 @@ function cwCanNext(){ const c=cw();
 function cwLogoPick(el){
   const f=(el.files||[])[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ const img=new Image(); img.onload=()=>{                 // 정사각 512px로 줄여 올린다
-      const cv=document.createElement('canvas'); cv.width=cv.height=512;
+  rd.onload=()=>{ const img=new Image(); img.onload=()=>{                 // 정사각 640px · 무손실
+      const cv=document.createElement('canvas'); cv.width=cv.height=640;
       const sz=Math.min(img.width,img.height);
-      cv.getContext('2d').drawImage(img,(img.width-sz)/2,(img.height-sz)/2,sz,sz,0,0,512,512);
-      cw().logoImg=cv.toDataURL('image/jpeg',0.82); cw().logoMode='img'; openCreateClub();
+      const cx=cv.getContext('2d');
+      cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high';
+      cx.drawImage(img,(img.width-sz)/2,(img.height-sz)/2,sz,sz,0,0,640,640);
+      let u=cv.toDataURL('image/png');
+      if(u.length>2_000_000){ const w=cv.toDataURL('image/webp',0.95);
+        u = w.startsWith('data:image/webp') ? w : cv.toDataURL('image/jpeg',0.94); }
+      cw().logoImg=u; cw().logoMode='img'; openCreateClub();
     }; img.src=rd.result; };
   rd.readAsDataURL(f);
 }
@@ -9699,8 +9726,8 @@ function clubTabBracket(){
       <span class="bkhd">
         <span class="bkt">${esc(b.title||'모임 미지정')}</span>
         ${live?`<span class="bklive">진행 중</span>`:`<span class="bkdone">종료</span>`}
-        ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`:''}</span>
+        ${off?`<button class="bkdel" onclick="event.stopPropagation();bkMenu(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 도구">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`:''}</span>
       ${b.date?`<span class="bkmeta">${esc(b.date)}</span>`:''}
       <span class="bkmeta">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트</span>
       <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
@@ -9730,6 +9757,26 @@ function clubTabBracket(){
     </div>`:''}
     ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
     ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
+}
+/* 삭제는 메뉴 안으로 — 진행 중인 대진 카드 옆에 휴지통이 늘 떠 있으면
+   경기 도는 중에 잘못 눌러 그날 기록이 통째로 날아간다. */
+function bkMenu(eid, title){
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3>${esc(title||'대진')}</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">이 대진을 어떻게 할까요</div>
+    <div onclick="closeOv();CB2_EVENT=${eid};openClubBracketView()" style="display:flex;align-items:center;
+        border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">대진 열기</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">점수를 넣거나 진행 상황을 봐요</div></div>
+      <span style="color:#cdc8be;font-size:17px">›</span></div>
+    <div onclick="closeOv();delBracket(${eid},'${esc(title||'대진').replace(/'/g,'')}')" style="display:flex;align-items:center;
+        border:1px solid #f0d9d9;border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#c14545">대진 삭제</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">입력한 점수와 그날 기록도 함께 사라져요</div></div>
+      <span style="color:#e2b8b8;font-size:17px">›</span></div>
+    <button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function delBracket(eid, title){
   if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수와 그날 기록도 함께 사라져요.`)) return;
@@ -9810,12 +9857,27 @@ function clubTabRecords(){
   games.forEach(g=>{
     [['teamA','sa','sb'],['teamB','sb','sa']].forEach(([T,k,ok])=>{
       (g[T]||[]).forEach(p=>{ if(!p) return;
-        const t=st[p.id]=st[p.id]||{id:p.id,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0,days:new Set()};
+        const t=st[p.id]=st[p.id]||{id:p.id,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
         t.g++; t.gf+=g[k]; t.ga+=g[ok]; if(g.date)t.days.add(g.date);
         if(g[k]>g[ok]) t.w++; else if(g[k]<g[ok]) t.l++; else t.d++; });
     });
+    /* 남의 경기 점수를 대신 넣어준 것 — 서버가 by(넣은 사람)·byHelp(대신 넣음)를 남긴다.
+       코트 밖에서 한 일이 승패에만 쌓이면 아무 데도 안 남는다. */
+    if(g.byHelp && g.by){
+      const t=st[g.by]=st[g.by]||{id:g.by,name:'',w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
+      t.help++;
+    }
   });
-  const list=Object.values(st).map(t=>({...t, gd:t.gf-t.ga, pt:dayPoints(t.w,t.d),
+  /* 대신 넣어준 사람이 그날 안 뛰었으면 이름이 비어 있다 — 다른 경기에서 찾아 채운다 */
+  { const nameOf={};
+    all.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(p&&p.id)nameOf[p.id]=p.name; }));
+    Object.values(st).forEach(t=>{ if(!t.name) t.name=nameOf[t.id]||''; });
+    /* 그래도 못 찾으면 명부에서 */
+    Object.values(st).forEach(t=>{ if(!t.name){
+      const r=(SRV_ROSTER||[]).find(x=>String(x.user_id||x.id)===String(t.id));
+      if(r) t.name=r.name||''; } });
+  }
+  const list=Object.values(st).map(t=>({...t, help:t.help||0, gd:t.gf-t.ga, pt:dayPoints(t.w,t.d),
       wr:t.g?Math.round(t.w/t.g*100):0, dayN:t.days.size}))
     .sort((a,b)=> b.pt-a.pt || b.gd-a.gd || b.g-a.g);
   const days=new Set(games.map(g=>g.date).filter(Boolean));
@@ -9837,7 +9899,12 @@ function clubTabRecords(){
     {l:'팡팡쳐요', s:'최다 득점',   p:best('gf',false),   f:r=>`${r.gf}점`},
     {l:'안내줘요', s:'최소 실점',   p:best('ga',true,3),  f:r=>`${r.ga}실점`},
     {l:'매주와요', s:'최다 참여',   p:best('dayN',false), f:r=>`${r.dayN}회`},
-  ].filter(x=>x.p);
+    /* 잘 친 사람만 칭찬하면 코트 밖에서 도운 사람은 남는 게 없다.
+       남의 점수를 대신 넣어준 횟수 — 한 번이라도 있으면 자리를 만든다. */
+    {l:'기록요정', s:'점수 넣어준 수', p:(()=>{ const f=list.filter(r=>r.help>0);
+        return f.length ? f.slice().sort((a,b)=>b.help-a.help)[0] : null; })(),
+      f:r=>`${r.help}개`},
+  ].filter(x=>x.p && x.p.name);
   if(HALL.length){
     h+=`<div class="hallrow">${HALL.map(x=>`
       <div class="hallc" onclick="openClubMember(${jsArg(x.p.id)},${jsArg(x.p.name)})">
@@ -11030,6 +11097,29 @@ let CLUB_FEED = [];
    base64 를 그대로 글에 넣으면 DB 가 순식간에 부풀어 오른다. */
 /* 사진을 긴 변 1600px, JPEG 품질 0.82 로 줄인다.
    폰 사진은 4~8MB 라 그대로 올리면 서버 한도에 걸리고, 회원들 데이터도 축낸다. */
+/* 로고는 사진이 아니다 — 얇은 글씨와 선이 들어 있어 JPEG로 저장하면
+   글자 주변에 번짐(링잉)이 생긴다. 무손실 PNG로 담고, 너무 크면 WebP로 내린다.
+   화면에서는 76px 원에 3배 화면이면 228px가 필요하니 640px로 올린다. */
+async function shrinkLogo(file, maxSide=640){
+  const bmp = await createImageBitmap(file).catch(()=>null);
+  if(!bmp){
+    return await new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=ng; r.readAsDataURL(file); });
+  }
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width*scale)), h = Math.max(1, Math.round(bmp.height*scale));
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+  cx.drawImage(bmp, 0, 0, w, h);
+  bmp.close && bmp.close();
+  let url = cv.toDataURL('image/png');                       // 무손실 — 글씨가 안 번진다
+  if(url.length > 2_000_000){
+    const webp = cv.toDataURL('image/webp', 0.95);
+    if(webp.startsWith('data:image/webp')) url = webp;        // 지원 안 하면 png 그대로
+    else url = cv.toDataURL('image/jpeg', 0.94);
+  }
+  return url;
+}
 async function shrinkImage(file, maxSide=1600, quality=0.82){
   const bmp = await createImageBitmap(file).catch(()=>null);
   if(!bmp){                                        // 지원 안 하는 브라우저 → 원본
@@ -12966,6 +13056,27 @@ function cbStartedAt(games){
   }catch(e){}
   return null;
 }
+/* 한 경기가 실제로 몇 분 걸리는가 — 코트마다 <시작 시각의 간격>을 재서 중앙값을 쓴다.
+   예전에는 <경과 시간 ÷ 끝난 경기 수>로 재서, 점수가 안 들어와 멈췄던 시간이
+   그대로 평균에 섞였다. 한 번 크게 멈추면 평균이 90분을 넘겨 예측이 아예 꺼졌다.
+   중앙값은 그런 몇 번의 멈춤에 흔들리지 않는다. */
+function cbGameMedianMin(games){
+  const gs=games||[];
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const gaps=[];
+  const cs=[...new Set(gs.map(g=>g.c))];
+  cs.forEach(c=>{
+    const t=gs.filter(g=>g.c===c && g.startedAt).map(g=>g.startedAt).sort((a,b)=>a-b);
+    for(let i=1;i<t.length;i++){
+      const m=(t[i]-t[i-1])/60000;
+      if(m>=5 && m<=90) gaps.push(m);      // 5분 미만·90분 초과는 잘못 잰 값으로 본다
+    }
+  });
+  if(gaps.length<2) return 0;
+  gaps.sort((a,b)=>a-b);
+  const mid=Math.floor(gaps.length/2);
+  return Math.round(gaps.length%2 ? gaps[mid] : (gaps[mid-1]+gaps[mid])/2);
+}
 function cbEta(games, done, courts){
   const gs=games||[];
   const doneN=gs.filter(done).length, tot=gs.length;
@@ -12975,18 +13086,31 @@ function cbEta(games, done, courts){
   const now=Date.now();
   const elapsed=now-t0;
   if(elapsed<60000) return null;
-  const perGame=elapsed/doneN;                 // 경기 하나가 나오는 데 걸린 실제 시간
-  /* 어제 대진을 오늘 열면 '32시간 남음' 같은 숫자가 나온다.
-     하루 이상 지났거나 경기 하나에 90분이 넘게 걸린 셈이면 속도를 잰 게 아니다. */
   const c=Math.max(1,courts||1);
-  const perCourt=perGame*c;                    // 한 코트가 한 경기에 쓴 시간
-  if(elapsed > 12*3600000) return null;
+  /* 점수가 안 들어와 멈춰 있던 시간은 <경기 속도>가 아니다.
+     예전에는 그것까지 평균에 섞여서 한 경기가 90분을 넘긴 셈이 되고,
+     그러면 안전장치가 걸려 마감 시각이 조용히 사라졌다.
+     멈춘 시간을 빼고 재면 새벽까지 이어진 날에도 예측이 살아난다. */
+  /* 실제 경기 간격의 중앙값이 있으면 그걸 쓴다 — 멈춤에 흔들리지 않는다.
+     간격을 잴 만큼 경기가 안 돌았으면 예전 방식(경과 ÷ 끝난 수)으로 어림잡는다. */
+  const med=cbGameMedianMin(gs);
+  const perCourt = med ? med*60000 : (elapsed/doneN)*c;
+  const perGame = perCourt/c;
+  /* 멈춰 있는 만큼은 남은 시간에 따로 더한다 — 지금 멈춘 경기는 실제로 안 끝났다 */
+  const stallMs=(()=>{
+    const run=gs.filter(g=>g.startedAt && !done(g));
+    if(!run.length || !med) return 0;
+    return run.reduce((mx,g)=>Math.max(mx,(now-g.startedAt)-perCourt), 0);
+  })();
+  /* 어제 대진을 오늘 열면 '32시간 남음' 같은 숫자가 나온다 */
+  if(elapsed > 24*3600000) return null;
   if(perCourt < 5*60000 || perCourt > 90*60000) return null;
   const left=tot-doneN;
-  const restMs=perGame*left;
+  const restMs=perGame*left + Math.max(0, stallMs);
   const end=new Date(now+restMs);
   return { end:cbClock(end), avgMin:Math.round(perCourt/60000), leftN:left,
-           restMin:Math.round(restMs/60000), doneN, tot };
+           restMin:Math.round(restMs/60000), doneN, tot,
+           stallMin:Math.round(Math.max(0,stallMs)/60000), med };
 }
 /* 오후 07시 35분 — 24시간제 숫자보다 코트에서 읽기 쉽다 */
 function cbClock(d){
@@ -13025,6 +13149,17 @@ function cbMyCard(){
   const vsLine=g=>{ const w=nmOf(g);
     return (w.mate?`파트너 ${w.mate} `:'') + (w.opp?`vs ${w.opp}`:''); };
   const RD=n=>`${n}번째 게임`, CT=n=>`${n}번 코트`;
+  /* 서버가 <당사자 또는 임원>만 점수를 받는다. 누를 수 없는 사람에게 버튼을 보여주면
+     눌렀을 때 막히고, 회원은 앱이 고장 난 줄 안다. 대신 누가 넣어야 하는지를 적는다. */
+  const canScore=gi=>(typeof cb2CanScore==='function') ? cb2CanScore(gi) : true;
+  /* 누구 경기인지 — 대신 넣어주려면 그 넷에게 점수를 물어봐야 한다.
+     내 기준(파트너/상대)이 아니라 양 팀을 그대로 적는다. */
+  const pairTxt=g=>{ if(!g) return '';
+    const A=(g.teamA||[]).map(p=>p.name).filter(Boolean).join('·');
+    const B=(g.teamB||[]).map(p=>p.name).filter(Boolean).join('·');
+    return (A&&B)?`${A} vs ${B}`:(A||B); };
+  const scoreBtn=(gi,label)=>canScore(gi)?{btn:label, act:`cb2Score(${gi})`}:{};
+  const askWho=gi=>canScore(gi)?'\n물어보고 대신 넣어주셔도 돼요':'\n그 경기를 뛴 분이나 운영진이 넣어주세요';
   const MODE=(CB2&&CB2.mode)||'normal';
   /* 한울·월례대회는 조를 코트에 고정한다 — 코트를 옮길 일이 없다.
      청백전은 두 팀 단체전이라 팀 점수가 궁금하고,
@@ -13093,11 +13228,18 @@ function cbMyCard(){
     /* 내 경기는 끝났지만 아직 도는 코트가 있으면, 손이 빈 사람이 나다 */
     const stillRun = gs.filter(g=>g.startedAt && !done(g))
       .sort((a,b)=>(a.startedAt||0)-(b.startedAt||0))[0];
+    const blameD = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+    if(blameD) return {kind:'done', lb:'오늘 수고하셨어요',
+      big:`${CT(blameD.free[0])}가 비어 있어요`,
+      m:`${CT(blameD.court)} 점수가 안 들어와서 코트가 놀고 있어요`
+        + `\n${RD(gs[blameD.gi].r)} · ${pairTxt(gs[blameD.gi])}`
+        + `\n${blameD.min}분째예요${blameD.avg?` · 보통 ${blameD.avg}분이면 끝나요`:''}${askWho(blameD.gi)}${helpTxt}`,
+      ...scoreBtn(blameD.gi, `${CT(blameD.court)} 점수 넣어주기`)};
     return {kind:'done', lb:'오늘 수고하셨어요',
       big:`${mine.length}경기 다 하셨어요`,
       m:`${w}승 ${l}패 · 득실 ${gf-ga>=0?'+':''}${gf-ga}${extra}${helpTxt}`,
-      btn: stillRun ? `${CT(stillRun.c)} 점수 넣어주기` : '내 기록 보기 ›',
-      act: stillRun ? `cb2Score(${stillRun.gi})`
+      btn: (stillRun && canScore(stillRun.gi)) ? `${CT(stillRun.c)} · ${pairTxt(stillRun)} 점수 넣기` : '내 기록 보기 ›',
+      act: (stillRun && canScore(stillRun.gi)) ? `cb2Score(${stillRun.gi})`
         : `closeOv();openClubMember(${jsArg(String((state.serverUser||{}).id||''))},${jsArg(String((state.serverUser||{}).name||'나'))})`};
   }
   const who=vsLine(next);
@@ -13132,8 +13274,10 @@ function cbMyCard(){
       : blockG.length
         ? `${CT(blockG[0].c)}가 끝나면 시작해요`
         : '앞 경기가 끝나면 시작해요';
-    /* 비어 있는 코트가 있으면 거기서 몸 풀다가 내 코트가 나면 옮기라고 안내한다 */
-    const freeCourt=FIXED ? 0 : (()=>{
+    /* 비어 있는 코트가 있으면 거기서 몸 풀다가 내 코트가 나면 옮기라고 안내한다.
+       한울·월례는 조가 코트에 고정이지만, 비어 있는 코트에서 몸을 푸는 것까지
+       막을 이유는 없다 — 다른 조 코트라는 것만 밝혀준다. */
+    const freeCourt=(()=>{
       for(let cc=1;cc<=(CB2.courts||0);cc++){
         if(cc===next.c) continue;
         if((CB2.offCourts||[]).includes(cc)) continue;
@@ -13145,24 +13289,248 @@ function cbMyCard(){
     const bigTxt = freeCourt
       ? `${CT(freeCourt)}에서\n몸 푸세요`
       : `${CT(next.c)}로 가서\n몸 푸세요`;
-    const moveTxt = freeCourt ? `${CT(next.c)} 경기가 끝나면 그리로 옮겨요\n` : '';
+    /* 몇 분 쓸 수 있는지 — 이 말이 없으면 라켓 들고 눈치만 보게 된다.
+       코트 카드·코트 탭과 같은 함수를 써서 값이 어긋나지 않게 한다. */
+    const freeTxt = freeCourt ? (()=>{ const t=cbCourtFreeTxt(freeCourt);
+      return t && !/지금|비어 있어요/.test(t) ? t : ''; })() : '';
+    const moveTxt = freeCourt
+      ? `${freeTxt?freeTxt+' · ':''}${CT(next.c)} 경기가 끝나면 그리로 옮겨요\n`
+      + (FIXED?'비어 있는 다른 조 코트예요\n':'')
+      : '';
     /* 내 차례를 막고 있는 건 대개 <앞 코트의 빈 점수>다.
        그 경기를 방금 지켜본 사람이 여기서 기다리고 있으니, 직접 넣을 수 있게 한다.
        총무 한 사람만 넣을 수 있으면 그 사람이 코트를 못 볼 때 클럽이 멈춘다. */
     const helpG = stuck || blockG[0];
+    const blameW = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+    /* 내 차례를 막고 있는 게 <점수 미입력> 이면 그렇게 말해준다.
+       "곧 시작해요" 로만 두면 왜 안 시작되는지 몰라 코트만 쳐다본다. */
+    const stallTxt = (blameW && blameW.court===((helpG||{}).c))
+      ? `\n${CT(blameW.court)} 점수가 안 들어와서 멈춰 있어요 · ${blameW.min}분째`
+        + `\n그 경기 · ${pairTxt(gs[blameW.gi])}`
+        + (helpG?askWho(helpG.gi):'') : '';
     return {kind:'go', lb:`곧 나가요 · ${leftTxt}`,
       big:bigTxt,
-      m:`${moveTxt}${why}\n${RD(next.r)} · ${who}`,
-      ...(helpG ? {btn:`${CT(helpG.c)} 점수 넣어주기`, act:`cb2Score(${helpG.gi})`} : {})};
+      m:`${moveTxt}${why}${stallTxt}\n${RD(next.r)} · ${who}`,
+      ...(helpG ? scoreBtn(helpG.gi, `${CT(helpG.c)} 점수 넣어주기`) : {})};
   }
   /* ⑤ 아직 멀었다 — 쉬는 사람이 오늘 가장 손이 빈 사람이다.
-     돌고 있는 코트 중 제일 오래된 경기의 점수를 넣어줄 수 있게 둔다. */
+     코트가 놀고 있으면 그 이유부터 알린다. 총무만 아는 정보로 두면
+     그 사람이 코트를 못 볼 때 클럽 전체가 멈춘다. */
+  const blame = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+  if(blame) return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
+    big:`${CT(blame.free[0])}가 비어 있어요`,
+    m:`${CT(blame.court)} 점수가 안 들어와서 ${blame.free.length>1?`${blame.free.join('·')}번 코트가`:'코트가'} 놀고 있어요`
+      + `\n${RD(gs[blame.gi].r)} · ${pairTxt(gs[blame.gi])}`
+      + `\n${blame.min}분째예요${blame.avg?` · 보통 ${blame.avg}분이면 끝나요`:''}${askWho(blame.gi)}`,
+    ...scoreBtn(blame.gi, `${CT(blame.court)} 점수 넣어주기`)};
   const running = gs.filter(g=>g.startedAt && !done(g))
     .sort((a,b)=>(a.startedAt||0)-(b.startedAt||0))[0];
   return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
     big:`다음은 ${RD(next.r)}\n${CT(next.c)}예요`,
     m:`${ahead}경기 뒤예요\n${who}`,
-    ...(running ? {btn:`${CT(running.c)} 점수 넣어주기`, act:`cb2Score(${running.gi})`} : {})};
+    ...(running ? scoreBtn(running.gi, `${CT(running.c)} 점수 넣어주기`) : {})};
+}
+
+/* ── 코트가 얼마나 비는지 ──────────────────────────────
+   다른 코트 경기가 일찍 끝나 코트가 비면, 다음 차례 넷이 거기서 몸을 푼다.
+   그때 <언제 쫓겨나는지>를 모르면 라켓만 들고 서 있게 된다.
+   오늘 이 대진의 평균 경기 시간으로 남은 시간을 재서 알려준다.
+   평균 = 첫 경기 시작 후 흐른 시간 × 코트 수 ÷ 끝난 경기 수. */
+function cbAvgGameMin(){
+  if(!CB2 || !(CB2.games||[]).length) return 0;
+  const gs=CB2.games, done=g=>g.sa!=null&&g.sb!=null;
+  /* 코트 간격의 중앙값이 있으면 그걸 쓴다 — 멈춘 시간이 평균을 부풀리지 않는다 */
+  { const m=cbGameMedianMin(gs); if(m) return m; }
+  const doneN=gs.filter(done).length;
+  const t0=cbStartedAt(gs);
+  if(!t0 || doneN<2) return 0;
+  /* 중지된 코트는 빼고 센다 — 두 코트만 돌면 경기당 시간이 더 길어진다 */
+  const courts=Math.max(1, (CB2.courts||1) - ((CB2.offCourts||[]).length));
+  const min=Math.round(((Date.now()-t0)/60000) * courts / doneN);
+  /* 5분보다 짧거나 90분보다 길면 잘못 잰 것이다 — 아무 말도 안 하는 편이 낫다 */
+  return (min>=5 && min<=90) ? min : 0;
+}
+/* 그 코트가 앞으로 몇 분쯤 더 비는가 — 지금 도는 경기가 끝날 때까지 */
+function cbFreeMin(blockG){
+  const avg=cbAvgGameMin(); if(!avg) return 0;
+  if(!blockG || !blockG.startedAt) return avg;
+  const el=Math.round((Date.now()-blockG.startedAt)/60000);
+  return Math.max(0, avg-el);
+}
+/* 코트가 언제 다시 도는지 — <몇 분 쓸 수 있다>가 아니라 <몇 분 뒤에 시작한다>.
+   코트가 오래 비는 건 회원에게 혜택이 아니라 짜증이다. 권하지 않고 알리기만 한다. */
+function cbFreeTxt(blockG){
+  const m=cbFreeMin(blockG);
+  if(!m) return '';
+  if(m<=3) return '곧 시작해요';
+  return `약 ${m}분 뒤 시작해요`;
+}
+/* 이 코트가 앞으로 몇 분쯤 비어 있는가 — 다음 경기 넷이 모두 코트에서 빠져나와야 시작된다.
+   그중 제일 늦게 끝나는 사람 기준. 이 값이 없으면 라켓 들고 눈치만 보게 되고,
+   반대로 알면 '10분은 쓸 수 있구나' 하고 마음 놓고 랠리를 한다. */
+function cbCourtFreeMin(court){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  if((CB2.offCourts||[]).includes(court)) return null;
+  /* 지금 이 코트에서 경기가 돌고 있으면 빈 코트가 아니다 */
+  if(gs.some(g=>g.c===court && g.startedAt && !done(g))) return null;
+  const next=gs.filter(g=>g.c===court && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+  if(!next) return null;                                   // 이 코트는 오늘 끝났다
+  const avg=cbAvgGameMin();
+  const ids=[...(next.teamA||[]),...(next.teamB||[])].map(p=>String(p.id));
+  const runs=gs.filter(g=>g.startedAt && !done(g) &&
+    [...(g.teamA||[]),...(g.teamB||[])].some(p=>ids.includes(String(p.id))));
+  if(!runs.length) return 0;                               // 넷 다 비어 있다 = 지금 시작 가능
+  if(!avg) return -1;                                      // 아직 평균을 못 잰다
+  const rest=runs.map(g=>Math.max(0, avg-Math.round((Date.now()-g.startedAt)/60000)));
+  return Math.max.apply(null, rest);
+}
+/* 코트 칸에 붙일 짧은 말 — 모든 회원이 같은 값을 본다 */
+function cbCourtFreeTxt(court){
+  const m=cbCourtFreeMin(court);
+  if(m===null) return '';
+  if(m===0) return '지금 쓸 수 있어요';
+  if(m===-1) return '비어 있어요';
+  if(m<=3) return '곧 시작해요';
+  return `${m}분쯤 비어요`;
+}
+/* 빈 코트로 옮기기 — 회원도 할 수 있다(그 경기 선수 또는 임원).
+   서버(PATCH /clubs/:id/bracket2/court)와 같은 조건으로 먼저 걸러서,
+   못 옮기는 상황에서는 버튼 자체를 보여주지 않는다. */
+function cb2FreeCourts(gi){
+  if(!CB2 || !(CB2.games||[]).length) return [];
+  const gs=CB2.games.map((g,i)=>({...g,gi:i}));
+  const g=gs[gi]; if(!g || g.startedAt || g.sa!=null) return [];
+  const done=x=>x.sa!=null&&x.sb!=null;
+  const ids=x=>[...(x.teamA||[]),...(x.teamB||[])].map(p=>p&&p.id).filter(Boolean);
+  const me=String((state.serverUser||{}).id||'');
+  const mayMove = cb2Officer() || ids(g).map(String).includes(me);
+  if(!mayMove) return [];
+  const busy=new Set(gs.filter(x=>x.startedAt&&!done(x)).flatMap(ids).map(String));
+  if(ids(g).some(i=>busy.has(String(i)))) return [];        // 넷 중 뛰고 있는 사람이 있으면 못 옮긴다
+  const out=[];
+  for(let c=1;c<=(CB2.courts||0);c++){
+    if(c===g.c) continue;
+    if((CB2.offCourts||[]).includes(c)) continue;
+    if(gs.some(x=>x.c===c && x.startedAt && !done(x))) continue;      // 지금 도는 코트
+    const other=gs.find(x=>x.gi!==gi && x.r===g.r && x.c===c);
+    if(other && (done(other) || other.startedAt)) continue;           // 그 자리에 이미 진행된 경기
+    out.push(c);
+  }
+  return out;
+}
+async function cb2MoveCourt(gi, court){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  const from=g.c;
+  if(TRIAL){
+    const other=(CB2.games||[]).find((x,i)=>i!==gi && x.r===g.r && x.c===court);
+    if(other) other.c=from;
+    g.movedFrom=from; g.c=court; CB2.updated_at=Date.now();
+    drawCB2View(); toast(`${court}번 코트로 옮겼어요 (체험)`); return;
+  }
+  try{
+    await api(`/clubs/${clubId()}/bracket2/court${cbQ()}`,{method:'PATCH',
+      body:JSON.stringify({gi, court})});
+    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); CB2=d;
+    CB2_COURT=court; drawCB2View();
+    toast(`${court}번 코트로 옮겼어요 · 그 코트로 가주세요`);
+  }catch(e){
+    const msg=String(e.message||'');
+    const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
+      || (msg.match(/court_busy|player_busy|slot_taken|already_started|player_only|court_off/)||[''])[0];
+    toast(k==='court_busy'?'그 코트는 지금 경기 중이에요'
+        : k==='player_busy'?'이 경기 선수 중에 지금 뛰고 있는 분이 있어요'
+        : k==='slot_taken'?'그 자리에 이미 진행된 경기가 있어요'
+        : k==='already_started'?'이미 시작한 경기는 옮길 수 없어요'
+        : k==='player_only'?'그 경기 선수나 운영진이 옮길 수 있어요'
+        : k==='court_off'?'사용 중지된 코트예요'
+        : '옮기지 못했어요');
+  }
+}
+/* 점수를 넣은 사람 이름 — 서버가 id 만 남기므로 명단에서 찾는다 */
+function cbWhoName(uid){
+  const id=String(uid||''); if(!id) return '';
+  const gs=(CB2&&CB2.games)||[];
+  for(const g of gs){
+    const p=[...(g.teamA||[]),...(g.teamB||[])].find(x=>x&&String(x.id)===id);
+    if(p&&p.name) return p.name;
+  }
+  const r=(SRV_ROSTER||[]).find(x=>String(x.user_id||x.id)===id);
+  return (r&&r.name)||'';
+}
+/* 코트가 왜 놀고 있는지 — 평균 경기 시간을 넘긴 경기가 다음 코트를 막고 있을 때.
+   총무 화면에만 두면 그 사람이 코트를 못 볼 때 클럽이 멈춘다.
+   회원 카드에도 같은 사실을 알려서, 옆에 있는 사람이 점수를 넣을 수 있게 한다. */
+function cbIdleBlame(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const avg=cbAvgGameMin();
+  /* 지금 비어 있는 코트 */
+  const freeC=[];
+  for(let c=1;c<=(CB2.courts||0);c++){ if(cbCourtFreeMin(c)!==null) freeC.push(c); }
+  if(!freeC.length) return null;
+  /* 평균을 넘겨 도는 경기 = 사실은 끝났는데 점수가 안 들어온 것일 수 있다 */
+  const over=gs.filter(g=>g.startedAt && !done(g))
+    .map(g=>({g, min:Math.round((Date.now()-g.startedAt)/60000)}))
+    .filter(x=>avg ? x.min>avg+5 : x.min>40)
+    .sort((a,b)=>b.min-a.min)[0];
+  if(!over) return null;
+  /* 그 경기가 비어 있는 코트를 실제로 막고 있는지 확인한다 */
+  const ids=[...(over.g.teamA||[]),...(over.g.teamB||[])].map(p=>String(p.id));
+  const blocks=freeC.some(c=>{
+    const nx=gs.filter(g=>g.c===c && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+    return nx && [...(nx.teamA||[]),...(nx.teamB||[])].some(p=>ids.includes(String(p.id)));
+  });
+  if(!blocks) return null;
+  return {gi:over.g.gi, court:over.g.c, min:over.min, free:freeC, avg};
+}
+/* 비는 코트를 알리는 한 줄 — 코트 카드 위(코트 탭)와 전체 표 위에 같은 모양으로 붙는다.
+   누르는 것도 급한 것도 아니라 코랄이 아니라 크림으로 둔다.
+   경기가 시작되면 줄이 사라진다 — 늘 떠 있으면 무시하게 된다. */
+function cbFreeLine(court){
+  if(!CB2 || !(CB2.games||[]).length) return '';
+  const list = court ? [court]
+    : Array.from({length:CB2.courts||0}, (_,i)=>i+1);
+  const free = list.map(c=>({c, m:cbCourtFreeMin(c)})).filter(x=>x.m!==null);
+  if(!free.length) return '';
+  /* 여러 코트가 비면 하나로 합친다 — 줄이 두 개면 그것대로 시끄럽다 */
+  const nums=free.map(x=>x.c).join('·');
+  const m=Math.max.apply(null, free.map(x=>x.m));
+  const head = m===0 ? `${nums}번 코트가 비어 있어요`
+             : m===-1 ? `${nums}번 코트가 비어 있어요`
+             : m<=3   ? `${nums}번 코트 · 곧 시작해요`
+                      : `${nums}번 코트가 ${m}분쯤 비어요`;
+  /* 순서대로는 못 시작해도 뒤 경기 중 넷이 다 쉬는 게 있으면 그걸 알려준다 —
+     그게 코트를 놀리지 않는 가장 빠른 길이다. */
+  const pull=(()=>{ for(const x of free){
+      const p=(typeof cbPullGame==='function')?cbPullGame(x.c):null;
+      if(!p) continue;
+      const nx=(CB2.games||[]).map((g,gi)=>({...g,gi}))
+        .filter(g=>g.c===x.c && g.sa==null && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+      if(nx && nx.gi!==p.gi) return {c:x.c, r:p.r};        // 순서를 당겨야 하는 경우만
+    } return null; })();
+  const tail = pull ? `${pull.r}번째 게임을 먼저 할 수 있어요`
+             : m===0 ? '지금 시작할 수 있어요'
+             : m<=3  ? '자리를 비켜주세요'
+                     : '그동안 몸 풀어도 돼요';
+  return `<div style="display:flex;align-items:baseline;gap:7px;background:#fdf6ea;
+      border-radius:12px;padding:10px 12px;margin-top:10px">
+    <b style="font-size:12px;font-weight:800;color:#8a5a13;letter-spacing:-.02em">${head}</b>
+    <span style="font-size:11px;color:#a5804a;font-weight:600">· ${tail}</span></div>`;
+}
+/* 이 코트에서 <지금 당장 시작할 수 있는> 경기 — 네 명이 모두 다른 코트에 안 묶여 있어야 한다.
+   빈 코트를 그냥 두는 대신 뒤 경기를 당겨 넣으면 코트가 30분씩 노는 일이 없다. */
+function cbPullGame(court){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const busy=new Set(gs.filter(g=>g.startedAt&&!done(g))
+    .flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>String(p.id))));
+  return gs.filter(g=>g.c===court && !done(g) && !g.startedAt)
+    .sort((a,b)=>a.r-b.r)
+    .find(g=>![...(g.teamA||[]),...(g.teamB||[])].some(p=>busy.has(String(p.id)))) || null;
 }
 
 /* 뒤집어 놓은 칸 — 키는 "게임-코트" */
@@ -13203,7 +13571,9 @@ function cbMoveHint(){
   if(!warmG) return null;
   return {
     warm:{r:warmG.r, c:warmC},
-    warmTxt:{ t1:'① 여기서 몸 푸세요', t2:`${next.c}번 코트 경기가 끝날 때까지` },
+    warmTxt:{ t1:'① 여기서 몸 푸세요',
+      t2:(()=>{ const t=(typeof cbCourtFreeTxt==='function')?cbCourtFreeTxt(warmC):'';
+        return t ? `${t} · ${next.c}번 코트 끝날 때까지` : `${next.c}번 코트 경기가 끝날 때까지`; })() },
     go:{r:next.r, c:next.c}, 
     goTxt:{ t1:'② 여기로 옮겨주세요', t2:`${warmC}번 코트에서 · ${next.r}번째 게임`, go:1 }
   };
@@ -13398,7 +13768,13 @@ function cbOfficerCard(){
   if(stuck.length){ const g=stuck[0];
     found.push({p:2, kind:'bad', lb:`${mins(g.startedAt)}분째 멈춰 있어요`,
       big:`${CT(g.c)} 점수가\n안 들어왔어요`,
-      m:`${RD(g.r)} · ${[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name).join(' · ')}`,
+      /* 몇 분 멈췄는지만 말하면 얼마나 급한지가 안 보인다.
+         이 경기 때문에 다른 코트가 놀고 있으면 그걸 함께 적는다. */
+      m:`${RD(g.r)} · ${[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name).join(' · ')}`
+        + (()=>{ const bl=(typeof cbIdleBlame==='function')?cbIdleBlame():null;
+            if(!bl || bl.gi!==g.gi) return '';
+            const cs=bl.free.join('·');
+            return `\n이 경기 때문에 ${cs}번 코트가 놀고 있어요`; })(),
       btn:'대신 넣기 ›', act:`cb2Score(${g.gi})`, more:stuck.length-1});
   }
 
@@ -13701,7 +14077,7 @@ function drawCB2View(){
           const dn=(CB2.games||[]).filter(done).length;
           const msg = dn<2 ? '두 경기가 끝나면 마감 시각을 알려드려요'
                     : !cbStartedAt(CB2.games||[]) ? '경기를 시작할 때 시작을 눌러주시면 마감 시각을 알려드려요'
-                    : '';
+                    : '멈춰 있는 경기가 많아 속도를 잴 수 없어요 · 점수를 넣으면 다시 알려드려요';
           return msg ? `<div style="margin-top:9px;padding-top:9px;
             border-top:1px solid #eee9e0;font-size:11px;color:#8c877f">${msg}</div>` : '';
         }
@@ -13709,7 +14085,8 @@ function drawCB2View(){
             padding-top:9px;border-top:1px solid #eee9e0">
           <span style="font-size:11px;color:#8c877f">이 속도면</span>
           <span style="font-size:15px;font-weight:800;color:var(--coral-d);letter-spacing:-.03em">${e.end}</span>
-          <span style="font-size:11px;color:#8c877f">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}</span></div>`;
+          <span style="font-size:11px;color:#8c877f">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}${
+            e.stallMin>=5?` · 멈춰 있는 ${e.stallMin}분 포함`:''}</span></div>`;
       })()}
     </div>`;
 
@@ -13729,13 +14106,8 @@ function drawCB2View(){
       /* 0 = 전체 보기. 코트가 하나뿐이면 전체 탭이 없으니 그 코트로 보낸다. */
       if(CB2_COURT!==0 && !cs.some(x=>x.c===CB2_COURT)) CB2_COURT=(cs[0]||{}).c||1;
       if(cs.length<=1) CB2_COURT=(cs[0]||{}).c||1;
-      /* 조가 코트에 고정되는 방식은 코트마다 성비가 다르다 — 세 코트를 한 줄에 보여준다 */
-      if(cs.length>1 && (CB2.mode==='hanul'||CB2.mode==='monthly')){
-        h+=`<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin:2px 2px 9px;font-size:11px;font-weight:500;color:var(--gray)">
-          ${cs.map(({c})=>{ const x=cb2CourtMix(c); return x.n
-            ? `<span>${c}번 코트 <b style="color:#3b53a8;font-weight:600">남 ${x.m}</b><span style="color:#d8d2c6"> · </span><b style="color:#a8395f;font-weight:600">여 ${x.f}</b><span style="color:var(--lgray);font-weight:500"> (${x.n}명)</span></span>`
-            : ''; }).join('')}</div>`;
-      }
+      /* 코트별 성비 줄은 뺐다 — <성별로 코트 나누기>를 켠 날에만 뜻이 있는데
+         조건 없이 늘 떠서, 전원 남자인 날에도 '남 7 · 여 0'이 코트마다 늘어섰다. */
       if(cs.length>1){
         /* '전체' 를 맨 앞에 둔다 — 내 다음 경기를 보려고 탭을 세 번 누르지 않게.
            점수를 넣을 때는 한 코트만 보는 게 나으니 코트별 탭도 그대로 둔다. */
@@ -13746,6 +14118,8 @@ function drawCB2View(){
           const offc=(CB2.offCourts||[]).includes(c);
           const running=cg.some(g=>g.startedAt&&!done(g));
           const fin=cg.filter(done).length;
+          /* 탭에는 진행 숫자만 둔다 — 비는 시간을 여기 넣었더니 2/6 이 밀려나
+             얼마나 진행됐는지를 못 보게 됐다. 비는 시간은 아래 한 줄이 맡는다. */
           return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};CB2_FOCUS=null;drawCB2View()">
             <span class="t">${c}번 코트</span>
             <span class="s">${offc?'중지':running?'진행 중':`${fin}/${cg.length}`}</span></div>`;
@@ -13760,6 +14134,7 @@ function drawCB2View(){
           (dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name)).join('·');
         /* 이동 안내 — 그 넷에게만 칸을 덮는다. 탭하면 점수, 다시 탭하면 안내. */
         const MV=cbMoveHint();
+        h+=cbFreeLine(0);                      // 비는 코트가 있으면 표 위에 한 줄
         h+=`<div class="cbwide"><table>
           <tr><th></th>${cs.map(({c})=>`<th>${c}번 코트</th>`).join('')}</tr>
           ${rs.map(r=>`<tr><td class="r${(dupBy[r]||[]).length?' bad':''}">${r}</td>${cs.map(({c})=>{
@@ -13816,9 +14191,17 @@ function drawCB2View(){
       if(!cg.length) continue;
       /* 전체 보기(0)에서는 위의 표만 보여준다 — 코트 카드까지 다 쌓으면 화면 세 개 분량이다 */
       if((CB2.courts||0)>1 && (CB2_COURT===0 || c!==CB2_COURT)) continue;
+      h+=cbFreeLine(c);                        // 이 코트가 비면 카드 위에 한 줄
       h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px;${(CB2.offCourts||[]).includes(c)?'opacity:.45':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <b style="font-size:var(--t2);font-weight:600">${c}번 코트${(CB2.mode==='hanul'||CB2.mode==='monthly')?cb2MixChip(c,true):''}${(CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>':cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>':''}</b>
+          <b style="font-size:var(--t2);font-weight:600">${c}번 코트${
+            (CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>'
+            : cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>'
+            : (()=>{
+                /* 헤더에는 상태 한 조각만. 몇 분 비는지는 아래 안내 줄이 맡는다. */
+                const nxt=cg.find(g=>!done(g) && !g.startedAt);
+                return nxt ? '' : ' <span style="font-size:11px;font-weight:500;color:var(--lgray)">경기 끝</span>';
+              })()}</b>
       ${off?`<span onclick="cb2ToggleCourt(${c})" style="font-size:11px;font-weight:500;color:var(--lgray);cursor:pointer;margin-left:6px">${(CB2.offCourts||[]).includes(c)?'사용 재개':'중지'}</span>`:''}
           <span class="gt1 gmute">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
@@ -13842,14 +14225,34 @@ function drawCB2View(){
           const wait=t=>`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">${t}</span>`;
           if(courtBusy)                    sc=wait('대기 · 이 코트 경기 중');
           else if(RUN.n>=(CB2.courts||1))  sc=wait('대기 · 코트 만석');
-          else if(busy)                    sc=wait('대기 · 선수 경기 중');
-          /* 코랄 덩어리는 화면에 하나 — 바로 다음 차례만 칠하고
-             그 뒤 경기는 흰 버튼으로 둔다. 누르는 것은 막지 않는다.
-             코트 사정으로 뒤 경기를 먼저 돌리는 일은 실제로 있다. */
-          else sc = nextUp
-            ? `<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`
-            : `<span onclick="cb2StartGame(${g.gi})" style="background:#fff;border:1px solid #e6e2d9;color:#57503f;border-radius:8px;padding:3px 10px;font-weight:500;font-size:11px;cursor:pointer">시작</span>`;
+          /* 왜 못 시작하는지 밝힌다 — '대기'만 있으면 고장으로 보인다 */
+          else if(busy){
+            const who=(()=>{ const x=(CB2.games||[]).find(y=>y.startedAt&&!done(y)&&
+                [...(y.teamA||[]),...(y.teamB||[])].some(p=>ids.includes(p.id)));
+              return x?`${x.c}번 코트 끝나면`:'선수 경기 중'; })();
+            sc=wait(`대기 · ${who}`);
+          }
+          /* 코랄 덩어리는 화면에 하나. 다음 차례가 선수에 묶여 못 시작할 때는
+             <먼저 할 수 있는 경기>를 대신 칠한다 — 코트를 놀리지 않으려면 그게 시작점이다. */
+          else {
+            const pull=(typeof cbPullGame==='function')?cbPullGame(c):null;
+            const isPull = pull && pull.gi===g.gi && !nextUp;
+            sc = (nextUp || isPull)
+              ? `<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`
+              : `<span onclick="cb2StartGame(${g.gi})" style="background:#fff;border:1px solid #e6e2d9;color:#57503f;border-radius:8px;padding:3px 10px;font-weight:500;font-size:11px;cursor:pointer">시작</span>`;
+            if(isPull) sc=`<span style="font-size:10px;font-weight:700;color:#8a5a13;background:#fdf1dc;
+              border-radius:20px;padding:3px 8px;margin-right:6px">먼저 가능</span>`+sc;
+            /* 다른 코트가 비어 있으면 그리로 옮겨 갈 수 있게 — 코트를 놀리지 않는 가장 빠른 길 */
+            const frees=(typeof cb2FreeCourts==='function')?cb2FreeCourts(g.gi):[];
+            if((nextUp||isPull) && frees.length) sc += frees.slice(0,2).map(fc=>
+              `<span onclick="event.stopPropagation();cb2MoveCourt(${g.gi},${fc})"
+                style="margin-left:6px;font-size:10.5px;font-weight:700;color:var(--coral-d);
+                background:#fff;border:1px solid #f0d9c4;border-radius:20px;padding:4px 9px;cursor:pointer"
+                >${fc}번 코트로 ›</span>`).join('');
+          }
         }
+        if(g.movedFrom && !done(g)) sc = `<span style="font-size:10px;font-weight:700;color:#8a5a13;
+          background:#fdf1dc;border-radius:20px;padding:3px 8px;margin-right:6px">원래 ${g.movedFrom}번</span>` + sc;
         const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
     const gA=esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
     const gB=esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
@@ -13857,7 +14260,9 @@ function drawCB2View(){
         /* 스코어는 두 팀 사이에 둔다 — 누구 대 누구의 몇 점인지 한 줄에서 읽힌다.
            아직 안 끝난 경기는 실선 테두리의 빈 칸으로 두어 '여기 눌러 입력'이 보이게. */
         const scBox = done(g)
-          ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}>${g.sa} : ${g.sb}</span>`
+          ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}
+              ${g.byHelp&&g.by?`title="${esc(cbWhoName(g.by))} 님이 대신 넣었어요"`:''}>${g.sa} : ${g.sb}${
+              g.byHelp&&g.by?`<i style="display:block;font-style:normal;font-size:9px;font-weight:600;color:#a5804a;margin-top:2px">${esc(cbWhoName(g.by))} 넣음</i>`:''}</span>`
           : `<span onclick="cb2Score(${g.gi})" class="cbsc">－ : －</span>`;
         /* 진행 중·다음 차례가 작은 글자 딱지뿐이라 눈에 안 띄었다.
            진행 중은 코랄로 칠하고 왼쪽에 굵은 띠를, 다음 차례는 테두리만 —
@@ -17075,8 +17480,35 @@ function drawScoreSheet(){
 /* 오늘 내가 넣어준 점수 개수 — 코트 밖에서 한 일은 승패에 안 남는다.
    서버가 세어주지 않으니 이 기기에 날짜별로 센다. */
 function scoreHelpKey(){ return 'matsu_helped_'+ymd(); }
-function scoreHelpCount(){ try{ return +(localStorage.getItem(scoreHelpKey())||0); }catch(e){ return 0; } }
+function scoreHelpCount(){
+  /* 서버가 <누가 넣었는지(by)>와 <대신 넣은 것인지(byHelp)>를 저장한다 —
+     그 값이 있으면 기기 기록보다 그걸 믿는다. 폰을 바꿔도 남는다. */
+  const me=String((state.serverUser||{}).id||'');
+  const gs=(CB2&&CB2.games)||[];
+  const srv=me ? gs.filter(g=>g.byHelp && String(g.by||'')===me).length : 0;
+  let local=0; try{ local=+(localStorage.getItem(scoreHelpKey())||0); }catch(e){}
+  return Math.max(srv, local);
+}
 function scoreHelpBump(){ try{ localStorage.setItem(scoreHelpKey(), String(scoreHelpCount()+1)); }catch(e){} }
+/* 남의 경기 점수를 내가 넣을 수 있는가 — 서버 규칙과 똑같이 판단해야 한다.
+   서버(PATCH /clubs/:id/bracket2/score) 규칙:
+     임원 · 그 경기 당사자 · (오늘 대진에 있는 회원이고 점수가 비어 있을 때)
+     · 내가 10분 안에 넣은 것을 고칠 때
+   화면에서 눌리는데 서버가 막으면 회원은 앱이 고장 난 줄 안다. */
+function cb2CanScore(gi){
+  if(TRIAL) return true;
+  if(cb2Officer()) return true;
+  const gs=(CB2&&CB2.games)||[];
+  const g=gs[gi]; if(!g) return false;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return false;
+  const inGame=[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
+  if(inGame) return true;
+  const inBracket=gs.some(x=>[...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
+  const empty=(g.sa==null || g.sb==null);
+  if(inBracket && empty) return true;                       // 대신 넣어주기
+  return !!(String(g.by||'')===me && g.atMs && Date.now()-g.atMs < 10*60*1000);
+}
 async function cb2ScoreSave(){
   const gi=SC_EDIT.gi, g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   const a=SC_EDIT.a, b=SC_EDIT.b;
@@ -17092,11 +17524,13 @@ async function cb2ScoreSave(){
     if(!mineGame) scoreHelpBump();
     drawCB2View(); toast(mineGame?'스코어를 기록했어요':'대신 넣어줬어요 · 고마워요');
   }catch(e){
-    /* 서버가 아직 <당사자 또는 임원>만 허용한다. 화면에서 눌렀는데 막히면
-       이유를 분명히 알려주고 다른 길을 알려준다. */
-    toast(String(e.message||'').includes('player_only')
-      ? '아직 서버가 막고 있어요 · 그 경기를 뛴 분이나 운영진이 넣어주세요'
-      : '기록하지 못했어요');
+    const msg=String(e.message||'');
+    const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
+      || (msg.match(/player_only|bracket_only|edit_locked/)||[''])[0];
+    toast(k==='bracket_only' ? '오늘 대진에 있는 회원만 대신 넣을 수 있어요'
+        : k==='edit_locked'  ? '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요'
+        : k==='player_only'  ? '그 경기를 뛴 분이나 운영진이 넣어주세요'
+        : '기록하지 못했어요');
   }
 }
 /* ═══ 선수 리포트 — 종료된 경기 데이터 분석 (실력 향상용) ═══ */
@@ -23987,7 +24421,7 @@ function _renderHomeCore(){
   if(hasClub && evSrc.length){
     const pc=['#ffe9db','#e3f5ec','#efeafc','#fff1dc'], tags=['정기','추가','번개','이벤트'];
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px">이번 주 일정</div><div class="plan2">`;
-    evSrc.slice(0,2).forEach((ev,i)=>{const joined=SRV?!!ev.joined:ev.attendees.includes('곽주영');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=parts.slice(2).join(' ')||'시간 미정';
+    evSrc.slice(0,2).forEach((ev,i)=>{const joined=SRV?!!ev.joined:ev.attendees.includes('곽주영');const _d=evParseDate(ev.date||'');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=(_d.time?(_d.end?`${_d.time}~${_d.end}`:_d.time):(parts.slice(2).join(' ')||'시간 미정'));
       h+=`<div class="psess" style="background:${pc[i%4]}" onclick="go('club')">${joined?'<div class="ps-chk">참여중 ✓</div>':''}<span class="ps-tag">${esc(ev.tag||tags[i%4])}</span><div class="ps-n">${esc(ev.title)}</div><div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div><div class="ps-foot"><div class="ps-av">${((ev.attendees||[])[0]||'?')[0]}</div><div class="ps-who">참여 ${(ev.attendees||[]).length}명<br>자세히 →</div></div></div>`;});
     h+=`</div>`;
   }
