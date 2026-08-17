@@ -819,11 +819,22 @@ app.get('/me', auth, (req, res) => {
   res.json({ ...u, played_doubles: pd });
 });
 app.patch('/me', auth, (req, res) => {
-  const allow = ['gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
+  /* name 이 빠져 있어서 <이름 바꾸기> 가 저장되지 않았다.
+     화면은 서버가 돌려준 값을 그대로 믿으므로 잠깐 바뀐 것처럼 보였다가,
+     다시 로그인해 /me 를 받으면 구글에서 들어온 영문 이름으로 되돌아갔다. */
+  const allow = ['name','gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
                  'birth_year','handed','backhand','style','phone','sport_started'];
   const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
   const sets = [], vals = [];
   for (const k of allow) if (k in req.body) {
+    /* 이름은 그대로 쓰지 않는다 — 태그 문자·줄바꿈을 걸러 20자로 줄인다.
+       빈 이름이 저장되면 명단에서 사람이 사라진 것처럼 보인다. */
+    if (k === 'name') {
+      const nm = cleanName(req.body.name, '');
+      if (!nm) return res.status(400).json({ error: 'bad_name', message: '이름을 입력해 주세요' });
+      sets.push('name=?'); vals.push(nm);
+      continue;
+    }
     sets.push(`${k}=?`);
     vals.push(nums.includes(k) ? intOrNull(req.body[k])
       : typeof req.body[k]==='object' ? JSON.stringify(req.body[k]) : req.body[k]);
@@ -1244,6 +1255,34 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   if (eid) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?').run(JSON.stringify(data), now(), cid, eid);
   else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
   cbLog(cid, data);
+  res.json({ ok: true, game: g });
+});
+/* 경기 종료 — 점수는 나중에, 코트는 지금 열어준다.
+   예전에는 점수가 들어와야 코트가 열려서, 점수 입력이 6분만 늦어도
+   코트가 30분 넘게 놀았다(18명 3코트 시뮬 12분 → 32분).
+   경기가 끝난 사람은 실제로 코트에서 나와 있으니, 끝났다는 사실만 먼저 받는다. */
+app.patch('/clubs/:id/bracket2/end', auth, (req, res) => {
+  const cid = +req.params.id;
+  const role = cbRole(cid, req.uid);
+  if (!role) return res.status(403).json({ error: 'member_only' });
+  const { gi, undo } = req.body || {};
+  const eid = evOf(req);
+  const row = eid
+    ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  if (!row) return res.status(404).json({ error: 'no_bracket' });
+  const data = JSON.parse(row.data);
+  const g = (data.games || [])[gi];
+  if (!g) return res.status(404).json({ error: 'no_game' });
+  if (!g.startedAt) return res.status(400).json({ error: 'not_started', message: '아직 시작하지 않은 경기예요' });
+  if (g.sa != null && g.sb != null) return res.status(400).json({ error: 'already_scored', message: '이미 점수가 들어왔어요' });
+  const officer = role === 'owner' || role === 'officer';
+  const inGame = [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === req.uid);
+  if (!officer && !inGame) return res.status(403).json({ error: 'player_only', message: '그 경기를 뛴 분이나 운영진이 누를 수 있어요' });
+  if (undo) { delete g.endedAt; delete g.endedBy; }
+  else { g.endedAt = Date.now(); g.endedBy = req.uid; }
+  if (eid) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?').run(JSON.stringify(data), now(), cid, eid);
+  else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
   res.json({ ok: true, game: g });
 });
 /* 빈 코트로 경기 옮기기 — 회원도 할 수 있다.
