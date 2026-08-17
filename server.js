@@ -1283,6 +1283,9 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
         ? { error: 'court_only', message: `${at(g)}번 코트에서 뛴 분이나 운영진이 넣을 수 있어요` }
         : { error: 'bracket_only', message: '오늘 대진에 있는 회원만 대신 넣을 수 있어요' });
   }
+  /* 0:0 은 결과가 아니라 <아직 안 함>이다 — 그대로 받으면 무승부로 기록돼
+     시즌 랭킹이 조용히 바뀐다. 화면에서도 막지만 옛 버전 앱이 보낼 수 있어 여기서도 막는다. */
+  if (+sa === 0 && +sb === 0) return res.status(400).json({ error: 'zero_score', message: '0 : 0 은 저장할 수 없어요' });
   g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
   g.by = req.uid; g.at = now(); g.atMs = Date.now();
   /* 코트 밖에서 도운 것도 남긴다 — 승패에만 쌓이면 대신 넣어준 사람은 아무 데도 안 남는다 */
