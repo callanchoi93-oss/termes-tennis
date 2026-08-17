@@ -37,6 +37,7 @@
     --ink:#1c1b18;--ink2:#2c2a24;--coral:#ec6a2e;--coral-d:#cf5418;--coral-s:#fceee4;
     --felt:#f2f1ec;--felt-d:#e4e2da;--cream:#ffffff;--cream2:#f6f5f2;
     --gray:#7d7870;--lgray:#b3aea4;--line:#ececea;--blue:#8c6fd6;--red:#e4685d;--green:#2fae6e;--gold:#f0a93b;--purple:#8c6fd6;
+    --butter:#fbe6c2;--gold-d:#8a5a13;
     --brand:#ec6a2e;--violet:#7c5cd6;--violet-d:#5b3fa8;--violet-s:#f1ecfb;--violet-t:rgba(124,92,214,.14);
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -209,16 +210,26 @@
     border:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;
     color:#8a857c;cursor:pointer}
   .rtprog{background:var(--ink);color:#fff;border-radius:16px;padding:16px 18px;margin:6px 0 16px}
+  /* 클럽 대진은 '지금 해야 할 일' 카드를 잉크로 세운다 — 요약 막대까지 검정이면
+     화면에 검은 덩어리가 둘이라 어디를 먼저 봐야 할지 알 수 없다. 그래서 요약은 종이로 내린다. */
+  .rtprog.lite{background:#faf8f4;color:var(--ink);border:1px solid #eee9e0}
+  .rtprog.lite .of,.rtprog.lite .rt{opacity:1;color:#8c877f}
+  .rtprog.lite .rtbar{background:#eae5db}
+  /* 막대는 화면에서 제일 오래 보는 곳이자 누르는 곳이 아니라, 브랜드 색을 놓기 좋은 자리다 */
+  .rtprog.lite .rtbar i{background:var(--coral)}
   .rtprog .top{display:flex;align-items:baseline;gap:6px}
   .rtprog .n{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
   .rtprog .of{font-size:13px;opacity:.6}
   .rtprog .rt{margin-left:auto;font-size:12px;opacity:.75}
   .rtbar{height:5px;border-radius:9px;background:rgba(255,255,255,.18);margin-top:12px;overflow:hidden}
   .rtbar i{display:block;height:100%;background:var(--coral);border-radius:9px;transition:width .3s}
-  .rtcts{display:flex;gap:7px;margin-bottom:14px}
+  /* 위쪽 간격이 없어서 바로 앞의 카드와 붙어 보였다.
+     카드 안쪽 여백(18)에 맞춰 위아래를 둔다. */
+  .rtcts{display:flex;gap:7px;margin:18px 0 14px}
   .rtcts>div{flex:1;min-height:42px;border-radius:12px;background:#fff;border:1px solid var(--line);
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer}
-  .rtcts>div.on{background:var(--coral);border-color:var(--coral);color:#fff}
+  .rtcts>div.on{background:var(--coral);border-color:var(--coral);color:#fff;
+    box-shadow:0 2px 8px rgba(236,106,46,.28)}
   .rtcts>div.off{opacity:.45}
   .rtcts .t{font-size:13px;font-weight:600}
   .rtcts .s{font-size:10px;color:var(--lgray)}
@@ -320,6 +331,55 @@
   .bkmeta{display:block;font-size:12.5px;color:var(--lgray);margin-top:5px;
     font-variant-numeric:tabular-nums}
   .bkmeta + .bkmeta{margin-top:2px}
+  /* 대진 목록 카드 — 일정 탭과 완전히 같은 뼈대(날짜 열 + 카드).
+     회원이 한 번만 배우면 두 탭을 다 읽는다. */
+  .bkc{display:flex;gap:11px;align-items:flex-start;margin-bottom:10px;cursor:pointer}
+  .bkc:active .bkc-c{transform:scale(.99)}
+  .bkc-dt{flex:none;width:40px;text-align:center;padding-top:15px}
+  .bkc-dt b{display:block;font-size:21px;font-weight:800;letter-spacing:-.05em;line-height:1;
+    font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bkc-dt i{display:block;font-style:normal;font-size:10.5px;color:var(--lgray);margin-top:3px}
+  .bkc-dt u{display:block;text-decoration:none;font-size:10px;font-weight:800;
+    color:var(--coral);margin-top:6px}
+  .bkc-dt u.q{color:var(--lgray)}
+  .bkc-past .bkc-dt b{color:#8c877f}
+  .bkc-c{flex:1;min-width:0;background:#fff;border-radius:18px;padding:15px 16px;
+    box-shadow:0 1px 2px rgba(40,30,18,.05),0 5px 15px rgba(40,30,18,.05);transition:transform .12s ease}
+  .bkc-past .bkc-c{background:#fbfaf7;box-shadow:none}
+  .bkc-t{display:flex;align-items:center;gap:6px}
+  .bkc-t b{font-size:14.5px;font-weight:700;letter-spacing:-.03em;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bkc-past .bkc-t b{color:#57503f}
+  .bkc-t u.live{flex:none;text-decoration:none;font-size:10px;font-weight:800;color:#fff;
+    background:var(--coral);border-radius:20px;padding:3px 9px;line-height:1.45}
+  .bkc-dots{flex:none;color:#c9c4bb;font-size:13px;font-weight:700;padding:0 2px;line-height:1}
+  .bkc-m{font-size:11.5px;font-weight:500;color:var(--gray);margin-top:7px;line-height:1.6}
+  .bkc-bar{height:5px;border-radius:4px;background:#eee9e0;margin-top:13px;overflow:hidden}
+  .bkc-bar i{display:block;height:100%;background:var(--coral);border-radius:4px;transition:width .3s}
+  .bkc-bar.q i{background:#cdc8be}
+  .bkc-f{display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:10px;
+    border-top:1px solid rgba(27,24,19,.06)}
+  .bkc-f em{font-style:normal;font-size:11.5px;color:var(--gray);font-weight:600;
+    font-variant-numeric:tabular-nums;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 아래 줄 오른쪽에 붙는 짧은 알림 — 카드 높이를 늘리지 않는다 */
+  .bkc-f s{flex:none;margin-left:auto;text-decoration:none;font-size:10px;font-weight:800;
+    border-radius:20px;padding:3px 9px;line-height:1.45;color:var(--coral-t,#b8460f);background:#fceee4}
+
+  /* 총무에게만 — 점수가 빈 대진 */
+  .bkc-f s.bkc-warn{color:#a5470f;background:#fdeee2}
+  .bkc-f s.bkc-my{color:#8a5a13;background:#fdf1dc}
+  /* 묶음 제목 — 일정 탭의 '이번 주'와 같은 모양 */
+  .bkgrp{display:flex;align-items:center;gap:7px;margin:16px 2px 9px;cursor:pointer;
+    font-size:11px;font-weight:800;color:var(--lgray)}
+  .bkgrp b{font-size:11px;font-weight:800;color:var(--lgray)}
+  .bkgrp span{font-size:11px;color:var(--lgray);font-weight:700}
+  .bkgrp i{flex:1;height:1px;background:#f2efe8;display:block}
+  .bkgrp em{font-style:normal;font-size:11px;color:var(--lgray);display:inline-block;transition:.15s}
+  .bkmk{display:flex;align-items:center;justify-content:center;margin-top:11px;cursor:pointer;
+    border:1.5px dashed #dcd6ca;border-radius:14px;padding:12px 0;
+    font-size:12.5px;font-weight:800;color:var(--coral-d);background:#fff}
+  .bkmk:active{transform:scale(.99)}
   /* 대진 전체 보기 — 코트가 열, 게임이 행. 세로로 훑으면 내 다음 경기가 보인다. */
   .cbwide{ border:1px solid var(--line); border-radius:13px; overflow:hidden; margin-top:10px; background:#fff }
   .cbwide table{ width:100%; border-collapse:collapse; table-layout:fixed }
@@ -343,6 +403,16 @@
   .cbwide td.bad u{ text-decoration:underline; text-decoration-color:#e07b7b;
     text-underline-offset:2px; font-weight:800 }
   .cbwide td.r.bad{ background:transparent; box-shadow:none; color:#c14545 }
+  /* 이동 안내로 덮은 칸 — 그 넷에게만 보인다. 눌러서 점수와 번갈아 본다. */
+  .cbwide td.mvcell{ background:#f6f1e6; color:#7a6238 }
+  .cbwide td.mvcell.go{ background:#fbe6c2; color:#8a5a12 }
+  .cbwide td.mvcell b{ display:block; font-size:12px; font-weight:800; letter-spacing:-.03em }
+  .cbwide td.mvcell span{ display:block; font-size:10.5px; font-weight:600; margin-top:3px; opacity:.85 }
+  .cbwide td.mvcell i{ display:block; font-style:normal; font-size:9.5px; font-weight:600;
+    margin-top:6px; opacity:.55 }
+  .cbwide td.flipped{ box-shadow:inset 0 0 0 1.5px #e0cfa8 }
+  .cbwide td i.back{ display:block; font-style:normal; font-size:9.5px; font-weight:600;
+    color:#a2916f; margin-top:5px }
   .cbwide .lg{ font-size:11.5px; color:var(--gray); padding:10px 12px; background:#faf8f4;
     border-top:1px solid var(--line); line-height:1.6 }
   .cbwide .lg b{ color:var(--coral-d); font-weight:700 }
@@ -772,6 +842,41 @@
   .ob-row.on b{color:var(--coral-d)}
   .ob-dot{flex:none;width:19px;height:19px;border-radius:50%;border:1.5px solid #ddd7cb;background:#fff}
   .ob-row.on .ob-dot{border:6px solid var(--coral);background:#fff}
+  /* 홈 · 오늘 대진 띠 — 대진 화면의 회원 카드와 같은 규칙.
+     흰 종이에 왼쪽 코랄 띠, 크기는 예전 '다음은 내 차례예요' 카드 그대로. */
+  .hmstrip{display:flex;align-items:center;gap:11px;cursor:pointer;background:#fff;
+    border:1px solid #eee9e0;border-left:4px solid var(--coral);border-radius:16px;
+    padding:13px 14px;margin:4px 0 12px;
+    box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)}
+  .hmstrip .n{flex:none;width:44px;height:44px;border-radius:13px;background:#fdf1e9;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:800;color:var(--coral-d);font-variant-numeric:tabular-nums;
+    letter-spacing:-.03em}
+  .hmstrip .tx{flex:1;min-width:0}
+  .hmstrip .l{font-size:11px;font-weight:700;color:#b8460f;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hmstrip .b{font-size:14.5px;font-weight:800;letter-spacing:-.03em;color:var(--ink);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hmstrip .m{font-size:12px;font-weight:500;color:#6b6357;margin-top:3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hmstrip .chev{flex:none;color:var(--coral);font-weight:700;font-size:18px}
+
+  /* 모임 만들기 · 시간과 코트를 눌러 고르는 칩 */
+  .nechips{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .nechips.four{grid-template-columns:repeat(4,1fr)}
+  .nechips.six{grid-template-columns:repeat(6,1fr)}
+  .nechip{border:1px solid #e6e2d9;border-radius:11px;padding:10px 0;text-align:center;cursor:pointer;
+    font-size:12.5px;font-weight:600;color:#57503f;background:#fff;font-variant-numeric:tabular-nums;
+    transition:background .12s,border-color .12s}
+  .nechips.six .nechip{font-size:12px;padding:9px 0}
+  .nechip:active{transform:scale(.97)}
+  .nechip.on{background:var(--butter,#fbe6c2);border-color:#eccf9c;color:#3a2d16;font-weight:700}
+  /* 길이 칸만 잉크로 — 시각과 길이는 다른 종류의 답이라 같은 색이면 두 줄이 한 덩어리로 보인다 */
+  .nechips.four .nechip.on{background:#241d16;border-color:#241d16;color:#fff}
+  .netime{width:100%;box-sizing:border-box;margin-top:8px;font-variant-numeric:tabular-nums}
+  .neecho{background:#f7f4ee;border-radius:12px;padding:11px 13px;margin-top:8px}
+  .neecho b{display:block;font-size:13px;font-weight:800;letter-spacing:-.02em}
+  .neecho span{display:block;font-size:11.5px;color:var(--gray);margin-top:3px;font-weight:500}
   .steps{display:flex;gap:6px;justify-content:center;margin:8px 0 22px}
   .steps i{width:30px;height:5px;border-radius:3px;background:var(--line)}.steps i.on{background:var(--coral)}
   .nrow{display:flex;gap:12px;padding:14px 2px;border-bottom:1px solid #f0efec}
@@ -1006,9 +1111,11 @@
   .btn.done{ background:#e9f6ec; color:#2f9159; box-shadow:none; }
   .btn.cancel{ background:#efe9da; color:#8b8170; box-shadow:none; }
 
-  /* — chips & segments: black active pill — */
+  /* — chips & segments —
+     검정은 '운영진이 손봐야 하는 것' 자리로 정했다. 고른 칩은 그냥 고른 것이니
+     같은 검정을 쓰면 규칙이 흐려진다. 옅은 종이에 검정 글씨로 한 단계 낮춘다. */
   .chip{ border-radius:20px; border:1.5px solid var(--line); background:#ffffff; }
-  .chip.on{ background:var(--ink); border-color:var(--ink); color:#fff; box-shadow:0 4px 12px rgba(27,24,19,.22); }
+  .chip.on{ background:#f1eee7; border-color:#e4dfd4; color:var(--ink); font-weight:700; box-shadow:none; }
   .seg{ background:#eceae6; border-radius:16px; padding:5px; }
   .seg .o{ border-radius:12px; }
   .seg .o.on{ background:var(--brand); color:#fff; box-shadow:0 3px 10px rgba(237,124,48,.20); }
@@ -1304,8 +1411,10 @@
   .hallrow{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;
     margin:0 -2px var(--s4);padding:0 2px 2px}
   .hallrow::-webkit-scrollbar{display:none}
+  /* 타이틀 카드 — 예전 모양 그대로. 흰 카드에 코랄 라벨 하나.
+     버터 배경과 로고 워터마크는 뺐다. */
   .hallc{flex:0 0 auto;width:94px;border:1px solid var(--line);border-radius:14px;
-    padding:13px 11px;cursor:pointer;background:#fff}
+    padding:13px 9px;cursor:pointer;background:#fff;text-align:center}
   .hallc:active{background:var(--felt)}
   .hallc .hl{font-size:var(--t1);font-weight:700;color:var(--coral-d);letter-spacing:-.01em}
   .hallc .hn{font-size:var(--t2);font-weight:600;letter-spacing:-.02em;margin-top:7px;
@@ -1313,6 +1422,27 @@
   .hallc .hv{font-size:var(--t2);font-weight:600;color:var(--ink);margin-top:4px;
     font-variant-numeric:tabular-nums}
   .hallc .hs{font-size:var(--t1);font-weight:400;color:var(--lgray);margin-top:3px}
+
+  /* 순위 목록 — 다섯 열 표를 세 덩어리로.
+     1위는 잉크에 금색, 2·3위는 은·동 느낌 배지. 새 색은 쓰지 않는다. */
+  .rk2{display:flex;align-items:center;gap:11px;padding:11px 4px;border-top:1px solid #f4f1ea;cursor:pointer}
+  .rk2:active{background:#faf8f4}
+  .rk2.mine{background:var(--coral-s);border-radius:12px;border-top-color:transparent}
+  .rk2-m{flex:none;width:26px;height:26px;border-radius:9px;display:flex;align-items:center;
+    justify-content:center;font-size:12px;font-weight:800;background:#f4f1ea;color:#8c877f;
+    font-variant-numeric:tabular-nums}
+  .rk2-m.m1{background:#241d16;color:#f0a93b}
+  .rk2-m.m2{background:#efe9df;color:#5f5749}
+  .rk2-m.m3{background:#f7f1e6;color:#8a6a3a}
+  .rk2-w{flex:1;min-width:0}
+  .rk2-w b{display:block;font-size:14px;font-weight:700;letter-spacing:-.03em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rk2-w b i{font-style:normal;font-size:10.5px;font-weight:800;color:var(--coral-t)}
+  .rk2-w span{display:block;font-size:11px;color:var(--lgray);font-weight:600;margin-top:2px}
+  .rk2-p{flex:none;text-align:right}
+  .rk2-p b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;
+    letter-spacing:-.04em;color:var(--ink)}
+  .rk2-p i{display:block;font-style:normal;font-size:9.5px;color:var(--lgray);font-weight:700}
   .mi-n{font-size:var(--t1);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
   .mi-wr{font-size:var(--t1);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
   .mi-rec{font-size:var(--t1);font-weight:400;color:var(--lgray);text-align:right;white-space:nowrap}
@@ -1382,9 +1512,18 @@
   .psess .ps-date{ display:flex; align-items:baseline; gap:4px; }
   .psess .ps-date b{ font-size:21px; font-weight:800; letter-spacing:-.04em; line-height:1; }
   .psess .ps-date i{ font-style:normal; font-size:11px; font-weight:600; color:rgba(27,24,19,.55); }
-  .psess .ps-badges{ margin-left:auto; display:flex; align-items:center; gap:6px; }
-  .psess .ps-dd{ font-size:11px; font-weight:700; color:var(--coral-d); }
-  .psess .ps-tag{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; background:rgba(255,255,255,.7); color:var(--ink); }
+  /* 딱지 사이가 벌어져 <번개>와 <참여중>이 따로 놀았다.
+     딱지끼리는 4px 로 붙이고, 앞의 D-3 뒤에만 조금 띄운다. */
+  /* 딱지 사이 7px — 글자 11px 을 φ 로 두 번 내린 값.
+     4px 은 붙어 보이고 11px 은 따로 놀았다. */
+  /* flex 의 gap 은 오래된 웹뷰가 무시한다 — 딱지가 붙어 버린다.
+     margin 으로 준다. 7px 은 글자 11px 을 φ 로 두 번 내린 값. */
+  .psess .ps-badges{ margin-left:auto; display:flex; align-items:center; flex-wrap:nowrap; }
+  .psess .ps-badges > *{ margin-left:7px; }
+  .psess .ps-badges > *:first-child{ margin-left:0; }
+  .psess .ps-dd{ font-size:11px; font-weight:700; color:var(--coral-d); white-space:nowrap; }
+  .psess .ps-tag{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px;
+    background:rgba(255,255,255,.7); color:var(--ink); white-space:nowrap; }
   .psess .ps-n{ font-size:14.5px; font-weight:700; letter-spacing:-.03em; margin-bottom:6px; color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   .psess .ps-m{ font-size:11.5px; font-weight:500; color:rgba(27,24,19,.62); line-height:1.6; }
@@ -1393,8 +1532,62 @@
   .psess .ps-av{ width:26px;height:26px;border-radius:50%;background:rgba(27,24,19,.10);color:rgba(27,24,19,.55);
     display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none; }
   .psess .ps-who{ font-size:11.5px;font-weight:600;color:rgba(27,24,19,.7);line-height:1.2; }
-  .psess .ps-chk{ font-size:11px; font-weight:600; color:#1b7a4d;
+  .psess .ps-chk{ font-size:11px; font-weight:600; color:#1b7a4d; white-space:nowrap;
     background:rgba(255,255,255,.75); border-radius:20px; padding:3px 8px; }
+
+  /* 빈 화면 — 로고를 크게 놓으면 스티커처럼 보인다.
+     그림을 빼고 짧은 코랄 선 하나만 두어 문장이 주인공이 되게 한다. */
+  .pzempty{ background:#fff; border:1px solid #eee9e0; border-radius:18px;
+    padding:32px 20px; text-align:center; }
+  .pzempty .rule{ display:block; width:32px; height:2px; border-radius:2px;
+    background:var(--coral); margin:0 auto 16px; }
+  .pzempty b{ display:block; font-size:15px; font-weight:800; letter-spacing:-.035em; }
+  .pzempty span{ display:block; font-size:12px; font-weight:500; color:var(--gray);
+    margin-top:6px; line-height:1.65; }
+  /* 일정 카드 — 왼쪽 기둥에 날짜, 오른쪽에 내용.
+     배경으로 상태를 칠하지 않는다. 예전엔 참석한 모임이 제일 진해서
+     정작 답을 안 한 모임이 조용했다. 이제 <왼쪽 띠 = 내가 할 일> 하나로만 말한다. */
+  /* 표찰형 — 날짜는 카드 밖 왼쪽 기둥. 카드는 테두리 없이 그림자만 얕게 얹어
+     '종이 위에 카드가 놓인' 모양으로. 대진 탭도 같은 뼈대를 쓴다. */
+  .evc{ display:flex; gap:11px; align-items:flex-start; margin-bottom:10px; cursor:pointer; }
+  .evc:active .evc-c{ transform:scale(.99); }
+  .evc-dt{ flex:none; width:40px; text-align:center; padding-top:15px; }
+  .evc-dt b{ display:block; font-size:21px; font-weight:800; letter-spacing:-.05em; line-height:1;
+    font-variant-numeric:tabular-nums; color:var(--ink); }
+  .evc-dt i{ display:block; font-style:normal; font-size:10.5px; color:var(--lgray); margin-top:3px; }
+  /* 날짜는 잉크, '모레·3일 뒤'는 브랜드 코랄 — 숫자는 사실, 상대일은 지금 시점의 안내다 */
+  .evc-dt u{ display:block; text-decoration:none; font-size:10px; font-weight:800;
+    color:var(--coral); margin-top:6px; }
+  .evc-dt u.g{ color:#e09a2b; } .evc-dt u.q{ color:var(--lgray); }
+  .evc-past .evc-dt b{ color:#8c877f; }
+  .evc-c{ flex:1; min-width:0; background:#fff; border-radius:18px; padding:15px 16px;
+    box-shadow:0 1px 2px rgba(40,30,18,.05),0 5px 15px rgba(40,30,18,.05); transition:transform .12s ease; }
+  .evc-past .evc-c{ background:#fbfaf7; box-shadow:none; }
+  .evc-t{ display:flex; align-items:center; gap:6px; }
+  .evc-t b{ font-size:14.5px; font-weight:700; letter-spacing:-.03em; flex:1; min-width:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .evc-past .evc-t b{ color:#57503f; }
+  /* 모임 형태와 참여중 — 제목 옆에 같은 높이·같은 모양의 알약 두 개 */
+  .evc-t s, .evc-t u{ flex:none; text-decoration:none; font-size:10px; font-weight:800;
+    border-radius:20px; padding:3px 9px; line-height:1.45; }
+  .evc-t s{ color:var(--coral-t); background:#fceee4; }
+  .evc-t s.g{ color:#8a5a13; background:#fdf1dc; }
+  .evc-t s.q{ color:var(--gray); background:#f2efe9; }
+  .evc-t u{ color:#1b7a4d; background:#e7f4ec; }
+  .evc-m{ font-size:11.5px; font-weight:500; color:var(--gray); margin-top:7px; line-height:1.6; }
+  /* 아래 줄 위 구분선 — 예전 카드의 '발 아래 나눠진' 리듬을 그대로 쓴다 */
+  .evc-f{ display:flex; align-items:center; gap:8px; margin-top:11px; padding-top:10px;
+    border-top:1px solid rgba(27,24,19,.06); }
+  .evc-av{ width:26px; height:26px; border-radius:50%; background:rgba(27,24,19,.08); flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600; color:rgba(27,24,19,.5); }
+  .evc-f em{ font-style:normal; font-size:11.5px; color:var(--gray); font-weight:600; }
+  /* 만들기는 목록 끝 · 점선으로 한 단계 낮춘다 — 참석 버튼과 무게가 같으면 안 된다 */
+  .evmk{ display:flex; gap:8px; margin:11px 0 2px; }
+  .evmk span{ flex:1; text-align:center; border:1.5px dashed #dcd6ca; border-radius:14px;
+    padding:13px 0; font-size:13px; font-weight:800; color:var(--coral-d); cursor:pointer; background:#fff; }
+  .evmk span.g{ color:#8a5a13; border-color:#e7d5b4; background:#fffdf8; }
+  .evmk span:active{ transform:scale(.985); }
 
   .qlinks{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-top:11px; }
   .qlink{ background:#ffffff; border:1px solid var(--line2); border-radius:18px; padding:13px 4px; text-align:center; cursor:pointer; box-shadow:var(--shadow-s); transition:transform .12s ease; }
@@ -2349,7 +2542,7 @@
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" id="chatBtn" role="button" tabindex="0" aria-label="대화" onclick="goChat()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg><span id="chatCnt" class="tbadge" style="display:none">0</span></div>
-      <div class="bell" role="button" tabindex="0" aria-label="알림" onclick="toggleNotif(event)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+      <div class="bell" id="notifBtn" role="button" tabindex="0" aria-label="알림" onclick="toggleNotif(event)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1b1813" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
     </div>
   </div>
   <div class="scroll" id="scroll">
@@ -2513,7 +2706,20 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.7-0813a';
+const BUILD='v1.0.8-0817g';
+/* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
+   toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
+   그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
+   "오늘 대진이 없다"고 판단해 홈 카드가 통째로 사라졌다. 새벽까지 치는 클럽에서 매번 겪는다. */
+function ymd(d){ const t=d||new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+/* 저녁에 시작해 자정을 넘긴 모임은 아침까지 '오늘 것'으로 본다 */
+function cbTodayish(ds){
+  if(!ds) return true;
+  if(ds===ymd()) return true;
+  const y=ymd(new Date(Date.now()-86400000));
+  return ds===y && new Date().getHours()<10;
+}
 /* 새 빌드가 로드되면 옛 서비스워커 캐시를 한 번 비운다 — 구버전 화면이 눌어붙는 것 방지 */
 try{
   if(localStorage.getItem('matsu_build')!==BUILD){
@@ -2919,7 +3125,7 @@ async function uploadClubLogo(name, file){
   if(!SERVER_OK || !authToken()){ toast('로그인 후 이미지를 올릴 수 있어요'); return; }
   try{
     toast('이미지를 올리는 중…');
-    const dataUrl = await shrinkImage(file, 512, 0.9);
+    const dataUrl = await shrinkLogo(file, 640);
     const cid = (CLUB_IDS||{})[name];
     /* 클럽 로고는 서버 DB 에 넣는다. 예전에는 /uploads 에 파일로 두고
        주소만 기기에 저장해서, 컨테이너가 재시작되면 파일이 사라져
@@ -3083,7 +3289,7 @@ function renderOnboard(){
         <div class="gt">구력으로 등급이 정해져요</div>
         <div class="gg">
           <div class="gline"><b style="color:#2c7a53">C</b><span>2년 미만</span></div>
-          <div class="gline"><b style="color:#2b62c9">B</b><span>2~4년</span></div>
+          <div class="gline"><b style="color:#3a352d">B</b><span>2~4년</span></div>
           <div class="gline"><b style="color:#cf5418">A</b><span>5~9년</span></div>
           <div class="gline"><b style="color:#8a6a1f">S</b><span>10~19년</span></div>
         </div>
@@ -3934,7 +4140,12 @@ async function devLogin(name){
    저장 형태: data = { fmt, cfg, attendees }
    대진 편성은 cfg.seed 기반 결정론이라, 임원진이 발행한 cfg 로
    회원 기기에서 같은 대진이 그대로 재현된다 (전체 라운드를 전송할 필요 없음).   */
-let CLUB_IDS = {};          // 클럽 이름 → 서버 id
+/* 클럽 이름 → 서버 id. 기기에 남겨둔다 — 이 표가 없으면 앱을 켠 직후
+   내가 어느 클럽인지 몰라서 오늘 대진도 못 물어본다(홈 카드가 늦게 뜨던 이유 중 하나). */
+let CLUB_IDS = {};
+try{ const _ci=JSON.parse(localStorage.getItem('matsu_club_ids')||'{}');
+     if(_ci && typeof _ci==='object') CLUB_IDS=_ci; }catch(e){}
+function saveClubIds(){ try{ localStorage.setItem('matsu_club_ids', JSON.stringify(CLUB_IDS)); }catch(e){} }
 let BK_ID = null;           // 현재 대진 id
 let BK_POLL = null, BK_SEEN = 0;
 const _scoreDebounce = {};
@@ -3963,8 +4174,17 @@ function syncActiveClub(){
 }
 async function loadClubIds(){
   if(!SERVER_OK) return;
-  try{ (await api('/clubs')).forEach(c=>{ CLUB_IDS[c.name] = c.id; }); }catch(e){}
-  await adoptServerClubs();
+  /* 전체 클럽 목록과 '내 클럽'을 동시에 부른다.
+     예전에는 목록을 다 받은 뒤에야 내 클럽을 물어서, 남의 클럽은 이미 떠 있는데
+     정작 내가 가입한 클럽만 한 박자 늦게 나타났다. */
+  const all  = api('/clubs').then(r=>{ (r||[]).forEach(c=>{ CLUB_IDS[c.name]=c.id; }); saveClubIds(); }).catch(()=>{});
+  const mine = adoptServerClubs().then(()=>{
+    saveClubIds();
+    /* 내 클럽이 도착하면 그 자리에서 다시 그린다 — 목록을 기다리지 않는다 */
+    try{ if(state.view==='club') renderClub(); }catch(e){}
+    try{ loadMyNext(); }catch(e){}          // 클럽을 알게 된 순간 오늘 대진도 바로 받는다
+  }).catch(()=>{});
+  await Promise.all([all, mine]);
 }
 
 /* 서버에 내 클럽이 있으면 앱의 클럽을 그것으로 교체한다.
@@ -4437,7 +4657,7 @@ async function toggleResting(uid, v){
 
 /* 연명부 Excel 내보내기 — 원본 연명부 서식 재현 (남색 헤더·연하늘 임원행·눈금선 없음) */
 async function exportRoster(){
-  const fname=`${state.activeClub||'클럽'}_연명부_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`;
+  const fname=`${state.activeClub||'클럽'}_연명부_${ymd().replace(/-/g,'')}`;
   const careerOf=(m)=>{ try{ return careerTextFrom(JSON.parse(m.sport_started||'{}')[state.sport])||''; }catch(e){ return ''; } };
   const jdOf=(m)=>{ const d=m.joined_at?new Date(m.joined_at):null;
     return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:''; };
@@ -4605,8 +4825,8 @@ async function syncGameDiary(list){
     let added=0;
     for(const m of done.slice(0,10)){
       if(have.has(m.id)) continue;
-      let ymd=new Date().toISOString().slice(0,10);
-      if(m.start_at){ const d=new Date(m.start_at); if(!isNaN(d)) ymd=d.toISOString().slice(0,10); }
+      let ymd=ymd();
+      if(m.start_at){ const d=new Date(m.start_at); if(!isNaN(d)) ymd=ymd(d); }
       await api('/records',{method:'POST',body:JSON.stringify({
         sport:SP().id, ymd, dist_m:1, rtype:'race',
         note:`오픈매치 · ${(m.title||m.place||'').slice(0,40)}`,
@@ -4669,7 +4889,7 @@ async function autoClubDiary(){
     if(!SERVER_OK || !SRV_EVENT) return;
     const ev=SRV_EVENT;
     // 모임 날짜 추출 (YYYY-MM-DD) — 없으면 오늘
-    let ymd=new Date().toISOString().slice(0,10);
+    let ymd=ymd();
     const m=String(ev.date||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
     if(m) ymd=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
     // 이미 이 모임 엔트리가 있으면 스킵
@@ -4687,16 +4907,116 @@ async function autoClubDiary(){
 
 /* 일정 만들기 (임원진) */
 let NE = null;   // 새 모임 선택 상태 {y,m(0~11), day, time}
-function openNewEvent(){
-  const cid = clubId();
-  if(!SERVER_OK || !cid){ toast('서버에 연결되어야 일정을 만들 수 있어요'); return; }
+function openNewEvent(tag){
   const t=new Date();
-  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', tag:((AC()||{}).officer?'정기':'번개') };
+  const off=(AC()||{}).officer;
+  /* 목록 밖에서 <정기 / 번개>를 이미 골랐으면 그걸 그대로 연다.
+     회원은 어떤 경로로 들어와도 번개만 만들 수 있다. */
+  const want = (tag==='정기'||tag==='번개') ? tag : (off?'정기':'번개');
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null,
+         time:neTopTimes()[0]||'19:00', dur:neTopDur(), end:'', courts:[],
+         tag: off ? want : '번개' };
+  NE.end=neAdd(NE.time, NE.dur);
   renderNewEvent();
 }
 function neMonth(d){ NE.m+=d; if(NE.m<0){NE.m=11;NE.y--;} if(NE.m>11){NE.m=0;NE.y++;} NE.day=null; renderNewEvent(); }
 function nePick(day){ NE.day=day; renderNewEvent(); }
 function neTime(t){ NE.time=t; renderNewEvent(); }
+/* ── 시간은 <시각 두 개>가 아니라 <시작 + 길이>로 받는다 ──
+   종료 시각을 따로 고르려면 19:00에 4시간이면 23:00 이라고 머리로 계산해야 한다.
+   길이를 누르면 종료는 저절로 정해지고, 그래서 종료가 비는 일도 없어진다. */
+function neMin(t){ const m=String(t||'').match(/^(\d{1,2}):(\d{2})$/); return m? (+m[1])*60+(+m[2]) : null; }
+function neAdd(t,mins){ const a=neMin(t); if(a==null) return '';
+  let v=(a+mins)%1440; if(v<0) v+=1440;
+  return String(Math.floor(v/60)).padStart(2,'0')+':'+String(v%60).padStart(2,'0'); }
+function neDurOf(s,e){ const a=neMin(s), b=neMin(e); if(a==null||b==null) return 0;
+  let d=b-a; if(d<=0) d+=1440; return d; }                 // 21:00~00:00 처럼 자정을 넘는 모임도 있다
+function neDurText(m){ const h=Math.floor(m/60), mm=m%60;
+  return `${h?h+'시간':''}${h&&mm?' ':''}${mm?mm+'분':''}`||'0분'; }
+/* 이 클럽이 지난 모임에서 가장 많이 쓴 시작 시각 — 앞자리를 그걸로 채운다.
+   테르메스처럼 늘 19:00 인 클럽은 첫 칸이 이미 맞는 답이다. */
+function neSeenTimes(){
+  const cnt={};
+  const list=[...(SRV_EVENTS||[]), ...(((AC()||{}).events)||[])];
+  list.forEach(e=>{ const m=String((e&&e.date)||'').match(/(\d{1,2}:\d{2})/); if(m) cnt[m[1]]=(cnt[m[1]]||0)+1; });
+  return cnt;
+}
+function neTopTimes(){
+  const cnt=neSeenTimes();
+  const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||neMin(a)-neMin(b)).slice(0,3);
+  const out=[...top];
+  ['06:00','09:00','19:00','20:00','21:00'].forEach(t=>{ if(out.length<5 && !out.includes(t)) out.push(t); });
+  return out.slice(0,5);
+}
+/* 길이도 같은 방식으로 배운다 — 세 시간짜리 클럽에 두 시간이 켜져 있으면 매번 고쳐야 한다 */
+function neTopDur(){
+  const cnt={};
+  [...(SRV_EVENTS||[]), ...(((AC()||{}).events)||[])].forEach(e=>{
+    const m=String((e&&e.date)||'').match(/(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})/);
+    if(m){ const d=neDurOf(m[1],m[2]); if(d) cnt[d]=(cnt[d]||0)+1; } });
+  const k=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+  return k? +k : 180;
+}
+/* 장소 뒤에 "· 1·2·3번 코트" 가 붙는다 — 저장은 한 줄이지만 읽을 때는 나눠 쓴다 */
+function neSplitPlace(v){
+  const s=String(v||'').trim();
+  const m=s.match(/^(.*?)(?:\s*·\s*)?(\d{1,2}(?:\s*·\s*\d{1,2})*)\s*번\s*코트$/);
+  if(!m) return {place:s, courts:[]};
+  return {place:(m[1]||'').trim(),
+          courts:m[2].split(/\s*·\s*/).map(Number).filter(n=>n>=1&&n<=12)};
+}
+function neJoinPlace(place, courts){
+  const p=String(place||'').trim();
+  if(!courts||!courts.length) return p;
+  const c=courts.slice().sort((a,b)=>a-b).join('·')+'번 코트';
+  return p? `${p} · ${c}` : c;
+}
+/* 시간을 직접 적게 한다 — 폰의 시계 굴림판보다 타이핑이 빠르다는 분이 많다.
+   19:30 · 1930 · 19시30분 · 오후 7시 30분 을 모두 19:30 으로 읽는다. */
+function neParseTime(v){
+  const raw=String(v||'').trim();
+  if(!raw) return null;
+  const t=raw.replace(/오전|오후|아침|저녁|밤/g,'').trim();   // 앞뒤 말은 떼고 숫자만 본다
+  let m;
+  if((m=t.match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/))){ }
+  else if((m=t.match(/^(\d{1,2})\s*시\s*(\d{1,2})\s*분?$/))){ }
+  else if((m=t.match(/^(\d{1,2})\s*시$/))){ m=[t,m[1],'0']; }
+  else if((m=t.match(/^(\d{3,4})$/))){ const n=m[1];
+    m=[t, n.slice(0,n.length-2), n.slice(-2)]; }
+  else return null;
+  let hh=+m[1], mm=+m[2];
+  /* 오후/저녁을 붙였으면 12를 더한다 */
+  if(/오후|저녁|밤/.test(raw) && hh<12) hh+=12;
+  if(/오전|아침/.test(raw) && hh===12) hh=0;
+  if(!(hh>=0&&hh<=23) || !(mm>=0&&mm<=59)) return null;
+  return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+}
+/* 입력창에서 빠져나올 때 다듬는다 — 못 읽으면 그대로 두고 알려준다 */
+function neTimeBlur(el, which){
+  const v=neParseTime(el.value);
+  if(v){
+    if(which==='end'){ NE.end=v; NE.dur=neDurOf(NE.time, v); }
+    else { NE.time=v; NE.end=neAdd(v, NE.dur||180); }      // 시작을 옮겨도 길이는 그대로 둔다
+    renderNewEvent(); return;
+  }
+  if(String(el.value||'').trim()===''){ return; }
+  toast('예) 19시 30분은 19:30 으로 적어주세요');
+  el.focus(); el.select&&el.select();
+}
+/* 칩 조작 — 어느 쪽을 눌러도 시작·길이·종료 셋이 항상 맞물려 있게 한다 */
+function neSetStart(t){ NE.time=t; NE.pickStart=false; NE.dur=NE.dur||neTopDur(); NE.end=neAdd(t,NE.dur); renderNewEvent(); }
+function neSetDur(m){ NE.dur=m; NE.pickEnd=false; NE.end=neAdd(NE.time,m); renderNewEvent(); }
+function neOwnStart(){ NE.pickStart=true; renderNewEvent();
+  setTimeout(()=>{const e=document.getElementById('evStart'); if(e){e.focus(); e.select&&e.select();}},60); }
+function neOwnEnd(){ NE.pickEnd=true; renderNewEvent();
+  setTimeout(()=>{const e=document.getElementById('evEnd'); if(e){e.focus(); e.select&&e.select();}},60); }
+function neCourt(n){
+  NE.courts=NE.courts||[];
+  const i=NE.courts.indexOf(n);
+  if(i>=0) NE.courts.splice(i,1); else NE.courts.push(n);
+  NE.courts.sort((a,b)=>a-b);
+  renderNewEvent();
+}
 function drawNewEvent(){ renderNewEvent(); }
 function renderNewEvent(){
   const today=new Date(); today.setHours(0,0,0,0);
@@ -4710,7 +5030,11 @@ function renderNewEvent(){
     grid+=`<div class="cal-d ${on?'on':''} ${past?'off':''}" ${past?'':`onclick="nePick(${d})"`}>${d}</div>`;
   }
   grid+=`</div>`;
-  NE.end = NE.end || '';
+  /* 시작·길이·종료 맞물리기 — 어떤 경로로 들어와도 셋이 채워진 상태에서 그린다 */
+  NE.time = NE.time || neTopTimes()[0] || '19:00';
+  NE.dur  = NE.dur  || (NE.end ? neDurOf(NE.time, NE.end) : neTopDur());
+  NE.end  = NE.end  || neAdd(NE.time, NE.dur);
+  NE.courts = NE.courts || [];
   const _off = (AC()||{}).officer;
   if(!_off) NE.tag='번개';                              // 회원은 번개만
   NE.tag = NE.tag || '정기';
@@ -4723,17 +5047,42 @@ function renderNewEvent(){
     ${grid}
     <div class="fld" style="margin:16px 0 8px"><label>모임 종류</label>
       <div style="display:flex;gap:8px">
-        ${[['정기','#fceee4','#cf5418'],['번개','#eef4ff','#2b62c9']].map(t=>{
+        ${[['정기','#fceee4','#cf5418'],['번개','#fdf1dc','#8a5a13']].map(t=>{
           const locked = t[0]==='정기' && !_off;
           return `<span onclick="${locked?`toast('정기 모임은 임원만 만들 수 있어요 · 번개는 누구나 열 수 있어요')`:`NE.tag='${t[0]}';drawNewEvent()`}"
             style="flex:1;text-align:center;cursor:pointer;border-radius:12px;padding:11px;font-size:14px;font-weight:${NE.tag===t[0]?'700':'500'};${locked?'background:#f5f3ee;color:#c3bdb2':NE.tag===t[0]?`background:${t[2]};color:#fff`:`background:${t[1]};color:${t[2]}`}">${t[0]} 모임${locked?' 🔒':''}</span>`;}).join('')}
       </div>
       ${!_off?`<div style="font-size:11px;font-weight:500;color:#8a857c;margin-top:7px;line-height:1.6">정기 모임은 임원만 만들 수 있어요. 번개는 회원 누구나 열 수 있어요.</div>`:''}</div>
-    <div class="fld" style="margin-top:12px"><label>시작 시간</label>
-      <input id="evStart" type="time" step="60" value="${esc(NE.time||'09:00')}" onchange="neTime(this.value)" style="width:100%;box-sizing:border-box"></div>
-    <div class="fld" style="margin-top:12px"><label>종료 시간 <span style="font-weight:500;color:var(--lgray)">· 선택</span></label>
-      <input id="evEnd" type="time" step="60" value="${esc(NE.end||'')}" onchange="NE.end=this.value" style="width:100%;box-sizing:border-box"></div>
+    ${(()=>{
+      const TOP=neTopTimes(), seen=neSeenTimes();
+      const most=Object.keys(seen).sort((a,b)=>seen[b]-seen[a])[0];
+      const chip=(txt,on,act)=>`<span class="nechip${on?' on':''}" onclick="${act}">${txt}</span>`;
+      const startChips = TOP.map(t=>chip(t, !NE.pickStart && NE.time===t, `neSetStart('${t}')`)).join('')
+        + chip('직접', !!NE.pickStart, 'neOwnStart()');
+      const durChips = [120,180,240].map(m=>chip(`${m/60}시간`, !NE.pickEnd && NE.dur===m, `neSetDur(${m})`)).join('')
+        + chip('직접', !!NE.pickEnd || ![120,180,240].includes(NE.dur), 'neOwnEnd()');
+      const usual = (most && most===NE.time && seen[most]>=2)
+        ? `${esc(state.activeClub||'이 클럽')} 모임은 보통 이 시간이에요` : '';
+      return `
+    <div class="fld" style="margin-top:14px"><label>언제 시작하나요</label>
+      <div class="nechips">${startChips}</div>
+      ${NE.pickStart?`<input id="evStart" class="netime" type="text" inputmode="numeric" placeholder="19:30" maxlength="7"
+        value="${esc(NE.time||'')}" onblur="neTimeBlur(this,'start')">`:''}</div>
+    <div class="fld" style="margin-top:12px"><label>얼마나 하나요</label>
+      <div class="nechips four">${durChips}</div>
+      ${NE.pickEnd?`<input id="evEnd" class="netime" type="text" inputmode="numeric" placeholder="22:30" maxlength="7"
+        value="${esc(NE.end||'')}" onblur="neTimeBlur(this,'end')">`:''}
+      <div class="neecho"><b>${esc(NE.time)} ~ ${esc(NE.end)} · ${neDurText(NE.dur)}</b>
+        ${usual?`<span>${usual}</span>`:''}</div></div>
+    <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px">
+      19시 30분처럼 딱 안 떨어지는 시간은 <b style="color:var(--gray)">직접</b>을 눌러주세요</div>`;
+    })()}
     <div class="fld" style="margin-top:14px"><label>장소</label><input id="evPlace" placeholder="예) 용인 테니스파크" maxlength="24" value="${esc(NE.place||'')}" oninput="NE.place=this.value"></div>
+    <div class="fld" style="margin-top:12px"><label>쓰는 코트 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
+      <div class="nechips six">${[1,2,3,4,5,6].map(n=>
+        `<span class="nechip${NE.courts.includes(n)?' on':''}" onclick="neCourt(${n})">${n}번</span>`).join('')}</div>
+      ${NE.courts.length?`<div class="neecho"><b>${NE.courts.join(' · ')}번 코트</b>
+        <span>대진은 ${Math.min(4,NE.courts.length)}코트로 짤 수 있어요</span></div>`:''}</div>
     ${sel?`<div class="note" style="text-align:left;margin-top:6px">📅 <b>${sel}</b>${NE.place?` · ${esc(NE.place)}`:''}</div>`:''}
     <button class="btn" style="margin-top:12px" onclick="createClubEvent()">${NE.editId?'수정 저장':'모임 만들기'}</button>`;
   document.getElementById('ov').classList.add('on');
@@ -4742,8 +5091,8 @@ function editEvent(eid){
   const e = SRV_EVENT && SRV_EVENT.id===eid ? SRV_EVENT : (SRV_EVENTS||[]).find(x=>x.id===eid);
   if(!e) return;
   const t=new Date();
-  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', end:'', title:e.title||'', place:'',
-         tag:e.tag||'정기', editId:eid };
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'', end:'', dur:0, courts:[],
+         title:e.title||'', place:'', tag:e.tag||'정기', editId:eid };
   Object.assign(NE, evParseDate(e.date));
   renderNewEvent();
 }
@@ -4756,7 +5105,8 @@ function evParseDate(str){
   out.m=+m[1]-1; out.day=+m[2];
   if(m[3]) out.time=m[3];
   out.end = m[4] || '';
-  if(m[5]) out.place=m[5].trim();
+  if(out.time && out.end) out.dur = neDurOf(out.time, out.end);
+  if(m[5]){ const sp=neSplitPlace(m[5].trim()); out.place=sp.place; out.courts=sp.courts; }
   return out;
 }
 /* ── 모임 복제 — 같은 시간·장소로 다음 모임을 연다 ──
@@ -4765,7 +5115,7 @@ function copyEvent(eid){
   const e = (SRV_EVENT && SRV_EVENT.id===eid) ? SRV_EVENT : (SRV_EVENTS||[]).find(x=>x.id===eid);
   if(!e){ toast('모임 정보를 찾을 수 없어요'); return; }
   const t=new Date();
-  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'09:00', end:'',
+  NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'', end:'', dur:0, courts:[],
          title:e.title||'', place:'', tag:e.tag||'정기' };   // editId 없음 = 새 모임
   Object.assign(NE, evParseDate(e.date));
   NE.day=null;                                  // 날짜만 비워 새로 고르게 한다
@@ -4786,7 +5136,11 @@ async function makeInviteImage(eid){
   // 날짜 문자열 분해: "7/12 (토) 09:00 · 장소"
   const m=String(ev.date||'').match(/(\d{1,2}\/\d{1,2})\s*(?:\(([^)]+)\))?\s*(\d{1,2}:\d{2})?(?:\s*·\s*(.+))?/);
   const dTxt=m?`${m[1]}${m[2]?` (${m[2]})`:''}`:(ev.date||'일정 공지 참고');
-  const tTxt=m&&m[3]?m[3]:'', pTxt=m&&m[4]?m[4]:'';
+  const tTxt=m&&m[3]?m[3]:'';
+  /* 장소 뒤에 <· 1·2·3번 코트> 가 붙어 저장된다 — 초대장에서는 장소만 크게 쓴다 */
+  const _sp=(typeof neSplitPlace==='function') ? neSplitPlace(m&&m[4]?m[4]:'') : {place:(m&&m[4])||'',courts:[]};
+  const pTxt=_sp.place || (m&&m[4]?m[4]:'');
+  const ctTxt=(_sp.courts||[]).length ? `${_sp.courts.join('·')}번 코트` : '';
 
   const W=1080,H=1350, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const x=cv.getContext('2d');
@@ -4842,6 +5196,8 @@ async function makeInviteImage(eid){
   x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText(tTxt||'공지 참고', 640, 818);
   x.fillStyle='#1c1b18'; x.font=F(400,33,"'GmarketSansBold',Pretendard,sans-serif"); x.fillText('Venue', L, 926);
   x.fillStyle='#2c2a24'; x.font=F(700,40); x.fillText((pTxt||'클럽 공지 참고').slice(0,18), L, 984);
+  /* 코트는 장소 아래 작은 줄로 — 장소 이름과 붙여 쓰면 한 줄이 잘린다 */
+  if(ctTxt){ x.fillStyle='#8a7550'; x.font=F(500,28); x.fillText(ctTxt, L, 1026); }
   x.fillStyle='#1c1b18'; x.font=F(400,33,"'GmarketSansBold',Pretendard,sans-serif"); x.fillText('Type', L, 1092);
   x.fillStyle='#2c2a24'; x.font=F(700,40);
   x.fillText(`${(SPORTS.find(s=>s.id===(state.sport))||{}).n||''} 게스트`, L, 1150);
@@ -4902,17 +5258,30 @@ async function createClubEvent(){
   const t=(NE.title||'').trim();
   if(!t){ toast('모임 이름을 입력해 주세요'); return; }
   if(!NE.day){ toast('날짜를 선택해 주세요'); return; }
+  if(!NE.time || !NE.end){ toast('시작 시간과 길이를 골라주세요'); return; }
   const WD=['일','월','화','수','목','금','토'];
-  const tRange = NE.end ? `${NE.time}~${NE.end}` : NE.time;
-  const d=`${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${tRange}${NE.place?` · ${NE.place.trim()}`:''}`;
+  const tRange = `${NE.time}~${NE.end}`;
+  /* 코트는 장소 뒤에 붙여 한 줄로 저장한다 — 공지에도 그대로 보이고,
+     대진 만들 때 이 줄에서 코트 수를 다시 읽는다. */
+  const placeTxt = neJoinPlace(NE.place, NE.courts);
+  const d=`${NE.m+1}/${NE.day} (${WD[new Date(NE.y,NE.m,NE.day).getDay()]}) ${tRange}${placeTxt?` · ${placeTxt}`:''}`;
+  /* 서버가 없으면(체험·오프라인) 기기에만 남긴다 — 예전 '모임 만들기' 시트가 하던 일 */
+  if(!SERVER_OK || !clubId()){
+    const c=AC(); if(!c){ toast('클럽 정보를 찾을 수 없어요'); return; }
+    c.events=c.events||[];
+    c.events.unshift({id:'ev'+Date.now(), title:t, date:d, place:placeTxt, attendees:[]});
+    try{ saveMatsu(); }catch(e){}
+    closeOv(); renderClub(); toast('모임 일정을 등록했어요');
+    return;
+  }
   try{
     if(NE.editId){
       await api(`/clubs/${clubId()}/events/${NE.editId}`, {method:'PATCH',
-        body: JSON.stringify({title:t, date:d, place:(NE.place||'').trim()})});
+        body: JSON.stringify({title:t, date:d, place:placeTxt})});
       closeOv(); await loadClubServer(); renderClub(); toast('모임을 수정했어요 · 참석자들에게 알림이 갔어요'); return;
     }
     await api(`/clubs/${clubId()}/events`, {method:'POST',
-      body: JSON.stringify({title:t, date:d, place:(NE.place||'').trim(), tag:NE.tag||'정기'})});
+      body: JSON.stringify({title:t, date:d, place:placeTxt, tag:NE.tag||'정기'})});
     closeOv(); await loadClubServer(); renderClub();
     toast(NE.tag==='번개'?'번개를 열었어요 · 회원들에게 알림이 갔어요':'정기 모임을 만들었어요 · 회원들에게 알림이 갔어요');
   }catch(e){ toast(String(e.message).includes('officer_only')?'모임 생성은 임원진만 가능해요':'모임 생성에 실패했어요'); }
@@ -5246,7 +5615,7 @@ async function maybeNoticePopup(){
   try{
     if(!SERVER_OK || !clubId()) return;
     const list = await api(`/clubs/${clubId()}/notices`);
-    const now=Date.now(), today=new Date().toISOString().slice(0,10);
+    const now=Date.now(), today=ymd();
     const n=(list||[]).find(x=>x.popup_days>0 && now < x.created_at + x.popup_days*86400e3);
     if(!n) return;
     if(localStorage.getItem('npop:'+n.id)===today) return;
@@ -5907,7 +6276,7 @@ function endSeason(){
   state.rating=nr; state.ratingHist.push(nr); state.played=Math.max(state.played,5);
   // 새 시즌
   const nm=nextSeasonName(seasonName); const now=new Date(); const end=new Date(now.getTime()+90*864e5);
-  state.season={no:state.season.no+1,name:nm,start:now.toISOString().slice(0,10),end:end.toISOString().slice(0,10)};
+  state.season={no:state.season.no+1,name:nm,start:ymd(now),end:ymd(end)};
   state.streak=0;
   pushNotif('🏁','시즌이 종료됐어요',`${seasonName} 정산 완료 · ${promote?'승격':relegate?'강등':'유지'} · ${nm} 시작`);
   openSeasonEnd(finalRank,rk.total,promote,relegate,badge,seasonName,nm);
@@ -6628,7 +6997,10 @@ async function openCompareSrv(uid, name){
     `;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
-function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); const bl=document.querySelector('.bell'); if(bl)bl.classList.add('has'); }
+/* 점은 반드시 '알림' 종 아이콘에 붙인다 — querySelector('.bell') 은 앞에 있는
+   대화 아이콘을 먼저 잡아 엉뚱한 곳에 점이 찍혔다. */
+function notifBell(){ return document.getElementById('notifBtn'); }
+function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); const bl=notifBell(); if(bl)bl.classList.add('has'); }
 let ME_PROF=null, ME_PROF_TS=0;
 async function loadMyProfile(){
   if(!SERVER_OK || !state.serverUser) return null;
@@ -6804,7 +7176,7 @@ async function toggleNotif(ev){
   if(ev) ev.stopPropagation();
   const cur=document.getElementById('notifDrop');
   if(cur){ cur.remove(); return; }
-  document.querySelector('.bell') && document.querySelector('.bell').classList.remove('has');
+  { const bl=notifBell(); if(bl) bl.classList.remove('has'); }
 
   const d=document.createElement('div');
   d.id='notifDrop';
@@ -6866,7 +7238,7 @@ async function refreshNotifDot(){
   let n=0;
   try{ for(const c of myOfficerClubs()){ const jr=await api(`/clubs/${c.id}/join-requests`).catch(()=>[]); n+=(jr||[]).length; } }catch(e){}
   try{ [...(OM_LIST||[]),...(HOME_OM_ALL||[])].forEach(m=>{ if(m&&(m.joined||m.is_host)&&(!m.status||m.status==='open')&&!m.past){ const left=(m.cap||0)-(m.cur||0); if(left>0&&left<=3) n++; } }); }catch(e){}
-  const bl=document.querySelector('.bell'); if(bl) bl.classList.toggle('has', n>0);
+  const bl=notifBell(); if(bl) bl.classList.toggle('has', n>0);
 }
 function openNotif(){ toggleNotif(); }
 /* ===== 결제 수단 ===== */
@@ -7488,7 +7860,7 @@ function renderClub(){
   if((SERVER_OK||TRIAL) && clubId() && PROMOS===null && !window._promoOnce){ window._promoOnce=true; cb2LoadPromos().then(()=>renderClub()).catch(()=>{}); }
   if((SERVER_OK||TRIAL) && clubId() && !CB2 && !window._cb2Once){ window._cb2Once=true;
     cb2Load().then(()=>{
-      const today=new Date().toISOString().slice(0,10);
+      const today=ymd();
       if(CB2 && CB2.date && CB2.date!==today) CB2=null;    // 지난 대진은 들고 있지 않는다
       if(CB2 && CB2.mode==='cheongbaek') renderClub();
     }).catch(()=>{}); }
@@ -7591,15 +7963,6 @@ function renderClub(){
         </div>`; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
-/* 지난 모임은 D-3 대신 '이틀 전' 처럼 말로 적는다 */
-function evAgoText(ev){
-  const t=evTime(ev); if(!t) return '';
-  const d=Math.round((Date.now()-t)/86400000);
-  if(d<=0) return '오늘';
-  if(d===1) return '어제';
-  const KO=['','하루','이틀','사흘','나흘','닷새','엿새','이레','여드레','아흐레','열흘'];
-  return (KO[d]||`${d}일`)+' 전';
-}
 // ⑤ 이번 주 일정 — 2단 세션 카드 (Your plan)
     { const c2=AC(); c2.events=c2.events||[]; const off=c2.officer;
       if(SERVER_OK && clubId()) c2 && (c2._evList = SRV_EVENTS||[]);
@@ -7683,8 +8046,8 @@ function evAgoText(ev){
               <span class="ps-badges">
                 ${done?'':`<span class="ps-dd">${esc(evDday(ev))}</span>`}
                 ${done?'<span class="ps-chk" style="background:#e6e2da;color:#7d7669">지난 모임</span>'
-                     :`<span class="ps-tag" style="${(ev.tag==='번개')?'background:#eef4ff;color:#2b62c9':'background:#fff;color:#a5470f'}">${esc(ev.tag||'정기')}</span>${
-                        joined?'<span class="ps-chk" style="margin-left:5px">참여중</span>':''}`}
+                     :`<span class="ps-tag" style="${(ev.tag==='번개')?'background:#fdf1dc;color:#8a5a13':'background:#fff;color:#a5470f'}">${esc(ev.tag||'정기')}</span>${
+                        joined?'<span class="ps-chk">참여중</span>':''}`}
               </span></div>
             <div class="ps-n">${esc(title)}</div>
             <div class="ps-m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}<br>${esc(place)}</div>
@@ -7781,6 +8144,31 @@ function omDday(t){
   return d>0?`D-${d}`:'';
 }
 /* 'D-6' · '내일' · '오늘' — 날짜만 보고 며칠 남았는지 세지 않아도 되게 */
+/* 2026-08-14 를 '8월 14일 (금)' 으로 — 어르신 회원에게 ISO 날짜는 안 읽힌다.
+   모임 기록·지난 모임 시트가 이 두 함수를 쓴다. */
+function ymdKo(v){
+  const m=String(v||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return String(v||'');
+  const d=new Date(+m[1],+m[2]-1,+m[3]);
+  return `${+m[2]}월 ${+m[3]}일 (${WD_KO[d.getDay()]})`;
+}
+function pastDayTitle(l){
+  const t=String((l&&l.title)||'').trim();
+  const d=ymdKo((l&&l.date)||'');
+  if(!t) return d || '모임';
+  /* 제목이 날짜뿐이면(2026-08-14) 한글 날짜로 바꿔 보여준다 */
+  if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(t)) return d;
+  return t;
+}
+/* 지난 모임은 D-3 대신 '이틀 전' 처럼 말로 적는다 */
+function evAgoText(ev){
+  const t=evTime(ev); if(!t) return '';
+  const d=Math.round((Date.now()-t)/86400000);
+  if(d<=0) return '오늘';
+  if(d===1) return '어제';
+  const KO=['','하루','이틀','사흘','나흘','닷새','엿새','이레','여드레','아흐레','열흘'];
+  return (KO[d]||`${d}일`)+' 전';
+}
 function evDday(e){
   const t=evTime(e); if(t>=8.64e15) return '';
   const now=new Date();
@@ -7788,6 +8176,15 @@ function evDday(e){
   const d=Math.round((new Date(t).setHours(0,0,0,0)-today)/864e5);
   if(d===0) return '오늘'; if(d===1) return '내일'; if(d===2) return '모레';
   return d>0 ? `D-${d}` : '';
+}
+/* D-5 보다 '5일 뒤'가 읽기 쉽다 — 목록 왼쪽 기둥과 맨 윗줄에 쓴다 */
+function evDdayWord(e){
+  const t=evTime(e); if(t>=8.64e15) return '';
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  const d=Math.round((new Date(t).setHours(0,0,0,0)-today)/864e5);
+  if(d===0) return '오늘'; if(d===1) return '내일'; if(d===2) return '모레';
+  return d>0 ? `${d}일 뒤` : '';
 }
 /* 정렬용 — 모임 날짜·시간을 숫자로. 못 읽으면 맨 뒤로 보낸다. */
 function evTime(e){
@@ -8273,11 +8670,16 @@ function cwCanNext(){ const c=cw();
 function cwLogoPick(el){
   const f=(el.files||[])[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ const img=new Image(); img.onload=()=>{                 // 정사각 512px로 줄여 올린다
-      const cv=document.createElement('canvas'); cv.width=cv.height=512;
+  rd.onload=()=>{ const img=new Image(); img.onload=()=>{                 // 정사각 640px · 무손실
+      const cv=document.createElement('canvas'); cv.width=cv.height=640;
       const sz=Math.min(img.width,img.height);
-      cv.getContext('2d').drawImage(img,(img.width-sz)/2,(img.height-sz)/2,sz,sz,0,0,512,512);
-      cw().logoImg=cv.toDataURL('image/jpeg',0.82); cw().logoMode='img'; openCreateClub();
+      const cx=cv.getContext('2d');
+      cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high';
+      cx.drawImage(img,(img.width-sz)/2,(img.height-sz)/2,sz,sz,0,0,640,640);
+      let u=cv.toDataURL('image/png');
+      if(u.length>2_000_000){ const w=cv.toDataURL('image/webp',0.95);
+        u = w.startsWith('data:image/webp') ? w : cv.toDataURL('image/jpeg',0.94); }
+      cw().logoImg=u; cw().logoMode='img'; openCreateClub();
     }; img.src=rd.result; };
   rd.readAsDataURL(f);
 }
@@ -8509,7 +8911,7 @@ function drawClubPreview(){
       ${kv('정기 모임', esc(c.meet_days||c.days||'미정'))}
       ${kv('실력', esc(c.avg_grade||c.level||'모든 레벨'))}
       ${kv('홈구장', esc(c.court||c.home_court||'미정'))}
-      ${kv('입회비', c.entry?`<span style="color:var(--coral-d)">${c.entry.toLocaleString()}원</span>`:'없음')}
+      ${kv('입회비', c.entry?`${c.entry.toLocaleString()}원`:'없음')}
       ${kv('월 회비', c.season?`${c.season.toLocaleString()}원`:'없음')}
       ${kv('게스트비', c.guestFee?`${c.guestFee.toLocaleString()}원`:(c.guestFee===0?'무료':'없음'))}
     </div>
@@ -9079,7 +9481,7 @@ async function openClubInvite(){
         ${kv('회원', (d.members||c.m||0)+'명')}
         ${kv('정기 모임', esc(d.meet_days||c.meet_days||'미정'))}
         ${kv('홈구장', esc(d.home_court||c.court||'미정'))}
-        ${kv('입회비', won(d.entry_fee!=null?d.entry_fee:c.entry), 'var(--coral-d)')}
+        ${kv('입회비', won(d.entry_fee!=null?d.entry_fee:c.entry))}
         ${kv('월 회비', won(d.season_fee!=null?d.season_fee:c.season))}
       </div>
       <div style="height:8px;background:#f6f4ef;margin-top:14px"></div>
@@ -9164,6 +9566,13 @@ function closeClubPage(){
 }
 /* 서버 모임(SRV_EVENTS)과 기기 저장 모임(AC().events)을 합쳐서 본다.
    한쪽만 보면 '모임이 없다'고 잘못 판단한다. */
+/* 빈 화면은 브랜드를 보여줄 유일한 여백이다 — 회색 안내문 대신 로고 프레첼을 놓고,
+   "없어요"가 아니라 앞으로 무엇이 될 자리인지 말한다. */
+function pzEmpty(title, sub, btn){
+  return `<div class="pzempty">
+    <span class="rule"></span>
+    <b>${title}</b><span>${sub}</span>${btn||''}</div>`;
+}
 function clubEvents(){
   const local=((AC()||{}).events)||[];
   const srv=(typeof SRV_EVENTS!=='undefined' && Array.isArray(SRV_EVENTS)) ? SRV_EVENTS : [];
@@ -9317,8 +9726,8 @@ function clubTabBracket(){
       <span class="bkhd">
         <span class="bkt">${esc(b.title||'모임 미지정')}</span>
         ${live?`<span class="bklive">진행 중</span>`:`<span class="bkdone">종료</span>`}
-        ${off?`<button class="bkdel" onclick="event.stopPropagation();delBracket(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 삭제">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>`:''}</span>
+        ${off?`<button class="bkdel" onclick="event.stopPropagation();bkMenu(${b.event_id||0},'${esc(b.title||'대진')}')" aria-label="대진 도구">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`:''}</span>
       ${b.date?`<span class="bkmeta">${esc(b.date)}</span>`:''}
       <span class="bkmeta">${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트</span>
       <span class="bkbar"><i style="width:${pct}%${live?'':';background:#cdc8be'}"></i></span>
@@ -9348,6 +9757,26 @@ function clubTabBracket(){
     </div>`:''}
     ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
     ${done.length?`<div class="bkgl" style="margin-top:20px">지난 대진 <b>${done.length}</b></div>${done.map(row).join('')}`:''}`;
+}
+/* 삭제는 메뉴 안으로 — 진행 중인 대진 카드 옆에 휴지통이 늘 떠 있으면
+   경기 도는 중에 잘못 눌러 그날 기록이 통째로 날아간다. */
+function bkMenu(eid, title){
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3>${esc(title||'대진')}</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">이 대진을 어떻게 할까요</div>
+    <div onclick="closeOv();CB2_EVENT=${eid};openClubBracketView()" style="display:flex;align-items:center;
+        border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600">대진 열기</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">점수를 넣거나 진행 상황을 봐요</div></div>
+      <span style="color:#cdc8be;font-size:17px">›</span></div>
+    <div onclick="closeOv();delBracket(${eid},'${esc(title||'대진').replace(/'/g,'')}')" style="display:flex;align-items:center;
+        border:1px solid #f0d9d9;border-radius:14px;padding:14px;margin-top:9px;cursor:pointer">
+      <div style="flex:1"><div style="font-size:14px;font-weight:600;color:#c14545">대진 삭제</div>
+      <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">입력한 점수와 그날 기록도 함께 사라져요</div></div>
+      <span style="color:#e2b8b8;font-size:17px">›</span></div>
+    <button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button></div>`;
+  document.getElementById('ov').classList.add('on');
 }
 async function delBracket(eid, title){
   if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수와 그날 기록도 함께 사라져요.`)) return;
@@ -9428,12 +9857,27 @@ function clubTabRecords(){
   games.forEach(g=>{
     [['teamA','sa','sb'],['teamB','sb','sa']].forEach(([T,k,ok])=>{
       (g[T]||[]).forEach(p=>{ if(!p) return;
-        const t=st[p.id]=st[p.id]||{id:p.id,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0,days:new Set()};
+        const t=st[p.id]=st[p.id]||{id:p.id,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
         t.g++; t.gf+=g[k]; t.ga+=g[ok]; if(g.date)t.days.add(g.date);
         if(g[k]>g[ok]) t.w++; else if(g[k]<g[ok]) t.l++; else t.d++; });
     });
+    /* 남의 경기 점수를 대신 넣어준 것 — 서버가 by(넣은 사람)·byHelp(대신 넣음)를 남긴다.
+       코트 밖에서 한 일이 승패에만 쌓이면 아무 데도 안 남는다. */
+    if(g.byHelp && g.by){
+      const t=st[g.by]=st[g.by]||{id:g.by,name:'',w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
+      t.help++;
+    }
   });
-  const list=Object.values(st).map(t=>({...t, gd:t.gf-t.ga, pt:dayPoints(t.w,t.d),
+  /* 대신 넣어준 사람이 그날 안 뛰었으면 이름이 비어 있다 — 다른 경기에서 찾아 채운다 */
+  { const nameOf={};
+    all.forEach(g=>[...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{ if(p&&p.id)nameOf[p.id]=p.name; }));
+    Object.values(st).forEach(t=>{ if(!t.name) t.name=nameOf[t.id]||''; });
+    /* 그래도 못 찾으면 명부에서 */
+    Object.values(st).forEach(t=>{ if(!t.name){
+      const r=(SRV_ROSTER||[]).find(x=>String(x.user_id||x.id)===String(t.id));
+      if(r) t.name=r.name||''; } });
+  }
+  const list=Object.values(st).map(t=>({...t, help:t.help||0, gd:t.gf-t.ga, pt:dayPoints(t.w,t.d),
       wr:t.g?Math.round(t.w/t.g*100):0, dayN:t.days.size}))
     .sort((a,b)=> b.pt-a.pt || b.gd-a.gd || b.g-a.g);
   const days=new Set(games.map(g=>g.date).filter(Boolean));
@@ -9455,7 +9899,12 @@ function clubTabRecords(){
     {l:'팡팡쳐요', s:'최다 득점',   p:best('gf',false),   f:r=>`${r.gf}점`},
     {l:'안내줘요', s:'최소 실점',   p:best('ga',true,3),  f:r=>`${r.ga}실점`},
     {l:'매주와요', s:'최다 참여',   p:best('dayN',false), f:r=>`${r.dayN}회`},
-  ].filter(x=>x.p);
+    /* 잘 친 사람만 칭찬하면 코트 밖에서 도운 사람은 남는 게 없다.
+       남의 점수를 대신 넣어준 횟수 — 한 번이라도 있으면 자리를 만든다. */
+    {l:'기록요정', s:'점수 넣어준 수', p:(()=>{ const f=list.filter(r=>r.help>0);
+        return f.length ? f.slice().sort((a,b)=>b.help-a.help)[0] : null; })(),
+      f:r=>`${r.help}개`},
+  ].filter(x=>x.p && x.p.name);
   if(HALL.length){
     h+=`<div class="hallrow">${HALL.map(x=>`
       <div class="hallc" onclick="openClubMember(${jsArg(x.p.id)},${jsArg(x.p.name)})">
@@ -9469,18 +9918,16 @@ function clubTabRecords(){
     <span class="gt3">시즌 랭킹</span>
     <span class="gt1 gmute">모임 ${days.size}회 · ${games.length}경기</span>
     <span class="gt1" style="margin-left:auto;color:var(--coral-d);font-weight:600;cursor:pointer" onclick="openPastMeetings()">지난 모임 ›</span></div>
-    <div class="mi-tb mi-th" style="grid-template-columns:26px 1fr 54px 46px 48px">
-      <span>#</span><span>선수</span><span style="text-align:center">전적</span>
-      <span style="text-align:right">득실</span><span style="text-align:right">포인트</span></div>`;
+`;
+  /* 표를 목록으로 — 다섯 열을 <순위 배지 · 이름과 전적 · 점수> 세 덩어리로 줄인다.
+     1위는 잉크에 금색, 2·3위는 은·동 느낌의 옅은 배지. 색을 늘리지 않고 시상대를 만든다. */
   list.forEach((r,i)=>{
     const me=String(r.id)===String(meId);
-    h+=`<div class="mi-tb mi-tr tap" style="grid-template-columns:26px 1fr 54px 46px 48px${me?';background:var(--coral-s);border-radius:10px':''}"
-        onclick="openClubMember(${jsArg(r.id)},${jsArg(r.name)})">
-      <div style="font-size:var(--t1);font-weight:600;color:${i<3?'var(--coral-d)':'var(--lgray)'};text-align:center">${i+1}</div>
-      <div class="mi-nm">${esc(r.name)}${me?' <span class="gt1 gmute">(나)</span>':''}</div>
-      <div class="mi-rec" style="text-align:center">${maskNum(`${r.w}승 ${r.l}패`,r.name)}</div>
-      <div class="mi-n" style="text-align:right;color:${r.gd>=0?'#2f9159':'#d1614f'}">${maskNum((r.gd>=0?'+':'')+r.gd,r.name)}</div>
-      <div style="font-size:var(--t2);font-weight:600;text-align:right;color:var(--coral-d);font-variant-numeric:tabular-nums">${maskNum(r.pt,r.name)}</div></div>`;
+    h+=`<div class="rk2${me?' mine':''}" onclick="openClubMember(${jsArg(r.id)},${jsArg(r.name)})">
+      <span class="rk2-m${i<3?' m'+(i+1):''}">${i+1}</span>
+      <span class="rk2-w"><b>${esc(r.name)}${me?' <i>나</i>':''}</b>
+        <span>${maskNum(`${r.w}승 ${r.l}패`,r.name)} · 득실 ${maskNum((r.gd>=0?'+':'−')+Math.abs(r.gd),r.name)}</span></span>
+      <span class="rk2-p"><b>${maskNum(r.pt,r.name)}</b><i>점</i></span></div>`;
   });
   h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
     승 ${PT_WIN}점 · 무 ${PT_DRAW}점 · 패 0점 · 동점이면 득실차 순<br>
@@ -9607,18 +10054,10 @@ function clubTabNews(){
   }
   const feed=(typeof CLUB_FEED!=='undefined' && Array.isArray(CLUB_FEED)) ? CLUB_FEED : [];
   if(!feed.length){
-    return h+`<div class="card" style="text-align:center;padding:34px 22px">
-      <div style="width:56px;height:56px;border-radius:18px;background:var(--coral-s);margin:0 auto;
-        display:flex;align-items:center;justify-content:center;color:var(--coral-d)">${li('photo',26)}</div>
-      <div style="font-size:15.5px;font-weight:700;letter-spacing:-.02em;margin-top:14px">아직 올라온 소식이 없어요</div>
-      <p style="font-size:12.5px;color:var(--lgray);margin-top:7px;line-height:1.65">
-        오늘 경기 사진 한 장, 코트 예약 소식, 회식 공지…<br>작은 기록이 쌓이면 클럽이 살아나요.</p>
-      <div style="display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:14px">
-        ${['오늘 경기 사진','새 회원 환영','코트 소식'].map(t=>
-          `<span style="font-size:11.5px;font-weight:600;color:var(--gray);background:var(--felt);
-            border-radius:14px;padding:6px 11px">${t}</span>`).join('')}</div>
-      <button class="btn" style="max-width:220px;margin:16px auto 0" onclick="openClubPost()">＋ 소식 올리기</button>
-    </div>`;
+    /* 일정·대진과 같은 빈 화면으로 — 탭마다 다른 모양이면 같은 앱으로 안 보인다 */
+    return h + pzEmpty('여기에 클럽 이야기가 쌓여요',
+        '오늘 경기 사진 한 장, 코트 예약 소식, 회식 공지…<br>작은 기록이 모이면 클럽이 살아나요')
+      + `<div class="evmk" style="margin-top:11px"><span onclick="openClubPost()">＋ 소식 올리기</span></div>`;
   }
   const meId=(state.serverUser||{}).id;
   /* 캡슐 대신 버튼 하나로 — 목록이 있을 때만 위에 둔다 */
@@ -9825,7 +10264,7 @@ function clubTabMe(){
   let h=backBar+`<div class="mi-stat">
     <div><div class="mi-sv">${gf}</div><div class="mi-sl">총 득점</div></div>
     <div><div class="mi-sv">${ga}</div><div class="mi-sl">총 실점</div></div>
-    <div><div class="mi-sv" style="color:${gd>=0?'#2f9159':'#d1614f'}">${gd>=0?'+':''}${gd}</div><div class="mi-sl">득실차</div></div>
+    <div><div class="mi-sv" style="color:${gd>=0?'var(--ink)':'var(--lgray)'}">${gd>=0?'+':'−'}${Math.abs(gd)}</div><div class="mi-sl">득실차</div></div>
     <div><div class="mi-sv">${W}<span class="mi-sl" style="margin:0 0 0 1px">승</span> ${L}<span class="mi-sl" style="margin:0 0 0 1px">패</span></div><div class="mi-sl">전적</div></div>
   </div>`;
 
@@ -10015,7 +10454,7 @@ function clubTabMe(){
     /* 종목별 — 대회에 어떤 종목으로 나갈지 정할 때 쓴다 */
     { const K={};
       my.forEach(x=>{ const k=x.label||'남복'; K[k]=K[k]||{g:0,w:0}; K[k].g++; if(x.win)K[k].w++; });
-      const ORD=[['남복','#2b62c9'],['혼복','#7a5cc4'],['여복','#c2437a']];
+      const ORD=[['남복','#3a352d'],['혼복','#6b6357'],['여복','#8c877f']];
       h+=`<div style="display:flex;gap:8px;margin-top:11px">${ORD.map(([k,c])=>{
         const v=K[k];
         return `<div style="flex:1;background:var(--paper,#faf8f4);border-radius:12px;padding:12px 6px;text-align:center">
@@ -10113,12 +10552,12 @@ function clubTabMe(){
     let o=`<div class="mi-day">
       <div class="mi-dayhd">
         <div style="flex:1;min-width:0">
-          <div class="mi-dayt">${esc(d.date||'날짜 미상')}</div>
+          <div class="mi-dayt">${esc(ymdKo(d.date)||'날짜 미상')}</div>
           <div class="mi-days">${d.rows.length}경기 · ${w}승 ${l}패${dr?` ${dr}무`:''}${
             rank>=0?` · ${tbl.length}명 중 <b style="color:var(--ink);font-weight:600">${rank+1}위</b>`:''}</div></div>
         <div style="flex:none;text-align:right">
           <div style="font-size:var(--t2);font-weight:600;color:var(--coral-d);font-variant-numeric:tabular-nums">+${got} PTS</div>
-          <div class="mi-days" style="color:${dgd>=0?'#2f9159':'#d1614f'}">득실 ${dgd>=0?'+':''}${dgd}</div></div></div>`;
+          <div class="mi-days">득실 ${dgd>=0?'+':'−'}${Math.abs(dgd)}</div></div></div>`;
     d.rows.forEach(r=>{
       /* 예전: '이기훈 · vs 진성천, 김진수B' — 파트너 뒤 점이 갈 곳이 없고
          파트너는 · 상대는 , 로 구분자가 섞였다. 파트너를 분명히 하고 · 하나로 통일한다. */
@@ -10319,84 +10758,9 @@ function setRegion(r){state.region=r;renderClub();}
 function searchClub(v){state._q=v;renderClub();const el=document.getElementById('cq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
 function switchClub(nm){state.activeClub=nm;state._draft='';state._photo=false;renderClub();}
 function setAttend(v){ setRsvp(v===true?'going':'absent'); }
-function openEventCreate(){
-  // 가로 날짜 핀 (오늘부터 14일) — 점은 이미 잡힌 모임이 있는 날
-  state._evDate=null; state._evTime='09:00'; state._evEnd='';
-  const W=['일','월','화','수','목','금','토']; const now=new Date(); let pins='';
-  const c=AC(); const busy=new Set((c&&c.events||[]).map(e=>e.date));
-  for(let i=0;i<14;i++){ const d=new Date(now.getTime()+i*864e5); const mo=d.getMonth()+1, da=d.getDate(), w=W[d.getDay()];
-    const key=`${mo}/${da} (${w})`;
-    pins+=`<div class="dpin ${busy.has(key)?'has':''}" data-k="${key}" onclick="pickEvDate(this)"><div class="dp-w">${w}</div><div class="dp-d">${da}</div><div class="dp-dot"></div></div>`; }
-  // 참여 예상 멤버 미리보기 (아바타 스택)
-  const mem=clubMembersList().slice(0,4); const colors=['#ec6a2e','#8c6fd6','#2fae6e','#f0a93b'];
-  const stack=mem.map((m,i)=>`<div class="ma" style="background:${colors[i%4]}">${m[0]}</div>`).join('')+`<div class="ma more">+${Math.max(0,clubMembersList().length-4)}</div>`;
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>모임 만들기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">날짜를 고르고 모임을 올리면 회원들이 <b>참여 버튼</b>으로 대기열에 들어와요.</div>
-    <div class="fld"><label>모임 이름</label><input id="evTitle" placeholder="예) 7월 첫째주 정기모임" maxlength="24"></div>
-    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:2px 0 8px">날짜</label>
-    <div class="dpin-row">${pins}</div>
-    <div class="tmrow" style="margin-top:10px">
-      <div class="fld"><label>시작 시간</label>
-        <input id="evStart" type="time" step="60" value="09:00" onchange="setEvStart(this.value)"></div>
-      <div class="fld"><label>종료 시간 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
-        <input id="evEnd" type="time" step="60" value="" onchange="setEvEnd(this.value)"></div>
-    </div>
-    <div id="evTimeNote" style="font-size:11.5px;font-weight:500;color:var(--lgray);margin:2px 2px 0">1분 단위로 정할 수 있어요</div>
-    <div class="fld" style="margin-top:10px"><label>장소 <span style="font-weight:400;color:var(--lgray)">· 선택</span></label>
-      <input id="evPlace" maxlength="30" placeholder="예) ${esc(((AC()||{}).court)||'용인 테니스파크')}"></div>
-    <div class="card" style="margin:8px 0 0;padding:14px;display:flex;align-items:center;justify-content:space-between">
-      <div><div style="font-size:14px;font-weight:500">참여 예상 회원</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">올리면 대기열로 모여요</div></div>
-      <div class="memstack">${stack}</div></div>
-    <button class="btn" style="margin-top:16px" onclick="submitEventCreate()">일정 등록</button>`;
-  document.getElementById('ov').classList.add('on');
-  setTimeout(()=>{const e=document.getElementById('evTitle');if(e)e.focus();},100);
-}
-function pickEvDate(el){ document.querySelectorAll('.dpin').forEach(p=>p.classList.remove('on')); el.classList.add('on'); state._evDate=el.dataset.k; }
-function setEvStart(v){ state._evTime=v||''; evTimeNote(); }
-function setEvEnd(v){ state._evEnd=v||''; evTimeNote(); }
-/* 종료가 시작보다 이르면 조용히 두지 않는다 — 등록 후에야 알면 다시 고쳐야 한다. */
-function evTimeNote(){
-  const n=document.getElementById('evTimeNote'); if(!n) return;
-  const s=state._evTime||'', e=state._evEnd||'';
-  if(s && e && e<=s){ n.textContent='종료 시간이 시작보다 빨라요'; n.style.color='var(--red)'; return; }
-  if(s && e){
-    const [sh,sm]=s.split(':').map(Number), [eh,em]=e.split(':').map(Number);
-    const mins=(eh*60+em)-(sh*60+sm);
-    n.textContent=`${Math.floor(mins/60)}시간 ${mins%60?`${mins%60}분 `:''}동안 진행해요`;
-    n.style.color=''; return;
-  }
-  n.textContent='1분 단위로 정할 수 있어요'; n.style.color='';
-}
-/* 이름을 createEvent 로 두면 인라인 onclick 안에서 document.createEvent 가 먼저 잡혀
-   "Failed to execute 'createEvent' on 'Document'" 가 난다. 반드시 다른 이름을 쓴다. */
-async function submitEventCreate(){
-  const t=((document.getElementById('evTitle')||{}).value||'').trim();
-  if(!t){toast('모임 이름을 입력해 주세요');return;}
-  if(!state._evDate){toast('날짜를 선택해 주세요');return;}
-  const place=((document.getElementById('evPlace')||{}).value||'').trim();
-  const st=((document.getElementById('evStart')||{}).value||state._evTime||'').trim();
-  const en=((document.getElementById('evEnd')||{}).value||'').trim();
-  if(!st){toast('시작 시간을 정해 주세요');return;}
-  if(en && en<=st){toast('종료 시간이 시작보다 빨라요');return;}
-  const span = en ? `${st}~${en}` : st;
-  const d=`${state._evDate} ${span}`.trim() + (place?` · ${place}`:'');
-  const cid=clubId();
-  if(SERVER_OK && cid){
-    try{
-      await api(`/clubs/${cid}/events`, {method:'POST',
-        body: JSON.stringify({ title:t, date:d, place, tag:((AC()||{}).officer?'정기':'번개') })});
-      closeOv(); await loadClubServer(); renderClub();
-      toast('모임 일정을 등록했어요 · 회원들에게 알림이 갔어요');
-    }catch(e){
-      toast(String(e.message).includes('officer_only')?'모임 생성은 운영진만 가능해요':'모임을 등록하지 못했어요');
-    }
-    return;
-  }
-  const c=AC(); if(!c){ toast('클럽 정보를 찾을 수 없어요'); return; }
-  c.events=c.events||[]; c.events.unshift({id:'ev'+Date.now(),title:t,date:d,place,attendees:[]});
-  try{ saveMatsu(); }catch(e){}
-  closeOv(); renderClub(); toast('모임 일정을 등록했어요');
-}
+/* 모임 만들기 시트는 한 벌만 둔다 — 예전에는 여기와 renderNewEvent 두 곳이 따로 있어
+   한쪽만 고치면 회원이 보는 화면은 그대로였다. */
+function openEventCreate(tag){ openNewEvent(tag); }
 async function joinEvent(id){
   if(SERVER_OK && clubId()){
     // 서버 모임: 탭하면 참석 ↔ 취소 (rsvp)
@@ -10733,6 +11097,29 @@ let CLUB_FEED = [];
    base64 를 그대로 글에 넣으면 DB 가 순식간에 부풀어 오른다. */
 /* 사진을 긴 변 1600px, JPEG 품질 0.82 로 줄인다.
    폰 사진은 4~8MB 라 그대로 올리면 서버 한도에 걸리고, 회원들 데이터도 축낸다. */
+/* 로고는 사진이 아니다 — 얇은 글씨와 선이 들어 있어 JPEG로 저장하면
+   글자 주변에 번짐(링잉)이 생긴다. 무손실 PNG로 담고, 너무 크면 WebP로 내린다.
+   화면에서는 76px 원에 3배 화면이면 228px가 필요하니 640px로 올린다. */
+async function shrinkLogo(file, maxSide=640){
+  const bmp = await createImageBitmap(file).catch(()=>null);
+  if(!bmp){
+    return await new Promise((ok,ng)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=ng; r.readAsDataURL(file); });
+  }
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width*scale)), h = Math.max(1, Math.round(bmp.height*scale));
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+  cx.drawImage(bmp, 0, 0, w, h);
+  bmp.close && bmp.close();
+  let url = cv.toDataURL('image/png');                       // 무손실 — 글씨가 안 번진다
+  if(url.length > 2_000_000){
+    const webp = cv.toDataURL('image/webp', 0.95);
+    if(webp.startsWith('data:image/webp')) url = webp;        // 지원 안 하면 png 그대로
+    else url = cv.toDataURL('image/jpeg', 0.94);
+  }
+  return url;
+}
 async function shrinkImage(file, maxSide=1600, quality=0.82){
   const bmp = await createImageBitmap(file).catch(()=>null);
   if(!bmp){                                        // 지원 안 하는 브라우저 → 원본
@@ -11137,7 +11524,7 @@ function drawArchiveOne(){
         const done=g.sa!=null&&g.sb!=null;
         const aWin=done&&g.sa>g.sb, bWin=done&&g.sb>g.sa;
         return `<div class="card" style="padding:13px 15px">
-          <div class="t-lbl">${esc(String(g.court))}코트</div>
+          <div class="t-lbl">${esc(String(g.court))}번 코트</div>
           <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
             <div class="t-bdy" style="flex:1;min-width:0;font-weight:${aWin?800:500};color:${done&&!aWin?'var(--lgray)':'var(--ink)'}">${(g.A||[]).map(esc).join(' + ')||'—'}</div>
             <div style="flex:none;text-align:center;min-width:56px">
@@ -11404,7 +11791,7 @@ function pickOrder(ri,ci,team,si){
   const cap=team==='b'?bw.capB:bw.capW;
   const cur=(state.bw.order[ri+'-'+ci]||bw.rounds[ri].courts[ci]);
   let h=`<div class="sh-top"><h3>${team==='b'?'청팀':'백팀'} 선수 배치</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">${ri+1}라운드 ${ci+1}코트 · ${si+1}번 자리에 넣을 선수를 고르세요. (팀장 ${cap} 작성)</div>
+    <div class="sd">${ri+1}번째 게임 ${ci+1}번 코트 · ${si+1}번 자리에 넣을 선수를 고르세요. (팀장 ${cap} 작성)</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">`;
   pool.forEach(nm=>{ const on=cur[team][si]===nm; h+=`<div onclick="setOrder(${ri},${ci},'${team}',${si},'${nm}')" class="ptag" style="cursor:pointer;border:1.5px solid ${on?'var(--coral)':'#ece2d6'};background:${on?'var(--coral-s)':'#fff'};color:${on?'var(--coral-d)':'var(--ink)'};font-weight:700">${nm}${nm===cap?' (C)':''}</div>`; });
   h+=`</div>`;
@@ -11973,7 +12360,7 @@ function seedTrialBracket(){
   }
   games.filter(g=>g.r===1).forEach((g,i)=>{ g.sa=[6,5,3][i]; g.sb=[4,5,6][i]; });
   const g21=games.find(g=>g.r===2&&g.c===1); if(g21){ g21.sa=6; g21.sb=4; }
-  CB2={_trial:true, date:new Date().toISOString().slice(0,10), courts:3, rounds:4, mode:'normal', made_by:'체험 게스트', games, updated_at:Date.now()};
+  CB2={_trial:true, date:ymd(), courts:3, rounds:4, mode:'normal', made_by:'체험 게스트', games, updated_at:Date.now()};
   TRIAL_ROSTER.forEach(p=>CB2_SEL.add(String(p.user_id)));
 }
 /* 한울 AB 게임방식 [4Game, 8~16명] — 수기표 원본 그대로
@@ -12438,12 +12825,12 @@ function cbFindClash(games){
   [...new Set((games||[]).map(g=>g.r))].forEach(r=>{
     const seen={}, cs=new Set();
     (games||[]).filter(g=>g.r===r).forEach(g=>{
-      if(cs.has(g.c)) bad.push(`${r}게임에 ${g.c}코트가 두 번`);
+      if(cs.has(g.c)) bad.push(`${r}번째 게임에 ${g.c}번 코트가 두 번`);
       cs.add(g.c);
       [...(g.teamA||[]),...(g.teamB||[])].forEach(p=>{
         if(!p || p.id==='-') return;
         const k=String(p.id);
-        if(seen[k]) bad.push(`${r}게임 · ${p.name} 님이 ${seen[k]}코트와 ${g.c}코트 양쪽에`);
+        if(seen[k]) bad.push(`${r}번째 게임 · ${p.name} 님이 ${seen[k]}번 코트와 ${g.c}번 코트 양쪽에`);
         else seen[k]=g.c;
       });
     });
@@ -12459,22 +12846,55 @@ function cbPlanIdleFree(mem, courts, seed){
   const isF=i=>isFem(mem[i].gender);
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
   const pk=(a,b)=>a<b?a+'-'+b:b+'-'+a;
+  /* 여복을 몇 경기 넣을까.
+     안 넣으면 여성은 매 경기 남성과 섞이고, 남성은 남복 비율이 낮아진다.
+     <여성 한 명이 4경기 중 한 번은 여복> 을 기준으로 잡는다 — 여성 ÷ 4.
+     여복 한 경기에 여성 넷이 들어가므로 여성이 4명 미만이면 아예 못 만든다. */
+  const nFem=[...Array(N).keys()].filter(isF).length;
+  /* 여복을 늘리면 그만큼 남복이 늘어난다 — 여성 자리는 정해져 있고
+     여복은 4자리, 혼복은 2자리씩 쓰기 때문이다.
+     8/15 실제 대진(여성 6명 · 여복 4게임)에 맞춰 <여성 × 2 ÷ 3> 으로 잡는다.
+     여성이 여복에서 뛰는 비율이 약 3분의 2가 된다. 넷이 모여야 하니 4명부터. */
+  const femGoal=nFem>=4 ? Math.floor(nFem*2/3) : 0;
+  /* 실력 — 두 팀의 합이 비슷해야 재미있는 경기가 된다.
+     등급(SS~C)을 숫자로 바꾸고 레이팅이 있으면 그걸 우선한다. */
+  const GV={SS:5,S:4,A:3,B:2,C:1};
+  const lv=i=>{ const p=mem[i];
+    if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
+    return GV[String((p&&p.grade)||'B').toUpperCase()] || 2; };
+  /* 네 명을 두 팀으로 갈랐을 때 가장 팽팽한 조합의 차이 */
+  const gap=g=>{ const [a,b,c,d]=g.map(lv);
+    return Math.min(Math.abs(a+b-c-d), Math.abs(a+c-b-d), Math.abs(a+d-b-c)); };
+  /* 실력이 맞도록 팀을 다시 가른다 */
+  const split=g=>{ const [i,j,k,l]=g;
+    const opts=[[i,j,k,l],[i,k,j,l],[i,l,j,k]];
+    let best=opts[0], bs=Infinity;
+    opts.forEach(o=>{ const d=Math.abs(lv(o[0])+lv(o[1])-lv(o[2])-lv(o[3]));
+      if(d<bs){ bs=d; best=o; } });
+    return best; };
 
-  const attempt=(sd)=>{
+  const attempt=(sd, wantFem)=>{
     let s=sd; const rnd=()=>((s=(s*1103515245+12345)&0x7fffffff)/0x7fffffff);
     const sh=a=>{const b=a.slice();
       for(let i=b.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;};
     const need=Array(N).fill(4), pair={}, rounds=[];
     /* 네 명을 고른다 — 성별이 떨어지고 파트너가 안 겹치게 */
+    let femLeft=wantFem;                       // 아직 만들어야 할 여복 수
+    /* 점수가 낮을수록 좋은 조합 — 같은 파트너 반복은 크게, 실력 차이는 작게 벌점 */
+    const cost=g=>{ const g2=split(g);
+      return (pair[pk(g2[0],g2[1])]||0)*10 + (pair[pk(g2[2],g2[3])]||0)*10 + gap(g2)*2; };
     const pick=(src)=>{
-      let best=null, bs=Infinity;
-      for(let t=0;t<500;t++){
+      let best=null, bs=Infinity, bestFem=null, bf=Infinity;
+      for(let t=0;t<600;t++){
         const g=sh(src).slice(0,4);
         if(g.length<4) return null;
         if(!okKind(g)) continue;
-        const c=(pair[pk(g[0],g[1])]||0)+(pair[pk(g[2],g[3])]||0);
-        if(c<bs){ bs=c; best=g; if(!c) break; }
+        const c=cost(g);
+        if(g.every(isF) && c<bf){ bf=c; bestFem=split(g); }
+        if(c<bs){ bs=c; best=split(g); }
       }
+      /* 아직 여복이 모자라면 여복을 먼저 집는다 */
+      if(femLeft && bestFem){ femLeft--; return bestFem; }
       return best;
     };
     let prevRest=null;
@@ -12508,15 +12928,27 @@ function cbPlanIdleFree(mem, courts, seed){
       const busy=new Set(rounds[r].filter((_,i)=>i!==d).flat());
       if(!rounds.slice(r+1).flat().some(g=>g.every(i=>!busy.has(i)))) idle++;
     }
-    return { rounds, idle, dup:Object.values(pair).filter(v=>v>1).length };
+    /* 여복이 목표만큼 나왔는지도 함께 돌려준다 — 시도를 고를 때 본다 */
+    const femN=rounds.flat().filter(g=>g.every(isF)).length;
+    return { rounds, idle, dup:Object.values(pair).filter(v=>v>1).length,
+             femMiss:Math.max(0, wantFem-femN) };
   };
 
+  /* 고르는 순서 — 코트가 안 비는 것이 먼저, 그다음 여복 목표, 그다음 파트너 겹침 */
+  const score=a=>a.idle*1000 + a.femMiss*50 + a.dup;
+  /* 여복 목표를 못 채우면 대진 자체가 안 나오는 구성이 있다(남6 여6 2코트 같은).
+     그럴 때는 목표를 한 칸씩 낮춰서라도 만든다 — 못 만드는 것보다 낫다. */
   let best=null;
-  for(let t=1;t<=1500;t++){
-    const a=attempt((seed||1)*7919 + t*104729);
-    if(!a) continue;
-    if(!best || a.idle<best.idle || (a.idle===best.idle && a.dup<best.dup)) best=a;
-    if(best.idle===0 && best.dup===0) break;
+  const t0=Date.now(), BUDGET=1500;         // 대진 만들기 버튼을 누른 뒤 기다릴 만한 시간
+  for(let want=femGoal; want>=0 && !best; want--){
+    for(let t=1;t<=400;t++){
+      if(Date.now()-t0>BUDGET) break;
+      const a=attempt((seed||1)*7919 + t*104729, want);
+      if(!a) continue;
+      if(!best || score(a)<score(best)) best=a;
+      if(!best.idle && !best.femMiss && !best.dup) break;
+    }
+    if(Date.now()-t0>BUDGET) break;
   }
   if(!best) return null;
   /* 코트 배정 — 쉬는 사람으로 짠 경기를 1코트에 둔다 */
@@ -12607,26 +13039,78 @@ async function cb2Load(){
    경기 하나하나의 길이를 재는 대신 '지금까지 몇 경기를 해냈나'로 본다.
    그래야 코트가 논 시간·쉬는 시간·늦어진 것이 전부 반영된다.
    games: [{startedAt, ...}] · done: 끝났는지 판정하는 함수 */
+/* 언제 시작했나 — 시작 버튼을 눌렀으면 그 시각, 안 눌렀으면 모임 시작 시각.
+   점수만 넣고 시작을 안 누르는 클럽이 있어 마감 시각이 아예 안 나왔다. */
+function cbStartedAt(games){
+  const starts=(games||[]).map(g=>g.startedAt).filter(Boolean);
+  if(starts.length) return Math.min(...starts);
+  /* 모임 시작 시각을 대신 쓴다 (오늘 모임일 때만) */
+  try{
+    const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(CB2_EVENT));
+    const d=ev && evParseDate(ev.date);
+    if(d && d.time){
+      const [hh,mm]=String(d.time).split(':').map(Number);
+      const n=new Date(); n.setHours(hh||0, mm||0, 0, 0);
+      if(Date.now()-n > 0 && Date.now()-n < 12*3600000) return +n;
+    }
+  }catch(e){}
+  return null;
+}
+/* 한 경기가 실제로 몇 분 걸리는가 — 코트마다 <시작 시각의 간격>을 재서 중앙값을 쓴다.
+   예전에는 <경과 시간 ÷ 끝난 경기 수>로 재서, 점수가 안 들어와 멈췄던 시간이
+   그대로 평균에 섞였다. 한 번 크게 멈추면 평균이 90분을 넘겨 예측이 아예 꺼졌다.
+   중앙값은 그런 몇 번의 멈춤에 흔들리지 않는다. */
+function cbGameMedianMin(games){
+  const gs=games||[];
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const gaps=[];
+  const cs=[...new Set(gs.map(g=>g.c))];
+  cs.forEach(c=>{
+    const t=gs.filter(g=>g.c===c && g.startedAt).map(g=>g.startedAt).sort((a,b)=>a-b);
+    for(let i=1;i<t.length;i++){
+      const m=(t[i]-t[i-1])/60000;
+      if(m>=5 && m<=90) gaps.push(m);      // 5분 미만·90분 초과는 잘못 잰 값으로 본다
+    }
+  });
+  if(gaps.length<2) return 0;
+  gaps.sort((a,b)=>a-b);
+  const mid=Math.floor(gaps.length/2);
+  return Math.round(gaps.length%2 ? gaps[mid] : (gaps[mid-1]+gaps[mid])/2);
+}
 function cbEta(games, done, courts){
   const gs=games||[];
-  const starts=gs.map(g=>g.startedAt).filter(Boolean);
   const doneN=gs.filter(done).length, tot=gs.length;
-  if(!starts.length || doneN<2 || doneN>=tot) return null;   // 두 경기는 끝나야 속도를 잰다
-  const t0=Math.min(...starts), now=Date.now();
+  if(doneN<2 || doneN>=tot) return null;                     // 두 경기는 끝나야 속도를 잰다
+  const t0=cbStartedAt(gs);
+  if(!t0) return null;
+  const now=Date.now();
   const elapsed=now-t0;
   if(elapsed<60000) return null;
-  const perGame=elapsed/doneN;                 // 경기 하나가 나오는 데 걸린 실제 시간
-  /* 어제 대진을 오늘 열면 '32시간 남음' 같은 숫자가 나온다.
-     하루 이상 지났거나 경기 하나에 90분이 넘게 걸린 셈이면 속도를 잰 게 아니다. */
   const c=Math.max(1,courts||1);
-  const perCourt=perGame*c;                    // 한 코트가 한 경기에 쓴 시간
-  if(elapsed > 12*3600000) return null;
+  /* 점수가 안 들어와 멈춰 있던 시간은 <경기 속도>가 아니다.
+     예전에는 그것까지 평균에 섞여서 한 경기가 90분을 넘긴 셈이 되고,
+     그러면 안전장치가 걸려 마감 시각이 조용히 사라졌다.
+     멈춘 시간을 빼고 재면 새벽까지 이어진 날에도 예측이 살아난다. */
+  /* 실제 경기 간격의 중앙값이 있으면 그걸 쓴다 — 멈춤에 흔들리지 않는다.
+     간격을 잴 만큼 경기가 안 돌았으면 예전 방식(경과 ÷ 끝난 수)으로 어림잡는다. */
+  const med=cbGameMedianMin(gs);
+  const perCourt = med ? med*60000 : (elapsed/doneN)*c;
+  const perGame = perCourt/c;
+  /* 멈춰 있는 만큼은 남은 시간에 따로 더한다 — 지금 멈춘 경기는 실제로 안 끝났다 */
+  const stallMs=(()=>{
+    const run=gs.filter(g=>g.startedAt && !done(g));
+    if(!run.length || !med) return 0;
+    return run.reduce((mx,g)=>Math.max(mx,(now-g.startedAt)-perCourt), 0);
+  })();
+  /* 어제 대진을 오늘 열면 '32시간 남음' 같은 숫자가 나온다 */
+  if(elapsed > 24*3600000) return null;
   if(perCourt < 5*60000 || perCourt > 90*60000) return null;
   const left=tot-doneN;
-  const restMs=perGame*left;
+  const restMs=perGame*left + Math.max(0, stallMs);
   const end=new Date(now+restMs);
   return { end:cbClock(end), avgMin:Math.round(perCourt/60000), leftN:left,
-           restMin:Math.round(restMs/60000), doneN, tot };
+           restMin:Math.round(restMs/60000), doneN, tot,
+           stallMin:Math.round(Math.max(0,stallMs)/60000), med };
 }
 /* 오후 07시 35분 — 24시간제 숫자보다 코트에서 읽기 쉽다 */
 function cbClock(d){
@@ -12639,6 +13123,763 @@ function cbEtaText(e){
   if(!e) return '';
   const h=Math.floor(e.restMin/60), m=e.restMin%60;
   return h? `${h}시간 ${m}분` : `${m}분`;
+}
+
+/* ── 내 차례 카드 ─────────────────────────────────────────
+   회원 각자 화면 맨 위에 <어디로 · 언제 · 누구와> 를 알려준다.
+   운영진도 경기를 뛰니 아무도 누르지 않아도 저절로 바뀌어야 한다.
+
+   돌려주는 것: {kind, lb, big, m, btn} — 없으면 null
+   kind 는 색을 정한다: go(코랄) · now/ask(검정) · late(붉음) · rest/done(옅음) */
+function cbMyCard(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return null;
+  const gs=(CB2.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
+  const mine=gs.filter(inG);
+  const nmOf=g=>{
+    const inA=(g.teamA||[]).some(p=>String(p.id)===me);
+    const mate=(inA?(g.teamA||[]):(g.teamB||[])).find(p=>String(p.id)!==me);
+    const opp=inA? (g.teamB||[]) : (g.teamA||[]);
+    return { mate: mate?mate.name:'', opp: opp.map(p=>p.name).join(' · ') };
+  };
+  /* 파트너 이광하 · vs 정윤희 · 이경태 — 내 편과 상대가 한눈에 갈리게 */
+  const vsLine=g=>{ const w=nmOf(g);
+    return (w.mate?`파트너 ${w.mate} `:'') + (w.opp?`vs ${w.opp}`:''); };
+  const RD=n=>`${n}번째 게임`, CT=n=>`${n}번 코트`;
+  /* 서버가 <당사자 또는 임원>만 점수를 받는다. 누를 수 없는 사람에게 버튼을 보여주면
+     눌렀을 때 막히고, 회원은 앱이 고장 난 줄 안다. 대신 누가 넣어야 하는지를 적는다. */
+  const canScore=gi=>(typeof cb2CanScore==='function') ? cb2CanScore(gi) : true;
+  /* 누구 경기인지 — 대신 넣어주려면 그 넷에게 점수를 물어봐야 한다.
+     내 기준(파트너/상대)이 아니라 양 팀을 그대로 적는다. */
+  const pairTxt=g=>{ if(!g) return '';
+    const A=(g.teamA||[]).map(p=>p.name).filter(Boolean).join('·');
+    const B=(g.teamB||[]).map(p=>p.name).filter(Boolean).join('·');
+    return (A&&B)?`${A} vs ${B}`:(A||B); };
+  const scoreBtn=(gi,label)=>canScore(gi)?{btn:label, act:`cb2Score(${gi})`}:{};
+  const askWho=gi=>canScore(gi)?'\n물어보고 대신 넣어주셔도 돼요':'\n그 경기를 뛴 분이나 운영진이 넣어주세요';
+  const MODE=(CB2&&CB2.mode)||'normal';
+  /* 한울·월례대회는 조를 코트에 고정한다 — 코트를 옮길 일이 없다.
+     청백전은 두 팀 단체전이라 팀 점수가 궁금하고,
+     대회 준비는 조가 고정이라 '우리 조' 로 부르는 게 자연스럽다. */
+  const FIXED = MODE==='hanul' || MODE==='monthly';
+  const TEAMGAME = MODE==='cheongbaek';
+
+  /* 청백전은 캡틴이 오더를 짜야 경기가 생긴다 — 그 전에는 대진이 비어 있다.
+     캡틴에게는 짜라고, 나머지에게는 기다리라고 알린다. */
+  if(TEAMGAME && !gs.length){
+    const side=(typeof cb2MySide==='function') ? cb2MySide() : null;
+    const o=(CB2.orders||{}), cap=(CB2.captains||{});
+    if(side){
+      const mineDone=!!(o[side]&&o[side].length);
+      const other=side==='blue'?'white':'blue';
+      const otherDone=!!(o[other]&&o[other].length);
+      const teamNm=side==='blue'?'청팀':'백팀';
+      if(!mineDone) return {kind:'now', lb:`${teamNm} 캡틴`,
+        big:'대진을 짜주세요',
+        m:`우리 팀 순서를 정하면 경기가 만들어져요\n한 사람이 정확히 4경기예요`,
+        btn:'대진 짜기 ›', act:'cb2OrderSheet()'};
+      return {kind:'rest', lb:`${teamNm} 캡틴 · 우리 팀 완료`,
+        big: otherDone ? '대진이 만들어졌어요' : '상대 팀을 기다려요',
+        m: otherDone ? '곧 경기가 시작돼요'
+                     : `${side==='blue'?'백팀':'청팀'} 캡틴이 짜는 중이에요`,
+        btn:'우리 팀 다시 보기 ›', act:'cb2OrderSheet()'};
+    }
+    return {kind:'rest', lb:'청백전',
+      big:'캡틴이 대진을\n짜는 중이에요',
+      m:`청팀 ${esc((cap.blue||{}).name||'-')} · 백팀 ${esc((cap.white||{}).name||'-')}\n곧 시작해요`};
+  }
+
+  if(!mine.length) return {kind:'rest', lb:'오늘 대진',
+    big:'오늘 대진에 안 계세요', m:'참석하셨다면 경기이사에게 말씀해 주세요'};
+
+  /* ① 내 경기가 진행 중 */
+  const run=mine.find(g=>g.startedAt && !done(g));
+  if(run){
+    const mins=Math.max(0,Math.round((Date.now()-run.startedAt)/60000));
+    return {kind:'ask', lb:`${CT(run.c)} · ${RD(run.r)}`,
+      big:'경기 끝나셨나요',
+      m:`${vsLine(run)}\n아직 아무도 점수를 안 넣었어요 · ${mins}분째`,
+      btn:'점수 입력하기 ›', act:`cb2Score(${run.gi})`};
+  }
+  /* ② 아직 안 한 내 경기 */
+  const next=mine.filter(g=>!done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+  if(!next){
+    /* 오늘 다 끝남 — 마지막 경기 뒤 3시간까지 보여준다 */
+    const last=mine.filter(done).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0))[0];
+    const t=last && last.startedAt;
+    if(t && Date.now()-t > 3*3600000) return null;
+    let w=0,l=0,gf=0,ga=0;
+    mine.filter(done).forEach(g=>{ const a=(g.teamA||[]).some(p=>String(p.id)===me);
+      const ms=a?g.sa:g.sb, os=a?g.sb:g.sa;
+      gf+=ms; ga+=os; if(ms>os) w++; else if(ms<os) l++; });
+    let extra='';
+    if(TEAMGAME){
+      /* 청백전 — 내가 어느 팀이고 팀 점수가 어떤지 */
+      let A=0,B=0;
+      gs.filter(done).forEach(g=>{ if(g.sa>g.sb) A++; else if(g.sb>g.sa) B++; });
+      extra=`\n우리 팀 ${A}승 · 상대 팀 ${B}승`;
+    }
+    /* 승패만 남기면 코트 밖에서 한 일은 아무 데도 안 남는다 */
+    const helped=(typeof scoreHelpCount==='function')?scoreHelpCount():0;
+    const helpTxt = helped ? `\n점수 ${helped}개 넣어줬어요 · 고마워요` : '';
+    /* 내 경기는 끝났지만 아직 도는 코트가 있으면, 손이 빈 사람이 나다 */
+    const stillRun = gs.filter(g=>g.startedAt && !done(g))
+      .sort((a,b)=>(a.startedAt||0)-(b.startedAt||0))[0];
+    const blameD = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+    if(blameD) return {kind:'done', lb:'오늘 수고하셨어요',
+      big:`${CT(blameD.free[0])}가 비어 있어요`,
+      m:`${CT(blameD.court)} 점수가 안 들어와서 코트가 놀고 있어요`
+        + `\n${RD(gs[blameD.gi].r)} · ${pairTxt(gs[blameD.gi])}`
+        + `\n${blameD.min}분째예요${blameD.avg?` · 보통 ${blameD.avg}분이면 끝나요`:''}${askWho(blameD.gi)}${helpTxt}`,
+      ...scoreBtn(blameD.gi, `${CT(blameD.court)} 점수 넣어주기`)};
+    return {kind:'done', lb:'오늘 수고하셨어요',
+      big:`${mine.length}경기 다 하셨어요`,
+      m:`${w}승 ${l}패 · 득실 ${gf-ga>=0?'+':''}${gf-ga}${extra}${helpTxt}`,
+      btn: (stillRun && canScore(stillRun.gi)) ? `${CT(stillRun.c)} · ${pairTxt(stillRun)} 점수 넣기` : '내 기록 보기 ›',
+      act: (stillRun && canScore(stillRun.gi)) ? `cb2Score(${stillRun.gi})`
+        : `closeOv();openClubMember(${jsArg(String((state.serverUser||{}).id||''))},${jsArg(String((state.serverUser||{}).name||'나'))})`};
+  }
+  const who=vsLine(next);
+  /* 오늘 얼마나 남았는지 — 내 경기와 전체를 함께 */
+  const myDone=mine.filter(done).length;
+  const allDone=gs.filter(done).length;
+  const leftTxt=`내 경기 ${myDone}/${mine.length} · 전체 경기 ${allDone}/${gs.length}`;
+  const busy=new Set(gs.filter(g=>g.startedAt&&!done(g))
+    .flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>String(p.id))));
+  const courtBusy=gs.some(g=>g.c===next.c && g.startedAt && !done(g));
+  const ids=[...(next.teamA||[]),...(next.teamB||[])].map(p=>String(p.id));
+  /* 그 코트에서 내 앞에 아직 안 한 경기가 있으면 내 차례가 아니다.
+     코트 카드의 '다음 차례' 판정과 같은 규칙이어야 화면끼리 어긋나지 않는다. */
+  const myTurnOnCourt=!gs.some(g=>g.c===next.c && !done(g) && !g.startedAt && g.r<next.r);
+  const canStart=myTurnOnCourt && !courtBusy && !ids.some(i=>busy.has(i));
+
+  /* ③ 지금 시작할 수 있다 */
+  if(canStart) return {kind:'now', lb:`내 차례 · ${leftTxt}`,
+    big:`${CT(next.c)}\n${RD(next.r)}`,
+    m:`${who}\n시작을 누르면 경기 시간이 재져요`,
+    btn:'시작 ▶', act:`cb2StartGame(${next.gi})`};
+
+  /* ④ 곧 나갈 차례 — 앞에 몇 경기가 남았나 */
+  const ahead=gs.filter(g=>!done(g) && g.r<next.r).length;
+  const aheadOnCourt=gs.filter(g=>g.c===next.c && !done(g) && g.r<next.r).length;
+  const blockG=gs.filter(g=>g.startedAt && !done(g) &&
+    [...(g.teamA||[]),...(g.teamB||[])].some(p=>ids.includes(String(p.id))));
+  const stuck=gs.find(g=>g.c===next.c && g.startedAt && !done(g));
+  if(aheadOnCourt<=1 || courtBusy){
+    const why = stuck
+      ? `${CT(stuck.c)} 점수가 들어오면 시작해요`
+      : blockG.length
+        ? `${CT(blockG[0].c)}가 끝나면 시작해요`
+        : '앞 경기가 끝나면 시작해요';
+    /* 비어 있는 코트가 있으면 거기서 몸 풀다가 내 코트가 나면 옮기라고 안내한다.
+       한울·월례는 조가 코트에 고정이지만, 비어 있는 코트에서 몸을 푸는 것까지
+       막을 이유는 없다 — 다른 조 코트라는 것만 밝혀준다. */
+    const freeCourt=(()=>{
+      for(let cc=1;cc<=(CB2.courts||0);cc++){
+        if(cc===next.c) continue;
+        if((CB2.offCourts||[]).includes(cc)) continue;
+        if(gs.some(g=>g.c===cc && g.startedAt && !done(g))) continue;
+        return cc;
+      }
+      return 0;
+    })();
+    const bigTxt = freeCourt
+      ? `${CT(freeCourt)}에서\n몸 푸세요`
+      : `${CT(next.c)}로 가서\n몸 푸세요`;
+    /* 몇 분 쓸 수 있는지 — 이 말이 없으면 라켓 들고 눈치만 보게 된다.
+       코트 카드·코트 탭과 같은 함수를 써서 값이 어긋나지 않게 한다. */
+    const freeTxt = freeCourt ? (()=>{ const t=cbCourtFreeTxt(freeCourt);
+      return t && !/지금|비어 있어요/.test(t) ? t : ''; })() : '';
+    const moveTxt = freeCourt
+      ? `${freeTxt?freeTxt+' · ':''}${CT(next.c)} 경기가 끝나면 그리로 옮겨요\n`
+      + (FIXED?'비어 있는 다른 조 코트예요\n':'')
+      : '';
+    /* 내 차례를 막고 있는 건 대개 <앞 코트의 빈 점수>다.
+       그 경기를 방금 지켜본 사람이 여기서 기다리고 있으니, 직접 넣을 수 있게 한다.
+       총무 한 사람만 넣을 수 있으면 그 사람이 코트를 못 볼 때 클럽이 멈춘다. */
+    const helpG = stuck || blockG[0];
+    const blameW = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+    /* 내 차례를 막고 있는 게 <점수 미입력> 이면 그렇게 말해준다.
+       "곧 시작해요" 로만 두면 왜 안 시작되는지 몰라 코트만 쳐다본다. */
+    const stallTxt = (blameW && blameW.court===((helpG||{}).c))
+      ? `\n${CT(blameW.court)} 점수가 안 들어와서 멈춰 있어요 · ${blameW.min}분째`
+        + `\n그 경기 · ${pairTxt(gs[blameW.gi])}`
+        + (helpG?askWho(helpG.gi):'') : '';
+    return {kind:'go', lb:`곧 나가요 · ${leftTxt}`,
+      big:bigTxt,
+      m:`${moveTxt}${why}${stallTxt}\n${RD(next.r)} · ${who}`,
+      ...(helpG ? scoreBtn(helpG.gi, `${CT(helpG.c)} 점수 넣어주기`) : {})};
+  }
+  /* ⑤ 아직 멀었다 — 쉬는 사람이 오늘 가장 손이 빈 사람이다.
+     코트가 놀고 있으면 그 이유부터 알린다. 총무만 아는 정보로 두면
+     그 사람이 코트를 못 볼 때 클럽 전체가 멈춘다. */
+  const blame = (typeof cbIdleBlame==='function') ? cbIdleBlame() : null;
+  if(blame) return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
+    big:`${CT(blame.free[0])}가 비어 있어요`,
+    m:`${CT(blame.court)} 점수가 안 들어와서 ${blame.free.length>1?`${blame.free.join('·')}번 코트가`:'코트가'} 놀고 있어요`
+      + `\n${RD(gs[blame.gi].r)} · ${pairTxt(gs[blame.gi])}`
+      + `\n${blame.min}분째예요${blame.avg?` · 보통 ${blame.avg}분이면 끝나요`:''}${askWho(blame.gi)}`,
+    ...scoreBtn(blame.gi, `${CT(blame.court)} 점수 넣어주기`)};
+  const running = gs.filter(g=>g.startedAt && !done(g))
+    .sort((a,b)=>(a.startedAt||0)-(b.startedAt||0))[0];
+  return {kind:'rest', lb:`쉬는 차례 · ${leftTxt}`,
+    big:`다음은 ${RD(next.r)}\n${CT(next.c)}예요`,
+    m:`${ahead}경기 뒤예요\n${who}`,
+    ...(running ? scoreBtn(running.gi, `${CT(running.c)} 점수 넣어주기`) : {})};
+}
+
+/* ── 코트가 얼마나 비는지 ──────────────────────────────
+   다른 코트 경기가 일찍 끝나 코트가 비면, 다음 차례 넷이 거기서 몸을 푼다.
+   그때 <언제 쫓겨나는지>를 모르면 라켓만 들고 서 있게 된다.
+   오늘 이 대진의 평균 경기 시간으로 남은 시간을 재서 알려준다.
+   평균 = 첫 경기 시작 후 흐른 시간 × 코트 수 ÷ 끝난 경기 수. */
+function cbAvgGameMin(){
+  if(!CB2 || !(CB2.games||[]).length) return 0;
+  const gs=CB2.games, done=g=>g.sa!=null&&g.sb!=null;
+  /* 코트 간격의 중앙값이 있으면 그걸 쓴다 — 멈춘 시간이 평균을 부풀리지 않는다 */
+  { const m=cbGameMedianMin(gs); if(m) return m; }
+  const doneN=gs.filter(done).length;
+  const t0=cbStartedAt(gs);
+  if(!t0 || doneN<2) return 0;
+  /* 중지된 코트는 빼고 센다 — 두 코트만 돌면 경기당 시간이 더 길어진다 */
+  const courts=Math.max(1, (CB2.courts||1) - ((CB2.offCourts||[]).length));
+  const min=Math.round(((Date.now()-t0)/60000) * courts / doneN);
+  /* 5분보다 짧거나 90분보다 길면 잘못 잰 것이다 — 아무 말도 안 하는 편이 낫다 */
+  return (min>=5 && min<=90) ? min : 0;
+}
+/* 그 코트가 앞으로 몇 분쯤 더 비는가 — 지금 도는 경기가 끝날 때까지 */
+function cbFreeMin(blockG){
+  const avg=cbAvgGameMin(); if(!avg) return 0;
+  if(!blockG || !blockG.startedAt) return avg;
+  const el=Math.round((Date.now()-blockG.startedAt)/60000);
+  return Math.max(0, avg-el);
+}
+/* 코트가 언제 다시 도는지 — <몇 분 쓸 수 있다>가 아니라 <몇 분 뒤에 시작한다>.
+   코트가 오래 비는 건 회원에게 혜택이 아니라 짜증이다. 권하지 않고 알리기만 한다. */
+function cbFreeTxt(blockG){
+  const m=cbFreeMin(blockG);
+  if(!m) return '';
+  if(m<=3) return '곧 시작해요';
+  return `약 ${m}분 뒤 시작해요`;
+}
+/* 이 코트가 앞으로 몇 분쯤 비어 있는가 — 다음 경기 넷이 모두 코트에서 빠져나와야 시작된다.
+   그중 제일 늦게 끝나는 사람 기준. 이 값이 없으면 라켓 들고 눈치만 보게 되고,
+   반대로 알면 '10분은 쓸 수 있구나' 하고 마음 놓고 랠리를 한다. */
+function cbCourtFreeMin(court){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  if((CB2.offCourts||[]).includes(court)) return null;
+  /* 지금 이 코트에서 경기가 돌고 있으면 빈 코트가 아니다 */
+  if(gs.some(g=>g.c===court && g.startedAt && !done(g))) return null;
+  const next=gs.filter(g=>g.c===court && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+  if(!next) return null;                                   // 이 코트는 오늘 끝났다
+  const avg=cbAvgGameMin();
+  const ids=[...(next.teamA||[]),...(next.teamB||[])].map(p=>String(p.id));
+  const runs=gs.filter(g=>g.startedAt && !done(g) &&
+    [...(g.teamA||[]),...(g.teamB||[])].some(p=>ids.includes(String(p.id))));
+  if(!runs.length) return 0;                               // 넷 다 비어 있다 = 지금 시작 가능
+  if(!avg) return -1;                                      // 아직 평균을 못 잰다
+  const rest=runs.map(g=>Math.max(0, avg-Math.round((Date.now()-g.startedAt)/60000)));
+  return Math.max.apply(null, rest);
+}
+/* 코트 칸에 붙일 짧은 말 — 모든 회원이 같은 값을 본다 */
+function cbCourtFreeTxt(court){
+  const m=cbCourtFreeMin(court);
+  if(m===null) return '';
+  if(m===0) return '지금 쓸 수 있어요';
+  if(m===-1) return '비어 있어요';
+  if(m<=3) return '곧 시작해요';
+  return `${m}분쯤 비어요`;
+}
+/* 빈 코트로 옮기기 — 회원도 할 수 있다(그 경기 선수 또는 임원).
+   서버(PATCH /clubs/:id/bracket2/court)와 같은 조건으로 먼저 걸러서,
+   못 옮기는 상황에서는 버튼 자체를 보여주지 않는다. */
+function cb2FreeCourts(gi){
+  if(!CB2 || !(CB2.games||[]).length) return [];
+  const gs=CB2.games.map((g,i)=>({...g,gi:i}));
+  const g=gs[gi]; if(!g || g.startedAt || g.sa!=null) return [];
+  const done=x=>x.sa!=null&&x.sb!=null;
+  const ids=x=>[...(x.teamA||[]),...(x.teamB||[])].map(p=>p&&p.id).filter(Boolean);
+  const me=String((state.serverUser||{}).id||'');
+  const mayMove = cb2Officer() || ids(g).map(String).includes(me);
+  if(!mayMove) return [];
+  const busy=new Set(gs.filter(x=>x.startedAt&&!done(x)).flatMap(ids).map(String));
+  if(ids(g).some(i=>busy.has(String(i)))) return [];        // 넷 중 뛰고 있는 사람이 있으면 못 옮긴다
+  const out=[];
+  for(let c=1;c<=(CB2.courts||0);c++){
+    if(c===g.c) continue;
+    if((CB2.offCourts||[]).includes(c)) continue;
+    if(gs.some(x=>x.c===c && x.startedAt && !done(x))) continue;      // 지금 도는 코트
+    const other=gs.find(x=>x.gi!==gi && x.r===g.r && x.c===c);
+    if(other && (done(other) || other.startedAt)) continue;           // 그 자리에 이미 진행된 경기
+    out.push(c);
+  }
+  return out;
+}
+async function cb2MoveCourt(gi, court){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  const from=g.c;
+  if(TRIAL){
+    const other=(CB2.games||[]).find((x,i)=>i!==gi && x.r===g.r && x.c===court);
+    if(other) other.c=from;
+    g.movedFrom=from; g.c=court; CB2.updated_at=Date.now();
+    drawCB2View(); toast(`${court}번 코트로 옮겼어요 (체험)`); return;
+  }
+  try{
+    await api(`/clubs/${clubId()}/bracket2/court${cbQ()}`,{method:'PATCH',
+      body:JSON.stringify({gi, court})});
+    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); CB2=d;
+    CB2_COURT=court; drawCB2View();
+    toast(`${court}번 코트로 옮겼어요 · 그 코트로 가주세요`);
+  }catch(e){
+    const msg=String(e.message||'');
+    const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
+      || (msg.match(/court_busy|player_busy|slot_taken|already_started|player_only|court_off/)||[''])[0];
+    toast(k==='court_busy'?'그 코트는 지금 경기 중이에요'
+        : k==='player_busy'?'이 경기 선수 중에 지금 뛰고 있는 분이 있어요'
+        : k==='slot_taken'?'그 자리에 이미 진행된 경기가 있어요'
+        : k==='already_started'?'이미 시작한 경기는 옮길 수 없어요'
+        : k==='player_only'?'그 경기 선수나 운영진이 옮길 수 있어요'
+        : k==='court_off'?'사용 중지된 코트예요'
+        : '옮기지 못했어요');
+  }
+}
+/* 점수를 넣은 사람 이름 — 서버가 id 만 남기므로 명단에서 찾는다 */
+function cbWhoName(uid){
+  const id=String(uid||''); if(!id) return '';
+  const gs=(CB2&&CB2.games)||[];
+  for(const g of gs){
+    const p=[...(g.teamA||[]),...(g.teamB||[])].find(x=>x&&String(x.id)===id);
+    if(p&&p.name) return p.name;
+  }
+  const r=(SRV_ROSTER||[]).find(x=>String(x.user_id||x.id)===id);
+  return (r&&r.name)||'';
+}
+/* 코트가 왜 놀고 있는지 — 평균 경기 시간을 넘긴 경기가 다음 코트를 막고 있을 때.
+   총무 화면에만 두면 그 사람이 코트를 못 볼 때 클럽이 멈춘다.
+   회원 카드에도 같은 사실을 알려서, 옆에 있는 사람이 점수를 넣을 수 있게 한다. */
+function cbIdleBlame(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const avg=cbAvgGameMin();
+  /* 지금 비어 있는 코트 */
+  const freeC=[];
+  for(let c=1;c<=(CB2.courts||0);c++){ if(cbCourtFreeMin(c)!==null) freeC.push(c); }
+  if(!freeC.length) return null;
+  /* 평균을 넘겨 도는 경기 = 사실은 끝났는데 점수가 안 들어온 것일 수 있다 */
+  const over=gs.filter(g=>g.startedAt && !done(g))
+    .map(g=>({g, min:Math.round((Date.now()-g.startedAt)/60000)}))
+    .filter(x=>avg ? x.min>avg+5 : x.min>40)
+    .sort((a,b)=>b.min-a.min)[0];
+  if(!over) return null;
+  /* 그 경기가 비어 있는 코트를 실제로 막고 있는지 확인한다 */
+  const ids=[...(over.g.teamA||[]),...(over.g.teamB||[])].map(p=>String(p.id));
+  const blocks=freeC.some(c=>{
+    const nx=gs.filter(g=>g.c===c && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+    return nx && [...(nx.teamA||[]),...(nx.teamB||[])].some(p=>ids.includes(String(p.id)));
+  });
+  if(!blocks) return null;
+  return {gi:over.g.gi, court:over.g.c, min:over.min, free:freeC, avg};
+}
+/* 비는 코트를 알리는 한 줄 — 코트 카드 위(코트 탭)와 전체 표 위에 같은 모양으로 붙는다.
+   누르는 것도 급한 것도 아니라 코랄이 아니라 크림으로 둔다.
+   경기가 시작되면 줄이 사라진다 — 늘 떠 있으면 무시하게 된다. */
+function cbFreeLine(court){
+  if(!CB2 || !(CB2.games||[]).length) return '';
+  const list = court ? [court]
+    : Array.from({length:CB2.courts||0}, (_,i)=>i+1);
+  const free = list.map(c=>({c, m:cbCourtFreeMin(c)})).filter(x=>x.m!==null);
+  if(!free.length) return '';
+  /* 여러 코트가 비면 하나로 합친다 — 줄이 두 개면 그것대로 시끄럽다 */
+  const nums=free.map(x=>x.c).join('·');
+  const m=Math.max.apply(null, free.map(x=>x.m));
+  const head = m===0 ? `${nums}번 코트가 비어 있어요`
+             : m===-1 ? `${nums}번 코트가 비어 있어요`
+             : m<=3   ? `${nums}번 코트 · 곧 시작해요`
+                      : `${nums}번 코트가 ${m}분쯤 비어요`;
+  /* 순서대로는 못 시작해도 뒤 경기 중 넷이 다 쉬는 게 있으면 그걸 알려준다 —
+     그게 코트를 놀리지 않는 가장 빠른 길이다. */
+  const pull=(()=>{ for(const x of free){
+      const p=(typeof cbPullGame==='function')?cbPullGame(x.c):null;
+      if(!p) continue;
+      const nx=(CB2.games||[]).map((g,gi)=>({...g,gi}))
+        .filter(g=>g.c===x.c && g.sa==null && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+      if(nx && nx.gi!==p.gi) return {c:x.c, r:p.r};        // 순서를 당겨야 하는 경우만
+    } return null; })();
+  const tail = pull ? `${pull.r}번째 게임을 먼저 할 수 있어요`
+             : m===0 ? '지금 시작할 수 있어요'
+             : m<=3  ? '자리를 비켜주세요'
+                     : '그동안 몸 풀어도 돼요';
+  return `<div style="display:flex;align-items:baseline;gap:7px;background:#fdf6ea;
+      border-radius:12px;padding:10px 12px;margin-top:10px">
+    <b style="font-size:12px;font-weight:800;color:#8a5a13;letter-spacing:-.02em">${head}</b>
+    <span style="font-size:11px;color:#a5804a;font-weight:600">· ${tail}</span></div>`;
+}
+/* 이 코트에서 <지금 당장 시작할 수 있는> 경기 — 네 명이 모두 다른 코트에 안 묶여 있어야 한다.
+   빈 코트를 그냥 두는 대신 뒤 경기를 당겨 넣으면 코트가 30분씩 노는 일이 없다. */
+function cbPullGame(court){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=CB2.games.map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null&&g.sb!=null;
+  const busy=new Set(gs.filter(g=>g.startedAt&&!done(g))
+    .flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>String(p.id))));
+  return gs.filter(g=>g.c===court && !done(g) && !g.startedAt)
+    .sort((a,b)=>a.r-b.r)
+    .find(g=>![...(g.teamA||[]),...(g.teamB||[])].some(p=>busy.has(String(p.id)))) || null;
+}
+
+/* 뒤집어 놓은 칸 — 키는 "게임-코트" */
+let CB2_FLIP={};
+function cb2Flip(k){ CB2_FLIP[k]=!CB2_FLIP[k]; drawCB2View(); }
+
+/* ── 대진표 이동 안내 ─────────────────────────────────────
+   카드에서 <2번 코트에서 몸 풀다 3번 코트로> 안내를 받은 넷에게만,
+   그 두 칸을 안내로 덮는다. 나머지 회원 표는 아무것도 안 바뀐다.
+   경기를 시작하거나 점수가 들어가면 안내가 걷힌다. */
+function cbMoveHint(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return null;
+  const gs=(CB2.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
+  /* 내 다음 경기 — 아직 시작 안 한 것 */
+  const next=gs.filter(g=>inG(g) && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+  if(!next) return null;
+  /* 그 코트에서 내 앞에 안 한 경기가 있으면 아직 내 차례가 아니다 */
+  if(gs.some(g=>g.c===next.c && !done(g) && !g.startedAt && g.r<next.r)) return null;
+  /* 내 코트가 지금 돌고 있어야 <기다렸다 옮기는> 상황이 된다 */
+  const busyMine=gs.find(g=>g.c===next.c && g.startedAt && !done(g));
+  if(!busyMine) return null;
+  /* 지금 비어 있는 다른 코트 = 몸 풀 곳 */
+  let warmC=0;
+  for(let cc=1;cc<=(CB2.courts||0);cc++){
+    if(cc===next.c) continue;
+    if((CB2.offCourts||[]).includes(cc)) continue;
+    if(gs.some(g=>g.c===cc && g.startedAt && !done(g))) continue;
+    warmC=cc; break;
+  }
+  if(!warmC) return null;
+  /* 그 코트에서 가장 최근 칸 — 거기에 안내를 얹는다 */
+  const warmG=gs.filter(g=>g.c===warmC).sort((a,b)=>b.r-a.r)
+    .find(g=>done(g) || g.r<=next.r) || gs.filter(g=>g.c===warmC)[0];
+  if(!warmG) return null;
+  return {
+    warm:{r:warmG.r, c:warmC},
+    warmTxt:{ t1:'① 여기서 몸 푸세요',
+      t2:(()=>{ const t=(typeof cbCourtFreeTxt==='function')?cbCourtFreeTxt(warmC):'';
+        return t ? `${t} · ${next.c}번 코트 끝날 때까지` : `${next.c}번 코트 경기가 끝날 때까지`; })() },
+    go:{r:next.r, c:next.c}, 
+    goTxt:{ t1:'② 여기로 옮겨주세요', t2:`${warmC}번 코트에서 · ${next.r}번째 게임`, go:1 }
+  };
+}
+
+/* 홈은 대진 화면이 열리기를 기다리지 않는다 — 마지막으로 받은 오늘 대진을
+   기기에 남겨두고, 앱을 켜자마자 그걸로 먼저 그린 뒤 서버 값으로 갈아끼운다.
+   "내가 몇 번째 경기인지"는 코트에 서 있는 사람에게 제일 급한 정보다. */
+let HOME_BK=null;
+try{ const _raw=localStorage.getItem('matsu_home_bk');
+     if(_raw){ const _d=JSON.parse(_raw);
+       if(_d && cbTodayish(_d.date)) HOME_BK=_d; } }catch(e){}
+function cbHomeSrc(){ return (CB2 && (CB2.games||[]).length) ? CB2 : HOME_BK; }
+
+/* ── 홈 화면 요약 카드 ────────────────────────────────────
+   대진 화면 카드는 <지금 할 일> 하나만 말한다.
+   홈에서는 <어느 모임에서 · 몇 경기째 · 다음은 누구와> 를 한 장에 담는다.
+   경기가 도는 동안에는 내 차례가 아니어도 계속 떠 있다. */
+function cbHomeCard(){
+  const BK=cbHomeSrc();
+  if(!BK || !(BK.games||[]).length) return null;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return null;
+  const gs=(BK.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&String(p.id)===me);
+  const mine=gs.filter(inG);
+  if(!mine.length) return null;
+  /* 오늘 모임이 아니면 안 띄운다 — 어제 대진이 홈에 남아 있으면 헷갈린다.
+     다만 자정을 넘겨 새벽까지 이어지는 모임은 아침까지 오늘 것으로 본다. */
+  if(!cbTodayish(BK.date)) return null;
+  const allDone=gs.every(done);
+  const last=mine.filter(done).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0))[0];
+  if(allDone && last && last.startedAt && Date.now()-last.startedAt > 3*3600000) return null;
+
+  const CT=n=>`${n}번 코트`, RD=n=>`${n}번째 게임`;
+  const nmOf=g=>{ const inA=(g.teamA||[]).some(p=>String(p.id)===me);
+    const mate=(inA?(g.teamA||[]):(g.teamB||[])).find(p=>String(p.id)!==me);
+    const opp=inA? (g.teamB||[]) : (g.teamA||[]);
+    return (mate?`파트너 ${mate.name} `:'') + (opp.length?`vs ${opp.map(p=>p.name).join(' · ')}`:''); };
+
+  const myDone=mine.filter(done).length;
+  const title=(BK.event&&BK.event.title)||'오늘 모임';
+  const run=mine.find(g=>g.startedAt && !done(g));
+  const next=mine.filter(g=>!done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+
+  let big, m;
+  if(run){
+    big=`${CT(run.c)}에서 경기 중`;
+    m=`${RD(run.r)} · ${nmOf(run)}`;
+    /* 한 줄에 다 넣으면 39자가 되어 이름이 다음 줄로 넘어간다 — 줄을 나눈다 */
+    if(next) m+=`\n\n다음 · ${RD(next.r)} ${CT(next.c)}\n${nmOf(next)}`;
+    else m+='\n이 경기가 마지막이에요';
+  } else if(next){
+    big=`다음은 ${RD(next.r)} ${CT(next.c)}`;
+    m=nmOf(next);
+    const ahead=gs.filter(g=>!done(g) && g.r<next.r).length;
+    m+= ahead? `\n${ahead}경기 뒤예요` : '\n곧 시작해요';
+  } else {
+    let w=0,l=0;
+    mine.filter(done).forEach(g=>{ const a=(g.teamA||[]).some(p=>String(p.id)===me);
+      const ms=a?g.sa:g.sb, os=a?g.sb:g.sa; if(ms>os) w++; else if(ms<os) l++; });
+    big='오늘 경기 다 끝났어요';
+    m=`${w}승 ${l}패 · 수고하셨어요`;
+  }
+  /* 홈 띠 — 숫자 하나(몇 번째 게임)와 세 줄. 큰 카드와 같은 사실을 짧게 말한다. */
+  const mateOf=g=>{ const inA=(g.teamA||[]).some(p=>String(p.id)===me);
+    const t=inA?(g.teamA||[]):(g.teamB||[]);
+    const p=t.find(x=>String(x.id)!==me); return p?p.name:''; };
+  const kindOf=g=>g&&g.label?` ${g.label}`:'';
+  const withMate=(g,tail)=>[mateOf(g)?`${mateOf(g)} 님과 한 팀`:'', tail].filter(Boolean).join(' · ');
+  let strip;
+  if(run){
+    const min=run.startedAt?Math.max(0,Math.floor((Date.now()-run.startedAt)/60000)):0;
+    strip={n:run.r, lb:'지금 경기 중',
+      big:`${run.r}게임 · ${run.c}코트${kindOf(run)}`,
+      m:withMate(run, min?`${min}분째`:'')};
+  } else if(next){
+    const ahead=gs.filter(g=>!done(g) && g.r<next.r).length;
+    strip={n:next.r, lb: ahead<=1?'곧 내 차례예요':'다음은 내 차례예요',
+      big:`${next.r}게임 · ${next.c}코트${kindOf(next)}`,
+      m:withMate(next, ahead?`앞 경기 ${ahead}개 남음`:'곧 시작해요')};
+  } else {
+    strip={n:'✓', lb:'오늘 다 끝났어요', big:m.split('\n')[0], m:'대진 보기'};
+  }
+  return { kind: run?'now' : next?'go' : 'done',
+    lb:`${title} · 내 경기 ${myDone}/${mine.length} · 전체 ${gs.filter(done).length}/${gs.length}`,
+    big, m, strip };
+}
+
+/* 홈에서는 얇은 띠 한 줄로 — 홈의 주인공은 배너와 매치다.
+   대진 화면의 큰 카드와 같은 내용이지만, 여기서는 <누르면 대진으로> 가는 입구 역할만 한다. */
+function cbHomeStrip(c){
+  if(!c) return '';
+  const s=c.strip;
+  if(!s) return '';
+  /* 홈 띠는 회원이 보는 것이므로 늘 밝은 카드다 — 검정은 운영진 몫으로 비워둔다 */
+  return `<div class="hmstrip" onclick="openClubBracketView()"
+      role="button" tabindex="0">
+    <span class="n">${esc(String(s.n||''))}</span>
+    <div class="tx">
+      <div class="l">${esc(s.lb||'')}</div>
+      <div class="b">${esc(s.big||'')}</div>
+      ${s.m?`<div class="m">${esc(s.m)}</div>`:''}
+    </div>
+    <span class="chev">›</span></div>`;
+}
+
+/* ── 운영진 카드 ──────────────────────────────────────────
+   운영진도 경기를 뛴다. 코트를 돌아다니며 챙길 수가 없으니
+   <지금 손봐야 할 것>을 급한 순서로 하나만 보여준다.
+   여러 개가 걸리면 나머지는 개수로만 적는다 — 카드를 쌓으면 화면이 길어진다. */
+/* 대진 화면 맨 위 큰 카드 — 회원용·운영진용이 같은 함수를 쓴다.
+   따로 그리면 배지 줄 하나 때문에 높이가 어긋난다.
+   높이를 못 박고, 라벨 줄은 <운영진 배지가 있든 없든> 같은 자리를 차지한다. */
+function cbBigCard(c, isOfficer){
+  if(!c) return '';
+  /* 색은 <무엇이 급한가>가 아니라 <누가 해야 하는가>로 정한다.
+     운영진이 손봐야 할 것은 언제나 잉크, 회원이 볼 것은 언제나 흰 종이.
+     상황마다 색이 바뀌면 코트에서 폰을 들여다볼 때마다 다시 읽어야 한다 —
+     색이 고정되어 있으면 "검정이 떴네 = 내가(총무가) 뭘 해야 하는구나"로 한 번에 안다.
+     [배경, 라벨, 큰글씨, 설명, 버튼배경, 버튼글씨, 테두리] */
+  const OFFICER=['#241d16','#f0a93b','#fff','#c4b6a0','#f0a93b','#241d16',''];
+  /* 시트 배경이 흰색이라 테두리만으로는 카드가 종이에서 안 떠 보인다 — 그림자를 얕게 준다 */
+  const LIFT=';border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)';
+  /* 왼쪽 띠와 라벨이 둘 다 코랄이라 같은 말을 두 번 하고 있었다.
+     띠를 빼고 라벨 캡슐에 색을 채운다 — 이 카드는 화면에 한 장뿐이라
+     캡슐을 꽉 채워도 코랄 덩어리는 하나다. */
+  const MEMBER =['#fff','#b8460f','#1c1b18','#6b6357','#241d16','#fff',LIFT];
+  /* 쉬는 차례·다 끝남처럼 할 일이 없는 안내는 같은 흰 카드에 글자만 낮춘다 */
+  const MEMBER_Q=['#fff','#8a857c','#3a352d','#7d7870','#241d16','#fff',LIFT];
+  const quiet={rest:1, ok:1, done:1};
+  const [bg,lbc,bigc,mc,btnBg,btnC,extra]= isOfficer ? OFFICER : (quiet[c.kind]?MEMBER_Q:MEMBER);
+  const br=t=>esc(String(t||'')).replace(/\n/g,'<br>');
+  /* 글자 — 21 ÷ φ = 13 으로 제목과 본문을 가른다.
+     라벨까지 φ 로 내리면 8px 이라 못 읽으니 거기서는 얕게 간다.
+     여백 — 18 ÷ φ = 11, 11 ÷ φ = 7 로 세 단계. */
+  /* 높이를 못 박지 않는다 — 내용이 짧은 카드에 빈 공백이 생겨 어색했다.
+     대신 여백 규칙을 같게 두어 나란히 놓아도 정돈되어 보이게 한다. */
+  return `<div style="background:${bg}${extra};border-radius:18px;padding:18px;
+      margin-top:10px;display:flex;flex-direction:column">
+    ${(()=>{
+      /* 라벨을 <상태 캡슐 + 회색 숫자>로 가른다.
+         "곧 나가요 · 내 경기 0/1 · 전체 9/18" 을 통째로 채우면 한 줄이 주황이 되어 무겁고,
+         정작 중요한 <곧 나가요>가 숫자에 묻힌다. 첫 토막만 캡슐에 담는다. */
+      const parts=String(c.lb||'').split('·').map(x=>x.trim()).filter(Boolean);
+      /* 운영진 카드는 이미 <운영진> 캡슐이 있다. 거기에 캡슐을 하나 더 붙이면
+         알약 두 개가 나란히 서서 시끄럽다 — 나머지는 글자로 둔다. */
+      const head = isOfficer ? '' : (parts[0]||'');
+      const tail = isOfficer ? String(c.lb||'') : parts.slice(1).join(' · ');
+      const capBg = '#ec6a2e', capFg = '#fff', capBd = '';
+      const quietCap = !isOfficer && quiet[c.kind];
+      return `<div style="display:flex;align-items:center;gap:7px;flex:none">
+      ${isOfficer?`<span style="font-size:10px;font-weight:800;letter-spacing:.04em;color:${lbc};
+        border:1px solid ${lbc};border-radius:6px;padding:3px 7px;flex:none;line-height:1">운영진</span>`:''}
+      ${head?`<span style="flex:none;font-size:10.5px;font-weight:800;line-height:1.45;
+        border-radius:20px;padding:4px 10px;background:${quietCap?'#f1eee7':capBg};
+        color:${quietCap?'#6b6357':capFg}${capBd}">${esc(head)}</span>`:''}
+      ${tail?`<span style="font-size:10.5px;font-weight:700;color:${isOfficer?lbc:'#a8a29a'};
+        line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(tail)}</span>`:''}
+      </div>`;
+    })()}
+    <div style="font-size:21px;font-weight:900;letter-spacing:-.04em;margin-top:11px;
+      line-height:1.38;color:${bigc}">${br(c.big)}</div>
+    ${c.m?`<div style="font-size:13px;margin-top:7px;line-height:1.62;color:${mc}">${br(c.m)}</div>`:''}
+    ${c.btn?`<span onclick="${c.act||''}" style="display:flex;align-items:center;flex:none;margin-top:18px;
+      justify-content:center;border-radius:13px;height:50px;font-size:15px;font-weight:800;
+      letter-spacing:-.02em;cursor:pointer;background:${btnBg};color:${btnC}">${esc(c.btn)}</span>`:''}
+  </div>`;
+}
+
+function cbOfficerCard(){
+  if(!CB2 || !(CB2.games||[]).length) return null;
+  const gs=(CB2.games||[]).map((g,gi)=>({...g,gi}));
+  const done=g=>g.sa!=null && g.sb!=null;
+  const CT=n=>`${n}번 코트`, RD=n=>`${n}번째 게임`;
+  const mins=t=>Math.max(0,Math.round((Date.now()-t)/60000));
+  const found=[];
+
+  /* ① 같은 바퀴에 사람이 겹침 — 진행 자체가 불가능하다 */
+  const clash=cbFindClash(gs);
+  if(clash.length) found.push({p:1, kind:'bad', lb:'이대로는 진행할 수 없어요',
+    big:'겹치는 사람이 있어요', m:clash[0], btn:'대진에서 보기 ›', act:'CB2_COURT=0;drawCB2View()'});
+
+  /* ② 점수가 오래 안 들어옴 — 그 코트가 멈춰 있다 */
+  /* 기준을 평균으로 잡으면 안 된다 — 멈춰 있는 그 경기 때문에 평균이 올라가서
+     오래 멈출수록 오히려 안 걸린다. 고정 시간으로 본다.
+     복식 한 경기가 45분을 넘기는 일은 드물다. */
+  const STALL=45;
+  const stuck=gs.filter(g=>g.startedAt && !done(g) && mins(g.startedAt) > STALL)
+    .sort((a,b)=>a.startedAt-b.startedAt);
+  if(stuck.length){ const g=stuck[0];
+    found.push({p:2, kind:'bad', lb:`${mins(g.startedAt)}분째 멈춰 있어요`,
+      big:`${CT(g.c)} 점수가\n안 들어왔어요`,
+      /* 몇 분 멈췄는지만 말하면 얼마나 급한지가 안 보인다.
+         이 경기 때문에 다른 코트가 놀고 있으면 그걸 함께 적는다. */
+      m:`${RD(g.r)} · ${[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name).join(' · ')}`
+        + (()=>{ const bl=(typeof cbIdleBlame==='function')?cbIdleBlame():null;
+            if(!bl || bl.gi!==g.gi) return '';
+            const cs=bl.free.join('·');
+            return `\n이 경기 때문에 ${cs}번 코트가 놀고 있어요`; })(),
+      btn:'대신 넣기 ›', act:`cb2Score(${g.gi})`, more:stuck.length-1});
+  }
+
+  /* ③ 코트가 비었는데 넣을 경기가 없음 */
+  const runN=gs.filter(g=>g.startedAt && !done(g)).length;
+  const busy=new Set(gs.filter(g=>g.startedAt&&!done(g))
+    .flatMap(g=>[...(g.teamA||[]),...(g.teamB||[])].map(p=>String(p.id))));
+  const idle=[];
+  for(let c=1;c<=(CB2.courts||0);c++){
+    if((CB2.offCourts||[]).includes(c)) continue;
+    if(gs.some(g=>g.c===c && g.startedAt && !done(g))) continue;
+    const left=gs.filter(g=>g.c===c && !done(g) && !g.startedAt);
+    if(!left.length) continue;
+    const can=left.some(g=>[...(g.teamA||[]),...(g.teamB||[])]
+      .every(p=>!busy.has(String(p.id))));
+    if(!can) idle.push(c);
+  }
+  if(idle.length){
+    /* 그냥 '비어 있어요' 로 끝내면 운영진이 할 일이 없다.
+       누구를 그 코트로 보내 몸 풀게 할지, 언제 시작할 수 있는지까지 적는다. */
+    const c0=idle[0];
+    const nx=gs.filter(g=>g.c===c0 && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+    if(nx){
+      const who=[...(nx.teamA||[]),...(nx.teamB||[])].map(p=>p.name).join(' · ');
+      /* 그 넷을 붙잡고 있는 코트 — 그 코트가 끝나면 시작할 수 있다 */
+      const ids=[...(nx.teamA||[]),...(nx.teamB||[])].map(p=>String(p.id));
+      const hold=gs.filter(g=>g.startedAt && !done(g) &&
+        [...(g.teamA||[]),...(g.teamB||[])].some(p=>ids.includes(String(p.id))));
+      const wait = hold.length
+        ? `${hold.map(g=>CT(g.c)).join(' · ')}가 끝나면 시작해요`
+        : '앞 경기가 끝나면 시작해요';
+      /* 몸 풀 코트와 실제 뛸 코트가 다를 수 있다 — 둘 다 적어야 헷갈리지 않는다 */
+      const bigTxt=`${who}\n${CT(c0)}에서 몸 푸세요`;
+      const move = (nx.c===c0) ? '' : `${CT(nx.c)} 경기가 끝나면 그리로 옮겨요\n`;
+      found.push({p:3, kind:'warn',
+        lb:`${CT(c0)}가 비어 있어요 · ${gs.filter(done).length}/${gs.length}`,
+        big:bigTxt, m:`${move}${RD(nx.r)} · ${wait}`, more:idle.length-1});
+    } else {
+      found.push({p:3, kind:'warn', lb:'잠깐 기다려야 해요',
+        big:`${CT(c0)}가 비어 있어요`,
+        m:'남은 경기가 없어요', more:idle.length-1});
+    }
+  }
+
+  /* ④ 시작을 안 눌러 시간이 안 잡힘 */
+  const noStart=gs.filter(g=>!done(g) && !g.startedAt);
+  const anyStart=gs.some(g=>g.startedAt);
+  if(!anyStart && gs.some(done)) found.push({p:4, kind:'warn', lb:'마감 시각을 못 알려드려요',
+    big:'시작을 누른\n경기가 없어요',
+    m:'경기를 시작할 때 시작을 눌러주시면 몇 시에 끝나는지 알려드려요'});
+
+  /* ⑤ 늦참자가 곧 합류 */
+  if(CB2.late && CB2.late.names && CB2.late.names.length){
+    const from=CB2.late.from||0;
+    const cur=Math.max(0,...gs.filter(g=>g.startedAt||done(g)).map(g=>g.r));
+    if(from && cur>=from-1 && cur<from+1) found.push({p:5, kind:'warn',
+      lb:'늦참자 합류가 다가와요',
+      big:`${RD(from)}부터\n${CB2.late.names.join(' · ')} 님`,
+      m:'도착하셨는지 확인해 주세요'});
+  }
+
+  /* ⑥ 곧 끝나는 코트가 있으면 다음 넷을 미리 부른다 — 코트가 안 비게 */
+  const soon=gs.filter(g=>g.startedAt && !done(g) && mins(g.startedAt)>=18)
+    .sort((a,b)=>a.startedAt-b.startedAt);
+  if(soon.length && !idle.length){
+    const cur=soon[0];
+    /* 그 코트가 끝나면 그 자리에 들어갈 경기 */
+    const nx=gs.filter(g=>g.c===cur.c && !done(g) && !g.startedAt).sort((a,b)=>a.r-b.r)[0];
+    if(nx){
+      const ids=[...(nx.teamA||[]),...(nx.teamB||[])].map(p=>String(p.id));
+      const free=!ids.some(i=>busy.has(i));
+      if(free){
+        /* 지금 비어 있는 코트가 있으면 거기서 몸 풀게 한다 */
+        const spare=(()=>{ for(let cc=1;cc<=(CB2.courts||0);cc++){
+          if(cc===nx.c) continue;
+          if((CB2.offCourts||[]).includes(cc)) continue;
+          if(gs.some(g=>g.c===cc && g.startedAt && !done(g))) continue;
+          return cc; } return 0; })();
+        const nm=[...(nx.teamA||[]),...(nx.teamB||[])].map(p=>p.name).join(' · ');
+        found.push({p:6, kind:'ok',
+          lb:`${CT(cur.c)}가 ${mins(cur.startedAt)}분째예요 · ${gs.filter(done).length}/${gs.length}`,
+          big: spare ? `${nm}\n${CT(spare)}에서 몸 푸세요` : `${nm}\n미리 몸 푸세요`,
+          m:`${spare&&spare!==nx.c?`${CT(nx.c)} 경기가 끝나면 그리로 옮겨요\n`:''}${CT(cur.c)}가 끝나면 ${CT(nx.c)}에서 ${RD(nx.r)}`});
+      }
+    }
+  }
+
+  /* ⑦ 점수가 안 들어간 지난 경기가 쌓임 */
+  const noScore=gs.filter(g=>!done(g) && g.startedAt && mins(g.startedAt)<=STALL).length;
+  const blank=gs.filter(g=>!done(g) && !g.startedAt).length;
+  /* ⑧ 오늘이 거의 끝남 */
+  const left=gs.filter(g=>!done(g)).length;
+  if(!found.length && left && left<=2) found.push({p:8, kind:'ok',
+    lb:'오늘 거의 끝났어요', big:`${left}경기 남았어요`,
+    m:'끝나면 점수가 다 들어갔는지 한 번 봐주세요'});
+  if(!found.length && !left) found.push({p:9, kind:'ok',
+    lb:'오늘 다 끝났어요', big:'모든 경기가 끝났어요',
+    m:'점수가 다 들어갔어요 · 수고하셨어요'});
+
+  if(!found.length) return null;
+  found.sort((a,b)=>a.p-b.p);
+  const top=found[0];
+  const rest=found.length-1 + (top.more||0);
+  if(rest>0) top.m=(top.m?top.m+'\n':'')+`그 밖에 ${rest}가지 더 있어요`;
+  return top;
 }
 
 function cb2Stats(){
@@ -12698,7 +13939,7 @@ async function openClubBracketList(){
   const card=b=>{
     const pct=b.games?Math.round(b.done/b.games*100):0;
     const md=CB2_MODE_NAME[b.mode]||'일반';
-    const tagC=b.tag==='번개'?['#eef4ff','#2b62c9']:['#fceee4','#cf5418'];
+    const tagC=b.tag==='번개'?['#fdf1dc','#8a5a13']:['#fceee4','#cf5418'];
     const live=b.active&&b.done>0;
     return `<div onclick="cb2Open(${b.event_id})" style="border:1px solid ${b.active?'#e9dfcf':'#f0ede6'};border-radius:16px;padding:14px;margin-top:9px;cursor:pointer;${b.active?'':'opacity:.72'}">
       <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -12737,7 +13978,18 @@ async function openClubBracketView(){
     try{ const d=await api(`/clubs/${cid}/bracket2${cbQ()}`);
       if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; drawCB2View(); } }catch(e){} }, 12000);
 }
-let CB2_COURT=0;
+let CB2_COURT=0, CB2_FOCUS=null;
+/* 전체 표에서 칸을 누르면 그 코트 탭으로 옮겨 그 경기 앞에 세워준다.
+   여기서부터는 코트 하나만 보이니, 위에서 아래로 순서대로 점수를 넣을 수 있다.
+   예전에는 임원에게만 '게임 내 선수 변경' 시트가 떠서, 정작 점수를 넣으려면
+   탭을 다시 눌러 코트를 찾아 들어가야 했다. */
+function cb2GoGame(gi){
+  const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  CB2_COURT=g.c; CB2_FOCUS=gi;
+  drawCB2View();
+  setTimeout(()=>{ const el=document.getElementById('cbg'+gi);
+    if(el && el.scrollIntoView) el.scrollIntoView({block:'center', behavior:'smooth'}); }, 80);
+}
 /* 대진 도구 — 상단을 채우던 버튼들을 한곳에 모은다.
    거치·수기표·공유는 자주 쓰는 기능이 아니라 코트 화면을 밀어낼 이유가 없다. */
 function cb2More(){
@@ -12777,7 +14029,7 @@ function drawCB2View(){
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span>
       <div class="cl" role="button" tabindex="0" onclick="clearInterval(CB2_TIMER);closeOv()">×</div></div>`;
   // 예전 날짜 대진은 자동으로 감춘다 (오늘 것만 실시간 화면에 노출)
-  const _today=new Date().toISOString().slice(0,10);
+  const _today=ymd();
   if(CB2 && CB2.date && CB2.date!==_today && !CB2_EVENT){
     h+=`<div class="empty" style="padding:28px 20px"><div class="et">오늘 발행된 대진이 없어요</div>
       <div class="es">${esc(CB2.date)} 대진은 <b>클럽 기록 · 시즌</b>에서 볼 수 있어요.</div></div>
@@ -12811,7 +14063,7 @@ function drawCB2View(){
     if(off) h+=`<button class="btn" onclick="openClubBracketBuild()">대진 만들러 가기</button>`;
   }else{
     const {rank,rstat,live,rec,done}=cb2Stats();
-    h+=`<div class="rtprog">
+    h+=`<div class="rtprog lite">
       <div class="top"><span class="n">${(CB2.games||[]).filter(done).length}</span><span class="of">/ ${(CB2.games||[]).length}경기</span>
         ${(()=>{ /* 클럽 대진은 대관 시간에 묶이지 않는다 — 남은 경기 수만 알려준다.
                      시간 제한은 오픈매치(대관 종료 시각이 있는 경우)에만 쓴다. */
@@ -12820,14 +14072,28 @@ function drawCB2View(){
       <div class="rtbar"><i style="width:${(CB2.games||[]).length?Math.round((CB2.games||[]).filter(done).length/(CB2.games||[]).length*100):0}%"></i></div>
       ${(()=>{ /* 총무가 가장 자주 묻는 것 — "이 속도면 몇 시에 끝나지?" */
         const e=cbEta(CB2.games||[], done, CB2.courts);
-        if(!e) return '';
+        if(!e){
+          /* 왜 안 나오는지 알려준다 — 조용히 비어 있으면 고장으로 보인다 */
+          const dn=(CB2.games||[]).filter(done).length;
+          const msg = dn<2 ? '두 경기가 끝나면 마감 시각을 알려드려요'
+                    : !cbStartedAt(CB2.games||[]) ? '경기를 시작할 때 시작을 눌러주시면 마감 시각을 알려드려요'
+                    : '멈춰 있는 경기가 많아 속도를 잴 수 없어요 · 점수를 넣으면 다시 알려드려요';
+          return msg ? `<div style="margin-top:9px;padding-top:9px;
+            border-top:1px solid #eee9e0;font-size:11px;color:#8c877f">${msg}</div>` : '';
+        }
         return `<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;
-            padding-top:9px;border-top:1px solid rgba(255,255,255,.14)">
-          <span style="font-size:11px;color:#bfae99">이 속도면</span>
-          <span style="font-size:15px;font-weight:800;color:#f7b98a;letter-spacing:-.03em">${e.end}</span>
-          <span style="font-size:11px;color:#bfae99">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}</span></div>`;
+            padding-top:9px;border-top:1px solid #eee9e0">
+          <span style="font-size:11px;color:#8c877f">이 속도면</span>
+          <span style="font-size:15px;font-weight:800;color:var(--coral-d);letter-spacing:-.03em">${e.end}</span>
+          <span style="font-size:11px;color:#8c877f">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}${
+            e.stallMin>=5?` · 멈춰 있는 ${e.stallMin}분 포함`:''}</span></div>`;
       })()}
     </div>`;
+
+    /* 운영진 카드 — 지금 손봐야 할 것 하나. 회원 카드와 같은 함수라 크기가 같다. */
+    if(off) h+=cbBigCard(cbOfficerCard(), true);
+    /* 내 차례 카드 — 회원 각자에게 <어디로 · 언제 · 누구와> */
+    h+=cbBigCard(cbMyCard(), false);
 
     /* 진행 중 경기·선수 집계 → 시작 게이팅 (아래 코트 카드에서 쓴다) */
     const runG=(CB2.games||[]).filter(g=>g.startedAt&&!done(g));
@@ -12840,25 +14106,22 @@ function drawCB2View(){
       /* 0 = 전체 보기. 코트가 하나뿐이면 전체 탭이 없으니 그 코트로 보낸다. */
       if(CB2_COURT!==0 && !cs.some(x=>x.c===CB2_COURT)) CB2_COURT=(cs[0]||{}).c||1;
       if(cs.length<=1) CB2_COURT=(cs[0]||{}).c||1;
-      /* 조가 코트에 고정되는 방식은 코트마다 성비가 다르다 — 세 코트를 한 줄에 보여준다 */
-      if(cs.length>1 && (CB2.mode==='hanul'||CB2.mode==='monthly')){
-        h+=`<div style="display:flex;flex-wrap:wrap;gap:8px 14px;margin:2px 2px 9px;font-size:11px;font-weight:500;color:var(--gray)">
-          ${cs.map(({c})=>{ const x=cb2CourtMix(c); return x.n
-            ? `<span>${c}코트 <b style="color:#3b53a8;font-weight:600">남 ${x.m}</b><span style="color:#d8d2c6"> · </span><b style="color:#a8395f;font-weight:600">여 ${x.f}</b><span style="color:var(--lgray);font-weight:500"> (${x.n}명)</span></span>`
-            : ''; }).join('')}</div>`;
-      }
+      /* 코트별 성비 줄은 뺐다 — <성별로 코트 나누기>를 켠 날에만 뜻이 있는데
+         조건 없이 늘 떠서, 전원 남자인 날에도 '남 7 · 여 0'이 코트마다 늘어섰다. */
       if(cs.length>1){
         /* '전체' 를 맨 앞에 둔다 — 내 다음 경기를 보려고 탭을 세 번 누르지 않게.
            점수를 넣을 때는 한 코트만 보는 게 나으니 코트별 탭도 그대로 둔다. */
         h+=`<div class="rtcts">
-          <div class="${CB2_COURT===0?'on':''}" onclick="CB2_COURT=0;drawCB2View()">
+          <div class="${CB2_COURT===0?'on':''}" onclick="CB2_COURT=0;CB2_FOCUS=null;drawCB2View()">
             <span class="t">전체</span><span class="s">${(CB2.games||[]).filter(done).length}/${(CB2.games||[]).length}</span></div>
           ${cs.map(({c,cg})=>{
           const offc=(CB2.offCourts||[]).includes(c);
           const running=cg.some(g=>g.startedAt&&!done(g));
           const fin=cg.filter(done).length;
-          return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};drawCB2View()">
-            <span class="t">${c}코트</span>
+          /* 탭에는 진행 숫자만 둔다 — 비는 시간을 여기 넣었더니 2/6 이 밀려나
+             얼마나 진행됐는지를 못 보게 됐다. 비는 시간은 아래 한 줄이 맡는다. */
+          return `<div class="${CB2_COURT===c?'on':''}${offc?' off':''}" onclick="CB2_COURT=${c};CB2_FOCUS=null;drawCB2View()">
+            <span class="t">${c}번 코트</span>
             <span class="s">${offc?'중지':running?'진행 중':`${fin}/${cg.length}`}</span></div>`;
         }).join('')}</div>`;
       }
@@ -12869,8 +14132,11 @@ function drawCB2View(){
         const dupBy={}; rs.forEach(r=>{ dupBy[r]=cb2ClashAt(CB2.games||[], r).map(d=>d.name); });
         const nm=(arr,r)=>(arr||[]).map(p=>
           (dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name)).join('·');
+        /* 이동 안내 — 그 넷에게만 칸을 덮는다. 탭하면 점수, 다시 탭하면 안내. */
+        const MV=cbMoveHint();
+        h+=cbFreeLine(0);                      // 비는 코트가 있으면 표 위에 한 줄
         h+=`<div class="cbwide"><table>
-          <tr><th></th>${cs.map(({c})=>`<th>${c}코트</th>`).join('')}</tr>
+          <tr><th></th>${cs.map(({c})=>`<th>${c}번 코트</th>`).join('')}</tr>
           ${rs.map(r=>`<tr><td class="r${(dupBy[r]||[]).length?' bad':''}">${r}</td>${cs.map(({c})=>{
             const g=(CB2.games||[]).map((x,gi)=>({...x,gi})).find(x=>x.r===r&&x.c===c);
             if(!g) return `<td class="no">—</td>`;
@@ -12878,16 +14144,25 @@ function drawCB2View(){
             const mine=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name);
             const bad=(dupBy[r]||[]).some(n=>mine.includes(n));
             const cls=bad?'bad':done(g)?'dn':run?'on':'';
-            return `<td class="${cls}" onclick="cb2Menu(${g.gi})">
+            /* 덮을 칸인가 — 몸 풀 곳(step 1)과 내가 갈 곳(step 2) */
+            const hint = MV && (MV.warm && MV.warm.r===r && MV.warm.c===c ? MV.warmTxt
+                              : MV.go && MV.go.r===r && MV.go.c===c ? MV.goTxt : null);
+            if(hint && !CB2_FLIP[`${r}-${c}`]){
+              return `<td class="${cls} mvcell${hint.go?' go':''}" onclick="cb2Flip('${r}-${c}')">
+                <b>${esc(hint.t1)}</b><span>${esc(hint.t2)}</span>
+                <i>눌러서 점수 보기</i></td>`;
+            }
+            return `<td class="${cls}${hint?' flipped':''}" onclick="${hint?`cb2Flip('${r}-${c}')`:`cb2GoGame(${g.gi})`}">
               ${nm(g.teamA,r)}
               <em>${done(g)?`${g.sa}:${g.sb}`:run?'경기 중':'vs'}</em>
-              ${nm(g.teamB,r)}</td>`;
+              ${nm(g.teamB,r)}
+              ${hint?`<i class="back">눌러서 안내 보기</i>`:''}</td>`;
           }).join('')}</tr>`).join('')}
         </table>
         <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 게임에 안 쓰는 코트
+          <br>칸을 누르면 <b>그 코트로 옮겨가요</b> · 거기서 점수를 넣어요
           ${Object.values(dupBy).some(v=>v.length)
-            ? `<br><b style="color:#c14545">붉은 칸</b>이 겹치는 경기 · 밑줄이 겹치는 사람 ·
-               칸을 누르면 <b style="color:#c14545">순서 바꾸기</b>가 나와요` : ''}</div></div>`;
+            ? `<br><b style="color:#c14545">붉은 칸</b>이 겹치는 경기 · 밑줄이 겹치는 사람` : ''}</div></div>`;
       }
     }
     /* 같은 바퀴에 같은 사람이 두 코트에 있으면 진행이 불가능하다.
@@ -12916,14 +14191,24 @@ function drawCB2View(){
       if(!cg.length) continue;
       /* 전체 보기(0)에서는 위의 표만 보여준다 — 코트 카드까지 다 쌓으면 화면 세 개 분량이다 */
       if((CB2.courts||0)>1 && (CB2_COURT===0 || c!==CB2_COURT)) continue;
+      h+=cbFreeLine(c);                        // 이 코트가 비면 카드 위에 한 줄
       h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px;${(CB2.offCourts||[]).includes(c)?'opacity:.45':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <b style="font-size:var(--t2);font-weight:600">${c}코트${(CB2.mode==='hanul'||CB2.mode==='monthly')?cb2MixChip(c,true):''}${(CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>':cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>':''}</b>
+          <b style="font-size:var(--t2);font-weight:600">${c}번 코트${
+            (CB2.offCourts||[]).includes(c)?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">사용 중지</span>'
+            : cg.some(g=>g.startedAt&&!done(g))?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>'
+            : (()=>{
+                /* 헤더에는 상태 한 조각만. 몇 분 비는지는 아래 안내 줄이 맡는다. */
+                const nxt=cg.find(g=>!done(g) && !g.startedAt);
+                return nxt ? '' : ' <span style="font-size:11px;font-weight:500;color:var(--lgray)">경기 끝</span>';
+              })()}</b>
       ${off?`<span onclick="cb2ToggleCourt(${c})" style="font-size:11px;font-weight:500;color:var(--lgray);cursor:pointer;margin-left:6px">${(CB2.offCourts||[]).includes(c)?'사용 재개':'중지'}</span>`:''}
           <span class="gt1 gmute">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
         let sc;
-        const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],'청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
+        /* 종류는 색이 아니라 잉크 농도로 나눈다 — 카드마다 붙는 딱지라
+           파랑·분홍·보라가 매 줄 반복되면 화면에서 제일 시끄러운 곳이 된다. */
+        const LB={'남복':['#efeceb','#3a352d'],'여복':['#f7f4f0','#8c877f'],'혼복':['#f4f1ee','#6b6357'],'청백':['#f1eee7','#57503f']}[g.label]||['#f2f0ea','#6b6357'];
         let nextUp=false;
         if(done(g)){
           sc=`<span style="font-size:11px;font-weight:500;color:var(--lgray)">완료</span>`;
@@ -12931,7 +14216,7 @@ function drawCB2View(){
           sc=`<span onclick="cb2Score(${g.gi})" style="cursor:pointer;font-size:11px;font-weight:600;color:var(--coral-d)">점수 입력 ›</span>
             <span onclick="cb2CancelStart(${g.gi})" style="cursor:pointer;font-size:11px;font-weight:500;color:var(--lgray);margin-left:6px" title="시작 취소">■ 취소</span>`;
         } else {
-          nextUp = !cg.some(x=>!done(x) && !x.startedAt && x.r < g.r);
+          nextUp = !cg.some(x=>!done(x) && !x.startedAt && x.r < g.r);   // 이 코트에서 제일 앞선 미시작 경기
           const ids=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.id);
           const busy=ids.some(i=>RUN.ids.has(i));
           /* 한 코트에서 두 경기가 동시에 돌 수는 없다.
@@ -12940,9 +14225,34 @@ function drawCB2View(){
           const wait=t=>`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">${t}</span>`;
           if(courtBusy)                    sc=wait('대기 · 이 코트 경기 중');
           else if(RUN.n>=(CB2.courts||1))  sc=wait('대기 · 코트 만석');
-          else if(busy)                    sc=wait('대기 · 선수 경기 중');
-          else sc=`<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`;
+          /* 왜 못 시작하는지 밝힌다 — '대기'만 있으면 고장으로 보인다 */
+          else if(busy){
+            const who=(()=>{ const x=(CB2.games||[]).find(y=>y.startedAt&&!done(y)&&
+                [...(y.teamA||[]),...(y.teamB||[])].some(p=>ids.includes(p.id)));
+              return x?`${x.c}번 코트 끝나면`:'선수 경기 중'; })();
+            sc=wait(`대기 · ${who}`);
+          }
+          /* 코랄 덩어리는 화면에 하나. 다음 차례가 선수에 묶여 못 시작할 때는
+             <먼저 할 수 있는 경기>를 대신 칠한다 — 코트를 놀리지 않으려면 그게 시작점이다. */
+          else {
+            const pull=(typeof cbPullGame==='function')?cbPullGame(c):null;
+            const isPull = pull && pull.gi===g.gi && !nextUp;
+            sc = (nextUp || isPull)
+              ? `<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`
+              : `<span onclick="cb2StartGame(${g.gi})" style="background:#fff;border:1px solid #e6e2d9;color:#57503f;border-radius:8px;padding:3px 10px;font-weight:500;font-size:11px;cursor:pointer">시작</span>`;
+            if(isPull) sc=`<span style="font-size:10px;font-weight:700;color:#8a5a13;background:#fdf1dc;
+              border-radius:20px;padding:3px 8px;margin-right:6px">먼저 가능</span>`+sc;
+            /* 다른 코트가 비어 있으면 그리로 옮겨 갈 수 있게 — 코트를 놀리지 않는 가장 빠른 길 */
+            const frees=(typeof cb2FreeCourts==='function')?cb2FreeCourts(g.gi):[];
+            if((nextUp||isPull) && frees.length) sc += frees.slice(0,2).map(fc=>
+              `<span onclick="event.stopPropagation();cb2MoveCourt(${g.gi},${fc})"
+                style="margin-left:6px;font-size:10.5px;font-weight:700;color:var(--coral-d);
+                background:#fff;border:1px solid #f0d9c4;border-radius:20px;padding:4px 9px;cursor:pointer"
+                >${fc}번 코트로 ›</span>`).join('');
+          }
         }
+        if(g.movedFrom && !done(g)) sc = `<span style="font-size:10px;font-weight:700;color:#8a5a13;
+          background:#fdf1dc;border-radius:20px;padding:3px 8px;margin-right:6px">원래 ${g.movedFrom}번</span>` + sc;
         const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
     const gA=esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
     const gB=esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
@@ -12950,7 +14260,9 @@ function drawCB2View(){
         /* 스코어는 두 팀 사이에 둔다 — 누구 대 누구의 몇 점인지 한 줄에서 읽힌다.
            아직 안 끝난 경기는 실선 테두리의 빈 칸으로 두어 '여기 눌러 입력'이 보이게. */
         const scBox = done(g)
-          ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}>${g.sa} : ${g.sb}</span>`
+          ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}
+              ${g.byHelp&&g.by?`title="${esc(cbWhoName(g.by))} 님이 대신 넣었어요"`:''}>${g.sa} : ${g.sb}${
+              g.byHelp&&g.by?`<i style="display:block;font-style:normal;font-size:9px;font-weight:600;color:#a5804a;margin-top:2px">${esc(cbWhoName(g.by))} 넣음</i>`:''}</span>`
           : `<span onclick="cb2Score(${g.gi})" class="cbsc">－ : －</span>`;
         /* 진행 중·다음 차례가 작은 글자 딱지뿐이라 눈에 안 띄었다.
            진행 중은 코랄로 칠하고 왼쪽에 굵은 띠를, 다음 차례는 테두리만 —
@@ -12959,17 +14271,25 @@ function drawCB2View(){
         /* 알약을 겹쳐 붙이면 시끄럽다. 진행 중은 <왼쪽 띠 + 경과 시간>,
            다음 차례는 <테두리>만. 글자 딱지는 하나도 안 쓴다. */
         const mins = running ? Math.max(0, Math.round((Date.now()-g.startedAt)/60000)) : 0;
-        h+=`<div style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
-            background:${running?'#fdf3ec':'#f8f6f1'}${
+        const focused = CB2_FOCUS===g.gi;
+        h+=`<div id="cbg${g.gi}" style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
+            background:${running?'#fdf3ec':focused?'#fdf8f0':'#f8f6f1'}${
             running?';box-shadow:inset 3px 0 0 var(--coral)'
-                  : nextUp?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
+                  : (nextUp||focused)?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-size:11px;font-weight:${running?700:500};color:${running||nextUp?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
             <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
             ${running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">${mins}분째</span>`:''}
             ${nextUp&&!running?`<span style="font-size:11px;font-weight:600;color:var(--coral-d)">다음</span>`:''}
             <span style="flex:1"></span>${sc}
-            ${off&&!done(g)?`<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:var(--lgray);cursor:pointer;padding:0 2px 0 6px;line-height:1" title="경기 바꾸기">⋮</span>`:''}
+            ${(()=>{ /* 겹침을 되돌릴 때만 나오는 통로. 평소에는 아무것도 안 보여준다 —
+                        점수 넣으러 온 사람에게 편성 도구를 들이밀 이유가 없다. */
+              if(!off || done(g)) return '';
+              const dup=cb2ClashAt(CB2.games||[], g.r);
+              const mine=[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name);
+              if(!dup.some(d=>mine.includes(d.name))) return '';
+              return `<span onclick="cb2Menu(${g.gi})" style="font-size:15px;font-weight:600;color:#c14545;cursor:pointer;padding:0 2px 0 6px;line-height:1" title="순서 바꾸기">⋮</span>`;
+            })()}
           </div>
           <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
             <div style="flex:1;min-width:0">
@@ -13072,19 +14392,36 @@ async function delClubEvent(id, title){
   }catch(e){ toast(String(e.message).includes('officer')?'임원만 지울 수 있어요':'삭제하지 못했어요'); }
 }
 function closeEventPick(){ document.getElementById('eventpick').style.display='none'; }
+/* 대진 짜기 버튼을 누르면 목록에서 하나를 고르게 하지 않고 바로 짠다.
+   가장 가까운 모임(오늘이 있으면 오늘)을 스스로 고른다 — 대진 화면을 열면
+   어느 모임인지 제목에 그대로 보이니, 목록에서 미리 확인시킬 필요가 없다.
+   다른 모임의 대진이 필요하면 그 모임 상세에서 '이 모임 참석자로 대진 짜기'를
+   누르면 그 모임으로 정확히 열린다(CB2_EVENT를 직접 넘기는 경로). */
+function cbNearestEvent(evs){
+  const withT=(evs||[]).map(e=>({e,t:evTime(e)})).filter(x=>x.t && x.t<8.64e15);
+  if(!withT.length) return null;
+  const future=withT.filter(x=>!evIsPast(x.e));
+  const list=(future.length?future:withT).sort((a,b)=>a.t-b.t);
+  return list[0].e;
+}
 async function openClubBracketBuild(){
   if(!cb2CanEdit()){ toast('대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요'); return; }
   CB2_STEP=1;                                    // 열 때는 언제나 참석자 고르기부터
-  /* 대진은 '어느 모임'의 참석자로 짜는 것이다. 모임이 없으면 만들 수 없고,
-     여러 개면 어느 모임인지 먼저 골라야 참석자가 정해진다. */
   { const evs=clubEvents();
     if(!evs.length){
       toast('먼저 모임을 만들어 주세요'); setTimeout(openEventCreate, 300); return; }
-    /* 어느 날 모임의 대진인지 매번 고르게 한다. 지난번 선택이 남아 있으면
-       엉뚱한 모임에 대진이 붙는다. */
-    if(!window._bracketEventPicked){ pickBracketEvent(evs); return; }
+    if(!window._bracketEventPicked){
+      const nx=cbNearestEvent(evs);
+      if(!nx){ toast('대진 짤 모임을 찾지 못했어요'); return; }
+      CB2_EVENT = nx.id&&!isNaN(+nx.id) ? +nx.id : 0;
+    }
     window._bracketEventPicked=false; }
   const cid=clubId(); if(!TRIAL&&(!SERVER_OK||!cid)){ toast('클럽에 먼저 들어가 주세요'); return; }
+  /* 모임 만들 때 고른 코트를 그대로 가져온다 — 매번 코트 수를 다시 고를 일이 없다 */
+  { const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(CB2_EVENT))
+          || (((AC()||{}).events)||[]).find(e=>String(e.id)===String(CB2_EVENT));
+    const cs=ev? (evParseDate(ev.date).courts||[]) : [];
+    if(cs.length) CB2_COURTS=Math.max(1,Math.min(4,cs.length)); }
   clearInterval(CB2_TIMER);
   let roster=[];
   if(TRIAL) roster=TRIAL_ROSTER.slice();
@@ -13117,7 +14454,7 @@ const GRADE_INFO = [
   { g:'SS', minY:20, label:'20년 이상',  ntrp:'4.5+',      desc:'선수급 · 선출·입상', c:'#2a2621', bg:'#e8e4dc' },
   { g:'S',  minY:10, label:'10 ~ 19년',  ntrp:'4.0 ~ 4.5', desc:'최상급 · 금배부',   c:'#8a6a1f', bg:'#f9e7b8' },
   { g:'A',  minY:5,  label:'5 ~ 9년',    ntrp:'3.5 ~ 4.0', desc:'상급 · 은배부',   c:'#cf5418', bg:'#fceee4' },
-  { g:'B',  minY:2,  label:'2 ~ 4년',    ntrp:'2.5 ~ 3.0', desc:'중급',           c:'#2b62c9', bg:'#e6eefb' },
+  { g:'B',  minY:2,  label:'2 ~ 4년',    ntrp:'2.5 ~ 3.0', desc:'중급',           c:'#3a352d', bg:'#efeceb' },
   { g:'C',  minY:0,  label:'1년 이하',   ntrp:'2.0 이하',  desc:'입문 · 초급',     c:'#2c7a53', bg:'#e8f5ee' },
 ];
 const gradeInfo = g => GRADE_INFO.find(x=>x.g===g) || GRADE_INFO[GRADE_INFO.length-1];
@@ -13952,7 +15289,7 @@ function cbLateWhy(){
 function cbRoundWhy(){
   const n=cb2Head(), c=cb2Courts();
   const r=cbCourtOk(n, c);
-  if(!r.ok) return `${n}명 · ${c}코트는 ${r.why}`;
+  if(!r.ok) return `${n}명 · ${c}번 코트는 ${r.why}`;
   return cbLateWhy();
 }
 
@@ -13984,7 +15321,10 @@ function cb2GenderCount(){
     if(isFem(p.gender)) f++; else m++; });
   return {m,f};
 }
-function cb2Head(){ return CB2_SEL.size + CB2_GUESTS.length; }
+/* 참석 인원.
+   게스트를 추가할 때 CB2_SEL 에도 그 id 를 넣으므로 CB2_SEL 만 세면 된다.
+   예전엔 CB2_GUESTS.length 를 더해서 게스트를 두 번 셌다 — 18명이 35명으로 나왔다. */
+function cb2Head(){ return CB2_SEL.size; }
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
   return el ? (+el.value||3) : CB2_COURTS;
@@ -14044,10 +15384,10 @@ function drawCB2Step2(){
   });
   h+=`</div>
     ${(()=>{ const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(window._bracketEventPicked));
-      return (ev&&ev.tag==='번개') ? `<div style="display:flex;align-items:center;gap:9px;background:#eef4ff;
+      return (ev&&ev.tag==='번개') ? `<div style="display:flex;align-items:center;gap:9px;background:#fdf1dc;
         border-radius:12px;padding:12px 13px;margin-top:4px">
-        <span class="gt1" style="color:#2b62c9;font-weight:600;flex:none">번개</span>
-        <span class="gt1" style="color:#2b62c9;flex:1">이 대진은 기록에 남지만 시즌 랭킹에는 안 들어가요.</span></div>` : ''; })()}
+        <span class="gt1" style="color:#8a5a13;font-weight:600;flex:none">번개</span>
+        <span class="gt1" style="color:#8a5a13;flex:1">이 대진은 기록에 남지만 시즌 랭킹에는 안 들어가요.</span></div>` : ''; })()}
     <button class="btn" style="margin-top:18px" onclick="cb2Gen(CB2_MODE)">대진 만들기
       ${CB2_MODE==='cheongbaek'?'':`<span style="font-weight:500;font-size:11px;opacity:.85">${games}경기 · 1인 4경기</span>`}</button>
     <div class="note" style="text-align:center;margin-top:9px">발행하면 회원 화면이 즉시 바뀌어요</div>
@@ -14110,9 +15450,9 @@ function drawCB2Build(){
     ${(()=>{ const p=cb2LoadPreset(); if(!p) return '';
       const nm={hanul:'한울 AB',gender:'성비',cheongbaek:'청백전',monthly:'월례대회',tourney:'대회 준비'}[p.mode]||'일반';
       return `<div onclick="cb2ApplyPreset()" style="display:flex;align-items:center;gap:10px;background:#eef4ff;border-radius:12px;padding:10px 13px;margin-top:12px;cursor:pointer">
-        <span style="font-size:11px;font-weight:500;color:#2b62c9">지난 설정</span>
+        <span style="font-size:11px;font-weight:500;color:var(--coral-d)">지난 설정</span>
         <span style="flex:1;font-size:12px;font-weight:500">${nm} · ${p.courts}코트</span>
-        <span style="font-size:11px;font-weight:500;color:#2b62c9">그대로 쓰기</span></div>`; })()}
+        <span style="font-size:11px;font-weight:500;color:var(--coral-d)">그대로 쓰기</span></div>`; })()}
     <div class="ch" style="font-size:14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">
       <span>참석자 선택</span>
       <span onclick="cb2GradeMode()" style="font-size:11px;font-weight:500;cursor:pointer;border-radius:14px;padding:5px 11px;${CB2_GRADEMODE?'background:var(--ink);color:#fff':'background:#f2f0ea;color:#6b6357'}">${CB2_GRADEMODE?'등급 편집 중 · 칩을 탭 → 저장':'등급 편집'}</span></div>
@@ -14169,7 +15509,7 @@ function drawCB2Build(){
     <div style="display:flex;gap:10px;margin-top:10px">
       <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
         ${[1,2,3,4].map(c=>{ const r=cbCourtOk(cb2Head(), c);
-          return `<option value="${c}" ${courts===c?'selected':''}>${c}코트${r.ok?'':' · 안 돼요'}</option>`;
+          return `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 안 돼요'}</option>`;
         }).join('')}</select></div>
       <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:12px;font-weight:500;background:#faf8f4">1인 4경기 보장</div></div></div>
     ${(()=>{ /* 인원·코트가 안 맞으면 왜 안 되는지와 대안을 적는다 */
@@ -14270,11 +15610,11 @@ function cbSexFits(nM, nF, courts){
   return false;
 }
 /* 지금 고른 참석자의 남녀 수 (게스트 포함) */
+/* cb2All() 은 명부와 게스트를 합쳐서 돌려준다 — 게스트를 따로 또 더하면 두 번 센다 */
 function cbSexNow(){
   let m=0,f=0;
   cb2All().forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
     if(isFem(p.gender)) f++; else m++; });
-  CB2_GUESTS.forEach(g=>{ if(isFem(g.gender)) f++; else m++; });
   return {m,f};
 }
 /* 늦참자를 뺀 정시 인원의 남녀 수 */
@@ -14283,8 +15623,6 @@ function cbSexOnTime(){
   cb2All().forEach(p=>{ const id=String(p.user_id);
     if(!CB2_SEL.has(id) || CB2_LATE.has(id)) return;
     if(isFem(p.gender)) f++; else m++; });
-  CB2_GUESTS.forEach(g=>{ if(CB2_LATE.has(String(g.gid))) return;
-    if(isFem(g.gender)) f++; else m++; });
   return {m,f};
 }
 /* 늦참을 지금 구성으로 반영할 수 있나 — 인원과 성별을 함께 본다 */
@@ -14298,12 +15636,12 @@ function lateSexWhy(){
 }
 function lateMaxNow(){
   if(lateSexWhy()) return 0;                       // 성별이 안 맞으면 미룰 수 없다
-  return lateMax(CB2_SEL.size + CB2_GUESTS.length, cb2Courts(), CB2_LATE.size);
+  return lateMax(cb2Head(), cb2Courts(), CB2_LATE.size);
 }
 /* 한 명 더 지정해도 되는지 — 안 되면 칩을 잠근다.
    그 사람을 뺐을 때 성별이 떨어지는지까지 본다. */
 function lateCanAdd(p){
-  const n=CB2_SEL.size + CB2_GUESTS.length, c=cb2Courts();
+  const n=cb2Head(), c=cb2Courts();
   if(lateMax(n, c, CB2_LATE.size+1) < 2) return false;
   if(p){
     const t=cbSexOnTime();
@@ -14657,7 +15995,7 @@ async function cb2Gen(mode){
     }
   }
   const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
-  const data={date:new Date().toISOString().slice(0,10), courts, rounds, mode, gpp:GPP,
+  const data={date:ymd(), courts, rounds, mode, gpp:GPP,
     made_by:state.userName, games, captains, note:genderNote,
     orders: mode==='cheongbaek' ? {blue:null, white:null} : null,
     /* 조는 배열([선수…])일 수도, 이름이 붙은 객체({name, members})일 수도 있다.
@@ -14750,7 +16088,7 @@ function cb2Finished(){
 /* 오더 시트를 지금 보여줄지 — ①오늘 발행 ②청백전 ③아직 안 끝남 ④내가 캡틴(또는 임원) */
 function cb2OrderOpen(){
   if(!CB2 || CB2.mode!=='cheongbaek') return false;
-  const today=new Date().toISOString().slice(0,10);
+  const today=ymd();
   if(CB2.date && CB2.date!==today) return false;          // 지난 날짜 대진이면 숨김
   if(cb2Finished()) return false;                         // 전 경기 종료면 숨김
   return !!cb2MySide();                                   // 캡틴(또는 임원 대행)만
@@ -14837,6 +16175,22 @@ function cb2OrderAuto(){
 }
 async function cb2OrderSave(){
   const o=window._cb2Order;
+  /* ── 안전장치 ──────────────────────────────────────────
+     전원 정확히 4경기여야 한다. 3경기도 5경기도 안 된다.
+     화면에서 버튼을 잠그고 있지만, 어떤 경로로 들어와도 여기서 한 번 더 막는다. */
+  { const cnt={};
+    o.cur.forEach(pr=>pr.forEach(id=>{ if(id) cnt[id]=(cnt[id]||0)+1; }));
+    const bad=o.team.filter(p=>(cnt[p.id]||0)!==4);
+    if(bad.length){
+      const t=bad.slice(0,3).map(p=>`${p.name} ${cnt[p.id]||0}경기`).join(' · ');
+      toast(`전원 4경기가 되어야 해요 · ${t}${bad.length>3?` 외 ${bad.length-3}명`:''}`);
+      return;
+    }
+    const half=o.cur.filter(pr=>!pr[0]||!pr[1]);
+    if(half.length){ toast(`${half.length}게임에 자리가 비어 있어요`); return; }
+    const same=o.cur.filter(pr=>String(pr[0])===String(pr[1]));
+    if(same.length){ toast('한 게임에 같은 사람이 두 번 들어갔어요'); return; }
+  }
   CB2.orders=CB2.orders||{blue:null,white:null};
   CB2.orders[o.side]=o.cur;
   const B=CB2.orders.blue, W=CB2.orders.white;
@@ -15156,36 +16510,18 @@ function promoBadge(nameOrId){
     : `<span title="${esc(p.from_grade)}→${esc(p.to_grade)}" style="font-size:11px;font-weight:500;color:#cf5418;background:#fdf0ea;border-radius:6px;padding:1px 5px;margin-left:4px">▼${esc(p.to_grade)}</span>`;
 }
 /* ── 내 다음 경기 (홈 카드) ── */
-let MYNEXT=null;
-function myNextCard(){
-  if(!MYNEXT) return '';
-  const {g, running, min}=MYNEXT;
-  const mate=[...(g.teamA||[]),...(g.teamB||[])].find(p=>p.id!==(state.serverUser||{}).id&&
-    ((g.teamA||[]).some(x=>x.id===(state.serverUser||{}).id)? (g.teamA||[]).some(x=>x.id===p.id):(g.teamB||[]).some(x=>x.id===p.id)));
-  return `<div onclick="openClubBracketView()" style="display:flex;align-items:center;gap:11px;background:linear-gradient(135deg,#fff3ea,#ffe9db);border-radius:18px;padding:14px;margin:4px 0 12px;cursor:pointer">
-    <span style="width:44px;height:44px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:var(--coral-d)">${g.r}</span>
-    <div style="flex:1;min-width:0">
-      <div style="font-size:11px;font-weight:500;color:#a86a3a">${running?'다음은 내 차례예요':'내 경기가 곧 시작돼요'}</div>
-      <div style="font-size:14px;font-weight:500;margin-top:2px">${g.r}게임 · ${g.c}코트 ${esc(g.label||'')}</div>
-      <div style="font-size:12px;font-weight:500;color:#7a6a58;margin-top:3px">${mate?esc(mate.name)+' 님과 한 팀':''}${running?` · 앞 경기 ${min}분 진행 중`:''}</div></div>
-    <span style="color:var(--coral-d);font-weight:600">›</span></div>`;
-}
+/* 홈 띠에 쓸 오늘 대진을 받아 둔다. 화면을 열어보지 않아도 홈이 먼저 알고 있어야 한다. */
 async function loadMyNext(){
   if(!(SERVER_OK&&clubId()&&authToken())) return;
-  const me=(state.serverUser||{}).id; if(!me) return;
+  if(!(state.serverUser||{}).id) return;
   try{
     const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`);
-    if(!d||!(d.games||[]).length){ MYNEXT=null; return; }
-    const today=new Date().toISOString().slice(0,10);
-    if(d.date && d.date!==today){ MYNEXT=null; return; }
-    const mine=(d.games||[]).map((g,i)=>({...g,gi:i}))
-      .filter(g=>g.sa==null && [...(g.teamA||[]),...(g.teamB||[])].some(p=>p&&p.id===me));
-    if(!mine.length){ MYNEXT=null; return; }
-    const g=mine[0];
-    const run=(d.games||[]).find(x=>x.startedAt&&x.sa==null);
-    MYNEXT={g, running:!!run, min:run?Math.max(0,Math.floor((Date.now()-run.startedAt)/60000)):0};
+    const ok = d && (d.games||[]).length && cbTodayish(d.date);
+    HOME_BK = ok ? d : null;
+    try{ ok ? localStorage.setItem('matsu_home_bk', JSON.stringify(d))
+            : localStorage.removeItem('matsu_home_bk'); }catch(e){}
     if(state.view==='home') renderHome();
-  }catch(e){ MYNEXT=null; }
+  }catch(e){}
 }
 /* ── 오늘의 기록 카드 ── */
 function cb2MyDay(){
@@ -15353,7 +16689,7 @@ async function cb2ShareImage(){
     const INK='#241d16', WARM='#8a7359', SOFT='#c4b39c',
           HAIR='#efe7dc', RULE='#e2d5c3', CORAL='#ec6a2e', CORAL_D='#c24f16';
     /* 복식 종류 — 알약을 빼고 색 글자만. 상자를 씌우면 이름보다 무거워진다. */
-    const TYPE={ '남복':'#2b62c9', '혼복':'#7a5cc4', '여복':'#c2437a' };
+    const TYPE={ '남복':'#3a352d', '혼복':'#6b6357', '여복':'#8c877f' };
 
     const W=1080, PAD=60;
     /* 글자 크기·굵기는 여기서만 정한다 — 본문에 숫자를 흩어두면 금방 어긋난다 */
@@ -15939,9 +17275,8 @@ function cb2Menu(gi){
       return row('게임 순서 바꾸기','겹침을 되돌릴 때만 써요 · 같은 코트의 다른 게임과 자리를 맞바꿔요',
                  'cb2SwapPick('+gi+')');
     })()}
-    ${row('게임 내 선수 변경','네 명은 그대로 · 팀만 다시 나눠요','cb2Reteam('+gi+')')}
-    <div class="note" style="text-align:left;margin-top:13px">선수를 빼고 다른 사람을 넣는 건 안 돼요 ·
-      누군가는 3경기, 누군가는 5경기가 되거든요. 모두 4경기를 뛰어야 해요.</div></div>`;
+    <div class="note" style="text-align:left;margin-top:13px">겹침을 되돌릴 때만 쓰는 화면이에요 ·
+      점수는 코트 화면에서 <b>－ : －</b> 를 눌러 넣어주세요.</div></div>`;
   document.getElementById('ov').classList.add('on');
 }
 /* ① 순서 바꾸기 — 같은 코트의 게임을 목록에서 고른다 */
@@ -16142,14 +17477,61 @@ function drawScoreSheet(){
     <button class="btn ghost" style="margin-top:9px" onclick="drawCB2View()">취소</button></div>`;
   document.getElementById('ov').classList.add('on');
 }
+/* 오늘 내가 넣어준 점수 개수 — 코트 밖에서 한 일은 승패에 안 남는다.
+   서버가 세어주지 않으니 이 기기에 날짜별로 센다. */
+function scoreHelpKey(){ return 'matsu_helped_'+ymd(); }
+function scoreHelpCount(){
+  /* 서버가 <누가 넣었는지(by)>와 <대신 넣은 것인지(byHelp)>를 저장한다 —
+     그 값이 있으면 기기 기록보다 그걸 믿는다. 폰을 바꿔도 남는다. */
+  const me=String((state.serverUser||{}).id||'');
+  const gs=(CB2&&CB2.games)||[];
+  const srv=me ? gs.filter(g=>g.byHelp && String(g.by||'')===me).length : 0;
+  let local=0; try{ local=+(localStorage.getItem(scoreHelpKey())||0); }catch(e){}
+  return Math.max(srv, local);
+}
+function scoreHelpBump(){ try{ localStorage.setItem(scoreHelpKey(), String(scoreHelpCount()+1)); }catch(e){} }
+/* 남의 경기 점수를 내가 넣을 수 있는가 — 서버 규칙과 똑같이 판단해야 한다.
+   서버(PATCH /clubs/:id/bracket2/score) 규칙:
+     임원 · 그 경기 당사자 · (오늘 대진에 있는 회원이고 점수가 비어 있을 때)
+     · 내가 10분 안에 넣은 것을 고칠 때
+   화면에서 눌리는데 서버가 막으면 회원은 앱이 고장 난 줄 안다. */
+function cb2CanScore(gi){
+  if(TRIAL) return true;
+  if(cb2Officer()) return true;
+  const gs=(CB2&&CB2.games)||[];
+  const g=gs[gi]; if(!g) return false;
+  const me=String((state.serverUser||{}).id||'');
+  if(!me) return false;
+  const inGame=[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
+  if(inGame) return true;
+  const inBracket=gs.some(x=>[...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
+  const empty=(g.sa==null || g.sb==null);
+  if(inBracket && empty) return true;                       // 대신 넣어주기
+  return !!(String(g.by||'')===me && g.atMs && Date.now()-g.atMs < 10*60*1000);
+}
 async function cb2ScoreSave(){
   const gi=SC_EDIT.gi, g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   const a=SC_EDIT.a, b=SC_EDIT.b;
   const m=[null,a,b];
-  if(TRIAL){ g.sa=a; g.sb=b; CB2.updated_at=Date.now(); drawCB2View(); toast('스코어를 기록했어요 (체험)'); return; }
+  /* 내 경기가 아니면 '넣어준 것'으로 센다 */
+  const me=String((state.serverUser||{}).id||'');
+  const mineGame=[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
+  if(TRIAL){ g.sa=a; g.sb=b; CB2.updated_at=Date.now();
+    if(!mineGame) scoreHelpBump();
+    drawCB2View(); toast(mineGame?'스코어를 기록했어요 (체험)':'대신 넣어줬어요 · 고마워요 (체험)'); return; }
   try{ await api(`/clubs/${clubId()}/bracket2/score${cbQ()}`,{method:'PATCH',body:JSON.stringify({gi,sa:a,sb:b})});
-    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); CB2=d; drawCB2View(); toast('스코어를 기록했어요');
-  }catch(e){ toast(String(e.message||'').includes('player_only')?'그 경기를 뛴 당사자나 임원만 입력할 수 있어요':'기록하지 못했어요'); }
+    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`); CB2=d;
+    if(!mineGame) scoreHelpBump();
+    drawCB2View(); toast(mineGame?'스코어를 기록했어요':'대신 넣어줬어요 · 고마워요');
+  }catch(e){
+    const msg=String(e.message||'');
+    const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
+      || (msg.match(/player_only|bracket_only|edit_locked/)||[''])[0];
+    toast(k==='bracket_only' ? '오늘 대진에 있는 회원만 대신 넣을 수 있어요'
+        : k==='edit_locked'  ? '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요'
+        : k==='player_only'  ? '그 경기를 뛴 분이나 운영진이 넣어주세요'
+        : '기록하지 못했어요');
+  }
 }
 /* ═══ 선수 리포트 — 종료된 경기 데이터 분석 (실력 향상용) ═══ */
 /* ═══ 기록에 넣을 모임인가 ═══
@@ -16291,7 +17673,7 @@ async function openPlayerReport(uid, name){
         <div style="font-size:11px;font-weight:500;color:#cf5418;margin-top:2px">${worstR?`${worstR.g}회 만나 ${worstR.w}승 ${worstR.l}패`:'데이터 부족'}</div></div></div>
     <div style="font-size:14px;font-weight:500;margin-top:22px">종목별 승률</div>
     <div style="margin-top:10px">${Object.entries(byLabel).map(([k,v])=>{ const p=Math.round(v.w/v.g*100);
-      const c={'남복':'#2b62c9','여복':'#c94378','혼복':'#6a4cc4','청백':'#3182f6'}[k]||'#8a857c';
+      const c={'남복':'#3a352d','여복':'#8c877f','혼복':'#6b6357','청백':'#57503f'}[k]||'#8a857c';
       return `<div style="margin-top:9px"><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:500">
         <span style="color:${c}">${esc(k)} <span style="color:#a8a29a;font-weight:400">${v.g}경기</span></span><span style="font-weight:600">${p}%</span></div>
         <div style="height:6px;background:#f2f0ea;border-radius:3px;margin-top:4px"><div style="width:${p}%;height:100%;border-radius:3px;background:${c}"></div></div></div>`;}).join('')}</div>
@@ -16369,30 +17751,27 @@ function drawPastMeetings(){
     h+=`<div class="card" style="padding:0;margin-bottom:10px;overflow:hidden">
       <div onclick="togglePastMeeting(${i})" style="display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14.5px;font-weight:700;letter-spacing:-.02em">${esc(l.title||l.date||'모임')}</div>
-          <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">${esc(l.date||'')} · ${gs.length}경기 · ${rank.length}명</div></div>
+          <div style="font-size:14.5px;font-weight:700;letter-spacing:-.02em">${esc(pastDayTitle(l))}</div>
+          <div style="font-size:11.5px;color:var(--lgray);margin-top:3px">${gs.length}경기 · ${rank.length}명</div></div>
         ${top?`<div style="flex:none;text-align:right">
           <div style="font-size:10.5px;font-weight:600;color:var(--coral-d)">그날 1위</div>
           <div style="font-size:13px;font-weight:700;margin-top:2px">${esc(maskNum(top.name, top.name))}</div></div>`:''}
         <span style="flex:none;color:#cdc8be;font-size:17px;transform:rotate(${open?'90':'0'}deg);transition:.15s">›</span></div>`;
     if(open){
-      /* 대진을 지우기 전에 쌓인 기록은 여기서 직접 치울 수 있게 한다 */
-      if(cb2Officer()) h+=`<div style="border-top:1px solid #f4f2ed;padding:9px 14px;text-align:right">
-        <span onclick="delPastLog('${esc(l.date||'')}')" style="font-size:11.5px;font-weight:600;color:#c94343;cursor:pointer">이 기록 지우기</span></div>`;
       h+=`<div style="border-top:1px solid #f4f2ed;padding:12px 14px">
-        <div style="font-size:11.5px;font-weight:600;color:var(--gray);margin-bottom:8px">그날 순위 · 승 ${PT_WIN}점 · 무 ${PT_DRAW}점</div>
-        <div style="display:flex;font-size:10.5px;color:var(--lgray);font-weight:500;padding:0 2px 6px">
-          <div style="width:22px">#</div><div style="flex:1">선수</div>
-          <div style="width:56px;text-align:center">전적</div>
-          <div style="width:42px;text-align:right">득실</div>
-          <div style="width:38px;text-align:right">점수</div></div>`;
+        <div style="display:flex;align-items:center;font-size:11.5px;font-weight:600;color:var(--gray);margin-bottom:4px">
+          그날 순위 · 승 ${PT_WIN}점 · 무 ${PT_DRAW}점
+          ${cb2Officer()?`<span onclick="event.stopPropagation();delPastLog('${esc(l.date||'')}')"
+            style="margin-left:auto;color:#c9c4bb;font-size:15px;font-weight:700;cursor:pointer;padding:0 2px"
+            title="이 기록 지우기">⋮</span>`:''}</div>`;
+      /* 순위는 표가 아니라 목록으로 — 다섯 열을 세 덩어리로 줄이고,
+         1·2·3위는 배지로 시상대를 만든다. 색은 늘리지 않는다. */
       rank.forEach((r,ri)=>{
-        h+=`<div style="display:flex;align-items:center;padding:9px 2px;border-top:1px solid #faf8f4">
-          <div style="width:22px;font-size:12px;font-weight:700;color:${ri<3?'var(--coral-d)':'var(--lgray)'}">${ri+1}</div>
-          <div style="flex:1;min-width:0;font-size:13.5px;font-weight:600">${esc(r.name)}</div>
-          <div style="width:56px;text-align:center;font-size:11.5px;color:var(--gray)">${maskNum(`${r.w}승 ${r.l}패`, r.name)}</div>
-          <div style="width:42px;text-align:right;font-size:11.5px;font-weight:600;color:${r.gd>=0?'#2f9159':'#d1614f'}">${maskNum((r.gd>=0?'+':'')+r.gd, r.name)}</div>
-          <div style="width:38px;text-align:right;font-size:13px;font-weight:700;color:var(--coral-d)">${maskNum(r.pt, r.name)}</div></div>`;
+        h+=`<div class="rk2">
+          <span class="rk2-m${ri<3?' m'+(ri+1):''}">${ri+1}</span>
+          <span class="rk2-w"><b>${esc(r.name)}</b>
+            <span>${maskNum(`${r.w}승 ${r.l}패`, r.name)} · 득실 ${maskNum((r.gd>=0?'+':'−')+Math.abs(r.gd), r.name)}</span></span>
+          <span class="rk2-p"><b>${maskNum(r.pt, r.name)}</b><i>점</i></span></div>`;
       });
       h+=`<div style="font-size:11.5px;font-weight:600;color:var(--gray);margin:16px 0 8px">경기별 스코어</div>`;
       gs.forEach(g=>{
@@ -16520,7 +17899,7 @@ function evBracketBlock(accent){
   const mode={hanul:'한울',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[bk.mode]||'일반';
   const courts=[]; for(let c=1;c<=(bk.courts||0);c++){ const cg=gs.filter(g=>g.c===c); if(cg.length) courts.push({c,cg}); }
   const open=EVD.bkCourt||courts[0]&&courts[0].c||1;
-  const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4']};
+  const LB={'남복':['#efeceb','#3a352d'],'여복':['#f7f4f0','#8c877f'],'혼복':['#f4f1ee','#6b6357']};
   let h=`<div style="height:1px;background:#f0ede6;margin:22px 0 0"></div>
     <div style="display:flex;align-items:baseline;gap:7px;margin-top:18px">
       <span style="font-size:14px;font-weight:500">그날 대진</span>
@@ -16553,7 +17932,7 @@ function drawEventDetail(){
   if(!EVD) return;
   const e=EVD.ev, off=(AC()||{}).officer;
   const isFlash = e.tag==='번개';
-  const accent = isFlash ? '#2b62c9' : '#cf5418';
+  const accent = isFlash ? '#8a5a13' : '#cf5418';
   const accentBg = isFlash ? '#eef3fb' : '#fdf1e8';
   const st=e.my_status||null;
   const btn=(v,l)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:11px;padding:9px 0;font-size:12px;font-weight:${st===v?'700':'500'};${st===v?`background:${accent};color:#fff`:'background:#f5f3ee;color:#6b6357'}">${l}</span>`;
@@ -16725,7 +18104,7 @@ async function openMemberCard(name){
   const gd=rec.gf-rec.ga, wr=rec.g?Math.round(rec.w/rec.g*100):0;
   const roleL={owner:'회장',officer:'임원'}[mem.role]||'회원';
   const jts = mem.joined_at || mem.user_created || null;                 // 가입 승인일 없으면 계정 생성일
-  const jd = jts ? new Date(+jts).toISOString().slice(0,10).replace(/-/g,'.') : '기록 없음';
+  const jd = jts ? ymd(new Date(+jts)).replace(/-/g,'.') : '기록 없음';
   const me=(state.serverUser||{}).id;
   const yr=new Date().getFullYear();
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
@@ -17174,7 +18553,7 @@ function schedCal(){
 }
 /* ══════════ 구장예약 — 캐시로 코트를 빌린다 ══════════ */
 /* 첫 화면은 오늘 하루만 본다. 전체를 펼치면 구장이 늘어날수록 감당이 안 된다. */
-let VN_SIDO='', VN_DATE=new Date().toISOString().slice(0,10), VN_GU='', VN_OPEN=null, VN_PICK=null, VN_BUSY=false;
+let VN_SIDO='', VN_DATE=ymd(), VN_GU='', VN_OPEN=null, VN_PICK=null, VN_BUSY=false;
 let VN_HALL=null, VN_HDATE='', VN_HSLOTS=null, VN_HR='';
 function vnHr(v){ VN_HR=v; renderVenues(); }
 const VN_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광역시':'대구','인천광역시':'인천',
@@ -17185,7 +18564,7 @@ const VN_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광
 function vnDays(){
   const out=[]; const base=new Date(); base.setHours(12,0,0,0);
   for(let i=0;i<14;i++){ const d=new Date(base.getTime()+i*864e5);
-    out.push({v:d.toISOString().slice(0,10), d:d.getDate(),
+    out.push({v:ymd(d), d:d.getDate(),
       w:['일','월','화','수','목','금','토'][d.getDay()], i}); }
   return out;
 }
@@ -18800,7 +20179,7 @@ function renderApps(){
         `openMatchCard(${m.id})`));
   h += sect('게스트 신청','클럽 방문',(A.guest||[]), g=>
     row(esc(g.title||'클럽 모임'), `${esc(g.club||'')} · ${esc(g.date||'')}`,
-        '임원 확인 중', 'background:#eef4fd;color:#2b62c9', null));
+        '임원 확인 중', 'background:#f4f1ee;color:#57503f', null));
 
   const total=(A.hosted||[]).length+(A.joined||[]).length+(A.guest||[]).length;
   if(!total){
@@ -20006,7 +21385,7 @@ async function renderRecordLeague(){
   {
     const days=[]; const t=new Date();
     for(let i=6;i>=0;i--){ const d=new Date(t); d.setDate(t.getDate()-i);
-      days.push({ymd:d.toISOString().slice(0,10), dow:'일월화수목금토'[d.getDay()], m:0}); }
+      days.push({ymd:ymd(d), dow:'일월화수목금토'[d.getDay()], m:0}); }
     (REC_MINE||[]).forEach(r=>{ const d=days.find(x=>x.ymd===r.ymd); if(d)d.m+=r.dist_m; });
     const mx=Math.max(1,...days.map(d=>d.m));
     if(days.some(d=>d.m>0)){
@@ -20140,7 +21519,7 @@ function recCalendarCard(){
   const monName=(mm)=>['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][((mm-1)%12+12)%12];
   const byDay={};
   (REC_MINE||[]).forEach(r=>{ if(r.ymd&&r.ymd.startsWith(REC_CAL_YM)){ (byDay[r.ymd]=byDay[r.ymd]||[]).push(r); } });
-  const today=new Date().toISOString().slice(0,10);
+  const today=ymd();
 
   /* ── 필터 칩 (레퍼런스 1·2화면 상단) ── */
   const chip=(id,label)=>`<span onclick="DIARY_FILTER='${id}';diaryRefresh()" style="font-size:12px;font-weight:500;border-radius:20px;padding:9px 14px;cursor:pointer;white-space:nowrap;
@@ -20577,7 +21956,7 @@ function openEditRecord(id){
 }
 function openAddRecord(presetM, presetLabel, presetYmd){
   REC_EDIT_ID=null;
-  const sp=SP(); const today=new Date().toISOString().slice(0,10);
+  const sp=SP(); const today=ymd();
   const isRec = sp.cat==='record';
   REC_PHOTOS=[]; RC_SLIDE=0;
   REC_TYPE = presetLabel ? 'race' : 'train';
@@ -20780,7 +22159,7 @@ async function openTeamRecord(mode){
 
   // ── 입력 (임원) : 자체전 / 대외전 토글 ──
   if(officer){
-    const today=new Date().toISOString().slice(0,10);
+    const today=ymd();
     h+=`<div class="ch" style="font-size:14px;margin:16px 4px 8px">경기 기록하기</div>
       <div style="display:flex;gap:7px;margin-bottom:11px">
         <span onclick="openTeamRecord('intra')" style="flex:1;text-align:center;font-size:12px;font-weight:500;border-radius:12px;padding:10px;cursor:pointer;${TR_MODE==='intra'?'background:var(--ink);color:#fff':'border:1.5px solid var(--line);color:var(--gray)'}">자체전</span>
@@ -22256,7 +23635,7 @@ function drawStartSheet(){
       <div class="gt">구력으로 등급이 정해져요</div>
       <div class="gg">
         <div class="gline"><b style="color:#2c7a53">C</b><span>2년 미만</span></div>
-        <div class="gline"><b style="color:#2b62c9">B</b><span>2~4년</span></div>
+        <div class="gline"><b style="color:#3a352d">B</b><span>2~4년</span></div>
         <div class="gline"><b style="color:#cf5418">A</b><span>5~9년</span></div>
         <div class="gline"><b style="color:#8a6a1f">S</b><span>10~19년</span></div>
       </div>
@@ -22891,7 +24270,9 @@ function _renderHomeCore(){
         t.scrollTo({left: (n>=last?0:(n+1))*w, behavior:'smooth'}); }, 4000);
     }
 
-  h+=myNextCard();
+  /* 오늘 대진이 도는 동안만 — 배너 아래에 한 줄. 누르면 대진 화면으로 */
+  { const hc=(typeof cbHomeCard==='function') ? cbHomeCard() : null;
+    if(hc) h+=cbHomeStrip(hc); }
   h+=homeQuickMenu();
   }
   // ⑤ 주간 날짜 핀 — 모임·기록 있는 날 점 표시, 탭하면 그날 일지 시트
@@ -22917,7 +24298,7 @@ function _renderHomeCore(){
   // ✍️ 운동 다이어리 — 모든 종목에서 홈 최상단급 노출
   { ensureRecs();
     const ymNow=new Date().toISOString().slice(0,7);
-    const todayY=new Date().toISOString().slice(0,10);
+    const todayY=ymd();
     const daysSet=new Set((REC_MINE||[]).filter(r=>r.ymd&&r.ymd.startsWith(ymNow)).map(r=>r.ymd));
     const doneToday=daysSet.has(todayY);
     const pal=MONTH_PAL[(new Date().getMonth())%12];
@@ -23040,7 +24421,7 @@ function _renderHomeCore(){
   if(hasClub && evSrc.length){
     const pc=['#ffe9db','#e3f5ec','#efeafc','#fff1dc'], tags=['정기','추가','번개','이벤트'];
     h+=`<div class="ch" style="font-size:18px;margin:18px 4px 12px">이번 주 일정</div><div class="plan2">`;
-    evSrc.slice(0,2).forEach((ev,i)=>{const joined=SRV?!!ev.joined:ev.attendees.includes('곽주영');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=parts.slice(2).join(' ')||'시간 미정';
+    evSrc.slice(0,2).forEach((ev,i)=>{const joined=SRV?!!ev.joined:ev.attendees.includes('곽주영');const _d=evParseDate(ev.date||'');const parts=(ev.date||'').split(' ');const dpart=parts.slice(0,2).join(' ')||'날짜 미정',tpart=(_d.time?(_d.end?`${_d.time}~${_d.end}`:_d.time):(parts.slice(2).join(' ')||'시간 미정'));
       h+=`<div class="psess" style="background:${pc[i%4]}" onclick="go('club')">${joined?'<div class="ps-chk">참여중 ✓</div>':''}<span class="ps-tag">${esc(ev.tag||tags[i%4])}</span><div class="ps-n">${esc(ev.title)}</div><div class="ps-m"><span>${ic('calendar',13)}${dpart}</span><span>${ic('clock',13)}${tpart}</span><span>${ic('pin',13)}클럽 코트</span></div><div class="ps-foot"><div class="ps-av">${((ev.attendees||[])[0]||'?')[0]}</div><div class="ps-who">참여 ${(ev.attendees||[]).length}명<br>자세히 →</div></div></div>`;});
     h+=`</div>`;
   }
@@ -23391,6 +24772,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
   document.getElementById('scroll').scrollTop=0;
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
+  if(v==='home'){ try{ loadMyNext(); }catch(e){} }      // 홈으로 올 때마다 오늘 대진을 새로
   try{
     ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,venue:renderVenues,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
@@ -23401,22 +24783,32 @@ let tt;function toast(m){const t=document.getElementById('toast');t.textContent=
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeOv();});
 // 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
 if(!state.mainSport && state.sport) state.mainSport=state.sport;   // 기존 유저: 현재 종목을 주종목으로 1회 고정
-setInterval(()=>{ try{ loadMyNext(); }catch(e){} }, 120000);
+setInterval(()=>{ try{ loadMyNext(); }catch(e){} }, 45000);
+/* 폰을 다시 켜거나 홈으로 돌아왔을 때 — 경기는 그새 몇 판 지나 있다 */
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ loadMyNext(); }catch(e){} } });
 checkServer().then(async ok=>{
   setTimeout(maybeShowNews, 400);
   if(!ok){ hideBoot(); return; }
+  /* 기기에 남아 있는 값으로 먼저 그리고 화면을 연다.
+     네트워크를 다 받은 뒤에 열면, 코트에서 폰을 켠 사람은 로딩만 보다가
+     "내가 몇 번째냐"를 못 본 채 기다리게 된다. 받아온 값은 도착하는 대로 갈아끼운다. */
+  renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
+  if(state.view) go(state.view);
+  hideBoot();
   // 저장된 세션으로 다시 연 경우에도 서버 가입 정보를 반드시 동기화한다.
   // (이게 빠져 있어서 "정회원인데 클럽이 없다고 나오는" 버그가 있었다)
   if(authToken()){
+    try{ loadMyNext(); }catch(e){}                      // 클럽 목록보다 먼저 — 홈이 제일 급하다
     try{
       await loadClubIds();                              // → adoptServerClubs 포함
-      if(clubId()){ await loadClubServer(); await loadRoster(); }
+      /* 명부·클럽 상세는 홈을 막지 않는다 — 받는 대로 각자 다시 그린다 */
+      if(clubId()){
+        loadClubServer().then(()=>{ try{ if(state.view==='club') renderClub(); }catch(e){}
+          return loadRoster(); }).catch(()=>{});
+      }
     }catch(e){}
   }
-  try{ loadMyNext(); }catch(e){}
-  renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
-  if(state.view) go(state.view);
-  hideBoot();                                             // 진짜 데이터가 그려진 뒤에 화면을 연다
+  renderHome();renderClub();
   const _mid = new URL(location.href).searchParams.get('match');
   if(_mid){
     try{ sessionStorage.setItem('pending_match', _mid); }catch(e){}
