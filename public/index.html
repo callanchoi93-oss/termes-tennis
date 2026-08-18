@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818i';
+const BUILD='v1.0.9-0818k';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10126,7 +10126,7 @@ function clubTabMembers(){
   /* 전체 명단도 조 화면과 같은 순서(구력 긴 사람부터)로 둔다 —
      두 탭이 다른 순서면 같은 사람을 찾을 때마다 다시 훑어야 한다.
      list 는 const 라 재할당하면 TypeError 로 화면이 통째로 멈춘다(실제로 멤버 탭이 안 떴다). */
-  const sorted=cbSortByCareer(list);
+  const sorted=cbSortByRole(list);
   return seg + `<div class="pvcnt">멤버 ${sorted.length}명
       <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
     <div class="card flush2">${sorted.map(r=>{
@@ -12512,8 +12512,13 @@ async function deleteClub(){
 }
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
   return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]]; }
-function cb2Label(t1,t2){ const g=x=>isFem(cbSexOf(x));
-  const all=[...t1,...t2], f=all.filter(g).length;
+/* 경기 딱지는 언제나 <실제 성별>로 붙인다.
+   대진 성별(cbSexOf)은 실력이 입문인 남성을 여성 코트로 보내는 편성 장치일 뿐이고,
+   딱지는 코트에서 <누가 뛰는 경기인가>를 말한다. 둘은 다른 이야기다.
+   남자 넷이 뛰면 여성 코트에서 뛰더라도 남복이다. */
+function cb2Label(t1,t2){
+  const all=[...t1,...t2];
+  const f=all.filter(x=>isFem(x&&x.gender)).length;
   return f===0?'남복':f===all.length?'여복':'혼복'; }
 function seedTrialBracket(){
   if(CB2&&CB2._trial) return;
@@ -14765,7 +14770,8 @@ function drawCB2View(){
           <span class="gt1 gmute">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
         let sc;
-        const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],'청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
+        const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],
+                  '청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
         let nextUp=false;
         if(done(g)){
           sc=`<span style="font-size:11px;font-weight:500;color:var(--lgray)">완료</span>`;
@@ -15107,14 +15113,26 @@ function gradeFromCareer(years){
 /* 명단 정렬 — 구력이 긴 사람부터.
    예전에는 명단에 들어온 순서 그대로라 같은 조인데 A1 이 맨 아래에 있는 식이었다.
    구력을 안 밝힌 사람은 맨 뒤로 보내고, 구력이 같으면 등급 → 이름 순으로 둔다. */
+/* 구력이 같으면 가나다순 — 등급으로 또 줄을 세우면
+   같은 구력인데 등급 때문에 위아래가 갈려 보인다. 그건 등급 딱지가 이미 말해준다. */
 function cbSortByCareer(list){
-  /* 구력이 같으면 가나다순 — 등급으로 또 줄을 세우면
-     같은 구력인데 등급 때문에 위아래가 갈려 보인다. 그건 등급 딱지가 이미 말해준다. */
   return (list||[]).slice().sort((x,y)=>{
     const mx=careerMonthsOf(x), my=careerMonthsOf(y);
     const ax=mx<0?-1:mx, ay=my<0?-1:my;
     if(ax!==ay) return ay-ax;                      // 구력 긴 사람부터
     return String(x.name||'').localeCompare(String(y.name||''),'ko');
+  });
+}
+/* 전체 명단은 <회장 → 임원 → 회원 → 게스트> 순으로 먼저 묶고, 그 안에서 구력 순.
+   명단은 <누구에게 말해야 하는지>를 찾는 화면이라 직책이 먼저 보여야 한다.
+   월례대회 조는 실력으로 나눈 것이라 직책과 무관하게 구력 순으로만 둔다. */
+function cbSortByRole(list){
+  const rank=r=>{ const v=(r&&r.role)||'member';
+    return v==='owner'?0 : v==='officer'?1 : v==='guest'?3 : 2; };
+  return cbSortByCareer(list).sort((x,y)=>{
+    const rx=rank(x), ry=rank(y);
+    if(rx!==ry) return rx-ry;
+    return 0;                                      // 같은 직책이면 위 정렬(구력)을 유지
   });
 }
 function careerMonthsOf(p){
