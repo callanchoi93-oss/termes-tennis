@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818g';
+const BUILD='v1.0.9-0818i';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10124,11 +10124,12 @@ function clubTabMembers(){
 
   if(CLUBMEM_VIEW==='tg') return seg + clubTabGroups(list, meId, t);
   /* 전체 명단도 조 화면과 같은 순서(구력 긴 사람부터)로 둔다 —
-     두 탭이 다른 순서면 같은 사람을 찾을 때마다 다시 훑어야 한다. */
-  list=cbSortByCareer(list);
-  return seg + `<div class="pvcnt">멤버 ${list.length}명
+     두 탭이 다른 순서면 같은 사람을 찾을 때마다 다시 훑어야 한다.
+     list 는 const 라 재할당하면 TypeError 로 화면이 통째로 멈춘다(실제로 멤버 탭이 안 떴다). */
+  const sorted=cbSortByCareer(list);
+  return seg + `<div class="pvcnt">멤버 ${sorted.length}명
       <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
-    <div class="card flush2">${list.map(r=>{
+    <div class="card flush2">${sorted.map(r=>{
       const ph=photoOf(r.name);
       const role=memberLabel(r);
       const code=memberGradeCode(r);
@@ -15992,12 +15993,29 @@ function cb2ModePreview(k){
     if(k==='hanul'){
       const n=CB2_SEL.size, c=cb2Courts();
       if(n<8||c<2) return '';
-      const per=Math.floor(n/c);
-      if(per>=6) return line(`코트당 ${per}명 안팎 · 파트너가 안 겹쳐요`);
-      /* 조가 6명은 되어야 파트너·상대가 한 번도 안 겹친다 */
+      /* 어림셈(n÷c)이 아니라 실제 조 편성을 돌려 본다 —
+         한 조가 4명은 되어야 해서, 9명 3코트는 조가 3개가 아니라 2개(5·4)로 나온다.
+         그러면 코트 하나가 하루 종일 빈다. 그 사실을 고르기 전에 알려야 한다. */
+      const all=(typeof cb2All==='function')?cb2All():[];
+      const sel=all.filter(p=>CB2_SEL.has(String(p.user_id)));
+      let parts=null;
+      try{ parts=hnSplit(sel, c, {separate:false}); }catch(e){}
+      if(!parts || !parts.length) return '';
+      const sizes=parts.map(g=>g.length);
+      const idle=c-parts.length;
+      const min=Math.min.apply(null,sizes);
+      const head=`${parts.length}개 조 · ${sizes.join('·')}명`;
+      if(idle>0){
+        /* 코트가 남으면 그 코트 수로 줄여 쓰는 게 맞다 */
+        return mute(head) + line(`${parts.length}코트만 써요 · ${idle}개 코트는 안 쓰여요`);
+      }
+      if(min>=6) return mute(head) + line('파트너가 안 겹쳐요');
       const best=[];
-      for(let cc=2;cc<=6;cc++) if(Math.floor(n/cc)>=6) best.push(cc);
-      return mute(`코트당 ${per}명이라 파트너가 한 번은 겹쳐요`)
+      for(let cc=2;cc<c;cc++){
+        let p2=null; try{ p2=hnSplit(sel, cc, {separate:false}); }catch(e){}
+        if(p2 && p2.length===cc && Math.min.apply(null,p2.map(g=>g.length))>=6) best.push(cc);
+      }
+      return mute(head) + mute(`조가 ${min}명이라 파트너가 한 번은 겹쳐요`)
         + (best.length?mute(`${best.join('·')}코트로 하면 안 겹쳐요`):'');
     }
     if(k==='monthly'){
