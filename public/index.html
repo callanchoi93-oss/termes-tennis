@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818a';
+const BUILD='v1.0.9-0818c';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -5385,7 +5385,20 @@ async function decideJoin(uid, approve, role, cid){
     await api(`/clubs/${cid||clubId()}/members/${uid}/approve`, {method:'POST', body: JSON.stringify({approve, role})});
     toast(approve?(role==='guest'?'게스트로 승인했어요':'정회원으로 승인했어요'):'가입 신청을 거절했어요');
     await loadRoster(); openJoinRequests();
-  }catch(e){ toast('처리에 실패했어요'); }
+  }catch(e){
+    /* <처리에 실패했어요> 만 띄우면 총무는 무엇이 문제인지 알 수가 없다.
+       실제로 걸리는 건 대개 무료 클럽 인원 제한이다. */
+    const msg=String(e.message||'');
+    let k='', lim=0;
+    try{ const j=JSON.parse(msg); k=j.error||''; lim=j.limit||0; }
+    catch(_){ k=(msg.match(/member_limit|officer_only|not_member/)||[''])[0]; }
+    /* 인원 제한은 서버에서 없앴다 — 옛 서버가 아직 돌고 있을 때만 이 문구가 보인다 */
+    toast(k==='member_limit'
+        ? '서버가 아직 예전 버전이에요 · 서버를 올리면 승인할 수 있어요'
+        : k==='officer_only' ? '운영진만 승인할 수 있어요'
+        : k==='not_member'   ? '이미 처리된 신청이에요'
+        : '처리하지 못했어요 · 잠시 후 다시 시도해 주세요');
+  }
 }
 
 /* 가입 신청 (일반) */
