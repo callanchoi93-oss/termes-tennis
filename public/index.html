@@ -405,6 +405,14 @@
     background:#faf8f4; border-bottom:1px solid var(--line) }
   .cbwide th:first-child{ width:26px }
   /* 다른 코트에서 뛰는 경기 — 칸은 제자리에 두고 점선으로만 표시한다 */
+  /* 내 이름 동그라미 — 글자 위에 겹쳐 그린다(줄 높이가 안 바뀐다) */
+  .mering{ position:relative; display:inline-block }
+  .mering > svg{ position:absolute; left:-5px; top:-6px; width:calc(100% + 10px); height:calc(100% + 12px);
+    overflow:visible; pointer-events:none }
+  /* 이름이 줄 끝에 붙어 있으면 동그라미가 카드 밖으로 나간다 — 그 몫만큼만 안쪽으로 */
+  .cbrow .mering:first-child{ margin-left:3px }
+  .cbrow .mering:last-child{ margin-right:3px }
+  .cbwide .mering > svg{ left:-5px; top:-5px; width:calc(100% + 10px); height:calc(100% + 10px) }
   .cbwide td.away{ background:#fffaf0; outline:1.5px dashed var(--coral); outline-offset:-2px }
   .cbwide td i.away{ display:block; font-style:normal; font-size:var(--t0); font-weight:600;
     color:var(--coral-d); margin-top:2px }
@@ -2758,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818k';
+const BUILD='v1.0.9-0818p';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -12518,8 +12526,15 @@ function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
    남자 넷이 뛰면 여성 코트에서 뛰더라도 남복이다. */
 function cb2Label(t1,t2){
   const all=[...t1,...t2];
-  const f=all.filter(x=>isFem(x&&x.gender)).length;
-  return f===0?'남복':f===all.length?'여복':'혼복'; }
+  const fem=x=>isFem(x&&x.gender);
+  const f=all.filter(fem).length;
+  if(f===0) return '남복';
+  if(f===all.length) return '여복';
+  /* 혼복은 <양 팀에 여성이 한 명씩>일 때만이다.
+     여성이 한 명(또는 셋)뿐이면 한 팀에 몰려 있어 혼복이 아니다 —
+     그걸 혼복이라 부르면 실제 혼복 경기와 구분이 안 된다. */
+  const a1=t1.filter(fem).length, a2=t2.filter(fem).length;
+  return (a1===a2) ? '혼복' : '혼성'; }
 function seedTrialBracket(){
   if(CB2&&CB2._trial) return;
   const games=[];
@@ -12629,10 +12644,26 @@ function hnSplitMixed(ps, G){
   for(let g=0;g<G;g++){
     while(fq[g]>sizes[g]){ const t=fq.findIndex((v,i)=>v<sizes[i]); if(t<0) break; fq[g]--; fq[t]++; }
   }
-  for(let g=0;g<G;g++){                                   // 여성 혼자인 조는 피한다
+  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있어야 성립한다.
+     여성이 홀수로 남으면(1명·3명) 그 조에서는 여성 한 명이 남자 셋과 뛰는 경기가 계속 나온다.
+     그래서 짝수로 떨어지게 몰아준다 — 3명이면 2·1 로 갈지 말고 한 조에 3명(혹은 2명)을 둔다. */
+  for(let pass=0; pass<G*2; pass++){
+    const odd=fq.findIndex(v=>v%2===1 && v>0);
+    if(odd<0) break;
+    /* 홀수인 조에서 한 명을 빼거나 더해 짝수로 만든다.
+       ① 다른 홀수 조로 옮겨 양쪽을 한 번에 짝수로  ② 안 되면 여성이 많은 조로 넘긴다 */
+    const other=fq.findIndex((v,i)=>i!==odd && v%2===1 && v>0);
+    if(other>=0 && fq[other]+1<=sizes[other]){ fq[other]++; fq[odd]--; continue; }
+    if(other>=0 && fq[odd]+1<=sizes[odd]){ fq[odd]++; fq[other]--; continue; }
+    const rich=fq.findIndex((v,i)=>i!==odd && v>=2);
+    if(rich>=0 && fq[rich]+fq[odd]<=sizes[rich]){ fq[rich]+=fq[odd]; fq[odd]=0; continue; }
+    break;                                               // 더 손볼 수 없으면 그대로 둔다
+  }
+  /* 여성 혼자인 조는 끝까지 피한다 */
+  for(let g=0;g<G;g++){
     if(fq[g]!==1||W<2) continue;
-    const rich=fq.findIndex((v,i)=>i!==g&&v>=3);
-    if(rich>=0 && fq[g]+1<=sizes[g]){ fq[g]++; fq[rich]--; }
+    const rich=fq.findIndex((v,i)=>i!==g&&v>=2);
+    if(rich>=0 && fq[rich]+1<=sizes[rich]){ fq[rich]++; fq[g]--; }
   }
   const groups=Array.from({length:G},()=>[]);
   const snake=(list, cap)=>{ let g=0, dir=1;
@@ -12677,12 +12708,18 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
         const mixed=(hnF(mem[a])!==hnF(mem[b])) && (hnF(mem[c])!==hnF(mem[d]));
         const nf=four.filter(i=>hnF(mem[i])).length;
         const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
-          +(nf===2 && !mixed ? 110 : 0)
+          /* 여2·남2인데 여성 둘이 한 팀에 몰리면 여복 대 남복이 된다 —
+             한울처럼 조가 작을 때는 그럴 바엔 파트너가 겹치는 편이 낫다. */
+          +(nf===2 && !mixed ? 160 : 0)
           +(pastCost(a,b)+pastCost(c,d))*20
           +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
           +Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]))*4
           +Math.abs((hnF(mem[a])?1:0)+(hnF(mem[b])?1:0)-(hnF(mem[c])?1:0)-(hnF(mem[d])?1:0))*6
           +(lvl?0:(bothSex?Math.abs(nf-2)*8:0))
+          /* 여성이 1명·3명인 조합은 혼복이 될 수 없다 — 한 사람이 이성 셋과 뛴다.
+             남녀가 각각 2명 이상 있는 조라면 <여성 2명>으로 짤 수 있으므로 그쪽을 강하게 민다.
+             여성 3명·남성 3명인 조도 경기마다 2명씩 넣으면 딱 떨어진다(자리 24개 = 여12+남12). */
+          +((bothSex && (nf===1||nf===3)) ? 90 : 0)
           /* 일반 대진은 비슷한 구력끼리 붙이는 게 목적이라 성별을 안 봤더니
              혼복만 잔뜩 나왔다(18경기 중 17). 같은 성별로 묶이는 쪽을 밀어준다. */
           +(lvl&&nf!==0&&nf!==4 ? 100 : 0)
@@ -13362,9 +13399,85 @@ function cbPack(list, courts){
   return cbEaseIdle(best?best.out:fill(list), courts);
 }
 /* 조 하나의 최종 편성 — [[팀A, 팀B], ...] 순서대로 그 코트의 1게임·2게임… */
+/* 성별 구성을 먼저 정하고 사람을 채우는 편성.
+   지금까지는 <네 명을 뽑고 → 두 팀으로 가르는> 순서라, 여성이 1명뿐인 넷이 뽑히면
+   어떻게 갈라도 혼복이 안 됐다(여성 한 명이 남자 셋과 뛰는 경기가 계속 나왔다).
+
+   인원만 알면 경기 종류 수는 하나로 정해진다 — 전원 4경기이므로
+     여성이 채울 자리 = 여성 수 × 4, 남성 자리 = 남성 수 × 4
+   이를 만족하는 (혼복 x · 여복 y · 남복 z) 조합은 유일하다.
+     여2남4 → 혼복 4 · 남복 2      여3남3 → 혼복 6
+     여4남2 → 혼복 4 · 여복 2      여2남6 → 혼복 4 · 남복 4
+   그 자리를 먼저 만들고 사람을 채우면 <혼성>(여성 1·3명) 경기가 아예 안 나온다.
+   대가는 파트너 중복이다 — 자리를 못 박으니 고를 여지가 줄어든다. */
+function hnSexTarget(F, M){
+  const n=F+M, g=n, fs=F*4, ms=M*4;
+  for(let y=0;y<=g;y++) for(let x=0;x<=g;x++){
+    const z=g-x-y; if(z<0) continue;
+    if(2*x+4*y===fs && 2*x+4*z===ms) return {x,y,z};
+  }
+  return null;
+}
+function hnPlanBySex(mem, opts){
+  const o=opts||{};
+  if(o.lateAfter || o.games || (o.gpp && o.gpp!==4)) return null;   // 늦참·경기 수 지정은 기존 방식
+  const isF=p=>isFem(p&&p.gender);
+  const F=mem.filter(isF), M=mem.filter(p=>!isF(p));
+  if(!F.length || !M.length) return null;                            // 한쪽 성별뿐이면 기존 방식으로
+  const t=hnSexTarget(F.length, M.length);
+  if(!t) return null;
+  const GV={SS:5,S:4,A:3,B:2,C:1};
+  const lv=p=>{ if(p&&p.rating!=null) return (p.rating-1000)/100+3;
+    return GV[String((p&&p.grade)||'B').toUpperCase().replace(/\d/g,'')]||2; };
+  const pattern=[];
+  for(let i=0;i<t.x;i++) pattern.push(2);
+  for(let i=0;i<t.y;i++) pattern.push(4);
+  for(let i=0;i<t.z;i++) pattern.push(0);
+  let s=((o.seed||1)*7919)>>>0;
+  const rnd=()=>{ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296; };
+  const sh=a=>{ const b=a.slice();
+    for(let i=b.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
+  const pk=(a,b)=>String(a)<String(b)?a+'|'+b:b+'|'+a;
+  let best=null;
+  for(let attempt=0; attempt<500; attempt++){
+    const need={}; mem.forEach(p=>need[p.id]=4);
+    const pair={}, opp={};
+    const order=sh(pattern); const games=[]; let ok=true, cost=0;
+    for(const nf of order){
+      /* 남은 경기가 많은 사람부터 — 그래야 전원 4경기가 맞는다 */
+      const pick=(pool,k)=>sh(pool.filter(p=>need[p.id]>0))
+        .sort((a,b)=>need[b.id]-need[a.id]).slice(0,k);
+      const fs=pick(F,nf), ms=pick(M,4-nf);
+      if(fs.length<nf || ms.length<4-nf){ ok=false; break; }
+      let t1,t2;
+      if(nf===2){ t1=[fs[0],ms[0]]; t2=[fs[1],ms[1]]; }   // 혼복은 팀마다 여성 1명
+      else {
+        const four=fs.concat(ms);
+        /* 실력이 팽팽하게 갈라지는 조합을 고른다 */
+        const opts2=[[0,1,2,3],[0,2,1,3],[0,3,1,2]];
+        let bs=Infinity, pickSp=opts2[0];
+        opts2.forEach(sp=>{ const d=Math.abs(lv(four[sp[0]])+lv(four[sp[1]])-lv(four[sp[2]])-lv(four[sp[3]]));
+          if(d<bs){ bs=d; pickSp=sp; } });
+        t1=[four[pickSp[0]],four[pickSp[1]]]; t2=[four[pickSp[2]],four[pickSp[3]]];
+      }
+      [t1,t2].forEach(([a,b])=>{ const k=pk(a.id,b.id); cost+=(pair[k]||0)*12; pair[k]=(pair[k]||0)+1; });
+      t1.forEach(a=>t2.forEach(b=>{ const k=pk(a.id,b.id); cost+=(opp[k]||0)*3; opp[k]=(opp[k]||0)+1; }));
+      cost += Math.abs(lv(t1[0])+lv(t1[1])-lv(t2[0])-lv(t2[1]));
+      [...t1,...t2].forEach(p=>need[p.id]--);
+      games.push([t1,t2]);
+    }
+    if(!ok || Object.values(need).some(v=>v!==0)) continue;
+    if(!best || cost<best.cost) best={cost, games};
+    if(best.cost===0) break;
+  }
+  return best ? best.games : null;
+}
 function hnPlanGroup(mem, opts){
   const o=opts||{}, GPP=o.gpp||4, m=mem.length;
   const lateSet=new Set(); mem.forEach((p,i)=>{ if(p.late) lateSet.add(i); });
+  /* 남녀가 섞인 조는 성별 구성을 먼저 정하는 편성을 쓴다 —
+     그래야 여성 한 명이 남자 셋과 뛰는 경기가 안 생긴다. */
+  { const bySex=hnPlanBySex(mem, o); if(bySex) return bySex; }
   const rnd=_rng((o.seed||1)*97+m*13+7);
   if(!lateSet.size && !o.games && HANUL_AB[m] && o.style!=='level' && (o.gpp||4)===4) return hnPlanAB(mem, rnd);
   const t0=Date.now(), budget=o.budget||500;
@@ -13901,6 +14014,51 @@ async function cb2EndGame(gi, undo){
         : k==='already_scored'?'이미 점수가 들어왔어요'
         : '바꾸지 못했어요');
   }
+}
+/* 내 이름에 손으로 그린 동그라미.
+   종이 대진표를 받으면 펜으로 제 이름에 동그라미를 친다 — 코트에서 실제로 하는 행동이고,
+   맞수는 바탕이 종이(크림색·그림자)라 펜 자국이 자연스럽다.
+   다른 이름은 하나도 안 건드린다 — 흐리게 하거나 색을 빼지 않는다.
+   글자 위에 겹쳐 그리므로 줄 높이도 그대로다. */
+function cbRingPath(w, h, seed){
+  /* 씨앗은 이름에서 뽑는다 — 같은 사람은 늘 같은 모양, 사람마다 다른 흔들림 */
+  let s0=seed>>>0;
+  const rnd=()=>{ s0=(Math.imul(s0,1664525)+1013904223)>>>0; return s0/4294967296; };
+  const cx=w/2, cy=h/2, rx=w/2*0.94, ry=h/2*0.86;
+  const tilt=(-7+rnd()*5)*Math.PI/180;             // 살짝 기울여 그린 느낌
+  const start=(150+rnd()*50)*Math.PI/180;
+  const total=Math.PI*2+0.22;                      // 시작점을 조금 지나쳐 끝난다
+  const steps=48, pts=[];
+  for(let i=0;i<=steps;i++){
+    const t=start+total*i/steps;
+    const k=(1+Math.sin(t*3+seed)*0.035+Math.sin(t*7+seed*2)*0.017)*(1+(i/steps)*0.03);
+    const x=Math.cos(t)*rx*k, y=Math.sin(t)*ry*k;
+    pts.push([cx+x*Math.cos(tilt)-y*Math.sin(tilt), cy+x*Math.sin(tilt)+y*Math.cos(tilt)]);
+  }
+  let d=`M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for(let i=1;i<pts.length-1;i+=2){
+    const c=pts[i], e=pts[Math.min(i+1,pts.length-1)];
+    d+=` Q ${c[0].toFixed(1)},${c[1].toFixed(1)} ${e[0].toFixed(1)},${e[1].toFixed(1)}`;
+  }
+  return d;
+}
+function cbIsMe(p){
+  const me=String((state.serverUser||{}).id||'');
+  if(!p) return false;
+  if(me && String(p.id)===me) return true;
+  const myName=String((state.serverUser||{}).name||'').trim();
+  return !!(myName && String(p.name||'').trim()===myName);
+}
+/* 이름을 동그라미로 감싼다. sw 는 선 굵기 — 표에서는 얇게 준다. */
+function cbRing(html, name, sw){
+  let seed=7; const n=String(name||'');
+  for(let i=0;i<n.length;i++) seed=(seed*31+n.charCodeAt(i))>>>0;
+  const d=cbRingPath(120, 40, seed);
+  /* 금색으로 그린다. 코랄로 그리면 왼쪽 팀 이름(코랄 글씨) 위에서 겹쳐 안 보이고,
+     검정으로 그리면 오른쪽 팀(검정 글씨) 위에서 겹친다 — 금색만 양쪽에서 다 보인다.
+     뜻도 안 겹친다: 코랄은 <지금 할 일>, 검정은 <운영진>, 금색은 <알아두면 좋은 것>. */
+  return `<span class="mering">${html}<svg viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true">`
+    + `<path d="${d}" fill="none" stroke="#e09a2b" stroke-width="${sw||2.2}" stroke-linecap="round"/></svg></span>`;
 }
 /* 이 경기를 실제로 어느 코트에서 하는가.
    대진표의 칸(g.c)은 순서를 뜻하고, playCourt 는 <이번엔 여기서 뛴다>는 표시다.
@@ -14688,8 +14846,10 @@ function drawCB2View(){
         const rs=[...new Set((CB2.games||[]).map(g=>g.r))].sort((a,b)=>a-b);
         /* 겹친 사람은 이름에 밑줄을 그어 '어느 이름이 문제인지' 를 바로 보이게 한다 */
         const dupBy={}; rs.forEach(r=>{ dupBy[r]=cb2ClashAt(CB2.games||[], r).map(d=>d.name); });
-        const nm=(arr,r)=>(arr||[]).map(p=>
-          (dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name)).join('·');
+        const nm=(arr,r)=>(arr||[]).map(p=>{
+          const t=(dupBy[r]||[]).includes(p.name) ? `<u>${esc(p.name)}</u>` : esc(p.name);
+          return cbIsMe(p) ? cbRing(t, p.name, 1.8) : t;      // 표는 글자가 작아 선도 얇게
+        }).join('·');
         /* 이동 안내 — 그 넷에게만 칸을 덮는다. 탭하면 점수, 다시 탭하면 안내. */
         const MV=cbMoveHint();
         h+=cbFreeLine(0);                      // 비는 코트가 있으면 표 위에 한 줄
@@ -14770,8 +14930,9 @@ function drawCB2View(){
           <span class="gt1 gmute">${cg.filter(g=>done(g)).length}/${cg.length} 경기 완료</span></div>`;
       cg.forEach(g=>{
         let sc;
+        /* 혼성 = 남녀가 섞였지만 팀별 인원이 안 맞는 경기(여성 1명 등) */
         const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],
-                  '청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
+                  '혼성':['#f4f1ea','#6b6357'],'청백':['#eef4ff','#3182f6']}[g.label]||['#f2f0ea','#6b6357'];
         let nextUp=false;
         if(done(g)){
           sc=`<span style="font-size:11px;font-weight:500;color:var(--lgray)">완료</span>`;
@@ -14827,7 +14988,8 @@ function drawCB2View(){
         /* 칸은 그대로다 — <어디 칸에서 왔는지>만 적는다 */
         const movedTxt = (g.playCourt && g.playCourt!==g.c)
           ? `<span style="font-size:var(--t1);color:var(--gray);font-weight:500">원래 ${g.c}번 코트 ${g.r}게임이에요</span>` : '';
-        const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
+        const one=p=>cbIsMe(p) ? cbRing(esc(p.name), p.name, 2.2) : esc(p.name);
+        const A=(g.teamA||[]).map(one).join(' · '), B=(g.teamB||[]).map(one).join(' · ');
     const gA=esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
     const gB=esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#cf5418', cB=CB2.mode==='cheongbaek'?'#f04452':'#3b2a1a';
@@ -18708,7 +18870,8 @@ function evBracketBlock(accent){
   const mode={hanul:'한울',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[bk.mode]||'일반';
   const courts=[]; for(let c=1;c<=(bk.courts||0);c++){ const cg=gs.filter(g=>g.c===c); if(cg.length) courts.push({c,cg}); }
   const open=EVD.bkCourt||courts[0]&&courts[0].c||1;
-  const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4']};
+  const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],'혼복':['#f0ecfd','#6a4cc4'],
+            '혼성':['#f4f1ea','#6b6357']};
   let h=`<div style="height:1px;background:#f0ede6;margin:22px 0 0"></div>
     <div style="display:flex;align-items:baseline;gap:7px;margin-top:18px">
       <span style="font-size:14px;font-weight:500">그날 대진</span>
