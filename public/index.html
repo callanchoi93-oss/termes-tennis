@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818c';
+const BUILD='v1.0.9-0818d';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -12507,7 +12507,7 @@ async function deleteClub(){
 }
 function cb2Pairs(four, r){ const [a,b,c,d]=four, p=r%3;
   return p===0?[[a,b],[c,d]]:p===1?[[a,c],[b,d]]:[[a,d],[b,c]]; }
-function cb2Label(t1,t2){ const g=x=>isFem(x.gender);
+function cb2Label(t1,t2){ const g=x=>isFem(cbSexOf(x));
   const all=[...t1,...t2], f=all.filter(g).length;
   return f===0?'남복':f===all.length?'여복':'혼복'; }
 function seedTrialBracket(){
@@ -12546,7 +12546,7 @@ const HANUL_AB = {
    4게임 중 한 조합이 한 번 반복된다(수학적으로 불가피). */
 const HN_GV={SS:5,S:4,A:3,B:2,C:1};
 const hnG=p=>HN_GV[String(p.grade||'B').toUpperCase()]||2;
-const hnF=p=>isFem(p.gender);
+const hnF=p=>isFem(cbSexOf(p));
 const hnK=(a,b)=>a<b?a+'_'+b:b+'_'+a;
 function hnCombos(arr,k){
   const out=[]; const rec=(s,acc)=>{ if(acc.length===k){ out.push(acc.slice()); return; }
@@ -13008,7 +13008,7 @@ function cbFindClash(games){
 function cbPlanTight(mem, courts, seed){
   const N=mem.length;
   if(N !== courts*4) return null;
-  const isF=i=>isFem(mem[i].gender);
+  const isF=i=>isFem(cbSexOf(mem[i]));   // 대진에서 바꿔둔 성별을 따른다
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
   const GV={SS:5,S:4,A:3,B:2,C:1};
   const lv=i=>{ const p=mem[i];
@@ -13089,7 +13089,7 @@ function cbPlanNoWait(mem, courts, seed){
   if(N<per) return null;
   const R=N*4/per;
   if(!Number.isInteger(R)) return null;
-  const isF=i=>isFem(mem[i].gender);
+  const isF=i=>isFem(cbSexOf(mem[i]));   // 대진에서 바꿔둔 성별을 따른다
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
   const GV={SS:5,S:4,A:3,B:2,C:1};
   const lv=i=>{ const p=mem[i];
@@ -13179,7 +13179,7 @@ function cbPlanIdleFree(mem, courts, seed){
   if(N<per || N-per<4) return null;               // 쉬는 사람이 4명은 돼야 한 경기가 나온다
   const R=N*4/per;
   if(!Number.isInteger(R)) return null;
-  const isF=i=>isFem(mem[i].gender);
+  const isF=i=>isFem(cbSexOf(mem[i]));   // 대진에서 바꿔둔 성별을 따른다
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
   const pk=(a,b)=>a<b?a+'-'+b:b+'-'+a;
   /* 여복을 몇 경기 넣을까.
@@ -15346,7 +15346,7 @@ function omPlayers(members){
   const list=(members||[]).map(p=>{
     const g = p.assessed || p.grade || gradeFromCareer(careerYearsOf(p)) || 'C';
     return { id:String(p.user_id), name:p.name, g,
-             fem:isFem(p.gender),
+             fem:isFem(typeof cbSexOf==='function'?cbSexOf(p):p.gender),
              mo:Math.max(0,careerMonthsOf(p)) };
   });
   // 등급 → 개월 순으로 정렬한 뒤, 전력값을 순위로 부여 (같은 등급 안에서도 순서가 갈린다)
@@ -15877,10 +15877,13 @@ function cb2ModeOk(k){ return !cb2ModeWhy(k); }
 /* 1단계에선 select 값, 2단계에선 붙잡아 둔 값 */
 /* 선택된 참석자의 남녀 수 — 성비 대진 가능 여부를 판단한다 */
 function cb2GenderCount(){
+  /* 대진에서 성별을 바꿔둔 사람(cbSexOf)을 반영해야 한다.
+     예전에는 프로필 성별(p.gender)만 세서, 남성 2명을 여성으로 바꿔놔도
+     <여성 2명>으로 나와 '여자 코트 따로 쓰기'가 계속 막혔다. */
   const all=cb2All();
   let m=0,f=0;
   all.forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
-    if(isFem(p.gender)) f++; else m++; });
+    if(isFem(cbSexOf(p))) f++; else m++; });
   return {m,f};
 }
 /* 참석 인원.
@@ -16062,7 +16065,7 @@ function drawCB2Build(){
   /* 고르면 맞수 브랜드 컬러로 채운다. 성별은 앞의 점으로 남겨 두어
      '누가 선택됐나'와 '남녀 구성'을 한 칩에서 동시에 읽게 한다. */
   const chip=p=>{
-    const id=String(p.user_id), on=CB2_SEL.has(id), fem=isFem(p.gender);
+    const id=String(p.user_id), on=CB2_SEL.has(id), fem=isFem(cbSexOf(p));
     /* 코랄 위에 연한 분홍·하늘색을 얹으면 묻힌다. 색은 그대로 두고 흰 테를 둘러 띄운다. */
     const dot = fem?'#e0618c':'#3182f6';
     const ring = on ? 'box-shadow:0 0 0 1.6px #fff;' : '';
@@ -16278,7 +16281,7 @@ function cbSexFits(nM, nF, courts){
 function cbSexNow(){
   let m=0,f=0;
   cb2All().forEach(p=>{ if(!CB2_SEL.has(String(p.user_id))) return;
-    if(isFem(p.gender)) f++; else m++; });
+    if(isFem(cbSexOf(p))) f++; else m++; });   // 대진에서 바꿔둔 성별을 따른다
   return {m,f};
 }
 /* 늦참자를 뺀 정시 인원의 남녀 수 */
