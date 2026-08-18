@@ -853,8 +853,18 @@ app.patch('/me', auth, (req, res) => {
 app.get('/clubs', (req, res) => {
   const { sport, region, q } = req.query;
   // 활동 지표(회원 수·최근 활동)로 정렬 — 유령 클럽이 검색을 오염시키지 않게
+  /* 성별 배지(여성 클럽·남성 클럽)는 <실제 명단>으로 판단한다.
+     그런데 그 숫자를 안 내려주고 있어서, 클럽이 스스로 gender_pref 를 적어둔 곳만
+     배지가 붙고 나머지는 아무것도 안 나왔다.
+     게스트는 빼고, 클럽 안에서 고쳐 둔 성별(gender_ov)을 먼저 본다. */
+  const GQ = `(SELECT COUNT(*) FROM club_members m JOIN users u ON u.id=m.user_id
+      WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
+        AND COALESCE(m.role,'') <> 'guest' AND `;
   let sql = `SELECT c.*,
       (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='F') g_f,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='M') g_m,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender, '') NOT IN ('F','M')) g_unknown,
       COALESCE((SELECT MAX(e.created_at) FROM club_events e WHERE e.club_id=c.id),
                (SELECT MAX(ch.created_at) FROM club_chat ch WHERE ch.club_id=c.id), c.created_at) last_active
     FROM clubs c WHERE 1=1`, p = [];
@@ -1465,8 +1475,9 @@ app.post('/clubs/:id/members/:uid/approve', auth, (req, res) => {
   const ok = req.body && req.body.approve === false ? false : true;
   const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
   if (ok) {
-    if (!isPremium(cid) && activeMembers(cid) >= FREE_MAX_MEMBERS)
-      return res.status(402).json({ error: 'member_limit', limit: FREE_MAX_MEMBERS, upgrade: 'club_premium' });
+    /* 프리미엄 기능을 접었으므로 인원 제한도 없앤다.
+       제한이 남아 있으면 이미 26명인 클럽이 회원을 한 명도 더 못 받는다
+       (실제로 정회원 승인이 member_limit 으로 계속 막혔다). */
     const role = (req.body && req.body.role) === 'guest' ? 'guest' : 'member';
     db.prepare("UPDATE club_members SET status='active', role=?, joined_at=COALESCE(joined_at,?) WHERE club_id=? AND user_id=? AND status='pending'").run(role, now(), cid, uid);
     sendPush(uid, { icon: '🎉', title: '가입 승인', body: role==='guest' ? `${club.name} 게스트로 함께하게 됐어요` : `${club.name} 정회원이 됐어요` });
@@ -1495,8 +1506,15 @@ app.post('/clubs/:id/transfer-owner', auth, (req, res) => {
 
 // 내가 속한 클럽 목록 (역할·상태 포함)
 app.get('/me/clubs', auth, (req, res) => {
+  /* 내 클럽 목록에서도 성별 배지가 나와야 해서 같은 숫자를 함께 내려준다 */
+  const GQ = `(SELECT COUNT(*) FROM club_members m JOIN users u ON u.id=m.user_id
+      WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
+        AND COALESCE(m.role,'') <> 'guest' AND `;
   res.json(db.prepare(`SELECT c.*, cm.role, cm.status,
-      (SELECT COUNT(*) FROM club_members x WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')) member_count
+      (SELECT COUNT(*) FROM club_members x WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')) member_count,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='F') g_f,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='M') g_m,
+      ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender, '') NOT IN ('F','M')) g_unknown
     FROM club_members cm JOIN clubs c ON c.id=cm.club_id
     WHERE cm.user_id=? ORDER BY (cm.role='owner') DESC, c.id`).all(req.uid));
 });
@@ -3631,9 +3649,8 @@ app.post('/clubs/:id/brackets', auth, (req, res) => {
   const publish = (req.body || {}).publish ? 1 : 0;
   const t = now();
   const prev = date ? db.prepare('SELECT id FROM brackets WHERE club_id=? AND date=? AND fmt=?').get(cid, date, fmt) : null;
-  // 무료 클럽은 월 4개까지 (기존 대진 덮어쓰기·재편성은 개수에 안 들어간다)
-  if (!prev && !isPremium(cid) && bracketsThisMonth(cid) >= FREE_MAX_BRACKETS_PER_MONTH)
-    return res.status(402).json({ error: 'bracket_limit', limit: FREE_MAX_BRACKETS_PER_MONTH, upgrade: 'club_premium' });
+  /* 대진 월 발행 제한도 없앤다 — 주 2회 모이는 클럽은 월 4개로는 한 달을 못 넘긴다.
+     프리미엄이 없어진 이상 막을 이유가 없다. */
   let id;
   if (prev) {
     db.prepare('UPDATE brackets SET sport=?,courts=?,data=?,published=?,event_id=?,updated_at=? WHERE id=?')
@@ -3736,8 +3753,10 @@ function blockIosWebPurchase(req, res) {
 //  ※ 실결제는 /pay/* PG 웹훅에서 activatePremium() 을 호출하세요.
 // ══════════════════════════════════════════════════════════════
 const PREMIUM_WON = 9900;
-const FREE_MAX_MEMBERS = 15;
-const FREE_MAX_BRACKETS_PER_MONTH = 4;
+/* 프리미엄을 접으면서 두 제한을 풀었다(0 = 무제한).
+   /clubs/:id/premium 응답에서 아직 참조하므로 값 자체는 남겨 둔다. */
+const FREE_MAX_MEMBERS = 0;
+const FREE_MAX_BRACKETS_PER_MONTH = 0;
 
 try { db.exec('ALTER TABLE clubs ADD COLUMN premium_until BIGINT'); } catch (e) {}
 // 가입 구력 조건 (개월). null = 제한 없음. 테린이 클럽은 max 로 상급자를 막는다.
