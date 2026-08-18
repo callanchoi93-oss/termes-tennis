@@ -2758,7 +2758,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818d';
+const BUILD='v1.0.9-0818g';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10082,6 +10082,7 @@ function clubTabGroups(list, meId, t){
     if(r.role==='guest'){ tgGuestN++; return; }       // 게스트는 조에 들어가지 않는다
     const g=tgOf(r.user_id)||'미배정'; (by[g]=by[g]||[]).push(r); });
   const order=TG_NAMES.filter(g=>by[g]).concat(by['미배정']?['미배정']:[]);
+  Object.keys(by).forEach(g=>{ by[g]=cbSortByCareer(by[g]); });
   let h='';
   order.forEach(g=>{
     const col=TG_COLOR[g]||TG_COLOR.D;
@@ -10122,6 +10123,9 @@ function clubTabMembers(){
     <div class="${CLUBMEM_VIEW==='tg'?'on':''}" onclick="setClubMemView('tg')">월례대회 조</div></div>`;
 
   if(CLUBMEM_VIEW==='tg') return seg + clubTabGroups(list, meId, t);
+  /* 전체 명단도 조 화면과 같은 순서(구력 긴 사람부터)로 둔다 —
+     두 탭이 다른 순서면 같은 사람을 찾을 때마다 다시 훑어야 한다. */
+  list=cbSortByCareer(list);
   return seg + `<div class="pvcnt">멤버 ${list.length}명
       <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
     <div class="card flush2">${list.map(r=>{
@@ -13087,8 +13091,12 @@ function cbPlanTight(mem, courts, seed){
 function cbPlanNoWait(mem, courts, seed){
   const N=mem.length, per=courts*4;
   if(N<per) return null;
-  const R=N*4/per;
-  if(!Number.isInteger(R)) return null;
+  /* 인원이 코트 수로 안 나눠떨어져도 짤 수 있어야 한다.
+     예전에는 여기서 포기하고 옛 편성기로 넘겼는데, 그쪽은 경기를 한 코트에 몰아넣어
+     9명 2코트가 6·3, 13명 3코트가 8·4·1 로 나왔다(코트가 통째로 놀았다).
+     총 경기 수는 언제나 N(전원 4경기)이므로, 마지막 바퀴만 코트가 덜 차면 된다. */
+  const total=N;                                   // 전원 4경기 → 총 경기 수 = 인원
+  const R=Math.ceil(total/courts);                 // 마지막 바퀴는 덜 찰 수 있다
   const isF=i=>isFem(cbSexOf(mem[i]));   // 대진에서 바꿔둔 성별을 따른다
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
   const GV={SS:5,S:4,A:3,B:2,C:1};
@@ -13117,19 +13125,30 @@ function cbPlanNoWait(mem, courts, seed){
         const pool=sh([...Array(N).keys()]);
         for(let c=0;c<courts;c++) games.push(pool.slice(c*4, c*4+4));
       } else {
-        /* 쉬는 사람을 코트마다 고르게 나눠 갖고, 모자란 자리만 방금 뛴 사람으로 채운다.
-           남은 경기가 많은 사람을 먼저 넣어 전원 4경기를 맞춘다. */
+        /* 이번 바퀴에 몇 코트를 쓸지 — 남은 경기가 코트 수보다 적으면 그만큼만 쓴다 */
+        const leftGames=Math.ceil(need.reduce((a,b)=>a+b,0)/4);
+        const useC=Math.min(courts, leftGames);
+        if(useC<=0) break;
+        /* 쉬는 사람을 코트마다 고르게 나눠 갖고, 모자란 자리만 방금 뛴 사람으로 채운다. */
         let rest=sh(prevRest.filter(i=>need[i]>0)).sort((a,b)=>need[b]-need[a]);
-        const picked=[...Array(courts)].map(()=>[]);
+        const picked=[...Array(useC)].map(()=>[]);
         let ci=0;
         while(rest.length && picked.some(g=>g.length<4)){
-          const c=ci%courts; ci++;
+          const c=ci%useC; ci++;
           if(picked[c].length>=4) continue;
           picked[c].push(rest.shift());
         }
-        for(let c=0;c<courts;c++){
-          const own=sh(prevCourt[c].filter(i=>need[i]>0)).sort((a,b)=>need[b]-need[a]);
+        for(let c=0;c<useC;c++){
+          /* 방금 뛴 사람은 그 코트에서 먼저 찾고, 없으면 다른 코트에서라도 데려온다 —
+             코트 수가 줄어든 마지막 바퀴에서는 <그 코트 사람>만으로 못 채운다. */
+          const own=sh((prevCourt[c]||[]).filter(i=>need[i]>0)).sort((a,b)=>need[b]-need[a]);
           while(picked[c].length<4 && own.length) picked[c].push(own.shift());
+          if(picked[c].length<4){
+            const taken=new Set(picked.flat());
+            const any=sh([...Array(N).keys()].filter(i=>need[i]>0 && !taken.has(i)))
+              .sort((a,b)=>need[b]-need[a]);
+            while(picked[c].length<4 && any.length) picked[c].push(any.shift());
+          }
           if(picked[c].length<4) return null;
           games.push(picked[c]);
         }
@@ -15084,6 +15103,19 @@ function gradeFromCareer(years){
   return 'C';
 }
 /* 등급 내 순위용 — 구력을 개월로. 테린이 클럽처럼 전원 같은 등급일 때 이게 순위를 만든다 */
+/* 명단 정렬 — 구력이 긴 사람부터.
+   예전에는 명단에 들어온 순서 그대로라 같은 조인데 A1 이 맨 아래에 있는 식이었다.
+   구력을 안 밝힌 사람은 맨 뒤로 보내고, 구력이 같으면 등급 → 이름 순으로 둔다. */
+function cbSortByCareer(list){
+  /* 구력이 같으면 가나다순 — 등급으로 또 줄을 세우면
+     같은 구력인데 등급 때문에 위아래가 갈려 보인다. 그건 등급 딱지가 이미 말해준다. */
+  return (list||[]).slice().sort((x,y)=>{
+    const mx=careerMonthsOf(x), my=careerMonthsOf(y);
+    const ax=mx<0?-1:mx, ay=my<0?-1:my;
+    if(ax!==ay) return ay-ax;                      // 구력 긴 사람부터
+    return String(x.name||'').localeCompare(String(y.name||''),'ko');
+  });
+}
 function careerMonthsOf(p){
   if(p && p.months!=null) return Math.max(0, p.months);        // 게스트는 구력을 개월로 직접 받는다
   if(p && p.years!=null) return Math.max(0, p.years*12);
