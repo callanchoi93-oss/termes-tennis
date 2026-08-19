@@ -196,7 +196,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0818d';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0818e';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -5523,8 +5523,56 @@ app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
     .run(+req.params.id, +req.params.uid);
   res.json({ ok: true });
 });
-app.get('/admin/users', admin, (_req, res) => {
-  res.json(db.prepare('SELECT id,name,provider,region,sport,rating,cash,premium,created_at FROM users ORDER BY id DESC LIMIT 200').all());
+app.get('/admin/users', admin, (req, res) => {
+  /* gender 를 빼먹고 있었다 — 관리자 화면이 <성별 없음>으로만 보였다.
+     이름 검색(?q=)도 화면은 보내는데 서버가 무시하고 있었다.
+
+     그리고 성별이 사는 곳이 둘이다.
+       users.gender            — 본인이 프로필에서 정한 값
+       club_members.gender_ov  — 운영진이 <운영진 도구 · 성별 설정>에서 고쳐 둔 값
+     대진은 두 값을 합쳐 보는데(COALESCE) 관리자 화면은 users.gender 만 봐서,
+     운영진이 다 채워둔 클럽도 여기서는 전부 <성별 없음>으로 보였다.
+     그래서 <실제로 쓰이는 성별(gender)>과 <어디서 온 값인지(gender_src)>를 함께 내려준다. */
+  const q = String((req.query && req.query.q) || '').trim();
+  const OV = `(SELECT NULLIF(m.gender_ov,'') FROM club_members m
+      WHERE m.user_id=u.id AND NULLIF(m.gender_ov,'') IS NOT NULL
+        AND (m.status IS NULL OR m.status='active') LIMIT 1)`;
+  const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
+    COALESCE(NULLIF(u.gender,''), ${OV}) AS gender,
+    NULLIF(u.gender,'') AS gender_self,
+    ${OV} AS gender_club,
+    CASE WHEN NULLIF(u.gender,'') IS NOT NULL THEN 'self'
+         WHEN ${OV} IS NOT NULL THEN 'club' ELSE '' END AS gender_src`;
+  const rows = q
+    ? db.prepare(`SELECT ${cols} FROM users u WHERE u.name LIKE ? ORDER BY u.id DESC LIMIT 200`).all('%' + q + '%')
+    : db.prepare(`SELECT ${cols} FROM users u ORDER BY u.id DESC LIMIT 200`).all();
+  res.json(rows);
+});
+
+/* 관리자 화면에서 성별 고치기 — 엔드포인트가 아예 없어서 눌러도 저장되지 않았다.
+   여기서는 users.gender(본인 값)에 쓴다. 클럽별 조정(gender_ov)은 그대로 둔다. */
+app.post('/admin/users/:id/gender', admin, (req, res) => {
+  const id = +req.params.id;
+  const raw = String((req.body && req.body.gender) || '').trim();
+  const g = /^(F|여)/i.test(raw) ? 'F' : /^(M|남)/i.test(raw) ? 'M' : null;
+  const u = db.prepare('SELECT id FROM users WHERE id=?').get(id);
+  if (!u) return res.status(404).json({ error: 'no_user' });
+  db.prepare('UPDATE users SET gender=? WHERE id=?').run(g, id);
+  res.json({ ok: true, gender: g });
+});
+
+/* 클럽에서 정한 성별을 본인 값으로 한 번에 옮긴다 —
+   운영진이 이미 채워둔 것을 관리자가 다시 47번 누르게 할 이유가 없다. */
+app.post('/admin/users/fill-gender', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT u.id,
+      (SELECT NULLIF(m.gender_ov,'') FROM club_members m
+        WHERE m.user_id=u.id AND NULLIF(m.gender_ov,'') IS NOT NULL
+          AND (m.status IS NULL OR m.status='active') LIMIT 1) ov
+    FROM users u WHERE NULLIF(u.gender,'') IS NULL`).all();
+  const st = db.prepare('UPDATE users SET gender=? WHERE id=?');
+  let n = 0;
+  rows.forEach(r => { if (r.ov === 'M' || r.ov === 'F') { st.run(r.ov, r.id); n++; } });
+  res.json({ ok: true, filled: n });
 });
 app.get('/admin/reports', admin, (_req, res) => {
   const rows = db.prepare("SELECT * FROM reports WHERE status='open' ORDER BY id DESC LIMIT 200").all();
