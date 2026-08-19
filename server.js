@@ -196,7 +196,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.0.9-0818t';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0818c';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
