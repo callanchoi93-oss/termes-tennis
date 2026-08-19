@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.0-0818c';
+const BUILD='v1.1.0-0818d';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -15031,21 +15031,35 @@ function drawCB2View(){
           ? `<span style="font-size:var(--t1);color:var(--gray);font-weight:500">원래 ${g.c}번 코트 ${g.r}게임이에요</span>` : '';
         const one=p=>cbIsMe(p) ? cbRing(esc(p.name), p.name, 2.2) : esc(p.name);
         const A=(g.teamA||[]).map(one).join(' · '), B=(g.teamB||[]).map(one).join(' · ');
-    /* 예전 대진에는 왼쪽 팀(teamA) 등급이 저장돼 있지 않다 — 저장을 오른쪽만 했기 때문이다.
-       그런 경우 지금 명단에서 찾아 채운다. <그날의 등급>이 아니라 <오늘 등급>이라
-       그새 승급했으면 다를 수 있지만, 아무것도 안 보이는 것보다는 낫다. */
+    /* 한 사람 한 사람의 등급을 늘어놓으면 자릿수가 제각각이고(C3 · B) 게스트는 빈칸이라
+       줄만 지저분해진다. 팀이 얼마나 팽팽한지가 알고 싶은 것이므로 <평균 하나>만 적는다.
+
+       등급 코드는 세 곳에서 온다.
+         ① 대진에 저장된 값 — 알파벳뿐이면(예전 데이터) 세부 번호를 채운다
+         ② 클럽 명단 — 예전 대진의 왼쪽 팀은 저장돼 있지 않다
+         ③ 게스트의 구력(개월) — 입력받고도 등급을 안 만들어 빈칸이었다 */
     const gradeOf=p=>{
       if(!p) return '';
-      if(p.glabel || p.grade) return p.glabel || p.grade;
+      const saved=p.glabel || p.grade || '';
+      if(saved && /[0-9]/.test(saved)) return saved;            // 이미 세부 등급
       const R=(typeof CLUB_ROSTER!=='undefined' && Array.isArray(CLUB_ROSTER)) ? CLUB_ROSTER : null;
-      if(!R || !R.length) return '';
-      const id=String(p.id||'');
-      const m=R.find(x=>(id && String(x.user_id||x.id||'')===id))
-        || R.find(x=>String(x.name||'').trim()===String(p.name||'').trim());
-      return m ? (typeof memberGradeCode==='function' ? (memberGradeCode(m)||'') : (m.grade||'')) : '';
+      if(R && R.length){
+        const id=String(p.id||'');
+        const m=R.find(x=>(id && String(x.user_id||x.id||'')===id))
+          || R.find(x=>String(x.name||'').trim()===String(p.name||'').trim());
+        if(m && typeof memberGradeCode==='function'){ const c=memberGradeCode(m); if(c) return c; }
+      }
+      /* 게스트 — 구력(개월)으로 등급을 낸다 */
+      if(p.months!=null && typeof gradeStepFromMonths==='function'){
+        const c=gradeStepFromMonths(+p.months); if(c) return c;
+      }
+      /* 알파벳뿐인 옛 값(예: 'B')은 그 등급의 가운데 칸으로 본다 —
+         평균을 내려면 사다리 위 한 자리가 필요하다. */
+      if(saved && !/[0-9]/.test(saved)) return String(saved).toUpperCase()+'2';
+      return saved;
     };
-    const gA=esc((g.teamA||[]).map(gradeOf).filter(Boolean).join(' · '));
-    const gB=esc((g.teamB||[]).map(gradeOf).filter(Boolean).join(' · '));
+    const gA=esc(cbAvgGrade((g.teamA||[]).map(gradeOf)));
+    const gB=esc(cbAvgGrade((g.teamB||[]).map(gradeOf)));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#cf5418', cB=CB2.mode==='cheongbaek'?'#f04452':'#3b2a1a';
         /* 스코어는 두 팀 사이에 둔다 — 누구 대 누구의 몇 점인지 한 줄에서 읽힌다.
            아직 안 끝난 경기는 실선 테두리의 빈 칸으로 두어 '여기 눌러 입력'이 보이게. */
@@ -15096,12 +15110,12 @@ function drawCB2View(){
           <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
             <div style="flex:1;min-width:0">
               <b style="display:block;font-size:var(--t2);font-weight:700;color:${cA};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${A}</b>
-              ${gA?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gA}</span>`:''}
+              ${gA?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">평균 ${gA}</span>`:''}
             </div>
             ${scBox}
             <div style="flex:1;min-width:0;text-align:right">
               <b style="display:block;font-size:var(--t2);font-weight:700;color:${cB};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
-              ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gB}</span>`:''}
+              ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">평균 ${gB}</span>`:''}
             </div>
           </div></div>`;
       });
@@ -15275,6 +15289,19 @@ function gradeStepFromMonths(m){
     if(m<b)      return g+(Math.min(2, Math.floor((m-a)/((b-a)/3)))+1);
   }
   return null;
+}
+/* 등급을 한 줄로 세운 사다리. 평균을 내려면 <칸 사이 간격이 고른> 자가 필요하다.
+   등급 글자에 점수를 매겨 평균 내면 C3·B2 가 C1 보다 낮게 나오는 식으로 어긋난다.
+   번호는 <그 등급에 갓 올라왔을수록 1>이다 — 구력 2년이면 B1, 4년 11개월이면 B3.
+   그러니 낮은 쪽부터 C1 · C2 · C3 · B1 … 순으로 세운다. */
+const GRADE_LADDER=['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3','SS1','SS2','SS3'];
+/* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
+function cbAvgGrade(list){
+  const idx=(list||[]).map(c=>GRADE_LADDER.indexOf(String(c||'').toUpperCase()))
+    .filter(i=>i>=0);
+  if(!idx.length) return '';
+  const v=idx.reduce((a,b)=>a+b,0)/idx.length;
+  return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, Math.round(v)))];
 }
 /* 명단 한 줄에 쓸 등급 코드 — 운영진이 손으로 정한 값이 우선, 없으면 구력으로 */
 function memberGradeCode(r){
