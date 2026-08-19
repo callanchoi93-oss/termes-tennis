@@ -184,13 +184,17 @@ async function drawUsers(){
         onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
       <button onclick="UQ=($('uq')||{}).value.trim();render()">찾기</button></div>
     ${noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
-      <u onclick="UONLY='${UONLY==='nog'?'':'nog'}';render()">${UONLY==='nog'?'전체 보기':'모아 보기 ›'}</u></div>`:''}
+      <u onclick="fillGender()">클럽 값으로 채우기</u>
+      <u onclick="UONLY='${UONLY==='nog'?'':'nog'}';render()" style="margin-left:var(--s3)">${UONLY==='nog'?'전체':'모아 보기 ›'}</u></div>`:''}
     <div class="card">${list.length? list.map(u=>{
       const g=gLabel(u.gender);
       const cls=g==='여성'?'f':g==='남성'?'m':'';
+      /* 성별이 어디서 온 값인지 — 본인이 정한 값과 클럽에서 고쳐 둔 값은 뜻이 다르다 */
+      const src=u.gender_src==='club' ? '클럽에서 정함' : '';
       return `<div class="rw">
         <div class="nm"><b>${esc(u.name||'이름 없음')}<span class="tag ${cls}">${g||u.provider||'—'}</span></b>
-          <span>#${u.id} · ${esc(u.sport||'')} · 레이팅 ${fmt(u.rating)} · ${ymd(u.created_at)} 가입</span></div>
+          <span>#${u.id} · ${esc(u.sport||'')} · 레이팅 ${fmt(u.rating)} · ${ymd(u.created_at)} 가입${
+            src?` · ${src}`:''}</span></div>
         <div class="seg3">
           <button class="b ${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남</button>
           <button class="b ${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여</button>
@@ -264,18 +268,48 @@ async function drawVenues(){
             slots:'/admin/venue-slots', pay:'/admin/venue-payouts/by-venue'}[sub];
   const rows=await api(ep).catch(()=>[]);
   const line=r=>{
-    if(sub==='list') return [`${esc(r.name)}`, `#${r.id} · ${esc(r.region||'')} · 코트 ${r.courts||0}면`, ''];
+    if(sub==='list') return [`${esc(r.name)}`,
+      `#${r.id} · ${esc([r.sido,r.sigungu].filter(Boolean).join(' ')||r.addr||'주소 없음')} · 코트 ${(r.courts||[]).length}면`, ''];
     if(sub==='book') return [`${esc(r.venue_name||r.venue||'구장')}`,
       `${esc(r.date||'')} ${esc(r.start||'')} · ${esc(r.user_name||'')} · ${fmt(r.amount)}원`, r.status||''];
     if(sub==='slots') return [`${esc(r.venue_name||r.venue||'구장')}`,
       `${esc(r.date||'')} ${esc(r.start||'')}~${esc(r.end||'')} · ${r.court||''}번 코트`, r.open?'열림':'닫힘'];
     return [`${esc(r.venue_name||r.name||'구장')}`, `건수 ${r.count||0} · 정산 대기`, `${fmt(r.amount)}원`];
   };
-  $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(r=>{
-    const [a,b,c]=line(r);
-    return `<div class="rw"><div class="nm"><b>${a}</b><span>${b}</span></div>
-      ${c?`<span class="b">${esc(c)}</span>`:''}</div>`;}).join('')
-    : `<div class="empty">아직 없어요</div>`}</div>`);
+  /* 구장은 목록만 보여주고 고칠 길이 없었다 — 이름·주소·전화를 여기서 바로 고친다.
+     서버에 PATCH /admin/venues/:id 가 이미 있는데 화면이 안 쓰고 있었다. */
+  const editable = (sub==='list');
+  $('app').innerHTML=shell(subTabs(tabs)+
+    (editable?`<div class="card flat"><div class="ct">구장 추가</div>
+      <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
+        <input id="vn" placeholder="구장 이름" style="flex:1;border:1px solid var(--line);border-radius:10px;
+          padding:8px 10px;font-size:var(--t2);font-family:inherit;font-weight:500">
+        <button class="b on" onclick="addVenue()">추가</button></div></div>`:'')+
+    `<div class="card">${rows.length? rows.map(r=>{
+      const [a,b,c]=line(r);
+      return `<div class="rw"><div class="nm"><b>${a}</b><span>${b}</span></div>
+        ${editable?`<button class="b" onclick="editVenue(${r.id})">수정</button>`
+                  :(c?`<span class="b">${esc(c)}</span>`:'')}</div>`;}).join('')
+      : `<div class="empty">아직 없어요</div>`}</div>`);
+  CACHE.venues=rows;
+}
+async function addVenue(){
+  const name=(($('vn')||{}).value||'').trim();
+  if(!name){ toast('구장 이름을 넣어주세요'); return; }
+  try{ await api('/admin/venues',{method:'POST',body:JSON.stringify({name})});
+    toast('추가했어요'); render(); }
+  catch(e){ toast('추가하지 못했어요'); }
+}
+/* 한 줄씩 물어보는 대신 값을 미리 채워 보여준다 — 비워 두면 그대로 둔다 */
+async function editVenue(id){
+  const v=(CACHE.venues||[]).find(x=>x.id===id); if(!v) return;
+  const name=prompt('구장 이름', v.name||''); if(name===null) return;
+  const addr=prompt('주소', v.addr||''); if(addr===null) return;
+  const phone=prompt('전화', v.phone||''); if(phone===null) return;
+  try{ await api('/admin/venues/'+id,{method:'PATCH',
+      body:JSON.stringify({name:name.trim(), addr:addr.trim(), phone:phone.trim()})});
+    toast('고쳤어요'); render(); }
+  catch(e){ toast('고치지 못했어요'); }
 }
 
 /* ── 신고 ── */
@@ -313,18 +347,72 @@ async function drawStaff(){
     : `<div class="empty">계정이 없어요</div>`}</div>`);
 }
 
-/* ── 배너 ── */
+/* ── 배너 ──
+   배너는 <이미지>가 본체다(image·link·slot·sort). 예전 화면은 글자만 늘어놓아
+   무엇이 걸려 있는지 볼 수 없었고 고칠 수도 없었다. 그림을 보여주고 바로 손보게 한다. */
 async function drawBanners(){
   const rows=await api('/admin/banners').catch(()=>[]);
-  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(b=>`
-    <div class="rw"><div class="nm"><b>${esc(b.title||'배너')}</b>
-      <span>${esc(b.link||'')} · ${b.active?'노출 중':'숨김'}</span></div>
-      <span class="b">${b.sort_order!=null?('순서 '+b.sort_order):''}</span></div>`).join('')
-    : `<div class="empty">배너가 없어요</div>`}</div>`);
+  const SLOT={home:'홈',club:'클럽',match:'매치'};
+  $('app').innerHTML=shell(`
+    <div class="card flat"><div class="ct">배너 올리기</div>
+      <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
+        <select id="bslot" class="b" style="padding:8px 10px">
+          ${Object.entries(SLOT).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+        <input id="blink" placeholder="눌렀을 때 갈 주소 (선택)"
+          style="flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+          font-size:var(--t2);font-family:inherit;font-weight:500"></div>
+      <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
+        <input id="bfile" type="file" accept="image/*" style="flex:1;font-size:var(--t1)">
+        <button class="b on" onclick="upBanner()">올리기</button></div>
+      <div class="note">3MB 까지 · 가로로 긴 이미지가 잘 맞아요</div></div>
+    <div class="card">${rows.length? rows.map((b,i)=>`
+      <div class="rw">
+        <img src="${esc(b.image||'')}" alt="" style="width:76px;height:44px;border-radius:9px;
+          object-fit:cover;background:#f4f1ea;flex:none">
+        <div class="nm"><b>${esc(SLOT[b.slot]||b.slot||'홈')}<span class="tag">${i+1}번째</span></b>
+          <span>${esc(b.link||'링크 없음')}</span></div>
+        <div class="seg3">
+          <button class="b" onclick="moveBanner(${i},-1)" ${i===0?'disabled style="opacity:.35"':''}>↑</button>
+          <button class="b" onclick="moveBanner(${i},1)" ${i===rows.length-1?'disabled style="opacity:.35"':''}>↓</button>
+          <button class="b dz" onclick="delBanner(${b.id})">삭제</button></div></div>`).join('')
+      : `<div class="empty">걸린 배너가 없어요</div>`}</div>`);
+  CACHE.banners=rows;
+}
+async function upBanner(){
+  const f=($('bfile')||{}).files && $('bfile').files[0];
+  if(!f){ toast('이미지를 골라주세요'); return; }
+  if(f.size > 3*1024*1024){ toast('3MB 까지 올릴 수 있어요'); return; }
+  const image=await new Promise((ok,no)=>{ const r=new FileReader();
+    r.onload=()=>ok(r.result); r.onerror=()=>no(new Error('read')); r.readAsDataURL(f); });
+  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({
+      image, link:($('blink')||{}).value||'', slot:($('bslot')||{}).value||'home' })});
+    toast('배너를 올렸어요'); render(); }
+  catch(e){ toast('올리지 못했어요 · 3MB 안쪽인지 확인해 주세요'); }
+}
+async function moveBanner(i,d){
+  const rows=(CACHE.banners||[]).slice();
+  const j=i+d; if(j<0||j>=rows.length) return;
+  [rows[i],rows[j]]=[rows[j],rows[i]];
+  try{ await api('/admin/banners/order',{method:'PATCH',body:JSON.stringify({ids:rows.map(b=>b.id)})});
+    toast('순서를 바꿨어요'); render(); }
+  catch(e){ toast('바꾸지 못했어요'); }
+}
+async function delBanner(id){
+  if(!confirm('이 배너를 내릴까요?')) return;
+  try{ await api('/admin/banners/'+id,{method:'DELETE'}); toast('내렸어요'); render(); }
+  catch(e){ toast('내리지 못했어요'); }
 }
 
 /* 성별을 고치면 그 사람이 낀 대진의 남복·혼복 표기가 바뀐다.
    이미 만들어진 대진표는 그대로이고, 새로 짜는 것부터 반영된다. */
+/* 클럽에서 이미 정해 둔 성별을 본인 값으로 한 번에 옮긴다 —
+   운영진이 채워둔 것을 관리자가 다시 47번 누를 이유가 없다. */
+async function fillGender(){
+  if(!confirm('클럽에서 정해 둔 성별을 회원 정보로 옮길까요?')) return;
+  try{ const r=await api('/admin/users/fill-gender',{method:'POST'});
+    toast(`${r.filled||0}명을 채웠어요`); render(); }
+  catch(e){ toast('채우지 못했어요 · 서버를 확인해 주세요'); }
+}
 async function setGender(id, name, g){
   try{ await api('/admin/users/'+id+'/gender',{method:'POST',body:JSON.stringify({gender:g})});
     toast(g?`${name} · ${g}`:`${name} · 성별 지움`); render(); }
