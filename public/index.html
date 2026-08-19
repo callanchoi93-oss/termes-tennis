@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818t';
+const BUILD='v1.1.0-0818c';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -3439,10 +3439,30 @@ let CFG_ERROR = '';
 /* 앱은 index.html 을 통째로 품고 있어서, 서버만 올려도 앱 화면은 그대로다.
    서버가 아는 최신 화면 버전과 내 것이 다르면 업데이트를 권한다. (웹은 늘 최신이라 해당 없음) */
 const nativeNow=()=>{ try{ return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }catch(e){ return false; } };
+/* 버전 비교 — 'v1.1.0-0818a' 를 [1,1,0, 0818, a] 로 풀어 견준다.
+   예전에는 글자가 다르기만 하면 배너를 띄웠다. 그래서
+   ① 서버 값을 안 올리면 업데이트한 뒤에도 계속 뜨고
+   ② 앱이 서버보다 최신일 때도 <업데이트하세요>가 떴다.
+   이제 <서버가 더 최신일 때만> 띄운다. */
+function cbVerParts(v){
+  const m=String(v||'').match(/^v?(\d+)\.(\d+)\.(\d+)(?:-(\d+)([a-z]*))?/i);
+  if(!m) return null;
+  return [ +m[1], +m[2], +m[3], +(m[4]||0), (m[5]||'') ];
+}
+/* a 가 b 보다 최신이면 1, 같으면 0, 옛것이면 -1 */
+function cbVerCmp(a, b){
+  const x=cbVerParts(a), y=cbVerParts(b);
+  if(!x || !y) return String(a)===String(b) ? 0 : NaN;   // 못 읽으면 판단하지 않는다
+  for(let i=0;i<4;i++){ if(x[i]!==y[i]) return x[i]>y[i] ? 1 : -1; }
+  if(x[4]===y[4]) return 0;
+  return x[4]>y[4] ? 1 : -1;                             // 같은 날 안에서는 a→b→c 순
+}
 function checkAppUpdate(){
   if(!nativeNow()) return;
   const latest=CFG&&CFG.web_build;
-  if(!latest || latest===BUILD) return;
+  if(!latest) return;
+  const cmp=cbVerCmp(latest, BUILD);
+  if(!(cmp>0)) return;                       // 서버가 더 최신일 때만 (같거나 옛것이면 안 띄운다)
   if(sessionStorage.getItem('upd_seen')===latest) return;   // 한 세션에 한 번만
   sessionStorage.setItem('upd_seen', latest);
   const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
@@ -14698,6 +14718,8 @@ async function openClubBracketList(){
 async function cb2Open(eid){ CB2_EVENT=+eid||0; CB2=null; await openClubBracketView(); }
 async function openClubBracketView(){
   const cid=clubId(); if(!TRIAL&&(!SERVER_OK||!cid)){ toast('클럽에 먼저 들어가 주세요'); return; }
+  /* 예전 대진은 왼쪽 팀 등급이 비어 있어 명단에서 채운다 — 그 명단을 미리 받아 둔다 */
+  if(typeof loadClubRoster==='function' && typeof CLUB_ROSTER!=='undefined' && CLUB_ROSTER===null) loadClubRoster();
   if(!TRIAL && !CB2_EVENT && !CB2){                          // 모임을 아직 안 골랐으면 목록부터
     let list=[]; try{ list=await api(`/clubs/${cid}/brackets`)||[]; }catch(e){}
     if(list.length>1){ return openClubBracketList(); }
@@ -15009,8 +15031,21 @@ function drawCB2View(){
           ? `<span style="font-size:var(--t1);color:var(--gray);font-weight:500">원래 ${g.c}번 코트 ${g.r}게임이에요</span>` : '';
         const one=p=>cbIsMe(p) ? cbRing(esc(p.name), p.name, 2.2) : esc(p.name);
         const A=(g.teamA||[]).map(one).join(' · '), B=(g.teamB||[]).map(one).join(' · ');
-    const gA=esc((g.teamA||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
-    const gB=esc((g.teamB||[]).map(p=>p.glabel||p.grade||'').filter(Boolean).join(' · '));
+    /* 예전 대진에는 왼쪽 팀(teamA) 등급이 저장돼 있지 않다 — 저장을 오른쪽만 했기 때문이다.
+       그런 경우 지금 명단에서 찾아 채운다. <그날의 등급>이 아니라 <오늘 등급>이라
+       그새 승급했으면 다를 수 있지만, 아무것도 안 보이는 것보다는 낫다. */
+    const gradeOf=p=>{
+      if(!p) return '';
+      if(p.glabel || p.grade) return p.glabel || p.grade;
+      const R=(typeof CLUB_ROSTER!=='undefined' && Array.isArray(CLUB_ROSTER)) ? CLUB_ROSTER : null;
+      if(!R || !R.length) return '';
+      const id=String(p.id||'');
+      const m=R.find(x=>(id && String(x.user_id||x.id||'')===id))
+        || R.find(x=>String(x.name||'').trim()===String(p.name||'').trim());
+      return m ? (typeof memberGradeCode==='function' ? (memberGradeCode(m)||'') : (m.grade||'')) : '';
+    };
+    const gA=esc((g.teamA||[]).map(gradeOf).filter(Boolean).join(' · '));
+    const gB=esc((g.teamB||[]).map(gradeOf).filter(Boolean).join(' · '));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#cf5418', cB=CB2.mode==='cheongbaek'?'#f04452':'#3b2a1a';
         /* 스코어는 두 팀 사이에 둔다 — 누구 대 누구의 몇 점인지 한 줄에서 읽힌다.
            아직 안 끝난 경기는 실선 테두리의 빈 칸으로 두어 '여기 눌러 입력'이 보이게. */
@@ -15066,7 +15101,7 @@ function drawCB2View(){
             ${scBox}
             <div style="flex:1;min-width:0;text-align:right">
               <b style="display:block;font-size:var(--t2);font-weight:700;color:${cB};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
-              ${gB?`<span style="display:block;font-size:10px;font-weight:700;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gB}</span>`:''}
+              ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">${gB}</span>`:''}
             </div>
           </div></div>`;
       });
@@ -16727,8 +16762,10 @@ async function cb2Gen(mode){
   const one=p=>({id:p.id, name:p.name, gender:p.gender,
     sexAdj:p.sexAdj||undefined,
     is_guest:(p.guest||p.is_guest||p.role==='guest') ? 1 : undefined});
+  /* 등급은 양 팀 모두 저장한다 — 예전에는 teamB 에만 넣어서
+     화면에도 오른쪽 팀 등급만 나왔다(왼쪽은 빈 줄). */
   const push=(r,c,t1,t2,label)=>games.push({r,c,label:label||cb2Label(t1,t2),
-    teamA:t1.map(one),
+    teamA:t1.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})),
     teamB:t2.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})), sa:null, sb:null});
 
   if(mode==='hanul'){
