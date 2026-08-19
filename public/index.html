@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818r';
+const BUILD='v1.0.9-0818t';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9922,15 +9922,23 @@ function dayPoints(w,d){ return w*PT_WIN + d*PT_DRAW; }
    - id 가 있으면 문자열로 맞춘다 (1 과 '1' 을 같게)
    - id 가 없으면 이름으로 묶는다 (게스트끼리 한 줄로 뭉치지 않게) */
 /* 게스트 표시.
-   예전에는 <지금 명단(SRV_ROSTER)에 없으면 게스트>로 봤는데,
-   그 명단은 그날 대진 참가자만 담고 있을 때가 있어서
-   멀쩡한 정회원에게 <게스트> 딱지가 붙었다. 회원을 게스트라고 부르는 건 큰 실례다.
-   이제는 <그 사람이 게스트로 등록됐다>는 사실이 있을 때만 표시한다. */
+   ① 게스트로 등록됐다는 사실이 있으면 그대로 쓴다(대진에 저장된 is_guest).
+   ② 그 값이 없는 예전 대진은 <클럽 전체 명단>과 맞춰 본다.
+      예전에는 SRV_ROSTER(그날 참석자)와 맞춰서, 그날 안 나온 정회원까지
+      게스트로 몰렸다. 전체 명단은 CLUB_ROSTER 다.
+   ③ 전체 명단을 아직 못 받았으면 아무 딱지도 안 붙인다 —
+      회원을 게스트라고 부르느니 표시를 안 하는 편이 낫다. */
 function cbOffRoster(r){
   if(!r) return false;
   if(r.guest===true || r.is_guest===true || r.role==='guest') return true;
-  /* 대진에 이름만 있고 회원 id 가 없는 사람 — 게스트로 넣은 경우다 */
-  return String(r.id||'').startsWith('n:');
+  if(String(r.id||'').startsWith('n:')) return true;        // 이름만 있는 사람
+  const R=(typeof CLUB_ROSTER!=='undefined' && Array.isArray(CLUB_ROSTER)) ? CLUB_ROSTER : null;
+  if(!R || !R.length) return false;                          // 명단을 모르면 판단하지 않는다
+  const id=String(r.id||'');
+  if(id && R.some(x=>String(x.user_id||x.id||'')===id)) return false;
+  const nm=String(r.name||'').trim();
+  if(nm && R.some(x=>String(x.name||'').trim()===nm)) return false;
+  return true;
 }
 function cbKeyOf(p){
   if(!p) return '';
@@ -9968,6 +9976,8 @@ function inSpan(dstr){
   return mon>=sp[2] && mon<=sp[3];
 }
 function clubTabRecords(){
+  /* 게스트 판단에 전체 명단이 필요하다 — 없으면 딱지를 아예 안 붙이므로 먼저 받아 둔다 */
+  if(typeof loadClubRoster==='function' && CLUB_ROSTER===null) loadClubRoster();
   if(CLUBME_GAMES===null){
     if(SERVER_OK && clubId()) loadClubMeGames(); else CLUBME_GAMES=[];
     return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`;
@@ -16712,8 +16722,11 @@ async function cb2Gen(mode){
   };
   /* 게스트 여부(is_guest)를 함께 저장한다 — 저장을 안 해서 나중에 알 길이 없었고,
      그래서 시즌 랭킹이 <명단에 없으면 게스트>로 넘겨짚어 정회원에게 딱지를 붙였다. */
+  /* 편성용 객체는 게스트 여부를 <guest> 로 들고 다닌다(cb2Gen 의 ps).
+     저장할 때 is_guest 만 보면 늘 빈 값이 되어, 나중에 게스트를 구분할 수 없다. */
   const one=p=>({id:p.id, name:p.name, gender:p.gender,
-    sexAdj:p.sexAdj||undefined, is_guest:cbIsGuest(p)?1:undefined});
+    sexAdj:p.sexAdj||undefined,
+    is_guest:(p.guest||p.is_guest||p.role==='guest') ? 1 : undefined});
   const push=(r,c,t1,t2,label)=>games.push({r,c,label:label||cb2Label(t1,t2),
     teamA:t1.map(one),
     teamB:t2.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})), sa:null, sb:null});
