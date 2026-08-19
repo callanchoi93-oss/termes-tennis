@@ -1,862 +1,361 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>맞수 관리자</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
-  :root{ --ink:#1c1b18; --coral:#ec6a2e; --coral-d:#cf5418; --gray:#7d7870; --lgray:#b3aea4; --line:#ececea; }
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  body{ background:#edecea; font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;
-    color:var(--ink); letter-spacing:-.012em; line-height:1.55; padding:22px 14px 70px; }
-  .wrap{ max-width:620px; margin:0 auto; }
-  h1{ font-size:25px; font-weight:900; letter-spacing:-.03em; }
-  .sub{ font-size:13px; color:var(--gray); font-weight:600; margin:3px 0 16px; }
-  .card{ background:#fff; border:1px solid var(--line); border-radius:18px; padding:15px; margin-bottom:11px; }
-  .btn{ padding:12px 16px; border:none; border-radius:13px; font-size:13.5px; font-weight:800; font-family:inherit;
-    cursor:pointer; background:var(--ink); color:#fff; }
-  .btn.coral{ background:var(--coral); }
-  .btn.ghost{ background:#fff; border:1.5px solid #e9dfcf; color:#5a544b; }
-  .btn.xs{ padding:7px 11px; font-size:11.5px; border-radius:10px; }
-  input, textarea{ border:1.5px solid #ece8e0; border-radius:12px; padding:11px 12px; font-size:14px;
-    font-family:inherit; font-weight:600; background:#fff; width:100%; }
-  .tabs{ display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; -webkit-overflow-scrolling:touch; }
-  .tab{ flex:none; padding:9px 16px; border-radius:22px; background:#fff; border:1px solid var(--line);
-    font-size:13px; font-weight:800; cursor:pointer; }
-  .tab.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
-  .meta{ font-size:11.5px; color:var(--gray); font-weight:700; }
-  .row{ display:flex; align-items:center; gap:10px; padding:11px 2px; border-top:1px solid #f0efec; }
-  .row:first-child{ border-top:none; }
-  .row b{ font-size:13.5px; }
-  .pill{ display:inline-block; font-size:10.5px; font-weight:800; border-radius:20px; padding:3px 9px; margin:0 4px 4px 0; }
-  .pill.ok{ background:#edf2ec; color:#4c7a5c; } .pill.warn{ background:#fceee4; color:#cf5418; }
-  .pill.gray{ background:#f2f0ea; color:#6b6357; }
-  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
-  .stat{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:13px 14px; }
-  .stat b{ font-size:20px; font-weight:900; } .stat span{ display:block; font-size:11px; color:var(--gray); font-weight:800; margin-bottom:3px; }
-  .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--ink); color:#fff;
-    padding:12px 18px; border-radius:14px; font-size:13px; font-weight:700; opacity:0; transition:.3s; pointer-events:none; z-index:9; max-width:88%; text-align:center; }
-  .toast.on{ opacity:1; }
-  .sel{ outline:2.5px solid var(--coral); border-radius:14px; }
-
-  /* iOS 는 글씨가 16px 미만인 입력창을 누르면 화면을 확대하고, 되돌리지 않는다.
-     실제 글꼴만 16px 로 올려 확대를 막는다 (보이는 레이아웃은 그대로). */
-  @supports (-webkit-touch-callout: none){
-    input:not([type=range]):not([type=checkbox]):not([type=radio]),
-    select, textarea{ font-size:16px !important; }
-  }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>맞수 관리자</h1>
-  <p class="sub">운영 도구 — 키를 아는 사람만 사용할 수 있어요.</p>
-
-  <div class="card" style="display:flex;gap:8px">
-    <input id="key" type="password" placeholder="관리자 키 (ADMIN_KEY)">
-    <button class="btn" style="flex:none" onclick="connect()">접속</button>
-  </div>
-
-  <div class="tabs" id="tabs"></div>
-  <div id="view"><div class="card meta">관리자 키로 접속하면 내용이 보여요.</div></div>
-</div>
-<div class="toast" id="toast"></div>
-
+/* 맞수 앱과 같은 눈금을 쓴다 — 글자 8.7·11·14·18·23·29, 여백 4·6·10·17·27.
+   예전 admin 은 글자 크기가 14가지에 굵기가 대부분 800~900 이라
+   무엇이 중요한지 안 보였다. 본문은 400~500, 강조만 600~700 으로 둔다. */
+:root{
+  --ink:#1c1b18; --ink2:#3a352d; --gray:#7d7870; --lgray:#a8a29a;
+  --coral:#ec6a2e; --coral-d:#cf5418; --gold:#e09a2b; --gold-bg:#fdf6ea;
+  --line:#eae6dd; --paper:#faf8f5; --red:#c14545;
+  --t0:8.7px; --t1:11px; --t2:14px; --t3:18px; --t4:23px; --t5:29px;
+  --s1:4px; --s2:6px; --s3:10px; --s4:17px; --s5:27px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);
+  font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;
+  letter-spacing:-.018em;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding:var(--s4) var(--s3) 60px;word-break:keep-all}
+.wrap{max-width:680px;margin:0 auto}
+.hd{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s4)}
+.hd h1{font-size:var(--t4);font-weight:700;letter-spacing:-.04em}
+.hd .who{font-size:var(--t1);color:var(--lgray);font-weight:500;margin-left:auto}
+.segs{display:flex;gap:2px;background:#f1eee7;border-radius:12px;padding:3px;margin-bottom:var(--s3)}
+.seg{flex:1;text-align:center;padding:7px 2px;border-radius:9px;font-size:var(--t1);
+  font-weight:500;color:var(--gray);cursor:pointer;white-space:nowrap;transition:.12s}
+.seg.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(27,24,19,.08)}
+.more{display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)}
+.more span{font-size:var(--t1);color:var(--gray);font-weight:500;cursor:pointer;
+  padding:5px 11px;border-radius:20px;background:#fff;border:1px solid var(--line)}
+.more span.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.card{background:#fff;border-radius:16px;padding:var(--s3) var(--s4) var(--s4);
+  box-shadow:0 1px 2px rgba(40,30,18,.04);margin-bottom:var(--s3)}
+.card.flat{padding:var(--s4)}
+.ct{font-size:var(--t2);font-weight:600;letter-spacing:-.02em;margin-bottom:var(--s2)}
+.rw{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-top:1px solid #f4f1ea}
+.rw:first-child{border-top:0}
+.nm{flex:1;min-width:0}
+.nm b{display:flex;align-items:baseline;gap:var(--s2);font-size:var(--t2);font-weight:600;
+  letter-spacing:-.02em;min-width:0}
+.nm b > .tag{margin-left:0;flex:none}
+.nm span{display:block;font-size:var(--t1);color:var(--lgray);font-weight:500;margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{display:inline-block;font-size:var(--t0);font-weight:600;border-radius:20px;padding:2px 7px;
+  background:#f4f1ea;color:var(--gray);margin-left:var(--s2);vertical-align:1px;white-space:nowrap}
+.tag.f{background:#fdeef4;color:#c94378} .tag.m{background:#eaf2ff;color:#2b62c9}
+.tag.o{background:#fceee4;color:var(--coral-d)} .tag.g{background:#edf2ec;color:#4c7a5c}
+.seg3{display:flex;gap:3px;flex:none}
+.b{font-size:var(--t1);font-weight:500;border-radius:9px;padding:5px 10px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--gray);font-family:inherit}
+.b.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.b.dz{border-color:#f0dcdc;color:var(--red)}
+.b:active{transform:scale(.97)}
+.warn{display:flex;align-items:center;gap:var(--s2);background:var(--gold-bg);border-radius:12px;
+  padding:var(--s3) var(--s4);margin-bottom:var(--s3);font-size:var(--t1);color:#8a6a3a;font-weight:500}
+.warn b{color:#7a5a1a;font-weight:700}
+.warn u{margin-left:auto;text-decoration:none;font-weight:600;color:var(--coral-d);cursor:pointer;white-space:nowrap}
+.srch{display:flex;gap:var(--s2);margin-bottom:var(--s3)}
+.srch input{flex:1;border:1px solid var(--line);border-radius:12px;padding:9px 12px;
+  font-size:var(--t2);font-family:inherit;font-weight:500;background:#fff;color:var(--ink)}
+.srch input:focus{outline:0;border-color:var(--coral)}
+.srch button{border:0;border-radius:12px;padding:0 var(--s4);background:var(--ink);color:#fff;
+  font-size:var(--t1);font-weight:600;font-family:inherit;cursor:pointer}
+.kpi{display:flex;gap:var(--s2);margin-bottom:var(--s3)}
+.kpi div{flex:1;background:#fff;border-radius:14px;padding:var(--s3) var(--s2);text-align:center;
+  box-shadow:0 1px 2px rgba(40,30,18,.04)}
+.kpi b{display:block;font-size:var(--t3);font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.kpi span{display:block;font-size:var(--t1);color:var(--lgray);font-weight:500;margin-top:1px}
+.empty{text-align:center;color:var(--lgray);font-size:var(--t1);font-weight:500;padding:var(--s5) 0}
+.note{font-size:var(--t1);color:var(--lgray);font-weight:500;line-height:1.65;margin-top:var(--s2)}
+.gate{max-width:340px;margin:60px auto}
+.gate h2{font-size:var(--t3);font-weight:700;margin-bottom:var(--s2)}
+.gate p{font-size:var(--t1);color:var(--gray);font-weight:500;margin-bottom:var(--s4)}
+.gate input{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 12px;
+  font-size:var(--t2);font-family:inherit;font-weight:500;margin-bottom:var(--s2)}
+.gate button{width:100%;border:0;border-radius:12px;padding:12px;background:var(--ink);color:#fff;
+  font-size:var(--t2);font-weight:600;font-family:inherit;cursor:pointer}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:var(--ink);color:#fff;
+  font-size:var(--t1);font-weight:500;padding:10px 16px;border-radius:20px;opacity:0;
+  transition:.2s;pointer-events:none;z-index:99;max-width:88vw;text-align:center}
+#toast.on{opacity:1}
+.sk{background:#f4f1ea;border-radius:8px;height:12px;animation:p 1.2s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.5}}
+</style></head><body>
+<div class="wrap" id="app"></div>
+<div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-const won=n=>Number(n||0).toLocaleString()+'원';
-/* created_at이 숫자(ms)든 문자든 안전하게 날짜로 — 기존 회원 탭 오류 수정 지점 */
-const fdate=v=>{ if(v==null||v==='') return '—';
-  const d=new Date(typeof v==='number'?v:(/^\d+$/.test(String(v))?+v:v));
-  return isNaN(d)?'—':`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
-function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),2600); }
+function toast(t){ const e=$('toast'); e.textContent=t; e.classList.add('on');
+  clearTimeout(window._tt); window._tt=setTimeout(()=>e.classList.remove('on'),2200); }
 function key(){ return localStorage.getItem('matsu_admin_key')||''; }
-
 async function api(path, opts){
   const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json','x-admin-key':key(),...((opts&&opts.headers)||{})}});
   if(!r.ok){ const t=await r.text().catch(()=>String(r.status)); throw new Error(t); }
   return r.json();
 }
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n||0).toLocaleString('ko-KR');
+const ymd=t=>{ if(!t) return ''; const d=new Date(t); if(isNaN(d)) return '';
+  return `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
 
-const TABS=[['stats','현황'],['users','회원'],['clubs','클럽'],['oms','오픈매치·봇'],['venues','구장'],['staff','계정'],['vpay','구장 정산'],['vbook','코트 예약'],['vslots','열린 시간'],['under','인원 미달'],['mgrs','매니저 등급'],['reports','신고'],['payouts','정산'],['banners','배너']];
-let TAB='stats', OMS=[], SEL=null;
+/* 탭 14개를 9개로 묶었다. 구장 관련 넷(구장·예약·열린 시간·정산)은 한 화면에서
+   안쪽 탭으로 나누고, 매치와 인원 미달, 계정과 매니저 등급도 함께 본다.
+   가로로 흐르던 14개는 뒤쪽에 무엇이 있는지 알 수 없었다. */
+const MAIN=[['stats','현황'],['users','회원'],['clubs','클럽'],['matches','매치']];
+const MORE=[['venues','구장'],['reports','신고'],['payouts','정산'],['staff','계정'],['banners','배너']];
+let TAB='stats', SUB='', UQ='', UONLY='', SEL=null, CACHE={};
 
-function drawTabs(){
-  $('tabs').innerHTML=TABS.map(([k,l])=>`<div class="tab ${TAB===k?'on':''}" onclick="setTab('${k}')">${l}</div>`).join('');
-}
-function setTab(k){ TAB=k; drawTabs(); render(); }
-
-async function connect(){
-  const v=$('key').value.trim();
-  if(v) localStorage.setItem('matsu_admin_key', v);
-  if(!key()){ toast('키를 입력해 주세요'); return; }
-  try{ await api('/admin/stats'); toast('접속했어요 · 앱의 봇 추가 버튼도 함께 열려요'); render(); }
-  catch(e){ toast('키가 달라요'); }
-}
-
-async function render(){
-  const v=$('view');
-  if(!key()){ v.innerHTML='<div class="card meta">관리자 키로 접속하면 내용이 보여요.</div>'; return; }
-  v.innerHTML='<div class="card meta">불러오는 중…</div>';
-  try{
-    if(TAB==='stats'){
-      const s=await api('/admin/stats');
-      v.innerHTML=`<div class="grid">
-        <div class="stat"><span>회원</span><b>${s.users||0}</b></div>
-        <div class="stat"><span>클럽</span><b>${s.clubs||0}</b></div>
-        <div class="stat"><span>오픈매치(누적)</span><b>${s.matches||0}</b></div>
-        <div class="stat"><span>미처리 신고</span><b>${s.openReports||0}</b></div>
-        <div class="stat"><span>결제 건수</span><b>${s.paidOrders||0}</b></div>
-        <div class="stat"><span>결제 금액</span><b>${won(s.revenueWon)}</b></div>
-      </div>`;
-    }
-    else if(TAB==='users'){
-      const rows=await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
-      /* 성별이 비어 있으면 대진에서 남복·혼복이 잘못 잡힌다.
-         목록을 훑을 때 그런 사람이 먼저 눈에 띄어야 한다. */
-      const noG = rows.filter(u=>!gLabel(u.gender)).length;
-      v.innerHTML=`<div class="card">
-        <div style="display:flex;gap:7px;align-items:center">
-          <input id="uq" placeholder="이름으로 찾기" value="${esc(UQ)}"
-            style="flex:1;border:1px solid #e6e2da;border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit"
-            onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
-          <button class="btn xs" onclick="UQ=document.getElementById('uq').value.trim();render()">찾기</button>
-          ${UQ?`<button class="btn xs ghost" onclick="UQ='';render()">전체</button>`:''}
-        </div>
-        ${noG?`<div class="meta" style="margin-top:9px;color:#cf5418">성별이 비어 있는 회원 ${noG}명 · 대진에서 남복·혼복이 잘못 잡혀요</div>`:''}
-      </div>
-      <div class="card">`+ (rows.length? rows.map(u=>{
-        const g=gLabel(u.gender);
-        return `<div class="row"><div style="flex:1;min-width:0"><b>${esc(u.name)}</b>
-          <span class="pill ${g==='여성'?'warn':g==='남성'?'ok':'gray'}">${g||'성별 없음'}</span>
-          <span class="pill gray">${esc(u.provider||'')}</span>${u.premium?'<span class="pill warn">프리미엄</span>':''}
-          <div class="meta">#${u.id} · ${esc(u.region||'지역 없음')} · ${esc(u.sport||'')} · 레이팅 ${u.rating??'—'} · 캐시 ${won(u.cash)} · 가입 ${fdate(u.created_at)}</div>
-          <div style="margin-top:6px;display:flex;gap:5px">
-            ${['남성','여성','없음'].map(x=>{
-              const on=(x==='없음')?!g:(g===x);
-              return `<button class="btn xs ${on?'':'ghost'}" style="padding:4px 10px"
-                onclick="setGender(${u.id},'${esc(u.name)}','${x==='없음'?'':x}')">${x}</button>`;
-            }).join('')}
-          </div></div>
-          <button class="btn xs ghost" onclick="delUser(${u.id},'${esc(u.name)}')">삭제</button></div>`;
-      }).join('') : '<div class="meta">회원이 없어요</div>') + '</div>';
-    }
-    else if(TAB==='clubs'){
-      const rows=await api('/admin/clubs');
-      v.innerHTML='<div class="card">'+ (rows.length? rows.map(c=>`
-        <div class="row"><div style="flex:1;min-width:0"><b>${esc(c.name)}</b>
-          <div class="meta">#${c.id} · ${esc(c.region||'')} · ${esc(c.sport||'')} · 회원 ${c.members||0}명 · 클럽장 ${esc((c.owner||{}).name||'—')}</div>
-          <div style="margin-top:5px">${(c.roster||[]).slice(0,8).map(r=>`<span class="pill ${r.role==='owner'?'warn':r.role==='officer'?'ok':'gray'}">${esc(r.name)}</span>`).join('')}</div></div>
-          <button class="btn xs ghost" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('') : '<div class="meta">클럽이 없어요</div>') + '</div>';
-    }
-    else if(TAB==='oms'){
-      let rows;
-      try{ rows=await api('/admin/open-matches'); }
-      catch(e){
-        v.innerHTML=`<div class="card"><b style="font-size:14px">서버에 봇 라우트가 아직 없어요</b>
-          <div class="meta" style="margin-top:6px;line-height:1.7">이 파일 하단 주석의 코드 3개(<b>/admin/open-matches</b> 목록,
-          <b>bots</b> 추가, 제거)를 server.js의 다른 /admin 라우트 옆에 붙여넣고 배포하면 이 탭이 살아나요.</div></div>`;
-        return;
-      }
-      OMS=rows;
-      v.innerHTML=`
-      <div class="card"><b style="font-size:14px">① 매치 선택</b>
-        ${rows.length? rows.map(m=>`
-        <div class="row" id="om${m.id}">
-          <div style="flex:1;min-width:0;cursor:pointer" onclick="pick(${m.id})"><b>${esc(m.loc||'오픈매치')}</b> ${SEL===m.id?'<span class="pill warn">선택됨</span>':''}
-            <div class="meta">#${m.id} · ${esc(m.dt||'')} · ${(m.players||[]).length}/${m.cap||0}명 · ${m.price?won(m.price):'무료'} · ${esc(m.status||'open')}</div></div>
-          <button class="btn xs ghost" onclick="event.stopPropagation();delMatch(${m.id},'${esc(m.loc||'오픈매치')}','${esc(m.dt||'')}',${(m.players||[]).length})">삭제</button></div>`).join('') : '<div class="meta">오픈매치가 없어요</div>'}
-      </div>
-      <div class="card" id="botCard">
-        <b style="font-size:14px">② 봇 참가자 추가</b>
-        <div class="meta" style="margin:6px 0 9px">외부 클럽 인원 등 실제로 올 사람을 넣어요. 성별·구력은 참가자 분포 차트와 대진 편성에 반영돼요.</div>
-        <div id="botRows"></div>
-        <button class="btn ghost xs" style="width:100%;margin-top:4px" onclick="addRow()">+ 인원 추가</button>
-        <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBots()">추가하기</button>
-        <div id="parts" style="margin-top:11px"></div>
-      </div>`;
-      drawParts(); if(!document.querySelector('#botRows > div')) addRow();
-    }
-    else if(TAB==='reports'){
-      const rows=await api('/admin/reports');
-      v.innerHTML='<div class="card">'+ (rows.length? rows.map(r=>`
-        <div class="row"><div style="flex:1;min-width:0"><b>${esc(r.reason||'신고')}</b>
-          <div class="meta">#${r.id} · ${esc(r.target_type||'')} ${r.target?('· '+esc(r.target.title||'')):''} · ${fdate(r.created_at)}</div></div>
-          <div style="display:flex;gap:5px;flex:none">
-            <button class="btn xs coral" onclick="resolveRep(${r.id},'removed')">삭제 조치</button>
-            <button class="btn xs ghost" onclick="resolveRep(${r.id},'rejected')">기각</button></div></div>`).join('') : '<div class="meta">미처리 신고가 없어요</div>') + '</div>';
-    }
-    else if(TAB==='venues'){ await drawVenues(v); }
-    else if(TAB==='staff'){ await drawStaff(v); }
-    else if(TAB==='vpay'){ await drawVenuePay(v); }
-    else if(TAB==='vbook'){ await drawBookings(v); }
-    else if(TAB==='vslots'){ await drawVenueSlots(v); }
-    else if(TAB==='under'){ await drawUnderfilled(v); }
-    else if(TAB==='mgrs'){ await drawManagers(v); }
-    else if(TAB==='payouts'){
-      const rows=await api('/admin/payouts');
-      v.innerHTML='<div class="card">'+ (rows.length? rows.map(p=>`
-        <div class="row"><div style="flex:1;min-width:0"><b>${esc(p.name)}</b> · ${won(p.amount)}
-          <div class="meta">#${p.id} · ${esc(p.bank||'계좌 미등록')} · 요청 ${fdate(p.created_at||p.requested_at)}</div></div>
-          <button class="btn xs coral" onclick="paidPayout(${p.id})">이체 완료</button></div>`).join('') : '<div class="meta">대기 중인 정산이 없어요</div>') + '</div>';
-    }
-    else if(TAB==='banners'){
-      const rows=await api('/admin/banners');
-      window._BN=rows;
-      v.innerHTML=`<div class="card"><b style="font-size:14px">배너 추가</b>
-          <input type="file" id="bnFile" accept="image/*" style="margin-top:8px">
-          <input id="bnLink" placeholder="탭했을 때 열릴 링크 (선택)" style="margin-top:8px">
-          <select id="bnSlot" style="margin-top:8px">
-            <option value="home">홈 배너 (앱 첫 화면)</option>
-            <option value="bracket">대진 배너 (대진 만들기 화면)</option>
-          </select>
-          <button class="btn coral" style="width:100%;margin-top:9px" onclick="addBanner()">올리기</button></div>
-        <div class="card"><b style="font-size:14px">노출 순서</b>
-        <div class="meta" style="margin:4px 0 6px">▲▼로 순서를 바꾸면 홈 캐러셀에 그 순서로 나와요 · 위가 1번</div>`+ (rows.length? rows.map((b,i)=>`
-        <div class="row"><b style="width:20px;text-align:center;color:${i===0?'var(--coral)':'var(--lgray)'}">${i+1}</b>
-          <img src="${esc(b.image)}" style="width:100px;border-radius:10px;flex:none" alt="">
-          <div style="flex:1;min-width:0" class="meta"><span style="display:inline-block;font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;background:${b.slot==='bracket'?'#eef4ff':'#fceee4'};color:${b.slot==='bracket'?'#2b62c9':'#cf5418'}">${b.slot==='bracket'?'대진':'홈'}</span> #${b.id} · ${fdate(b.created_at)}<br>${esc(b.link||'링크 없음')}</div>
-          <div style="display:flex;flex-direction:column;gap:4px;flex:none">
-            <button class="btn xs ghost" ${i===0?'disabled style="opacity:.3"':''} onclick="bnMove(${i},-1)">▲</button>
-            <button class="btn xs ghost" ${i===rows.length-1?'disabled style="opacity:.3"':''} onclick="bnMove(${i},1)">▼</button></div>
-          <button class="btn xs ghost" onclick="delBanner(${b.id})">삭제</button></div>`).join('') : '<div class="meta">배너가 없어요</div>') + '</div>';
-    }
-  }catch(e){ v.innerHTML=`<div class="card meta">불러오지 못했어요 (${esc(e.message).slice(0,120)})</div>`; }
-}
-
-/* ── 액션들 ── */
-let UQ='';                     // 회원 탭 검색어
-/* 서버에는 'F'/'M' 으로도, '여성'/'남성' 으로도 들어와 있다 — 화면은 한글 하나로 읽는다 */
 function gLabel(v){ const t=String(v||'').trim();
   if(!t) return '';
   return (t==='F'||t.startsWith('여')) ? '여성' : (t==='M'||t.startsWith('남')) ? '남성' : ''; }
 
+function shell(inner){
+  const seg=MAIN.map(([k,l])=>`<div class="seg ${TAB===k?'on':''}" onclick="go('${k}')">${l}</div>`).join('');
+  const more=MORE.map(([k,l])=>`<span class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</span>`).join('');
+  return `<div class="hd"><h1>맞수 관리자</h1><span class="who">${esc(key().slice(0,4))}···</span></div>
+    <div class="segs">${seg}</div><div class="more">${more}</div>${inner}`;
+}
+function go(k){ TAB=k; SUB=''; render(); }
+function subTabs(list){
+  return `<div class="more">${list.map(([k,l])=>
+    `<span class="${(SUB||list[0][0])===k?'on':''}" onclick="SUB='${k}';render()">${l}</span>`).join('')}</div>`;
+}
+function skel(n){ return `<div class="card">${Array.from({length:n||3},()=>
+  `<div class="rw"><div class="nm"><div class="sk" style="width:38%"></div>
+   <div class="sk" style="width:62%;height:9px;margin-top:6px"></div></div></div>`).join('')}</div>`; }
+
+async function render(){
+  if(!key()){ $('app').innerHTML=`<div class="gate"><h2>관리자 열쇠</h2>
+      <p>서버에 설정한 관리자 키를 넣어주세요.</p>
+      <input id="k" type="password" placeholder="admin key" onkeydown="if(event.key==='Enter')saveKey()">
+      <button onclick="saveKey()">들어가기</button></div>`; return; }
+  $('app').innerHTML=shell(skel(4));
+  try{ await draw(); }
+  catch(e){ $('app').innerHTML=shell(`<div class="card"><div class="empty">
+    불러오지 못했어요<br><span style="font-size:var(--t0)">${esc(String(e.message).slice(0,80))}</span></div></div>`); }
+}
+async function saveKey(){ const v=($('k')||{}).value||''; if(!v) return;
+  localStorage.setItem('matsu_admin_key', v.trim());
+  try{ await api('/admin/stats'); toast('접속했어요'); render(); }
+  catch(e){ localStorage.removeItem('matsu_admin_key'); toast('열쇠가 맞지 않아요'); render(); } }
+
+async function draw(){
+  if(TAB==='stats')   return drawStats();
+  if(TAB==='users')   return drawUsers();
+  if(TAB==='clubs')   return drawClubs();
+  if(TAB==='matches') return drawMatches();
+  if(TAB==='venues')  return drawVenues();
+  if(TAB==='reports') return drawReports();
+  if(TAB==='payouts') return drawPayouts();
+  if(TAB==='staff')   return drawStaff();
+  if(TAB==='banners') return drawBanners();
+}
+
+/* ── 현황 ── 숫자만 보여주고 끝나던 화면에 <손볼 것>을 더한다.
+   관리자가 여는 이유는 대개 할 일을 찾기 위해서다. */
+async function drawStats(){
+  const [s, users, reps] = await Promise.all([
+    api('/admin/stats'), api('/admin/users').catch(()=>[]), api('/admin/reports').catch(()=>[])
+  ]);
+  const noG=users.filter(u=>!gLabel(u.gender)).length;
+  const todo=[];
+  if(noG) todo.push(['성별이 빈 회원','대진에서 남복·혼복이 잘못 잡혀요',`${noG}명`,`UONLY='nog';go('users')`]);
+  if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`]);
+  const kpi=[['회원',s.users],['클럽',s.clubs],['오픈매치',s.open_matches!=null?s.open_matches:s.matches]];
+  $('app').innerHTML=shell(`
+    <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
+    ${todo.length?`<div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>`:''}
+    <div class="card">${todo.length? todo.map(([t,d,n,act])=>
+      `<div class="rw" onclick="${act}" style="cursor:pointer">
+        <div class="nm"><b>${t}</b><span>${d}</span></div><span class="b">${n}</span></div>`).join('')
+      : `<div class="empty">지금 손볼 것이 없어요</div>`}</div>`);
+}
+
+/* ── 회원 ── 이름만 굵게, 나머지는 회색 한 줄. 성별은 세 칸 토글. */
+async function drawUsers(){
+  const rows=await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
+  const noG=rows.filter(u=>!gLabel(u.gender)).length;
+  const list=UONLY==='nog' ? rows.filter(u=>!gLabel(u.gender)) : rows;
+  $('app').innerHTML=shell(`
+    <div class="srch">
+      <input id="uq" value="${esc(UQ)}" placeholder="이름으로 찾기"
+        onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
+      <button onclick="UQ=($('uq')||{}).value.trim();render()">찾기</button></div>
+    ${noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
+      <u onclick="UONLY='${UONLY==='nog'?'':'nog'}';render()">${UONLY==='nog'?'전체 보기':'모아 보기 ›'}</u></div>`:''}
+    <div class="card">${list.length? list.map(u=>{
+      const g=gLabel(u.gender);
+      const cls=g==='여성'?'f':g==='남성'?'m':'';
+      return `<div class="rw">
+        <div class="nm"><b>${esc(u.name||'이름 없음')}<span class="tag ${cls}">${g||u.provider||'—'}</span></b>
+          <span>#${u.id} · ${esc(u.sport||'')} · 레이팅 ${fmt(u.rating)} · ${ymd(u.created_at)} 가입</span></div>
+        <div class="seg3">
+          <button class="b ${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남</button>
+          <button class="b ${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여</button>
+          <button class="b ${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">—</button>
+        </div></div>`;}).join('') : `<div class="empty">${UQ?'찾는 회원이 없어요':'회원이 없어요'}</div>`}
+    </div>
+    <div class="note">삭제는 회원을 눌러 들어간 곳에 있어요 · 목록에서는 실수로 눌릴 수 있어 뺐어요</div>`);
+}
+
+/* ── 클럽 ── */
+async function drawClubs(){
+  const rows=await api('/admin/clubs');
+  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(c=>`
+    <div class="rw"><div class="nm"><b>${esc(c.name)}<span class="tag">${esc(c.sport||'')}</span></b>
+      <span>#${c.id} · ${esc(c.region||'지역 없음')} · 회원 ${c.members}명${
+        c.owner?` · 회장 ${esc(c.owner.name)}`:''}</span></div>
+      <button class="b dz" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('')
+    : `<div class="empty">클럽이 없어요</div>`}</div>`);
+}
+
+/* ── 매치 ── 오픈매치와 인원 미달을 한 화면에서 */
+async function drawMatches(){
+  const sub=SUB||'oms';
+  const tabs=[['oms','오픈매치'],['under','인원 미달']];
+  if(sub==='under'){
+    const rows=await api('/admin/underfilled').catch(()=>[]);
+    $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(m=>`
+      <div class="rw"><div class="nm"><b>${esc(m.title||m.venue||'매치')}</b>
+        <span>${esc(m.date||'')} · ${m.joined||0}/${m.capacity||0}명</span></div>
+        <span class="b">${(m.capacity||0)-(m.joined||0)}명 부족</span></div>`).join('')
+      : `<div class="empty">인원이 모자란 매치가 없어요</div>`}</div>`);
+    return;
+  }
+  const rows=await api('/admin/open-matches');
+  $('app').innerHTML=shell(subTabs(tabs)+`
+    <div class="card">${rows.length? rows.map(m=>`
+      <div class="rw" onclick="SEL=${m.id};render()" style="cursor:pointer">
+        <div class="nm"><b>${esc(m.title||m.venue||'매치')}${SEL===m.id?'<span class="tag o">선택됨</span>':''}</b>
+          <span>${esc(m.date||'')} · ${m.joined||0}/${m.capacity||0}명 · #${m.id}</span></div>
+        <span class="b">${SEL===m.id?'봇 추가 ▾':'고르기'}</span></div>`).join('')
+      : `<div class="empty">오픈매치가 없어요</div>`}</div>
+    ${SEL?`<div class="card flat"><div class="ct">봇 추가</div>
+      <div id="botRows"></div>
+      <div style="display:flex;gap:var(--s2);margin-top:var(--s3)">
+        <button class="b" onclick="addBotRow()">＋ 인원</button>
+        <button class="b on" onclick="addBots()" style="flex:1">추가하기</button></div>
+      <div class="note">이름·성별·구력을 넣으면 그 실력으로 매치에 들어가요</div></div>`:''}`);
+  if(SEL) addBotRow();
+}
+function addBotRow(){
+  const host=$('botRows'); if(!host) return;
+  const d=document.createElement('div');
+  d.style.cssText='display:flex;gap:var(--s2);margin-top:var(--s2)';
+  d.innerHTML=`<input class="bn" placeholder="이름" style="flex:1;border:1px solid var(--line);
+      border-radius:10px;padding:8px 10px;font-size:var(--t2);font-family:inherit;font-weight:500">
+    <select class="bg" style="border:1px solid var(--line);border-radius:10px;padding:8px;
+      font-size:var(--t1);font-family:inherit"><option>남성</option><option>여성</option></select>
+    <select class="br" style="border:1px solid var(--line);border-radius:10px;padding:8px;
+      font-size:var(--t1);font-family:inherit">
+      <option value="1" data-r="950">1년</option><option value="3" data-r="1050">3년</option>
+      <option value="7" data-r="1150">7년</option><option value="15" data-r="1250">15년</option></select>`;
+  host.appendChild(d);
+}
+
+/* ── 구장 ── 넷을 한 화면 안쪽 탭으로 */
+async function drawVenues(){
+  const sub=SUB||'list';
+  /* 바깥 탭이 이미 <구장>이라 안쪽 첫 칸은 <목록>으로 둔다 — 같은 말이 두 번 보이면 헷갈린다 */
+  const tabs=[['list','목록'],['book','예약'],['slots','열린 시간'],['pay','정산']];
+  const ep={list:'/admin/venues', book:'/admin/venue-bookings',
+            slots:'/admin/venue-slots', pay:'/admin/venue-payouts/by-venue'}[sub];
+  const rows=await api(ep).catch(()=>[]);
+  const line=r=>{
+    if(sub==='list') return [`${esc(r.name)}`, `#${r.id} · ${esc(r.region||'')} · 코트 ${r.courts||0}면`, ''];
+    if(sub==='book') return [`${esc(r.venue_name||r.venue||'구장')}`,
+      `${esc(r.date||'')} ${esc(r.start||'')} · ${esc(r.user_name||'')} · ${fmt(r.amount)}원`, r.status||''];
+    if(sub==='slots') return [`${esc(r.venue_name||r.venue||'구장')}`,
+      `${esc(r.date||'')} ${esc(r.start||'')}~${esc(r.end||'')} · ${r.court||''}번 코트`, r.open?'열림':'닫힘'];
+    return [`${esc(r.venue_name||r.name||'구장')}`, `건수 ${r.count||0} · 정산 대기`, `${fmt(r.amount)}원`];
+  };
+  $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(r=>{
+    const [a,b,c]=line(r);
+    return `<div class="rw"><div class="nm"><b>${a}</b><span>${b}</span></div>
+      ${c?`<span class="b">${esc(c)}</span>`:''}</div>`;}).join('')
+    : `<div class="empty">아직 없어요</div>`}</div>`);
+}
+
+/* ── 신고 ── */
+async function drawReports(){
+  const rows=await api('/admin/reports');
+  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(r=>`
+    <div class="rw"><div class="nm"><b>${esc(r.reason||'신고')}<span class="tag">${esc(r.target_type||'')}</span></b>
+      <span>${esc((r.target&&r.target.title)||'')} · ${ymd(r.created_at)}</span></div>
+      <div class="seg3">
+        <button class="b dz" onclick="resolveRep(${r.id},'hide')">숨기기</button>
+        <button class="b" onclick="resolveRep(${r.id},'dismiss')">반려</button></div></div>`).join('')
+    : `<div class="empty">처리할 신고가 없어요</div>`}</div>`);
+}
+
+/* ── 정산 ── */
+async function drawPayouts(){
+  const rows=await api('/admin/payouts').catch(()=>[]);
+  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(p=>`
+    <div class="rw"><div class="nm"><b>${esc(p.name||p.manager_name||'매니저')}</b>
+      <span>${ymd(p.created_at)} · ${esc(p.status||'')}</span></div>
+      <span class="b">${fmt(p.amount)}원</span></div>`).join('')
+    : `<div class="empty">정산할 건이 없어요</div>`}</div>`);
+}
+
+/* ── 계정 ── 스태프·매니저·구장 계정을 한 화면에서 */
+async function drawStaff(){
+  const sub=SUB||'staff';
+  const tabs=[['staff','스태프'],['mgrs','매니저'],['venue','구장 계정']];
+  const ep={staff:'/admin/staff-accounts', mgrs:'/admin/managers', venue:'/admin/venue-accounts'}[sub];
+  const rows=await api(ep).catch(()=>[]);
+  $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(a=>`
+    <div class="rw"><div class="nm"><b>${esc(a.name||a.login||a.email||'계정')}
+      ${a.grade?`<span class="tag">${esc(a.grade)}</span>`:''}</b>
+      <span>${esc(a.role||a.venue_name||'')} ${a.created_at?('· '+ymd(a.created_at)):''}</span></div></div>`).join('')
+    : `<div class="empty">계정이 없어요</div>`}</div>`);
+}
+
+/* ── 배너 ── */
+async function drawBanners(){
+  const rows=await api('/admin/banners').catch(()=>[]);
+  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(b=>`
+    <div class="rw"><div class="nm"><b>${esc(b.title||'배너')}</b>
+      <span>${esc(b.link||'')} · ${b.active?'노출 중':'숨김'}</span></div>
+      <span class="b">${b.sort_order!=null?('순서 '+b.sort_order):''}</span></div>`).join('')
+    : `<div class="empty">배너가 없어요</div>`}</div>`);
+}
+
 /* 성별을 고치면 그 사람이 낀 대진의 남복·혼복 표기가 바뀐다.
    이미 만들어진 대진표는 그대로이고, 새로 짜는 것부터 반영된다. */
 async function setGender(id, name, g){
-  if(gLabel(g)===''&&g) return;
-  const cur=g||'없음';
-  if(!confirm(`${name} 님을 ${cur}(으)로 바꿀까요?\n\n대진의 남복·혼복 표기에 쓰이는 값이에요.\n이미 만든 대진표는 바뀌지 않고, 새로 짜는 것부터 반영돼요.`)) return;
-  try{
-    await api('/admin/users/'+id+'/gender',{method:'PATCH',body:JSON.stringify({gender:g})});
-    toast(g?`${name} → ${g}`:`${name} 성별을 비웠어요`);
-    render();
-  }catch(e){ toast('바꾸지 못했어요 ('+String(e.message).slice(0,60)+')'); }
+  try{ await api('/admin/users/'+id+'/gender',{method:'POST',body:JSON.stringify({gender:g})});
+    toast(g?`${name} · ${g}`:`${name} · 성별 지움`); render(); }
+  catch(e){ toast('바꾸지 못했어요'); }
 }
-
-async function delUser(id,name){ if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`))return;
-  try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요 ('+String(e.message).slice(0,60)+')'); } }
-async function delClub(id,name){ if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`))return;
-  try{ await api('/admin/clubs/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
-async function resolveRep(id,action){ try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
-/* ══════════ 구장 ══════════
-   순서가 중요하다: 구장 등록 → 코트 등록(단가!) → 계정 발급.
-   단가가 비면 사장님이 시간을 열 수 없다. */
-async function drawVenues(v){
-  const list = await api('/admin/venues');
-  window._VN = list;
-  v.innerHTML = `
-  <div class="card"><b style="font-size:14px">구장 등록</b>
-    <input id="vName" placeholder="구장 이름 (예: 필킨스 테니스)" style="margin-top:8px">
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <select id="vSido" style="flex:1" onchange="fillGu('vSido','vGu')">${sidoOptions('')}</select>
-      <select id="vGu" style="flex:1"><option value="">시군구 선택</option></select>
-    </div>
-    <input id="vAddr" placeholder="상세 주소" style="margin-top:8px">
-    <input id="vPhone" placeholder="구장 전화" style="margin-top:8px">
-    <button class="btn coral" style="margin-top:10px;width:100%" onclick="addVenue()">구장 등록</button>
-  </div>
-  ${list.map(x=>`
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:8px">
-      <b style="font-size:15px;flex:1">${esc(x.name)}</b>
-      <span class="meta">#${x.id} · 열린 시간 ${x.open_slots}</span>
-      <button class="btn xs ghost" onclick="toggleVenue(${x.id},${x.active?0:1})">${x.active?'활성':'중지'}</button>
-    </div>
-    <div class="meta" style="margin-top:4px">
-      ${(x.sido&&x.sigungu)
-        ? esc(x.sido+' '+x.sigungu)
-        : '<b style="color:#e4685d">지역 미설정 — 매니저 검색에 안 잡혀요</b>'}
-      ${esc(x.addr||'')}
-      <button class="btn xs ghost" style="margin-left:4px" onclick="editRegion(${x.id})">지역 수정</button><br>
-      · ${esc(x.bank_name||'')} ${esc(x.bank_no||'계좌 미등록')}
-      · ${x.owner_id?('계정 #'+x.owner_id):'<b style="color:#cf5418">계정 없음</b>'}</div>
-
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;align-items:center">
-      ${(x.photos||[]).map((p,i)=>`
-        <div style="position:relative;width:76px;height:56px;border-radius:8px;overflow:hidden;
-                    border:${i===0?'2px solid #ec6a2e':'1px solid #e6e1d8'}">
-          <img src="${esc(p)}" style="width:100%;height:100%;object-fit:cover;display:block">
-          ${i===0?'<span style="position:absolute;left:0;bottom:0;background:#ec6a2e;color:#fff;font-size:9px;font-weight:800;padding:1px 5px">대표</span>'
-                 :`<button onclick="coverPhoto(${x.id},${i})" style="position:absolute;left:2px;bottom:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border:none;border-radius:4px">대표</button>`}
-          <button onclick="delPhoto(${x.id},${i})" style="position:absolute;right:2px;top:2px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;width:16px;height:16px;line-height:1;border:none;border-radius:4px">×</button>
-        </div>`).join('')}
-      <label style="width:76px;height:56px;border:1.5px dashed #cfc9bd;border-radius:8px;display:flex;
-                    align-items:center;justify-content:center;font-size:11px;color:#8a857c;cursor:pointer">
-        + 사진
-        <input type="file" accept="image/*" style="display:none" onchange="upPhoto(${x.id},this)">
-      </label>
-    </div>
-    ${(x.photos||[]).length?'':'<div class="meta" style="margin-top:4px">사진이 없으면 매니저·참가자 화면에 회색 자리만 보여요</div>'}
-
-    ${x.courts.map(c=>`
-      <div class="row">
-        <div style="flex:1;min-width:0"><b>${esc(c.name)}</b>
-          <div class="meta">${c.indoor?'실내':'실외'} · ${esc(c.surface||'')} · 시간당
-            <b style="color:${c.price_hour?'#1f7d4d':'#cf5418'}">${won(c.price_hour)}</b>
-            ${c.status==='paused'?' · 쉼':''}</div></div>
-        <button class="btn xs ghost" onclick="editCourt(${x.id},${c.id},${c.price_hour})">단가</button>
-        <button class="btn xs ghost" onclick="pauseCourt(${x.id},${c.id},'${c.status==='paused'?'active':'paused'}')">${c.status==='paused'?'재개':'쉼'}</button>
-        <button class="btn xs ghost" onclick="delCourt(${x.id},${c.id})">삭제</button>
-      </div>`).join('')}
-
-    <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
-      <input id="cNo_${x.id}" placeholder="번호" style="width:64px" inputmode="numeric">
-      <input id="cLb_${x.id}" placeholder="이름 (비우면 N번 코트)" style="flex:1;min-width:110px">
-      <select id="cSf_${x.id}" style="width:96px"><option>하드</option><option>클레이</option><option>인조잔디</option></select>
-      <select id="cIn_${x.id}" style="width:80px"><option value="0">실외</option><option value="1">실내</option></select>
-      <input id="cPr_${x.id}" placeholder="시간당 단가" style="width:110px" inputmode="numeric">
-      <button class="btn xs coral" onclick="addCourt(${x.id})">코트 추가</button>
-    </div>
-
-    ${!x.owner_id?`
-    <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;border-top:1px solid #f0efec;padding-top:10px">
-      <input id="aId_${x.id}" placeholder="아이디 (영문·숫자 4자+)" style="flex:1;min-width:120px">
-      <input id="aPw_${x.id}" placeholder="비밀번호 (6자+)" style="flex:1;min-width:110px">
-      <button class="btn xs coral" onclick="addVenueAcct(${x.id},'${esc(x.name)}')">계정 발급</button>
-    </div>
-    <div class="meta" style="margin-top:6px;color:#cf5418">↑ 이 구장의 사장님 계정을 아직 안 만들었어요
-    </div>`:''}
-  </div>`).join('') || '<div class="card meta">등록된 구장이 없어요</div>'}`;
+async function delUser(id,name){
+  if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`)) return;
+  try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'}); toast('삭제했어요'); render(); }
+  catch(e){ toast('삭제하지 못했어요'); }
 }
-const REGIONS = {
-  '서울특별시':['강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구','노원구','도봉구','동대문구','동작구','마포구','서대문구','서초구','성동구','성북구','송파구','양천구','영등포구','용산구','은평구','종로구','중구','중랑구'],
-  '부산광역시':['강서구','금정구','남구','동구','동래구','부산진구','북구','사상구','사하구','서구','수영구','연제구','영도구','중구','해운대구','기장군'],
-  '대구광역시':['남구','달서구','동구','북구','서구','수성구','중구','달성군','군위군'],
-  '인천광역시':['계양구','미추홀구','남동구','동구','부평구','서구','연수구','중구','강화군','옹진군'],
-  '광주광역시':['광산구','남구','동구','북구','서구'],
-  '대전광역시':['대덕구','동구','서구','유성구','중구'],
-  '울산광역시':['남구','동구','북구','중구','울주군'],
-  '세종특별자치시':['세종시'],
-  '경기도':['수원시 장안구','수원시 권선구','수원시 팔달구','수원시 영통구','성남시 수정구','성남시 중원구','성남시 분당구','고양시 덕양구','고양시 일산동구','고양시 일산서구','용인시 처인구','용인시 기흥구','용인시 수지구','부천시','안산시 상록구','안산시 단원구','안양시 만안구','안양시 동안구','남양주시','화성시','평택시','의정부시','시흥시','파주시','김포시','광명시','광주시','군포시','오산시','이천시','양주시','안성시','구리시','포천시','의왕시','하남시','여주시','동두천시','과천시','양평군','가평군','연천군'],
-  '강원특별자치도':['춘천시','원주시','강릉시','동해시','태백시','속초시','삼척시','홍천군','횡성군','영월군','평창군','정선군','철원군','화천군','양구군','인제군','고성군','양양군'],
-  '충청북도':['청주시 상당구','청주시 서원구','청주시 흥덕구','청주시 청원구','충주시','제천시','보은군','옥천군','영동군','증평군','진천군','괴산군','음성군','단양군'],
-  '충청남도':['천안시 동남구','천안시 서북구','공주시','보령시','아산시','서산시','논산시','계룡시','당진시','금산군','부여군','서천군','청양군','홍성군','예산군','태안군'],
-  '전북특별자치도':['전주시 완산구','전주시 덕진구','군산시','익산시','정읍시','남원시','김제시','완주군','진안군','무주군','장수군','임실군','순창군','고창군','부안군'],
-  '전라남도':['목포시','여수시','순천시','나주시','광양시','담양군','곡성군','구례군','고흥군','보성군','화순군','장흥군','강진군','해남군','영암군','무안군','함평군','영광군','장성군','완도군','진도군','신안군'],
-  '경상북도':['포항시 남구','포항시 북구','경주시','김천시','안동시','구미시','영주시','영천시','상주시','문경시','경산시','의성군','청송군','영양군','영덕군','청도군','고령군','성주군','칠곡군','예천군','봉화군','울진군','울릉군'],
-  '경상남도':['창원시 의창구','창원시 성산구','창원시 마산합포구','창원시 마산회원구','창원시 진해구','진주시','통영시','사천시','김해시','밀양시','거제시','양산시','의령군','함안군','창녕군','고성군','남해군','하동군','산청군','함양군','거창군','합천군'],
-  '제주특별자치도':['제주시','서귀포시'],
-};
-const SIDO_SHORT={'서울특별시':'서울','부산광역시':'부산','대구광역시':'대구','인천광역시':'인천','광주광역시':'광주',
- '대전광역시':'대전','울산광역시':'울산','세종특별자치시':'세종','경기도':'경기','강원특별자치도':'강원',
- '충청북도':'충북','충청남도':'충남','전북특별자치도':'전북','전라남도':'전남','경상북도':'경북','경상남도':'경남',
- '제주특별자치도':'제주'};
-/* 시도를 고르면 시군구 목록을 갈아끼운다. 지역은 반드시 이 목록의 값으로만 저장해야
-   매니저·참가자 화면의 지역 필터와 맞아떨어진다. */
-function fillGu(sidoSel, guSel, cur){
-  const gu=$(guSel), sd=$(sidoSel).value;
-  gu.innerHTML = '<option value="">시군구 선택</option>' +
-    (REGIONS[sd]||[]).map(g=>`<option ${g===cur?'selected':''}>${g}</option>`).join('');
+async function delClub(id,name){
+  if(!confirm(`${name} 클럽을 삭제할까요? 되돌릴 수 없어요.`)) return;
+  try{ await api('/admin/clubs/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }
+  catch(e){ toast('삭제하지 못했어요'); }
 }
-function sidoOptions(cur){
-  return '<option value="">시/도 선택</option>' +
-    Object.keys(REGIONS).map(k=>`<option ${k===cur?'selected':''}>${k}</option>`).join('');
-}
-async function upPhoto(vid, input){
-  const f = input.files && input.files[0]; if(!f) return;
-  if(f.size > 3*1024*1024){ toast('3MB 이하로 줄여주세요'); input.value=''; return; }
-  toast('올리는 중…');
-  try{
-    const dataUrl = await new Promise((ok,no)=>{ const r=new FileReader();
-      r.onload=()=>ok(r.result); r.onerror=()=>no(new Error('읽기 실패')); r.readAsDataURL(f); });
-    await api(`/admin/venues/${vid}/photo`,{method:'POST',body:JSON.stringify({dataUrl})});
-    toast('사진을 올렸어요'); render();
-  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-  input.value='';
-}
-async function delPhoto(vid,i){
-  if(!confirm('이 사진을 지울까요?')) return;
-  try{ await api(`/admin/venues/${vid}/photo?i=${i}`,{method:'DELETE'}); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function coverPhoto(vid,i){
-  try{ await api(`/admin/venues/${vid}/photo/cover`,{method:'POST',body:JSON.stringify({i})});
-    toast('대표 사진을 바꿨어요'); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function editRegion(vid){
-  const x=(window._VN||[]).find(v=>v.id===vid); if(!x) return;
-  const v=$('view');
-  const box=document.createElement('div'); box.className='card';
-  box.style.cssText='position:fixed;left:12px;right:12px;top:80px;z-index:99;max-width:420px;margin:0 auto;box-shadow:0 20px 50px rgba(0,0,0,.25)';
-  box.innerHTML=`<b style="font-size:14px">${esc(x.name)} 지역 설정</b>
-    <div class="meta" style="margin-top:3px">매니저·참가자 지역 필터에 쓰여요. 목록에서 골라주세요.</div>
-    <select id="eSido" style="margin-top:8px;width:100%" onchange="fillGu('eSido','eGu')">${sidoOptions(x.sido)}</select>
-    <select id="eGu" style="margin-top:8px;width:100%"></select>
-    <input id="eAddr" style="margin-top:8px;width:100%" placeholder="상세 주소" value="${esc(x.addr||'')}">
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn ghost" style="flex:1" onclick="this.closest('.card').remove()">취소</button>
-      <button class="btn coral" style="flex:1" onclick="saveRegion(${vid})">저장</button>
-    </div>`;
-  document.body.appendChild(box);
-  fillGu('eSido','eGu', x.sigungu);
-}
-async function saveRegion(vid){
-  const sido=$('eSido').value, sigungu=$('eGu').value;
-  if(!sido||!sigungu){ toast('시/도와 시군구를 모두 골라주세요'); return; }
-  try{ await api('/admin/venues/'+vid,{method:'PATCH',
-    body:JSON.stringify({sido,sigungu,addr:$('eAddr').value.trim()})});
-    document.querySelectorAll('.card[style*="position:fixed"]').forEach(e=>e.remove());
-    toast('지역을 저장했어요'); render();
-  }catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function addVenue(){
-  const name=$('vName').value.trim(); if(!name){ toast('구장 이름을 입력해 주세요'); return; }
-  try{ await api('/admin/venues',{method:'POST',body:JSON.stringify({name,
-    sido:$('vSido').value.trim(), sigungu:$('vGu').value.trim(),
-    addr:$('vAddr').value.trim(), phone:$('vPhone').value.trim()})});
-    toast('구장을 등록했어요 · 이제 코트를 추가해 주세요'); render();
-  }catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function toggleVenue(id,active){
-  try{ await api('/admin/venues/'+id,{method:'PATCH',body:JSON.stringify({active})}); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function addCourt(vid){
-  const no=+$('cNo_'+vid).value, price=+$('cPr_'+vid).value;
-  if(!no){ toast('코트 번호를 입력해 주세요'); return; }
-  if(!price){ toast('시간당 단가를 반드시 넣어주세요 · 비면 사장님이 시간을 열 수 없어요'); return; }
-  try{ await api(`/admin/venues/${vid}/courts`,{method:'POST',body:JSON.stringify({no,
-    label:$('cLb_'+vid).value.trim(), surface:$('cSf_'+vid).value,
-    indoor:+$('cIn_'+vid).value, price_hour:price})});
-    toast('코트를 추가했어요'); render();
-  }catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function editCourt(vid,cid,cur){
-  const p=prompt('시간당 단가 (원)', cur||''); if(p===null) return;
-  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'PATCH',body:JSON.stringify({price_hour:+p})});
-    toast('단가를 바꿨어요'); render(); }catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function pauseCourt(vid,cid,status){
-  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'PATCH',body:JSON.stringify({status})});
-    render(); }catch(e){ toast(String(e.message).slice(0,80)); }
-}
-async function delCourt(vid,cid){
-  if(!confirm('이 코트를 삭제할까요?')) return;
-  try{ await api(`/admin/venues/${vid}/courts/${cid}`,{method:'DELETE'}); toast('삭제했어요'); render(); }
-  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-async function addVenueAcct(vid,name){
-  const id=$('aId_'+vid).value.trim().toLowerCase(), pw=$('aPw_'+vid).value;
-  if(!id||!pw){ toast('아이디와 비밀번호를 입력해 주세요'); return; }
-  try{ await api('/admin/venue-accounts',{method:'POST',body:JSON.stringify({login_id:id,password:pw,name,venue_id:vid})});
-    alert(`발급 완료\n\n구장: ${name}\n아이디: ${id}\n비밀번호: ${pw}\n\n사장님께 전달해 주세요.`);
-    render();
-  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-
-/* ══════════ 계정 (사장님 · 매니저) ══════════ */
-async function drawStaff(v){
-  const list = await api('/admin/staff-accounts');
-  if (!window._VN) { try { window._VN = await api('/admin/venues'); } catch(e){ window._VN = []; } }
-  const vs = list.filter(u=>u.provider==='venue'), ms = list.filter(u=>u.provider==='manager');
-  const card = u => `
-    <div class="row">
-      <div style="flex:1;min-width:0">
-        <b>${esc(u.name)}</b> <span class="meta">${esc(u.provider_id)}</span>
-        ${u.suspended?'<span style="color:#e4685d;font-size:11.5px;font-weight:800"> · 정지</span>':''}
-        <div class="meta">${u.provider==='venue'
-          ? (u.venue?esc(u.venue.name):'<b style="color:#cf5418">구장 미연결</b>')
-          : `잡은 코트 ${u.held}건`} · 발급 ${fdate(u.created_at)}</div></div>
-      <button class="btn xs ghost" onclick="resetPw(${u.id},'${esc(u.provider_id)}')">비번 초기화</button>
-      <button class="btn xs ghost" onclick="suspend(${u.id},${u.suspended?0:1})">${u.suspended?'해제':'정지'}</button>
-    </div>`;
-  const noAcct = (window._VN || []).filter(x => !x.owner_id);
-  v.innerHTML = `
-  <div class="card" style="background:#fceee4;border-color:#f6dcc9">
-    <b style="font-size:14px;color:#cf5418">구장 사장님 계정은 구장 탭에서 발급해요</b>
-    <div class="meta" style="color:#a3714c;margin-top:3px">
-      계정은 반드시 구장에 연결돼야 해서, 구장 카드 아래에서 바로 발급합니다.<br>
-      구장 등록 → 코트 등록(단가 필수) → 계정 발급 순서예요.</div>
-    <button class="btn coral" style="margin-top:9px;width:100%" onclick="setTab('venues')">구장 탭으로 가기</button>
-  </div>
-  <div class="card"><b style="font-size:14px">매니저 계정 발급</b>
-    <div class="meta" style="margin-top:3px">신청한 매니저에게 발급하세요</div>
-    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-      <input id="mName" placeholder="이름" style="flex:1;min-width:90px">
-      <input id="mId" placeholder="아이디" style="flex:1;min-width:100px">
-      <input id="mPw" placeholder="비밀번호 (6자+)" style="flex:1;min-width:110px">
-      <input id="mPhone" placeholder="연락처" style="flex:1;min-width:100px">
-    </div>
-    <button class="btn coral" style="margin-top:10px;width:100%" onclick="addMgrAcct()">매니저 계정 발급</button>
-  </div>
-  <div class="card"><b style="font-size:14px">구장 사장님 <span class="meta">${vs.length}명</span></b>
-    ${vs.map(card).join('') || '<div class="meta" style="margin-top:8px">없어요</div>'}</div>
-  <div class="card"><b style="font-size:14px">매니저 <span class="meta">${ms.length}명</span></b>
-    ${ms.map(card).join('') || '<div class="meta" style="margin-top:8px">없어요</div>'}</div>`;
-}
-async function addMgrAcct(){
-  const id=$('mId').value.trim().toLowerCase(), pw=$('mPw').value, name=$('mName').value.trim();
-  if(!id||!pw||!name){ toast('이름·아이디·비밀번호를 모두 입력해 주세요'); return; }
-  try{ await api('/admin/manager-accounts',{method:'POST',body:JSON.stringify({login_id:id,password:pw,name,phone:$('mPhone').value.trim()})});
-    alert(`발급 완료\n\n이름: ${name}\n아이디: ${id}\n비밀번호: ${pw}\n\n매니저에게 전달해 주세요.`);
-    render();
-  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-async function resetPw(id, who){
-  const pw=prompt(`${who} 의 새 비밀번호 (6자 이상)\n\n초기화하면 지금 로그인된 기기는 모두 로그아웃돼요.`);
-  if(!pw) return;
-  try{ await api(`/admin/staff-accounts/${id}/password`,{method:'POST',body:JSON.stringify({password:pw})});
-    alert(`비밀번호를 바꿨어요\n\n아이디: ${who}\n새 비밀번호: ${pw}`);
-  }catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-async function suspend(id,on){
-  if(on && !confirm('이 계정을 정지할까요? 즉시 로그아웃됩니다.')) return;
-  try{ await api(`/admin/staff-accounts/${id}/suspend`,{method:'POST',body:JSON.stringify({suspended:!!on})}); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-
-/* ══════════ 구장 정산 — 월요일에 이 화면만 보고 이체 ══════════ */
-async function drawVenuePay(v){
-  const d = await api('/admin/venue-payouts/by-venue');
-  v.innerHTML = `
-  <div class="card" style="background:#fceee4;border-color:#f6dcc9">
-    <div style="display:flex;align-items:center">
-      <b style="font-size:14px;color:#cf5418">이번에 보낼 총액</b>
-      <b style="margin-left:auto;font-size:20px;color:#cf5418">${won(d.total)}</b></div>
-    <div class="meta" style="color:#a3714c;margin-top:3px">구장 ${d.groups.length}곳 · 이체 후 "입금 완료"를 눌러주세요</div>
-  </div>
-  ${d.groups.map(g=>`
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:8px">
-      <b style="font-size:15px;flex:1">${esc(g.venue.name)}</b>
-      <b style="font-size:17px;color:#cf5418">${won(g.total)}</b></div>
-    <div class="meta" style="margin-top:4px">
-      ${g.venue.bank_name?`${esc(g.venue.bank_name)} ${esc(g.venue.bank_no)} · 예금주 ${esc(g.venue.bank_holder||'')}`
-        :'<b style="color:#e4685d">계좌 미등록 — 사장님께 등록을 요청하세요</b>'}
-      ${g.venue.biz_no?` · 사업자 ${esc(g.venue.biz_no)}`:''}</div>
-    ${g.list.map(r=>`<div class="row"><div style="flex:1"><b>${esc(r.date||'')} ${esc(r.start||'')}–${esc(r.end||'')}</b>
-      <div class="meta">#${r.id}</div></div><b>${won(r.amount)}</b></div>`).join('')}
-    <button class="btn coral" ${g.venue.bank_name?'':'disabled'}
-      style="margin-top:10px;width:100%${g.venue.bank_name?'':';opacity:.45'}"
-      onclick="payVenue(${g.venue.id},'${esc(g.venue.name)}',${g.total})">입금 완료 처리</button>
-  </div>`).join('') || '<div class="card meta">보낼 정산이 없어요</div>'}`;
-}
-async function payVenue(vid,name,total){
-  if(!confirm(`${name}\n${won(total)}\n\n이체를 마치셨나요? 완료로 표시하면 사장님께 알림이 갑니다.`)) return;
-  try{ const r=await api(`/admin/venue-payouts/pay-venue/${vid}`,{method:'POST',body:JSON.stringify({})});
-    toast(`${r.updated}건 완료 처리했어요`); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-
-/* ══════════ 회원 코트 예약 ══════════
-   취소 요청이 오면 여기서 처리한다. 관리자 취소는 시간 제한 없이 전액 캐시 환불. */
-async function drawBookings(v){
-  const d = await api('/admin/venue-bookings');
-  const live = d.list.filter(b=>b.status==='paid');
-  const dead = d.list.filter(b=>b.status!=='paid');
-  const nowMs = Date.now();
-  const row = b => {
-    const startMs = new Date(`${b.date}T${b.start}:00`).getTime();
-    const past = startMs < nowMs;
-    return `<div class="row">
-      <div style="flex:1;min-width:0">
-        <b>${esc(b.venue_name||'')} · ${esc(b.date)} ${esc(b.start)}–${esc(b.end)}</b>
-        <div class="meta">${esc(b.user_name||'회원')}${b.user_phone?' · '+esc(b.user_phone):''}
-          · 결제 ${won(b.amount)} (코트 ${won(b.court_cost)} + 수수료 ${won(b.fee)})
-          ${past?' · 이용 완료':''}${b.memo?' · '+esc(b.memo):''}</div></div>
-      ${b.status==='paid'
-        ? `<button class="btn xs ghost" onclick="cancelBooking(${b.id},'${esc(b.user_name||'회원')}',${b.amount})">취소·환불</button>`
-        : `<span class="meta">취소됨</span>`}
-    </div>`;
-  };
-  v.innerHTML = `
-  <div class="card" style="background:#e9f4ee;border-color:#cde5d8">
-    <div style="display:flex;align-items:center">
-      <b style="font-size:14px;color:#1f7d4d">유효한 예약</b>
-      <b style="margin-left:auto;font-size:20px;color:#1f7d4d">${won(d.paid)}</b></div>
-    <div class="meta" style="color:#3d7a5a;margin-top:3px">${live.length}건 · 취소 환불 누계 ${won(d.canceled)}</div>
-  </div>
-  <div class="card"><b style="font-size:14px">예약 중 <span class="meta">${live.length}건</span></b>
-    ${live.length?live.map(row).join(''):'<div class="meta" style="margin-top:8px">예약이 없어요</div>'}</div>
-  <div class="card"><b style="font-size:14px">취소된 예약 <span class="meta">${dead.length}건</span></b>
-    ${dead.length?dead.map(row).join(''):'<div class="meta" style="margin-top:8px">없어요</div>'}</div>
-  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
-    <div class="meta" style="color:#8a6b1f">관리자 취소는 시간 제한 없이 전액을 캐시로 돌려줍니다.
-      사장님 정산 예약도 함께 지워지고, 그 시간은 다시 판매 대기로 돌아갑니다.</div></div>`;
-}
-async function cancelBooking(id, who, amt){
-  if(!confirm(`${who} 님의 예약을 취소할까요?\n\n${won(amt)}을 캐시로 전액 환불하고,\n그 시간은 다시 판매 대기로 돌아갑니다.`)) return;
-  try{ const r=await api(`/admin/venue-bookings/${id}/cancel`,{method:'POST',body:JSON.stringify({})});
-    toast(`취소 완료 · ${won(r.refunded)} 환불`); render(); }
-  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-
-/* ══════════ 매니저 등급 ══════════
-   파트너는 맞수 몫의 20%를 보너스로 받고 인기 시간을 먼저 고른다.
-   3개월 누적으로 판정해 한 달 부진으로 바로 떨어지지 않게 한다. */
-async function drawManagers(v){
-  const d = await api('/admin/managers');
-  const P = d.list.filter(m=>m.tier==='partner');
-  const N = d.list.filter(m=>m.tier!=='partner');
-  const row = m => {
-    const pct = m.need ? Math.min(100, Math.round(m.done/m.need*100)) : 0;
-    const risky = m.tier==='partner' && !m.ok;
-    const ready = m.tier!=='partner' && m.ok;
-    return `<div class="row">
-      <div style="flex:1;min-width:0">
-        <b>${esc(m.name)}</b> <span class="meta">${esc(m.login_id)}</span>
-        ${m.suspended?'<span style="color:#e4685d;font-size:11.5px;font-weight:800"> · 정지</span>':''}
-        <div class="meta">최근 ${m.window_m}개월 <b style="color:${m.ok?'#1f7d4d':(risky?'#c4483c':'#5f5e5a')}">${m.done}/${m.need}회</b>
-          · 이번 달 ${m.this_month}회
-          ${risky?` · <b style="color:#c4483c">${m.left}회 부족</b>`:''}
-          ${ready?' · <b style="color:#1f7d4d">승급 조건 충족</b>':''}</div>
-        <div style="height:4px;border-radius:9px;background:#f1efe8;margin-top:5px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:${m.ok?'#1f7d4d':'#8c6fd6'}"></div></div>
-      </div>
-      <button class="btn xs ${m.tier==='partner'?'ghost':'coral'}"
-        onclick="setTier(${m.id},'${m.tier==='partner'?'normal':'partner'}','${esc(m.name)}')">
-        ${m.tier==='partner'?'자격 해제':'파트너 승급'}</button>
-    </div>`;
-  };
-  v.innerHTML = `
-  <div class="card" style="background:#f0ecfa;border-color:#ded4f5">
-    <b style="font-size:14px;color:#5b3fa8">파트너 매니저 ${P.length}명 / 전체 ${d.list.length}명</b>
-    <div class="meta" style="color:#6d5ba3;margin-top:3px">
-      보너스 맞수 몫의 <b>${Math.round(d.bonus_rate*100)}%</b> ·
-      의무 월 <b>${d.quota}회</b> (최근 ${d.window_m}개월 누적 ${d.quota*d.window_m}회) ·
-      인기 시간 <b>${d.lead_days}일</b> 우선 선점</div>
-  </div>
-  <div class="card"><b style="font-size:14px">파트너 <span class="meta">${P.length}명</span></b>
-    ${P.length?P.map(row).join(''):'<div class="meta" style="margin-top:8px">아직 없어요</div>'}</div>
-  <div class="card"><b style="font-size:14px">일반 <span class="meta">${N.length}명</span></b>
-    ${N.length?N.map(row).join(''):'<div class="meta" style="margin-top:8px">없어요</div>'}</div>
-  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
-    <div class="meta" style="color:#8a6b1f">자격 미달은 매달 초에 자동 강등되고, 그 전에 매니저에게 경고가 갑니다.
-      다시 채우면 자동으로 복구되지 않으니 여기서 승급시켜 주세요.</div></div>`;
-}
-async function setTier(id, tier, name){
-  const up = tier==='partner';
-  if(!confirm(`${name} 님을 ${up?'파트너로 승급':'일반으로 해제'}할까요?\n\n${up
-    ?'회당 수입이 약 1.7배가 되고, 인기 시간을 먼저 고를 수 있게 됩니다.'
-    :'보너스와 우선 선점권이 사라집니다.'}`)) return;
-  try{ await api(`/admin/managers/${id}/tier`,{method:'POST',body:JSON.stringify({tier})});
-    toast(up?'파트너로 승급했어요':'자격을 해제했어요'); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-
-/* ══════════ 인원 미달 매치 ══════════
-   경기 24시간 전까지 정원이 안 차면 서버가 자동으로 접고 전액 환불한다.
-   여기서는 그 전에 상황을 보고, 필요하면 미리 접을 수 있다. */
-async function drawUnderfilled(v){
-  const d = await api('/admin/underfilled');
-  const danger = d.list.filter(m=>m.hours_left <= d.kill_h + 12);
-  v.innerHTML = `
-  <div class="card" style="background:#fdf3e2;border-color:#f0e2c2">
-    <b style="font-size:14px;color:#a3721a">인원 미달 ${d.list.length}건</b>
-    <div class="meta" style="color:#8a6b1f;margin-top:3px">
-      경기 <b>${d.kill_h}시간</b> 전까지 못 채우면 자동으로 취소되고 참가비는 전액 캐시로 환불돼요.
-      <b>${d.warn_h}시간</b> 전에 매니저에게 미리 알림이 갑니다.</div>
-  </div>
-  ${danger.length?`<div class="card" style="background:#fdeceb;border-color:#f3d4d1">
-    <b style="font-size:14px;color:#c4483c">곧 취소될 매치 ${danger.length}건</b>
-    <div class="meta" style="color:#a04a41;margin-top:3px">매니저에게 연락해 채우거나, 미리 접어주세요.</div>
-  </div>`:''}
-  <div class="card">
-    ${d.list.length? d.list.map(m=>`
-      <div class="row">
-        <div style="flex:1;min-width:0">
-          <b>${esc(m.loc||'매치')} · ${esc(m.dt||'')}</b>
-          <div class="meta">
-            <b style="color:${m.hours_left<=d.kill_h?'#c4483c':'#a3721a'}">${m.have}/${m.need}명</b>
-            · ${m.hours_left}시간 남음
-            ${m.host?' · 매니저 '+esc(m.host):''}
-            ${m.warned?' · 경고 발송됨':''}</div></div>
-        <button class="btn xs ghost" onclick="killMatch(${m.id},'${esc(m.loc||'매치')}',${m.have})">지금 접기</button>
-      </div>`).join('') : '<div class="meta">인원 미달 매치가 없어요</div>'}
-  </div>`;
-}
-/* 삭제와 '접기'는 다르다.
-   접기 = 참가자에게 환불하고 코트를 사장님께 돌려준다. 기록은 남는다.
-   삭제 = 흔적까지 지운다. 잘못 만든 매치나 테스트용에만 쓴다. */
-async function delMatch(id, loc, dt, n){
-  if(n>0 && !confirm(`${loc} · ${dt}\n\n참가자가 ${n}명 있어요.\n삭제하면 기록도 함께 사라집니다.\n(환불이 필요하면 '인원 미달' 탭에서 접기를 쓰세요)\n\n그래도 삭제할까요?`)) return;
-  if(n===0 && !confirm(`${loc} · ${dt}\n\n이 오픈매치를 삭제할까요?`)) return;
-  try{
-    await api(`/admin/open-matches/${id}`, {method:'DELETE'});
-    toast('삭제했어요'); if(SEL===id) SEL=null; render();
-  }catch(e){
-    const msg=String(e.message||'');
-    /* 정산이 끝났거나 수납액이 있으면 서버가 막는다. 이유를 그대로 보여주고 한 번 더 묻는다. */
-    if(/settled|has_payment/.test(msg)){
-      const why = /settled/.test(msg) ? '정산이 끝난 매치예요.' : '참가비가 수납된 매치예요.';
-      if(!confirm(`${why}\n\n회계 기록이 사라집니다.\n그래도 강제로 삭제할까요?`)) return;
-      try{ await api(`/admin/open-matches/${id}?force=1`, {method:'DELETE'});
-        toast('강제 삭제했어요'); if(SEL===id) SEL=null; render(); }
-      catch(e2){ toast(String(e2.message).replace(/[{}"]/g,'').slice(0,90)); }
-      return;
-    }
-    toast(msg.replace(/[{}"]/g,'').slice(0,90));
-  }
-}
-async function killMatch(id, loc, n){
-  if(!confirm(`${loc}\n\n지금 접을까요?\n참가자 ${n}명에게 전액 캐시로 환불하고,\n코트는 사장님께 판매 대기로 돌려드립니다.`)) return;
-  try{ const r=await api(`/admin/open-matches/${id}/kill`,{method:'POST',body:JSON.stringify({})});
-    toast(`접었어요 · ${r.refunded}명 환불`); render(); }
-  catch(e){ toast(String(e.message).replace(/[{}"]/g,'').slice(0,90)); }
-}
-
-/* ══════════ 열린 시간 모니터링 ══════════ */
-async function drawVenueSlots(v){
-  const rows = await api('/admin/venue-slots');
-  const st = s => s==='booked'?'확정':s==='held'?'모집 중':s==='open'?'판매 대기':'닫음';
-  const stale = rows.filter(r=>r.status==='held' && r.held_hours>=48);
-  v.innerHTML = `
-  ${stale.length?`<div class="card" style="background:#fdf3e2;border-color:#f0e0bd">
-    <b style="font-size:14px;color:#a3721a">오래 잡혀 있는 코트 ${stale.length}건</b>
-    <div class="meta" style="color:#8a6b1f;margin-top:3px">48시간 넘게 모집이 안 되고 있어요.
-      매니저에게 확인하거나 해제해 주세요.</div></div>`:''}
-  <div class="card">
-    ${rows.length? rows.map(r=>`
-      <div class="row">
-        <div style="flex:1;min-width:0">
-          <b>${esc(r.venue||'')} · ${esc(r.date)} ${esc(r.start)}–${esc(r.end)}</b>
-          <div class="meta">${st(r.status)} · ${won(r.price)}
-            ${r.holder?` · 매니저 ${esc(r.holder)}`:''}
-            ${r.status==='held'?` · ${r.held_hours}시간째${r.need?` · ${r.joined}/${r.need}명`:' · 매치 미연결'}`:''}
-            ${r.status==='booked'&&r.need?` · ${r.joined}/${r.need}명`:''}</div></div>
-        ${r.status==='held'||r.status==='booked'
-          ? `<button class="btn xs ghost" onclick="forceRelease(${r.id})">해제</button>`:''}
-      </div>`).join('') : '<div class="meta">열린 시간이 없어요</div>'}
-  </div>`;
-}
-async function forceRelease(id){
-  if(!confirm('이 코트를 강제로 해제할까요?\n\n· 잡혀 있던 사장님 정산이 취소됩니다\n· 개인 예약이 걸려 있으면 전액 캐시로 환불됩니다\n· 오픈매치 참가자에게는 따로 안내해 주세요')) return;
-  try{ const r=await api(`/admin/venue-slots/${id}/release`,{method:'POST'});
-    toast(r.refunded?`해제 · ${won(r.refunded)} 환불`:'해제했어요'); render(); }
-  catch(e){ toast(String(e.message).slice(0,80)); }
-}
-
-async function paidPayout(id){ if(!confirm('이체를 완료 처리할까요? 매니저에게 완료 알림이 가요.'))return;
-  try{ await api('/admin/payouts/'+id+'/paid',{method:'POST',body:'{}'}); toast('완료 처리했어요'); render(); }catch(e){ toast('처리하지 못했어요'); } }
-async function bnMove(i,dir){
-  const rows=window._BN||[]; const j=i+dir;
-  if(j<0||j>=rows.length) return;
-  [rows[i],rows[j]]=[rows[j],rows[i]];
-  try{ await api('/admin/banners/order',{method:'PATCH',body:JSON.stringify({ids:rows.map(b=>b.id)})});
-    toast('순서를 저장했어요'); render(); }
-  catch(e){ toast('순서 저장 실패 · server.js 배포를 확인해 주세요'); }
-}
-async function delBanner(id){ try{ await api('/admin/banners/'+id,{method:'DELETE'}); toast('삭제했어요'); render(); }catch(e){ toast('삭제하지 못했어요'); } }
-async function addBanner(){
-  const f=$('bnFile').files[0]; if(!f){ toast('이미지를 선택해 주세요'); return; }
-  const data=await new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); });
-  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({image:data,link:$('bnLink').value.trim(), slot:((document.getElementById('bnSlot')||{}).value||'home')})}); toast('배너를 올렸어요'); render(); }
-  catch(e){ toast(String(e.message).includes('too_large')?'이미지는 3MB 이하로 해주세요':'올리지 못했어요'); }
-}
-
-/* ── 오픈매치 봇 ── */
-function pick(id){ SEL=id; render(); }
-function drawParts(){
-  const box=$('parts'); if(!box) return;
-  if(!SEL){ box.innerHTML='<div class="meta">위에서 매치를 먼저 선택해 주세요</div>'; return; }
-  const m=OMS.find(x=>x.id===SEL)||{};
-  const ps=m.players||[];
-  document.querySelectorAll('#view .row').forEach(el=>el.classList.remove('sel'));
-  const row=$('om'+SEL); if(row) row.classList.add('sel');
-  box.innerHTML = `<div class="meta" style="margin-bottom:6px">${esc(m.loc||'')} · 참가자 ${ps.length}/${m.cap||0}명</div>` +
-    (ps.length? ps.map(p=>`<span class="pill ${p.provider==='bot'?'warn':'ok'}">${esc(p.name)}${p.provider==='bot'?' 🤖':''}
-      <a style="cursor:pointer;font-weight:900;margin-left:3px" onclick="rmBot(${p.id})">×</a></span>`).join('') : '<div class="meta">아직 참가자가 없어요</div>');
-}
-/* 오픈매치는 리그 티어가 아니라 구력 등급(C~SS)으로 돌아간다.
-   구력을 넣어야 참가자 분포 차트와 대진 편성이 이 사람을 읽는다.
-   [표시, 구력(년), 참고 레이팅] */
-const LV=[['B · 중급 (2~4년)',3,1050],['C · 입문 (1년 이하)',0.5,950],['A · 상급 (5~9년)',6,1180],
-  ['S · 코치급 (10~19년)',12,1300],['SS · 선출 (20년+)',22,1420]];
-function addRow(){
-  const box=$('botRows'); if(!box) return;
-  const div=document.createElement('div');
-  div.style.cssText='display:flex;gap:6px;margin-bottom:7px';
-  div.innerHTML=`<input class="bn" placeholder="이름" style="flex:1.2">
-    <select class="bg" style="flex:.8;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:13px;background:#fff">
-      <option>남성</option><option>여성</option></select>
-    <select class="br" style="flex:1.4;border:1.5px solid #ece8e0;border-radius:12px;padding:0 8px;font-family:inherit;font-weight:600;font-size:12px;background:#fff">
-      ${LV.map(l=>`<option value="${l[1]}" data-r="${l[2]}">${l[0]}</option>`).join('')}</select>
-    <a style="align-self:center;font-weight:900;color:#b3aea4;cursor:pointer;padding:0 3px" onclick="this.parentNode.remove()">×</a>`;
-  box.appendChild(div);
+async function resolveRep(id,action){
+  try{ await api('/admin/reports/'+id+'/resolve',{method:'POST',body:JSON.stringify({action})});
+    toast('처리했어요'); render(); }
+  catch(e){ toast('처리하지 못했어요'); }
 }
 async function addBots(){
-  if(!SEL){ toast('매치를 먼저 선택해 주세요'); return; }
+  if(!SEL){ toast('매치를 먼저 골라주세요'); return; }
   const bots=[...document.querySelectorAll('#botRows > div')].map(d=>{
     const sel=d.querySelector('.br'), op=sel.options[sel.selectedIndex];
-    return { name:d.querySelector('.bn').value.trim(),
-             gender:d.querySelector('.bg').value,
-             years:+sel.value,                       // 구력 → 서버가 sport_started 로 저장
-             rating:+(op&&op.dataset.r||1000) };
+    return { name:d.querySelector('.bn').value.trim(), gender:d.querySelector('.bg').value,
+             years:+sel.value, rating:+(op&&op.dataset.r||1000) };
   }).filter(b=>b.name).slice(0,20);
-  if(!bots.length){ toast('인원 추가를 눌러 이름을 입력해 주세요'); return; }
+  if(!bots.length){ toast('이름을 입력해 주세요'); return; }
   try{ const r=await api(`/admin/open-matches/${SEL}/bots`,{method:'POST',body:JSON.stringify({bots})});
-    toast(`${r.added||0}명을 추가했어요`); $('botRows').innerHTML=''; addRow(); render(); }
-  catch(e){ toast('추가하지 못했어요 · 서버 배포를 확인해 주세요'); }
+    toast(`${r.added||0}명을 추가했어요`); render(); }
+  catch(e){ toast('추가하지 못했어요'); }
 }
-async function rmBot(uid){
-  if(!SEL) return;
-  if(!confirm('이 참가자를 매치에서 뺄까요?')) return;
-  try{ await api(`/admin/open-matches/${SEL}/bots/${uid}`,{method:'DELETE'}); toast('제거했어요'); render(); }
-  catch(e){ toast('제거하지 못했어요'); }
-}
-
-drawTabs();
-if(key()){ $('key').value='●●●●●●●●'; render(); }
-</script>
-
-<!-- ═══════════════════════════════════════════════════════════════
-  ▼ server.js에 추가할 라우트 3개 — 기존 /admin 라우트들 옆에 붙여넣으세요.
-    (admin 미들웨어·db·now()는 이미 server.js에 있는 것을 그대로 씁니다)
-
-// 오픈매치 목록 + 참가자 (관리자용)
-app.get('/admin/open-matches', admin, (_req, res) => {
-  const ms = db.prepare(`SELECT id,loc,dt,price,cap,status,sport FROM open_matches
-    ORDER BY id DESC LIMIT 100`).all();
-  res.json(ms.map(m => ({ ...m,
-    players: db.prepare(`SELECT u.id, u.name, u.provider
-      FROM open_match_joins j JOIN users u ON u.id = j.user_id
-      WHERE j.match_id = ? ORDER BY j.joined_at`).all(m.id) })));
-});
-
-// 봇 참가자 추가 — 이름만으로 provider='bot' 유저를 만들어 참가시킨다
-app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
-  const mid = +req.params.id;
-  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
-  if (!m) return res.status(404).json({ error: 'not_found' });
-  const names = ((req.body || {}).names || []).map(s => String(s).trim()).filter(Boolean).slice(0, 20);
-  let added = 0;
-  for (const name of names) {
-    const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
-    if (cur >= (m.cap || 8)) break;                                   // 정원 초과 방지
-    const pid = 'bot:' + name;
-    let u = db.prepare("SELECT id FROM users WHERE provider='bot' AND provider_id=?").get(pid);
-    if (!u) {
-      const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at)
-        VALUES ('bot',?,?,?,?)`).run(pid, name, name, now());
-      u = { id: r.lastInsertRowid };
-    }
-    const r2 = db.prepare(`INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at)
-      VALUES (?,?,?)`).run(mid, u.id, now());
-    if (r2.changes) added++;
-  }
-  res.json({ ok: true, added });
-});
-
-// 봇(또는 참가자) 제거
-app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
-  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?')
-    .run(+req.params.id, +req.params.uid);
-  res.json({ ok: true });
-});
-═══════════════════════════════════════════════════════════════ -->
-</body>
-</html>
+render();
+</script></body></html>
