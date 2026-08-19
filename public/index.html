@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.0.9-0818p';
+const BUILD='v1.0.9-0818r';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9819,11 +9819,17 @@ function clubTabBracket(){
       ${d0().officer?`<button class="btn" style="max-width:200px;margin:14px auto 0" onclick="openClubBracketBuild()">대진 짜기</button>`:''}
     </div>`;
   }
-  const live=list.filter(b=>!b.finished), done=list.filter(b=>b.finished);
+  /* 서버는 <active> 를 보낸다(모든 경기에 점수가 들어오면 false).
+     앱은 없는 필드 <finished> 를 보고 있어서 !undefined → 언제나 참,
+     그래서 12/12 로 끝난 대진도 계속 <진행 중> 으로 남았다.
+     서버 값을 쓰되, 옛 서버를 대비해 경기 수로도 한 번 더 본다. */
+  const isDone=b=>(b.active===false) || (b.finished===true)
+    || ((b.games||0)>0 && (b.done||0)>=(b.games||0));
+  const live=list.filter(b=>!isDone(b)), done=list.filter(isDone);
   const row=b=>{
     const tot=b.games||0, fin=b.done||0;
     const pct=tot?Math.round(fin/tot*100):0;
-    const live=!b.finished;
+    const live=!isDone(b);
     const off=d0().officer;
     return `<div class="bkrow${live?'':' past'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
       <span class="bkhd">
@@ -9915,15 +9921,16 @@ function dayPoints(w,d){ return w*PT_WIN + d*PT_DRAW; }
    그대로 두면 같은 사람이 두 줄로 갈려 26명 클럽에 35줄이 나온다.
    - id 가 있으면 문자열로 맞춘다 (1 과 '1' 을 같게)
    - id 가 없으면 이름으로 묶는다 (게스트끼리 한 줄로 뭉치지 않게) */
-/* 지금 명단에 없는 사람인가 — 게스트로 왔거나 나간 회원.
-   26명 클럽인데 순위가 35줄이면 대개 이들이 섞인 것이다. 숨기지 않고 표시만 한다. */
+/* 게스트 표시.
+   예전에는 <지금 명단(SRV_ROSTER)에 없으면 게스트>로 봤는데,
+   그 명단은 그날 대진 참가자만 담고 있을 때가 있어서
+   멀쩡한 정회원에게 <게스트> 딱지가 붙었다. 회원을 게스트라고 부르는 건 큰 실례다.
+   이제는 <그 사람이 게스트로 등록됐다>는 사실이 있을 때만 표시한다. */
 function cbOffRoster(r){
-  const R=(typeof SRV_ROSTER!=='undefined' && Array.isArray(SRV_ROSTER)) ? SRV_ROSTER : null;
-  if(!R || !R.length) return false;
-  const id=String(r.id||'');
-  if(id && R.some(x=>String(x.user_id||x.id)===id)) return false;
-  const nm=String(r.name||'').trim();
-  return !(nm && R.some(x=>String(x.name||'').trim()===nm));
+  if(!r) return false;
+  if(r.guest===true || r.is_guest===true || r.role==='guest') return true;
+  /* 대진에 이름만 있고 회원 id 가 없는 사람 — 게스트로 넣은 경우다 */
+  return String(r.id||'').startsWith('n:');
 }
 function cbKeyOf(p){
   if(!p) return '';
@@ -9937,7 +9944,8 @@ function clubDayTable(date){
     [['teamA','sa','sb'],['teamB','sb','sa']].forEach(([T,k,ok])=>{
       (g[T]||[]).forEach(p=>{ if(!p) return;
         const key=cbKeyOf(p); if(!key) return;
-        const t=st[key]=st[key]||{id:p.id!=null?p.id:key,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0};
+        const t=st[key]=st[key]||{id:p.id!=null?p.id:key,name:p.name,
+          is_guest:!!(p.is_guest||p.guest||p.role==='guest'),w:0,d:0,l:0,gf:0,ga:0,g:0};
         if(!t.name && p.name) t.name=p.name;
         t.g++; t.gf+=g[k]; t.ga+=g[ok];
         if(g[k]>g[ok]) t.w++; else if(g[k]<g[ok]) t.l++; else t.d++; });
@@ -9985,7 +9993,8 @@ function clubTabRecords(){
     [['teamA','sa','sb'],['teamB','sb','sa']].forEach(([T,k,ok])=>{
       (g[T]||[]).forEach(p=>{ if(!p) return;
         const key=cbKeyOf(p); if(!key) return;
-        const t=st[key]=st[key]||{id:p.id!=null?p.id:key,name:p.name,w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
+        const t=st[key]=st[key]||{id:p.id!=null?p.id:key,name:p.name,
+          is_guest:!!(p.is_guest||p.guest||p.role==='guest'),w:0,d:0,l:0,gf:0,ga:0,g:0,help:0,days:new Set()};
         if(!t.name && p.name) t.name=p.name;
         t.g++; t.gf+=g[k]; t.ga+=g[ok]; if(g.date)t.days.add(g.date);
         if(g[k]>g[ok]) t.w++; else if(g[k]<g[ok]) t.l++; else t.d++; });
@@ -16701,9 +16710,13 @@ async function cb2Gen(mode){
     slots.push({r,c,ids});
     return {r:r+1,c};
   };
+  /* 게스트 여부(is_guest)를 함께 저장한다 — 저장을 안 해서 나중에 알 길이 없었고,
+     그래서 시즌 랭킹이 <명단에 없으면 게스트>로 넘겨짚어 정회원에게 딱지를 붙였다. */
+  const one=p=>({id:p.id, name:p.name, gender:p.gender,
+    sexAdj:p.sexAdj||undefined, is_guest:cbIsGuest(p)?1:undefined});
   const push=(r,c,t1,t2,label)=>games.push({r,c,label:label||cb2Label(t1,t2),
-    teamA:t1.map(p=>({id:p.id,name:p.name,gender:p.gender,sexAdj:p.sexAdj||undefined})),
-    teamB:t2.map(p=>({id:p.id,name:p.name,gender:p.gender,sexAdj:p.sexAdj||undefined,grade:p.grade,glabel:p.glabel})), sa:null, sb:null});
+    teamA:t1.map(one),
+    teamB:t2.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})), sa:null, sb:null});
 
   if(mode==='hanul'){
     /* 한울 = 조를 코트에 붙여놓고 그 안에서만 돌린다.
@@ -18886,9 +18899,13 @@ function evBracketBlock(accent){
   h+=`<div style="margin-top:10px">`;
   cg.forEach(g=>{
     const L=LB[g.label]||['#f2f0ea','#6b6357'];
-    const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
+    /* 내 이름에 동그라미 — 대진 화면과 같은 표시. 게스트는 id 가 없어 이름으로도 본다. */
+    const one=p=>(typeof cbIsMe==='function' && cbIsMe(p))
+      ? cbRing(esc(p.name), p.name, 2.0) : esc(p.name);
+    const A=(g.teamA||[]).map(one).join(' · '), B=(g.teamB||[]).map(one).join(' · ');
     const win=done(g)?(g.sa>g.sb?'a':g.sa<g.sb?'b':'d'):null;
-    h+=`<div style="display:flex;align-items:center;gap:9px;padding:11px 2px;border-top:1px solid #f4f2ed">
+    /* 줄을 누르면 그 대진으로 간다 — 지금은 기록만 보이고 점수를 고칠 길이 없었다 */
+    h+=`<div onclick="evOpenBracket(${g.r},${g.c})" style="display:flex;align-items:center;gap:9px;padding:11px 2px;border-top:1px solid #f4f2ed;cursor:pointer">
       <span style="flex:none;width:34px;font-size:11px;font-weight:500;color:#a8a29a">${g.r}게임</span>
       <span style="flex:none;font-size:10.5px;font-weight:600;border-radius:7px;padding:3px 7px;background:${L[0]};color:${L[1]}">${esc(g.label||'')}</span>
       <div style="flex:1;min-width:0;text-align:right;font-size:13px;font-weight:${win==='a'?'700':'500'};color:${win==='a'?'#3a352e':'#8a857c'}">${A}</div>
@@ -18900,6 +18917,15 @@ function evBracketBlock(accent){
   return h;
 }
 function evBkCourt(c){ if(EVD){ EVD.bkCourt=c; drawEventDetail(); } }
+/* 모임 정보의 <그날 대진> 줄을 누르면 그 대진을 연다.
+   그 경기가 있는 코트 탭까지 맞춰서 열어 준다 — 열고 나서 다시 찾게 하면 안 된다. */
+function evOpenBracket(r, c){
+  const ev=EVD && EVD.ev; if(!ev) return;
+  CB2_EVENT = ev.id || null;
+  CB2_COURT = c || 0;
+  closeEventPage();
+  openClubBracketView();
+}
 function drawEventDetail(){
   if(!EVD) return;
   const e=EVD.ev, off=(AC()||{}).officer;
