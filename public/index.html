@@ -2144,18 +2144,21 @@
   .omhead-l{ display:flex;align-items:center;gap:4px;cursor:pointer;min-width:0 }
   .omhead-r{ font-size:15px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap }
-  .omhead-a{ font-size:9px;color:var(--lgray);flex:none;margin-top:2px }
+  .omhead-a{ width:13px;height:13px;color:var(--gray);flex:none;margin-top:1px }
   .omtchip{ display:flex;align-items:center;gap:5px;background:var(--felt);border-radius:14px;
     padding:5px 10px;flex:none;cursor:pointer }
   .omtchip-c{ width:12px;height:12px;border-radius:4px;flex:none }
   .omtchip span{ font-size:11px;font-weight:700;white-space:nowrap }
-  .omchips{ display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;scrollbar-width:none;padding-bottom:1px }
-  .omchips::-webkit-scrollbar{ display:none }
-  .omchip{ flex:none;font-size:12px;font-weight:600;padding:7px 13px;border-radius:16px;
-    background:#fff;border:1px solid var(--felt-d);color:var(--gray);cursor:pointer;
-    letter-spacing:-.02em;transition:.14s }
-  .omchip.on{ background:var(--ink);border-color:var(--ink);color:#fff }
-  .omchipdiv{ flex:none;width:1px;background:var(--line);margin:6px 3px }
+  .omfil{ display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border-bottom:1px solid var(--line);margin-bottom:16px }
+  .omtbs{ display:flex;gap:17px;min-width:0 }
+  .omtb{ font-size:13.5px;font-weight:600;color:var(--lgray);padding:0 1px 10px;cursor:pointer;
+    letter-spacing:-.02em;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.14s;
+    white-space:nowrap }
+  .omtb.on{ color:var(--ink);border-bottom-color:var(--ink) }
+  .omfm{ display:flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--gray);
+    padding-bottom:10px;cursor:pointer;flex:none;white-space:nowrap }
+  .omfm svg{ width:12px;height:12px }
 
   .omhero{ background:var(--ink);border-radius:20px;padding:18px;margin-bottom:14px;color:#fff;cursor:pointer }
   .omhero-t{ display:flex;align-items:center;gap:7px;margin-bottom:13px;flex-wrap:wrap }
@@ -19731,9 +19734,9 @@ function omEmpty(filtered, total){
     const MODE={self:'자율',managed:'운영'};
     const opts=[];
     if(F.disc){ const n=cnt({mode:F.mode});
-      if(n) opts.push([`${MODE[F.mode]||'모든'} 매치 전체 보기`,`${n}경기`,`setOmF('disc','${F.disc}')`]); }
+      if(n) opts.push(['종목 상관없이 보기',`${n}경기`,`setOmF('disc','')`]); }
     if(F.mode){ const n=cnt({disc:F.disc});
-      if(n) opts.push([`자율·운영 모두 보기`,`${n}경기`,`setOmF('mode','${F.mode}')`]); }
+      if(n) opts.push(['자율·운영 모두 보기',`${n}경기`,`setOmF('mode','')`]); }
     if(total && opts.length<2) opts.push(['조건 모두 지우기',`${total}경기`,'clearOmF()']);
     opts.push(['다른 지역 보기','지역 바꾸기','openOmRegion()']);
     return `<div class="omempty">
@@ -19787,7 +19790,7 @@ function omCloseText(m){
   if(h<48) return '내일 마감';
   return `${new Date(t).getMonth()+1}/${new Date(t).getDate()} 마감`;
 }
-function setOmF(k,v){ state._omF=state._omF||{}; state._omF[k]=(state._omF[k]===v?'':v);
+function setOmF(k,v){ state._omF=state._omF||{}; state._omF[k]=v;
   const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
   const bar=document.getElementById('omFilter'); if(bar) bar.outerHTML=omFilterBar(); }
 function copyText(t){
@@ -21802,7 +21805,7 @@ function renderApps(){
 
 async function renderMatch(){
   const el = document.getElementById('s-match'); if(!el) return;
-  let h=`<h2 class="t">오픈매치</h2><p class="sub">클럽에 속하지 않아도 참여할 수 있는 경기예요.</p>`;
+  let h=`<h2 class="t">오픈매치</h2>`;
   // 페어플레이 평가 창(경기 후 24시간)이 열린 매치 배너
   try{
     const now=Date.now();
@@ -21833,7 +21836,8 @@ async function renderMatch(){
   h+=`<div class="omhead">
         <div class="omhead-l" onclick="openOmRegion()">
           <span class="omhead-r">${sd ? esc(sd + (sg ? ' · ' + sg : '')) : '전국'}</span>
-          <span class="omhead-a">▾</span></div>
+          <svg class="omhead-a" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>
         ${omTierChip()}
       </div>
       ${omFilterBar()}
@@ -21862,14 +21866,22 @@ async function renderMatch(){
    무엇이 상위 구분인지 알 수 없다. 모양이 다르면 위계가 보인다. */
 function omFilterBar(){
   const F=state._omF||{};
-  const chip=(k,v,t)=>`<span class="omchip ${(F[k]||'')===v?'on':''}" onclick="setOmF('${k}','${v}')">${t}</span>`;
-  return `<div id="omFilter" class="omchips">
-    ${chip('mode','','전체')}${chip('mode','self','자율')}${chip('mode','managed','운영')}
-    <span class="omchipdiv"></span>
-    ${chip('disc','mixed','혼복')}${chip('disc','men','남복')}${chip('disc','women','여복')}
+  const tab=(v,t)=>`<span class="omtb ${(F.disc||'')===v?'on':''}" onclick="setOmF('disc','${v}')">${t}</span>`;
+  const MODE={'':'자율·운영',self:'자율만',managed:'운영만'};
+  return `<div id="omFilter" class="omfil">
+    <div class="omtbs">${tab('','전체')}${tab('mixed','혼복')}${tab('men','남복')}${tab('women','여복')}</div>
+    <span class="omfm" onclick="cycleOmMode()">${MODE[F.mode||'']}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
   </div>`;
 }
-/* 티어 칩 — 제목 옆에 작게. 색면이 지금 티어를 대신 말한다. */
+/* 진행 방식은 셋을 돌아가며 고른다 — 값이 세 개뿐이라 시트를 열 것까지는 없다 */
+function cycleOmMode(){
+  const F=state._omF=state._omF||{};
+  F.mode = F.mode==='' || F.mode==null ? 'self' : F.mode==='self' ? 'managed' : '';
+  const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
+  const bar=document.getElementById('omFilter'); if(bar) bar.outerHTML=omFilterBar();
+}
 const TIER_COLOR={love:'#6f6a62',fut:'#faf0dc',chal:'#dde5f7',tour:'#f7e0e2',gs:'#e6e0f5'};
 function omTierChip(){
   if(!SERVER_OK||!authToken()) return '';
