@@ -197,7 +197,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0820c';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0820d';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -3136,12 +3136,33 @@ app.get('/search', (req, res) => {
 // ── 푸시 알림 (FCM) ──
 // 디바이스 토큰 저장 + 전송 헬퍼. env FCM_SERVER_KEY 있으면 실제 전송, 없으면 로그만.
 // (실서비스는 FCM HTTP v1 + 서비스계정 권장. 여기선 스타터로 legacy 방식.)
+/* 등록 시도를 기억한다 — 앱이 요청을 보냈는지조차 알 수 없어서
+   <기기 0대>가 앱 문제인지 저장 문제인지 가릴 수 없었다.
+   서버가 다시 뜨면 사라지는 값이라 표를 만들지 않는다(진단용). */
+const PUSH_TRIES = [];
 app.post('/push/register', auth, (req, res) => {
   const { token, platform } = req.body || {};
-  if (!token) return res.status(400).json({ error: 'no_token' });
-  db.prepare('INSERT OR IGNORE INTO devices (user_id,token,platform,created_at) VALUES (?,?,?,?)')
-    .run(req.uid, token, platform || 'web', now());
-  res.json({ ok: true });
+  const mark = (result, extra) => {
+    PUSH_TRIES.unshift({ at: now(), user_id: req.uid, platform: platform || 'web',
+      token_len: token ? String(token).length : 0, result, extra: extra || '' });
+    PUSH_TRIES.length = Math.min(PUSH_TRIES.length, 30);
+    console.log('[push] 등록', result, '· user=' + req.uid, '· platform=' + (platform || 'web'),
+      '· 토큰', token ? String(token).length + '자' : '없음', extra || '');
+  };
+  if (!token) { mark('실패', '토큰 없음'); return res.status(400).json({ error: 'no_token' }); }
+  try {
+    /* 같은 기기가 다시 켜지면 platform 이 바뀌었을 수 있으니 갱신까지 한다.
+       예전에는 INSERT OR IGNORE 라 platform 이 'web' 으로 남은 토큰이 고쳐지지 않았다. */
+    db.prepare('INSERT OR IGNORE INTO devices (user_id,token,platform,created_at) VALUES (?,?,?,?)')
+      .run(req.uid, token, platform || 'web', now());
+    db.prepare('UPDATE devices SET user_id=?, platform=? WHERE token=?')
+      .run(req.uid, platform || 'web', token);
+    mark('완료');
+    res.json({ ok: true });
+  } catch (e) {
+    mark('실패', String(e.message).slice(0, 60));
+    res.status(500).json({ error: 'save_failed' });
+  }
 });
 
 app.post('/push/unregister', auth, (req, res) => {
@@ -5511,11 +5532,62 @@ function admin(req, res, next) {
    키가 맞는데도 403 이 났다. */
 /* 알림이 어디서 끊겼는지 한 화면에서 본다 —
    로그를 뒤지지 않고 <키·토큰·발송> 셋 중 어디가 문제인지 바로 알 수 있게. */
+/* 회원 명단 내려받기 (CSV) — 나중에 제대로 된 DB 로 옮기거나
+   엑셀에서 훑어볼 수 있게 한 줄에 한 사람, 열은 고정 순서로 낸다.
+   화면 목록은 200명까지만 보이지만 여기서는 전부 낸다. */
+app.get('/admin/users.csv', admin, (_req, res) => {
+  const OV = `(SELECT NULLIF(m.gender_ov,'') FROM club_members m
+      WHERE m.user_id=u.id AND NULLIF(m.gender_ov,'') IS NOT NULL
+        AND (m.status IS NULL OR m.status='active') LIMIT 1)`;
+  const rows = db.prepare(`SELECT u.id, u.name, u.provider, u.region, u.sport,
+      u.rating, u.mmr, u.cash, u.premium, u.suspended, u.created_at, u.sport_started,
+      u.phone_verified, u.real_verified,
+      COALESCE(NULLIF(u.gender,''), ${OV}) AS gender,
+      CASE WHEN NULLIF(u.gender,'') IS NOT NULL THEN '본인'
+           WHEN ${OV} IS NOT NULL THEN '클럽' ELSE '' END AS gender_src,
+      (SELECT COUNT(*) FROM club_members m WHERE m.user_id=u.id
+        AND (m.status IS NULL OR m.status='active')) AS clubs,
+      (SELECT GROUP_CONCAT(c.name, ' / ') FROM club_members m JOIN clubs c ON c.id=m.club_id
+        WHERE m.user_id=u.id AND (m.status IS NULL OR m.status='active')) AS club_names,
+      (SELECT COUNT(*) FROM devices d WHERE d.user_id=u.id AND d.platform='ios') AS ios_devices
+    FROM users u ORDER BY u.id`).all();
+
+  const PROV = { kakao: '카카오', google: '구글', apple: '애플', dev: '개발' };
+  const G = { M: '남성', F: '여성', '남성': '남성', '여성': '여성' };
+  const dt = t => { if (!t) return ''; const d = new Date(+t || t);
+    return isNaN(d) ? '' : d.toISOString().slice(0, 10); };
+  const career = v => { try { const ym = JSON.parse(v || '{}').tennis || '';
+    return String(ym).slice(0, 7); } catch { return ''; } };
+
+  const head = ['회원번호','이름','가입경로','성별','성별출처','구력시작','지역','종목',
+    '레이팅','MMR','캐시','소속클럽수','소속클럽','아이폰알림','휴대폰인증','실명인증',
+    '프리미엄','정지','가입일'];
+  const line = r => [
+    r.id, r.name, PROV[r.provider] || r.provider || '', G[r.gender] || '',
+    r.gender_src || '', career(r.sport_started), r.region || '', r.sport || '',
+    r.rating, r.mmr, r.cash, r.clubs, r.club_names || '',
+    r.ios_devices ? 'Y' : '', r.phone_verified ? 'Y' : '', r.real_verified ? 'Y' : '',
+    r.premium ? 'Y' : '', r.suspended ? 'Y' : '', dt(r.created_at),
+  ];
+  /* 엑셀은 쉼표·따옴표·줄바꿈이 든 값을 큰따옴표로 감싸야 한 칸으로 읽는다.
+     맨 앞 BOM 이 없으면 한글이 깨진다(엑셀이 CP949 로 읽어버린다). */
+  const cell = v => {
+    const t = v == null ? '' : String(v);
+    return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  const csv = '\ufeff' + [head, ...rows.map(line)].map(r => r.map(cell).join(',')).join('\r\n');
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="matsu-users-${today}.csv"`);
+  res.send(csv);
+});
+
 app.get('/admin/push-status', admin, (req, res) => {
   const devs = db.prepare(`SELECT d.platform, COUNT(*) n FROM devices d GROUP BY d.platform`).all();
   const recent = db.prepare(`SELECT u.id, u.name, d.platform, d.created_at
     FROM devices d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 20`).all();
   res.json({
+    tries: PUSH_TRIES.slice(0, 8),          // 앱이 등록을 시도했는지
     apns: {
       ready: apnsReady(),
       bundle_id: APNS.bundleId || null,
