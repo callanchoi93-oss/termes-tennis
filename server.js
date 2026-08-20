@@ -1873,6 +1873,166 @@ function fairplayOf(uid) {
   rows.forEach(r => { s += adj[r.stars] || 0; });
   return { score: Math.max(0, Math.min(100, s)), reviews: rows.length };
 }
+/* ══════════════════════════════════════════════════════════════
+   오픈매치 티어 — 개인리그를 접고 티어를 오픈매치로 옮긴다.
+
+   티어는 <경기 결과>로만 정한다. 상호평가는 쓰지 않는다.
+   오픈매치 로테이션이 모든 사람과 한 번씩 파트너를 시키므로
+   파트너 운이 라운드를 도는 사이 저절로 평균화되고,
+   남는 것은 그 사람 자신의 기여뿐이다.
+   ══════════════════════════════════════════════════════════════ */
+
+// 티어 경계 — 전국 단일 분포. 지역별로 나누면 동네마다 그랜드슬램이 나온다.
+const TIER_CUT = [
+  { k: 'gs',   n: '그랜드슬램', top: 0.01, subs: 0 },
+  { k: 'tour', n: '투어',       top: 0.10, subs: 3 },
+  { k: 'chal', n: '챌린저',     top: 0.55, subs: 3 },
+  { k: 'fut',  n: '퓨처스',     top: 1.00, subs: 3 },
+];
+const TIER_MIN_GAMES = 2;                 // 이만큼 뛰어야 배치된다 (그 전에는 러브)
+const TIER_ORDER = ['love', 'fut', 'chal', 'tour', 'gs'];
+
+/* 복식 오픈매치가 주력이라 rating_doubles 를 본다.
+   경기 수는 그 사람이 실제로 뛴 확정 경기만 센다. */
+function tierGames(uid) {
+  try {
+    return db.prepare(`SELECT COUNT(*) n FROM matches
+      WHERE status='confirmed' AND (home_user_id=? OR away_user_id=?)`).get(uid, uid).n;
+  } catch (e) { return 0; }
+}
+/* 전국 백분위 — 나보다 레이팅이 높은 사람이 몇 %인가.
+   배치된 사람만 모집단에 넣는다. 러브까지 섞으면 분포가 아래로 눌린다. */
+function tierPercentile(rating) {
+  const row = db.prepare(`SELECT
+      (SELECT COUNT(*) FROM users WHERE suspended IS NOT 1 AND COALESCE(rating_doubles,1000) > ?) hi,
+      (SELECT COUNT(*) FROM users WHERE suspended IS NOT 1) tot`).get(rating);
+  if (!row || !row.tot) return 1;
+  return row.hi / row.tot;                              // 0 = 최상위 · 1 = 최하위
+}
+/* 세부 단계 1·2·3 — 숫자가 작을수록 위.
+   그 티어 구간 안에서 내가 어디쯤인지로 가른다. */
+function tierSub(pct, loIdx) {
+  const lo = loIdx === 0 ? 0 : TIER_CUT[loIdx - 1].top;
+  const hi = TIER_CUT[loIdx].top;
+  const span = hi - lo || 1;
+  const rel = Math.min(0.999, Math.max(0, (pct - lo) / span));   // 0 = 그 구간의 위쪽
+  return 1 + Math.floor(rel * 3);                                // 1 · 2 · 3
+}
+function tierOf(uid) {
+  const u = getUser(uid);
+  if (!u) return { key: 'love', name: '러브', sub: 0, label: '러브', games: 0, placed: false };
+  const games = tierGames(uid);
+  if (games < TIER_MIN_GAMES)
+    return { key: 'love', name: '러브', sub: 0, label: '러브',
+      games, placed: false, need: TIER_MIN_GAMES - games };
+  const pct = tierPercentile(u.rating_doubles || 1000);
+  const i = TIER_CUT.findIndex(t => pct <= t.top);
+  const T = TIER_CUT[i < 0 ? TIER_CUT.length - 1 : i];
+  const idx = i < 0 ? TIER_CUT.length - 1 : i;
+  const sub = T.subs ? tierSub(pct, idx) : 0;
+  return {
+    key: T.k, name: T.n, sub, label: sub ? `${T.n} ${sub}` : T.n,
+    games, placed: true, pct: Math.round(pct * 1000) / 10,
+    /* 경기가 적으면 티어가 자주 바뀐다 — 화면에서 미리 알려주기 위한 값 */
+    settled: games >= 10,
+  };
+}
+const tierRank = k => Math.max(0, TIER_ORDER.indexOf(k));
+/* 매치가 요구하는 티어 범위 안에 드는가. 러브는 어디든 들어갈 수 있다 —
+   배치되려면 2경기를 뛰어야 하는데 못 들어가면 영영 배치되지 않는다. */
+function tierFits(t, lo, hi) {
+  if (!t.placed) return true;
+  const r = tierRank(t.key);
+  if (lo && r < tierRank(lo)) return false;
+  if (hi && r > tierRank(hi)) return false;
+  return true;
+}
+app.get('/me/tier', auth, (req, res) => res.json(tierOf(req.uid)));
+
+/* ── 마감 처리 ──
+   마감 시각에 딱 한 번 계산한다. 중간에 5명 됐다가 4명으로 줄 수 있는데,
+   그때마다 환급하면 이미 돌려준 돈을 다시 청구해야 하고 그건 불가능하다. */
+function omSettle(mid) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m || m.confirmed_at || (m.status && m.status !== 'open')) return null;
+  const joins = db.prepare('SELECT * FROM open_match_joins WHERE match_id=? ORDER BY id').all(mid);
+  const need = omMinCount(m);
+
+  /* 미달 — 예약이 확정된 적이 없으니 업체에도 과금되지 않는다 */
+  if (joins.length < need) {
+    db.prepare("UPDATE open_matches SET status='cancelled', refunded_at=? WHERE id=?").run(now(), mid);
+    joins.forEach(j => {
+      if (j.paid > 0) cashAdd(j.user_id, j.paid, 'om_cancel_refund');
+      sendPush(j.user_id, { icon: '🔔', title: '매치가 취소됐어요',
+        body: `${m.loc} · 인원이 모이지 않아 전액 환불했어요` });
+    });
+    return { ok: true, cancelled: true, refunded: joins.length };
+  }
+
+  /* 확정 — 인원이 정해졌으니 그 인원의 가격을 적용하고 차액을 캐시로 돌려준다.
+     현금 부분취소가 아니라 캐시인 이유: PG 수수료를 잃지 않고, 돈이 앱 안에 남는다. */
+  const finalPrice = omPriceFor(m, joins.length);
+  let refunded = 0;
+  tx(() => {
+    db.prepare("UPDATE open_matches SET status='confirmed', confirmed_at=? WHERE id=?").run(now(), mid);
+    joins.forEach(j => {
+      const diff = (j.paid || 0) - finalPrice;
+      if (diff > 0) {
+        cashAdd(j.user_id, diff, 'om_price_refund');
+        db.prepare('UPDATE open_match_joins SET refund=? WHERE id=?').run(diff, j.id);
+        refunded += diff;
+      }
+      sendPush(j.user_id, { icon: '✅', title: '매치가 확정됐어요',
+        body: diff > 0
+          ? `${joins.length}명이 모여 ${finalPrice.toLocaleString()}원으로 내려갔어요 · ${diff.toLocaleString()}원 돌려드렸어요`
+          : `${m.loc} · ${m.dt}` });
+    });
+  });
+  return { ok: true, confirmed: true, people: joins.length, price: finalPrice, refunded };
+}
+/* 캐시 지급 한 곳으로 모은다 — 장부(cash_ledger)를 빠뜨리면 잔액이 안 맞는다 */
+function cashAdd(uid, amount, reason) {
+  if (!amount) return;
+  const u = getUser(uid); if (!u) return;
+  const bal = (u.cash || 0) + amount;
+  db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, uid);
+  db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+    .run(uid, amount, reason, bal, now());
+}
+/* 마감 시각이 지난 매치를 훑는다 — 10분마다 */
+function omSweep() {
+  try {
+    const due = db.prepare(`SELECT id FROM open_matches
+      WHERE status='open' AND close_at IS NOT NULL AND close_at <= ?`).all(new Date().toISOString().slice(0, 16));
+    due.forEach(r => { try { omSettle(r.id); } catch (e) { console.error('[om] 마감 실패', r.id, e.message); } });
+    if (due.length) console.log('[om] 마감 처리', due.length, '건');
+  } catch (e) { console.error('[om] sweep', e.message); }
+}
+setInterval(omSweep, 10 * 60 * 1000);
+setTimeout(omSweep, 20 * 1000);
+/* 운영자가 손으로 마감시킬 수 있다 — 시각을 기다리지 않고 확인할 때 */
+app.post('/admin/open-matches/:id/settle', admin, (req, res) => {
+  const r = omSettle(+req.params.id);
+  res.json(r || { ok: false, reason: '이미 처리됐거나 없는 매치예요' });
+});
+
+/* 매너 확인 — 기본값은 "다들 괜찮았어요". 문제가 있을 때만 사람을 고른다. */
+app.post('/open-matches/:id/manner', auth, (req, res) => {
+  const mid = +req.params.id;
+  const joined = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if (!joined) return res.status(403).json({ error: 'not_joined' });
+  const b = req.body || {};
+  const ins = db.prepare(`INSERT OR REPLACE INTO om_manner
+    (match_id,from_id,target_id,kind,created_at) VALUES (?,?,?,?,?)`);
+  if (b.ok) { ins.run(mid, req.uid, null, 'ok', now()); }
+  else {
+    const targets = (Array.isArray(b.targets) ? b.targets : []).map(intOrNull).filter(Boolean);
+    targets.forEach(t => { if (t !== req.uid) ins.run(mid, req.uid, t, 'bad', now()); });
+  }
+  if (intOrNull(b.mvp)) ins.run(mid, req.uid, intOrNull(b.mvp), 'mvp', now());
+  res.json({ ok: true });
+});
+
 app.get('/me/fairplay', auth, (req, res) => res.json(fairplayOf(req.uid)));
 app.get('/open-matches', (req, res) => {
   const uid = tryUid(req);
@@ -2015,16 +2175,44 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
   if (m.status && m.status !== 'open') return res.status(400).json({ error: 'not_open' });
   const ns = noShowCount(req.uid);                       // 상습 노쇼는 참가를 막는다
   if (ns >= NOSHOW_LIMIT) return res.status(403).json({ error: 'noshow_blocked', count: ns, limit: NOSHOW_LIMIT });
+
+  const me = getUser(req.uid);
+  /* 성별이 없으면 남복·여복을 거를 수 없다 — 신청 전에 받아야 한다.
+     관리자 화면에 성별 없는 회원이 이미 여럿 있다. */
+  if (!me.gender && m.disc && m.disc !== 'any')
+    return res.status(400).json({ error: 'gender_required', message: '성별을 먼저 입력해 주세요' });
+  if (m.disc === 'men'   && me.gender !== 'M')
+    return res.status(403).json({ error: 'men_only',   message: '남자복식 매치예요' });
+  if (m.disc === 'women' && me.gender !== 'F')
+    return res.status(403).json({ error: 'women_only', message: '여자복식 매치예요' });
+  /* 티어 범위 — 러브는 통과시킨다. 못 들어가면 영영 배치되지 않는다. */
+  const myTier = tierOf(req.uid);
+  if (!tierFits(myTier, m.tier_min, m.tier_max))
+    return res.status(403).json({ error: 'tier_out', message: '이 매치의 티어 범위가 아니에요', tier: myTier.label });
+
   // 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다
   try {
     tx(() => {
-      const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
       const already = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
-      if (!already && cur >= (m.cap || 8)) throw new Error('full');
-      db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at) VALUES (?,?,?)').run(mid, req.uid, now());
+      if (!already) {
+        const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+        if (cur >= (m.cap || 8)) throw new Error('full');
+        /* 혼복은 성별 칸을 따로 잠근다 — 남은 자리가 있어도 내 성별 칸이 찼으면 못 들어간다 */
+        if (m.disc === 'mixed') {
+          const caps = omCaps(m), fill = omFilled(mid);
+          if (me.gender === 'M' && fill.m >= caps.m) throw new Error('men_full');
+          if (me.gender === 'F' && fill.f >= caps.f) throw new Error('women_full');
+        }
+      }
+      db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at,paid) VALUES (?,?,?,?)')
+        .run(mid, req.uid, now(), omPriceFor(m, omMinCount(m)));
+      /* 첫 신청자가 모임장이 된다 — 권한이 아니라 역할이다 */
+      if (!m.leader_id) db.prepare('UPDATE open_matches SET leader_id=? WHERE id=?').run(req.uid, mid);
     });
   } catch (e) {
     if (e.message === 'full') return res.status(409).json({ error: 'full', cap: m.cap });
+    if (e.message === 'men_full')   return res.status(409).json({ error: 'men_full',   message: '남성 자리가 찼어요' });
+    if (e.message === 'women_full') return res.status(409).json({ error: 'women_full', message: '여성 자리가 찼어요' });
     throw e;
   }
   const isNewJoin = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid).joined_at > now() - 3000;
@@ -2544,7 +2732,59 @@ app.delete('/notices/:id', auth, (req, res) => {
  'account TEXT'].forEach(c => {
   try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {}
 });
-try { db.exec('ALTER TABLE open_match_joins ADD COLUMN joined_at BIGINT'); } catch (e) {}
+/* ── 오픈매치 티어 개편에 필요한 칸들 ──
+   mode  self=자율(매니저 없음) · managed=운영(매니저 배정)
+   disc  mixed=혼복 · men=남복 · women=여복
+   혼복은 남녀 정원을 따로 잠근다 — 선착순으로 받으면 남자만 4명 찬 혼복이 생긴다. */
+['mode TEXT DEFAULT \'self\'', 'disc TEXT DEFAULT \'mixed\'',
+ 'cap_m INTEGER', 'cap_f INTEGER', 'close_at TEXT',
+ 'tier_min TEXT', 'tier_max TEXT', 'leader_id INTEGER',
+ 'base_price INTEGER',                                   // 4인 기준가 — 결제는 늘 이 값으로
+ 'fee_rate REAL',                                        // 업체 수수료율 (한산 0.2 · 붐빔 0.1)
+ 'confirmed_at BIGINT', 'refunded_at BIGINT'
+].forEach(c => { try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {} });
+['paid INTEGER DEFAULT 0', 'refund INTEGER DEFAULT 0'
+].forEach(c => { try { db.exec(`ALTER TABLE open_match_joins ADD COLUMN ${c}`); } catch (e) {} });
+
+/* 매너 확인 — 티어와 완전히 분리한다. 점수가 아니라 신고에 가깝게 받는다.
+   기본값이 "다들 괜찮았어요"라 평소에는 한 줄도 안 쌓인다. */
+db.exec(`CREATE TABLE IF NOT EXISTS om_manner (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id INTEGER NOT NULL, from_id INTEGER NOT NULL,
+  target_id INTEGER, kind TEXT, created_at BIGINT,
+  UNIQUE(match_id, from_id, target_id))`);
+
+/* ── 1인 참가비는 표가 아니라 공식으로 ──
+   코트 단가가 시간당 33,000원인 곳도 77,000원인 곳도 있다.
+   고정 가격표를 만들면 싼 코트에서는 과금이 되고 비싼 코트에서는 적자가 난다. */
+/* 티어 오픈매치 전용 마진 — 위쪽 OM_MARGIN(0.375)은 기존 소셜매치 공식이 쓰고 있다.
+   자율 매치는 매니저가 없어 원가가 낮으므로 마진율을 따로 잡는다. */
+const OMT_MARGIN = { self: 0.33, managed: 0.45 };
+function omPriceFor(m, people) {
+  const gross = intOrNull(m.court_cost) || 0;             // 코트 정가(대관 전체)
+  if (!gross) return intOrNull(m.base_price) || intOrNull(m.price) || 0;
+  const fee = (m.fee_rate != null ? m.fee_rate : 0.2);    // 업체 수수료율
+  const cost = gross * (1 - fee) + (intOrNull(m.manager_fee) || 0);
+  const margin = OMT_MARGIN[m.mode === 'managed' ? 'managed' : 'self'];
+  const n = Math.max(1, people || omMinCount(m));
+  return Math.ceil(cost / (1 - margin) / n / 100) * 100;  // 100원 단위 올림
+}
+const omMinCount = m => (m.mode === 'managed' ? (intOrNull(m.min_cnt) || 8) : 4);
+function omCaps(m) {
+  const cap = intOrNull(m.cap) || 4;
+  if (m.disc === 'men')   return { m: cap, f: 0 };
+  if (m.disc === 'women') return { m: 0, f: cap };
+  return { m: intOrNull(m.cap_m) || Math.ceil(cap / 2),
+           f: intOrNull(m.cap_f) || Math.floor(cap / 2) };
+}
+/* 지금 성별별로 몇 명이 찼나 */
+function omFilled(mid) {
+  const rows = db.prepare(`SELECT u.gender g FROM open_match_joins j
+    JOIN users u ON u.id=j.user_id WHERE j.match_id=?`).all(mid);
+  return { m: rows.filter(r => r.g === 'M').length,
+           f: rows.filter(r => r.g === 'F').length,
+           n: rows.length };
+}
 db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
   id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`);
 
@@ -2690,8 +2930,18 @@ function omView(m, uid) {
   const endMs = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
   const lates = (isNaN(endMs) || endMs > Date.now()) ? omLateRows(m.id) : [];
   const my_late = uid ? (lates.find(x => x.user_id === uid) || null) : null;
+  const caps = omCaps(m), fill = omFilled(m.id);
+  const need = omMinCount(m);
   return {
     ...m,
+    /* 화면이 바로 쓰도록 계산해서 내려준다 — 앱이 다시 세면 서버와 어긋난다 */
+    mode: m.mode || 'self', disc: m.disc || 'mixed',
+    caps, fill, need,
+    left_m: Math.max(0, caps.m - fill.m),
+    left_f: Math.max(0, caps.f - fill.f),
+    price_now: omPriceFor(m, Math.max(need, fill.n)),
+    price_base: omPriceFor(m, need),
+    leader: m.leader_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.leader_id) : null,
     host, likes, liked, comments,
     manager, manager_fee: m.manager_fee || 0, settled: !!m.settled, mgr_applied, mgr_apps, my_mreview,
     lates, my_late,
