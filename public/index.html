@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.0-0820b';
+const BUILD='v1.1.0-0820c';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -25152,6 +25152,16 @@ function _renderMeCore(){
     <div style="font-size:14px;font-weight:500">${state._noshow.blocked?'🚫 오픈매치 참가 제한 중':'⚠️ 노쇼 기록'} ${state._noshow.count}/${state._noshow.limit}</div>
     <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">
       ${state._noshow.blocked?'최근 90일 기록이 지나면 자동으로 풀려요':'3회가 되면 90일간 오픈매치 참가가 제한돼요'}</div></div>`:''}
+  ${SERVER_OK&&IS_NATIVE?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
+    <div><div style="font-size:14px;font-weight:500">알림 받기 🔔</div>
+      <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${
+        PUSH_STATE==='ok' ? '이 폰으로 소식을 받고 있어요'
+        : PUSH_STATE==='denied' ? '폰 설정에서 맞수 알림을 켜주세요'
+        : PUSH_STATE==='fail' ? '등록하지 못했어요 · 다시 눌러주세요'
+        : '회비·대진·댓글 소식을 폰으로 받아요'}</div></div>
+    <button class="om-act ${PUSH_STATE==='ok'?'ghost':'primary'}" onclick="askNativePush()">${
+      PUSH_STATE==='ok'?'켜짐':'켜기'}</button></div>`:''}
+
   ${SERVER_OK&&CFG.vapid_public&&!IS_NATIVE?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
     <div><div style="font-size:14px;font-weight:500">알림 받기 🔔</div>
       <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">회비·대진·댓글 소식을 폰으로 받아요</div></div>
@@ -26031,19 +26041,25 @@ async function disableWebPush(){
   toast('알림을 껐어요');
 }
 
+/* 알림 등록이 어디서 멈췄는지 화면에 남긴다.
+   예전에는 권한을 거부했거나 등록이 실패해도 아무 표시가 없어서,
+   폰에 알림이 안 와도 이유를 알 길이 없었다(기기가 한 대도 등록되지 않았다). */
+let PUSH_STATE = '';        // '' 아직 · 'ok' 등록됨 · 'denied' 권한 거부 · 'fail' 등록 실패
 async function initNativePush(){
   if(!IS_NATIVE || !SERVER_OK) return;
   const P = window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
-  if(!P) return;
+  if(!P){ PUSH_STATE='fail'; return; }
   try{
     let perm = await P.checkPermissions();
     if(perm.receive !== 'granted') perm = await P.requestPermissions();
-    if(perm.receive !== 'granted'){ return; }         // 거부해도 앱은 정상 동작
+    if(perm.receive !== 'granted'){ PUSH_STATE='denied'; try{ renderMe(); }catch(e){} return; }
 
     P.addListener('registration', async (t)=>{        // APNs 토큰
-      try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:t.value, platform:'ios'})}); }catch(e){}
+      try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:t.value, platform:'ios'})});
+        PUSH_STATE='ok'; try{ renderMe(); }catch(e){}
+      }catch(e){ PUSH_STATE='fail'; try{ renderMe(); }catch(e2){} }
     });
-    P.addListener('registrationError', ()=>{});
+    P.addListener('registrationError', ()=>{ PUSH_STATE='fail'; try{ renderMe(); }catch(e){} });
     P.addListener('pushNotificationReceived', (n)=>{  // 앱이 켜져 있을 때
       if(n && n.title) toast(n.title);
     });
@@ -26053,6 +26069,25 @@ async function initNativePush(){
 }
 // 로그인 뒤에 등록해야 user_id 와 토큰이 묶인다
 async function afterLoginNative(){ if(IS_NATIVE) setTimeout(initNativePush, 800); }
+/* 내 정보에서 손으로 다시 시도한다 — 한 번 거부하면 iOS 가 다시 묻지 않으므로
+   그때는 설정 화면으로 안내한다. */
+async function askNativePush(){
+  const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+  if(!P){ toast('이 기기에서는 알림을 쓸 수 없어요'); return; }
+  try{
+    const perm = await P.checkPermissions();
+    if(perm.receive === 'denied'){
+      PUSH_STATE='denied'; renderMe();
+      toast('설정 → 맞수 → 알림에서 켜주세요');
+      const A = window.Capacitor.Plugins.App;
+      if(A && A.openUrl) A.openUrl({ url:'app-settings:' }).catch(()=>{});
+      return;
+    }
+    toast('알림을 등록하고 있어요');
+    await initNativePush();
+    setTimeout(()=>{ if(PUSH_STATE!=='ok') toast('등록하지 못했어요 · 잠시 후 다시 시도해 주세요'); }, 2500);
+  }catch(e){ toast('등록하지 못했어요'); }
+}
 
 /* ═══════════ PWA ═══════════ */
 // file:// 로 열었을 땐 서비스워커를 등록할 수 없다 (데모 모드).
