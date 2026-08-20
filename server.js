@@ -197,7 +197,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0819d';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0820a';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1314,6 +1314,40 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   cbLog(cid, data);
   try { notifyNextUp(cid, data, g); } catch (e) {}   // 알림이 실패해도 점수 저장은 끝난 일이다
   res.json({ ok: true, game: g });
+});
+
+/* 알림이 어디서 끊겼는지 한 화면에서 본다 —
+   로그를 뒤지지 않고 <키·토큰·발송> 셋 중 어디가 문제인지 바로 알 수 있게. */
+app.get('/admin/push-status', admin, (req, res) => {
+  const devs = db.prepare(`SELECT d.platform, COUNT(*) n FROM devices d GROUP BY d.platform`).all();
+  const recent = db.prepare(`SELECT u.id, u.name, d.platform, d.created_at
+    FROM devices d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 20`).all();
+  res.json({
+    apns: {
+      ready: apnsReady(),
+      bundle_id: APNS.bundleId || null,
+      key_id: APNS.keyId ? APNS.keyId.slice(0, 4) + '···' : null,
+      team_id: APNS.teamId ? APNS.teamId.slice(0, 4) + '···' : null,
+      key_loaded: !!APNS.key,
+    },
+    devices: devs,
+    recent: recent.map(r => ({ user_id: r.id, name: r.name, platform: r.platform, at: r.created_at })),
+  });
+});
+
+/* 내 폰으로 시험 알림을 보낸다 — 실제로 도착하는지 확인하는 가장 빠른 길.
+   ?user=12 로 특정 회원에게 보낼 수 있다(기본은 관리자 본인 기기 전부). */
+app.post('/admin/push-test', admin, async (req, res) => {
+  const uid = +((req.query && req.query.user) || (req.body && req.body.user) || 0);
+  if (!uid) return res.status(400).json({ error: 'no_user', message: '?user=회원번호 를 붙여주세요' });
+  const rows = db.prepare('SELECT token, platform FROM devices WHERE user_id=?').all(uid);
+  if (!rows.length) return res.json({ ok: false, reason: '그 회원의 기기가 등록돼 있지 않아요' });
+  const out = [];
+  for (const r of rows.filter(x => x.platform === 'ios')) {
+    const rr = await apnsSend(r.token, { title: '시험 알림', body: '이 알림이 보이면 잘 되고 있어요' });
+    out.push({ platform: 'ios', ...rr });
+  }
+  res.json({ ok: true, sent: out, note: out.length ? '' : 'iOS 기기가 없어요' });
 });
 
 /* 점수가 들어오면 그 코트의 <다음 차례> 네 명에게 알린다.
