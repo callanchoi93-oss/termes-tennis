@@ -472,6 +472,7 @@ app.post('/auth/google', limitLogin, async (req, res) => {
       const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('google',?,?,?,?)`)
         .run(pid, nm, anonNick(pid), now());
       u = getUser(rid(r));
+      db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
     }
     res.json({ token: sign(u), user: u });
   } catch (e) { res.status(401).json({ error: 'google_verify_failed', detail: String(e.message || e) }); }
@@ -509,6 +510,7 @@ app.post('/auth/apple', async (req, res) => {
       const r = db.prepare(`INSERT INTO users (provider,provider_id,name,anon_nick,created_at) VALUES ('apple',?,?,?,?)`)
         .run(pid, nm, anonNick(pid), now());
       u = getUser(rid(r));
+      db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
     }
     res.json({ token: sign(u), user: u });
   } catch (e) { res.status(401).json({ error: 'apple_verify_failed', detail: String(e.message || e) }); }
