@@ -259,9 +259,11 @@ async function drawUsers(){
           <button class="b ${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여</button>
           <button class="b ${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">—</button>
           <button class="b" onclick="pushTest(${u.id},'${esc(u.name)}')" title="시험 알림">🔔</button>
+          ${u.suspended?`<button class="b" onclick="purgeUser(${u.id})" title="기록 영구 삭제">🗑</button>`:''}
         </div></div>`;}).join('') : `<div class="empty">${UQ?'찾는 회원이 없어요':'회원이 없어요'}</div>`}
     </div>
-    <div class="note">삭제는 회원을 눌러 들어간 곳에 있어요 · 목록에서는 실수로 눌릴 수 있어 뺐어요</div>`);
+    <div class="note">활성 회원 삭제는 회원을 눌러 들어간 곳에 있어요 · 목록에서는 실수로 눌릴 수 있어 뺐어요<br>
+      🗑 는 이미 탈퇴한 계정에만 나와요 — 남은 기록까지 지우고 되돌릴 수 없어요</div>`);
 }
 
 /* ── 클럽 ── */
@@ -508,6 +510,17 @@ async function setGender(id, name, g){
   try{ await api('/admin/users/'+id+'/gender',{method:'POST',body:JSON.stringify({gender:g})});
     toast(g?`${name} · ${g}`:`${name} · 성별 지움`); render(); }
   catch(e){ toast('바꾸지 못했어요'); }
+}
+/* 탈퇴한 계정의 남은 기록을 지운다.
+   탈퇴는 이름만 <탈퇴한 회원>으로 바꾸고 행은 남겨두기 때문에 목록에 계속 보인다.
+   되돌릴 수 없어서 회원번호를 직접 받아 확인한다 — 목록에서 한 칸 밀려 눌리면 끝이다. */
+async function purgeUser(id){
+  const t=prompt(`#${id} 탈퇴 회원의 남은 기록을 영구 삭제할까요?\n되돌릴 수 없어요.\n\n확인하려면 회원번호 ${id} 를 입력해 주세요.`);
+  if(String(t||'').trim()!==String(id)) return toast('삭제하지 않았어요');
+  try{
+    const r=await api('/admin/users/'+id,{method:'DELETE'});
+    toast(`${r.deleted||'회원'} · 영구 삭제했어요`); render();
+  }catch(e){ toast('삭제하지 못했어요 · 활성 계정일 수 있어요'); }
 }
 async function delUser(id,name){
   if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`)) return;
