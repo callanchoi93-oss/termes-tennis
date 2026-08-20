@@ -197,7 +197,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0820d';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0820e';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -3140,6 +3140,21 @@ app.get('/search', (req, res) => {
    <기기 0대>가 앱 문제인지 저장 문제인지 가릴 수 없었다.
    서버가 다시 뜨면 사라지는 값이라 표를 만들지 않는다(진단용). */
 const PUSH_TRIES = [];
+/* 인증(auth)보다 앞에서 기록한다 — 예전에는 auth 를 통과한 뒤에만 남겨서,
+   로그인 토큰이 없거나 만료돼 401 로 막히면 <요청 자체가 오지 않았다>고 보였다.
+   앱이 보냈는지와 인증에서 막혔는지는 완전히 다른 문제다. */
+app.post('/push/register', (req, res, next) => {
+  const b = req.body || {};
+  const hasAuth = !!(req.headers.authorization || '').startsWith('Bearer ');
+  PUSH_TRIES.unshift({ at: now(), user_id: 0, platform: b.platform || '?',
+    token_len: b.token ? String(b.token).length : 0,
+    result: '도착', extra: hasAuth ? '' : '로그인 토큰 없음' });
+  PUSH_TRIES.length = Math.min(PUSH_TRIES.length, 30);
+  console.log('[push] 요청 도착 · platform=' + (b.platform || '?'),
+    '· 토큰', b.token ? String(b.token).length + '자' : '없음',
+    '· 로그인', hasAuth ? '있음' : '없음');
+  next();
+});
 app.post('/push/register', auth, (req, res) => {
   const { token, platform } = req.body || {};
   const mark = (result, extra) => {
