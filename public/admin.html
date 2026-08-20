@@ -183,12 +183,21 @@ async function drawStats(){
       <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
         <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
         ${ios?'':`<span class="b">확인 필요</span>`}</div>
-      <div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
-        <span>${(push.tries||[]).length
-          ? push.tries.slice(0,2).map(t=>`${ymd(t.at)} · #${t.user_id} · ${esc(t.platform)} · ${esc(t.result)}${
-              t.extra?' ('+esc(t.extra)+')':''}`).join(' / ')
-          : '아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요'}</span></div>
-        ${(push.tries||[]).length?'':`<span class="b">앱 확인</span>`}</div>
+      ${(()=>{
+        const T=push.tries||[];
+        if(!T.length) return `<div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
+          <span>아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요</span></div>
+          <span class="b">앱 확인</span></div>`;
+        /* 도착했는데 저장까지 안 갔으면 <어디서 막혔는지>가 답이다 */
+        const done=T.some(t=>t.result==='완료');
+        const noAuth=T.some(t=>/로그인 토큰 없음/.test(t.extra||''));
+        const t0=T[0];
+        return `<div class="rw"><div class="nm"><b>${
+            done?'등록까지 됐어요':noAuth?'요청은 왔는데 로그인이 안 실려 있어요':'요청은 왔는데 저장이 안 됐어요'}</b>
+          <span>${ymd(t0.at)} · ${esc(t0.platform)} · 토큰 ${t0.token_len}자 · ${esc(t0.result)}${
+            t0.extra?' ('+esc(t0.extra)+')':''}${T.length>1?` · 시도 ${T.length}회`:''}</span></div>
+          ${done?'':`<span class="b">${noAuth?'로그인 확인':'서버 확인'}</span>`}</div>`;
+      })()}
       ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
         <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
         <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
