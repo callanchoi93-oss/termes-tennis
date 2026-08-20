@@ -5342,8 +5342,38 @@ app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.manager_id !== req.uid && m.host_id !== req.uid) return res.status(403).json({ error: 'manager_only' });
   const br = JSON.stringify(req.body && req.body.bracket || null).slice(0, 8000);
+  const had = !!m.bracket;
   db.prepare('UPDATE open_matches SET bracket=? WHERE id=?').run(br, m.id);
+  /* 대진이 처음 나오면 참가자 전원에게 알린다 — 매니저 없는 매치에서는
+     이 알림이 "이제 시작해도 된다"는 신호 역할을 한다. */
+  if (!had) {
+    const b = (req.body && req.body.bracket) || {};
+    const rounds = b.rounds || 0, gpp = b.gpp || 0;
+    db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id)
+      .forEach(p => sendPush(p.user_id, { icon: '📋', title: '대진표가 나왔어요',
+        body: `${m.loc || ''}${rounds ? ` · ${rounds}라운드` : ''}${gpp ? ` · 1인 ${gpp}게임` : ''}`,
+        link: 'match' }));
+  }
   res.json({ ok: true });
+});
+
+/* ── 라운드 진행 알림 ──
+   매니저가 하는 일은 셋뿐이다: 지금 몇 라운드인지 알리고, 다음 대진을 읽어주고,
+   점수를 받아 적는 것. 앞의 둘은 알림으로 대신할 수 있다.
+   타이머로 경기를 끊지는 않는다 — 앱이 틀린 순간부터 아무도 안 본다. */
+app.post('/open-matches/:id/round-notice', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const isLeader = m.leader_id === req.uid || m.manager_id === req.uid || m.host_id === req.uid;
+  if (!isLeader) return res.status(403).json({ error: 'leader_only' });
+  const b = req.body || {};
+  const r = intOrNull(b.round) || 1;
+  const rows = db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id);
+  rows.forEach(p => sendPush(p.user_id, {
+    icon: '🎾', title: `${r}라운드 시작`,
+    body: String(b.pairs || '').slice(0, 80) || `${m.loc || ''} · 게임당 25분`,
+    link: 'match' }));
+  res.json({ ok: true, sent: rows.length });
 });
 app.post('/open-matches/:id/assess', auth, limitWrite, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
