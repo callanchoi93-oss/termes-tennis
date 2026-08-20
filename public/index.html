@@ -2791,7 +2791,7 @@ const COURT='<svg class="court" viewBox="0 0 300 200" preserveAspectRatio="none"
 const TIERS=[
   {n:'프로 / 오픈',d:'입상·선출급 · 최상위',c:'#1b1813',w:200},
   {n:'그랜드슬램',d:'NTRP 4.5+ · 대회 상위권',c:'#1b1813',w:230},
-  {n:'투어',d:'NTRP 3.5~4.0 · 클럽 대표급',c:'#cf5418',w:280},
+  {n:'마스터스',d:'NTRP 3.5~4.0 · 클럽 대표급',c:'#cf5418',w:280},
   {n:'아마추어',d:'NTRP 2.5~3.0 · 게임 운영 가능',c:'#8a857c',w:330},
   {n:'퓨처스',d:'NTRP ~2.0 · 모두 여기서 시작',c:'#3fa571',w:380},
 ];
@@ -2914,7 +2914,7 @@ function ntrpOf(r){ const v=Math.max(1,Math.min(7, Math.round(((r-800)/200+1.5)*
 const LV_BANDS=[
  ['퓨처스1',-1e9,874,'1.0~1.5'],['퓨처스2',875,949,'1.5~2.0'],['퓨처스3',950,999,'2.0'],
  ['챌린저1',1000,1049,'2.5'],['챌린저2',1050,1099,'2.5~3.0'],['챌린저3',1100,1149,'3.0'],['챌린저4',1150,1199,'3.0~3.5'],['챌린저5',1200,1249,'3.5'],
- ['투어1',1250,1319,'3.5~4.0'],['투어2',1320,1389,'4.0'],['투어3',1390,1459,'4.5'],
+ ['마스터스1',1250,1319,'3.5~4.0'],['마스터스2',1320,1389,'4.0'],['마스터스3',1390,1459,'4.5'],
  ['그랜드슬램',1460,1e9,'5.0+']];
 function levelOf(r){ const b=LV_BANDS.find(x=>r>=x[1]&&r<=x[2])||LV_BANDS[3]; return {full:b[0], tier:b[0].replace(/\d+$/,''), ntrp:b[3]}; }
 function tierByRating(r){ const l=levelOf(r); return l.full+' · NTRP '+l.ntrp; }
@@ -7452,7 +7452,7 @@ function gdClass(gd){return gd==='남자부'?'b-m':gd==='여자부'?'b-w':'b-x';
 function myRecord(){let w=0,l=0;state.matches.forEach(m=>{(m.games||[]).forEach(g=>{if(g.status==='confirmed'){if(g.my>g.opn)w++;else l++;}});});return {w,l};}
 function tierMeta(r){
   const l=levelOf(r);
-  const C={'그랜드슬램':['#1b1813','#4a3f66','G'],'투어':['#e5493a','#c6892a','T'],'챌린저':['#2f6fed','#5b3fa8','C'],'퓨처스':['#f2b90d','#c98f06','F']}[l.tier]||['#8a8378','#6b655c','L'];
+  const C={'그랜드슬램':['#1b1813','#4a3f66','G'],'마스터스':['#e5493a','#c6892a','T'],'챌린저':['#2f6fed','#5b3fa8','C'],'퓨처스':['#f2b90d','#c98f06','F']}[l.tier]||['#8a8378','#6b655c','L'];
   return {name:l.full+' · NTRP '+l.ntrp, c1:C[0], c2:C[1], sh:C[2]};
 }function renderRankingTable(){
   const div=isFem(state.gender)?'여자부':'남자부';
@@ -7846,7 +7846,7 @@ function renderLeague(){
 
   }
   h+=`<div class="info-banner" onclick="openPyramid()"><div class="ic">▲</div>
-    <div class="x"><b>리그는 실력별로 나뉘어요</b><span>러브 · 퓨처스 · 챌린저 · 투어 · 그랜드슬램 — 자세히 보기</span></div><div class="arr">→</div></div>`;
+    <div class="x"><b>리그는 실력별로 나뉘어요</b><span>러브 · 퓨처스 · 챌린저 · 마스터스 · 그랜드슬램 — 자세히 보기</span></div><div class="arr">→</div></div>`;
   if(!t.placing){
     h+=`<div class="card" style="background:linear-gradient(135deg,#eef7d6,#e3f0c2);border:none"><div style="font-size:14px;font-weight:500;color:#5f7416">${t.name} · 레이팅 ${state.rating}</div><div style="font-size:12px;color:#6f8718;font-weight:500;margin-top:4px">시즌 성적으로 승격·강등돼요.</div></div>`;
     h+=renderRankingTable();
@@ -7897,10 +7897,10 @@ const TN_LV={
   {n:'챌린저3',h:'중간 속도의 공을 꾸준히 받아넘겨요. (NTRP 3.0)',d:[['스트로크','일관성은 있지만 깊이·방향·파워 조절이 아직 어려워요.'],['네트 플레이','어려운 발리에는 취약해요.'],['복식','포지션은 알지만 팀 전술은 부족해요.']]},
   {n:'챌린저4',h:'스트로크 신뢰도가 올라가고 있어요. (NTRP 3.0~3.5)',d:[['스트로크','중간 속도 공에 방향을 싣기 시작해요.'],['서브','퍼스트 서브 성공률이 올라가요.'],['경기 운영','상대 약점을 의식하며 플레이해요.']]},
   {n:'챌린저5',h:'중간 속도 공에 방향 조절이 돼요. (NTRP 3.5)',d:[['스트로크','안정성이 생겼지만 깊이·스핀의 변화는 아직 부족해요.'],['네트 플레이','네트 접근이 과감해지고 있어요.'],['복식','팀워크가 눈에 띄게 좋아져요.']]}]},
- '투어':{c:'#e5493a',intro:'투어 서킷 — NTRP 4.0~4.5, 클럽 대표급이에요.',subs:[
-  {n:'투어1',h:'신뢰할 수 있는 스트로크로 깊이까지 조절해요. (NTRP 4.0)',d:[['기술','로브·오버헤드·어프로치·발리를 성공시킬 수 있어요.'],['서브','더블폴트가 드물어요.'],['복식','팀워크가 경기에서 뚜렷하게 드러나요.'],['경기 운영','이기는 패턴은 있지만 결정력이 아쉬워요.']]},
-  {n:'투어2',h:'경기 운영이 정교해져요. (NTRP 4.0~4.5)',d:[['기술','상황에 맞는 샷 선택이 빨라져요.'],['서브','코스를 나눠 넣으며 서브 게임을 지켜요.'],['경기 운영','상대에 따라 게임 플랜을 바꿔요.']]},
-  {n:'투어3',h:'파워와 스핀을 다루기 시작해요. (NTRP 4.5)',d:[['기술','풋워크가 안정되고 샷의 깊이를 조절해요.'],['서브','퍼스트 서브에 파워와 정확도가 있어요.'],['경기 운영','강한 압박 상황에서도 포인트를 설계해요.'],['기타','투어 수준의 매치가 아니면 약점을 찾기 어려워요.']]}]},
+ '마스터스':{c:'#e5493a',intro:'마스터스 — NTRP 4.0~4.5, 클럽 대표급이에요.',subs:[
+  {n:'마스터스1',h:'신뢰할 수 있는 스트로크로 깊이까지 조절해요. (NTRP 4.0)',d:[['기술','로브·오버헤드·어프로치·발리를 성공시킬 수 있어요.'],['서브','더블폴트가 드물어요.'],['복식','팀워크가 경기에서 뚜렷하게 드러나요.'],['경기 운영','이기는 패턴은 있지만 결정력이 아쉬워요.']]},
+  {n:'마스터스2',h:'경기 운영이 정교해져요. (NTRP 4.0~4.5)',d:[['기술','상황에 맞는 샷 선택이 빨라져요.'],['서브','코스를 나눠 넣으며 서브 게임을 지켜요.'],['경기 운영','상대에 따라 게임 플랜을 바꿔요.']]},
+  {n:'마스터스3',h:'파워와 스핀을 다루기 시작해요. (NTRP 4.5)',d:[['기술','풋워크가 안정되고 샷의 깊이를 조절해요.'],['서브','퍼스트 서브에 파워와 정확도가 있어요.'],['경기 운영','강한 압박 상황에서도 포인트를 설계해요.'],['기타','마스터스 수준의 매치가 아니면 약점을 찾기 어려워요.']]}]},
  '그랜드슬램':{c:'#1b1813',intro:'최상위 — NTRP 5.0+, 대회를 위해 존재하는 레벨이에요.',subs:[
   {n:'그랜드슬램',h:'샷 예측이 뛰어나고 확실한 무기가 있어요. (NTRP 5.0+)',d:[['기술','위너를 만들거나 짧은 공에서 상대 실수를 강요해요.'],['네트 플레이','발리와 스매시를 확실하게 마무리해요.'],['경기 운영','상대 분석에 따라 전략을 즉시 바꿔요.'],['기타','일반 매치에서는 실력 차이로 이 레벨을 다 보여주기 어려워요.']]}]}};
 /* 티어 피라미드 — 이름을 조각 안에 넣으면 꼭대기를 넓혀야 해서 피라미드가 안 된다.
@@ -7910,7 +7910,7 @@ function tierPyramid(cur){
      실제 회원 레이팅 분포가 쌓이면 서버에서 계산해 내려주는 편이 맞다. */
   const T=[
     {n:'그랜드슬램', c:'#7028c4', pct:'상위 1%'},
-    {n:'투어',       c:'#e5493a', pct:'상위 10%'},
+    {n:'마스터스',       c:'#e5493a', pct:'상위 10%'},
     {n:'챌린저',     c:'#2f6fed', pct:'상위 55%'},
     {n:'퓨처스',     c:'#f2b90d', pct:'나머지'},
     {n:'러브',       c:'#8a8378', pct:'배치 전'},
@@ -7937,7 +7937,7 @@ function tierPyramid(cur){
   });
   return `<div style="padding:4px 0 14px">
     <svg viewBox="-4 -8 ${VW+8} ${H+16}" style="width:100%;height:auto;display:block" role="img"
-      aria-label="티어 피라미드 — 위부터 그랜드슬램 상위 3퍼센트, 투어 10퍼센트, 챌린저 35퍼센트, 퓨처스 75퍼센트, 러브">${rows}</svg>
+      aria-label="티어 피라미드 — 위부터 그랜드슬램 상위 3퍼센트, 마스터스 10퍼센트, 챌린저 35퍼센트, 퓨처스 75퍼센트, 러브">${rows}</svg>
     <div style="font-size:11.5px;color:var(--lgray);text-align:center;margin-top:12px">
       경기에서 이기면 위로 올라가요</div></div>`;
 }
@@ -19770,7 +19770,7 @@ function omWantAlert(){
   toast('코트가 열리면 알려드릴게요');
 }
 /* 티어 범위를 사람이 읽는 말로/* 티어 범위를 사람이 읽는 말로 — 서버는 키(fut·chal)로 준다 */
-const TIER_KO={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'투어',gs:'그랜드슬램'};
+const TIER_KO={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'마스터스',gs:'그랜드슬램'};
 function omTierRange(m){
   const a=TIER_KO[m.tier_min]||'', b=TIER_KO[m.tier_max]||'';
   if(a&&b) return a===b?a:`${a}~${b}`;
@@ -20254,7 +20254,7 @@ function openMatchCard(id){ openOmDetail(id); }
    왜 그 티어가 됐는지 근거를 함께 보여준다.
    티어만 툭 바뀌면 시스템이 고장 난 줄 알거나 아무 의미 없다고 여긴다. */
 const TIER_ORD=['love','fut','chal','tour','gs'];
-const TIER_NM={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'투어',gs:'그랜드슬램'};
+const TIER_NM={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'마스터스',gs:'그랜드슬램'};
 async function openOmResult(id){
   let r; try{ r=await api(`/open-matches/${id}/result`); }
   catch(e){ return toast('결과를 불러오지 못했어요'); }
@@ -20711,9 +20711,9 @@ async function openRatingTrend(){
   document.getElementById('ov').classList.add('on');
 }
 /* ═══ 매니저 대진 편성 — 클럽 매칭엔진 방식(레이팅 스네이크) 을 오픈매치에 ═══ */
-/* 등급: 그랜드슬램=S 투어=A 챌린저=B 퓨처스=C 러브=D — 인접 등급끼리만, 불가피하면 팀 합산 밸런스 */
+/* 등급: 그랜드슬램=S 마스터스=A 챌린저=B 퓨처스=C 러브=D — 인접 등급끼리만, 불가피하면 팀 합산 밸런스 */
 function omGrade(r){ const t=(r||1000)===1000?'러브':levelOf(r).tier;
-  return {'그랜드슬램':5,'투어':4,'챌린저':3,'퓨처스':2,'러브':1}[t]||1; }
+  return {'그랜드슬램':5,'마스터스':4,'챌린저':3,'퓨처스':2,'러브':1}[t]||1; }
 const OM_GLBL={5:'S',4:'A',3:'B',2:'C',1:'D'};
 /* 오픈매치 대진 — 소셜 로테이션 규칙
    · 코트 수는 매니저가 예약한 만큼만 쓴다 (m.courts)
@@ -25635,7 +25635,7 @@ function _renderMeCore(){
   const ratingLabel=placing?'배치 중':rating, peakLabel=placing?'—':peak;
   const rel=relRecord(),relKeys=Object.keys(rel);
   const _td=new Date(), _mo=_td.getMonth()+1, _dy=_td.getDate();
-  const _tcol={'러브':'#a89e8e','퓨처스':'#e0a83c','챌린저':'#e07b3c','투어':'#cf5418','그랜드슬램':'#3b2a1a'}[(t.name.split(' · ')[0]||'').replace(/\d+$/,'')]||'#a89e8e';
+  const _tcol={'러브':'#a89e8e','퓨처스':'#e0a83c','챌린저':'#e07b3c','마스터스':'#cf5418','그랜드슬램':'#3b2a1a'}[(t.name.split(' · ')[0]||'').replace(/\d+$/,'')]||'#a89e8e';
   let h=`
   <div class="yhero" style="margin:6px 0 12px;padding:15px 17px;display:flex;align-items:center;gap:12px">
     <div style="flex:none;width:46px;height:46px;border-radius:50%;background:#fff8;display:flex;align-items:center;justify-content:center;
