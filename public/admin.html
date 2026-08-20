@@ -156,16 +156,37 @@ async function draw(){
 /* ── 현황 ── 숫자만 보여주고 끝나던 화면에 <손볼 것>을 더한다.
    관리자가 여는 이유는 대개 할 일을 찾기 위해서다. */
 async function drawStats(){
-  const [s, users, reps] = await Promise.all([
-    api('/admin/stats'), api('/admin/users').catch(()=>[]), api('/admin/reports').catch(()=>[])
+  /* 알림이 안 올 때 <키·토큰·발송> 중 어디가 문제인지 여기서 바로 본다.
+     예전에는 콘솔을 열어 직접 불러와야 했다. */
+  const [s, users, reps, push] = await Promise.all([
+    api('/admin/stats'), api('/admin/users').catch(()=>[]), api('/admin/reports').catch(()=>[]),
+    api('/admin/push-status').catch(()=>null)
   ]);
   const noG=users.filter(u=>!gLabel(u.gender)).length;
   const todo=[];
   if(noG) todo.push(['성별이 빈 회원','대진에서 남복·혼복이 잘못 잡혀요',`${noG}명`,`UONLY='nog';go('users')`]);
   if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`]);
   const kpi=[['회원',s.users],['클럽',s.clubs],['오픈매치',s.open_matches!=null?s.open_matches:s.matches]];
+  /* 알림 상태 — 준비됐는지, 폰이 몇 대 붙어 있는지 */
+  const ios=push ? ((push.devices||[]).find(d=>d.platform==='ios')||{}).n||0 : 0;
+  const web=push ? ((push.devices||[]).find(d=>d.platform==='web')||{}).n||0 : 0;
+  const pushBlock = !push ? '' : `
+    <div class="card"><div class="ct">알림</div>
+      <div class="rw"><div class="nm">
+        <b>${push.apns.ready?'보낼 준비가 됐어요':'아직 설정이 덜 됐어요'}
+          <span class="tag ${push.apns.ready?'g':''}">${push.apns.ready?'APNs':'미설정'}</span></b>
+        <span>${esc(push.apns.bundle_id||'Bundle ID 없음')}${
+          push.apns.key_id?` · 키 ${esc(push.apns.key_id)}`:''}</span></div></div>
+      <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
+        <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
+        ${ios?'':`<span class="b">확인 필요</span>`}</div>
+      ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
+        <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
+        <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
+    </div>`;
   $('app').innerHTML=shell(`
     <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
+    ${pushBlock}
     ${todo.length?`<div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>`:''}
     <div class="card">${todo.length? todo.map(([t,d,n,act])=>
       `<div class="rw" onclick="${act}" style="cursor:pointer">
@@ -199,6 +220,7 @@ async function drawUsers(){
           <button class="b ${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남</button>
           <button class="b ${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여</button>
           <button class="b ${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">—</button>
+          <button class="b" onclick="pushTest(${u.id},'${esc(u.name)}')" title="시험 알림">🔔</button>
         </div></div>`;}).join('') : `<div class="empty">${UQ?'찾는 회원이 없어요':'회원이 없어요'}</div>`}
     </div>
     <div class="note">삭제는 회원을 눌러 들어간 곳에 있어요 · 목록에서는 실수로 눌릴 수 있어 뺐어요</div>`);
@@ -412,6 +434,22 @@ async function fillGender(){
   try{ const r=await api('/admin/users/fill-gender',{method:'POST'});
     toast(`${r.filled||0}명을 채웠어요`); render(); }
   catch(e){ toast('채우지 못했어요 · 서버를 확인해 주세요'); }
+}
+/* 그 회원 폰으로 시험 알림을 보낸다 — 실제로 도착하는지가 유일한 확인 방법이다 */
+async function pushTest(id, name){
+  try{
+    const r=await api('/admin/push-test?user='+id,{method:'POST'});
+    if(!r.ok) return toast(r.reason||'보내지 못했어요');
+    const sent=(r.sent||[]);
+    if(!sent.length) return toast(`${name} 님은 아이폰이 등록돼 있지 않아요`);
+    const ok=sent.filter(x=>x.ok).length;
+    if(ok) return toast(`${name} 님께 보냈어요 · 폰을 확인해 주세요`);
+    const why=(sent.find(x=>x.reason)||{}).reason||'';
+    toast(why==='InvalidProviderToken' ? '키 정보가 맞지 않아요 (Key ID·Team ID)'
+        : why==='BadTopic' ? 'Bundle ID 가 맞지 않아요'
+        : why==='Unregistered' ? '앱이 지워진 기기예요'
+        : `보내지 못했어요${why?' · '+why:''}`);
+  }catch(e){ toast('보내지 못했어요 · 서버를 확인해 주세요'); }
 }
 async function setGender(id, name, g){
   try{ await api('/admin/users/'+id+'/gender',{method:'POST',body:JSON.stringify({gender:g})});
