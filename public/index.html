@@ -2140,11 +2140,12 @@
     font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;
     justify-content:center;margin-top:2px }
   /* ── 오픈매치 목록 (C안 · 한 줄 헤더 + 히어로 카드) ── */
-  .omhead{ display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px }
-  .omhead-l{ display:flex;align-items:baseline;gap:9px;cursor:pointer;min-width:0 }
-  .omhead-t{ font-size:21px;font-weight:800;letter-spacing:-.04em;flex:none }
-  .omhead-r{ font-size:12.5px;font-weight:600;color:var(--gray);overflow:hidden;
+  .omhead{ display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px }
+  .omhead-l{ display:flex;align-items:center;gap:5px;cursor:pointer;min-width:0 }
+  .omhead-p{ display:flex;color:var(--coral-d);flex:none }
+  .omhead-r{ font-size:14px;font-weight:700;letter-spacing:-.025em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap }
+  .omhead-a{ font-size:10px;color:var(--gray);flex:none }
   .omtchip{ display:flex;align-items:center;gap:5px;background:var(--felt);border-radius:14px;
     padding:5px 10px;flex:none;cursor:pointer }
   .omtchip-c{ width:12px;height:12px;border-radius:4px;flex:none }
@@ -19629,7 +19630,7 @@ function matchCards(list){
     if(F.disc && (m.disc||'mixed')!==F.disc) return false;
     return true;
   });
-  if(!rows.length) return omEmpty(true, list.length);
+  if(!rows.length) return omEmpty(true, list.length);   // list.length = 조건을 풀면 나오는 수
 
   const need=m=>m.need||((m.mode==='managed')?8:4);
   const cur =m=>(m.fill&&m.fill.n!=null)?m.fill.n:(m.cur||0);
@@ -19713,9 +19714,9 @@ function omLeftText(m){
 function omEmpty(filtered, total){
   if(filtered) return `<div class="omempty">
     <div class="omempty-t">이 조건에는 없어요</div>
-    <div class="omempty-s">${esc(omFilterText())}(으)로 찾고 있어요.</div>
+    <div class="omempty-s">${esc(omFilterText())} 조건으로 찾고 있어요.</div>
     <div class="omempty-a">
-      ${total?`<div onclick="clearOmF()"><b>조건 모두 지우기</b><span>${total}경기</span></div>`:''}
+      ${total?`<div onclick="clearOmF()"><b>조건 모두 지우기</b><span>${total}경기 보기</span></div>`:''}
       <div onclick="openOmRegion()"><b>다른 지역 보기</b><span>지역 바꾸기</span></div>
     </div></div>`;
   return `<div class="omempty">
@@ -21725,10 +21726,13 @@ async function renderMatch(){
   const loading = typeof OM_LIST==='undefined' || (OM_LIST._pending && !OM_LIST.length);
   /* 지역은 한 줄로 — 셀렉트 박스 두 개가 나란히 서면 화면 위쪽이 무거워진다.
      지금 고른 곳만 보여주고, 누르면 그때 고르게 한다. */
+  /* 화면 제목은 위(h2.t)가 이미 갖고 있다 — 여기서는 지역과 티어만 둔다.
+     제목을 한 번 더 쓰면 같은 말이 두 줄 겹친다. */
   h+=`<div class="omhead">
         <div class="omhead-l" onclick="openOmRegion()">
-          <span class="omhead-t">오픈매치</span>
-          <span class="omhead-r">${sd ? esc(sd + (sg ? ' · ' + sg : '')) : '전국'} ▾</span></div>
+          <span class="omhead-p">${ic('pin',14,'currentColor')}</span>
+          <span class="omhead-r">${sd ? esc(sd + (sg ? ' · ' + sg : '')) : '전국'}</span>
+          <span class="omhead-a">▾</span></div>
         ${omTierChip()}
       </div>
       ${omFilterBar()}
