@@ -2110,6 +2110,42 @@
             font-weight:600;color:#fff;font-family:inherit;white-space:nowrap;cursor:pointer }
   .omh-row select{ flex:1;min-width:0;border:1.5px solid var(--line);border-radius:11px;padding:9px 11px;
                    font-size:12.5px;font-family:inherit;font-weight:500;background:#fff }
+  /* ── 오픈매치 목록 (티어 개편) ── */
+  .omtier{ display:flex;align-items:center;gap:12px;background:var(--violet);color:#fff;
+    border-radius:16px;padding:13px 15px;margin:12px 0 14px;cursor:pointer }
+  .omtier-i{ width:32px;height:32px;border-radius:10px;background:var(--ink);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:12px }
+  .omtier-b{ flex:1 }
+  .omtier-t{ font-size:13.5px;font-weight:700;letter-spacing:-.02em }
+  .omtier-s{ font-size:11.5px;opacity:.85;font-weight:500;margin-top:1px }
+  .omtier-a{ opacity:.8;font-size:16px }
+  .omseg{ display:flex;gap:5px;margin-bottom:2px }
+  .omseg b{ flex:1;text-align:center;font-size:12.5px;font-weight:600;padding:9px 0;
+    border-radius:11px;background:var(--felt);color:var(--gray);cursor:pointer;transition:.14s }
+  .omseg b.on{ background:var(--coral);color:#fff;box-shadow:0 2px 8px rgba(236,106,46,.24) }
+  .omsub{ display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid var(--line);margin:10px 0 14px }
+  .omtabs{ display:flex;gap:16px }
+  .omtt{ font-size:13px;font-weight:600;color:var(--lgray);padding:0 1px 9px;cursor:pointer;
+    letter-spacing:-.02em;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.14s }
+  .omtt.on{ color:var(--ink);border-bottom-color:var(--ink) }
+  .omsort{ font-size:12px;font-weight:600;color:var(--gray);padding-bottom:9px;cursor:pointer }
+  .omc-sec{ font-size:11.5px;color:var(--lgray);font-weight:500;margin:4px 0 9px 2px }
+  .omc{ background:#fff;border:1px solid var(--line);border-radius:18px;padding:15px 16px;
+    margin-bottom:12px;cursor:pointer;box-shadow:0 1px 2px rgba(20,18,12,.03) }
+  .omc.done{ opacity:.5 }
+  .omc-h{ display:flex;align-items:flex-start;justify-content:space-between;gap:10px }
+  .omc-lo{ font-size:15px;font-weight:600;letter-spacing:-.02em }
+  .omc-pr{ font-size:16px;font-weight:800;letter-spacing:-.035em;flex:none }
+  .omc-pr i{ font-size:12px;font-weight:600;font-style:normal;margin-left:1px }
+  .omc-wh{ font-size:12.5px;color:var(--gray);font-weight:500;margin-top:3px }
+  .omc-mt{ font-size:12px;color:var(--lgray);font-weight:500;margin-top:9px;letter-spacing:-.02em }
+  .omc-fl{ height:4px;border-radius:3px;background:var(--felt);margin-top:11px;overflow:hidden }
+  .omc-fl i{ display:block;height:100%;border-radius:3px;background:var(--coral) }
+  .omc-b{ display:flex;align-items:center;justify-content:space-between;margin-top:8px }
+  .omc-lf{ font-size:12.5px;font-weight:700;color:var(--coral-d);letter-spacing:-.02em }
+  .omc-lq{ font-size:12.5px;font-weight:500;color:var(--gray) }
+  .omc-cl{ font-size:11px;color:var(--lgray);font-weight:500 }
   .omh-pay{ font-size:11.5px;font-weight:400;color:var(--lgray);line-height:1.55;
             border-top:1px solid #f2efe9;padding-top:10px;margin-bottom:12px }
   .omh-pay b{ color:#57503f;font-weight:600 }
@@ -19525,35 +19561,90 @@ function matchCards(list){
       <div class="et">아직 열린 매치가 없어요</div>
       <div class="es">매니저가 구장 시간을 잡으면<br>여기에 올라와요.</div></div>`;
   }
-  let h='<div class="omls">';
-  list.forEach(m=>{
-    m.past = m.start_at ? (Date.parse(m.start_at) < Date.now()) : false;
-    const st = omStatus(m);
-    const d  = m.start_at ? new Date(m.start_at) : null;
-    const day = d && !isNaN(d) ? d.getDate() : '–';
-    const wd  = d && !isNaN(d) ? WD[d.getDay()] : '';
-    const hh  = x => String(x).padStart(2,'0');
-    const time = (d && !isNaN(d))
-      ? `${hh(d.getHours())}:${hh(d.getMinutes())}${m.end_at&&!isNaN(Date.parse(m.end_at))
-          ? `–${hh(new Date(m.end_at).getHours())}:${hh(new Date(m.end_at).getMinutes())}` : ''}`
-      : esc(m.dt||'시간 미정');
-    const reg = regionText(m);
-    const meta = [reg||null, m.courts?`${m.courts}코트`:null, `${m.cur}/${m.cap}명`]
-      .filter(Boolean).join(' · ');
-    h+=`<div class="omr${st.k==='done'?' done':''}" onclick="openOmDetail(${m.id})">
-      <div class="omr-d"><b>${day}</b><i>${wd}</i></div>
-      <div class="omr-m">
-        <div class="omr-tm">${time}</div>
-        <div class="omr-lo">${esc(m.loc||'')}</div>
-        <div class="omr-mt">${esc(meta)}</div>
-      </div>
-      <div class="omr-r">
-        <div class="omr-pr">${m.price?m.price.toLocaleString():'무료'}${m.price?'<i>원</i>':''}</div>
-        <span class="omr-st ${st.k}">${m.joined?'참가중':st.t}</span>
-      </div></div>`;
+  /* 자율/운영 · 종목으로 걸러낸다 — 서버가 내려준 mode·disc 를 그대로 쓴다 */
+  const F=state._omF||{};
+  let rows=list.filter(m=>{
+    if(F.mode && (m.mode||'self')!==F.mode) return false;
+    if(F.disc && (m.disc||'mixed')!==F.disc) return false;
+    return true;
   });
-  return h+'</div>';
+  /* 정렬 — 곧 열릴 것 먼저, 나머지는 날짜순.
+     인기순으로만 정렬하면 빈 매치가 영영 안 보여 아무도 신청하지 않고 결국 취소된다. */
+  const need=m=>m.need||((m.mode==='managed')?8:4);
+  const cur =m=>(m.fill&&m.fill.n!=null)?m.fill.n:(m.cur||0);
+  const left=m=>Math.max(0,need(m)-cur(m));
+  const tms =m=>{const t=Date.parse(m.start_at||''); return isNaN(t)?9e15:t;};
+  if(F.sort==='hot') rows.sort((a,b)=>cur(b)-cur(a)||tms(a)-tms(b));
+  else rows.sort((a,b)=>tms(a)-tms(b));
+
+  const soon = F.sort==='hot' ? [] : rows.filter(m=>!m.past && left(m)===1);
+  const rest = F.sort==='hot' ? rows : rows.filter(m=>!soon.includes(m));
+
+  const DISC={mixed:'혼복',men:'남복',women:'여복'};
+  const card = m => {
+    m.past = m.start_at ? (Date.parse(m.start_at) < Date.now()) : false;
+    const d  = m.start_at ? new Date(m.start_at) : null;
+    const ok = d && !isNaN(d);
+    const hh = x => String(x).padStart(2,'0');
+    const when = ok
+      ? `${WD[d.getDay()]} ${d.getMonth()+1}/${d.getDate()} · ${hh(d.getHours())}:${hh(d.getMinutes())}`
+      : esc(m.dt||'시간 미정');
+    const dur = (ok && m.end_at && !isNaN(Date.parse(m.end_at)))
+      ? ` · ${Math.round((Date.parse(m.end_at)-d)/36e5*10)/10}시간` : '';
+    const n=cur(m), N=need(m), pct=Math.min(100,Math.round(n/Math.max(1,N)*100));
+    const price = m.price_base || m.price || 0;
+    /* 남은 자리는 성별로 적는다 — 그냥 "1자리"라고 쓰면 남성이 눌렀다가 막혀 되돌아 나온다 */
+    let leftTxt='', hot=false;
+    if(m.past){ leftTxt='지난 매치'; }
+    else if(left(m)===0){ leftTxt='모집 마감'; }
+    else if((m.disc||'mixed')==='mixed' && (m.left_m!=null||m.left_f!=null)){
+      const a=[]; if(m.left_m) a.push(`남성 ${m.left_m}자리`); if(m.left_f) a.push(`여성 ${m.left_f}자리`);
+      leftTxt=a.join(' · ')||`${n}/${N}명`; hot=left(m)<=1;
+    } else { leftTxt = left(m)<=1 ? `${left(m)}자리 남음` : `${n}/${N}명`; hot=left(m)<=1; }
+    const meta=[DISC[m.disc||'mixed'], `${m.courts||1}코트 ${m.mode==='managed'?'운영':'자율'}`,
+      omTierRange(m)].filter(Boolean).join(' · ');
+    return `<div class="omc${m.past?' done':''}" onclick="openOmDetail(${m.id})">
+      <div class="omc-h">
+        <div class="omc-lo">${esc(m.loc||'')}</div>
+        <div class="omc-pr">${price?price.toLocaleString():'무료'}${price?'<i>원</i>':''}</div>
+      </div>
+      <div class="omc-wh">${esc(when)}${dur}</div>
+      <div class="omc-mt">${esc(meta)}</div>
+      <div class="omc-fl"><i style="width:${pct}%"></i></div>
+      <div class="omc-b">
+        <span class="${hot&&!m.past?'omc-lf':'omc-lq'}">${m.joined?'참가 중':esc(leftTxt)}</span>
+        <span class="omc-cl">${omCloseText(m)}</span>
+      </div></div>`;
+  };
+  let h='';
+  if(soon.length) h+=`<div class="omc-sec">한 자리만 더 모이면 열려요</div>${soon.map(card).join('')}`;
+  if(rest.length) h+=`${soon.length?'<div class="omc-sec">가까운 날짜</div>':''}${rest.map(card).join('')}`;
+  if(!soon.length && !rest.length)
+    h=`<div class="empty" style="padding:36px 20px"><div class="et">조건에 맞는 매치가 없어요</div>
+       <div class="es">필터를 바꿔보세요.</div></div>`;
+  return h;
 }
+/* 티어 범위를 사람이 읽는 말로 — 서버는 키(fut·chal)로 준다 */
+const TIER_KO={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'투어',gs:'그랜드슬램'};
+function omTierRange(m){
+  const a=TIER_KO[m.tier_min]||'', b=TIER_KO[m.tier_max]||'';
+  if(a&&b) return a===b?a:`${a}~${b}`;
+  return a||b||'';
+}
+/* 언제까지 모여야 하는지 — 마감이 코앞이면 그렇게 말해준다 */
+function omCloseText(m){
+  const t=Date.parse(String(m.close_at||'').slice(0,16)+':00+09:00');
+  if(isNaN(t)) return '';
+  const h=(t-Date.now())/36e5;
+  if(h<0) return '마감됨';
+  if(h<1) return '곧 마감';
+  if(h<24) return `오늘 ${String(new Date(t).getHours()).padStart(2,'0')}:00 마감`;
+  if(h<48) return '내일 마감';
+  return `${new Date(t).getMonth()+1}/${new Date(t).getDate()} 마감`;
+}
+function setOmF(k,v){ state._omF=state._omF||{}; state._omF[k]=(state._omF[k]===v?'':v);
+  const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
+  const bar=document.getElementById('omFilter'); if(bar) bar.outerHTML=omFilterBar(); }
 function copyText(t){
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject())
     .then(()=>toast('계좌를 복사했어요'))
@@ -21309,6 +21400,8 @@ async function renderMatch(){
         </select>
       </div>
       <div class="omh-pay"><b>참가비는 앱에서 결제해요</b> · 신청과 동시에 결제되고 30분 안에는 취소할 수 있어요</div>
+      ${omTierBanner()}
+      ${omFilterBar()}
       <div id="omList">${(SERVER_OK && (!window.OM_LOADED || Date.now()-(window.OM_TS||0)>30e3)) ? skelCards(3) : matchCards(OM_LIST)}</div>
       <div class="omh-mgr">매치는 <b>매니저</b>가 제휴 구장의 코트를 잡아 열어요.
         <span onclick="openManagerGuide()">매니저가 되려면 ›</span></div>`;
@@ -21322,9 +21415,46 @@ async function renderMatch(){
     syncGameDiary(OM_LIST);
     window.OM_LOADED = true; window.OM_TS = Date.now();
     const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
+    loadMyTier();
   }catch(e){}
 }
 
+/* 필터는 두 단, 모양을 다르게 둔다 — 칩을 다섯 개 늘어놓으면
+   무엇이 상위 구분인지 알 수 없다. 모양이 다르면 위계가 보인다. */
+function omFilterBar(){
+  const F=state._omF||{};
+  const seg=(k,t)=>`<b class="${(F.mode||'')===k?'on':''}" onclick="setOmF('mode','${k}')">${t}</b>`;
+  const tab=(k,t)=>`<span class="omtt ${(F.disc||'')===k?'on':''}" onclick="setOmF('disc','${k}')">${t}</span>`;
+  return `<div id="omFilter">
+    <div class="omseg">${seg('','전체')}${seg('self','자율')}${seg('managed','운영')}</div>
+    <div class="omsub">
+      <div class="omtabs">${tab('mixed','혼복')}${tab('men','남복')}${tab('women','여복')}</div>
+      <span class="omsort" onclick="setOmF('sort','hot')">${F.sort==='hot'?'인기순':'곧 마감'} \u25be</span>
+    </div></div>`;
+}
+/* 내 티어 — 상태에 따라 문구만 바뀐다. 사람들은 자리를 기억하지 문구를 기억하지 않는다. */
+let MY_TIER=null;
+function omTierBanner(){
+  if(!SERVER_OK||!authToken()) return '';
+  const t=MY_TIER;
+  const line = !t ? '내 실력에 맞는 매치를 찾아드려요'
+    : t.placed ? `내 티어는 ${esc(t.label)}예요`
+    : (t.need===1 ? '1경기만 더 뛰면 배치돼요' : `${t.need||2}경기 더 뛰면 배치돼요`);
+  const sub = !t ? '티어가 무엇인지 보기'
+    : t.placed ? (t.settled?'같은 티어끼리 붙여드려요':'아직 경기가 적어 자주 바뀔 수 있어요')
+    : '경기 결과로만 정해져요 — 자세히';
+  return `<div class="omtier" onclick="openTierGuide()">
+    <div class="omtier-i">\u25b2</div>
+    <div class="omtier-b"><div class="omtier-t">${line}</div><div class="omtier-s">${sub}</div></div>
+    <div class="omtier-a">\u203a</div></div>`;
+}
+async function loadMyTier(){
+  if(!SERVER_OK||!authToken()) return;
+  try{ MY_TIER=await api('/me/tier');
+    const b=document.querySelector('.omtier'); if(b) b.outerHTML=omTierBanner();
+  }catch(e){}
+}
+function openTierGuide(){ toast('티어 안내는 다음 단계에서 붙여요'); }
 function setOmSido(v){ state._omSido=v; state._omSigungu=''; renderMatch(); }
 function setOmSigungu(v){ state._omSigungu=v; renderMatch(); }
 
