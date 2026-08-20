@@ -45,6 +45,9 @@ body{background:var(--paper);color:var(--ink);
 .tag{display:inline-block;font-size:var(--t0);font-weight:600;border-radius:20px;padding:2px 7px;
   background:#f4f1ea;color:var(--gray);margin-left:var(--s2);vertical-align:1px;white-space:nowrap}
 .tag.f{background:#fdeef4;color:#c94378} .tag.m{background:#eaf2ff;color:#2b62c9}
+/* 가입 경로 — 각 서비스 색을 옅게 빌려 쓴다. 성별 딱지와 나란히 놓여도 안 헷갈린다. */
+.tag.k{background:#fef4d4;color:#8a6a12} .tag.a{background:#f0eeec;color:#3a352d}
+.tag.go{background:#eef3fb;color:#3b6bb5}
 .tag.o{background:#fceee4;color:var(--coral-d)} .tag.g{background:#edf2ec;color:#4c7a5c}
 .seg3{display:flex;gap:3px;flex:none}
 .b{font-size:var(--t1);font-weight:500;border-radius:9px;padding:5px 10px;cursor:pointer;
@@ -211,10 +214,17 @@ async function drawUsers(){
       const g=gLabel(u.gender);
       const cls=g==='여성'?'f':g==='남성'?'m':'';
       /* 성별이 어디서 온 값인지 — 본인이 정한 값과 클럽에서 고쳐 둔 값은 뜻이 다르다 */
-      const src=u.gender_src==='club' ? '클럽에서 정함' : '';
+      const src=u.gender_src==='club' ? '클럽 지정' : '';
+      /* 성별과 가입 경로는 다른 정보다 — 한 자리를 나눠 쓰면 성별이 정해진 회원의
+         가입 경로가 사라진다(실제로 kakao·google 이 안 보였다). 딱지를 둘로 나눈다. */
+      const PROV={kakao:'카카오', google:'구글', apple:'애플', dev:'개발'};
+      const pv=PROV[u.provider]||u.provider||'';
+      const pcls=u.provider==='kakao'?'k':u.provider==='apple'?'a':u.provider==='google'?'go':'';
       return `<div class="rw">
-        <div class="nm"><b>${esc(u.name||'이름 없음')}<span class="tag ${cls}">${g||u.provider||'—'}</span></b>
-          <span>#${u.id} · ${esc(u.sport||'')} · 레이팅 ${fmt(u.rating)} · ${ymd(u.created_at)} 가입${
+        <div class="nm"><b>${esc(u.name||'이름 없음')}
+          ${g?`<span class="tag ${cls}">${g}</span>`:''}
+          ${pv?`<span class="tag ${pcls}">${esc(pv)}</span>`:''}</b>
+          <span>#${u.id} · ${ymd(u.created_at)} 가입 · 레이팅 ${fmt(u.rating)}${
             src?` · ${src}`:''}</span></div>
         <div class="seg3">
           <button class="b ${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남</button>
