@@ -2766,7 +2766,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.0-0818d';
+const BUILD='v1.1.0-0819b';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -16753,6 +16753,10 @@ async function cb2Gen(mode){
   /* gender 는 '대진 성별' — 프로필 성별과 다를 수 있다(입문 남성을 여성 코트로 보내는 경우) */
   const ps=sel.map(p=>({id:p.user_id,name:p.name,gender:cbSexOf(p),sexAdj:cbSexAdj(p),
       grade:p.grade||'',rating:p.rating||1000,
+      /* 게스트는 구력(개월)을 직접 받는다 — 여기서 안 들고 오면 대진에도 저장되지 않아
+         나중에 평균 등급을 낼 근거가 사라진다(게스트만 빈칸이 되던 원인). */
+      months:(p.months!=null ? p.months : undefined),
+      sport_started:p.sport_started||undefined,
       guest:cbIsGuest(p),                 // 월례대회에서 게스트를 빼려면 여기까지 들고 와야 한다
       late:CB2_LATE.has(String(p.user_id))}))
     .sort((a,b)=>(gRank(b.grade)-gRank(a.grade))||(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0)));
@@ -16788,6 +16792,8 @@ async function cb2Gen(mode){
      저장할 때 is_guest 만 보면 늘 빈 값이 되어, 나중에 게스트를 구분할 수 없다. */
   const one=p=>({id:p.id, name:p.name, gender:p.gender,
     sexAdj:p.sexAdj||undefined,
+    /* 게스트는 명단에 없어 나중에 등급을 되찾을 길이 구력뿐이다 */
+    months:(p.months!=null ? p.months : undefined),
     is_guest:(p.guest||p.is_guest||p.role==='guest') ? 1 : undefined});
   /* 등급은 양 팀 모두 저장한다 — 예전에는 teamB 에만 넣어서
      화면에도 오른쪽 팀 등급만 나왔다(왼쪽은 빈 줄). */
@@ -18548,8 +18554,12 @@ function cb2CanScore(gi){
   const me=String((state.serverUser||{}).id||'');
   if(!me) return false;
   const inGame=[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
-  if(inGame) return true;
   const empty=(g.sa==null || g.sb==null);
+  /* 이미 들어간 점수를 고치는 것은 운영진 몫이다 — 시즌 랭킹이 조용히 바뀌기 때문이다.
+     넣은 사람만 10분 안에 되돌릴 수 있다(잘못 넣었을 때 바로잡을 길은 남긴다).
+     서버도 같은 규칙이라, 화면에서 막지 않으면 눌러도 실패하는 버튼이 된다. */
+  if(!empty) return !!(String(g.by||'')===me && g.atMs && Date.now()-g.atMs < 10*60*1000);
+  if(inGame) return true;
   /* 한울·월례는 조가 코트에 고정이다 — 다른 코트 사람은 그 경기를 못 봤다.
      그래서 같은 코트에서 뛴 사람만 대신 넣을 수 있다(서버도 같은 규칙). */
   const fixedMode=(CB2.mode==='hanul' || CB2.mode==='monthly');
@@ -18558,8 +18568,7 @@ function cb2CanScore(gi){
   const helper = soloMode ? false : (fixedMode
     ? gs.some(x=>cbAt(x)===cbAt(g) && [...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me))
     : gs.some(x=>[...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me)));
-  if(helper && empty) return true;                          // 대신 넣어주기
-  return !!(String(g.by||'')===me && g.atMs && Date.now()-g.atMs < 10*60*1000);
+  return !!(helper && empty);                               // 대신 넣어주기
 }
 async function cb2ScoreSave(){
   const gi=SC_EDIT.gi, g=(CB2&&CB2.games||[])[gi]; if(!g) return;
@@ -18586,7 +18595,8 @@ async function cb2ScoreSave(){
     const msg=String(e.message||'');
     const k=(()=>{ try{ return JSON.parse(msg).error; }catch(_){ return ''; } })()
       || (msg.match(/player_only|bracket_only|edit_locked|court_only|zero_score/)||[''])[0];
-    toast(k==='zero_score'   ? '0 : 0 은 저장할 수 없어요'
+    toast(k==='edit_locked'  ? '들어간 점수는 운영진이 고칠 수 있어요'
+        : k==='zero_score'   ? '0 : 0 은 저장할 수 없어요'
         : k==='court_only'   ? '같은 코트에서 뛴 분이나 운영진이 넣을 수 있어요'
         : k==='bracket_only' ? '오늘 대진에 있는 회원만 대신 넣을 수 있어요'
         : k==='edit_locked'  ? '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요'
