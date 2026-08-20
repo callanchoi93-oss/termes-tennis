@@ -3299,9 +3299,14 @@ function apnsSend(token, msg, hostIdx) {
       try { client.close(); } catch {}
       if (status === 200) return resolve({ ok: true });
       let reason = ''; try { reason = (JSON.parse(out) || {}).reason || ''; } catch {}
-      /* BadDeviceToken 은 <다른 환경의 토큰>이라는 뜻이다 — 반대쪽 서버로 한 번 더 */
-      if ((status === 400 && reason === 'BadDeviceToken') && !hostIdx)
+      /* 둘 다 <다른 환경의 토큰>이라는 뜻이다 — 반대쪽 서버로 한 번 더.
+         BadDeviceToken(400) 은 문서에 있고,
+         BadEnvironmentKeyInToken(403) 은 문서에 없지만 같은 상황에서 나온다
+         (개발 빌드 토큰 + 프로덕션 키). 예전에는 400 만 봐서 여기서 그냥 끝났다. */
+      if (!hostIdx && (reason === 'BadDeviceToken' || reason === 'BadEnvironmentKeyInToken')) {
+        console.log('[apns] 환경이 안 맞아요 —', reason, '· 샌드박스로 다시 보냅니다');
         return resolve(apnsSend(token, msg, 1));
+      }
       resolve({ ok: false, status, reason });
     });
     req.end(body);
@@ -3319,8 +3324,11 @@ async function sendPush(userId, msg, opts) {
   if (apnsReady()) {
     rows.filter(r => r.platform === 'ios').forEach(({ token }) => {
       apnsSend(token, msg).then(r => {
-        /* Unregistered = 앱을 지웠거나 토큰이 만료됐다 — 표에서 지운다 */
-        if (!r.ok && (r.reason === 'Unregistered' || r.reason === 'BadDeviceToken'))
+        /* Unregistered = 앱을 지웠거나 토큰이 만료됐다 — 표에서 지운다.
+           BadDeviceToken 으로는 더 이상 지우지 않는다: 위에서 양쪽 서버를 다 시도하므로
+           여기 도달했다면 <정말 죽은 토큰>과 <아직 설정이 덜 된 상태>를 구분할 수 없다.
+           개발 중에 방금 등록한 기기가 조용히 사라지는 편이 훨씬 나쁘다. */
+        if (!r.ok && r.reason === 'Unregistered')
           db.prepare('DELETE FROM devices WHERE token=?').run(token);
         else if (!r.ok) console.error('[apns]', r.status, r.reason);
       }).catch(() => {});
