@@ -183,6 +183,12 @@ async function drawStats(){
       <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
         <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
         ${ios?'':`<span class="b">확인 필요</span>`}</div>
+      <div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
+        <span>${(push.tries||[]).length
+          ? push.tries.slice(0,2).map(t=>`${ymd(t.at)} · #${t.user_id} · ${esc(t.platform)} · ${esc(t.result)}${
+              t.extra?' ('+esc(t.extra)+')':''}`).join(' / ')
+          : '아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요'}</span></div>
+        ${(push.tries||[]).length?'':`<span class="b">앱 확인</span>`}</div>
       ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
         <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
         <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
@@ -206,7 +212,9 @@ async function drawUsers(){
     <div class="srch">
       <input id="uq" value="${esc(UQ)}" placeholder="이름으로 찾기"
         onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
-      <button onclick="UQ=($('uq')||{}).value.trim();render()">찾기</button></div>
+      <button onclick="UQ=($('uq')||{}).value.trim();render()">찾기</button>
+      <button onclick="dlUsers()" style="background:#fff;color:var(--gray);
+        border:1px solid var(--line)">내려받기</button></div>
     ${noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
       <u onclick="fillGender()">클럽 값으로 채우기</u>
       <u onclick="UONLY='${UONLY==='nog'?'':'nog'}';render()" style="margin-left:var(--s3)">${UONLY==='nog'?'전체':'모아 보기 ›'}</u></div>`:''}
@@ -446,6 +454,21 @@ async function fillGender(){
   catch(e){ toast('채우지 못했어요 · 서버를 확인해 주세요'); }
 }
 /* 그 회원 폰으로 시험 알림을 보낸다 — 실제로 도착하는지가 유일한 확인 방법이다 */
+/* 회원 명단을 CSV 로 내려받는다 — 나중에 DB 로 옮기거나 엑셀에서 훑어보게.
+   fetch 로 받아야 관리자 키를 헤더에 실을 수 있다(주소창으로 열면 403). */
+async function dlUsers(){
+  try{
+    toast('명단을 만들고 있어요');
+    const r=await fetch('/admin/users.csv',{headers:{'x-admin-key':key()}});
+    if(!r.ok) throw new Error(r.status);
+    const blob=await r.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`matsu-users-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  }catch(e){ toast('내려받지 못했어요'); }
+}
 async function pushTest(id, name){
   try{
     const r=await api('/admin/push-test?user='+id,{method:'POST'});
