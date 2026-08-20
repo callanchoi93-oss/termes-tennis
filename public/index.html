@@ -25152,16 +25152,9 @@ function _renderMeCore(){
     <div style="font-size:14px;font-weight:500">${state._noshow.blocked?'🚫 오픈매치 참가 제한 중':'⚠️ 노쇼 기록'} ${state._noshow.count}/${state._noshow.limit}</div>
     <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">
       ${state._noshow.blocked?'최근 90일 기록이 지나면 자동으로 풀려요':'3회가 되면 90일간 오픈매치 참가가 제한돼요'}</div></div>`:''}
-  ${/* 잘 되고 있으면 카드를 아예 안 보여준다 — 켜져 있는데 '켜기' 버튼이 보이면 안 된다.
-        손볼 게 있을 때만 나타난다. */''}
-  ${SERVER_OK&&IS_NATIVE&&PUSH_STATE!=='ok'&&PUSH_STATE!=='wait'?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
-    <div><div style="font-size:14px;font-weight:500">${PUSH_STATE==='denied'?'알림이 꺼져 있어요 🔕':'알림 받기 🔔'}</div>
-      <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${
-        PUSH_STATE==='denied' ? '대진·회비 소식을 놓치고 있어요'
-        : PUSH_STATE==='fail' ? ('등록하지 못했어요 · '+(PUSH_WHY||'다시 눌러주세요'))
-        : '대진표가 나와도 모르고 지나칠 수 있어요'}</div></div>
-    <button class="om-act primary" onclick="askNativePush()">${
-      PUSH_STATE==='denied'?'설정 열기':PUSH_STATE==='fail'?'다시 시도':'켜기'}</button></div>`:''}
+  ${/* 알림 받기 카드는 뺐다 — 앱을 켜면 시스템 팝업으로 한 번 물어보고,
+        허용하면 로그인할 때 알아서 등록된다. 사용자가 누를 일이 없다.
+        (되살리려면 이 자리에 카드를 다시 넣고 askNativePush() 를 붙이면 된다) */''}
 
   ${SERVER_OK&&CFG.vapid_public&&!IS_NATIVE?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
     <div><div style="font-size:14px;font-weight:500">알림 받기 🔔</div>
