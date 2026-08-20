@@ -2110,6 +2110,23 @@
             font-weight:600;color:#fff;font-family:inherit;white-space:nowrap;cursor:pointer }
   .omh-row select{ flex:1;min-width:0;border:1.5px solid var(--line);border-radius:11px;padding:9px 11px;
                    font-size:12.5px;font-family:inherit;font-weight:500;background:#fff }
+  /* ── 오픈매치 내 차례 카드 (클럽 대진 규칙 그대로) ── */
+  .ombme{ background:#fff;border:1px solid #eee9e0;border-radius:18px;padding:18px;margin-top:10px;
+    box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06) }
+  .ombme-h{ display:flex;align-items:center;gap:7px }
+  .ombme-c{ flex:none;font-size:12px;font-weight:600;line-height:1.45;border-radius:20px;
+    padding:3px 11px;background:var(--coral);color:#fff }
+  .ombme-n{ font-size:12px;font-weight:500;color:#a8a29a }
+  .ombme-b{ font-size:21px;font-weight:700;letter-spacing:-.04em;margin-top:11px;line-height:1.38 }
+  .ombme-m{ font-size:13px;font-weight:500;color:#6b6357;line-height:1.55;margin-top:7px }
+  .ombme-s{ margin-top:11px;border-top:1px solid var(--line);padding-top:11px }
+  .ombme-s b{ font-weight:700 }
+  .ombme-s div{ display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:#4a463f;
+    font-weight:500;line-height:1.55;margin-bottom:6px }
+  .ombme-s div:last-child{ margin-bottom:0 }
+  .ombme-s i{ width:17px;height:17px;border-radius:50%;background:var(--ink);color:#fff;flex:none;
+    font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;
+    justify-content:center;margin-top:2px }
   /* ── 오픈매치 목록 (티어 개편) ── */
   .omloc{ display:inline-flex;align-items:center;gap:6px;background:var(--cream2);
     border-radius:20px;padding:8px 14px;margin:2px 0 4px;cursor:pointer }
@@ -20113,6 +20130,27 @@ const ICONS={msg:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACq
 const im=(k,s)=>`<img src="${ICONS[k]}" style="width:${s||18}px;height:${s||18}px;vertical-align:-3px" alt="">`;
 /* ═══ 플랩식 매치 상세 — 카드 탭 시 전체 정보 + 모든 액션 ═══ */
 function openMatchCard(id){ openOmDetail(id); }
+/* 매치가 확정되면 맨 위에 알린다 — 차액 환급도 같은 순간에 말해야
+   "싸졌다"가 좋은 소식으로 읽힌다. 따로 알리면 정정 공지처럼 보인다. */
+function omConfirmBox(m){
+  if(m.status!=='confirmed') return '';
+  const base=m.price_base||0, fin=m.price_now||base;
+  const diff=Math.max(0, base-fin);
+  const n=(m.fill&&m.fill.n)||m.cur||0;
+  return `<div style="background:var(--coral-s);border:1px solid #f4ddcc;border-radius:16px;
+    padding:15px 16px;margin:12px 0">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div><b style="font-size:15px;color:var(--coral-d)">매치가 확정됐어요</b>
+        ${diff?`<div style="font-size:12px;color:#9a6544;font-weight:500;margin-top:4px;line-height:1.5">
+          ${n}명이 모여 참가비가 ${fin.toLocaleString()}원으로 내려갔어요.</div>`:''}</div>
+      <span style="flex:none;font-size:11px;font-weight:600;background:#fff;color:var(--coral-d);
+        border-radius:7px;padding:3px 8px">확정</span></div>
+    ${diff?`<div style="border-top:1px solid #f2ddcd;margin-top:12px;padding-top:11px;
+      display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:#9a6544;font-weight:500">돌려드린 캐시</span>
+      <b style="font-size:14px;color:var(--coral-d)">+${diff.toLocaleString()}원</b></div>`:''}
+  </div>`;
+}
 /* ── 상세 화면 조각들 ─────────────────────────────
    남은 자리는 성별로 적는다. 그냥 "1자리"라고 쓰면
    남성이 눌렀다가 막혀 되돌아 나온다. */
@@ -20185,6 +20223,7 @@ function openOmDetail(id){
     <div class="om-react" style="display:flex;align-items:center;gap:14px;color:var(--lgray)">
       <span style="display:flex;align-items:center;gap:5px">${ic('heart',13)}${m.likes||0}</span>
       <span style="display:flex;align-items:center;gap:5px">${ic('chat',13)}${m.comments||0}</span></div>
+    ${omConfirmBox(m)}
     ${(()=>{
       const base=m.price_base||m.price||0, nowP=m.price_now||base;
       return `<div style="background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
@@ -20626,6 +20665,58 @@ function openOmBracket(id){
   clearInterval(OMB_T);
   OMB_T=setInterval(()=>{ if(document.getElementById('ombv')) drawOmb(); else clearInterval(OMB_T); }, 60000);
 }
+/* ── 내 차례 카드 ─────────────────────────────
+   매니저가 없는 1코트 매치에서는 이 카드가 매니저를 대신한다.
+   클럽 대진의 cbBigCard 와 같은 규칙 — 회원이 볼 것은 흰 종이. */
+function ombMyCard(m, gs, done){
+  const meId=String((state.serverUser||{}).id||'');
+  const meNm=meName();
+  if(!meId && !meNm) return '';
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])]
+    .some(p=>p && (String(p.id)===meId || p.name===meNm));
+  const mine=gs.map((g,gi)=>({...g,gi})).filter(inG);
+  if(!mine.length) return '';
+
+  const running=mine.find(g=>g.startedAt && !done(g));
+  const next=mine.find(g=>!done(g) && !g.startedAt);
+  const myDone=mine.filter(done).length;
+  const who=g=>{
+    const inA=(g.teamA||[]).some(p=>String(p.id)===meId||p.name===meNm);
+    const mate=(inA?(g.teamA||[]):(g.teamB||[])).find(p=>String(p.id)!==meId&&p.name!==meNm);
+    const opp=(inA?(g.teamB||[]):(g.teamA||[])).map(p=>p.name).filter(Boolean).join(' · ');
+    return (mate&&mate.name?`파트너 ${mate.name} · `:'')+(opp?`vs ${opp}`:'');
+  };
+  const wrap=(cap,big,msg,steps)=>`<div class="ombme">
+    <div class="ombme-h"><span class="ombme-c">${esc(cap)}</span>
+      <span class="ombme-n">내 경기 ${myDone}/${mine.length}</span></div>
+    <div class="ombme-b">${big}</div>
+    ${msg?`<div class="ombme-m">${msg}</div>`:''}
+    ${steps||''}</div>`;
+
+  if(running) return wrap('경기 중',
+    `${running.c}번 코트 · ${running.r}번째 게임`,
+    esc(who(running)),
+    `<div class="ombme-s">
+       <div><i>1</i>6게임을 먼저 따면 끝나요 (5-5면 한 게임 더)</div>
+       <div><i>2</i>끝나면 <b>뛴 사람이나 모임장</b>이 점수를 넣어요</div>
+       <div><i>3</i>한 번 넣으면 고칠 수 없어요</div></div>`);
+
+  if(next){
+    /* 그 코트에 내 앞으로 안 끝난 경기가 없으면 지금이 내 차례다 */
+    const ahead=gs.filter(g=>g.c===next.c && !done(g) && g.r<next.r).length;
+    if(!ahead) return wrap('내 차례',
+      `${next.c}번 코트 · ${next.r}번째 게임`,
+      esc(who(next)),
+      `<div class="ombme-s">
+         <div><i>1</i>서브는 먼저 준비된 편이 넣고 한 게임씩 번갈아요</div>
+         <div><i>2</i>6게임 먼저 (5-5면 한 게임 더)</div></div>`);
+    return wrap('곧 나가요',
+      `${next.c}번 코트 · ${next.r}번째 게임`,
+      `앞에 ${ahead}경기 남았어요 · ${esc(who(next))}`);
+  }
+  return wrap('오늘 경기 끝', `${mine.length}경기를 뛰었어요`,
+    '점수가 모두 들어오면 티어에 반영돼요');
+}
 function drawOmb(){
   const m=OMB, isMgr=!!(m.is_host||m.is_manager);
   const {gs,done,rank,live,runG,courts,usable,off,busy}=ombStats();
@@ -20656,6 +20747,7 @@ function drawOmb(){
         if(etaMin>12*60) return '';        // 어제 대진을 열면 엉뚱한 시각이 나온다
         return ` · ${cbClock(new Date(now+etaMin*60000))}쯤`;
       })()}`:'모든 경기 완료'}</span></div></div>`;
+  h+=ombMyCard(m, gs, done);
   h+=omLateBox(m);
   if(over && isMgr) h+=`<div style="display:flex;align-items:center;gap:9px;background:#fdeee6;border-radius:12px;padding:11px 13px;margin-top:8px">
     <span style="font-size:11.5px;font-weight:600;color:var(--coral-d);flex:1">시간 안에 못 끝낼 것 같아요 · 남은 경기를 줄이거나 서둘러 주세요</span></div>`;
