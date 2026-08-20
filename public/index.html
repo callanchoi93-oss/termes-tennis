@@ -2141,11 +2141,10 @@
     justify-content:center;margin-top:2px }
   /* ── 오픈매치 목록 (C안 · 한 줄 헤더 + 히어로 카드) ── */
   .omhead{ display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px }
-  .omhead-l{ display:flex;align-items:center;gap:5px;cursor:pointer;min-width:0 }
-  .omhead-p{ display:flex;color:var(--coral-d);flex:none }
-  .omhead-r{ font-size:14px;font-weight:700;letter-spacing:-.025em;overflow:hidden;
+  .omhead-l{ display:flex;align-items:center;gap:4px;cursor:pointer;min-width:0 }
+  .omhead-r{ font-size:15px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap }
-  .omhead-a{ font-size:10px;color:var(--gray);flex:none }
+  .omhead-a{ font-size:9px;color:var(--lgray);flex:none;margin-top:2px }
   .omtchip{ display:flex;align-items:center;gap:5px;background:var(--felt);border-radius:14px;
     padding:5px 10px;flex:none;cursor:pointer }
   .omtchip-c{ width:12px;height:12px;border-radius:4px;flex:none }
@@ -2189,6 +2188,12 @@
   .omc-lq{ font-size:12.5px;font-weight:500;color:var(--gray) }
   .omc-cl{ font-size:11px;color:var(--lgray);font-weight:500 }
 
+  .ommgr{ display:flex;align-items:center;gap:12px;background:var(--cream2);border-radius:16px;
+    padding:15px 16px;margin:18px 0 8px;cursor:pointer }
+  .ommgr-b{ flex:1;min-width:0 }
+  .ommgr-t{ font-size:13.5px;font-weight:700;letter-spacing:-.02em }
+  .ommgr-s{ font-size:11.5px;color:var(--gray);font-weight:500;margin-top:2px }
+  .ommgr-a{ color:var(--lgray);font-size:16px;flex:none }
   .omempty{ background:var(--cream2);border-radius:20px;padding:30px 22px;text-align:center;margin-bottom:12px }
   .omempty-i{ width:52px;height:52px;border-radius:18px;background:#fff;margin:0 auto 16px;
     display:flex;align-items:center;justify-content:center;color:var(--lgray) }
@@ -19712,13 +19717,32 @@ function omLeftText(m){
 /* 빈 화면 — "없다"는 두 가지 다른 상황이다.
    정말 없는 것과 내가 조건을 좁힌 것. 같은 문구로 답하면 무엇을 해야 할지 모른다. */
 function omEmpty(filtered, total){
-  if(filtered) return `<div class="omempty">
-    <div class="omempty-t">이 조건에는 없어요</div>
-    <div class="omempty-s">${esc(omFilterText())} 조건으로 찾고 있어요.</div>
-    <div class="omempty-a">
-      ${total?`<div onclick="clearOmF()"><b>조건 모두 지우기</b><span>${total}경기 보기</span></div>`:''}
-      <div onclick="openOmRegion()"><b>다른 지역 보기</b><span>지역 바꾸기</span></div>
-    </div></div>`;
+  if(filtered){
+    const F=state._omF||{};
+    /* "넓혀보세요"라고만 하고 눌렀는데 또 비면 그대로 앱을 닫는다.
+       조건을 하나씩 풀었을 때 몇 개가 나오는지 실제로 세어서 붙인다. */
+    const L=OM_LIST||[];
+    const cnt=f=>L.filter(m=>{
+      if(f.mode && (m.mode||'self')!==f.mode) return false;
+      if(f.disc && (m.disc||'mixed')!==f.disc) return false;
+      return true;
+    }).length;
+    const DISC={mixed:'혼복',men:'남복',women:'여복'};
+    const MODE={self:'자율',managed:'운영'};
+    const opts=[];
+    if(F.disc){ const n=cnt({mode:F.mode});
+      if(n) opts.push([`${MODE[F.mode]||'모든'} 매치 전체 보기`,`${n}경기`,`setOmF('disc','${F.disc}')`]); }
+    if(F.mode){ const n=cnt({disc:F.disc});
+      if(n) opts.push([`자율·운영 모두 보기`,`${n}경기`,`setOmF('mode','${F.mode}')`]); }
+    if(total && opts.length<2) opts.push(['조건 모두 지우기',`${total}경기`,'clearOmF()']);
+    opts.push(['다른 지역 보기','지역 바꾸기','openOmRegion()']);
+    return `<div class="omempty">
+      <div class="omempty-t">이 조건에는 없어요</div>
+      <div class="omempty-s">${esc(omFilterText())} 조건으로 찾고 있어요.</div>
+      <div class="omempty-a">${opts.map(([a,b,js])=>
+        `<div onclick="${js}"><b>${esc(a)}</b><span>${esc(b)}</span></div>`).join('')}</div>
+      </div>`;
+  }
   return `<div class="omempty">
     <div class="omempty-i">${ic('swap',24)}</div>
     <div class="omempty-t">아직 열린 코트가 없어요</div>
@@ -19726,7 +19750,7 @@ function omEmpty(filtered, total){
     <button class="btn" style="margin-top:16px" onclick="omWantAlert()">열리면 알려주세요</button>
     </div>
     <div class="omc" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="openTierGuide()">
-      <span class="omtier-i" style="width:34px;height:34px;border-radius:11px;background:var(--coral-s);
+      <span style="width:34px;height:34px;border-radius:11px;background:var(--coral-s);
         color:var(--coral-d);display:flex;align-items:center;justify-content:center;font-size:14px">▲</span>
       <div style="flex:1"><div style="font-size:13.5px;font-weight:700">티어가 뭔가요?</div>
         <div style="font-size:11.5px;color:var(--gray);font-weight:500;margin-top:1px">
@@ -20226,6 +20250,81 @@ const ICONS={msg:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACq
 const im=(k,s)=>`<img src="${ICONS[k]}" style="width:${s||18}px;height:${s||18}px;vertical-align:-3px" alt="">`;
 /* ═══ 플랩식 매치 상세 — 카드 탭 시 전체 정보 + 모든 액션 ═══ */
 function openMatchCard(id){ openOmDetail(id); }
+/* ── 경기 결과 ─────────────────────────────
+   왜 그 티어가 됐는지 근거를 함께 보여준다.
+   티어만 툭 바뀌면 시스템이 고장 난 줄 알거나 아무 의미 없다고 여긴다. */
+const TIER_ORD=['love','fut','chal','tour','gs'];
+const TIER_NM={love:'러브',fut:'퓨처스',chal:'챌린저',tour:'투어',gs:'그랜드슬램'};
+async function openOmResult(id){
+  let r; try{ r=await api(`/open-matches/${id}/result`); }
+  catch(e){ return toast('결과를 불러오지 못했어요'); }
+  const t=r.tier||{}, key=t.key||'love';
+
+  /* 피라미드에서 내 칸만 켠다 — "어디에 놓였는가"를 말하는 화면이라
+     큰 색면보다 위치를 보여주는 편이 맞다. */
+  const W=[26,48,70,92,114], C=['var(--t-gs,#e6e0f5)','var(--t-tour,#f7e0e2)',
+    'var(--t-chal,#dde5f7)','var(--t-fut,#faf0dc)','var(--felt-d)'];
+  const CLIP=['polygon(50% 0,50% 0,100% 100%,0 100%)','polygon(27% 0,73% 0,100% 100%,0 100%)',
+    'polygon(31% 0,69% 0,100% 100%,0 100%)','polygon(24% 0,76% 0,100% 100%,0 100%)',
+    'polygon(21% 0,79% 0,100% 100%,0 100%)'];
+  const idx=4-TIER_ORD.indexOf(key);          // 위에서부터 gs·tour·chal·fut·love
+  const pyr=[0,1,2,3,4].map(i=>{
+    const on=(i===idx);
+    return `<div style="width:${W[i]}px;height:${on?19:15}px;margin:0 auto 3px;
+      background:${on?'var(--coral)':C[i]};opacity:${on?1:.4};clip-path:${CLIP[i]};
+      ${on?'box-shadow:0 3px 12px rgba(236,106,46,.4)':''}"></div>`;
+  }).join('');
+
+  let h=`<div class="om-detail"><div class="sh-top"><h3>경기 결과</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+
+  h+=`<div style="text-align:center;padding:18px 4px 16px">
+    <div class="mini" style="letter-spacing:.09em;font-weight:700;margin-bottom:18px">${
+      r.just_placed?'2경기를 채웠어요':`${esc(r.match.loc||'')}`}</div>
+    ${pyr}
+    <div style="display:flex;align-items:baseline;justify-content:center;gap:9px;margin-top:18px">
+      ${r.just_placed?`<span style="font-size:14px;font-weight:600;color:var(--lgray)">러브</span>
+        <span style="font-size:13px;color:var(--lgray)">→</span>`:''}
+      <span style="font-size:28px;font-weight:800;letter-spacing:-.045em;color:var(--coral-d)">${esc(t.label||'러브')}</span>
+    </div>
+    <div class="sub" style="margin-top:9px">${
+      r.just_placed?'첫 배치가 끝났어요'
+      : r.delta>0?`레이팅이 ${r.delta} 올랐어요`
+      : r.delta<0?`레이팅이 ${Math.abs(r.delta)} 내렸어요`
+      : '이번엔 티어가 그대로예요'}</div>
+    ${!t.settled?`<div style="display:inline-flex;align-items:center;gap:6px;margin-top:15px;
+      background:var(--cream2);border-radius:11px;padding:8px 13px">
+      <span style="width:5px;height:5px;border-radius:50%;background:var(--gold,#e09a2b);flex:none"></span>
+      <span style="font-size:12px;font-weight:500;color:var(--gray)">아직 경기가 적어 자주 바뀔 수 있어요</span>
+    </div>`:''}
+  </div>
+  <div class="hr" style="margin:2px 0 14px"></div>`;
+
+  h+=`<div class="card"><div class="ch" style="font-size:15px">오늘 성적</div>
+    <div class="row" style="margin-bottom:9px"><span class="sub">${r.played}게임</span>
+      <span class="t2">${r.win}승 ${r.lose}패</span></div>
+    <div class="row"><span class="sub">게임 득실</span>
+      <span class="t2">${r.margin>0?'+':''}${r.margin}</span></div>
+    ${r.opponents&&r.opponents.length?`<div class="hr"></div>
+      <div class="row"><span class="sub">함께 뛴 사람</span>
+        <span class="t2">${esc(r.opponents.join(' · '))}</span></div>
+      <div class="sub" style="margin-top:7px">티어는 <b>이기고 지는 결과</b>로만 정해져요.</div>`:''}
+  </div>`;
+
+  if(r.refund) h+=`<div class="card flat">
+    <div class="row" style="margin-bottom:9px"><span class="sub">돌려드린 캐시</span>
+      <span class="t2" style="color:var(--green)">+${r.refund.toLocaleString()}원</span></div>
+    <div class="sub">다음 매치 신청할 때 쓸 수 있어요.</div></div>`;
+
+  h+=`<div style="display:grid;gap:9px;margin-top:6px">
+    ${!r.manner_done?`<button class="btn" onclick="closeOv();setTimeout(()=>openOmManner(${id}),160)">
+      오늘 어땠어요? <span style="font-weight:500;font-size:11px;opacity:.8">· 매너 확인 30초</span></button>`:''}
+    <button class="btn ghost" onclick="closeOv();setTimeout(openTierGuide,160)">내 티어 자세히 보기</button>
+  </div></div>`;
+
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
 /* ── 매너 확인 ─────────────────────────────
    티어는 경기 결과로만 정해진다. 여기서는 실력을 묻지 않는다.
    매너를 점수로 매기면 티어가 인기투표가 되므로 둘을 완전히 갈라둔다.
@@ -20290,9 +20389,11 @@ function mnPick(id){ _MN.mvp=(_MN.mvp===id?null:id); drawOmManner(); }
 async function mnSend(){
   if(!_MN.ok && !_MN.bad.length) return toast('불편했던 사람을 골라주세요');
   try{
-    await api(`/open-matches/${_MN.id}/manner`,{method:'POST',
+    const mid=_MN.id;
+    await api(`/open-matches/${mid}/manner`,{method:'POST',
       body:JSON.stringify({ ok:_MN.ok, targets:_MN.bad, mvp:_MN.mvp })});
     closeOv(); toast('보냈어요 · 고마워요');
+    setTimeout(()=>openOmResult(mid), 200);
   }catch(e){ toast('보내지 못했어요'); }
 }
 /* 손으로 그린 듯한 금색 동그라미 — 클럽 대진의 cbRing 을 그대로 쓴다 */
@@ -20447,7 +20548,8 @@ function openOmDetail(id){
   if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소</button>
     <div class="note" style="text-align:center;cursor:pointer" onclick="openRefundPolicy()">취소/환불 정책 보기 ›</div>`);
   if(m.full&&!m.joined&&!m.is_host&&!closed) acts.push(`<button class="btn" disabled style="opacity:.5">정원 마감</button>`);
-  if(closed&&m.joined&&!m.is_host) acts.push(`<button class="btn" onclick="openOmManner(${m.id})">오늘 어땠어요? <span style="font-weight:500;font-size:11px;opacity:.8">· 매너 확인 30초</span></button>`);
+  if(closed&&m.joined) acts.push(`<button class="btn" onclick="closeOv();setTimeout(()=>openOmResult(${m.id}),160)">경기 결과 보기</button>`);
+  if(closed&&m.joined&&!m.is_host) acts.push(`<button class="btn ghost" onclick="openOmManner(${m.id})">오늘 어땠어요? <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 매너 확인 30초</span></button>`);
   if(closed&&(m.joined||m.is_host)) acts.push(`<button class="btn ${m.my_mreview?'ghost':''}" onclick="openOmMatchReview(${m.id})">${m.my_mreview?'리뷰/칭찬 수정':(m.is_host?'매치 평가 남기기':'매치·매니저 평가 남기기')}</button>`);
   if((closed)&&(m.joined||m.is_host)&&(m.players||[]).length>1) acts.push(`<button class="btn ghost" onclick="openOmReviews(${m.id})">함께 뛴 사람 후기</button>`);
   if(m.bracket&&(m.joined||m.is_host)) acts.push(`<button class="btn ghost" onclick="openOmBracket(${m.id})">대진표 보기</button>`);
@@ -21730,16 +21832,18 @@ async function renderMatch(){
      제목을 한 번 더 쓰면 같은 말이 두 줄 겹친다. */
   h+=`<div class="omhead">
         <div class="omhead-l" onclick="openOmRegion()">
-          <span class="omhead-p">${ic('pin',14,'currentColor')}</span>
           <span class="omhead-r">${sd ? esc(sd + (sg ? ' · ' + sg : '')) : '전국'}</span>
           <span class="omhead-a">▾</span></div>
         ${omTierChip()}
       </div>
       ${omFilterBar()}
       <div id="omList">${(SERVER_OK && (!window.OM_LOADED || Date.now()-(window.OM_TS||0)>30e3)) ? skelCards(3) : matchCards(OM_LIST)}</div>
-      <div class="omh-mgr">1코트는 <b>매니저 없이</b> 앱이 대진을 안내하고,
-        2코트부터는 <b>매니저</b>가 진행해요.
-        <span onclick="openManagerGuide()">매니저가 되려면 ›</span></div>`;
+      <div class="ommgr" onclick="openManagerGuide()">
+        <div class="ommgr-b">
+          <div class="ommgr-t">매니저로 매치를 열어보세요</div>
+          <div class="ommgr-s">코트를 잡고 진행하면 수고비를 드려요</div>
+        </div>
+        <span class="ommgr-a">›</span></div>`;
   el.innerHTML=h;
   if(TRIAL){ const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST); return; }
   try{
