@@ -197,7 +197,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0819b';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0819d';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -3159,7 +3159,7 @@ const ICON_LINKS = {
   '🔔': 'home', '⭐': 'league', '🥇': 'league', '📣': 'club', '🙌': 'club', '🏃': 'league', '🏊': 'league', '⚽': 'league', '🏀': 'league', '⚾': 'league', '🏸': 'bracket',
 };
 
-async /* ── iOS 알림 (APNs) ─────────────────────────────────────────
+/* ── iOS 알림 (APNs) ─────────────────────────────────────────
    지금까지 sendPush 는 웹 푸시(VAPID)만 보냈다. iOS 토큰은 {endpoint} 꼴이 아니라
    64자 문자열이라 JSON.parse 에서 조용히 걸러졌고, 그래서 폰에는 아무것도 안 떴다.
    (알림함에는 쌓이고 있었다 — 만들어지는 알림은 이미 70종이 넘는다.)
@@ -3168,8 +3168,22 @@ async /* ── iOS 알림 (APNs) ───────────────�
      · 인증  : ES256 으로 서명한 JWT (crypto)
      · 전송  : HTTP/2 (http2)
    Railway 환경변수 네 개가 없으면 조용히 넘어간다 — 개발 중에 오류가 나지 않게. */
+/* .p8 내용을 붙여넣는 방식이 사람마다 다르다 —
+   헤더(-----BEGIN PRIVATE KEY-----)를 빼고 본문만 넣거나,
+   줄바꿈이 \n 글자로 들어오거나, 한 줄로 뭉개져 들어온다.
+   어느 쪽이든 Node 가 읽을 수 있는 PEM 으로 되돌린다.
+   (본문만 넣으면 서명 단계에서 DECODER unsupported 로 조용히 실패한다) */
+function apnsPem(raw) {
+  let v = String(raw || '').trim().replace(/\\n/g, '\n');
+  if (!v) return '';
+  if (v.includes('BEGIN')) return v;                    // 이미 온전한 PEM
+  const body = v.replace(/\s+/g, '');                    // 공백·줄바꿈 제거
+  return '-----BEGIN PRIVATE KEY-----\n'
+    + (body.match(/.{1,64}/g) || []).join('\n')
+    + '\n-----END PRIVATE KEY-----\n';
+}
 const APNS = {
-  key: (process.env.APNS_KEY || '').replace(/\\n/g, '\n'),   // 줄바꿈이 \n 으로 들어오는 경우
+  key: apnsPem(process.env.APNS_KEY),
   keyId: process.env.APNS_KEY_ID || '',
   teamId: process.env.APNS_TEAM_ID || '',
   bundleId: process.env.APNS_BUNDLE_ID || '',
@@ -3179,6 +3193,20 @@ const APNS = {
   _jwt: null, _jwtAt: 0,
 };
 const apnsReady = () => !!(APNS.key && APNS.keyId && APNS.teamId && APNS.bundleId);
+/* 서버가 뜰 때 한 번 서명해 본다 — 키가 잘못 들어갔으면 알림이 나갈 때가 아니라
+   지금 알아야 한다. 실제로 헤더를 빼고 넣어 하나도 안 나간 적이 있다. */
+if (apnsReady()) {
+  try {
+    crypto.sign('sha256', Buffer.from('probe'), { key: APNS.key, dsaEncoding: 'ieee-p1363' });
+    console.log('[apns] 준비됨 ·', APNS.bundleId);
+  } catch (e) {
+    console.error('[apns] 키를 읽지 못했어요 — APNS_KEY 에 .p8 내용 전체를 넣어주세요:',
+      String(e.message).split('\n')[0]);
+    APNS.key = '';                                      // 잘못된 키로 계속 시도하지 않는다
+  }
+} else if (process.env.APNS_KEY || process.env.APNS_KEY_ID) {
+  console.log('[apns] 설정이 덜 됐어요 — KEY·KEY_ID·TEAM_ID·BUNDLE_ID 네 개가 모두 필요해요');
+}
 function apnsToken() {
   /* JWT 는 최대 1시간까지 쓸 수 있다. 매번 새로 만들면 APNs 가 429 로 막는다. */
   if (APNS._jwt && Date.now() - APNS._jwtAt < 40 * 60 * 1000) return APNS._jwt;
@@ -3229,7 +3257,7 @@ function apnsSend(token, msg, hostIdx) {
     req.end(body);
   });
 }
-function sendPush(userId, msg, opts) {
+async function sendPush(userId, msg, opts) {
   // 알림함에는 기본으로 남긴다. 채팅처럼 잦은 알림은 skipInbox 로 푸시만 보낸다.
   const link = msg.link || ICON_LINKS[msg.icon] || null;
   if (!(opts && opts.skipInbox))
