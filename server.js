@@ -1885,7 +1885,7 @@ function fairplayOf(uid) {
 // 티어 경계 — 전국 단일 분포. 지역별로 나누면 동네마다 그랜드슬램이 나온다.
 const TIER_CUT = [
   { k: 'gs',   n: '그랜드슬램', top: 0.01, subs: 0 },
-  { k: 'tour', n: '투어',       top: 0.10, subs: 3 },
+  { k: 'tour', n: '마스터스',   top: 0.10, subs: 3 },
   { k: 'chal', n: '챌린저',     top: 0.55, subs: 3 },
   { k: 'fut',  n: '퓨처스',     top: 1.00, subs: 3 },
 ];
@@ -3026,7 +3026,7 @@ function omView(m, uid) {
     const order = ['love', 'fut', 'chal', 'tour', 'gs'];
     const seen = order.filter(k => ks.includes(k));
     if (!seen.length) return null;
-    const KO = { love: '러브', fut: '퓨처스', chal: '챌린저', tour: '투어', gs: '그랜드슬램' };
+    const KO = { love: '러브', fut: '퓨처스', chal: '챌린저', tour: '마스터스', gs: '그랜드슬램' };
     return { keys: seen, label: seen.length === 1 ? KO[seen[0]] : `${KO[seen[0]]}~${KO[seen[seen.length - 1]]}` };
   })();
   return {
@@ -5367,7 +5367,8 @@ app.get('/me/rating-log', auth, (req, res) => {
 db.exec(`CREATE TABLE IF NOT EXISTS om_assessments (
   id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, manager_id INTEGER,
   user_id INTEGER, level TEXT, created_at TEXT)`);
-const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린저1':1025,'챌린저2':1075,'챌린저3':1125,'챌린저4':1175,'챌린저5':1225,'투어1':1285,'투어2':1355,'투어3':1425,'그랜드슬램':1500 };
+const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린저1':1025,'챌린저2':1075,'챌린저3':1125,'챌린저4':1175,'챌린저5':1225,'투어1':1285,'투어2':1355,'투어3':1425,
+  '마스터스1':1285,'마스터스2':1355,'마스터스3':1425,'그랜드슬램':1500 };
 try { db.exec('ALTER TABLE open_matches ADD COLUMN bracket TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photo TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photos TEXT'); } catch (e) {}
