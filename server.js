@@ -2165,6 +2165,36 @@ app.post('/open-matches', auth, (req, res) => {
       .run(req.uid, (intOrNull(req.body.court_cost) || 0) + (req._mgrPay || 0), rid(r));
   }
   const mid = rid(r);
+  /* ── 티어 개편 값 ──
+     종목(남복·여복·혼복)과 티어 범위를 여기서 못 받으면 목록에서 거를 수가 없다.
+     혼복은 남녀 칸을 나눠 잠근다 — 선착순으로 받으면 남자만 4명 찬 혼복이 생긴다. */
+  {
+    const b2 = req.body || {};
+    const nCourts = intOrNull(b2.courts) || 1;
+    const mode = (b2.mode === 'managed' || nCourts > 1) ? 'managed' : 'self';
+    const disc = ['mixed', 'men', 'women'].includes(b2.disc) ? b2.disc : 'mixed';
+    const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
+    const tmin = TK.includes(b2.tier_min) ? b2.tier_min : null;
+    const tmax = TK.includes(b2.tier_max) ? b2.tier_max : null;
+    const capN = intOrNull(b2.cap) || (mode === 'managed' ? 8 : 4);
+    let cm = intOrNull(b2.cap_m), cf = intOrNull(b2.cap_f);
+    if (disc === 'men')   { cm = capN; cf = 0; }
+    if (disc === 'women') { cm = 0; cf = capN; }
+    if (disc === 'mixed' && (cm == null || cf == null)) { cm = Math.ceil(capN / 2); cf = capN - cm; }
+    /* 마감은 시작 24시간 전 — 취소되어도 주말 일정을 다시 짤 수 있다 */
+    let closeAt = b2.close_at || null;
+    if (!closeAt && b2.start_at) {
+      const st = Date.parse(String(b2.start_at).slice(0, 16) + ':00+09:00');
+      if (!isNaN(st)) closeAt = new Date(st - 24 * 3600e3 + 9 * 3600e3).toISOString().slice(0, 16);
+    }
+    db.prepare(`UPDATE open_matches SET mode=?, disc=?, cap_m=?, cap_f=?,
+        tier_min=?, tier_max=?, close_at=?, fee_rate=?, base_price=? WHERE id=?`)
+      .run(mode, disc, cm, cf, tmin, tmax, closeAt,
+           (b2.fee_rate != null ? +b2.fee_rate : null), null, mid);
+    const fresh = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+    db.prepare('UPDATE open_matches SET base_price=? WHERE id=?')
+      .run(omPriceFor(fresh, omMinCount(fresh)), mid);
+  }
   // 매니저는 운영만 하고 경기에 참여하지 않는다 — 자동 참가 없음
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
