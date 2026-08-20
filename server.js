@@ -2117,7 +2117,11 @@ function omQuote(court, ball, courts, hours) {
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
   let _courts = Math.min(3, Math.max(0, +_b.courts || 0));
-  if (_courts) {                                          // 코트 기반 소셜 매치 규칙
+  /* 1코트 자율 매치는 아래 소셜매치 규칙을 타지 않는다.
+     그 규칙은 1코트를 2코트로 올리고(매니저 전제) 정원·가격을 자기 공식으로 덮어써서,
+     자율 매치를 열려고 하면 조건이 어긋나 열리지 않았다. */
+  const _selfMode = (_b.mode === 'self') || (_courts === 1);
+  if (_courts && !_selfMode) {                            // 코트 기반 소셜 매치 규칙
     _courts = (_courts <= 2) ? 2 : 3;                     // 2코트(2h 8명·3h 12명) · 3코트(2h 12명·3h 18명)
     const _hours = (+_b.hours === 2) ? 2 : 3;             // 2·3시간만
     /* 구버전 앱은 코트비에 캔볼값을 합산해 court_cost 하나로 보낸다.
@@ -6970,6 +6974,84 @@ app.post('/venue-slots/:id/hold', auth, (req, res) => {
   if (v && v.owner_id) sendPush(v.owner_id, { icon: '🎾', title: '매니저가 코트를 잡았어요',
     body: `${s.date} ${s.start}–${s.end} · 모집이 확정되면 알려드릴게요` });
   res.json({ ok: true, slot: slotView(db.prepare('SELECT * FROM venue_slots WHERE id=?').get(s.id)) });
+});
+
+/* ── 열린 슬롯에서 오픈매치를 바로 연다 ──
+   구장 사장님이 시간대를 열어두면(venue_slots.status='open')
+   그 자리를 골라 매치를 만든다. 코트비·시간·코트 수가 슬롯에 이미 있으므로
+   종목과 티어 범위만 더 받으면 된다. */
+app.post('/venue-slots/:id/open-match', auth, (req, res) => {
+  const s = db.prepare('SELECT * FROM venue_slots WHERE id=?').get(+req.params.id);
+  if (!s) return res.status(404).json({ error: 'not_found' });
+  if (s.status !== 'open') return res.status(400).json({ error: 'taken', message: '이미 나간 자리예요' });
+  const v = db.prepare('SELECT * FROM venues WHERE id=?').get(s.venue_id) || {};
+  const b = req.body || {};
+
+  let courtN = 1;
+  try { const a = JSON.parse(s.court_ids); if (Array.isArray(a) && a.length) courtN = a.length; } catch (e) {}
+  const mode = (b.mode === 'managed' || courtN > 1) ? 'managed' : 'self';
+  const disc = ['mixed', 'men', 'women'].includes(b.disc) ? b.disc : 'mixed';
+  const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
+  const tmin = TK.includes(b.tier_min) ? b.tier_min : null;
+  const tmax = TK.includes(b.tier_max) ? b.tier_max : null;
+  const capN = Math.max(4, Math.min(18, intOrNull(b.cap) || (mode === 'managed' ? courtN * 5 : 4)));
+  let cm = null, cf = null;
+  if (disc === 'men')   { cm = capN; cf = 0; }
+  else if (disc === 'women') { cm = 0; cf = capN; }
+  else { cm = Math.ceil(capN / 2); cf = capN - cm; }
+
+  const startAt = `${s.date}T${s.start}`, endAt = `${s.date}T${s.end}`;
+  const stMs = Date.parse(startAt + ':00+09:00');
+  const closeAt = isNaN(stMs) ? null
+    : new Date(stMs - 24 * 3600e3 + 9 * 3600e3).toISOString().slice(0, 16);
+  const hours = (!isNaN(stMs) && !isNaN(Date.parse(endAt + ':00+09:00')))
+    ? (Date.parse(endAt + ':00+09:00') - stMs) / 36e5 : 2;
+  const mgrFee = mode === 'managed' ? omManagerFee(courtN, hours >= 3 ? 3 : 2) : 0;
+
+  let mid;
+  try {
+    tx(() => {
+      const c = db.prepare("UPDATE venue_slots SET status='held', held_by=?, held_at=? WHERE id=? AND status='open'")
+        .run(req.uid, now(), s.id).changes;
+      if (!c) throw new Error('taken');
+      const r = db.prepare(`INSERT INTO open_matches
+        (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,
+         start_at,end_at,sido,sigungu,courts,court_cost,mode,disc,cap_m,cap_f,
+         tier_min,tier_max,close_at,fee_rate,manager_fee)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run('tennis', `${s.date} ${s.start}`, v.name || '구장', '복식',
+             disc === 'women' ? '여자부' : disc === 'men' ? '남자부' : '혼성',
+             0, capN, mode === 'managed' ? capN : 4, now(), req.uid,
+             String(b.note || '').slice(0, 300),
+             startAt, endAt, v.sido || null, v.sigungu || null,
+             courtN, s.price || 0, mode, disc, cm, cf, tmin, tmax, closeAt,
+             (b.fee_rate != null ? +b.fee_rate : 0.2), mgrFee);
+      mid = rid(r);
+      db.prepare("UPDATE venue_slots SET match_id=? WHERE id=?").run(mid, s.id);
+      if (mode === 'managed') db.prepare('UPDATE open_matches SET manager_id=? WHERE id=?').run(req.uid, mid);
+      const fresh = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+      const p = omPriceFor(fresh, omMinCount(fresh));
+      db.prepare('UPDATE open_matches SET base_price=?, price=? WHERE id=?').run(p, p, mid);
+    });
+  } catch (e) {
+    if (e.message === 'taken') return res.status(409).json({ error: 'taken', message: '방금 다른 사람이 가져갔어요' });
+    throw e;
+  }
+  if (v.owner_id) sendPush(v.owner_id, { icon: '🎾', title: '코트에 매치가 열렸어요',
+    body: `${s.date} ${s.start}–${s.end} · 모집이 확정되면 알려드릴게요` });
+  res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
+});
+
+/* 관리자가 볼 열린 슬롯 목록 — 어느 구장이 어느 시간을 열어뒀나 */
+app.get('/admin/venue-slots', admin, (req, res) => {
+  const from = String((req.query && req.query.from) || new Date().toISOString().slice(0, 10));
+  const rows = db.prepare(`SELECT s.*, v.name venue_name, v.sido, v.sigungu
+    FROM venue_slots s JOIN venues v ON v.id=s.venue_id
+    WHERE s.status='open' AND s.date >= ? ORDER BY s.date, s.start LIMIT 100`).all(from);
+  res.json(rows.map(r => {
+    let n = 1; try { const a = JSON.parse(r.court_ids); if (Array.isArray(a) && a.length) n = a.length; } catch (e) {}
+    return { ...r, courts: n };
+  }));
 });
 
 /* 여러 면을 한 번에 잡는다 — 오픈매치는 코트 수로 정원이 정해지므로 묶어서 가져가야 한다.
