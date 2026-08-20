@@ -25152,15 +25152,16 @@ function _renderMeCore(){
     <div style="font-size:14px;font-weight:500">${state._noshow.blocked?'🚫 오픈매치 참가 제한 중':'⚠️ 노쇼 기록'} ${state._noshow.count}/${state._noshow.limit}</div>
     <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">
       ${state._noshow.blocked?'최근 90일 기록이 지나면 자동으로 풀려요':'3회가 되면 90일간 오픈매치 참가가 제한돼요'}</div></div>`:''}
-  ${SERVER_OK&&IS_NATIVE?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
-    <div><div style="font-size:14px;font-weight:500">알림 받기 🔔</div>
+  ${/* 잘 되고 있으면 카드를 아예 안 보여준다 — 켜져 있는데 '켜기' 버튼이 보이면 안 된다.
+        손볼 게 있을 때만 나타난다. */''}
+  ${SERVER_OK&&IS_NATIVE&&PUSH_STATE!=='ok'&&PUSH_STATE!=='wait'?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
+    <div><div style="font-size:14px;font-weight:500">${PUSH_STATE==='denied'?'알림이 꺼져 있어요 🔕':'알림 받기 🔔'}</div>
       <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">${
-        PUSH_STATE==='ok' ? '이 폰으로 소식을 받고 있어요'
-        : PUSH_STATE==='denied' ? '폰 설정에서 맞수 알림을 켜주세요'
-        : PUSH_STATE==='fail' ? '등록하지 못했어요 · 다시 눌러주세요'
-        : '회비·대진·댓글 소식을 폰으로 받아요'}</div></div>
-    <button class="om-act ${PUSH_STATE==='ok'?'ghost':'primary'}" onclick="askNativePush()">${
-      PUSH_STATE==='ok'?'켜짐':'켜기'}</button></div>`:''}
+        PUSH_STATE==='denied' ? '대진·회비 소식을 놓치고 있어요'
+        : PUSH_STATE==='fail' ? ('등록하지 못했어요 · '+(PUSH_WHY||'다시 눌러주세요'))
+        : '대진표가 나와도 모르고 지나칠 수 있어요'}</div></div>
+    <button class="om-act primary" onclick="askNativePush()">${
+      PUSH_STATE==='denied'?'설정 열기':PUSH_STATE==='fail'?'다시 시도':'켜기'}</button></div>`:''}
 
   ${SERVER_OK&&CFG.vapid_public&&!IS_NATIVE?`<div class="card" style="display:flex;align-items:center;justify-content:space-between">
     <div><div style="font-size:14px;font-weight:500">알림 받기 🔔</div>
@@ -25950,6 +25951,8 @@ checkServer().then(async ok=>{
 const _restored=loadMatsu();
 if(_restored){ document.getElementById('auth').classList.remove('on'); document.getElementById('onboard').classList.remove('on'); }
 if(TRIAL && !authToken()) setTimeout(()=>{ try{ enterTrial(); }catch(e){} }, 350);
+/* 앱을 켜면 알림 권한을 물어본다 — 첫 화면이 그려진 뒤라야 팝업이 가려지지 않는다 */
+setTimeout(()=>{ try{ bootNativePush(); }catch(e){} }, 1200);
 setTimeout(()=>{ if(state.loggedIn){ syncMe(); afterLoginNative();
   try{ const t=sessionStorage.getItem('pending_invite');
     if(t && SERVER_OK && authToken()){ sessionStorage.removeItem('pending_invite'); handleInviteToken(t); } }catch(e){}
@@ -26044,10 +26047,23 @@ async function disableWebPush(){
 /* 알림 등록이 어디서 멈췄는지 화면에 남긴다.
    예전에는 권한을 거부했거나 등록이 실패해도 아무 표시가 없어서,
    폰에 알림이 안 와도 이유를 알 길이 없었다(기기가 한 대도 등록되지 않았다). */
-let PUSH_STATE = '';        // '' 아직 · 'ok' 등록됨 · 'denied' 권한 거부 · 'fail' 등록 실패
+let PUSH_STATE = '';        // '' 아직 · 'ok' 등록됨 · 'wait' 토큰만 받아둠 · 'denied' 권한 거부 · 'fail' 등록 실패
+let PUSH_TOKEN = '';        // 로그인 전에 받은 토큰을 여기 보관했다가 로그인 때 등록한다
+let PUSH_ASKED = false;     // 앱 한 번 켜는 동안 한 번만 물어본다
+let PUSH_WHY   = '';        // 실패했을 때 사람이 읽을 수 있는 이유 (화면에 그대로 보여준다)
+let PUSH_WIRED = false;     // 리스너는 한 번만 단다 — 다시 누를 때마다 쌓이면 등록이 여러 번 날아간다
+let PUSH_WAIT  = null;      // 등록 결과를 기다리는 쪽에 알려준다
+/* 결과가 정해지는 곳은 여기 한 곳뿐이다.
+   예전에는 "2.5초 뒤에도 ok 가 아니면 실패"로 판단해서,
+   권한 창이 떠 있는 동안이나 APNs 응답이 조금 늦기만 해도 실패라고 말했다. */
+function pushDone(st, why){
+  PUSH_STATE = st; PUSH_WHY = why || '';
+  try{ renderMe(); }catch(e){}
+  if(PUSH_WAIT){ const f = PUSH_WAIT; PUSH_WAIT = null; f({ state: st, why: PUSH_WHY }); }
+}
 /* 앱 안에서 무슨 일이 있었는지 서버에 한 줄 남긴다.
    폰에서는 콘솔을 볼 수 없어서, 등록이 안 될 때 원인을 알 길이 아예 없었다.
-   실패해도 앱 동작에는 영향을 주지 않는다. */
+   실패해도 앱 동작에는 영향을 주지 않는다. (관리자 → /admin/push-status 에서 본다) */
 async function pushDiag(step, extra){
   try{
     await fetch((API_BASE||'')+'/push/diag', { method:'POST',
@@ -26058,38 +26074,79 @@ async function pushDiag(step, extra){
   }catch(e){}
 }
 async function initNativePush(){
-  if(!IS_NATIVE){ pushDiag('네이티브 아님'); return; }
-  if(!SERVER_OK){ pushDiag('서버 연결 안 됨'); return; }
+  if(!IS_NATIVE){ pushDiag('네이티브 아님'); pushDone('fail','앱(네이티브)에서만 켤 수 있어요'); return; }
+  if(!SERVER_OK){ pushDiag('서버 연결 안 됨'); pushDone('fail','서버에 연결되지 않았어요'); return; }
   const P = window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
-  if(!P){ PUSH_STATE='fail'; pushDiag('플러그인 없음'); return; }
+  if(!P){ pushDiag('플러그인 없음'); pushDone('fail','알림 플러그인이 빠져 있어요'); return; }
+  /* 로그인 전에도 권한은 물어본다 — 다른 앱들처럼 앱을 켜자마자 뜨게.
+     토큰이 먼저 와도 회원과 묶을 수 없으니 보관해 뒀다가 로그인 때 등록한다. */
   try{
     let perm = await P.checkPermissions();
     pushDiag('권한 확인', perm && perm.receive);
     if(perm.receive !== 'granted') perm = await P.requestPermissions();
-    if(perm.receive !== 'granted'){ PUSH_STATE='denied'; pushDiag('권한 거부', perm && perm.receive);
-      try{ renderMe(); }catch(e){} return; }
+    if(perm.receive !== 'granted'){ pushDiag('권한 거부', perm && perm.receive);
+      pushDone('denied','폰 설정에서 알림을 켜주세요'); return; }
 
-    P.addListener('registration', async (t)=>{        // APNs 토큰
-      pushDiag('토큰 받음', String((t&&t.value)||'').length+'자');
-      try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:t.value, platform:'ios'})});
-        PUSH_STATE='ok'; pushDiag('등록 완료'); try{ renderMe(); }catch(e){}
-      }catch(e){ PUSH_STATE='fail'; pushDiag('등록 실패', String((e&&e.message)||e).slice(0,80));
-        try{ renderMe(); }catch(e2){} }
-    });
-    P.addListener('registrationError', (e)=>{ PUSH_STATE='fail';
-      pushDiag('등록 오류', (e && (e.error||e.message))||''); try{ renderMe(); }catch(e2){} });
-    P.addListener('pushNotificationReceived', (n)=>{  // 앱이 켜져 있을 때
-      if(n && n.title) toast(n.title);
-    });
-    P.addListener('pushNotificationActionPerformed', ()=>{ go('home'); });
+    if(!PUSH_WIRED){
+      PUSH_WIRED = true;
+      P.addListener('registration', async (t)=>{        // APNs 토큰
+        const tok = String((t&&t.value)||'');
+        pushDiag('토큰 받음', tok.length+'자');
+        PUSH_TOKEN = tok;
+        if(!authToken()){                                // 아직 로그인 전 — 보관해 둔다
+          pushDiag('토큰 보관', '로그인 전'); pushDone('wait','로그인하면 자동으로 켜져요'); return; }
+        try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:tok, platform:'ios'})});
+          pushDiag('등록 완료'); pushDone('ok'); toast('알림을 켰어요');
+        }catch(e){ const m = String((e&&e.message)||e).slice(0,80);
+          pushDiag('등록 실패', m); pushDone('fail','서버 저장 실패 · '+m); }
+      });
+      P.addListener('registrationError', (e)=>{
+        const m = String((e && (e.error||e.message)) || '').slice(0,120);
+        pushDiag('등록 오류', m);
+        /* 가장 흔한 원인은 Xcode 에서 Push Notifications 기능을 안 켠 것이다 */
+        pushDone('fail', /aps-environment/i.test(m)
+          ? 'Xcode 에 Push Notifications 기능이 없어요' : (m || 'APNs 등록 오류'));
+      });
+      P.addListener('pushNotificationReceived', (n)=>{  // 앱이 켜져 있을 때
+        if(n && n.title) toast(n.title);
+      });
+      P.addListener('pushNotificationActionPerformed', ()=>{ go('home'); });
+    }
     await P.register();
     pushDiag('register 호출함');
-    /* 토큰이 5초 안에 안 오면 그것도 남긴다 — 조용히 아무 일도 안 일어나는 게 가장 나쁘다 */
-    setTimeout(()=>{ if(PUSH_STATE!=='ok') pushDiag('토큰 안 옴'); }, 5000);
-  }catch(e){ pushDiag('예외', String((e&&e.message)||e).slice(0,80)); }
+    /* 토큰이 안 오면 그것도 남긴다 — 조용히 아무 일도 안 일어나는 게 가장 나쁘다.
+       시뮬레이터에서는 토큰이 아예 오지 않는 경우가 있다. */
+    setTimeout(()=>{ if(PUSH_STATE!=='ok' && PUSH_STATE!=='fail'){
+      pushDiag('토큰 안 옴'); pushDone('fail','APNs 토큰이 오지 않았어요 (실제 기기에서 확인해 주세요)'); } }, 15000);
+  }catch(e){ const m = String((e&&e.message)||e).slice(0,80);
+    pushDiag('예외', m); pushDone('fail', m); }
 }
-// 로그인 뒤에 등록해야 user_id 와 토큰이 묶인다
-async function afterLoginNative(){ if(IS_NATIVE) setTimeout(initNativePush, 800); }
+/* 앱을 켜면 바로 물어본다 — 다른 앱들과 같은 자리.
+   로그인 여부와 무관하게 한 번만 뜨고, 이미 정해진 뒤에는 조용히 지나간다. */
+async function bootNativePush(){
+  if(!IS_NATIVE || PUSH_ASKED) return;
+  const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+  if(!P) return;
+  PUSH_ASKED = true;
+  try{
+    const perm = await P.checkPermissions();
+    if(perm.receive === 'denied'){ pushDone('denied','폰 설정에서 알림을 켜주세요'); return; }
+    await initNativePush();          // 'prompt' 면 여기서 시스템 팝업이 뜬다
+  }catch(e){}
+}
+/* 로그인이 끝나면 보관해 둔 토큰을 회원과 묶는다.
+   권한이 이미 허용돼 있으면 팝업 없이 조용히 끝난다. */
+async function afterLoginNative(){
+  if(!IS_NATIVE) return;
+  if(PUSH_TOKEN && authToken()){
+    try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:PUSH_TOKEN, platform:'ios'})});
+      pushDiag('등록 완료', '로그인 후'); pushDone('ok');
+    }catch(e){ const m = String((e&&e.message)||e).slice(0,80);
+      pushDiag('등록 실패', m); pushDone('fail','서버 저장 실패 · '+m); }
+    return;
+  }
+  setTimeout(initNativePush, 800);
+}
 /* 내 정보에서 손으로 다시 시도한다 — 한 번 거부하면 iOS 가 다시 묻지 않으므로
    그때는 설정 화면으로 안내한다. */
 async function askNativePush(){
@@ -26098,16 +26155,22 @@ async function askNativePush(){
   try{
     const perm = await P.checkPermissions();
     if(perm.receive === 'denied'){
-      PUSH_STATE='denied'; renderMe();
+      pushDone('denied','폰 설정에서 알림을 켜주세요');
       toast('설정 → 맞수 → 알림에서 켜주세요');
       const A = window.Capacitor.Plugins.App;
       if(A && A.openUrl) A.openUrl({ url:'app-settings:' }).catch(()=>{});
       return;
     }
+    PUSH_STATE=''; PUSH_WHY=''; renderMe();
     toast('알림을 등록하고 있어요');
-    await initNativePush();
-    setTimeout(()=>{ if(PUSH_STATE!=='ok') toast('등록하지 못했어요 · 잠시 후 다시 시도해 주세요'); }, 2500);
-  }catch(e){ toast('등록하지 못했어요'); }
+    /* 시계가 아니라 실제 결과를 기다린다 */
+    const done = new Promise(res=>{ PUSH_WAIT = res; });
+    initNativePush();
+    const r = await done;
+    if(r.state === 'ok') return;                       // 성공 알림은 리스너에서 이미 띄웠다
+    if(r.state === 'denied'){ toast('설정 → 맞수 → 알림에서 켜주세요'); return; }
+    toast('등록하지 못했어요 · ' + (r.why || '잠시 후 다시 시도해 주세요'));
+  }catch(e){ toast('등록하지 못했어요 · ' + String((e&&e.message)||e).slice(0,60)); }
 }
 
 /* ═══════════ PWA ═══════════ */
