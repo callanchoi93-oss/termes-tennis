@@ -5835,7 +5835,10 @@ app.get('/admin/users', admin, (req, res) => {
   const OV = `(SELECT NULLIF(m.gender_ov,'') FROM club_members m
       WHERE m.user_id=u.id AND NULLIF(m.gender_ov,'') IS NOT NULL
         AND (m.status IS NULL OR m.status='active') LIMIT 1)`;
+  /* suspended 를 함께 내려준다 — 탈퇴한 계정만 영구 삭제 버튼을 보여주기 위해서.
+     이게 없으면 화면에서 <탈퇴한 회원>과 활성 회원을 구분할 방법이 없다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
+    COALESCE(u.suspended,0) AS suspended,
     COALESCE(NULLIF(u.gender,''), ${OV}) AS gender,
     NULLIF(u.gender,'') AS gender_self,
     ${OV} AS gender_club,
