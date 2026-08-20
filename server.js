@@ -1949,6 +1949,59 @@ function tierFits(t, lo, hi) {
 }
 app.get('/me/tier', auth, (req, res) => res.json(tierOf(req.uid)));
 
+/* ── 경기 결과 요약 ──
+   왜 그 티어가 됐는지 근거를 함께 준다. 티어만 툭 바뀌면
+   사람들은 시스템이 고장 난 줄 알거나, 아무 의미 없다고 여긴다. */
+app.get('/open-matches/:id/result', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const join = db.prepare('SELECT * FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
+  if (!join) return res.status(403).json({ error: 'not_joined' });
+
+  /* 이 매치의 대진에서 내 성적을 센다 — 점수가 들어온 게임만 */
+  let win = 0, lose = 0, margin = 0, played = 0;
+  const meNm = (getUser(req.uid) || {}).name;
+  let br = null; try { br = JSON.parse(m.bracket || 'null'); } catch (e) {}
+  const games = [];
+  if (br && Array.isArray(br.courts)) br.courts.forEach(c => (c.rounds || []).forEach(g => games.push(g)));
+  games.forEach(g => {
+    if (g.sa == null || g.sb == null) return;
+    const inA = (g.a || []).includes(meNm), inB = (g.b || []).includes(meNm);
+    if (!inA && !inB) return;
+    played++;
+    const my = inA ? g.sa : g.sb, op = inA ? g.sb : g.sa;
+    if (my > op) win++; else if (my < op) lose++;
+    margin += (my - op);
+  });
+
+  /* 이 매치 전후로 티어가 어떻게 움직였나 — rating_log 로 되짚는다 */
+  const t = tierOf(req.uid);
+  const startMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  const logs = db.prepare(`SELECT delta, rating, created_at FROM rating_log
+    WHERE user_id=? ORDER BY id DESC LIMIT 20`).all(req.uid);
+  const after = logs.find(l => isNaN(startMs) || l.created_at >= startMs - 3600e3);
+  const before = after ? logs[logs.indexOf(after) + 1] : null;
+  const delta = after ? after.delta : 0;
+
+  /* 함께 뛴 사람들의 티어 — 상대가 강했는지 보여주기 위해서 */
+  const opponents = db.prepare(`SELECT user_id FROM open_match_joins WHERE match_id=? AND user_id!=?`)
+    .all(mid, req.uid).map(r => tierOf(r.user_id).label);
+
+  res.json({
+    match: { id: m.id, loc: m.loc, dt: m.dt, start_at: m.start_at, mode: m.mode, disc: m.disc },
+    played, win, lose, margin,
+    tier: t, delta,
+    /* 배치가 방금 일어났는가 — "러브 → 퓨처스 2" 를 보여줄지 판단한다 */
+    just_placed: t.placed && t.games <= TIER_MIN_GAMES,
+    prev_rating: before ? before.rating : null,
+    opponents,
+    /* 캐시 환급 — 확정 때 돌려준 차액 */
+    refund: join.refund || 0,
+    manner_done: !!db.prepare('SELECT 1 FROM om_manner WHERE match_id=? AND from_id=?').get(mid, req.uid),
+  });
+});
+
 /* ── 마감 처리 ──
    마감 시각에 딱 한 번 계산한다. 중간에 5명 됐다가 4명으로 줄 수 있는데,
    그때마다 환급하면 이미 돌려준 돈을 다시 청구해야 하고 그건 불가능하다. */
@@ -2219,10 +2272,10 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
     return res.status(403).json({ error: 'men_only',   message: '남자복식 매치예요' });
   if (m.disc === 'women' && me.gender !== 'F')
     return res.status(403).json({ error: 'women_only', message: '여자복식 매치예요' });
-  /* 티어 범위 — 러브는 통과시킨다. 못 들어가면 영영 배치되지 않는다. */
-  const myTier = tierOf(req.uid);
-  if (!tierFits(myTier, m.tier_min, m.tier_max))
-    return res.status(403).json({ error: 'tier_out', message: '이 매치의 티어 범위가 아니에요', tier: myTier.label });
+  /* 티어로 막지 않는다 — 초기에는 4명을 모으는 일이 실력을 맞추는 일보다 급하다.
+     제한을 걸면 정원이 안 차 취소되고, 취소가 반복되면 사람이 먼저 떠난다.
+     티어는 카드에 <지금 누가 모였나>로 보여주고 판단은 본인에게 맡긴다.
+     매치가 충분히 많아지면 tier_min/max 를 채워 넣는 것만으로 제한을 켤 수 있다. */
 
   // 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다
   try {
@@ -2966,11 +3019,21 @@ function omView(m, uid) {
   const my_late = uid ? (lates.find(x => x.user_id === uid) || null) : null;
   const caps = omCaps(m), fill = omFilled(m.id);
   const need = omMinCount(m);
+  /* 지금 모인 사람들의 티어 — 제한이 아니라 정보다.
+     실력차가 부담스러운 사람은 스스로 거르고, 괜찮은 사람은 그냥 들어온다. */
+  const tierMix = (() => {
+    const ks = joins.map(j => tierOf(j.user_id).key);
+    const order = ['love', 'fut', 'chal', 'tour', 'gs'];
+    const seen = order.filter(k => ks.includes(k));
+    if (!seen.length) return null;
+    const KO = { love: '러브', fut: '퓨처스', chal: '챌린저', tour: '투어', gs: '그랜드슬램' };
+    return { keys: seen, label: seen.length === 1 ? KO[seen[0]] : `${KO[seen[0]]}~${KO[seen[seen.length - 1]]}` };
+  })();
   return {
     ...m,
     /* 화면이 바로 쓰도록 계산해서 내려준다 — 앱이 다시 세면 서버와 어긋난다 */
     mode: m.mode || 'self', disc: m.disc || 'mixed',
-    caps, fill, need,
+    caps, fill, need, tier_mix: tierMix,
     left_m: Math.max(0, caps.m - fill.m),
     left_f: Math.max(0, caps.f - fill.f),
     price_now: omPriceFor(m, Math.max(need, fill.n)),
@@ -5348,6 +5411,22 @@ app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
   const br = JSON.stringify(req.body && req.body.bracket || null).slice(0, 8000);
   const had = !!m.bracket;
   db.prepare('UPDATE open_matches SET bracket=? WHERE id=?').run(br, m.id);
+  /* 모든 게임에 점수가 들어왔으면 결과를 보라고 알린다 —
+     티어가 조용히 바뀌면 아무도 눈치채지 못한다. */
+  try{
+    const b2 = (req.body && req.body.bracket) || {};
+    const gs = [];
+    (b2.courts || []).forEach(c => (c.rounds || []).forEach(g => gs.push(g)));
+    const allDone = gs.length && gs.every(g => g.sa != null && g.sb != null);
+    const wasDone = (() => { try { const o = JSON.parse(m.bracket || 'null'); const a = [];
+      (o && o.courts || []).forEach(c => (c.rounds || []).forEach(g => a.push(g)));
+      return a.length && a.every(g => g.sa != null && g.sb != null); } catch (e) { return false; } })();
+    if (allDone && !wasDone) {
+      db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id)
+        .forEach(p => sendPush(p.user_id, { icon: '🏆', title: '오늘 경기가 끝났어요',
+          body: '결과와 티어 변동을 확인해 보세요', link: 'match' }));
+    }
+  }catch(e){}
   /* 대진이 처음 나오면 참가자 전원에게 알린다 — 매니저 없는 매치에서는
      이 알림이 "이제 시작해도 된다"는 신호 역할을 한다. */
   if (!had) {
