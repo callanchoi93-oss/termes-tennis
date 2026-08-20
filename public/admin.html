@@ -71,6 +71,14 @@ body{background:var(--paper);color:var(--ink);
 .kpi b{display:block;font-size:var(--t3);font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .kpi span{display:block;font-size:var(--t1);color:var(--lgray);font-weight:500;margin-top:1px}
 .empty{text-align:center;color:var(--lgray);font-size:var(--t1);font-weight:500;padding:var(--s5) 0}
+
+  .fld{flex:1;min-width:0;margin-bottom:var(--s2)}
+  .fld label{display:block;font-size:11px;font-weight:600;color:var(--g2,#8a857c);margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:9px 11px;border:1px solid var(--ln,#e6e3dd);
+    border-radius:10px;font-size:13px;font-family:inherit;background:#fff;color:inherit;
+    -webkit-appearance:none;appearance:none}
+  .fld input:focus,.fld select:focus{outline:none;border-color:#e0a06a}
+  .frow{display:flex;gap:var(--s2)}
 .note{font-size:var(--t1);color:var(--lgray);font-weight:500;line-height:1.65;margin-top:var(--s2)}
 .gate{max-width:340px;margin:60px auto}
 .gate h2{font-size:var(--t3);font-weight:700;margin-bottom:var(--s2)}
@@ -277,6 +285,56 @@ async function drawClubs(){
     : `<div class="empty">클럽이 없어요</div>`}</div>`);
 }
 
+/* 오픈매치 열기 — 코트가 먼저 열리고 사람들은 신청만 한다.
+   종목과 티어 범위를 여기서 정하지 않으면 목록에서 거를 수가 없다. */
+let OM_NEW_OPEN=false;
+function omNewForm(){
+  if(!OM_NEW_OPEN) return `<div class="card flat" style="cursor:pointer" onclick="OM_NEW_OPEN=true;render()">
+    <div class="rw"><div class="nm"><b>＋ 오픈매치 열기</b>
+      <span>코트를 걸어두면 사람들이 신청해요</span></div><span class="b">열기</span></div></div>`;
+  const f=(id,l,ph,v)=>`<div class="fld"><label>${l}</label><input id="${id}" placeholder="${ph||''}" value="${v||''}"></div>`;
+  const sel=(id,l,opts)=>`<div class="fld"><label>${l}</label><select id="${id}">${
+    opts.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></div>`;
+  const T=[['','제한 없음'],['love','러브'],['fut','퓨처스'],['chal','챌린저'],['tour','투어'],['gs','그랜드슬램']];
+  return `<div class="card flat">
+    <div class="ct">오픈매치 열기</div>
+    ${f('nmLoc','구장 이름','예) 양재 시민의 숲')}
+    <div class="frow">${f('nmStart','시작 (YYYY-MM-DDTHH:mm)','2026-08-24T14:00')}
+      ${f('nmHours','시간','2','2')}</div>
+    <div class="frow">${sel('nmDisc','종목',[['mixed','혼합복식'],['men','남자복식'],['women','여자복식']])}
+      ${sel('nmCourts','코트',[['1','1코트 · 자율'],['2','2코트 · 운영'],['3','3코트 · 운영']])}</div>
+    <div class="frow">${f('nmCap','정원','4','4')}
+      ${f('nmCost','코트 정가(총액, 원)','132000')}</div>
+    <div class="frow">${sel('nmFee','수수료',[['0.2','한산한 시간 20%'],['0.1','붐비는 시간 10%']])}
+      ${f('nmSido','시/도','서울')}</div>
+    <div class="frow">${sel('nmTmin','티어 하한',T)}${sel('nmTmax','티어 상한',T)}</div>
+    <div style="display:flex;gap:var(--s2);margin-top:var(--s3)">
+      <button class="b" onclick="OM_NEW_OPEN=false;render()">닫기</button>
+      <button class="b on" style="flex:1" onclick="createOm()">열기</button></div>
+    <div class="note" style="margin-top:var(--s2)">참가비는 코트 정가와 수수료에서 자동 계산돼요.
+      마감은 시작 24시간 전으로 잡혀요.</div></div>`;
+}
+async function createOm(){
+  const v=id=>(($(id)||{}).value||'').trim();
+  const loc=v('nmLoc'), start=v('nmStart');
+  if(!loc||!start) return toast('구장 이름과 시작 시각을 넣어주세요');
+  const hours=+v('nmHours')||2, courts=+v('nmCourts')||1;
+  const st=new Date(start+':00+09:00');
+  if(isNaN(st)) return toast('시작 시각 형식을 확인해 주세요 (2026-08-24T14:00)');
+  const end=new Date(st.getTime()+hours*3600e3);
+  const iso=d=>new Date(d.getTime()+9*3600e3).toISOString().slice(0,16);
+  try{
+    await api('/open-matches',{method:'POST',body:JSON.stringify({
+      sport:'tennis', loc, dt:start.replace('T',' '),
+      start_at:iso(st), end_at:iso(end),
+      courts, cap:+v('nmCap')||4, min_cnt:+v('nmCap')||4,
+      court_cost:+v('nmCost')||0, fee_rate:+v('nmFee')||0.2,
+      disc:v('nmDisc'), mode:courts>1?'managed':'self',
+      tier_min:v('nmTmin')||undefined, tier_max:v('nmTmax')||undefined,
+      sido:v('nmSido')||undefined })});
+    toast('오픈매치를 열었어요'); OM_NEW_OPEN=false; render();
+  }catch(e){ toast('열지 못했어요 · '+String(e.message).slice(0,40)); }
+}
 /* ── 매치 ── 오픈매치와 인원 미달을 한 화면에서 */
 async function drawMatches(){
   const sub=SUB||'oms';
@@ -291,7 +349,7 @@ async function drawMatches(){
     return;
   }
   const rows=await api('/admin/open-matches');
-  $('app').innerHTML=shell(subTabs(tabs)+`
+  $('app').innerHTML=shell(subTabs(tabs)+omNewForm()+`
     <div class="card">${rows.length? rows.map(m=>`
       <div class="rw" onclick="SEL=${m.id};render()" style="cursor:pointer">
         <div class="nm"><b>${esc(m.title||m.venue||'매치')}${SEL===m.id?'<span class="tag o">선택됨</span>':''}</b>

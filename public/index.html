@@ -2111,6 +2111,15 @@
   .omh-row select{ flex:1;min-width:0;border:1.5px solid var(--line);border-radius:11px;padding:9px 11px;
                    font-size:12.5px;font-family:inherit;font-weight:500;background:#fff }
   /* ── 오픈매치 목록 (티어 개편) ── */
+  .omloc{ display:inline-flex;align-items:center;gap:6px;background:var(--cream2);
+    border-radius:20px;padding:8px 14px;margin:2px 0 4px;cursor:pointer }
+  .omloc-p{ display:flex;color:var(--coral-d);flex:none }
+  .omloc-t{ font-size:13px;font-weight:600;letter-spacing:-.02em }
+  .omloc-a{ font-size:10px;color:var(--gray);margin-left:1px }
+  .omrgs{ display:flex;flex-wrap:wrap;gap:7px }
+  .omrg{ font-size:13px;font-weight:600;padding:8px 14px;border-radius:18px;
+    background:#fff;border:1px solid var(--felt-d);color:var(--gray);cursor:pointer }
+  .omrg.on{ background:var(--coral-s);border-color:var(--coral-s);color:var(--coral-d) }
   .omtier{ display:flex;align-items:center;gap:12px;background:var(--violet);color:#fff;
     border-radius:16px;padding:13px 15px;margin:12px 0 14px;cursor:pointer }
   .omtier-i{ width:32px;height:32px;border-radius:10px;background:var(--ink);flex:none;
@@ -2656,10 +2665,9 @@
   </div>
   <div class="tabbar">
     <div class="tab on" data-s="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
-    <div class="tab" data-s="league" onclick="go('league')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>리그</div>
+    <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>오픈매치</div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
     <div class="tab" data-s="sched" onclick="go('sched')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>일정</div>
-    <div class="tab" data-s="venue" onclick="go('venue')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>구장예약</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
   <div id="rtmore" style="display:none;position:fixed;inset:0;z-index:160"></div>
@@ -19559,7 +19567,7 @@ function matchCards(list){
   if(!list.length){
     return `<div class="empty" style="padding:44px 20px"><div class="ei">${ic('swap',34)}</div>
       <div class="et">아직 열린 매치가 없어요</div>
-      <div class="es">매니저가 구장 시간을 잡으면<br>여기에 올라와요.</div></div>`;
+      <div class="es">코트가 열리면 여기에 올라와요.<br>지역이나 종목을 바꿔보세요.</div></div>`;
   }
   /* 자율/운영 · 종목으로 걸러낸다 — 서버가 내려준 mode·disc 를 그대로 쓴다 */
   const F=state._omF||{};
@@ -20105,6 +20113,55 @@ const ICONS={msg:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACq
 const im=(k,s)=>`<img src="${ICONS[k]}" style="width:${s||18}px;height:${s||18}px;vertical-align:-3px" alt="">`;
 /* ═══ 플랩식 매치 상세 — 카드 탭 시 전체 정보 + 모든 액션 ═══ */
 function openMatchCard(id){ openOmDetail(id); }
+/* ── 상세 화면 조각들 ─────────────────────────────
+   남은 자리는 성별로 적는다. 그냥 "1자리"라고 쓰면
+   남성이 눌렀다가 막혀 되돌아 나온다. */
+function omSeatText(m){
+  const N=m.need||m.cap||0, n=(m.fill&&m.fill.n!=null)?m.fill.n:(m.cur||0);
+  if((m.disc||'mixed')!=='mixed') return `${n}/${N}명`;
+  const c=m.caps||{}, f=m.fill||{};
+  if(c.m==null) return `${n}/${N}명`;
+  return `남 ${f.m||0}/${c.m} · 여 ${f.f||0}/${c.f}`;
+}
+/* 내 성별 칸이 이미 찼는가 — 눌러보고 알게 하면 안 된다 */
+function omSeatBlocked(m){
+  const g=(state.serverUser||{}).gender;
+  if((m.disc||'mixed')==='men'   && g && g!=='M') return '남자복식 매치예요';
+  if((m.disc||'mixed')==='women' && g && g!=='F') return '여자복식 매치예요';
+  if(!g && (m.disc||'mixed')!=='mixed') return '성별을 먼저 입력해 주세요';
+  if((m.disc||'mixed')==='mixed'){
+    if(g==='M' && m.left_m===0) return '남성 자리가 찼어요';
+    if(g==='F' && m.left_f===0) return '여성 자리가 찼어요';
+  }
+  return '';
+}
+/* 취소·환급 조건은 결제 버튼 바로 아래에 둔다 — 약관에 묻으면 아무도 안 본다 */
+function omPayNote(m){
+  const N=m.need||4;
+  const cl=(typeof omCloseText==='function')?omCloseText(m):'';
+  return `<div style="background:#fdf8ee;border:1px solid #f2e2c0;border-radius:14px;
+    padding:12px 14px;font-size:12px;color:#5a544b;font-weight:500;line-height:1.6">
+    <b style="color:#8a6414">${N}명이 모여야 열려요.</b>${cl?` <b style="color:#8a6414">${esc(cl)}</b>`:''}<br>
+    안 모이면 자동 취소되고 전액 환불돼요.<br>
+    더 모이면 참가비가 내려가고 <b>차액은 캐시로</b> 돌려드려요.</div>`;
+}
+/* 진행자 — 1코트는 첫 신청자가 모임장, 2코트부터는 매니저.
+   참가자는 가리지만 진행자는 밝힌다. 오히려 신뢰의 근거다. */
+function omLeaderBox(m, mgrName){
+  const managed=(m.mode==='managed')||((m.courts||1)>1);
+  const nm = managed ? mgrName : ((m.leader&&m.leader.name)||'');
+  if(managed && !nm) return '';
+  const av = c => `<div style="width:38px;height:38px;border-radius:50%;background:var(--coral-s);
+    color:var(--coral-d);display:flex;align-items:center;justify-content:center;font-weight:700;flex:none">${esc(c)}</div>`;
+  if(!nm) return `<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
+    ${av('?')}<div><b style="font-size:14px">첫 신청자가 모임장이 돼요</b>
+    <div style="font-size:11px;color:var(--gray);font-weight:500">결과 입력을 맡고 참가비를 할인받아요</div></div></div>`;
+  return `<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
+    ${av(nm[0]||'')}
+    <div><b style="font-size:14px">${esc(nm)} ${managed?'매니저':'모임장'}님이<br>이번 게임을 이끌어 주실 거예요</b>
+      <div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:3px">${
+        managed?'대진 편성과 진행을 맡아요':'앱이 대진을 짜고 라운드마다 알려드려요'}</div></div></div>`;
+}
 function openOmDetail(id){
   const m=(OM_LIST||[]).find(x=>x.id===id)||(HOME_OM_ALL||[]).find(x=>x.id===id);
   if(!m){ go('match'); return; }
@@ -20128,23 +20185,26 @@ function openOmDetail(id){
     <div class="om-react" style="display:flex;align-items:center;gap:14px;color:var(--lgray)">
       <span style="display:flex;align-items:center;gap:5px">${ic('heart',13)}${m.likes||0}</span>
       <span style="display:flex;align-items:center;gap:5px">${ic('chat',13)}${m.comments||0}</span></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
-      <b class="om-price">${(m.price||0)?m.price.toLocaleString()+'원':'무료'}</b>
-      <span class="om-pricenote">${closed?'모집이 끝났어요':'지금 신청하면 확정이 빨라져요!'}</span></div>
+    ${(()=>{
+      const base=m.price_base||m.price||0, nowP=m.price_now||base;
+      return `<div style="background:#fdf6ec;border-radius:14px;padding:13px 15px;margin:14px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <b class="om-price">${base?base.toLocaleString()+'원':'무료'}</b>
+          <span class="om-pricenote">${closed?'모집이 끝났어요':(m.need?`${m.need}인 기준`:'지금 신청하면 확정이 빨라져요!')}</span></div>
+        ${(!closed && base && nowP<base)?`<div style="font-size:11.5px;color:#8a6414;font-weight:500;margin-top:7px;line-height:1.5">
+          지금 인원이면 <b>${nowP.toLocaleString()}원</b> · 더 모이면 차액을 캐시로 돌려드려요</div>`:''}
+      </div>`;})()}
     <div class="ch">매치 정보</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:6px 2px 14px;align-items:center">
-      ${info('레벨','모든 레벨')}${info('구성','남녀 모두')}
-      ${info('시간',`${_durH}시간`)}${info('모집',`${m.cur||0}/${m.cap||0}명 · 전원 확정`)}
+      ${info('티어', omTierRange(m)||'모든 티어')}${info('종목', ({mixed:'혼합복식',men:'남자복식',women:'여자복식'})[m.disc||'mixed'])}
+      ${info('시간',`${_durH}시간`)}${info('모집', omSeatText(m))}
     </div>
     ${(()=>{const tg=String(m.tags||'').split(',').map(x=>x.trim()).filter(Boolean);
       return tg.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 2px 14px">${
         tg.map(t=>`<span class="omd-tag">${esc(t)}</span>`).join('')}</div>`:'';})()}
     <div class="om-note" style="margin:-2px 0 12px">경기 룰 · ${_durH===2?'5:5는 동점으로 종료해요 (노 매치포인트)':'5:5가 되면 6게임째로 승부를 가려요'}</div>
     <div id="omMvpBox"></div>
-    ${mgrName?`<div style="display:flex;align-items:center;gap:10px;background:#f6f4ef;border-radius:14px;padding:12px 14px;margin-bottom:12px">
-      <div style="width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${esc(mgrName[0]||'')}</div>
-      <div><b style="font-size:14px">${esc(mgrName)} 매니저가 진행해요</b>
-        <div style="font-size:11px;color:var(--gray);font-weight:500">개설·운영·등급 평가까지 책임져요</div></div></div>`:''}
+    ${omLeaderBox(m, mgrName)}
     ${(()=>{
       const ps=m.players||[];
       // 0명이어도 같은 차트를 그린다 — omGradeMixHTML 이 빈 기둥으로 자리를 지킨다
@@ -20161,7 +20221,15 @@ function openOmDetail(id){
       ? `<button class="btn ghost" onclick="openOmLate(${m.id})">늦어요 · ${mine.min}분 뒤 도착으로 알림 보냄 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 변경</span></button>`
       : `<button class="btn ghost" onclick="openOmLate(${m.id})">늦을 것 같아요 <span style="font-weight:500;font-size:11px;color:var(--lgray)">· 매니저에게 알리기</span></button>`);
   }
-  if(!closed&&!m.is_host&&!m.joined&&!m.full) acts.push(`<button class="btn" onclick="joinMatch(${m.id});closeOv()">신청하기${(m.price||0)?` · ${m.price.toLocaleString()}원`:''}</button>`);
+  if(!closed&&!m.is_host&&!m.joined&&!m.full){
+    const blocked=omSeatBlocked(m);
+    if(blocked) acts.push(`<button class="btn" disabled style="opacity:.5">${esc(blocked)}</button>`);
+    else{
+      const p=m.price_base||m.price||0;
+      acts.push(`<button class="btn" onclick="joinMatch(${m.id});closeOv()">신청하기${p?` · ${p.toLocaleString()}원`:''}</button>`);
+      acts.push(omPayNote(m));
+    }
+  }
   if(!closed&&!m.is_host&&m.joined) acts.push(`<button class="btn ghost" onclick="leaveMatch(${m.id});closeOv()">참가 취소</button>
     <div class="note" style="text-align:center;cursor:pointer" onclick="openRefundPolicy()">취소/환불 정책 보기 ›</div>`);
   if(m.full&&!m.joined&&!m.is_host&&!closed) acts.push(`<button class="btn" disabled style="opacity:.5">정원 마감</button>`);
@@ -21388,22 +21456,19 @@ async function renderMatch(){
   }
   const sd = state._omSido||'', sg = state._omSigungu||'';
   const loading = typeof OM_LIST==='undefined' || (OM_LIST._pending && !OM_LIST.length);
-  h+=`<div class="omh"><span class="omh-t">오픈매치 찾기</span><span class="omh-s">누구나 참여해요</span></div>`;
-  h+=`<div class="omh-row">
-        <select onchange="setOmSido(this.value)">
-          <option value="">전국</option>
-          ${Object.keys(REGIONS).map(x=>`<option value="${x}" ${x===sd?'selected':''}>${x}</option>`).join('')}
-        </select>
-        <select onchange="setOmSigungu(this.value)" ${sd?'':'disabled'}>
-          <option value="">전체</option>
-          ${(REGIONS[sd]||[]).map(x=>`<option value="${x}" ${x===sg?'selected':''}>${x}</option>`).join('')}
-        </select>
+  /* 지역은 한 줄로 — 셀렉트 박스 두 개가 나란히 서면 화면 위쪽이 무거워진다.
+     지금 고른 곳만 보여주고, 누르면 그때 고르게 한다. */
+  h+=`<div class="omloc" onclick="openOmRegion()">
+        <span class="omloc-p">${ic('pin',15,'currentColor')}</span>
+        <span class="omloc-t">${sd ? esc(sd + (sg ? ' · ' + sg : '')) : '전국'}</span>
+        <span class="omloc-a">▾</span>
       </div>
       <div class="omh-pay"><b>참가비는 앱에서 결제해요</b> · 신청과 동시에 결제되고 30분 안에는 취소할 수 있어요</div>
       ${omTierBanner()}
       ${omFilterBar()}
       <div id="omList">${(SERVER_OK && (!window.OM_LOADED || Date.now()-(window.OM_TS||0)>30e3)) ? skelCards(3) : matchCards(OM_LIST)}</div>
-      <div class="omh-mgr">매치는 <b>매니저</b>가 제휴 구장의 코트를 잡아 열어요.
+      <div class="omh-mgr">1코트는 <b>매니저 없이</b> 앱이 대진을 안내하고,
+        2코트부터는 <b>매니저</b>가 진행해요.
         <span onclick="openManagerGuide()">매니저가 되려면 ›</span></div>`;
   el.innerHTML=h;
   if(TRIAL){ const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST); return; }
@@ -21455,6 +21520,24 @@ async function loadMyTier(){
   }catch(e){}
 }
 function openTierGuide(){ toast('티어 안내는 다음 단계에서 붙여요'); }
+/* 지역 고르기 — 시·도를 누르면 그 안의 시·군·구가 이어서 나온다 */
+function openOmRegion(){
+  const sd=state._omSido||'', sg=state._omSigungu||'';
+  const pill=(t,on,js)=>`<span class="omrg ${on?'on':''}" onclick="${js}">${esc(t)}</span>`;
+  let h=`<div class="sh-top"><h3>지역 고르기</h3>
+    <div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd">시·도를 고르면 시·군·구를 이어서 고를 수 있어요.</div>
+    <div class="omrgs">${pill('전국',!sd,`pickOmSido('')`)}
+      ${Object.keys(REGIONS).map(x=>pill(x,x===sd,`pickOmSido('${x}')`)).join('')}</div>`;
+  if(sd) h+=`<div class="ch" style="font-size:14px;margin:16px 0 8px">${esc(sd)}</div>
+    <div class="omrgs">${pill('전체',!sg,`pickOmSigungu('')`)}
+      ${(REGIONS[sd]||[]).map(x=>pill(x,x===sg,`pickOmSigungu('${x}')`)).join('')}</div>`;
+  h+=`<button class="btn" style="margin-top:18px" onclick="closeOv();renderMatch()">이 지역으로 보기</button>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+function pickOmSido(v){ state._omSido=v; state._omSigungu=''; openOmRegion(); }
+function pickOmSigungu(v){ state._omSigungu=v; openOmRegion(); }
 function setOmSido(v){ state._omSido=v; state._omSigungu=''; renderMatch(); }
 function setOmSigungu(v){ state._omSigungu=v; renderMatch(); }
 
@@ -21609,15 +21692,32 @@ async function joinMatch(id){
     if(!mm.joined){ mm.joined=true; mm.cur=Math.min(mm.cap,(mm.cur||0)+1);
       (mm.players=mm.players||[]).push({id:1,name:'체험 게스트',gender:'남성',rating:1000}); }
     toast(`참가했어요 · ${mm.cur}/${mm.cap}명 (체험 모드)`); renderMatch(); return; }
-  if(mm&&mm.price){
-    if(!await appConfirm(`참가비 ${mm.price.toLocaleString()}원\n\n신청과 동시에 결제돼요.\n취소 시 시점에 따라 100·80·20% 환불돼요 (상세: 취소/환불 정책).\n\n신청할까요?`)) return;
+  const _p=(mm&&(mm.price_base||mm.price))||0;
+  if(_p){
+    /* 결제는 늘 4인 기준가로 받는다 — 더 모이면 차액을 캐시로 돌려주므로
+       추가 청구가 생기지 않는다. 이 조건을 확인 창에서 먼저 말한다. */
+    const need=(mm&&mm.need)||4;
+    if(!await appConfirm(
+      `참가비 ${_p.toLocaleString()}원\n\n`+
+      `${need}명이 모여야 열려요. 안 모이면 자동 취소되고 전액 환불돼요.\n`+
+      `더 모이면 참가비가 내려가고 차액은 캐시로 돌려드려요.\n\n신청할까요?`)) return;
   }
   try{ const m = await api(`/open-matches/${id}/join`,{method:'POST'});
-    const pay = m.price?` · 인당 ${m.price.toLocaleString()}원, 30분 안에 취소하지 않으면 확정돼요`:'';
-    toast(m.confirmed?`참가했어요 · ${m.cur}명 전원 모여 경기가 확정됐어요${pay}`:`참가했어요 · ${m.cur}/${m.cap}명${pay}`);
+    const n=(m.fill&&m.fill.n)||m.cur||0, N=m.need||m.cap||0;
+    toast(n>=N ? `참가했어요 · ${n}명이 모여 곧 확정돼요` : `참가했어요 · ${n}/${N}명`);
     renderMatch();
   }catch(e){ const s=String(e.message);
-    toast(s.includes('full')?'정원이 찼어요':s.includes('not_open')?'모집이 끝났어요':'참가하지 못했어요'); }
+    toast(
+      s.includes('gender_required') ? '성별을 먼저 입력해 주세요 · 내정보에서 설정할 수 있어요'
+      : s.includes('men_only')       ? '남자복식 매치예요'
+      : s.includes('women_only')     ? '여자복식 매치예요'
+      : s.includes('men_full')       ? '남성 자리가 찼어요'
+      : s.includes('women_full')     ? '여성 자리가 찼어요'
+      : s.includes('tier_out')       ? '이 매치의 티어 범위가 아니에요'
+      : s.includes('noshow_blocked') ? '노쇼가 잦아 지금은 참가할 수 없어요'
+      : s.includes('full')           ? '정원이 찼어요'
+      : s.includes('not_open')       ? '모집이 끝났어요'
+      : '참가하지 못했어요'); }
 }
 function refundPct(m){                  // 서버와 동일한 단계 환불 계산 (표시용)
   const price=m.price||0; if(!price) return {pct:100, refund:0};
@@ -25915,10 +26015,6 @@ let NAV_HIST=[];
 function goBack(){
   /* 안쪽 화면을 보고 있으면 한 단계씩 되돌린다 — 상단 화살표 하나로 통일 */
   if(state.view==='club' && state.clubOpen){ closeClubPage(); return; }
-  if(state.view==='venue'){
-    if(typeof VN_PICK!=='undefined' && VN_PICK){ vnClose(); return; }
-    if(typeof VN_HALL!=='undefined' && VN_HALL){ vnLeave(); return; }
-  }
   const prev=NAV_HIST.pop() || 'home';
   go(prev, true);
 }
@@ -25958,6 +26054,9 @@ function openDiag(){
   document.getElementById('ov').classList.add('on');
 }
 function go(v, isBack){ try{ closeEventPage(); }catch(e){}
+  /* 구장예약은 오픈매치로 합쳤다 — 예전 링크·알림이 venue 로 오면 여기서 돌린다.
+     화면과 코드는 남겨두되(예약 취소·환불 조회가 아직 그 안에 있다) 탭에서는 내렸다. */
+  if(v==='venue') v='match';
   if(v==='club'){
     try{ ensureClubEvents(); }catch(e){}
     /* 탭으로 들어오면 항상 목록부터. 상세에 머물러 있으면 다른 클럽을 못 찾는다 */
@@ -25985,7 +26084,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   if(v==='home'){ try{ loadMyNext(); }catch(e){} }      // 홈으로 올 때마다 오늘 대진을 새로
   try{
-    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,venue:renderVenues,me:renderMe})[v]();
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
