@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import http2 from 'node:http2';        // iOS 알림(APNs) 전송에 쓴다
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -196,7 +197,7 @@ const SRV_BUILD = 'sH-0812d';
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0818e';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.0-0819b';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -1059,7 +1060,7 @@ app.post('/clubs/:id/rest-requests/:rid/decide', auth, (req, res) => {
   const ok = !(req.body && req.body.approve === false);
   db.prepare('UPDATE rest_requests SET status=? WHERE id=?').run(ok ? 'approved' : 'rejected', r.id);
   if (ok) db.prepare('UPDATE club_members SET resting=? WHERE club_id=? AND user_id=?').run(r.rtype === 'rest' ? 1 : 0, cid, r.user_id);
-  sendPush(r.user_id, { icon: ok ? '✅' : '🔔', title: (r.rtype==='rest'?'휴회':'복회') + (ok?' 승인':' 신청 결과'), body: ok ? '처리되었어요' : '승인되지 않았어요' });
+  sendPush(r.user_id, { icon: ok ? '✅' : '🔔', title: (r.rtype==='rest'?'휴회':'복회') + (ok?' 승인':' 신청 결과'), body: ok ? '처리됐어요' : '승인되지 않았어요' });
   res.json({ ok: true });
 });
 
@@ -1285,12 +1286,16 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
     [...(x.teamA || []), ...(x.teamB || [])].some(p => p && p.id === req.uid));
   const helper = soloMode ? false : (fixedMode ? sameCourt : inBracket);
   const empty = g.sa == null || g.sb == null;
-  /* 이미 들어간 점수를 고치는 것은 다른 문제다 — 남의 기록이 바뀌기 때문이다.
-     당사자·임원은 언제든, 대신 넣어준 사람은 10분 안에만 고칠 수 있다. */
+  /* 이미 들어간 점수를 고치는 것은 넣는 것과 다른 문제다 — 시즌 랭킹이 조용히 바뀐다.
+     예전에는 당사자가 언제든 고칠 수 있었는데, 진 사람이 나중에 바꿀 여지가 있었다.
+     이제 <끝난 경기는 운영진만> 고친다.
+     다만 대신 넣어준 사람은 10분 안에 되돌릴 수 있게 둔다 —
+     남의 경기에 잘못 넣었을 때 곧바로 바로잡을 길이 없으면 그게 더 나쁘다. */
   const mineRecent = g.by === req.uid && g.atMs && (Date.now() - g.atMs) < 10 * 60 * 1000;
-  const may = officer || inGame || (helper && empty) || mineRecent;
+  const may = empty ? (officer || inGame || helper)      // 아직 빈 점수를 넣는 경우
+                    : (officer || mineRecent);            // 이미 들어간 점수를 고치는 경우
   if (!may) {
-    if (!empty) return res.status(403).json({ error: 'edit_locked', message: '이미 들어간 점수는 당사자나 운영진이 고칠 수 있어요' });
+    if (!empty) return res.status(403).json({ error: 'edit_locked', message: '들어간 점수는 운영진이 고칠 수 있어요' });
     return res.status(403).json(soloMode
       ? { error: 'player_only', message: '그 경기를 뛴 분이나 운영진이 넣을 수 있어요' }
       : fixedMode
@@ -1307,8 +1312,40 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   if (eid) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?').run(JSON.stringify(data), now(), cid, eid);
   else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
   cbLog(cid, data);
+  try { notifyNextUp(cid, data, g); } catch (e) {}   // 알림이 실패해도 점수 저장은 끝난 일이다
   res.json({ ok: true, game: g });
 });
+
+/* 점수가 들어오면 그 코트의 <다음 차례> 네 명에게 알린다.
+   코트에서 가장 자주 하는 말이 "다음 누구예요?" 인데, 지금은 앱을 열어야만 알 수 있다.
+   알림함에는 안 남긴다(skipInbox) — 그날 지나면 의미 없는 이야기라 목록만 지저분해진다. */
+function notifyNextUp(cid, data, doneGame) {
+  const games = data.games || [];
+  const at = x => x.playCourt || x.c;
+  const court = at(doneGame);
+  const done = x => x.sa != null && x.sb != null;
+  /* 이 코트에서 아직 시작 안 한 경기 중 가장 앞 순서 */
+  const next = games.filter(x => at(x) === court && !done(x) && !x.startedAt)
+    .sort((a, b) => a.r - b.r)[0];
+  if (!next) return;
+  /* 그 넷이 지금 다른 코트에서 뛰고 있으면 아직 못 들어간다 — 그때는 알리지 않는다 */
+  const busy = new Set(games.filter(x => x.startedAt && !done(x) && !x.endedAt && x !== next)
+    .flatMap(x => [...(x.teamA || []), ...(x.teamB || [])].map(p => p && p.id)));
+  const four = [...(next.teamA || []), ...(next.teamB || [])].filter(Boolean);
+  if (four.some(p => busy.has(p.id))) return;
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  const names = four.map(p => p.name).join(' · ');
+  four.forEach(p => {
+    if (!p.id) return;                                  // 게스트는 계정이 없다
+    sendPush(p.id, {
+      icon: '🎾',
+      title: `${court}번 코트로 가주세요`,
+      body: `${next.r}번째 게임 · ${names}`,
+      thread: 'bracket-' + cid,
+      url: '/',
+    }, { skipInbox: true });
+  });
+}
 /* 경기 종료 — 점수는 나중에, 코트는 지금 열어준다.
    예전에는 점수가 들어와야 코트가 열려서, 점수 입력이 6분만 늦어도
    코트가 30분 넘게 놀았다(18명 3코트 시뮬 12분 → 32분).
@@ -2176,7 +2213,7 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
       } }
   } catch (e) {}
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
-  sendPush(target, { icon: '👋', title: '클럽에서 나가게 되었어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
+  sendPush(target, { icon: '👋', title: '클럽에서 나가게 됐어요', body: `${c ? c.name : '클럽'} · 임원이 회원을 정리했어요` });
   res.json({ ok: true });
 });
 
@@ -3122,14 +3159,97 @@ const ICON_LINKS = {
   '🔔': 'home', '⭐': 'league', '🥇': 'league', '📣': 'club', '🙌': 'club', '🏃': 'league', '🏊': 'league', '⚽': 'league', '🏀': 'league', '⚾': 'league', '🏸': 'bracket',
 };
 
-async function sendPush(userId, msg, opts) {
+async /* ── iOS 알림 (APNs) ─────────────────────────────────────────
+   지금까지 sendPush 는 웹 푸시(VAPID)만 보냈다. iOS 토큰은 {endpoint} 꼴이 아니라
+   64자 문자열이라 JSON.parse 에서 조용히 걸러졌고, 그래서 폰에는 아무것도 안 떴다.
+   (알림함에는 쌓이고 있었다 — 만들어지는 알림은 이미 70종이 넘는다.)
+
+   새 패키지 없이 Node 기본 모듈로 보낸다.
+     · 인증  : ES256 으로 서명한 JWT (crypto)
+     · 전송  : HTTP/2 (http2)
+   Railway 환경변수 네 개가 없으면 조용히 넘어간다 — 개발 중에 오류가 나지 않게. */
+const APNS = {
+  key: (process.env.APNS_KEY || '').replace(/\\n/g, '\n'),   // 줄바꿈이 \n 으로 들어오는 경우
+  keyId: process.env.APNS_KEY_ID || '',
+  teamId: process.env.APNS_TEAM_ID || '',
+  bundleId: process.env.APNS_BUNDLE_ID || '',
+  /* 배포 빌드는 api.push, Xcode 개발 빌드는 api.sandbox.push 로 가야 한다.
+     둘 다 되는 키를 만들었으므로 서버는 실패하면 반대쪽으로 한 번 더 시도한다. */
+  hosts: ['https://api.push.apple.com', 'https://api.sandbox.push.apple.com'],
+  _jwt: null, _jwtAt: 0,
+};
+const apnsReady = () => !!(APNS.key && APNS.keyId && APNS.teamId && APNS.bundleId);
+function apnsToken() {
+  /* JWT 는 최대 1시간까지 쓸 수 있다. 매번 새로 만들면 APNs 가 429 로 막는다. */
+  if (APNS._jwt && Date.now() - APNS._jwtAt < 40 * 60 * 1000) return APNS._jwt;
+  const b64 = b => Buffer.from(b).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const h = b64(JSON.stringify({ alg: 'ES256', kid: APNS.keyId }));
+  const p = b64(JSON.stringify({ iss: APNS.teamId, iat: Math.floor(Date.now() / 1000) }));
+  const sig = crypto.sign('sha256', Buffer.from(h + '.' + p),
+    { key: APNS.key, dsaEncoding: 'ieee-p1363' });          // APNs 는 raw(R||S) 서명
+  APNS._jwt = `${h}.${p}.${b64(sig)}`; APNS._jwtAt = Date.now();
+  return APNS._jwt;
+}
+function apnsSend(token, msg, hostIdx) {
+  return new Promise(resolve => {
+    const host = APNS.hosts[hostIdx || 0];
+    let client;
+    try { client = http2.connect(host); } catch { return resolve({ ok: false }); }
+    const body = Buffer.from(JSON.stringify({
+      aps: {
+        alert: { title: msg.title || '맞수', body: msg.body || '' },
+        sound: 'default', badge: msg.badge || undefined,
+        'thread-id': msg.thread || undefined,        // 같은 클럽 알림끼리 묶인다
+      },
+      url: msg.url || '/',
+    }));
+    const req = client.request({
+      ':method': 'POST', ':path': '/3/device/' + token,
+      authorization: 'bearer ' + apnsToken(),
+      'apns-topic': APNS.bundleId,
+      'apns-push-type': 'alert',
+      'apns-priority': '10',
+      'content-type': 'application/json',
+      'content-length': body.length,
+    });
+    let status = 0, out = '';
+    req.on('response', h => { status = +h[':status'] || 0; });
+    req.on('data', d => { out += d; });
+    req.on('error', () => { try { client.close(); } catch {} resolve({ ok: false }); });
+    req.on('end', () => {
+      try { client.close(); } catch {}
+      if (status === 200) return resolve({ ok: true });
+      let reason = ''; try { reason = (JSON.parse(out) || {}).reason || ''; } catch {}
+      /* BadDeviceToken 은 <다른 환경의 토큰>이라는 뜻이다 — 반대쪽 서버로 한 번 더 */
+      if ((status === 400 && reason === 'BadDeviceToken') && !hostIdx)
+        return resolve(apnsSend(token, msg, 1));
+      resolve({ ok: false, status, reason });
+    });
+    req.end(body);
+  });
+}
+function sendPush(userId, msg, opts) {
   // 알림함에는 기본으로 남긴다. 채팅처럼 잦은 알림은 skipInbox 로 푸시만 보낸다.
   const link = msg.link || ICON_LINKS[msg.icon] || null;
   if (!(opts && opts.skipInbox))
     db.prepare('INSERT INTO notifications (user_id,icon,title,sub,created_at,link) VALUES (?,?,?,?,?,?)')
       .run(userId, msg.icon || '🔔', msg.title || '', msg.body || '', now(), link);
+  const rows = db.prepare('SELECT token, platform FROM devices WHERE user_id=?').all(userId);
+
+  /* iOS 는 APNs 로 — 예전에는 이 갈래가 없어 폰 알림이 하나도 안 갔다 */
+  if (apnsReady()) {
+    rows.filter(r => r.platform === 'ios').forEach(({ token }) => {
+      apnsSend(token, msg).then(r => {
+        /* Unregistered = 앱을 지웠거나 토큰이 만료됐다 — 표에서 지운다 */
+        if (!r.ok && (r.reason === 'Unregistered' || r.reason === 'BadDeviceToken'))
+          db.prepare('DELETE FROM devices WHERE token=?').run(token);
+        else if (!r.ok) console.error('[apns]', r.status, r.reason);
+      }).catch(() => {});
+    });
+  }
+
   if (!webpush) return;
-  const rows = db.prepare('SELECT token FROM devices WHERE user_id=?').all(userId);
   for (const { token } of rows) {
     let sub;
     try { sub = JSON.parse(token); } catch { continue; }        // 구독 객체가 아니면 건너뛴다
@@ -4900,7 +5020,7 @@ app.post('/open-matches/:id/match-review', auth, limitWrite, (req, res) => {
   else db.prepare('INSERT INTO om_match_reviews (match_id,user_id,match_r,manager_r,venue_r,note,created_at) VALUES (?,?,?,?,?,?,?)')
     .run(m.id, req.uid, ok(b.match_r), ok(b.manager_r), ok(b.venue_r), String(b.note || '').slice(0, 300), now());
   if (ok(b.manager_r) === 'praise' && m.manager_id && m.manager_id !== req.uid)
-    sendPush(m.manager_id, { icon: '👏', title: '매니저 칭찬을 받았어요', body: '오늘 매치 운영이 좋았대요!' });
+    sendPush(m.manager_id, { icon: '👏', title: '매니저 칭찬을 받았어요', body: '오늘 매치 운영이 좋았대요' });
   res.json({ ok: true });
 });
 app.post('/open-matches/:id/reviews', auth, limitWrite, (req, res) => {
