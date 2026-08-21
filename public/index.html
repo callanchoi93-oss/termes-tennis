@@ -2139,6 +2139,43 @@
   .ombme-s i{ width:17px;height:17px;border-radius:50%;background:var(--ink);color:#fff;flex:none;
     font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;
     justify-content:center;margin-top:2px }
+  /* ── 오픈매치 회원 안내 ── */
+  .omg{ display:flex;flex-direction:column;width:100%;height:100%;background:#fff }
+  .omg-top{ flex:none;display:flex;align-items:center;justify-content:space-between;
+    padding:calc(14px + env(safe-area-inset-top,0px)) 20px 4px }
+  .omg-skip{ font-size:12.5px;font-weight:600;color:var(--lgray);cursor:pointer }
+  .omg-body{ flex:1;overflow-y:auto;padding:8px 20px 0;scrollbar-width:none }
+  .omg-body::-webkit-scrollbar{ display:none }
+  .omg-foot{ flex:none;padding:14px 20px calc(20px + env(safe-area-inset-bottom,0px)) }
+  .omg-dots{ display:flex;gap:5px;justify-content:center;margin-bottom:14px }
+  .omg-dots i{ width:5px;height:5px;border-radius:50%;background:var(--felt-d);display:block;
+    transition:.18s }
+  .omg-dots i.on{ width:16px;border-radius:3px;background:var(--coral) }
+  .omg-hd{ font-size:23px;font-weight:800;letter-spacing:-.04em;line-height:1.32;margin-bottom:9px }
+  .omg-sd{ font-size:13px;color:var(--gray);font-weight:500;line-height:1.7;margin-bottom:18px }
+  .omg-c{ background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;
+    margin-bottom:10px }
+  .omg-c.flat{ background:var(--cream2);border-color:transparent }
+  .omg-c.dk{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .omg-c b{ display:block;font-size:13.5px;font-weight:700;letter-spacing:-.02em }
+  .omg-c i{ display:block;font-style:normal;font-size:12px;color:var(--gray);font-weight:500;
+    margin-top:2px;line-height:1.55 }
+  .omg-c.dk i{ color:#b3aea4 }
+  .omg-c.dk b i, .omg-c i b{ display:inline;font-weight:700 }
+  .omg-r{ display:flex;align-items:center;gap:11px }
+  .omg-i{ width:34px;height:34px;border-radius:11px;background:var(--coral-s);color:var(--coral-d);
+    display:flex;align-items:center;justify-content:center;font-size:15px;flex:none }
+  .omg-i.bad{ background:#fdeceb;color:#c0453a }
+  .omg-i.ok{ background:#e6f3ec;color:#2f7d55 }
+  .omg-pyr{ display:flex;flex-direction:column;align-items:center;gap:3px }
+  .omg-pyr > div{ height:14px }
+  .omg-p{ display:flex;justify-content:space-between;font-size:12px }
+  .omg-p span{ color:var(--gray);font-weight:500 }
+  .omg-p b{ display:inline;font-weight:700;font-size:12px }
+  .omg-turn{ border:1px solid #eee9e0;border-radius:16px;padding:15px;margin-bottom:10px;
+    box-shadow:0 3px 12px rgba(40,30,18,.06) }
+  .omg-badge{ font-size:11px;font-weight:700;background:var(--coral);color:#fff;
+    border-radius:20px;padding:2px 9px }
   /* ── 오픈매치 목록 (C안 · 한 줄 헤더 + 히어로 카드) ── */
   .omhead{ display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px }
   .omhead-l{ display:flex;align-items:center;gap:4px;cursor:pointer;min-width:0 }
@@ -19744,7 +19781,10 @@ function omEmpty(filtered, total){
       <div class="omempty-s">${esc(omFilterText())} 조건으로 찾고 있어요.</div>
       <div class="omempty-a">${opts.map(([a,b,js])=>
         `<div onclick="${js}"><b>${esc(a)}</b><span>${esc(b)}</span></div>`).join('')}</div>
-      </div>`;
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--lgray);font-weight:500">
+        오픈매치가 처음이신가요?
+        <b style="color:var(--coral-d);cursor:pointer" onclick="openOmGuide(0)">안내 보기</b></div>`;
   }
   return `<div class="omempty">
     <div class="omempty-i">${ic('swap',24)}</div>
@@ -19752,12 +19792,12 @@ function omEmpty(filtered, total){
     <div class="omempty-s">구장이 시간을 열면 바로 올라와요.<br>알림을 켜두면 놓치지 않아요.</div>
     <button class="btn" style="margin-top:16px" onclick="omWantAlert()">열리면 알려주세요</button>
     </div>
-    <div class="omc" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="openTierGuide()">
+    <div class="omc" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="openOmGuide(0)">
       <span style="width:34px;height:34px;border-radius:11px;background:var(--coral-s);
-        color:var(--coral-d);display:flex;align-items:center;justify-content:center;font-size:14px">▲</span>
-      <div style="flex:1"><div style="font-size:13.5px;font-weight:700">티어가 뭔가요?</div>
+        color:var(--coral-d);display:flex;align-items:center;justify-content:center;font-size:14px">?</span>
+      <div style="flex:1"><div style="font-size:13.5px;font-weight:700">오픈매치가 처음이신가요?</div>
         <div style="font-size:11.5px;color:var(--gray);font-weight:500;margin-top:1px">
-          2경기만 뛰면 실력에 맞게 배치돼요</div></div>
+          1분이면 어떻게 돌아가는지 알 수 있어요</div></div>
       <span style="color:var(--lgray)">›</span></div>`;
 }
 function omFilterText(){
@@ -20253,6 +20293,121 @@ const ICONS={msg:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACq
 const im=(k,s)=>`<img src="${ICONS[k]}" style="width:${s||18}px;height:${s||18}px;vertical-align:-3px" alt="">`;
 /* ═══ 플랩식 매치 상세 — 카드 탭 시 전체 정보 + 모든 액션 ═══ */
 function openMatchCard(id){ openOmDetail(id); }
+/* ── 오픈매치 회원 안내 ─────────────────────────────
+   탭을 처음 여는 사람에게 한 번만 뜬다. 두 번 뜨면 바로 미움받는다.
+   이후에는 빈 화면 카드에서 언제든 다시 볼 수 있다. */
+let OMG_I = 0;
+/* 아이콘은 여기 한 곳에서만 갈아끼운다 — 나중에 받은 SVG 로 교체하면 전부 바뀐다 */
+const OMG_ICON = {
+  court:'📍', people:'👥', ball:'🎾',
+  clock:'⏰', ban:'🚫', good:'👍'
+};
+const omgIcon = (k,cls) => `<span class="omg-i ${cls||''}">${OMG_ICON[k]||''}</span>`;
+
+function omgPages(){
+  const T = k => `<span style="width:26px;height:14px;background:var(--t-${k});display:block;margin:0 auto"></span>`;
+  return [
+  { hd:'혼자 와도<br>넷이 됩니다',
+    sd:'클럽에 속하지 않아도, 같이 칠 사람이 없어도<br>신청만 하면 그날 경기가 만들어져요.',
+    body:`
+      <div class="omg-c flat"><div class="omg-r">${omgIcon('court')}
+        <div><b>코트는 이미 잡혀 있어요</b><i>구장이 열어둔 시간을 그대로 씁니다</i></div></div></div>
+      <div class="omg-c flat"><div class="omg-r">${omgIcon('people')}
+        <div><b>사람은 앱이 모아요</b><i>실력이 비슷한 사람끼리 채워집니다</i></div></div></div>
+      <div class="omg-c flat"><div class="omg-r">${omgIcon('ball')}
+        <div><b>대진도 앱이 짜요</b><i>누구랑 칠지 정하느라 서 있을 일이 없어요</i></div></div></div>` },
+
+  { hd:'실력이 맞아야<br>재밌어요',
+    sd:'너무 잘하는 사람과 붙으면 지치고,<br>너무 못하는 사람과 붙으면 심심해요.',
+    body:`
+      <div class="omg-c flat" style="padding:16px 14px">
+        <div class="omg-pyr">
+          <div style="width:26px;background:var(--t-gs);clip-path:polygon(50% 0,50% 0,100% 100%,0 100%)"></div>
+          <div style="width:48px;background:var(--t-tour);clip-path:polygon(27% 0,73% 0,100% 100%,0 100%)"></div>
+          <div style="width:70px;background:var(--t-chal);clip-path:polygon(31% 0,69% 0,100% 100%,0 100%)"></div>
+          <div style="width:92px;background:var(--t-fut);clip-path:polygon(24% 0,76% 0,100% 100%,0 100%)"></div>
+          <div style="width:114px;height:17px;background:var(--t-love);clip-path:polygon(21% 0,79% 0,100% 100%,0 100%);
+               color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;
+               justify-content:center">지금 여기</div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--lgray);font-weight:500;
+             margin-top:11px;letter-spacing:-.03em">
+          러브 · 퓨처스 · 챌린저 · 마스터스 · 그랜드슬램</div></div>
+      <div class="omg-c"><b>2경기만 뛰면 배치돼요</b>
+        <i>그 뒤로는 비슷한 티어끼리만 묶여요.</i></div>
+      <div class="omg-c dk"><b>자기신고가 아니에요</b>
+        <i>"저 좀 칩니다"로 올라가지 않아요. 이기고 지는 결과로만 정해져요.</i></div>` },
+
+  { hd:'모이면 열리고<br>안 모이면 돌려드려요',
+    sd:'신청할 때 참가비를 미리 결제해요.<br>현장에서 돈 걷을 일이 없어요.',
+    body:`
+      <div class="omg-c" style="border-color:#f4ddcc;background:var(--coral-s)">
+        <b style="color:var(--coral-d)">4명이 모여야 열려요</b>
+        <i style="color:#9a6544">시작 24시간 전까지 안 모이면 자동 취소되고 <b>전액 환불</b>돼요.</i></div>
+      <div class="omg-c"><b>더 모이면 싸져요</b>
+        <i>코트비를 나눠 내는 구조라 사람이 늘면 참가비가 내려가요. <b>차액은 캐시로</b> 돌려드려요.</i>
+        <div style="border-top:1px solid var(--line);margin-top:11px;padding-top:11px">
+          <div class="omg-p"><span>4명일 때</span><b>19,800원</b></div>
+          <div class="omg-p" style="margin-top:5px"><span>6명이 되면</span>
+            <b style="color:var(--coral-d)">13,200원 · 6,600원 환급</b></div></div></div>` },
+
+  { hd:'가면<br>바로 시작해요',
+    sd:'누가 누구랑 칠지, 몇 번 코트인지<br>앱이 알려줘요.',
+    body:`
+      <div class="omg-turn">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="omg-badge">내 차례</span>
+          <span style="font-size:11px;color:var(--lgray)">내 경기 1/4</span></div>
+        <div style="font-size:19px;font-weight:700;letter-spacing:-.04em;margin-top:10px;line-height:1.35">
+          3번 코트<br>2번째 게임</div>
+        <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:6px">
+          파트너 이평화 · vs 김진수 · 강태민</div></div>
+      <div class="omg-c flat"><b>파트너가 매번 바뀌어요</b>
+        <i>모두와 한 번씩 팀이 되도록 짜여 있어요. 운으로 승패가 갈리지 않아요.</i></div>
+      <div class="omg-c flat"><b>라운드마다 알림이 와요</b>
+        <i>다음 차례와 남은 시간을 알려드려요.</i></div>` },
+
+  { hd:'서로 기분 좋게<br>치기 위해',
+    sd:'처음 만나는 사람들이라<br>몇 가지만 지켜주시면 돼요.',
+    body:`
+      <div class="omg-c"><div class="omg-r">${omgIcon('clock')}
+        <div><b>늦지 않기</b><i>한 명이 늦으면 넷이 못 칩니다</i></div></div></div>
+      <div class="omg-c"><div class="omg-r">${omgIcon('ban','bad')}
+        <div><b>못 가면 미리 알리기</b><i>노쇼 3회면 90일간 참가가 막혀요</i></div></div></div>
+      <div class="omg-c"><div class="omg-r">${omgIcon('good','ok')}
+        <div><b>끝나면 매너 확인</b><i>탭 한 번이면 끝나요</i></div></div></div>
+      <div class="omg-c dk" style="margin-top:14px"><b>첫 경기가 가장 떨려요</b>
+        <i>다들 처음이 있었어요. 실력이 낮아도 같은 급끼리 붙여드리니 편하게 오세요.</i></div>` },
+  ];
+}
+function openOmGuide(i){
+  OMG_I = Math.max(0, Math.min(4, i||0));
+  const P = omgPages(), p = P[OMG_I], last = OMG_I === P.length-1;
+  const dots = P.map((_,k)=>`<i class="${k===OMG_I?'on':''}"></i>`).join('');
+  document.getElementById('tierpage').innerHTML = `<div class="omg">
+    <div class="omg-top">${last?'<span></span>':`<span></span>
+      <span class="omg-skip" onclick="closeOmGuide()">건너뛰기</span>`}</div>
+    <div class="omg-body">
+      <div style="padding:14px 0 4px">
+        <div class="omg-hd">${p.hd}</div>
+        <div class="omg-sd">${p.sd}</div></div>
+      ${p.body}</div>
+    <div class="omg-foot">
+      <div class="omg-dots">${dots}</div>
+      <button class="btn" onclick="${last?'closeOmGuide()':`openOmGuide(${OMG_I+1})`}">${
+        last?'매치 둘러보기':'다음'}</button></div>
+  </div>`;
+  document.getElementById('tierpage').style.display='flex';
+}
+function closeOmGuide(){
+  document.getElementById('tierpage').style.display='none';
+  try{ state.omGuideSeen = true; saveMatsu(); }catch(e){}
+}
+/* 오픈매치 탭을 처음 열 때 한 번 */
+function omGuideMaybe(){
+  if(state.omGuideSeen) return;
+  setTimeout(()=>{ if(state.view==='match' && !state.omGuideSeen) openOmGuide(0); }, 400);
+}
 /* ── 경기 결과 ─────────────────────────────
    왜 그 티어가 됐는지 근거를 함께 보여준다.
    티어만 툭 바뀌면 시스템이 고장 난 줄 알거나 아무 의미 없다고 여긴다. */
@@ -21859,6 +22014,7 @@ async function renderMatch(){
     window.OM_LOADED = true; window.OM_TS = Date.now();
     const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST);
     loadMyTier();
+    omGuideMaybe();          // 탭을 처음 여는 사람에게 한 번만
   }catch(e){}
 }
 
