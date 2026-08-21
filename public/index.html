@@ -2187,17 +2187,17 @@
   .omg-i svg{ width:20px;height:20px }
   /* 피라미드 — 단을 눌러 고른다. 티어 안내 화면과 같은 방식이라 새로 배울 게 없다 */
   .omg-pyr{ display:flex;flex-direction:column;align-items:center;gap:4px }
-  .omg-pyr > div{ height:18px;flex:none;cursor:pointer;opacity:.42;transition:.16s;
-    display:flex;align-items:center;justify-content:center }
-  .omg-pyr > div.base{ height:21px }
-  /* 고른 단만 또렷하게 — 흐리게만 하면 피라미드 모양 자체가 안 보인다.
-     그림자로 한 칸을 띄워 어느 단을 보고 있는지 분명히 한다. */
-  /* 고른 단만 또렷하게 — 라벨도 여기로 따라온다 */
-  .omg-pyr > div.on{ opacity:1;box-shadow:0 2px 10px rgba(40,30,18,.2);border-radius:1px;
-    transform:scale(1.04) }
-  .omg-pyr > div span{ font-size:9.5px;font-weight:700;color:#4a463f;letter-spacing:-.03em;
-    white-space:nowrap }
-  .omg-pyr > div.base span{ color:#fff }
+  /* 라벨은 단 밖에 둔다 — 꼭대기는 삼각형이라 안쪽 폭이 0 이라 글자가 들어가지 않는다.
+     좌우에 같은 폭을 주어 피라미드가 가운데 그대로 선다. */
+  .omg-row{ display:flex;align-items:center;justify-content:center;cursor:pointer;width:100% }
+  .omg-row-l,.omg-row-r{ width:60px;flex:none;font-size:10px;font-weight:700;
+    letter-spacing:-.04em;white-space:nowrap;transition:.16s }
+  .omg-row-l{ text-align:right;padding-right:8px;color:var(--coral-d) }
+  .omg-row-r{ text-align:left;padding-left:8px;color:var(--lgray);font-weight:600 }
+  .omg-row-b{ height:18px;flex:none;display:block;opacity:.42;transition:.16s }
+  .omg-row-b.base{ height:21px }
+  .omg-row.on .omg-row-b{ opacity:1;box-shadow:0 2px 10px rgba(40,30,18,.2);
+    border-radius:1px;transform:scale(1.04) }
   .omg-tinfo{ text-align:center;margin-top:13px;padding-top:12px;border-top:1px solid #e8e6e0 }
   .omg-tn{ font-size:15px;font-weight:700;letter-spacing:-.03em }
   .omg-tn em{ font-style:normal;font-size:11.5px;font-weight:600;color:var(--gray);
@@ -20402,10 +20402,12 @@ function omgPages(){
     body:`
       <div class="omg-c flat" style="padding:14px">
         <div class="omg-pyr" id="omgPyr">
-          ${OMG_T.map((t,k)=>`<div class="${k===OMG_K?'on':''}${t.k==='love'?' base':''}"
-            style="width:${t.w}px;background:var(--t-${t.k});clip-path:${t.cp}"
-            onclick="pickOmgTier(${k})">${k===OMG_K
-              ? `<span>${t.k==='love'?'지금 여기':t.n}</span>` : ''}</div>`).join('')}
+          ${OMG_T.map((t,k)=>`<div class="omg-row ${k===OMG_K?'on':''}" onclick="pickOmgTier(${k})">
+            <span class="omg-row-l">${k===OMG_K?esc(t.n):''}</span>
+            <span class="omg-row-b${t.k==='love'?' base':''}"
+              style="width:${t.w}px;background:var(--t-${t.k});clip-path:${t.cp}"></span>
+            <span class="omg-row-r">${t.k==='love'?'지금 여기':''}</span>
+          </div>`).join('')}
         </div>
         <div class="omg-tinfo">
           <div class="omg-tn">${OMG_T[OMG_K].n}
@@ -25911,7 +25913,8 @@ function _renderMeCore(){
       }
     }catch(e){}
     const ts=myTierFor('singles'), td=myTierFor('doubles');
-    const tnm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
+    /* 배치 전에도 티어는 러브다 */
+    const tnm=x=>x.placing?'러브':esc(String(x.name).split(' · ')[0]);
     return `<div style="display:flex;gap:10px;margin-bottom:12px">
     <div class="card" style="flex:1;margin:0;cursor:pointer;display:flex;flex-direction:column" onclick="openFairplayInfo()">
       <div style="font-size:12px;color:var(--gray);font-weight:500">매너</div>
@@ -25931,10 +25934,16 @@ function _renderMeCore(){
            :`<b style="font-size:13px;color:var(--coral-d)">구력 입력 필요</b>`}</div>
       <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">오픈매치·클럽 대진에 쓰여요</div>
       <div style="height:1px;background:#f0ece4;margin:11px 0"></div>
-      <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 개인리그</span></div>
+      <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 오픈매치</span></div>
       ${(ts.placing&&td.placing)
-        ? `<div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.45">
-             ${PLACEMENT_GAMES}경기만 뛰면 정해져요</div>`
+        /* 배치 전에도 티어는 있다 — 러브다. 이름을 숨기면 "내 티어가 없다"로 읽힌다. */
+        ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+             <span style="width:22px;height:22px;border-radius:50%;background:var(--t-love);
+               color:#fff;display:flex;align-items:center;justify-content:center;
+               font-size:10px;font-weight:700">L</span>
+             <b style="font-size:14px">러브</b></div>
+           <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.45">
+             ${PLACEMENT_GAMES}경기만 뛰면 배치돼요</div>`
         : `<div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:6px;line-height:1.8">
              <div>단식 <b style="color:${ts.placing?'var(--lgray)':'var(--ink)'}">${tnm(ts)}</b></div>
              <div>복식 <b style="color:${td.placing?'var(--lgray)':'var(--ink)'}">${tnm(td)}</b></div></div>`}
@@ -25948,7 +25957,7 @@ function _renderMeCore(){
           const n=((A.hosted||[]).length)+((A.joined||[]).length)+((A.guest||[]).length);
           return n?`${n}건`:'없음'; })()],
        ['티어 등급 추이','openRatingTrend()',
-         (ts.placing&&td.placing) ? '미배치' : `단식 ${tnm(ts)} · 복식 ${tnm(td)}`],
+         (ts.placing&&td.placing) ? '러브' : `단식 ${tnm(ts)} · 복식 ${tnm(td)}`],
        ['MVP 기록','openMyMvp()', (MY_MVP_N==null?'':`${MY_MVP_N}회`)]]
       .map((x,i)=>`<div onclick="${x[1]}" style="display:flex;align-items:center;gap:10px;padding:13px 15px;font-size:13.5px;font-weight:500;cursor:pointer;${i?'border-top:1px solid #f4f1eb':''}">
         <span style="flex:1">${x[0]}</span>
@@ -25960,7 +25969,8 @@ function _renderMeCore(){
     ${(()=>{
       // 티어는 단식·복식이 따로 매겨진다 — 한 칸에 뭉뚱그리면 어느 쪽 얘긴지 알 수 없다
       const ts=myTierFor('singles'), td=myTierFor('doubles');
-      const nm=x=>x.placing?'미배치':esc(String(x.name).split(' · ')[0]);
+      /* 배치 전에도 티어는 러브다. "미배치"는 티어가 없다는 뜻으로 읽힌다. */
+      const nm=x=>x.placing?'러브':esc(String(x.name).split(' · ')[0]);
       const col=x=>x.placing?'var(--lgray)':'var(--coral-d)';
       return `<div style="display:flex;text-align:center">
         <div style="flex:1"><div style="font-size:23px;font-weight:700">${rec.w}<span style="font-size:12px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:12px;color:var(--gray)">패</span></div>
