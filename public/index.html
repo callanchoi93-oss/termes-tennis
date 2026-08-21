@@ -13571,13 +13571,31 @@ function cbPlanIdleFree(mem, courts, seed){
     if(Date.now()-t0>BUDGET) break;
   }
   if(!best) return null;
-  /* 코트 배정 — 쉬는 사람으로 짠 경기를 1코트에 둔다 */
+  /* 코트 배정 — 조합은 위에서 정해졌고 여기서는 <어느 코트에 놓을지>만 정한다.
+     예전에는 배열 순서를 그대로 코트 번호로 썼다. 그러면 여성이 섞인 경기가
+     매 라운드 같은 자리에 와서 늘 같은 코트로 갔다 — 여자 3명이 2코트에만 몰리던 이유다.
+     여기서는 성별이 섞인 경기를 라운드마다 다른 코트로 돌린다. */
   const out=[];
-  best.rounds.forEach((gs,r)=>gs.forEach((g,c)=>out.push({
-    r:r+1, c:c+1,
-    t1:[mem[g[0]], mem[g[1]]], t2:[mem[g[2]], mem[g[3]]],
-    ids:g.map(i=>mem[i].id)
-  })));
+  const isFemale = p => { try{ return hnF(p); }catch(e){ return false; } };
+  best.rounds.forEach((gs,r)=>{
+    /* 이 라운드에서 여성이 낀 경기의 인덱스 */
+    const mixIdx = gs.map((g,i)=>({i, nf:g.filter(x=>isFemale(mem[x])).length}))
+                     .filter(x=>x.nf>0 && x.nf<4).map(x=>x.i);
+    const order = gs.map((_,i)=>i);
+    if(mixIdx.length===1 && gs.length>1){
+      /* 섞인 경기 하나를 라운드마다 다른 코트로 — r 만큼 밀어 넣는다 */
+      const from = mixIdx[0];
+      const to   = r % gs.length;
+      order.splice(order.indexOf(from), 1);
+      order.splice(to, 0, from);
+    }
+    order.forEach((gi,c)=>{
+      const g = gs[gi];
+      out.push({ r:r+1, c:c+1,
+        t1:[mem[g[0]], mem[g[1]]], t2:[mem[g[2]], mem[g[3]]],
+        ids:g.map(i=>mem[i].id) });
+    });
+  });
   return out;
 }
 
