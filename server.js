@@ -1572,9 +1572,14 @@ app.get('/clubs/:id/my-status', auth, (req, res) => {
 app.get('/clubs/:id/events', (req, res) => {
   const cid = +req.params.id; const uid = tryUid(req);
   const evs = db.prepare('SELECT * FROM club_events WHERE club_id=? ORDER BY id DESC LIMIT 20').all(cid);
-  const byStatus = (eid, st) => db.prepare(`SELECT u.name FROM event_attendees ea JOIN users u ON u.id=ea.user_id
-    WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'} ORDER BY u.name`)
-    .all(...(st === 'going' ? [eid] : [eid, st])).map(r => r.name);
+  /* 이름은 클럽 명단에 적힌 것(cm.alias)을 먼저 쓴다.
+     계정 이름은 소셜 로그인 닉네임이라 "L군^^" 처럼 클럽에서 안 쓰는 이름이 들어간다. */
+  const byStatus = (eid, st) => db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) AS name
+    FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+    LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+    WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'}
+    ORDER BY name`)
+    .all(...(st === 'going' ? [cid, eid] : [cid, eid, st])).map(r => r.name);
   res.json(evs.map(e => {
     const my = uid ? db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, uid) : null;
     return {
@@ -2330,9 +2335,11 @@ app.get('/events/:id/attendance', auth, (req, res) => {
   if (!ev) return res.status(404).json({ error: 'not_found' });
   if (!isMember(ev.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
   const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(ev.club_id, req.uid);
-  const rows = db.prepare(`SELECT ea.user_id, u.name, ea.status, ea.showed
+  const rows = db.prepare(`SELECT ea.user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name,
+      ea.status, ea.showed
     FROM event_attendees ea JOIN users u ON u.id=ea.user_id
-    WHERE ea.event_id=? ORDER BY u.name`).all(eid);
+    LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+    WHERE ea.event_id=? ORDER BY name`).all(ev.club_id, eid);
   res.json({
     event: { id: ev.id, title: ev.title, date: ev.date },
     is_officer: !!(m && ['owner', 'officer'].includes(m.role)),
@@ -7122,8 +7129,10 @@ app.post('/venue-slots/:id/open-match', auth, (req, res) => {
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
 
-/* 관리자가 볼 열린 슬롯 목록 — 어느 구장이 어느 시간을 열어뒀나 */
-app.get('/admin/venue-slots', admin, (req, res) => {
+/* 매치를 열 수 있는 <비어 있는> 슬롯만 — 기존 /admin/venue-slots 와는 쓰임이 다르다.
+   그쪽은 예약·정산까지 포함한 전체 목록이라 경로를 나눠 쓴다.
+   (같은 경로로 두 번 등록하면 먼저 선언된 쪽이 가로채 기존 화면이 비어 보인다) */
+app.get('/admin/open-slots', admin, (req, res) => {
   const from = String((req.query && req.query.from) || new Date().toISOString().slice(0, 10));
   const rows = db.prepare(`SELECT s.*, v.name venue_name, v.sido, v.sigungu
     FROM venue_slots s JOIN venues v ON v.id=s.venue_id
