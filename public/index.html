@@ -2139,6 +2139,10 @@
   .ombme-s i{ width:17px;height:17px;border-radius:50%;background:var(--ink);color:#fff;flex:none;
     font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;
     justify-content:center;margin-top:2px }
+  /* 티어 색 — 티어 안내·회원 안내·결과 화면이 함께 쓴다 */
+  :root{
+    --t-gs:#e6e0f5; --t-tour:#f7e0e2; --t-chal:#dde5f7; --t-fut:#faf0dc; --t-love:#6f6a62;
+  }
   /* ── 오픈매치 회원 안내 ── */
   .omg{ display:flex;flex-direction:column;width:100%;height:100%;background:#fff }
   .omg-top{ flex:none;display:flex;align-items:center;justify-content:space-between;
@@ -2259,6 +2263,15 @@
   .ommgr-t{ font-size:13.5px;font-weight:700;letter-spacing:-.02em }
   .ommgr-s{ font-size:11.5px;color:var(--gray);font-weight:500;margin-top:2px }
   .ommgr-a{ color:var(--lgray);font-size:16px;flex:none }
+  /* 매치가 없을 때 맨 위에 서는 안내 카드 — 코랄 테두리로 눌러야 할 것임을 알린다 */
+  .omg-lead{ display:flex;align-items:center;gap:12px;cursor:pointer;
+    border-color:#f4ddcc;background:var(--coral-s);margin-bottom:12px }
+  .omg-lead-i{ width:38px;height:38px;border-radius:12px;background:#fff;color:var(--coral-d);
+    display:flex;align-items:center;justify-content:center;flex:none }
+  .omg-lead-i svg{ width:21px;height:21px }
+  .omg-lead-t{ font-size:14px;font-weight:700;letter-spacing:-.02em;color:var(--coral-d) }
+  .omg-lead-s{ font-size:11.5px;color:#9a6544;font-weight:500;margin-top:2px }
+  .omg-lead-a{ color:var(--coral-d);font-size:16px;flex:none }
   .omempty{ background:var(--cream2);border-radius:20px;padding:30px 22px;text-align:center;margin-bottom:12px }
   .omempty-i{ width:52px;height:52px;border-radius:18px;background:#fff;margin:0 auto 16px;
     display:flex;align-items:center;justify-content:center;color:var(--lgray) }
@@ -19811,19 +19824,22 @@ function omEmpty(filtered, total){
         오픈매치가 처음이신가요?
         <b style="color:var(--coral-d);cursor:pointer" onclick="openOmGuide(0)">안내 보기</b></div>`;
   }
-  return `<div class="omempty">
-    <div class="omempty-i">${ic('swap',24)}</div>
-    <div class="omempty-t">아직 열린 코트가 없어요</div>
-    <div class="omempty-s">구장이 시간을 열면 바로 올라와요.<br>알림을 켜두면 놓치지 않아요.</div>
-    <button class="btn" style="margin-top:16px" onclick="omWantAlert()">열리면 알려주세요</button>
-    </div>
-    <div class="omc" style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="openOmGuide(0)">
-      <span style="width:34px;height:34px;border-radius:11px;background:var(--coral-s);
-        color:var(--coral-d);display:flex;align-items:center;justify-content:center;font-size:14px">?</span>
-      <div style="flex:1"><div style="font-size:13.5px;font-weight:700">오픈매치가 처음이신가요?</div>
-        <div style="font-size:11.5px;color:var(--gray);font-weight:500;margin-top:1px">
-          1분이면 어떻게 돌아가는지 알 수 있어요</div></div>
-      <span style="color:var(--lgray)">›</span></div>`;
+  /* 매치가 하나도 없으면 <어떤 서비스인가>부터 알려주는 편이 낫다.
+     아무것도 못 하는 화면에서 "알림 받기"만 있으면 그냥 나간다. */
+  return `<div class="omc omg-lead" onclick="openOmGuide(0)">
+      <span class="omg-lead-i">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45"
+          stroke-linecap="round" stroke-linejoin="round">${OMG_ICON.ball}</svg></span>
+      <div style="flex:1">
+        <div class="omg-lead-t">오픈매치가 처음이신가요?</div>
+        <div class="omg-lead-s">혼자 신청해도 넷이 모여요 · 1분이면 알 수 있어요</div></div>
+      <span class="omg-lead-a">›</span></div>
+    <div class="omempty">
+      <div class="omempty-i">${ic('swap',24)}</div>
+      <div class="omempty-t">아직 열린 코트가 없어요</div>
+      <div class="omempty-s">구장이 시간을 열면 바로 올라와요.<br>알림을 켜두면 놓치지 않아요.</div>
+      <button class="btn" style="margin-top:16px" onclick="omWantAlert()">열리면 알려주세요</button>
+    </div>`;
 }
 function omFilterText(){
   const F=state._omF||{}, a=[];
