@@ -12866,41 +12866,26 @@ function hnSplitMixed(ps, G){
   for(let g=0;g<G;g++){
     while(fq[g]>sizes[g]){ const t=fq.findIndex((v,i)=>v<sizes[i]); if(t<0) break; fq[g]--; fq[t]++; }
   }
-  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있으면 깔끔하다.
-     다만 여성 수가 코트 수로 나눠떨어지지 않을 때 짝수 맞추기를 밀어붙이면
-     <한 조에 여성 전원>이 답이 되어 그분들이 매 라운드 같은 코트에 갇힌다.
-     그래서 짝수 맞추기는 <옮겨도 어느 조든 몰리지 않을 때만> 한다. */
-  const MAXF = Math.ceil(W/G) + 1;          // 한 조가 가질 수 있는 여성 수 상한
-  /* 여성이 코트 수보다 적거나 같으면(3명 3코트) 짝수 맞추기를 아예 하지 않는다.
-     그때는 한 조에 한 명씩 들어가는 편이 낫다 — 혼복은 못 만들어도
-     그분들이 매 라운드 같은 코트에 갇히는 것보다 낫기 때문이다. */
-  const SPREAD = W>0 && W<=G;
-  for(let pass=0; SPREAD?0:pass<G*2; pass++){
+  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있어야 성립한다.
+     여성이 홀수로 남으면(1명·3명) 그 조에서는 여성 한 명이 남자 셋과 뛰는 경기가 계속 나온다.
+     그래서 짝수로 떨어지게 몰아준다 — 3명이면 2·1 로 갈지 말고 한 조에 3명(혹은 2명)을 둔다. */
+  for(let pass=0; pass<G*2; pass++){
     const odd=fq.findIndex(v=>v%2===1 && v>0);
     if(odd<0) break;
-    /* 다른 홀수 조와 주고받아 양쪽을 한 번에 짝수로 — 이건 몰림이 안 생긴다 */
+    /* 홀수인 조에서 한 명을 빼거나 더해 짝수로 만든다.
+       ① 다른 홀수 조로 옮겨 양쪽을 한 번에 짝수로  ② 안 되면 여성이 많은 조로 넘긴다 */
     const other=fq.findIndex((v,i)=>i!==odd && v%2===1 && v>0);
-    if(other>=0 && fq[other]+1<=Math.min(sizes[other], MAXF)){ fq[other]++; fq[odd]--; continue; }
-    if(other>=0 && fq[odd]+1<=Math.min(sizes[odd], MAXF)){ fq[odd]++; fq[other]--; continue; }
-    break;                                   // 몰아넣어야만 짝수가 된다면 그냥 둔다
+    if(other>=0 && fq[other]+1<=sizes[other]){ fq[other]++; fq[odd]--; continue; }
+    if(other>=0 && fq[odd]+1<=sizes[odd]){ fq[odd]++; fq[other]--; continue; }
+    const rich=fq.findIndex((v,i)=>i!==odd && v>=2);
+    if(rich>=0 && fq[rich]+fq[odd]<=sizes[rich]){ fq[rich]+=fq[odd]; fq[odd]=0; continue; }
+    break;                                               // 더 손볼 수 없으면 그대로 둔다
   }
-  /* 여성 혼자인 조는 되도록 피하되, 상한을 넘기면서까지 몰지는 않는다.
-     여성이 코트 수보다 적으면(예: 3명 3코트) 한 명씩 들어가는 편이 낫다. */
-  if(W > G){
-    for(let g=0;g<G;g++){
-      if(fq[g]!==1||W<2) continue;
-      const rich=fq.findIndex((v,i)=>i!==g && v>=2 && v+1<=Math.min(sizes[i], MAXF));
-      if(rich>=0){ fq[rich]++; fq[g]--; }
-    }
-  }
-  /* 마지막 확인 — 한 조가 여성을 다 가져갔으면 한 명은 옆 조로 보낸다.
-     "여자들끼리 한 코트"는 어떤 이유로도 만들지 않는다. */
-  {
-    const hog=fq.findIndex(v=>v===W && W>=2 && G>=2);
-    if(hog>=0){
-      const to=fq.findIndex((v,i)=>i!==hog && sizes[i]>v);
-      if(to>=0){ fq[hog]--; fq[to]++; }
-    }
+  /* 여성 혼자인 조는 끝까지 피한다 */
+  for(let g=0;g<G;g++){
+    if(fq[g]!==1||W<2) continue;
+    const rich=fq.findIndex((v,i)=>i!==g&&v>=2);
+    if(rich>=0 && fq[rich]+1<=sizes[rich]){ fq[rich]++; fq[g]--; }
   }
   const groups=Array.from({length:G},()=>[]);
   const snake=(list, cap)=>{ let g=0, dir=1;
@@ -12941,13 +12926,13 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
       const [a0,b0,c0,d0]=four;
       [[[a0,b0],[c0,d0]],[[a0,c0],[b0,d0]],[[a0,d0],[b0,c0]]].forEach(sp=>{
         const [[a,b],[c,d]]=sp;
+        // 여2·남2면 팀마다 남녀 1명(혼복)이 기본. 파트너가 겹칠 바엔 남복:여복도 허용
         const mixed=(hnF(mem[a])!==hnF(mem[b])) && (hnF(mem[c])!==hnF(mem[d]));
         const nf=four.filter(i=>hnF(mem[i])).length;
-        /* 여2·남2 코트에서 <여자팀 vs 남자팀>은 만들지 않는다.
-           예전에는 160점 벌점이라 파트너 중복(120점 x2)이 크면 그쪽이 뽑혔다.
-           실력 차가 그대로 승패가 되는 조합이라 아예 후보에서 뺀다. */
-        if(nf===2 && !mixed) return;
         const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
+          /* 여2·남2인데 여성 둘이 한 팀에 몰리면 여복 대 남복이 된다 —
+             한울처럼 조가 작을 때는 그럴 바엔 파트너가 겹치는 편이 낫다. */
+          +(nf===2 && !mixed ? 160 : 0)
           +(pastCost(a,b)+pastCost(c,d))*20
           +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
           +Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]))*4
@@ -12967,22 +12952,6 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
         if(!best||cost<best.cost) best={cost,sp,four};
       });
     });
-    /* 위에서 <여자팀 vs 남자팀>을 제외하다 후보가 하나도 안 남을 수 있다.
-       그때는 편성을 멈추지 말고 제한 없이 한 번 더 고른다 — 대진이 끊기는 편이 더 나쁘다. */
-    if(!best){
-      hnCombos(opt,need).forEach(cmb=>{
-        const four=must.concat(cmb);
-        const [a0,b0,c0,d0]=four;
-        [[[a0,b0],[c0,d0]],[[a0,c0],[b0,d0]],[[a0,d0],[b0,c0]]].forEach(sp=>{
-          const [[a,b],[c,d]]=sp;
-          const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
-            +(pastCost(a,b)+pastCost(c,d))*20
-            +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
-            +rnd()*0.5;
-          if(!best||cost<best.cost) best={cost,sp,four};
-        });
-      });
-    }
     if(!best) break;
     const [[a,b],[c,d]]=best.sp;
     pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
@@ -13602,31 +13571,13 @@ function cbPlanIdleFree(mem, courts, seed){
     if(Date.now()-t0>BUDGET) break;
   }
   if(!best) return null;
-  /* 코트 배정 — 조합은 위에서 정해졌고 여기서는 <어느 코트에 놓을지>만 정한다.
-     예전에는 배열 순서를 그대로 코트 번호로 썼다. 그러면 여성이 섞인 경기가
-     매 라운드 같은 자리에 와서 늘 같은 코트로 갔다 — 여자 3명이 2코트에만 몰리던 이유다.
-     여기서는 성별이 섞인 경기를 라운드마다 다른 코트로 돌린다. */
+  /* 코트 배정 — 쉬는 사람으로 짠 경기를 1코트에 둔다 */
   const out=[];
-  const isFemale = p => { try{ return hnF(p); }catch(e){ return false; } };
-  best.rounds.forEach((gs,r)=>{
-    /* 이 라운드에서 여성이 낀 경기의 인덱스 */
-    const mixIdx = gs.map((g,i)=>({i, nf:g.filter(x=>isFemale(mem[x])).length}))
-                     .filter(x=>x.nf>0 && x.nf<4).map(x=>x.i);
-    const order = gs.map((_,i)=>i);
-    if(mixIdx.length===1 && gs.length>1){
-      /* 섞인 경기 하나를 라운드마다 다른 코트로 — r 만큼 밀어 넣는다 */
-      const from = mixIdx[0];
-      const to   = r % gs.length;
-      order.splice(order.indexOf(from), 1);
-      order.splice(to, 0, from);
-    }
-    order.forEach((gi,c)=>{
-      const g = gs[gi];
-      out.push({ r:r+1, c:c+1,
-        t1:[mem[g[0]], mem[g[1]]], t2:[mem[g[2]], mem[g[3]]],
-        ids:g.map(i=>mem[i].id) });
-    });
-  });
+  best.rounds.forEach((gs,r)=>gs.forEach((g,c)=>out.push({
+    r:r+1, c:c+1,
+    t1:[mem[g[0]], mem[g[1]]], t2:[mem[g[2]], mem[g[3]]],
+    ids:g.map(i=>mem[i].id)
+  })));
   return out;
 }
 
@@ -15931,12 +15882,7 @@ function omRoundsFor(people, courts){
 function omRoundPlan(mem, useC, rounds, past, seed){
   const need=useC*4, m=mem.length;
   if(m<need) return null;
-  /* 전체 여성 수가 4의 배수가 아니면 어느 라운드든 반드시 한 코트가 섞인다.
-     그때 남복을 최대로 만들려 하면 <남은 여성을 한 코트에 몰기>가 항상 최선이 되어
-     그분들이 매 라운드 같은 사람과만 치게 된다.
-     이런 인원 조합에서는 남복 우선을 끄고 골고루 섞는 쪽을 택한다. */
-  const totF = mem.filter(p=>hnF(p)).length;
-  const EVEN_MIX = (totF % 4) !== 0 && totF > 0 && totF < mem.length;
+
   const rnd=_rng((seed||1)*337+m*11+useC*5);
   const pastCost=(a,b)=>{ if(!past) return 0; const k=[mem[a].id,mem[b].id].sort().join('-'); return past[k]||0; };
   let best=null;
@@ -15953,7 +15899,7 @@ function omRoundPlan(mem, useC, rounds, past, seed){
          여성이 전체 3명뿐이면 4명을 만들 수 없으므로 0명(전원 휴식)도 답이 되지만,
          그러면 여성만 계속 쉬게 된다. 아래 target 계산이 반올림이라
          3명일 때는 4를 노리고, 못 만들면 3명 그대로 나간다. */
-      if(!EVEN_MIX){
+      {
         const inSel=new Set(sel);
         let f=sel.filter(i=>hnF(mem[i])).length;
         const target=Math.max(0, Math.min(need, Math.round(f/4)*4));
@@ -15978,13 +15924,7 @@ function omRoundPlan(mem, useC, rounds, past, seed){
           const four=[a].concat(c);
           let cost=rnd()*0.5;
           for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
-            /* 소수 성별끼리 자꾸 붙는 것을 특히 무겁게 본다.
-               여성이 3명뿐이면 <한 코트에 몰기>가 매 라운드 가장 싼 답이 되어
-               그 셋이 계속 같은 사람과만 친다. 같은 조합이 반복될수록
-               비용이 크게 오르게 해서 라운드가 갈수록 흩어지게 만든다. */
-            const bothF = hnF(mem[four[i]]) && hnF(mem[four[j]]);
-            const w = bothF ? 3 : 1;
-            cost+=((pu[hnK(four[i],four[j])]||0)*45+(ou[hnK(four[i],four[j])]||0)*12)*w
+            cost+=(pu[hnK(four[i],four[j])]||0)*45+(ou[hnK(four[i],four[j])]||0)*12
                  +pastCost(four[i],four[j])*8;
           }
           const gs=four.map(i=>hnG(mem[i]));
@@ -15993,18 +15933,8 @@ function omRoundPlan(mem, useC, rounds, past, seed){
              예전에는 <남은 여자를 한 코트에 몰기>가 가장 싼 답이 됐다.
              그러면 그 몇 명이 매 라운드 같은 사람과만 치게 된다.
              그래서 3명이 한 코트에 몰리는 것을 순수 남복만큼 무겁게 막는다. */
-          const nf=four.filter(i=>hnF(mem[i])).length;
-          if(EVEN_MIX){
-            /* 남복을 못 만드는 인원 조합 — 뭉치지 않게 하는 것이 목표다.
-               여성이 한 코트에 몰릴수록 비싸게 매겨 자연히 흩어지게 한다. */
-            if(nf>=3) cost+=140;
-            else if(nf===2) cost+=25;
-          } else {
-            /* 남복·여복을 만들 수 있는 인원 — 같은 성별끼리 묶는 편이 좋다 */
-            if(nf===0||nf===4) ;
-            else if(nf===2) cost+=40;
-            else cost+=95;
-          }
+          const nf=four.filter(i=>hnF(mem[i])).length;   // 같은 성별끼리 — 남복·여복 우선
+          if(nf!==0&&nf!==4) cost+=80;
           if(!pick||cost<pick.cost) pick={cost,c,four};
         });
         if(!pick) break;
@@ -16015,32 +15945,16 @@ function omRoundPlan(mem, useC, rounds, past, seed){
       const cs=fours.map(four=>{
         const [a,b,c,d]=four;
         let bs=null;
-        const nf=four.filter(i=>hnF(mem[i])).length;
         [[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]].forEach(sp=>{
           const [[x,y],[z,w]]=sp;
-          const fx=hnF(mem[x]), fy=hnF(mem[y]), fz=hnF(mem[z]), fw=hnF(mem[w]);
-          const mixed=(fx!==fy)&&(fz!==fw);
-          /* 남녀 2:2 인 코트에서 <여자팀 vs 남자팀>은 만들지 않는다.
-             예전에는 90점 벌점이었는데 파트너 중복(120점)이 더 커서
-             중복을 피하려다 여여 vs 남남이 나왔다. 이제 아예 후보에서 뺀다. */
-          if(nf===2 && !mixed) return;
-          /* 3:1 이면 여성 둘을 갈라 한 명씩 넣는다 — 혼자 남는 사람이 없게 */
-          if(nf===3 && (fx===fy || fz===fw)) return;
+          const nf=four.filter(i=>hnF(mem[i])).length;
+          const mixed=(hnF(mem[x])!==hnF(mem[y]))&&(hnF(mem[z])!==hnF(mem[w]));
           const cost=(pu[hnK(x,y)]||0)*120+(pu[hnK(z,w)]||0)*120
+            +(nf===2&&!mixed?90:0)
             +((ou[hnK(x,z)]||0)+(ou[hnK(x,w)]||0)+(ou[hnK(y,z)]||0)+(ou[hnK(y,w)]||0))*15
             +Math.abs(mem[x].str+mem[y].str-mem[z].str-mem[w].str)*3+rnd()*0.4;
           if(!bs||cost<bs.cost) bs={cost,sp};
         });
-        /* 위 조건으로 후보가 하나도 안 남는 경우(예: 여3+남1)에는 원래대로 고른다 */
-        if(!bs){
-          [[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]].forEach(sp=>{
-            const [[x,y],[z,w]]=sp;
-            const cost=(pu[hnK(x,y)]||0)*120+(pu[hnK(z,w)]||0)*120
-              +((ou[hnK(x,z)]||0)+(ou[hnK(x,w)]||0)+(ou[hnK(y,z)]||0)+(ou[hnK(y,w)]||0))*15
-              +Math.abs(mem[x].str+mem[y].str-mem[z].str-mem[w].str)*3+rnd()*0.4;
-            if(!bs||cost<bs.cost) bs={cost,sp};
-          });
-        }
         return bs.sp;
       });
       cs.forEach(([t1,t2])=>{
