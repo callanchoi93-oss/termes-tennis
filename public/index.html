@@ -2954,7 +2954,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.0-0820f';
+const BUILD='v1.1.1';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -3652,6 +3652,9 @@ function checkAppUpdate(){
   const cmp=cbVerCmp(latest, BUILD);
   if(!(cmp>0)) return;                       // 서버가 더 최신일 때만 (같거나 옛것이면 안 띄운다)
   if(sessionStorage.getItem('upd_seen')===latest) return;   // 한 세션에 한 번만
+  /* 눌러서 스토어까지 다녀왔는데도 계속 뜨면 그건 안내가 아니라 잔소리다.
+     한 번 닫으면 그 버전에 대해서는 다시 띄우지 않는다. */
+  try{ if(localStorage.getItem('upd_done')===latest) return; }catch(e){}
   sessionStorage.setItem('upd_seen', latest);
   const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
   const el=document.createElement('div');
@@ -3664,7 +3667,10 @@ function checkAppUpdate(){
     ${u?`<a href="${u}" target="_blank" rel="noopener" style="flex:none;background:#CF5418;color:#fff;
       border-radius:11px;padding:9px 14px;font-size:13px;font-weight:700;text-decoration:none">업데이트</a>`:''}
     <span style="flex:none;color:#8A857C;font-size:18px;cursor:pointer;padding:0 2px">×</span>`;
-  el.lastElementChild.onclick=()=>el.remove();
+  el.lastElementChild.onclick=()=>{ el.remove();
+    try{ localStorage.setItem('upd_done', latest); }catch(e){} };   // 닫으면 이 버전은 끝
+  const a=el.querySelector('a');
+  if(a) a.onclick=()=>{ try{ localStorage.setItem('upd_done', latest); }catch(e){} };
   document.body.appendChild(el);
   setTimeout(()=>{ if(el.parentNode) el.remove(); }, 12000);
 }
