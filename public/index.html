@@ -12866,26 +12866,41 @@ function hnSplitMixed(ps, G){
   for(let g=0;g<G;g++){
     while(fq[g]>sizes[g]){ const t=fq.findIndex((v,i)=>v<sizes[i]); if(t<0) break; fq[g]--; fq[t]++; }
   }
-  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있어야 성립한다.
-     여성이 홀수로 남으면(1명·3명) 그 조에서는 여성 한 명이 남자 셋과 뛰는 경기가 계속 나온다.
-     그래서 짝수로 떨어지게 몰아준다 — 3명이면 2·1 로 갈지 말고 한 조에 3명(혹은 2명)을 둔다. */
-  for(let pass=0; pass<G*2; pass++){
+  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있으면 깔끔하다.
+     다만 여성 수가 코트 수로 나눠떨어지지 않을 때 짝수 맞추기를 밀어붙이면
+     <한 조에 여성 전원>이 답이 되어 그분들이 매 라운드 같은 코트에 갇힌다.
+     그래서 짝수 맞추기는 <옮겨도 어느 조든 몰리지 않을 때만> 한다. */
+  const MAXF = Math.ceil(W/G) + 1;          // 한 조가 가질 수 있는 여성 수 상한
+  /* 여성이 코트 수보다 적거나 같으면(3명 3코트) 짝수 맞추기를 아예 하지 않는다.
+     그때는 한 조에 한 명씩 들어가는 편이 낫다 — 혼복은 못 만들어도
+     그분들이 매 라운드 같은 코트에 갇히는 것보다 낫기 때문이다. */
+  const SPREAD = W>0 && W<=G;
+  for(let pass=0; SPREAD?0:pass<G*2; pass++){
     const odd=fq.findIndex(v=>v%2===1 && v>0);
     if(odd<0) break;
-    /* 홀수인 조에서 한 명을 빼거나 더해 짝수로 만든다.
-       ① 다른 홀수 조로 옮겨 양쪽을 한 번에 짝수로  ② 안 되면 여성이 많은 조로 넘긴다 */
+    /* 다른 홀수 조와 주고받아 양쪽을 한 번에 짝수로 — 이건 몰림이 안 생긴다 */
     const other=fq.findIndex((v,i)=>i!==odd && v%2===1 && v>0);
-    if(other>=0 && fq[other]+1<=sizes[other]){ fq[other]++; fq[odd]--; continue; }
-    if(other>=0 && fq[odd]+1<=sizes[odd]){ fq[odd]++; fq[other]--; continue; }
-    const rich=fq.findIndex((v,i)=>i!==odd && v>=2);
-    if(rich>=0 && fq[rich]+fq[odd]<=sizes[rich]){ fq[rich]+=fq[odd]; fq[odd]=0; continue; }
-    break;                                               // 더 손볼 수 없으면 그대로 둔다
+    if(other>=0 && fq[other]+1<=Math.min(sizes[other], MAXF)){ fq[other]++; fq[odd]--; continue; }
+    if(other>=0 && fq[odd]+1<=Math.min(sizes[odd], MAXF)){ fq[odd]++; fq[other]--; continue; }
+    break;                                   // 몰아넣어야만 짝수가 된다면 그냥 둔다
   }
-  /* 여성 혼자인 조는 끝까지 피한다 */
-  for(let g=0;g<G;g++){
-    if(fq[g]!==1||W<2) continue;
-    const rich=fq.findIndex((v,i)=>i!==g&&v>=2);
-    if(rich>=0 && fq[rich]+1<=sizes[rich]){ fq[rich]++; fq[g]--; }
+  /* 여성 혼자인 조는 되도록 피하되, 상한을 넘기면서까지 몰지는 않는다.
+     여성이 코트 수보다 적으면(예: 3명 3코트) 한 명씩 들어가는 편이 낫다. */
+  if(W > G){
+    for(let g=0;g<G;g++){
+      if(fq[g]!==1||W<2) continue;
+      const rich=fq.findIndex((v,i)=>i!==g && v>=2 && v+1<=Math.min(sizes[i], MAXF));
+      if(rich>=0){ fq[rich]++; fq[g]--; }
+    }
+  }
+  /* 마지막 확인 — 한 조가 여성을 다 가져갔으면 한 명은 옆 조로 보낸다.
+     "여자들끼리 한 코트"는 어떤 이유로도 만들지 않는다. */
+  {
+    const hog=fq.findIndex(v=>v===W && W>=2 && G>=2);
+    if(hog>=0){
+      const to=fq.findIndex((v,i)=>i!==hog && sizes[i]>v);
+      if(to>=0){ fq[hog]--; fq[to]++; }
+    }
   }
   const groups=Array.from({length:G},()=>[]);
   const snake=(list, cap)=>{ let g=0, dir=1;
