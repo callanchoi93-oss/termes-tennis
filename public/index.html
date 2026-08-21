@@ -2143,7 +2143,9 @@
   .omg{ display:flex;flex-direction:column;width:100%;height:100%;background:#fff }
   .omg-top{ flex:none;display:flex;align-items:center;justify-content:space-between;
     padding:calc(14px + env(safe-area-inset-top,0px)) 20px 4px }
-  .omg-skip{ font-size:12.5px;font-weight:600;color:var(--lgray);cursor:pointer }
+  .omg-skip{ font-size:12.5px;font-weight:500;color:var(--lgray);cursor:pointer }
+  .omg-back{ width:30px;height:30px;margin:-6px 0 0 -8px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:19px;color:var(--gray);cursor:pointer }
   .omg-body{ flex:1;overflow-y:auto;padding:8px 20px 0;scrollbar-width:none }
   .omg-body::-webkit-scrollbar{ display:none }
   .omg-foot{ flex:none;padding:14px 20px calc(20px + env(safe-area-inset-bottom,0px)) }
@@ -2151,27 +2153,50 @@
   .omg-dots i{ width:5px;height:5px;border-radius:50%;background:var(--felt-d);display:block;
     transition:.18s }
   .omg-dots i.on{ width:16px;border-radius:3px;background:var(--coral) }
+  /* 무게는 세 단만 쓴다 — 제목 800, 카드 제목 600, 본문 500.
+     카드 제목까지 700 으로 두면 다섯 장 내내 같은 무게라 위계가 사라진다.
+     본문 안 강조는 600 으로, 카드 제목을 넘지 않게 한다. */
   .omg-hd{ font-size:23px;font-weight:800;letter-spacing:-.04em;line-height:1.32;margin-bottom:9px }
   .omg-sd{ font-size:13px;color:var(--gray);font-weight:500;line-height:1.7;margin-bottom:18px }
   .omg-c{ background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;
     margin-bottom:10px }
   .omg-c.flat{ background:var(--cream2);border-color:transparent }
   .omg-c.dk{ background:var(--ink);border-color:var(--ink);color:#fff }
-  .omg-c b{ display:block;font-size:13.5px;font-weight:700;letter-spacing:-.02em }
+  .omg-c > b{ display:block;font-size:13.5px;font-weight:600;letter-spacing:-.02em }
+  /* 본문 강조는 굵기가 아니라 색으로 — 굵기로만 구분하면 카드 제목과 부딪힌다.
+     색이 있는 카드 안에서는 그 카드의 색을 따라간다. 흰 카드에서만 잉크를 쓴다. */
+  .omg-c i b{ font-weight:600;color:#2c2a24 }
+  .omg-c.dk i b{ color:#fff }
+  .omg-c.co i b{ color:var(--coral-d) }
   .omg-c i{ display:block;font-style:normal;font-size:12px;color:var(--gray);font-weight:500;
     margin-top:2px;line-height:1.55 }
   .omg-c.dk i{ color:#b3aea4 }
-  .omg-c.dk b i, .omg-c i b{ display:inline;font-weight:700 }
+
   .omg-r{ display:flex;align-items:center;gap:11px }
-  .omg-i{ width:34px;height:34px;border-radius:11px;background:var(--coral-s);color:var(--coral-d);
-    display:flex;align-items:center;justify-content:center;font-size:15px;flex:none }
-  .omg-i.bad{ background:#fdeceb;color:#c0453a }
-  .omg-i.ok{ background:#e6f3ec;color:#2f7d55 }
-  .omg-pyr{ display:flex;flex-direction:column;align-items:center;gap:3px }
-  .omg-pyr > div{ height:14px }
+  /* 선 색은 하나로 통일한다 — 빨강·초록까지 섞으면 아이콘이 문구보다 먼저 읽힌다.
+     잉크(#1c1b18)를 연하게 푼 색이라 글자와 같은 가족이고, 코랄 배경 위에서도 겉돌지 않는다.
+     회색은 계열이 달라 살짝 탁하고, 코랄은 또렷한 대신 시선을 뺏는다. */
+  .omg-i{ width:36px;height:36px;border-radius:12px;background:var(--coral-s);color:#4a463f;
+    display:flex;align-items:center;justify-content:center;flex:none }
+  .omg-i svg{ width:20px;height:20px }
+  /* 피라미드 — 단을 눌러 고른다. 티어 안내 화면과 같은 방식이라 새로 배울 게 없다 */
+  .omg-pyr{ display:flex;flex-direction:column;align-items:center;gap:4px }
+  .omg-pyr > div{ height:16px;flex:none;cursor:pointer;opacity:.7;transition:.16s;
+    display:flex;align-items:center;justify-content:center }
+  .omg-pyr > div.base{ height:19px }
+  /* 고른 단만 또렷하게 — 흐리게만 하면 피라미드 모양 자체가 안 보인다.
+     그림자로 한 칸을 띄워 어느 단을 보고 있는지 분명히 한다. */
+  .omg-pyr > div.on{ opacity:1;box-shadow:0 2px 8px rgba(40,30,18,.18);border-radius:1px }
+  .omg-pyr > div span{ font-size:9.5px;font-weight:600;color:#fff;letter-spacing:-.03em }
+  .omg-tinfo{ text-align:center;margin-top:13px;padding-top:12px;border-top:1px solid #e8e6e0 }
+  .omg-tn{ font-size:15px;font-weight:700;letter-spacing:-.03em }
+  .omg-tn em{ font-style:normal;font-size:11.5px;font-weight:600;color:var(--gray);
+    margin-left:5px }
+  .omg-td{ font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.55 }
+  .omg-thint{ text-align:center;font-size:10.5px;color:var(--lgray);font-weight:500;margin-top:9px }
   .omg-p{ display:flex;justify-content:space-between;font-size:12px }
   .omg-p span{ color:var(--gray);font-weight:500 }
-  .omg-p b{ display:inline;font-weight:700;font-size:12px }
+  .omg-p b{ font-weight:700;font-size:12px;white-space:nowrap }
   .omg-turn{ border:1px solid #eee9e0;border-radius:16px;padding:15px;margin-bottom:10px;
     box-shadow:0 3px 12px rgba(40,30,18,.06) }
   .omg-badge{ font-size:11px;font-weight:700;background:var(--coral);color:#fff;
@@ -20296,13 +20321,46 @@ function openMatchCard(id){ openOmDetail(id); }
 /* ── 오픈매치 회원 안내 ─────────────────────────────
    탭을 처음 여는 사람에게 한 번만 뜬다. 두 번 뜨면 바로 미움받는다.
    이후에는 빈 화면 카드에서 언제든 다시 볼 수 있다. */
-let OMG_I = 0;
-/* 아이콘은 여기 한 곳에서만 갈아끼운다 — 나중에 받은 SVG 로 교체하면 전부 바뀐다 */
+let OMG_I = 0, OMG_K = 4;   // OMG_K = 피라미드에서 지금 보고 있는 단
+/* 위에서부터 · NTRP 는 앱의 LV_BANDS 와 같은 값을 쓴다 */
+const OMG_T = [
+  { k:'gs',   n:'그랜드슬램', v:'5.0+',    d:'대회에서 입상하는<br>수준이에요.',            w:26,  cp:'polygon(50% 0,50% 0,100% 100%,0 100%)' },
+  { k:'tour', n:'마스터스',   v:'3.5~4.5', d:'클럽 대표로 나가는<br>실력이에요.',            w:48,  cp:'polygon(27% 0,73% 0,100% 100%,0 100%)' },
+  { k:'chal', n:'챌린저',     v:'2.5~3.5', d:'게임 운영이 돼요.<br>가장 많은 사람이 여기 있어요.', w:70,  cp:'polygon(31% 0,69% 0,100% 100%,0 100%)' },
+  { k:'fut',  n:'퓨처스',     v:'1.0~2.0', d:'랠리를 익히는 중이에요.<br>대부분 여기서 시작해요.',  w:92,  cp:'polygon(24% 0,76% 0,100% 100%,0 100%)' },
+  { k:'love', n:'러브',       v:'',        d:'아직 배치 전이에요.<br>2경기를 뛰면 자리를 찾아요.',  w:118, cp:'polygon(21% 0,79% 0,100% 100%,0 100%)' },
+];
+function pickOmgTier(k){ OMG_K = k; openOmGuide(1); }
+/* 아이콘은 여기 한 곳에서만 갈아끼운다.
+   애플 이모지는 쓰지 않는다 — 안드로이드·웹에서 모양이 달라지고 톤도 앱과 겉돈다.
+   전부 선으로 그린 SVG 라 색은 currentColor 로 따라온다. */
 const OMG_ICON = {
-  court:'📍', people:'👥', ball:'🎾',
-  clock:'⏰', ban:'🚫', good:'👍'
+  /* 핀 — 세트의 지도핀. 원과 몸통을 한 획으로 잇고 안쪽 점은 작게 */
+  court:'<path d="M12 20.5c3.6-3.7 5.4-6.8 5.4-9.3a5.4 5.4 0 1 0-10.8 0c0 2.5 1.8 5.6 5.4 9.3Z"/>'
+       +'<circle cx="12" cy="11" r="1.9"/>',
+  /* 두 사람 — 어깨선을 얕게. 뒤쪽 사람은 반만 그려 겹침을 표현 */
+  people:'<circle cx="9.6" cy="9" r="2.9"/>'
+        +'<path d="M4.6 18.6c0-2.8 2.2-4.8 5-4.8s5 2 5 4.8"/>'
+        +'<path d="M16 6.4a2.9 2.9 0 0 1 0 5.2"/><path d="M17.4 14.4c1.6.7 2.6 2.2 2.6 4.2"/>',
+  /* 라켓과 공 — 헤드는 크게 비우고 손잡이는 한 획, 공은 옆에.
+     20px 로 줄면 줄(그물)은 얼룩으로 보이므로 넣지 않는다. */
+  ball:'<path d="M9.3 3.8c2.9 0 5.3 2.6 5.3 5.9s-2.4 5.9-5.3 5.9S4 12.9 4 9.7s2.4-5.9 5.3-5.9Z"/>'
+      +'<path d="M9.3 15.6v4.6"/>'
+      +'<circle cx="18.2" cy="15.6" r="2.4"/>',
+  /* 시계 — 세트의 알람시계. 종은 짧은 두 획으로만 */
+  clock:'<circle cx="12" cy="13.4" r="7"/><path d="M12 10.2v3.4l2.3 1.4"/>'
+       +'<path d="M6.6 5.4 4.4 3.6M17.4 5.4l2.2-1.8"/>',
+  /* 금지 — 원과 사선. 사선을 원 안쪽에서 끊어 여백을 준다 */
+  ban:'<circle cx="12" cy="12" r="8"/><path d="m7 7 10 10"/>',
+  /* 매너 확인 — 세트의 웃는 얼굴. 손보다 훨씬 단순하고 뜻도 바로 읽힌다 */
+  good:'<circle cx="12" cy="12" r="8"/>'
+      +'<circle cx="9.3" cy="10.2" r=".9" fill="currentColor" stroke="none"/>'
+      +'<circle cx="14.7" cy="10.2" r=".9" fill="currentColor" stroke="none"/>'
+      +'<path d="M8.6 14.4c.8 1.2 2 1.9 3.4 1.9s2.6-.7 3.4-1.9"/>'
 };
-const omgIcon = (k,cls) => `<span class="omg-i ${cls||''}">${OMG_ICON[k]||''}</span>`;
+const omgIcon = (k,cls) => `<span class="omg-i ${cls||''}"><svg viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">${
+  OMG_ICON[k]||''}</svg></span>`;
 
 function omgPages(){
   const T = k => `<span style="width:26px;height:14px;background:var(--t-${k});display:block;margin:0 auto"></span>`;
@@ -20311,41 +20369,39 @@ function omgPages(){
     sd:'클럽에 속하지 않아도, 같이 칠 사람이 없어도<br>신청만 하면 그날 경기가 만들어져요.',
     body:`
       <div class="omg-c flat"><div class="omg-r">${omgIcon('court')}
-        <div><b>코트는 이미 잡혀 있어요</b><i>구장이 열어둔 시간을 그대로 씁니다</i></div></div></div>
+        <div><b>코트는 이미 잡혀 있어요</b><i>구장이 열어둔 시간을 씁니다</i></div></div></div>
       <div class="omg-c flat"><div class="omg-r">${omgIcon('people')}
-        <div><b>사람은 앱이 모아요</b><i>실력이 비슷한 사람끼리 채워집니다</i></div></div></div>
+        <div><b>사람은 앱이 모아요</b><i>실력이 비슷한 사람끼리 채워져요</i></div></div></div>
       <div class="omg-c flat"><div class="omg-r">${omgIcon('ball')}
-        <div><b>대진도 앱이 짜요</b><i>누구랑 칠지 정하느라 서 있을 일이 없어요</i></div></div></div>` },
+        <div><b>대진도 앱이 짜요</b><i>서서 정하느라 시간 쓸 일이 없어요</i></div></div></div>` },
 
   { hd:'실력이 맞아야<br>재밌어요',
     sd:'너무 잘하는 사람과 붙으면 지치고,<br>너무 못하는 사람과 붙으면 심심해요.',
     body:`
-      <div class="omg-c flat" style="padding:16px 14px">
-        <div class="omg-pyr">
-          <div style="width:26px;background:var(--t-gs);clip-path:polygon(50% 0,50% 0,100% 100%,0 100%)"></div>
-          <div style="width:48px;background:var(--t-tour);clip-path:polygon(27% 0,73% 0,100% 100%,0 100%)"></div>
-          <div style="width:70px;background:var(--t-chal);clip-path:polygon(31% 0,69% 0,100% 100%,0 100%)"></div>
-          <div style="width:92px;background:var(--t-fut);clip-path:polygon(24% 0,76% 0,100% 100%,0 100%)"></div>
-          <div style="width:114px;height:17px;background:var(--t-love);clip-path:polygon(21% 0,79% 0,100% 100%,0 100%);
-               color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;
-               justify-content:center">지금 여기</div>
+      <div class="omg-c flat" style="padding:14px">
+        <div class="omg-pyr" id="omgPyr">
+          ${OMG_T.map((t,k)=>`<div class="${k===OMG_K?'on':''}${t.k==='love'?' base':''}"
+            style="width:${t.w}px;background:var(--t-${t.k});clip-path:${t.cp}"
+            onclick="pickOmgTier(${k})">${t.k==='love'?'<span>지금 여기</span>':''}</div>`).join('')}
         </div>
-        <div style="text-align:center;font-size:11px;color:var(--lgray);font-weight:500;
-             margin-top:11px;letter-spacing:-.03em">
-          러브 · 퓨처스 · 챌린저 · 마스터스 · 그랜드슬램</div></div>
-      <div class="omg-c"><b>2경기만 뛰면 배치돼요</b>
-        <i>그 뒤로는 비슷한 티어끼리만 묶여요.</i></div>
-      <div class="omg-c dk"><b>자기신고가 아니에요</b>
-        <i>"저 좀 칩니다"로 올라가지 않아요. 이기고 지는 결과로만 정해져요.</i></div>` },
+        <div class="omg-tinfo">
+          <div class="omg-tn">${OMG_T[OMG_K].n}
+            ${OMG_T[OMG_K].v?`<em>NTRP ${OMG_T[OMG_K].v}</em>`:''}</div>
+          <div class="omg-td">${OMG_T[OMG_K].d}</div>
+        </div>
+        <div class="omg-thint">단을 눌러보세요</div>
+      </div>
+      <div class="omg-c dk"><b>2경기만 뛰면 배치돼요</b>
+        <i>자기신고가 아니에요.<br><b>이기고 지는 결과로만</b> 정해져요.</i></div>` },
 
   { hd:'모이면 열리고<br>안 모이면 돌려드려요',
     sd:'신청할 때 참가비를 미리 결제해요.<br>현장에서 돈 걷을 일이 없어요.',
     body:`
-      <div class="omg-c" style="border-color:#f4ddcc;background:var(--coral-s)">
+      <div class="omg-c co" style="border-color:#f4ddcc;background:var(--coral-s)">
         <b style="color:var(--coral-d)">4명이 모여야 열려요</b>
         <i style="color:#9a6544">시작 24시간 전까지 안 모이면 자동 취소되고 <b>전액 환불</b>돼요.</i></div>
       <div class="omg-c"><b>더 모이면 싸져요</b>
-        <i>코트비를 나눠 내는 구조라 사람이 늘면 참가비가 내려가요. <b>차액은 캐시로</b> 돌려드려요.</i>
+        <i>사람이 늘면 참가비가 내려가요.<br>차액은 <b>캐시로</b> 돌려드려요.</i>
         <div style="border-top:1px solid var(--line);margin-top:11px;padding-top:11px">
           <div class="omg-p"><span>4명일 때</span><b>19,800원</b></div>
           <div class="omg-p" style="margin-top:5px"><span>6명이 되면</span>
@@ -20363,7 +20419,7 @@ function omgPages(){
         <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:6px">
           파트너 이평화 · vs 김진수 · 강태민</div></div>
       <div class="omg-c flat"><b>파트너가 매번 바뀌어요</b>
-        <i>모두와 한 번씩 팀이 되도록 짜여 있어요. 운으로 승패가 갈리지 않아요.</i></div>
+        <i>모두와 한 번씩 팀이 돼요.<br>운으로 승패가 갈리지 않아요.</i></div>
       <div class="omg-c flat"><b>라운드마다 알림이 와요</b>
         <i>다음 차례와 남은 시간을 알려드려요.</i></div>` },
 
@@ -20372,9 +20428,9 @@ function omgPages(){
     body:`
       <div class="omg-c"><div class="omg-r">${omgIcon('clock')}
         <div><b>늦지 않기</b><i>한 명이 늦으면 넷이 못 칩니다</i></div></div></div>
-      <div class="omg-c"><div class="omg-r">${omgIcon('ban','bad')}
+      <div class="omg-c"><div class="omg-r">${omgIcon('ban')}
         <div><b>못 가면 미리 알리기</b><i>노쇼 3회면 90일간 참가가 막혀요</i></div></div></div>
-      <div class="omg-c"><div class="omg-r">${omgIcon('good','ok')}
+      <div class="omg-c"><div class="omg-r">${omgIcon('good')}
         <div><b>끝나면 매너 확인</b><i>탭 한 번이면 끝나요</i></div></div></div>
       <div class="omg-c dk" style="margin-top:14px"><b>첫 경기가 가장 떨려요</b>
         <i>다들 처음이 있었어요. 실력이 낮아도 같은 급끼리 붙여드리니 편하게 오세요.</i></div>` },
@@ -20385,8 +20441,11 @@ function openOmGuide(i){
   const P = omgPages(), p = P[OMG_I], last = OMG_I === P.length-1;
   const dots = P.map((_,k)=>`<i class="${k===OMG_I?'on':''}"></i>`).join('');
   document.getElementById('tierpage').innerHTML = `<div class="omg">
-    <div class="omg-top">${last?'<span></span>':`<span></span>
-      <span class="omg-skip" onclick="closeOmGuide()">건너뛰기</span>`}</div>
+    <div class="omg-top">
+      ${OMG_I ? `<span class="omg-back" role="button" tabindex="0" aria-label="이전"
+        onclick="openOmGuide(${OMG_I-1})">‹</span>` : '<span></span>'}
+      ${last ? '<span></span>'
+        : `<span class="omg-skip" onclick="closeOmGuide()">건너뛰기</span>`}</div>
     <div class="omg-body">
       <div style="padding:14px 0 4px">
         <div class="omg-hd">${p.hd}</div>
