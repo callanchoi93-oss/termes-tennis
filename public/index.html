@@ -2165,16 +2165,18 @@
   .omg-c{ background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 15px;
     margin-bottom:10px }
   .omg-c.flat{ background:var(--cream2);border-color:transparent }
-  .omg-c.dk{ background:var(--ink);border-color:var(--ink);color:#fff }
+  /* 강조 카드 — 검정은 크림·코랄 화면에서 혼자 무겁다.
+     따뜻한 진한 베이지로 두면 대비는 남고 화면과 이어진다. */
+  .omg-c.dk{ background:#efece4;border-color:#e4e0d5;color:var(--ink) }
   .omg-c > b{ display:block;font-size:13.5px;font-weight:600;letter-spacing:-.02em }
   /* 본문 강조는 굵기가 아니라 색으로 — 굵기로만 구분하면 카드 제목과 부딪힌다.
      색이 있는 카드 안에서는 그 카드의 색을 따라간다. 흰 카드에서만 잉크를 쓴다. */
   .omg-c i b{ font-weight:600;color:#2c2a24 }
-  .omg-c.dk i b{ color:#fff }
+  .omg-c.dk i b{ color:var(--coral-d) }
   .omg-c.co i b{ color:var(--coral-d) }
   .omg-c i{ display:block;font-style:normal;font-size:12px;color:var(--gray);font-weight:500;
     margin-top:2px;line-height:1.55 }
-  .omg-c.dk i{ color:#b3aea4 }
+  .omg-c.dk i{ color:#6b6357 }
 
   .omg-r{ display:flex;align-items:center;gap:11px }
   /* 선 색은 하나로 통일한다 — 빨강·초록까지 섞으면 아이콘이 문구보다 먼저 읽힌다.
@@ -2185,13 +2187,17 @@
   .omg-i svg{ width:20px;height:20px }
   /* 피라미드 — 단을 눌러 고른다. 티어 안내 화면과 같은 방식이라 새로 배울 게 없다 */
   .omg-pyr{ display:flex;flex-direction:column;align-items:center;gap:4px }
-  .omg-pyr > div{ height:16px;flex:none;cursor:pointer;opacity:.7;transition:.16s;
+  .omg-pyr > div{ height:18px;flex:none;cursor:pointer;opacity:.42;transition:.16s;
     display:flex;align-items:center;justify-content:center }
-  .omg-pyr > div.base{ height:19px }
+  .omg-pyr > div.base{ height:21px }
   /* 고른 단만 또렷하게 — 흐리게만 하면 피라미드 모양 자체가 안 보인다.
      그림자로 한 칸을 띄워 어느 단을 보고 있는지 분명히 한다. */
-  .omg-pyr > div.on{ opacity:1;box-shadow:0 2px 8px rgba(40,30,18,.18);border-radius:1px }
-  .omg-pyr > div span{ font-size:9.5px;font-weight:600;color:#fff;letter-spacing:-.03em }
+  /* 고른 단만 또렷하게 — 라벨도 여기로 따라온다 */
+  .omg-pyr > div.on{ opacity:1;box-shadow:0 2px 10px rgba(40,30,18,.2);border-radius:1px;
+    transform:scale(1.04) }
+  .omg-pyr > div span{ font-size:9.5px;font-weight:700;color:#4a463f;letter-spacing:-.03em;
+    white-space:nowrap }
+  .omg-pyr > div.base span{ color:#fff }
   .omg-tinfo{ text-align:center;margin-top:13px;padding-top:12px;border-top:1px solid #e8e6e0 }
   .omg-tn{ font-size:15px;font-weight:700;letter-spacing:-.03em }
   .omg-tn em{ font-style:normal;font-size:11.5px;font-weight:600;color:var(--gray);
@@ -3995,7 +4001,7 @@ function applyAuthUI(){
 /* 배치 경기(5경기)를 마치기 전에는 레이팅을 숫자로 보여주지 않는다.
    0승 0패인데 1000점이 찍히면 그 숫자가 뭘 뜻하는지 아무도 모른다.
    내부 계산에는 계속 1000을 쓴다 (엘로 기준점). */
-const PLACEMENT_GAMES = 5;      // 배치 경기 — 화면마다 2/5 가 섞여 있어 하나로 모았다
+const PLACEMENT_GAMES = 2;      // 배치 경기 — 오픈매치 티어 기준(2경기)에 맞춘다
 const isPlaced = () => (state.played||0) >= PLACEMENT_GAMES;
 const ratingText = () => isPlaced() ? String(state.rating) : '—';
 const ratingSub  = () => isPlaced() ? '' : `배치 ${state.played||0}/${PLACEMENT_GAMES}`;
@@ -19829,7 +19835,7 @@ function omEmpty(filtered, total){
   return `<div class="omc omg-lead" onclick="openOmGuide(0)">
       <span class="omg-lead-i">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45"
-          stroke-linecap="round" stroke-linejoin="round">${OMG_ICON.ball}</svg></span>
+          stroke-linecap="round" stroke-linejoin="round">${OMG_ICON.people}</svg></span>
       <div style="flex:1">
         <div class="omg-lead-t">오픈매치가 처음이신가요?</div>
         <div class="omg-lead-s">혼자 신청해도 넷이 모여요 · 1분이면 알 수 있어요</div></div>
@@ -20398,7 +20404,8 @@ function omgPages(){
         <div class="omg-pyr" id="omgPyr">
           ${OMG_T.map((t,k)=>`<div class="${k===OMG_K?'on':''}${t.k==='love'?' base':''}"
             style="width:${t.w}px;background:var(--t-${t.k});clip-path:${t.cp}"
-            onclick="pickOmgTier(${k})">${t.k==='love'?'<span>지금 여기</span>':''}</div>`).join('')}
+            onclick="pickOmgTier(${k})">${k===OMG_K
+              ? `<span>${t.k==='love'?'지금 여기':t.n}</span>` : ''}</div>`).join('')}
         </div>
         <div class="omg-tinfo">
           <div class="omg-tn">${OMG_T[OMG_K].n}
@@ -25927,7 +25934,7 @@ function _renderMeCore(){
       <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 개인리그</span></div>
       ${(ts.placing&&td.placing)
         ? `<div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:6px;line-height:1.45">
-             개인리그 ${PLACEMENT_GAMES}경기면 정해져요</div>`
+             ${PLACEMENT_GAMES}경기만 뛰면 정해져요</div>`
         : `<div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:6px;line-height:1.8">
              <div>단식 <b style="color:${ts.placing?'var(--lgray)':'var(--ink)'}">${tnm(ts)}</b></div>
              <div>복식 <b style="color:${td.placing?'var(--lgray)':'var(--ink)'}">${tnm(td)}</b></div></div>`}
@@ -25964,7 +25971,7 @@ function _renderMeCore(){
           <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">복식 티어</div></div></div>
       ${(ts.placing&&td.placing)
         ? `<div onclick="go('match')" style="display:flex;align-items:center;gap:8px;background:var(--coral-s);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#8a5230;cursor:pointer">
-             개인리그 ${PLACEMENT_GAMES}경기면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
+             ${PLACEMENT_GAMES}경기만 뛰면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
         : `<div style="display:flex;align-items:center;gap:8px;background:#f2f7f4;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#3f7a5c">
              최고 티어 <b style="margin-left:auto;color:var(--green);font-weight:600">${peakLabel}</b></div>`}`;
     })()}
