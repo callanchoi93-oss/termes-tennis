@@ -20343,6 +20343,18 @@ function openMatchCard(id){ openOmDetail(id); }
 /* ── 오픈매치 회원 안내 ─────────────────────────────
    탭을 처음 여는 사람에게 한 번만 뜬다. 두 번 뜨면 바로 미움받는다.
    이후에는 빈 화면 카드에서 언제든 다시 볼 수 있다. */
+/* 오픈매치 티어 — 단식·복식을 나누지 않는다.
+   서버(/me/tier)가 복식 레이팅 하나로 계산하므로 화면도 하나로 보여준다. */
+const TIER_ABBR={love:'L',fut:'F',chal:'C',tour:'M',gs:'GS'};
+const TIER_BG={love:'#6f6a62',fut:'#d9b874',chal:'#8ca6d6',tour:'#d99aa0',gs:'#a894d6'};
+function myOpenTier(){
+  const t=(typeof MY_TIER!=='undefined'&&MY_TIER)||null;
+  const key=(t&&t.placed)?t.key:'love';
+  return { key, placed:!!(t&&t.placed),
+           label:(t&&t.placed)?t.label:'러브',
+           abbr:TIER_ABBR[key]||'L', color:TIER_BG[key]||'#6f6a62',
+           need:(t&&t.need)||PLACEMENT_GAMES };
+}
 let OMG_I = 0, OMG_K = 4;   // OMG_K = 피라미드에서 지금 보고 있는 단
 /* 위에서부터 · NTRP 는 앱의 LV_BANDS 와 같은 값을 쓴다 */
 const OMG_T = [
@@ -22137,6 +22149,9 @@ async function loadMyTier(){
   if(!SERVER_OK||!authToken()) return;
   try{ MY_TIER=await api('/me/tier');
     const c=document.querySelector('.omtchip'); if(c) c.outerHTML=omTierChip();
+    /* 내정보를 보고 있으면 티어 카드도 다시 그린다 —
+       오픈매치를 거치지 않고 내정보를 먼저 열면 티어가 비어 러브로 보였다. */
+    if(state.view==='me') try{ renderMe(); }catch(e){}
   }catch(e){}
 }
 function openTierGuide(){ try{ openPyramid(); }catch(e){ toast('티어 안내를 열지 못했어요'); } }
@@ -25825,6 +25840,8 @@ function renderMe(){
     adoptServerClubs().then(()=>{ if(state.view==='me') renderMe(); }).catch(()=>{});
   }
   loadMyMvpCount();
+  /* 티어는 서버가 정한다 — 내정보를 먼저 열어도 값이 비어 있지 않게 한 번 불러온다 */
+  if(typeof MY_TIER!=='undefined' && MY_TIER==null) loadMyTier();
   if(_RM_BUSY) return;
   _RM_BUSY=true;
   try{ _renderMeCore(); }
@@ -25926,30 +25943,45 @@ function _renderMeCore(){
           <b style="font-size:18px;color:${cash?'var(--coral-d)':'var(--ink)'}">${cash.toLocaleString()}원</b>
           <span onclick="event.stopPropagation();openWallet()" style="margin-left:auto;font-size:11px;font-weight:600;color:var(--coral-d)">내역·출금 ›</span></div></div>
     </div>
-    <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="openPyramid()">
-      <div style="font-size:12px;color:var(--gray);font-weight:500">등급 <span style="color:var(--lgray);font-weight:400">· 구력</span></div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-        ${g?`<span style="width:22px;height:22px;border-radius:50%;background:${gi.c};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${String(gl).length>2?9:11}px;font-weight:600">${gl}</span>
-             <b style="font-size:14px">${gi.desc.split(' · ')[0]}</b>`
-           :`<b style="font-size:13px;color:var(--coral-d)">구력 입력 필요</b>`}</div>
-      <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.4">오픈매치·클럽 대진에 쓰여요</div>
-      <div style="height:1px;background:#f0ece4;margin:11px 0"></div>
-      <div style="font-size:12px;color:var(--gray);font-weight:500">티어 <span style="color:var(--lgray);font-weight:400">· 오픈매치</span></div>
-      ${(ts.placing&&td.placing)
-        /* 배치 전에도 티어는 있다 — 러브다. 이름을 숨기면 "내 티어가 없다"로 읽힌다. */
-        ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-             <span style="width:22px;height:22px;border-radius:50%;background:var(--t-love);
-               color:#fff;display:flex;align-items:center;justify-content:center;
-               font-size:10px;font-weight:700">L</span>
-             <b style="font-size:14px">러브</b></div>
-           <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.45">
-             ${PLACEMENT_GAMES}경기만 뛰면 배치돼요</div>`
-        : `<div style="font-size:11px;color:var(--gray);font-weight:500;margin-top:6px;line-height:1.8">
-             <div>단식 <b style="color:${ts.placing?'var(--lgray)':'var(--ink)'}">${tnm(ts)}</b></div>
-             <div>복식 <b style="color:${td.placing?'var(--lgray)':'var(--ink)'}">${tnm(td)}</b></div></div>`}
-      <div style="display:flex;gap:11px;margin-top:9px;font-size:11px;font-weight:600;color:var(--coral-d)">
-        <span onclick="event.stopPropagation();openGradeGuide()">내 등급 보기 ›</span>
+    <div class="card" style="flex:1;margin:0;cursor:pointer;display:flex;flex-direction:column" onclick="openPyramid()">
+      <!-- 등급과 티어를 한 줄에 나란히 — 위아래로 쌓으면 카드가 길어지고,
+           왼쪽 매너 카드가 그 높이를 따라가며 함께 늘어진다. -->
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--gray);font-weight:500">등급</div>
+          <div style="display:flex;align-items:center;gap:5px;margin-top:7px">
+            ${g?`<span style="width:20px;height:20px;border-radius:50%;background:${gi.c};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${String(gl).length>2?8:10}px;font-weight:600;flex:none">${gl}</span>
+                 <b style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${gi.desc.split(' · ')[0]}</b>`
+               :`<b style="font-size:12px;color:var(--coral-d)">구력 입력</b>`}</div>
+        </div>
+        <div style="width:1px;background:#f0ece4;flex:none"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--gray);font-weight:500">티어</div>
+          ${(()=>{
+            /* 티어는 오픈매치 결과 하나로 정해진다. 단식·복식을 나누지 않는다 —
+               오픈매치는 대부분 복식이라 단식 티어는 영영 쌓이지 않는다. */
+            const t=myOpenTier();
+            /* "챌린저 2" 는 좁은 칸에서 두 줄이 된다 — 이름과 세부 단계를 분리한다 */
+            const mm=String(t.label).match(/^(.+?)\s*(\d)?$/);
+            const nm=mm?mm[1]:t.label, sub=mm&&mm[2]?mm[2]:'';
+            return `<div style="display:flex;align-items:center;gap:5px;margin-top:7px">
+              <span style="width:20px;height:20px;border-radius:50%;background:${t.color};
+                color:#fff;display:flex;align-items:center;justify-content:center;
+                font-size:${t.abbr.length>1?9:10}px;font-weight:700;flex:none">${t.abbr}</span>
+              <b style="font-size:13.5px;white-space:nowrap;letter-spacing:-.03em">${esc(nm)}</b>
+              ${sub?`<span style="font-size:11px;font-weight:700;color:var(--gray);
+                flex:none">${sub}</span>`:''}</div>`;
+          })()}
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--lgray);font-weight:500;margin-top:9px;line-height:1.45">
+        ${myOpenTier().placed ? '오픈매치 결과로 정해져요'
+          : `${PLACEMENT_GAMES}경기만 뛰면 티어가 배치돼요`}</div>
+      <div style="display:flex;gap:11px;margin-top:auto;padding-top:12px;font-size:11px;font-weight:600;color:var(--coral-d)">
+        <span onclick="event.stopPropagation();openGradeGuide()">내 등급 ›</span>
+        <span onclick="event.stopPropagation();openPyramid()">티어 ›</span>
         <span onclick="event.stopPropagation();openRatingTrend()">추이 ›</span></div>
+    </div>
     </div></div>
   <div class="ch" style="margin-top:16px">나의 맞수</div>
   <div style="background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:12px">
@@ -25957,7 +25989,7 @@ function _renderMeCore(){
           const n=((A.hosted||[]).length)+((A.joined||[]).length)+((A.guest||[]).length);
           return n?`${n}건`:'없음'; })()],
        ['티어 등급 추이','openRatingTrend()',
-         (ts.placing&&td.placing) ? '러브' : `단식 ${tnm(ts)} · 복식 ${tnm(td)}`],
+         esc(myOpenTier().label)],
        ['MVP 기록','openMyMvp()', (MY_MVP_N==null?'':`${MY_MVP_N}회`)]]
       .map((x,i)=>`<div onclick="${x[1]}" style="display:flex;align-items:center;gap:10px;padding:13px 15px;font-size:13.5px;font-weight:500;cursor:pointer;${i?'border-top:1px solid #f4f1eb':''}">
         <span style="flex:1">${x[0]}</span>
@@ -25975,11 +26007,11 @@ function _renderMeCore(){
       return `<div style="display:flex;text-align:center">
         <div style="flex:1"><div style="font-size:23px;font-weight:700">${rec.w}<span style="font-size:12px;color:var(--gray)">승</span> ${rec.l}<span style="font-size:12px;color:var(--gray)">패</span></div>
           <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:2px">승률 ${wr}%</div></div>
-        <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:15px;font-weight:600;color:${col(ts)};padding-top:5px">${nm(ts)}</div>
-          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">단식 티어</div></div>
-        <div style="flex:1;border-left:1px solid #f0efec"><div style="font-size:15px;font-weight:600;color:${col(td)};padding-top:5px">${nm(td)}</div>
-          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">복식 티어</div></div></div>
-      ${(ts.placing&&td.placing)
+        <div style="flex:1;border-left:1px solid #f0efec">
+          <div style="font-size:15px;font-weight:600;padding-top:5px;color:${
+            myOpenTier().placed?'var(--coral-d)':'var(--lgray)'}">${esc(myOpenTier().label)}</div>
+          <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px">티어</div></div></div>
+      ${(!myOpenTier().placed)
         ? `<div onclick="go('match')" style="display:flex;align-items:center;gap:8px;background:var(--coral-s);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#8a5230;cursor:pointer">
              ${PLACEMENT_GAMES}경기만 뛰면 티어가 정해져요 <b style="margin-left:auto;color:var(--coral-d);font-weight:600;white-space:nowrap">오픈매치 보기 ›</b></div>`
         : `<div style="display:flex;align-items:center;gap:8px;background:#f2f7f4;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12px;color:#3f7a5c">
