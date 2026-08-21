@@ -13485,11 +13485,28 @@ function cbPlanIdleFree(mem, courts, seed){
   /* 네 명을 두 팀으로 갈랐을 때 가장 팽팽한 조합의 차이 */
   const gap=g=>{ const [a,b,c,d]=g.map(lv);
     return Math.min(Math.abs(a+b-c-d), Math.abs(a+c-b-d), Math.abs(a+d-b-c)); };
-  /* 실력이 맞도록 팀을 다시 가른다 */
+  /* 실력이 맞도록 팀을 다시 가른다.
+     여성이 1명뿐인 <혼성> 경기에서는 그분 파트너로 잘 치는 남성을 붙인다 —
+     혼자 상대 둘을 감당하게 두면 경기가 일방적으로 기운다. */
   const split=g=>{ const [i,j,k,l]=g;
     const opts=[[i,j,k,l],[i,k,j,l],[i,l,j,k]];
+    const fs=g.filter(isF);
+    const lone = fs.length===1 ? fs[0] : null;
     let best=opts[0], bs=Infinity;
-    opts.forEach(o=>{ const d=Math.abs(lv(o[0])+lv(o[1])-lv(o[2])-lv(o[3]));
+    opts.forEach(o=>{
+      let d=Math.abs(lv(o[0])+lv(o[1])-lv(o[2])-lv(o[3]));
+      if(lone!=null){
+        /* 여성 혼자인 팀의 파트너 실력 — 높을수록 좋다 */
+        const mate = o[0]===lone ? o[1] : o[1]===lone ? o[0]
+                   : o[2]===lone ? o[3] : o[3]===lone ? o[2] : null;
+        if(mate!=null){
+          const others = g.filter(x=>x!==lone && x!==mate);
+          const bestOther = Math.max.apply(null, others.map(lv));
+          /* 파트너가 남은 남성 중 가장 잘 치는 쪽이면 이득을 준다 */
+          d -= (lv(mate) - Math.min.apply(null, others.map(lv))) * 1.2;
+          if(lv(mate) >= bestOther) d -= 1.5;
+        }
+      }
       if(d<bs){ bs=d; best=o; } });
     return best; };
 
@@ -13508,8 +13525,11 @@ function cbPlanIdleFree(mem, courts, seed){
       for(let t=0;t<600;t++){
         const g=sh(src).slice(0,4);
         if(g.length<4) return null;
-        if(!okKind(g)) continue;
-        const c=cost(g);
+        /* 여성이 1명·3명인 <혼성> 경기도 받는다. 예전에는 여기서 버렸는데,
+           여성 수가 애매하면(3명 등) 후보가 말라 편성이 실패하고
+           파트너 중복이 있는 옛 방식으로 넘어갔다.
+           대신 비용을 얹어, 만들 수 있으면 0·2·4 를 먼저 쓴다. */
+        const c=cost(g) + (okKind(g)?0:14);
         if(g.every(isF) && c<bf){ bf=c; bestFem=split(g); }
         if(c<bs){ bs=c; best=split(g); }
       }
