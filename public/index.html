@@ -13581,7 +13581,7 @@ function cbPlanIdleFree(mem, courts, seed){
   return out;
 }
 
-function cbPack(list, courts){
+function cbPack(list, courts, spreadF){
   const fill=src=>{
     const rest=src.slice(), out=[];
     for(let r=1; rest.length && r<=src.length+4; r++){
@@ -13618,7 +13618,35 @@ function cbPack(list, courts){
     if(!best||rounds<best.rounds){ best={rounds,out}; }
     if(best.rounds<=Math.ceil(list.length/courts)) break;
   }
-  return cbEaseIdle(best?best.out:fill(list), courts);
+  const out = cbEaseIdle(best?best.out:fill(list), courts);
+  return spreadF ? cbSpreadFemale(out, courts) : out;
+}
+/* 같은 라운드 안에서 코트만 바꿔 여성이 한 코트에 몰리는 것을 푼다.
+   경기 조합은 건드리지 않는다 — 누가 누구와 붙는지는 이미 위에서 정해졌고,
+   여기서는 <어느 코트에서 하느냐>만 고른다. 대기시간·라운드 수도 그대로다. */
+function cbSpreadFemale(out, courts){
+  if(courts<2) return out;
+  const isF=p=>{ try{ return hnF(p); }catch(e){ return false; } };
+  const nF=g=>[...(g.t1||[]),...(g.t2||[])].filter(isF).length;
+  const byR={};
+  out.forEach(g=>{ (byR[g.r]=byR[g.r]||[]).push(g); });
+  /* 코트별로 여성이 몇 번 들어갔는지 — 라운드를 거치며 누적한다.
+     적게 들어간 코트부터 여성 경기를 배정해 한 코트로 쏠리지 않게 한다. */
+  const load=Array(courts+1).fill(0);
+  Object.keys(byR).sort((a,b)=>a-b).forEach(r=>{
+    const gs=byR[r];
+    const withF=gs.filter(g=>nF(g)>0), rest=gs.filter(g=>nF(g)===0);
+    if(!withF.length || !rest.length) { gs.forEach(g=>{ if(nF(g)>0) load[g.c]++; }); return; }
+    /* 이번 라운드에 쓰는 코트 번호들 */
+    const slots=gs.map(g=>g.c).sort((a,b)=>a-b);
+    /* 여성 경기는 지금까지 여성이 적게 온 코트로, 나머지는 남은 자리에 */
+    const order=slots.slice().sort((a,b)=>load[a]-load[b]||a-b);
+    const forF=order.slice(0, withF.length).sort((a,b)=>a-b);
+    const forR=slots.filter(c=>!forF.includes(c));
+    withF.forEach((g,i)=>{ g.c=forF[i]; load[g.c]++; });
+    rest.forEach((g,i)=>{ g.c=forR[i]; });
+  });
+  return out;
 }
 /* 조 하나의 최종 편성 — [[팀A, 팀B], ...] 순서대로 그 코트의 1게임·2게임… */
 /* 성별 구성을 먼저 정하고 사람을 채우는 편성.
@@ -17185,8 +17213,11 @@ async function cb2Gen(mode){
         const plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:A*perR,
           past:PAST_PAIRS, style:'level', budget:550});
         if(!plan.length) continue;
+        /* 일반 대진만 코트 분산을 켠다 — 여러 코트에서 다양하게 치는 것이 목적이라
+           여성이 한 코트에만 계속 서 있으면 그 뜻이 무너진다.
+           경기 조합·라운드 수는 그대로 두고 코트 번호만 고른다. */
         const out=cbPack(plan.map(([t1,t2])=>({t1,t2,ids:[...t1,...t2].map(p=>p.id),
-          minR:[...t1,...t2].some(p=>p.late)?A+1:1 })), courts);
+          minR:[...t1,...t2].some(p=>p.late)?A+1:1 })), courts, true);
         const early = A>0 && out.some(g=>g.r<=A &&
           [...(g.t1||[]),...(g.t2||[])].some(p=>lateIds.has(String(p.id))));
         if(!early){ packed=out; usedAfter=A; break; }
