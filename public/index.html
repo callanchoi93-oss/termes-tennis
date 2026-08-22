@@ -14847,6 +14847,13 @@ function cbHomeStrip(c){
 /* 대진 화면 맨 위 큰 카드 — 회원용·운영진용이 같은 함수를 쓴다.
    따로 그리면 배지 줄 하나 때문에 높이가 어긋난다.
    높이를 못 박고, 라벨 줄은 <운영진 배지가 있든 없든> 같은 자리를 차지한다. */
+/* 대진 상태를 서버에 올린다 — 시계·점수가 다른 사람 폰에도 즉시 보이게 */
+async function cb2Save(){
+  CB2.updated_at=Date.now();
+  if(typeof TRIAL!=='undefined' && TRIAL) return;
+  try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }
+  catch(e){ toast('저장하지 못했어요'); }
+}
 /* ══════════ 시간 대진 시계 ══════════
    한 회차 = 25분 경기 + 5분 전환. 시작 버튼을 한 번 누르면 끝까지 자동으로 돈다.
    상태는 CB2.tb 한 곳에 모은다 — 서버에 그대로 실려 다른 기기와도 맞는다.
@@ -14891,7 +14898,7 @@ async function tbStart(){
   if(!CB2 || CB2.mode!=='normal') return;
   const okAt=tbStartAllowedAt();
   if(okAt && Date.now()<okAt){ toast('아직 시작 시각이 안 됐어요'); return; }
-  CB2.tb={ startedAt:Date.now(), by:uid(), byName:(myName&&myName())||'회원',
+  CB2.tb={ startedAt:Date.now(), by:(state.serverUser||{}).id||null, byName:(myName&&myName())||'회원',
            mins:(CB2.mins||CB2_MINS||120), rounds:CB2.rounds||tbRoundsFor(CB2.mins||CB2_MINS||120) };
   await cb2Save(); drawCB2View(); tbTick();
   toast('오늘 경기를 시작했어요');
@@ -15023,11 +15030,11 @@ function tbCard(){
   const n=tbNow();
   if(!n || n.done || n.playing) return '';
   const me=(CB2.games||[]).find(g=>g.r===n.round+1 &&
-    [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String(uid())));
+    [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String((state.serverUser||{}).id||'')));
   const goTo = me ? `<span style="color:var(--coral-d)">${me.c}번 코트</span>로 옮겨주세요` : '다음 회차는 쉬어요';
   const who = me ? (()=>{
     const A=(me.teamA||[]).map(p=>p.name), B=(me.teamB||[]).map(p=>p.name);
-    const mine=(me.teamA||[]).some(p=>String(p.id)===String(uid()));
+    const mine=(me.teamA||[]).some(p=>String(p.id)===String((state.serverUser||{}).id||''));
     const my=mine?A:B, op=mine?B:A;
     const mate=my.filter(x=>x!==((myName&&myName())||''))[0];
     return `${mate?'파트너 '+esc(mate)+' · ':''}vs ${esc(op.join(' · '))}`;
@@ -15038,7 +15045,7 @@ function tbCard(){
      전환 시간이 점수를 넣기 가장 좋은 때다. 코트를 옮기기 전에 처리한다. */
   const mine=(CB2.games||[]).map((g,gi)=>({...g,gi}))
     .filter(g=>g.r===n.round && g.sa==null && g.sb==null &&
-      [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String(uid())));
+      [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String((state.serverUser||{}).id||'')));
   /* 운영진에게는 남의 경기도 보여준다 — 점수가 비면 순위가 안 맞는다 */
   const off=!!((AC()||{}).officer);
   const others=off ? (CB2.games||[]).map((g,gi)=>({...g,gi}))
