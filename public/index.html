@@ -12658,7 +12658,7 @@ async function openClubStats(){
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
 /* ═══ 클럽 대진 v2.1 — 테르메스 스타일 · 만들기/보기 분리 · 한울 포함 ═══ */
 let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null, CB2_EVENT=0, CB2_LIST=null;
-const CB2_MODE_NAME={normal:'일반', hanul:'한울', gender:'성비', monthly:'월례대회', cheongbaek:'청백전', tourney:'대회 준비'};
+const CB2_MODE_NAME={normal:'시간 대진', hanul:'한울', gender:'성비', monthly:'월례대회', cheongbaek:'청백전', tourney:'대회 준비'};
 let CB2_SEED=1;
 let CB2_HSPLIT=false;           // 한울 · 여자 코트와 남자 코트를 갈라놓기                 // '다시 섞기'를 누르면 올라간다 — 같은 시드면 같은 대진이 나온다
 const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
@@ -13274,6 +13274,142 @@ function cbFindClash(games){
    예전에는 일반 편성기가 짠 경기를 나중에 코트에 담다 보니 한 바퀴에 코트가 덜 차서,
    12명 3코트가 4바퀴로 끝날 수 있는데 6바퀴가 되고 코트가 105분 놀았다.
    여기서는 바퀴를 먼저 만든다 — 전원을 섞어 4명씩 자르면 코트가 빌 자리가 없다. */
+/* ══════════ 시간제 대진 (25분 회차) ══════════
+   회차마다 모든 코트가 동시에 시작하고 동시에 끝난다.
+   그래서 코트가 서로를 기다리지 않고, 인원이 딱 안 맞아도 상관없다.
+
+   지키는 것 — 전원 정확히 4게임 · 파트너와 상대를 최대한 안 겹치게
+              · 남복을 되도록 많이 · 성별 조합별 팀 나누기 규칙 · 실력 균형
+
+   남녀 실력 보정: 같은 등급이면 남성이 반등급(0.5) 위로 본다.
+   그래서 <여3남1> 에서는 남성이 여성보다 낮은 등급이어야 팀이 맞는다. */
+const TB_UNIT=25, TB_SWAP=5;                       // 경기 25분 + 자리 바꾸기 5분
+const TB_ROUNDS={120:4, 180:6};                    // 대관 시간(분) → 회차
+function tbRoundsFor(mins){ return TB_ROUNDS[mins] || Math.floor(mins/(TB_UNIT+TB_SWAP)); }
+/* 이 인원·코트·시간으로 전원 4게임이 되는가 */
+function tbFit(n, courts, mins){
+  const R=tbRoundsFor(mins);
+  if(n < courts*4) return {ok:false, why:`${courts}코트는 ${courts*4}명부터예요`};
+  const need=Math.ceil(n/courts);                  // 총 경기 n 개를 코트로 나눈 회차
+  if(need>R) return {ok:false, why:`${mins/60}시간에는 ${R*courts}명까지예요`, need, R};
+  return {ok:true, R, need, spare:R-need, games:n};
+}
+/* 실력값 — 남성은 반등급 위로 본다 */
+function tbLv(p){
+  const base = (p && p.rating!=null) ? (p.rating-1000)/100 + 3
+             : (HN_GV[String((p&&p.grade)||'B').toUpperCase()] || 2);
+  return base + (hnF(p) ? 0 : 0.5);
+}
+/* 네 명을 두 팀으로 — 성별 구성마다 규칙이 다르다 */
+function tbSplit(four){
+  const F=four.filter(hnF).length;
+  const opts=[[0,1,2,3],[0,2,1,3],[0,3,1,2]];
+  let best=null;
+  opts.forEach(o=>{
+    const t1=[four[o[0]],four[o[1]]], t2=[four[o[2]],four[o[3]]];
+    const f1=t1.filter(hnF).length, f2=t2.filter(hnF).length;
+    let bad=0;
+    if(F===2 && (f1!==1||f2!==1)) bad+=1000;        // 남녀 2:2 → 반드시 남녀 vs 남녀
+    if(F===1 || F===3){
+      /* 혼성 — 소수 성별이 낀 팀의 파트너를 규칙대로 고른다.
+         남3여1: 여성 곁에 <잘하는 남자>   여3남1: 여성들 곁에 <못하는 남자> */
+      const lone = four.find(p => (F===1 ? hnF(p) : !hnF(p)));
+      const inT1 = t1.includes(lone);
+      const mate = inT1 ? t1.find(p=>p!==lone) : t2.find(p=>p!==lone);
+      const others = four.filter(p=>p!==lone && p!==mate);
+      const mv=tbLv(mate), ov=others.map(tbLv);
+      if(F===1) bad += (Math.max(...ov) - mv) * 12;  // 여성 파트너는 셀수록 좋다
+      else      bad += (mv - Math.min(...ov)) * 12;  // 남성 파트너는 약할수록 좋다
+    }
+    const gap=Math.abs(tbLv(t1[0])+tbLv(t1[1])-tbLv(t2[0])-tbLv(t2[1]));
+    const v=bad + gap*3;
+    if(!best || v<best.v) best={v, t1, t2};
+  });
+  return [best.t1, best.t2];
+}
+/* 회차 편성 — 전원 4게임, 겹침 최소, 남복 우선.
+   한 회차에 courts 경기를 만들고, 회차 수만큼 반복한다. */
+function tbPlan(mem, courts, mins, seed){
+  const N=mem.length, fit=tbFit(N, courts, mins);
+  if(!fit.ok) return null;
+  const R=fit.need;                                   // 실제로 쓰는 회차
+  let sd=(seed||1)*7919;
+  const rnd=()=>((sd=(sd*1103515245+12345)&0x7fffffff)/0x7fffffff);
+  const key=(a,b)=>a<b?a+'-'+b:b+'-'+a;
+
+  let best=null;
+  for(let t=0;t<420;t++){
+    const played=Array(N).fill(0), last=Array(N).fill(-9);
+    const pu={}, ou={};                               // 파트너·상대 만난 횟수
+    const rounds=[]; let ok=true;
+    for(let r=0;r<R && ok;r++){
+      const used=new Set(); const games=[];
+      const slots=Math.min(courts, Math.floor((N*4 - rounds.flat().length*4)/4));
+      for(let c=0;c<courts;c++){
+        /* 아직 4게임을 안 채운 사람 중, 적게 뛴 순 → 오래 쉰 순 */
+        const pool=[...Array(N).keys()]
+          .filter(i=>!used.has(i) && played[i]<4)
+          .sort((a,b)=>played[a]-played[b] || last[a]-last[b] || rnd()-0.5);
+        if(pool.length<4){ if(c===0) ok=false; break; }
+        /* 앞쪽 후보로 여러 조합을 만들어 가장 싼 넷을 고른다 */
+        const head=pool.slice(0, Math.min(9, pool.length));
+        let pick=null;
+        for(let x=0;x<Math.min(40, head.length*3);x++){
+          const cand=[head[0]];                       // 가장 급한 사람은 반드시 넣는다
+          const rest=head.slice(1).sort(()=>rnd()-0.5);
+          for(const i of rest){ if(cand.length<4) cand.push(i); }
+          if(cand.length<4) break;
+          let v=0;
+          for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
+            const k=key(cand[i],cand[j]);
+            v += (pu[k]||0)*60 + (ou[k]||0)*18;       // 파트너 겹침이 더 무겁다
+          }
+          const nf=cand.filter(i=>hnF(mem[i])).length;
+          /* 남복을 강하게 밀어준다 — 겹침(파트너 60·상대 18)과 견줄 만큼은 돼야
+             실제로 남복이 늘어난다. 다만 겹침을 이기지는 못하게 둔다. */
+          if(nf===0) v-=55;                            // 남복
+          else if(nf===4) v-=20;                       // 여복
+          else if(nf===2) v+=4;                        // 혼복
+          else v+=10;                                  // 혼성(1·3)
+          if(!pick || v<pick.v) pick={v, four:cand};
+        }
+        if(!pick){ ok=false; break; }
+        pick.four.forEach(i=>{ used.add(i); played[i]++; last[i]=r; });
+        const [t1,t2]=tbSplit(pick.four.map(i=>mem[i]));
+        const id=p=>mem.indexOf(p);
+        pu[key(id(t1[0]),id(t1[1]))]=(pu[key(id(t1[0]),id(t1[1]))]||0)+1;
+        pu[key(id(t2[0]),id(t2[1]))]=(pu[key(id(t2[0]),id(t2[1]))]||0)+1;
+        t1.forEach(a=>t2.forEach(b=>{ const k=key(id(a),id(b)); ou[k]=(ou[k]||0)+1; }));
+        games.push({t1,t2, ids:pick.four.map(i=>mem[i].id)});
+      }
+      if(games.length) rounds.push(games); else ok=false;
+    }
+    if(!ok || played.some(v=>v!==4)) continue;
+    /* 점수 — 겹침이 적고 남복이 많을수록 좋다 */
+    let dup=0; Object.values(pu).forEach(v=>{ if(v>1) dup+=(v-1); });
+    let odup=0; Object.values(ou).forEach(v=>{ if(v>2) odup+=(v-2); });
+    let men=0; rounds.forEach(gs=>gs.forEach(g=>{
+      if(![...g.t1,...g.t2].some(hnF)) men++; }));
+    /* 3게임 이상 연속으로 뛰는 사람이 있으면 벌점 — 쉴 수 있는 회차가 있는데
+       한 사람만 내리 뛰는 편성은 피한다. 쉴 자리가 없는 날(12명 3코트)은
+       어차피 전원이 매 회차 뛰므로 이 값이 모두 같아 영향이 없다. */
+    let hard=0;
+    { const rn=Array(N).fill(0);
+      for(const gs of rounds){
+        const on=new Set();
+        gs.forEach(g=>[...g.t1,...g.t2].forEach(p=>on.add(mem.indexOf(p))));
+        for(let i2=0;i2<N;i2++){ rn[i2]=on.has(i2)?rn[i2]+1:0; if(rn[i2]>=3) hard++; }
+      } }
+    const score = dup*100 + odup*12 - men*14 + hard*25;
+    if(!best || score<best.score) best={score, rounds, dup, men};
+    if(dup===0 && odup===0) break;
+  }
+  if(!best) return null;
+  const out=[];
+  best.rounds.forEach((gs,r)=>gs.forEach((g,c)=>out.push({
+    r:r+1, c:c+1, t1:g.t1, t2:g.t2, ids:g.ids })));
+  return out;
+}
 function cbPlanTight(mem, courts, seed){
   const N=mem.length;
   if(N !== courts*4) return null;
@@ -13598,7 +13734,12 @@ function cbPlanIdleFree(mem, courts, seed){
     if(Date.now()-t0>BUDGET) break;
   }
   if(!best) return null;
-  /* 코트 배정 — 쉬는 사람으로 짠 경기를 1코트에 둔다 */
+  /* 코트 배정 — 배열 순서를 그대로 코트 번호로 쓴다.
+     예전 주석은 <쉬는 사람으로 짠 경기를 1코트에>였는데, 그 목적은
+     "먼저 끝난 코트에 바로 넣을 수 있다"이고 그건 <그 넷이 지금 안 뛴다>는
+     사실만으로 달성된다. 몇 번 코트인지는 상관없다.
+     아래 cbPack 의 코트 로테이션이 여기서 정한 번호를 다시 고른다 —
+     한 사람이 같은 코트에 계속 서지 않게 하는 편이 더 중요하다. */
   const out=[];
   best.rounds.forEach((gs,r)=>gs.forEach((g,c)=>out.push({
     r:r+1, c:c+1,
@@ -13648,30 +13789,62 @@ function cbPack(list, courts, spreadF){
   const out = cbEaseIdle(best?best.out:fill(list), courts);
   return spreadF ? cbSpreadFemale(out, courts) : out;
 }
-/* 같은 라운드 안에서 코트만 바꿔 여성이 한 코트에 몰리는 것을 푼다.
-   경기 조합은 건드리지 않는다 — 누가 누구와 붙는지는 이미 위에서 정해졌고,
-   여기서는 <어느 코트에서 하느냐>만 고른다. 대기시간·라운드 수도 그대로다. */
+/* 코트 로테이션 — 조합은 그대로 두고 <어느 코트에서 하느냐>만 고른다.
+   일반 대진은 코트를 옮겨 다니며 여러 사람과 치는 것이 목적인데,
+   cbPack 은 라운드 수만 보기 때문에 같은 사람이 같은 코트에 계속 서 있었다.
+   여기서 라운드마다 코트를 돌려, 한 사람이 한 코트에 묶이지 않게 한다.
+   대기시간·라운드 수·경기 조합은 하나도 바뀌지 않는다. */
 function cbSpreadFemale(out, courts){
   if(courts<2) return out;
   const isF=p=>{ try{ return hnF(p); }catch(e){ return false; } };
-  const nF=g=>[...(g.t1||[]),...(g.t2||[])].filter(isF).length;
+  const ppl=g=>[...(g.t1||[]),...(g.t2||[])];
+  const key=p=>String((p&&p.id)!=null?p.id:(p&&p.name)||'');
   const byR={};
   out.forEach(g=>{ (byR[g.r]=byR[g.r]||[]).push(g); });
-  /* 코트별로 여성이 몇 번 들어갔는지 — 라운드를 거치며 누적한다.
-     적게 들어간 코트부터 여성 경기를 배정해 한 코트로 쏠리지 않게 한다. */
-  const load=Array(courts+1).fill(0);
-  Object.keys(byR).sort((a,b)=>a-b).forEach(r=>{
+  /* seen[사람][코트] = 지금까지 그 코트에 선 횟수
+     lastC[사람] = 직전 라운드에 섰던 코트 */
+  const seen={}, lastC={};
+  const rs=Object.keys(byR).map(Number).sort((a,b)=>a-b);
+  /* 코트별 여성 누적 — 여성이 한 코트에만 계속 오는 것도 함께 막는다 */
+  const femLoad=Array(courts+1).fill(0);
+
+  rs.forEach(r=>{
     const gs=byR[r];
-    const withF=gs.filter(g=>nF(g)>0), rest=gs.filter(g=>nF(g)===0);
-    if(!withF.length || !rest.length) { gs.forEach(g=>{ if(nF(g)>0) load[g.c]++; }); return; }
-    /* 이번 라운드에 쓰는 코트 번호들 */
     const slots=gs.map(g=>g.c).sort((a,b)=>a-b);
-    /* 여성 경기는 지금까지 여성이 적게 온 코트로, 나머지는 남은 자리에 */
-    const order=slots.slice().sort((a,b)=>load[a]-load[b]||a-b);
-    const forF=order.slice(0, withF.length).sort((a,b)=>a-b);
-    const forR=slots.filter(c=>!forF.includes(c));
-    withF.forEach((g,i)=>{ g.c=forF[i]; load[g.c]++; });
-    rest.forEach((g,i)=>{ g.c=forR[i]; });
+    /* 경기 하나를 어느 코트에 두는 값이 얼마나 나쁜가 */
+    const cost=(g,c)=>{
+      let v=0;
+      ppl(g).forEach(p=>{
+        const k=key(p); if(!k) return;
+        if(lastC[k]===c) v+=100;                       // 직전과 같은 코트 — 가장 나쁘다
+        v+=((seen[k]||{})[c]||0)*12;                   // 이미 자주 선 코트
+      });
+      if(ppl(g).some(isF)) v+=femLoad[c]*8;            // 여성 경기가 한 코트에 몰리는 것도 피한다
+      return v;
+    };
+    /* 경기 × 코트를 짝지어 총비용이 가장 작은 배치를 고른다.
+       경기 수가 3~4개라 모든 순열을 봐도 부담이 없다. */
+    const perm=(arr)=>arr.length<=1?[arr]:arr.flatMap((x,i)=>
+      perm(arr.slice(0,i).concat(arr.slice(i+1))).map(t=>[x].concat(t)));
+    let bestOrder=slots, bestV=Infinity;
+    (slots.length<=4?perm(slots):[slots]).forEach(order=>{
+      let v=0; gs.forEach((g,i)=>{ v+=cost(g, order[i]); });
+      if(v<bestV){ bestV=v; bestOrder=order; }
+    });
+    /* 확정 — 기록을 남기고 다음 라운드에 쓴다 */
+    gs.forEach((g,i)=>{
+      const c=bestOrder[i]; g.c=c;
+      if(ppl(g).some(isF)) femLoad[c]++;
+      ppl(g).forEach(p=>{
+        const k=key(p); if(!k) return;
+        (seen[k]=seen[k]||{})[c]=((seen[k]||{})[c]||0)+1;
+        lastC[k]=c;
+      });
+    });
+    /* 이번 라운드에 안 뛴 사람은 <직전 코트> 기록을 지운다 —
+       쉬었다 나오면 같은 코트여도 연속이 아니다 */
+    const playing=new Set(); gs.forEach(g=>ppl(g).forEach(p=>playing.add(key(p))));
+    Object.keys(lastC).forEach(k=>{ if(!playing.has(k)) lastC[k]=null; });
   });
   return out;
 }
@@ -14028,10 +14201,20 @@ function cbMyCard(){
   const canStart=myTurnOnCourt && !courtBusy && !ids.some(i=>busy.has(i));
 
   /* ③ 지금 시작할 수 있다 */
-  if(canStart) return {kind:'now', lb:`내 차례 · ${leftTxt}`,
-    big:`${CT(next.c)}\n${RD(next.r)}`,
-    m:`${who}\n시작을 누르면 경기 시간이 재져요`,
-    btn:'시작 ▶', act:`cb2StartGame(${next.gi})`};
+  if(canStart){
+    /* 시간 대진은 회차 시계가 대신 돈다 — 각자 시작을 누를 일이 없다.
+       대신 이번 회차가 몇 분 남았는지를 알려준다. */
+    const n=tbIsOn()?tbNow():null;
+    if(n && !n.done && n.playing)
+      return {kind:'now', lb:`내 차례 · ${leftTxt}`,
+        big:`${CT(next.c)}`,
+        m:`${who}\n${tbMMSS(n.left)} 남았어요 · 시간이 되면 그때 점수로 끝나요`,
+        btn:'점수 넣기', act:`cb2Score(${next.gi})`};
+    return {kind:'now', lb:`내 차례 · ${leftTxt}`,
+      big:`${CT(next.c)}\n${RD(next.r)}`,
+      m:`${who}\n시작을 누르면 경기 시간이 재져요`,
+      btn:'시작 ▶', act:`cb2StartGame(${next.gi})`};
+  }
 
   /* ④ 곧 나갈 차례 — 앞에 몇 경기가 남았나 */
   const ahead=gs.filter(g=>!done(g) && g.r<next.r).length;
@@ -14664,6 +14847,236 @@ function cbHomeStrip(c){
 /* 대진 화면 맨 위 큰 카드 — 회원용·운영진용이 같은 함수를 쓴다.
    따로 그리면 배지 줄 하나 때문에 높이가 어긋난다.
    높이를 못 박고, 라벨 줄은 <운영진 배지가 있든 없든> 같은 자리를 차지한다. */
+/* ══════════ 시간 대진 시계 ══════════
+   한 회차 = 25분 경기 + 5분 전환. 시작 버튼을 한 번 누르면 끝까지 자동으로 돈다.
+   상태는 CB2.tb 한 곳에 모은다 — 서버에 그대로 실려 다른 기기와도 맞는다.
+     tb = { startedAt, by, byName, mins, rounds }
+   지금 몇 회차인지·경기 중인지 전환 중인지는 startedAt 에서 계산한다.
+   따로 저장하지 않아야 앱을 껐다 켜도, 다른 사람 폰에서도 같은 시각이 나온다. */
+function tbIsOn(){ return !!(CB2 && CB2.mode==='normal' && CB2.tb && CB2.tb.startedAt); }
+function tbNow(){
+  if(!tbIsOn()) return null;
+  const cyc=(TB_UNIT+TB_SWAP)*60000;            // 회차 하나 = 30분
+  const el=Date.now()-CB2.tb.startedAt;
+  if(el<0) return null;
+  const R=CB2.tb.rounds || tbRoundsFor(CB2.tb.mins||120);
+  const idx=Math.floor(el/cyc);                  // 0부터
+  if(idx>=R) return {done:true, round:R, R};
+  const into=el-idx*cyc;                         // 이번 회차에서 지난 시간
+  const playMs=TB_UNIT*60000;
+  const playing=into<playMs;
+  const left=playing ? playMs-into : cyc-into;   // 남은 밀리초
+  return { done:false, round:idx+1, R, playing, left,
+           pct: playing ? into/playMs : (into-playMs)/(TB_SWAP*60000),
+           startAt: CB2.tb.startedAt+idx*cyc,
+           endAt:   CB2.tb.startedAt+idx*cyc+playMs,
+           nextAt:  CB2.tb.startedAt+(idx+1)*cyc };
+}
+const tbMMSS=ms=>{ const t=Math.max(0,Math.ceil(ms/1000));
+  return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); };
+/* 일정에 적힌 시작 시각(분) — 그 전에는 버튼이 안 눌린다 */
+function tbStartAllowedAt(){
+  const d=(CB2&&CB2.date)||ymd();
+  const ev=(state.events||[]).find(e=>String(e.date||'').slice(0,10)===d && e.time);
+  if(!ev) return 0;                              // 시각을 모르면 막지 않는다
+  const [h,m]=String(ev.time).split(':').map(Number);
+  const t=new Date(d+'T00:00:00'); t.setHours(h||0, m||0, 0, 0);
+  return t.getTime();
+}
+/* 되돌리기는 누른 뒤 3분까지 */
+const TB_UNDO_MS=3*60000;
+function tbCanUndo(){ return tbIsOn() && (Date.now()-CB2.tb.startedAt)<TB_UNDO_MS; }
+
+async function tbStart(){
+  if(!CB2 || CB2.mode!=='normal') return;
+  const okAt=tbStartAllowedAt();
+  if(okAt && Date.now()<okAt){ toast('아직 시작 시각이 안 됐어요'); return; }
+  CB2.tb={ startedAt:Date.now(), by:uid(), byName:(myName&&myName())||'회원',
+           mins:(CB2.mins||CB2_MINS||120), rounds:CB2.rounds||tbRoundsFor(CB2.mins||CB2_MINS||120) };
+  await cb2Save(); drawCB2View(); tbTick();
+  toast('오늘 경기를 시작했어요');
+}
+async function tbUndo(){
+  if(!tbCanUndo()) return;
+  if(!await appConfirm('시작을 되돌릴까요?\n시계가 멈추고 시작 전으로 돌아가요.')) return;
+  CB2.tb=null; await cb2Save(); drawCB2View();
+}
+/* 알림 — 서버를 거치지 않고 앱 안에서 알린다.
+   회차가 끝나기 3분 전, 전환이 끝나기 1분 전 두 번.
+   같은 회차에 두 번 울리지 않게 표시를 남긴다. */
+const TB_ALERTED={};
+function tbAlert(key, title, body){
+  if(TB_ALERTED[key]) return; TB_ALERTED[key]=1;
+  try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(e){}
+  toast(title + (body?' · '+body:''));
+}
+/* 화면의 시계만 1초마다 다시 그린다 — 전체를 다시 그리면 스크롤이 튄다 */
+let TB_TIMER=null;
+function tbTick(){
+  clearInterval(TB_TIMER);
+  if(!tbIsOn()) return;
+  TB_TIMER=setInterval(()=>{
+    const n=tbNow(); if(!n) { clearInterval(TB_TIMER); return; }
+    if(n.done){ clearInterval(TB_TIMER); drawCB2View(); return; }
+    /* ── 알림 ── */
+    const secs=Math.ceil(n.left/1000);
+    if(n.playing && secs<=180 && secs>176)
+      tbAlert('p'+n.round, `${n.round}회차 3분 남았어요`, '점수 정리해 주세요');
+    if(!n.playing && secs<=60 && secs>56)
+      tbAlert('s'+n.round, `1분 뒤 ${n.round+1}회차예요`, '코트로 가주세요');
+
+    const el=document.getElementById('tbClock');
+    if(!el) return;                       // 다른 화면을 보고 있어도 알림은 계속 돈다
+    /* 경기 ↔ 전환이 바뀌는 순간에는 카드를 통째로 다시 그린다 */
+    if(el.dataset.ph !== (n.playing?'p':'s') || el.dataset.rd !== String(n.round)){
+      drawCB2View(); return;
+    }
+    el.textContent=tbMMSS(n.left);
+    const bar=document.getElementById('tbBar');
+    if(bar) bar.style.width=Math.round((n.playing?1-n.pct:n.pct)*100)+'%';
+  }, 1000);
+}
+/* 진행 중 초기화 — 점수가 지워지는 일이라 한 번 탭으로는 실행되지 않게 한다.
+   2초를 붙잡고 있어야 실행된다. 주머니에서 눌리거나 스크롤하다 스치는 일을 막는다. */
+let TB_HOLD=null;
+function tbResetSheet(){
+  const gs=(CB2&&CB2.games)||[];
+  const dn=gs.filter(g=>g.sa!=null&&g.sb!=null).length;
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(20,16,10,.42);'
+    +'display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`<div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:420px;
+      padding:20px 18px calc(18px + env(safe-area-inset-bottom,0px))">
+    <div style="width:34px;height:4px;border-radius:3px;background:#e9dfcf;margin:0 auto 18px"></div>
+    <div style="font-size:18px;font-weight:800;letter-spacing:-.035em;margin-bottom:8px">
+      처음부터 다시 할까요?</div>
+    <div style="font-size:12.5px;color:#6b6357;font-weight:500;line-height:1.65;margin-bottom:16px">
+      ${dn?`<b style="color:#1c1b18;font-weight:700">점수 ${dn}개가 지워져요</b> · 되돌릴 수 없어요<br>`:''}
+      대진은 그대로 두고 시계와 점수만 초기화돼요</div>
+    <div style="display:flex;gap:8px">
+      <button data-no style="flex:1;padding:14px;border:none;border-radius:13px;background:#f2f1ec;
+        color:#7d7870;font-size:13.5px;font-weight:700;font-family:inherit">아니요</button>
+      <button data-hold style="flex:1;padding:14px;border:none;border-radius:13px;background:#c0453a;
+        color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;position:relative;
+        overflow:hidden;touch-action:none">
+        <span style="position:relative;z-index:1">2초 길게</span>
+        <i data-bar style="position:absolute;left:0;top:0;bottom:0;width:0;
+          background:rgba(255,255,255,.24)"></i></button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  const close=()=>{ clearInterval(TB_HOLD); ov.remove(); };
+  ov.querySelector('[data-no]').onclick=close;
+  ov.onclick=e=>{ if(e.target===ov) close(); };
+  const b=ov.querySelector('[data-hold]'), bar=ov.querySelector('[data-bar]');
+  const start=()=>{ let t=0; clearInterval(TB_HOLD);
+    TB_HOLD=setInterval(()=>{ t+=50; bar.style.width=Math.min(100,t/2000*100)+'%';
+      if(t>=2000){ clearInterval(TB_HOLD); close(); tbReset(); } }, 50); };
+  const stop=()=>{ clearInterval(TB_HOLD); bar.style.width='0'; };
+  b.addEventListener('pointerdown', start);
+  ['pointerup','pointerleave','pointercancel'].forEach(e=>b.addEventListener(e, stop));
+}
+async function tbReset(){
+  if(!CB2) return;
+  CB2.tb=null;
+  (CB2.games||[]).forEach(g=>{ g.sa=null; g.sb=null; g.startedAt=null; });
+  Object.keys(TB_ALERTED).forEach(k=>delete TB_ALERTED[k]);
+  await cb2Save(); drawCB2View();
+  toast('처음부터 다시 시작할 수 있어요');
+}
+/* 시작 전 · 전환 시간에 띄우는 카드 — cbBigCard 와 같은 흰 종이 규칙 */
+function tbCard(){
+  if(!CB2 || CB2.mode!=='normal') return '';
+  const LIFT='border:1px solid #eee9e0;box-shadow:0 1px 2px rgba(40,30,18,.04),0 6px 18px rgba(40,30,18,.06)';
+  const wrap=(inner)=>`<div style="background:#fff;${LIFT};border-radius:18px;padding:18px;margin-top:10px">${inner}</div>`;
+  const cap=(t,q)=>`<span style="font-size:13px;font-weight:600;line-height:1.45;flex:none;
+    border-radius:20px;padding:3px 11px;${q?'background:var(--felt);color:var(--gray)'
+    :'background:var(--coral);color:#fff'}">${t}</span>`;
+  const tail=t=>`<span style="font-size:13px;color:var(--lgray);font-weight:500">${t}</span>`;
+  const big=t=>`<div style="font-size:21px;font-weight:800;letter-spacing:-.04em;
+    line-height:1.32;margin-top:11px">${t}</div>`;
+  const sub=t=>`<div style="font-size:13px;color:#6b6357;font-weight:500;margin-top:7px;
+    line-height:1.6">${t}</div>`;
+
+  /* ── 아직 시작 전 ── */
+  if(!tbIsOn()){
+    const okAt=tbStartAllowedAt(), now=Date.now();
+    const waiting = okAt && now<okAt;
+    const hhmm=t=>{ const d=new Date(t); return String(d.getHours()).padStart(2,'0')+':'
+      +String(d.getMinutes()).padStart(2,'0'); };
+    if(waiting){
+      const m=Math.ceil((okAt-now)/60000);
+      return wrap(`<div style="display:flex;align-items:center;gap:7px">
+          ${cap(hhmm(okAt)+'부터', true)}${tail(m+'분 남음')}</div>
+        ${big('곧 시작해요')}
+        ${sub('먼저 오신 분이 눌러주시면 돼요')}
+        <button class="btn" style="margin-top:14px;background:var(--felt);color:var(--lgray)"
+          onclick="toast('아직 시작 시각이 안 됐어요')">오늘 경기 시작</button>`);
+    }
+    return wrap(`<div style="display:flex;align-items:center;gap:7px">
+        ${cap('시작할 수 있어요')}${tail(hhmm(now))}</div>
+      ${big('오늘 경기를<br>시작해 주세요')}
+      ${sub('한 번 누르면 25분마다 저절로 넘어가요')}
+      <button class="btn" style="margin-top:14px" onclick="tbStart()">오늘 경기 시작</button>`);
+  }
+
+  /* ── 전환 시간 ── */
+  const n=tbNow();
+  if(!n || n.done || n.playing) return '';
+  const me=(CB2.games||[]).find(g=>g.r===n.round+1 &&
+    [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String(uid())));
+  const goTo = me ? `<span style="color:var(--coral-d)">${me.c}번 코트</span>로 옮겨주세요` : '다음 회차는 쉬어요';
+  const who = me ? (()=>{
+    const A=(me.teamA||[]).map(p=>p.name), B=(me.teamB||[]).map(p=>p.name);
+    const mine=(me.teamA||[]).some(p=>String(p.id)===String(uid()));
+    const my=mine?A:B, op=mine?B:A;
+    const mate=my.filter(x=>x!==((myName&&myName())||''))[0];
+    return `${mate?'파트너 '+esc(mate)+' · ':''}vs ${esc(op.join(' · '))}`;
+  })() : '';
+  const chip=t=>`<span style="font-size:11.5px;font-weight:600;color:#6b6357;
+    background:var(--cream2);border-radius:9px;padding:6px 10px">${t}</span>`;
+  /* 방금 끝난 회차에서 내가 뛴 경기 중 점수가 안 들어간 것 —
+     전환 시간이 점수를 넣기 가장 좋은 때다. 코트를 옮기기 전에 처리한다. */
+  const mine=(CB2.games||[]).map((g,gi)=>({...g,gi}))
+    .filter(g=>g.r===n.round && g.sa==null && g.sb==null &&
+      [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String(uid())));
+  /* 운영진에게는 남의 경기도 보여준다 — 점수가 비면 순위가 안 맞는다 */
+  const off=!!((AC()||{}).officer);
+  const others=off ? (CB2.games||[]).map((g,gi)=>({...g,gi}))
+    .filter(g=>g.r===n.round && g.sa==null && g.sb==null && !mine.some(m=>m.gi===g.gi)) : [];
+  const list=mine.concat(others);
+  const scoreBox = list.length ? `
+    <div style="margin-top:13px;padding-top:13px;border-top:1px solid #f0ece4">
+      <div style="font-size:11.5px;font-weight:700;color:var(--coral-d);margin-bottom:7px">
+        ${n.round}회차 점수 ${list.length}개가 비었어요</div>
+      ${list.map(g=>{
+        const A=(g.teamA||[]).map(p=>esc(p.name)).join('·');
+        const B=(g.teamB||[]).map(p=>esc(p.name)).join('·');
+        return `<button onclick="cb2Score(${g.gi})" style="width:100%;display:flex;
+            align-items:center;gap:8px;background:var(--cream2);border:none;border-radius:11px;
+            padding:10px 12px;font-family:inherit;text-align:left;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;color:var(--gray);background:#fff;
+            border-radius:6px;padding:2px 6px;flex:none">${g.c}코트</span>
+          <span style="flex:1;font-size:12px;font-weight:600;min-width:0;overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap">${A} vs ${B}</span>
+          <span style="font-size:11.5px;font-weight:700;color:var(--coral-d);flex:none">넣기 ›</span>
+        </button>`; }).join('')}
+    </div>` : '';
+  return wrap(`<div style="display:flex;align-items:center;gap:7px">
+      <span style="font-size:13px;font-weight:600;line-height:1.45;flex:none;border-radius:20px;
+        padding:3px 11px;background:var(--gold);color:#3d3830">전환 시간</span>
+      ${tail(`다음 ${n.round+1}회차`)}</div>
+    <div id="tbClock" data-ph="s" data-rd="${n.round}" style="font-size:40px;font-weight:800;
+      letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums;margin-top:11px;
+      color:var(--gold)">${tbMMSS(n.left)}</div>
+    <div style="height:4px;border-radius:3px;background:var(--felt);overflow:hidden;margin-top:11px">
+      <i id="tbBar" style="display:block;height:100%;background:var(--gold);
+        width:${Math.round(n.pct*100)}%"></i></div>
+    <div style="font-size:15px;font-weight:800;letter-spacing:-.03em;margin-top:11px">${goTo}</div>
+    ${who?sub(who):''}
+    <div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">
+      ${chip('화장실')}${chip('물 마시기')}${chip('스트레칭')}${chip('가볍게 랠리')}</div>
+    ${scoreBox}`);
+}
 function cbBigCard(c, isOfficer){
   if(!c) return '';
   /* 색은 <무엇이 급한가>가 아니라 <누가 해야 하는가>로 정한다.
@@ -15060,8 +15473,33 @@ function drawCB2View(){
         ${(()=>{ /* 클럽 대진은 대관 시간에 묶이지 않는다 — 남은 경기 수만 알려준다.
                      시간 제한은 오픈매치(대관 종료 시각이 있는 경우)에만 쓴다. */
           const tot=(CB2.games||[]).length, left=tot-(CB2.games||[]).filter(done).length;
+          /* 시간 대진이면 <몇 회차 진행 중>이 더 급하다 */
+          const n=tbIsOn()?tbNow():null;
+          if(n && !n.done) return `<span class="rt">${n.round}회차 ${n.playing?'진행 중':'준비 중'}</span>`;
           return left? `<span class="rt">${left}경기 남음</span>` : `<span class="rt">모든 경기 완료</span>`; })()}</div>
       <div class="rtbar"><i style="width:${(CB2.games||[]).length?Math.round((CB2.games||[]).filter(done).length/(CB2.games||[]).length*100):0}%"></i></div>
+      ${(()=>{ /* 오늘 경기를 시작한 사람 — 끝날 때까지 남는다 */
+        if(!tbIsOn()) return '';
+        const t=CB2.tb, d=new Date(t.startedAt);
+        const hhmm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+        return `<div style="display:flex;align-items:center;gap:7px;margin-top:10px;
+            padding-top:10px;border-top:1px solid #e8e4dc">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--coral);flex:none"></span>
+          <span style="font-size:11px;color:var(--lgray);font-weight:500">오늘 경기 시작</span>
+          <span style="font-size:11.5px;font-weight:700">${esc(t.byName||'회원')} 회원님</span>
+          ${tbCanUndo()
+            /* 누른 뒤 3분 안 — 가볍게 되돌린다 */
+            ? `<button onclick="event.stopPropagation();tbUndo()" style="margin-left:auto;
+                 font-size:11px;font-weight:600;color:var(--gray);border:1px solid var(--felt-d);
+                 border-radius:8px;padding:4px 9px;background:#fff;font-family:inherit">되돌리기</button>`
+            /* 3분이 지나면 시각만. 운영진에게는 초기화를 ⋮ 뒤에 숨겨 둔다 —
+               점수가 지워지는 일이라 눈에 잘 띄면 안 된다. */
+            : `<span style="margin-left:auto;font-size:11px;color:var(--lgray);font-weight:500">${hhmm}</span>
+               ${((AC()||{}).officer)?`<span onclick="event.stopPropagation();tbResetSheet()"
+                 style="font-size:14px;color:#cdc8be;font-weight:700;cursor:pointer;
+                 padding:0 2px 0 8px;line-height:1">⋮</span>`:''}`}
+        </div>`;
+      })()}
       ${(()=>{ /* 총무가 가장 자주 묻는 것 — "이 속도면 몇 시에 끝나지?" */
         const e=cbEta(CB2.games||[], done, CB2.courts);
         if(!e){
@@ -15082,10 +15520,13 @@ function drawCB2View(){
       })()}
     </div>`;
 
+    /* 시간 대진 — 시작 전이면 시작 카드, 전환 시간이면 전환 카드.
+       진행 요약 <아래>에 온다 — 오늘 상태를 먼저 보고 그다음 내 할 일을 본다. */
+    h+=tbCard();
     /* 운영진 카드 — 지금 손봐야 할 것 하나. 회원 카드와 같은 함수라 크기가 같다. */
     if(off) h+=cbBigCard(cbOfficerCard(), true);
     /* 내 차례 카드 — 회원 각자에게 <어디로 · 언제 · 누구와> */
-    h+=cbBigCard(cbMyCard(), false);
+    if(!tbIsOn() || (tbNow()&&tbNow().playing)) h+=cbBigCard(cbMyCard(), false);
 
     /* 진행 중 경기·선수 집계 → 시작 게이팅 (아래 코트 카드에서 쓴다) */
     /* <경기 종료>를 누른 경기는 코트도 선수도 잡아두지 않는다 — 점수만 남은 상태다 */
@@ -15397,6 +15838,7 @@ function drawCB2View(){
   }
   h+=`</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  tbTick();   /* 시간 대진이면 시계를 켠다 — 아니면 아무 일도 안 한다 */
 }
 
 /* ── 임원 전용: 대진 만들기 ── */
@@ -16198,11 +16640,13 @@ function cbIsGuest(p){ return !!(p && (p.is_guest || p.role==='guest')); }
    방식마다 색이 다른 버튼 다섯 개를 한 번에 늘어놓으면 무엇이 기본인지 알 수 없고,
    누르는 순간 바로 발행돼서 되돌아볼 지점이 없었다. 고르는 화면과 만드는 순간을 나눈다. */
 let CB2_STEP=1, CB2_MODE='normal', CB2_COURTS=3;
+let CB2_MINS=120;                 // 코트 대관 시간(분) — 시간 대진에서만 쓴다
 /* 방식마다 성립 조건이 다르다. 매뉴얼에 적힌 조건을 그대로 코드에 옮겨
    조건을 못 채우면 아예 고를 수 없게 한다. 발행하고 나서 이상한 대진을
    받는 것보다, 고르기 전에 왜 안 되는지 아는 편이 낫다. */
 const CB2_MODES=[
-  {k:'normal',     n:'일반',     d:'비슷한 등급끼리 · 쉬는 사람 순환', min:4},
+  /* 예전 <일반>을 대체한다. key 는 그대로 두어 지난 대진 기록이 계속 열린다. */
+  {k:'normal',     n:'시간 대진', d:'25분 게임 + 전환 5분 · 코트가 서로 안 기다려요', min:4},
   /* 한울은 코트마다 따로 돈다 — 인원·코트가 안 맞아도 되고 코트가 비지도 않는다.
      그래서 일반·성비가 막힐 때 늘 대안이 된다. */
   {k:'hanul',      n:'한울',     d:'조를 코트에 고정 · 코트가 서로 안 기다려요 · 2코트부터', min:8, minCourts:2},
@@ -16221,7 +16665,8 @@ const CB2_MODES=[
        if(small.length) return `${small.sort().join('·')}조가 4명 미만이에요`;
        return null;
      }},
-  {k:'gender',     n:'성비',     d:'최대한 남 남복3·혼복1 / 여 혼복3·여복1 · 여성 4명부터', minF:4, minM:4},
+  /* 성비 대진은 목록에서 뺐다 — 시간 대진이 성별 균형까지 함께 본다.
+     지난 기록은 CB2_MODE_NAME 에 이름이 남아 있어 그대로 열린다. */
   {k:'cheongbaek', n:'청백전',   d:'두 팀으로 나눠 단체전 · 짝수 8명부터', min:8,
      check:()=> (CB2_SEL.size%2) ? `짝수여야 해요 (지금 ${CB2_SEL.size}명)` : null},
   /* 대회 준비 — 평소 대진과 정반대다. 파트너를 섞지 않고 나갈 조를 고정한다. */
@@ -16430,9 +16875,25 @@ function cb2GenderCount(){
    게스트를 추가할 때 CB2_SEL 에도 그 id 를 넣으므로 CB2_SEL 만 세면 된다.
    예전엔 CB2_GUESTS.length 를 더해서 게스트를 두 번 셌다 — 18명이 35명으로 나왔다. */
 function cb2Head(){ return CB2_SEL.size; }
+function cb2SetMins(m){ CB2_MINS=m; drawCB2Build(); }
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
-  return el ? (+el.value||3) : CB2_COURTS;
+  const v = el ? (+el.value||3) : CB2_COURTS;
+  /* 지금 인원으로 안 되는 코트가 골라져 있으면 되는 쪽으로 옮긴다 —
+     인원이 바뀌었을 때 <안 돼요> 가 선택된 채로 남아 있지 않게 한다. */
+  if(CB2_MODE==='normal'){
+    const n=cb2Head();
+    if(n>=4 && !cbCourtOk(n, v).ok){
+      const ok=cbCourtsFor(n);
+      if(ok.length){
+        /* 원래 고른 값에 가장 가까운 코트로 */
+        const near=ok.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
+        if(el) el.value=near;
+        return near;
+      }
+    }
+  }
+  return v;
 }
 /* 전원 4경기이므로 총 경기 수 = 참석 인원 (4n 자리 ÷ 4명).
    예전엔 '한 라운드의 자리 수(코트×4)'를 세고 있어서 13명 2코트에
@@ -16663,10 +17124,19 @@ function drawCB2Build(){
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0 4px">
       <div style="background:#faf8f4;border-radius:13px;padding:11px;text-align:center"><b style="font-size:18px">${CB2_SEL.size}</b><div style="font-size:11px;font-weight:500;color:var(--lgray)">참석${CB2_LATE.size?` (늦참 ${CB2_LATE.size})`:''}</div></div>
       <div style="background:#faf8f4;border-radius:13px;padding:11px;text-align:center"><b style="font-size:18px">${courts}</b><div style="font-size:11px;font-weight:500;color:var(--lgray)">코트</div></div>
-      <div style="background:#faf8f4;border-radius:13px;padding:11px;text-align:center"><b style="font-size:18px">4</b><div style="font-size:11px;font-weight:500;color:var(--lgray)">1인 경기</div></div></div>
+      ${(()=>{
+        /* 1인 4게임은 늘 고정이라 알려줄 값이 아니다.
+           대신 <회차>가 인원·코트·시간에 따라 바뀌므로 그 자리에 둔다. */
+        const r=cbCourtOk(cb2Head(), courts, CB2_MINS);
+        const on=r.ok;
+        return `<div style="background:${on?'var(--coral-s)':'#faf8f4'};border-radius:13px;
+          padding:11px;text-align:center">
+          <b style="font-size:18px;${on?'color:var(--coral-d)':''}">${on?r.rounds:'–'}</b>
+          <div style="font-size:11px;font-weight:500;color:${on?'#9a6544':'var(--lgray)'}">회차</div></div>`;
+      })()}</div>
 
     ${(()=>{ const p=cb2LoadPreset(); if(!p) return '';
-      const nm={hanul:'한울 AB',gender:'성비',cheongbaek:'청백전',monthly:'월례대회',tourney:'대회 준비'}[p.mode]||'일반';
+      const nm={hanul:'한울 AB',gender:'성비',cheongbaek:'청백전',monthly:'월례대회',tourney:'대회 준비'}[p.mode]||'시간 대진';
       return `<div onclick="cb2ApplyPreset()" style="display:flex;align-items:center;gap:10px;background:#eef4ff;border-radius:12px;padding:10px 13px;margin-top:12px;cursor:pointer">
         <span style="font-size:11px;font-weight:500;color:var(--coral-d)">지난 설정</span>
         <span style="flex:1;font-size:12px;font-weight:500">${nm} · ${p.courts}코트</span>
@@ -16726,18 +17196,54 @@ function drawCB2Build(){
 
     <div style="display:flex;gap:10px;margin-top:10px">
       <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
-        ${[1,2,3,4].map(c=>{ const r=cbCourtOk(cb2Head(), c);
-          return `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 안 돼요'}</option>`;
-        }).join('')}</select></div>
-      <div class="fld" style="flex:1"><label>경기 수</label><div style="border:1.5px solid #e9dfcf;border-radius:11px;padding:10px 11px;font-size:12px;font-weight:500;background:#faf8f4">1인 4경기 보장</div></div></div>
-    ${(()=>{ /* 인원·코트가 안 맞으면 왜 안 되는지와 대안을 적는다 */
-      const n=cb2Head(), r=cbCourtOk(n, courts);
-      if(r.ok) return '';
-      const okc=cbCourtsFor(n);
+        ${(()=>{
+          /* 되는 코트를 먼저 보여준다 — 안 되는 것부터 뜨면 고를 것을 찾느라 헤맨다 */
+          const n=cb2Head();
+          const all=[1,2,3,4].map(c=>({c, r:cbCourtOk(n,c)}));
+          const good=all.filter(x=>x.r.ok), bad=all.filter(x=>!x.r.ok);
+          return good.concat(bad).map(({c,r})=>
+            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 안 돼요'}</option>`
+          ).join('');
+        })()}</select></div>
+      <div class="fld" style="flex:1"><label>코트 대관 시간</label>
+        <div style="display:flex;gap:6px">
+          ${[[120,'2시간'],[180,'3시간']].map(([m,t])=>`
+            <span onclick="cb2SetMins(${m})" style="flex:1;text-align:center;font-size:12.5px;
+              font-weight:700;padding:10px 0;border-radius:11px;cursor:pointer;
+              ${CB2_MINS===m?'background:var(--coral);color:#fff;border:1.5px solid var(--coral)'
+                            :'background:#fff;color:var(--gray);border:1.5px solid #e9dfcf'}">${t}</span>`).join('')}
+        </div></div></div>
+    ${(()=>{ /* 되는 조합이면 회차·소요 시간을, 안 되면 대안을 적는다 */
+      const n=cb2Head(), r=cbCourtOk(n, courts, CB2_MINS);
+      if(r.ok){
+        const h=Math.floor(r.mins/60), mm=r.mins%60;
+        const spare=CB2_MINS - r.mins;
+        return `<div style="background:#f8f6f2;border-radius:12px;padding:11px 13px;margin-top:9px;
+            font-size:11.5px;color:#5a544b;line-height:1.75">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">한 회차</span>
+            <b style="font-weight:700">25분 + 전환 5분</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">예상 소요</span>
+            <b style="font-weight:700">${h}시간${mm?' '+mm+'분':''}</b></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">쉬는 사람</span>
+            <b style="font-weight:700">${r.rest?`회차마다 ${r.rest}명`:'없어요'}</b></div>
+          ${spare>0?`<div style="margin-top:5px;color:#a06a3a">
+            <b style="color:#8a4f1c;font-weight:700">${spare}분이 남아요</b> · 번외 경기를 하시면 돼요</div>`:''}
+          ${r.tight?`<div style="margin-top:5px;color:#a06a3a">
+            쉬는 사람이 없어요 · <b style="color:#8a4f1c;font-weight:700">4게임을 내리 뛰어요</b></div>`:''}
+        </div>`;
+      }
+      const okc=cbCourtsFor(n, CB2_MINS);
       return `<div style="background:#fdf6f1;border:1px solid #f0d9c6;border-radius:12px;
           padding:11px 13px;margin-top:9px;font-size:11.5px;color:#a06a3a;line-height:1.7">
         <b style="color:#8a4f1c;font-weight:700">${n}명 · ${courts}코트는 ${esc(r.why)}</b><br>
-        ${okc.length ? `이 인원은 <b>${okc.join(' · ')}코트</b>가 돼요.` : ''}
+        ${okc.length ? `${CB2_MINS/60}시간이면 이 인원은 <b>${okc.join(' · ')}코트</b>가 돼요.<br>` : ''}
+        ${(()=>{ /* 다른 대관 시간으로 하면 되는지 */
+          const other = CB2_MINS===120 ? 180 : 120;
+          const r2=cbCourtOk(n, courts, other);
+          if(r2.ok) return `<b>${other/60}시간</b>으로 잡으면 ${courts}코트로 돼요 · ${r2.rounds}회차.<br>`;
+          const lo=courts*4, hi=tbRoundsFor(CB2_MINS)*courts;
+          return `${courts}코트는 <b>${lo}~${hi}명</b>일 때 돼요.<br>`;
+        })()}
         <b>한울</b>로 하면 코트마다 따로 돌아서 어떤 인원이든 됩니다 —
         대신 그 코트 사람들끼리만 쳐요.</div>`;
     })()}
@@ -16783,23 +17289,28 @@ async function cb2SaveGrades(){
      ② 쉬는 사람이 1명 이상 — 0명이면 모두가 매 바퀴 뛰어서
         한 코트가 먼저 끝나도 다음에 넣을 경기가 없다(코트가 반드시 빈다).
    못 맞추면 한울을 권한다 — 코트마다 따로 돌아 서로 기다리지 않는다. */
-function cbCourtOk(n, courts){
+function cbCourtOk(n, courts, mins){
+  /* 시간 대진 — 한 회차는 25분 경기 + 5분 전환 = 30분.
+     2시간이면 4회차, 3시간이면 6회차가 돈다.
+     전원 4게임이 되려면 <총 경기 n 개>를 회차 안에 다 넣을 수 있어야 한다.
+       필요 회차 = ceil(n / 코트)  ≤  대관 회차
+     인원이 코트×4 보다 적으면 코트를 다 못 채우므로 그것도 막는다. */
   const per=courts*4;
+  const M = mins || (typeof CB2_MINS!=='undefined' ? CB2_MINS : 120);
+  const R = tbRoundsFor(M);
   if(n < per) return {ok:false, why:`${courts}코트는 ${per}명부터예요`};
-  /* 예전에는 <인원이 코트 수의 배수> 가 아니면 막았다.
-     그런데 실제로 짜 보면 총 경기 수 = 인원이라 언제나 정확히 4경기씩 나온다.
-     안 떨어지는 건 마지막 바퀴에 코트 하나가 쉬는 것뿐이다.
-     3코트 클럽에서 10~28명 중 14개 인원이 이 검사에 막혀 있었다(17·19·22·23·26명…).
-     이제 코트를 채울 인원만 있으면 통과시키고, 알아야 할 점은 따로 알려준다. */
-  const rounds=Math.ceil(n/courts);              // 마지막 바퀴는 코트가 덜 찰 수 있다
-  const tail=(n%courts)?(n%courts):courts;       // 마지막 바퀴에 도는 코트 수
-  return {ok:true, rounds, rest:n-per, tail,
-    tight:(n===per),                             // 전원이 매 바퀴 출전 = 코트가 서로 기다린다
+  const need=Math.ceil(n/courts);
+  if(need > R)
+    return {ok:false, need, R,
+      why:`${M/60}시간에 ${courts}코트는 ${R*courts}명까지예요`};
+  return {ok:true, R, need, spare:R-need, rounds:need, rest:n-per,
+    mins:need*(TB_UNIT+TB_SWAP),
+    tight:(n===per),                  // 쉬는 사람이 없다 = 4게임 내리 뛴다
     partial:(n%courts!==0)};
 }
 /* 그 인원으로 쓸 수 있는 코트 수 */
-function cbCourtsFor(n){
-  const out=[]; for(let c=1;c<=6;c++) if(cbCourtOk(n,c).ok) out.push(c);
+function cbCourtsFor(n, mins){
+  const out=[]; for(let c=1;c<=6;c++) if(cbCourtOk(n,c,mins).ok) out.push(c);
   return out;
 }
 
@@ -17201,21 +17712,33 @@ async function cb2Gen(mode){
        돌면 같은 4명이 그대로 다시 묶였다(18명 3코트면 4·5·6라운드가
        1·2·3라운드의 복사본). 이제는 파트너·상대 중복을 비용으로 보고 고른다. */
     if(ps.length<4){ toast('코트를 줄이거나 인원을 늘려주세요'); return; }
-    { /* 인원·코트가 안 맞으면 만들지 않는다 — 만들어봐야 전원 4경기가 깨지거나 코트가 빈다 */
-      const r=cbCourtOk(ps.length, courts);
+    { /* 인원·코트·시간이 안 맞으면 만들지 않는다 — 전원 4게임이 깨진다 */
+      const r=cbCourtOk(ps.length, courts, CB2_MINS);
       if(!r.ok){
-        const okc=cbCourtsFor(ps.length);
-        toast(`${ps.length}명 · ${courts}코트는 ${r.why}` +
+        const okc=cbCourtsFor(ps.length, CB2_MINS);
+        toast(`${ps.length}명 · ${courts}코트 ${CB2_MINS/60}시간은 ${r.why}` +
           (okc.length?` · ${okc.join('·')}코트로 하시거나 한울로 해주세요`:' · 한울로 해주세요'));
         return;
+      }
+    }
+    let done=false;
+    /* 시간 대진 — 회차마다 모든 코트가 동시에 시작하고 끝난다.
+       파트너·상대 겹침을 최소로 하면서 남복을 되도록 많이 만든다.
+       실패하면(드물다) 아래 기존 방식으로 물러난다. */
+    if(!lateAfter){
+      const tb=tbPlan(ps, courts, CB2_MINS, CB2_SEED);
+      if(tb){
+        tb.forEach(g=>push(g.r, g.c, g.t1, g.t2));
+        genderNote='25분 게임 + 전환 5분 · 전원 4경기';
+        window._tbMins=CB2_MINS;   // 아래에서 CB2 에 실어 보낸다
+        done=true;
       }
     }
     const perR=Math.max(1,Math.min(courts,Math.floor(ps.length/4)));
     /* 늦참이 없으면 '코트가 안 비는' 방식으로 먼저 짜본다.
        한 바퀴에 쉬는 넷으로 다음 바퀴 한 경기를 미리 만들어 두는 방식이다.
        늦참이 있으면 합류 시점 조건이 겹쳐서 기존 방식으로 간다. */
-    let done=false;
-    if(!lateAfter){
+    if(!lateAfter && !done){
       /* 인원 = 코트×4 인 날은 바퀴를 먼저 만든다 — 코트가 빌 자리가 없다 */
       const tight=cbPlanTight(ps, courts, CB2_SEED);
       if(tight){ tight.forEach(g=>push(g.r,g.c,g.t1,g.t2)); done=true; }
@@ -17273,6 +17796,8 @@ async function cb2Gen(mode){
   }
   const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
   const data={date:ymd(), courts, rounds, mode, gpp:GPP,
+    /* 시간 대진이면 대관 시간을 함께 저장한다 — 회차 수를 여기서 계산한다 */
+    mins: (mode==='normal' ? (window._tbMins||CB2_MINS||120) : null),
     made_by:state.userName, games, captains, note:genderNote,
     orders: mode==='cheongbaek' ? {blue:null, white:null} : null,
     /* 조는 배열([선수…])일 수도, 이름이 붙은 객체({name, members})일 수도 있다.
@@ -19090,7 +19615,7 @@ function drawPastMeetings(){
         h+=`<div class="rk2">
           <span class="rk2-m${ri<3?' m'+(ri+1):''}">${ri+1}</span>
           <span class="rk2-w"><b>${esc(r.name)}</b>
-            <span>${maskNum(`${r.w}승 ${r.l}패`, r.name)} · 득실 ${maskNum((r.gd>=0?'+':'−')+Math.abs(r.gd), r.name)}</span></span>
+            <span>${maskNum(`${r.w}승${r.d?` ${r.d}무`:''} ${r.l}패`, r.name)} · 득실 ${maskNum((r.gd>=0?'+':'−')+Math.abs(r.gd), r.name)}</span></span>
           <span class="rk2-p"><b>${maskNum(r.pt, r.name)}</b><i>점</i></span></div>`;
       });
       h+=`<div style="font-size:11.5px;font-weight:600;color:var(--gray);margin:16px 0 8px">경기별 스코어</div>`;
