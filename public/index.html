@@ -14898,7 +14898,7 @@ async function tbStart(){
   if(!CB2 || CB2.mode!=='normal') return;
   const okAt=tbStartAllowedAt();
   if(okAt && Date.now()<okAt){ toast('아직 시작 시각이 안 됐어요'); return; }
-  CB2.tb={ startedAt:Date.now(), by:(state.serverUser||{}).id||null, byName:(myName&&myName())||'회원',
+  CB2.tb={ startedAt:Date.now(), by:(state.serverUser||{}).id||null, byName:state.userName||'회원',
            mins:(CB2.mins||CB2_MINS||120), rounds:CB2.rounds||tbRoundsFor(CB2.mins||CB2_MINS||120) };
   await cb2Save(); drawCB2View(); tbTick();
   toast('오늘 경기를 시작했어요');
@@ -15036,7 +15036,7 @@ function tbCard(){
     const A=(me.teamA||[]).map(p=>p.name), B=(me.teamB||[]).map(p=>p.name);
     const mine=(me.teamA||[]).some(p=>String(p.id)===String((state.serverUser||{}).id||''));
     const my=mine?A:B, op=mine?B:A;
-    const mate=my.filter(x=>x!==((myName&&myName())||''))[0];
+    const mate=my.filter(x=>x!==(state.userName||''))[0];
     return `${mate?'파트너 '+esc(mate)+' · ':''}vs ${esc(op.join(' · '))}`;
   })() : '';
   const chip=t=>`<span style="font-size:11.5px;font-weight:600;color:#6b6357;
