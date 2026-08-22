@@ -14854,6 +14854,7 @@ async function cb2Save(){
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }
   catch(e){ toast('저장하지 못했어요'); }
 }
+let SC_OPEN=false;   // 점수 시트가 떠 있는가 — 시계가 덮어쓰지 않게 한다
 /* ══════════ 시간 대진 시계 ══════════
    한 회차 = 25분 경기 + 5분 전환. 시작 버튼을 한 번 누르면 끝까지 자동으로 돈다.
    상태는 CB2.tb 한 곳에 모은다 — 서버에 그대로 실려 다른 기기와도 맞는다.
@@ -14948,7 +14949,10 @@ function tbTick(){
     /* 경기 ↔ 전환이 바뀌는 순간에는 카드를 통째로 다시 그린다 */
     if(el.dataset.ph !== (n.playing?'p':'s') || el.dataset.rd !== String(n.round)){
       if(n.playing) tbAutoStart(n.round);
-      drawCB2View(); return;
+      /* 점수 시트가 떠 있으면 다시 그리지 않는다 — 같은 #sheet 를 쓰기 때문에
+         입력하던 화면이 통째로 사라진다. 시트를 닫으면 그때 다시 그린다. */
+      if(!SC_OPEN) drawCB2View();
+      return;
     }
     el.textContent=tbMMSS(n.left);
     const bar=document.getElementById('tbBar');
@@ -15217,12 +15221,16 @@ function cbOfficerCard(){
   /* 기준을 평균으로 잡으면 안 된다 — 멈춰 있는 그 경기 때문에 평균이 올라가서
      오래 멈출수록 오히려 안 걸린다. 고정 시간으로 본다.
      복식 한 경기가 45분을 넘기는 일은 드물다. */
-  const STALL=45;
+  /* 시간 대진은 25분이 지나면 그 경기는 끝난 것이다 — 멈춘 게 아니다.
+     문구를 <멈춰 있어요>로 쓰면 사실과 다르고, 기준도 회차 길이에 맞춰야 한다. */
+  const TB=tbIsOn();
+  const STALL = TB ? TB_UNIT : 45;
   const stuck=gs.filter(g=>g.startedAt && !done(g) && mins(g.startedAt) > STALL)
     .sort((a,b)=>(a.endedAt?1:0)-(b.endedAt?1:0) || a.startedAt-b.startedAt);
   if(stuck.length){ const g=stuck[0];
-    found.push({p:2, kind:'bad', lb:`${mins(g.startedAt)}분째 멈춰 있어요`,
-      big:`${CT(g.c)} 점수가\n안 들어왔어요`,
+    found.push({p:2, kind:'bad',
+      lb: TB ? `점수 ${stuck.length}개가 비었어요` : `${mins(g.startedAt)}분째 멈춰 있어요`,
+      big: TB ? `${CT(g.c)} 점수를\n넣어주세요` : `${CT(g.c)} 점수가\n안 들어왔어요`,
       /* 몇 분 멈췄는지만 말하면 얼마나 급한지가 안 보인다.
          이 경기 때문에 다른 코트가 놀고 있으면 그걸 함께 적는다. */
       m:`${RD(g.r)} · ${[...(g.teamA||[]),...(g.teamB||[])].map(p=>p.name).join(' · ')}`
@@ -15932,6 +15940,7 @@ function drawCB2View(){
   }
   h+=`</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
+  SC_OPEN=false;   // 대진 화면을 그렸으니 점수 시트는 더 이상 떠 있지 않다
   tbTick();   /* 시간 대진이면 시계를 켠다 — 아니면 아무 일도 안 한다 */
 }
 
@@ -19386,6 +19395,7 @@ function scStep(side,delta){
 function scQuick(a,b){ if(!SC_EDIT) return; SC_EDIT.a=a; SC_EDIT.b=b; drawScoreSheet(); }
 function drawScoreSheet(){
   const g=(CB2&&CB2.games||[])[SC_EDIT.gi]; if(!g) return;
+  SC_OPEN=true;   // 시계가 화면을 다시 그려 이 시트를 덮어쓰지 않게 한다
   const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
   const st=(side,v,col)=>`<div style="flex:1;text-align:center">
       <div style="font-size:12px;font-weight:500;color:${col};margin-bottom:9px;line-height:1.4">${side==='a'?A:B}</div>
@@ -19448,6 +19458,7 @@ function cb2CanScore(gi){
   return !!(helper && empty);                               // 대신 넣어주기
 }
 async function cb2ScoreSave(){
+  SC_OPEN=false;
   const gi=SC_EDIT.gi, g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   const a=SC_EDIT.a, b=SC_EDIT.b;
   /* 점수 시트는 0:0 으로 열린다 — 잘못 눌러 그대로 저장하면 무승부(양쪽 1점)로 남고,
@@ -27450,7 +27461,11 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
-function closeOv(){document.getElementById('ov').classList.remove('on');}
+function closeOv(){
+  /* 시트를 닫으면 점수 시트 표시를 지운다 — 안 지우면 시계가 화면을 영영 다시 안 그린다 */
+  if(typeof SC_OPEN!=='undefined') SC_OPEN=false;
+  document.getElementById('ov').classList.remove('on');
+}
 let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeOv();});
 // 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
