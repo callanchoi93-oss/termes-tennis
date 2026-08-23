@@ -14136,7 +14136,7 @@ function cbMyCard(){
       && gs.some(g=>g.c===run.c && !done(g) && !g.startedAt);
     if(overdue) return {kind:'ask', lb:`${CT(run.c)} · ${RD(run.r)}`,
       big:'끝나셨으면\n자리를 비켜주세요',
-      m:`${vsLine(run)}\n${mins}분째예요${avgM?` · 보통 ${avgM}분이면 끝나요`:''}`
+      m:`${vsLine(run)}${tbIsOn()?'':`\n${mins}분째예요${avgM?` · 보통 ${avgM}분이면 끝나요`:''}`}`
         + `\n다음 넷이 기다려요 · 점수는 나중에 넣어도 돼요`,
       btn:'자리 비켜주기', act:`cb2EndGame(${run.gi})`};
     return {kind:'ask', lb:`${CT(run.c)} · ${RD(run.r)}`,
@@ -15461,7 +15461,10 @@ async function openClubBracketView(){
   if(!TRIAL) CB2_TIMER=setInterval(async()=>{ const ov=document.getElementById('ov');
     if(!ov||!ov.classList.contains('on')||!document.getElementById('cb2v')){ clearInterval(CB2_TIMER); return; }
     try{ const d=await api(`/clubs/${cid}/bracket2${cbQ()}`);
-      if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; drawCB2View(); } }catch(e){} }, 12000);
+      /* 점수 시트가 떠 있으면 데이터만 받아두고 화면은 그대로 둔다 —
+         같은 #sheet 를 쓰기 때문에 입력 중인 시트가 사라진다. */
+      if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; if(!SC_OPEN) drawCB2View(); }
+      }catch(e){} }, 12000);
 }
 let CB2_COURT=0, CB2_FOCUS=null;
 /* 전체 표에서 칸을 누르면 그 코트 탭으로 옮겨 그 경기 앞에 세워준다.
@@ -19381,7 +19384,15 @@ async function cb2StartGame(gi){
   if([...(g.teamA||[]),...(g.teamB||[])].some(p=>busy.has(p.id))){ toast('이 경기 선수 중에 지금 뛰고 있는 사람이 있어요'); return; }
   g.startedAt=Date.now();
   // 1분마다 경과 시간 갱신 (보기 화면 열려 있는 동안)
-  if(!window._cb2Tick) window._cb2Tick=setInterval(()=>{ if(document.getElementById('cb2v')&&CB2&&(CB2.games||[]).some(x=>x.startedAt&&x.sa==null)) drawCB2View(); else { clearInterval(window._cb2Tick); window._cb2Tick=null; } }, 60000);
+  /* 1분마다 <N분째>를 갱신한다. 다만
+       ① 시간 대진은 회차 시계가 따로 돌아 이 값이 필요 없고(805분째 같은 값이 나온다)
+       ② 점수 시트가 떠 있으면 같은 #sheet 를 덮어써 입력 화면이 사라진다. */
+  if(!tbIsOn() && !window._cb2Tick) window._cb2Tick=setInterval(()=>{
+    if(tbIsOn()){ clearInterval(window._cb2Tick); window._cb2Tick=null; return; }
+    if(document.getElementById('cb2v')&&CB2&&(CB2.games||[]).some(x=>x.startedAt&&x.sa==null)){
+      if(!SC_OPEN) drawCB2View();
+    } else { clearInterval(window._cb2Tick); window._cb2Tick=null; }
+  }, 60000);
   drawCB2View();
   toast(`${g.r}게임 · ${g.c}코트 경기를 시작했어요 · 타이머가 돌아가요`);
   if(TRIAL){ CB2.updated_at=Date.now(); return; }
@@ -19401,6 +19412,9 @@ function scQuick(a,b){ if(!SC_EDIT) return; SC_EDIT.a=a; SC_EDIT.b=b; drawScoreS
 function drawScoreSheet(){
   const g=(CB2&&CB2.games||[])[SC_EDIT.gi]; if(!g) return;
   SC_OPEN=true;   // 시계가 화면을 다시 그려 이 시트를 덮어쓰지 않게 한다
+  /* 예전 <N분째> 갱신 타이머가 남아 돌고 있으면 여기서 끊는다 —
+     시간 대진에서는 쓰지 않는 값인데 1분마다 화면을 통째로 다시 그렸다. */
+  if(tbIsOn() && window._cb2Tick){ clearInterval(window._cb2Tick); window._cb2Tick=null; }
   const A=esc((g.teamA||[]).map(p=>p.name).join(' · ')), B=esc((g.teamB||[]).map(p=>p.name).join(' · '));
   const st=(side,v,col)=>`<div style="flex:1;text-align:center">
       <div style="font-size:12px;font-weight:500;color:${col};margin-bottom:9px;line-height:1.4">${side==='a'?A:B}</div>
