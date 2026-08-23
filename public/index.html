@@ -10094,7 +10094,9 @@ async function delBracket(eid, title){
   if(!await appConfirm(`${title} 대진을 삭제할까요?\n입력한 점수와 그날 기록도 함께 사라져요.`)) return;
   try{
     await api(`/clubs/${clubId()}/brackets/${eid||0}`,{method:'DELETE'});
-    CB2_LIST=null; PASTM=null; toast('삭제했어요'); renderClub();
+    /* 시즌 랭킹은 CLUBME_GAMES 를 쓴다 — 이걸 안 지우면 지운 대진 점수가 그대로 남는다 */
+    CB2_LIST=null; PASTM=null; CLUBME_GAMES=null; CB2=null;
+    toast('삭제했어요'); renderClub();
   }catch(e){ toast(String(e.message).includes('officer_only')?'임원만 지울 수 있어요'
     :String(e.message).includes('not_found')?'이미 지워진 대진이에요':'삭제하지 못했어요'); }
 }
@@ -10228,9 +10230,16 @@ function clubTabRecords(){
       const r=(SRV_ROSTER||[]).find(x=>String(x.user_id||x.id)===String(t.id));
       if(r) t.name=r.name||''; } });
   }
-  const list=Object.values(st).map(t=>({...t, help:t.help||0, gd:t.gf-t.ga, pt:dayPoints(t.w,t.d),
-      wr:t.g?Math.round(t.w/t.g*100):0, dayN:t.days.size}))
-    .sort((a,b)=> b.pt-a.pt || b.gd-a.gd || b.g-a.g);
+  /* 순위는 <하루 평균 점수>로 매긴다.
+     누적으로 세면 세 번 나온 사람이 두 번 나온 사람을 이기는 게 당연해져서,
+     많이 나온 것 자체가 실력처럼 보인다. 참석 횟수로 나누면 그날의 성적만 비교된다.
+     승 3점·무 1점은 그대로 쓰고, 총점은 화면에 함께 적는다. */
+  const list=Object.values(st).map(t=>{
+    const pt=dayPoints(t.w,t.d), dayN=t.days.size||1;
+    return {...t, help:t.help||0, gd:t.gf-t.ga, pt, dayN:t.days.size,
+      avg: Math.round(pt/dayN*10)/10,                 // 하루 평균 점수
+      gdAvg: Math.round((t.gf-t.ga)/dayN*10)/10};
+  }).sort((a,b)=> b.avg-a.avg || b.gdAvg-a.gdAvg || b.pt-a.pt || b.g-a.g);
   const days=new Set(games.map(g=>g.date).filter(Boolean));
 
   /* ── 명예의 전당 ──
@@ -10282,11 +10291,14 @@ function clubTabRecords(){
       <span class="rk2-m${i<3?' m'+(i+1):''}">${i+1}</span>
       <span class="rk2-w"><b>${esc(r.name)}${me?' <i>나</i>':''}${
         cbOffRoster(r)?' <i class="gst">게스트</i>':''}</b>
-        <span>${maskNum(`${r.w}승 ${r.l}패`,r.name)} · 득실 ${maskNum((r.gd>=0?'+':'−')+Math.abs(r.gd),r.name)}</span></span>
-      <span class="rk2-p"><b>${maskNum(r.pt,r.name)}</b><i>점</i></span></div>`;
+        <span>${maskNum(`${r.w}승${r.d?` ${r.d}무`:''} ${r.l}패`,r.name)} ·
+          ${r.dayN}회 참석 · 총 ${maskNum(r.pt,r.name)}점</span></span>
+      <span class="rk2-p"><b>${maskNum(r.avg,r.name)}</b><i>점</i></span></div>`;
   });
   h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
-    승 ${PT_WIN}점 · 무 ${PT_DRAW}점 · 패 0점 · 동점이면 득실차 순<br>
+    승 ${PT_WIN}점 · 무 ${PT_DRAW}점 · 패 0점 ·
+    <b style="color:var(--ink);font-weight:600">참석 1회당 평균 점수</b>로 줄을 세워요<br>
+    많이 나온 것만으로 순위가 오르지 않게 총점을 참석 횟수로 나눠요 · 같으면 득실차 순<br>
     <b style="color:var(--ink);font-weight:600">정기 모임</b>에서 점수가 확정된 경기만 집계돼요 ·
     번개는 기록에 남지만 랭킹에는 안 들어가요.</div>`;
   return h;
