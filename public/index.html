@@ -14224,12 +14224,13 @@ function cbMyCard(){
         big:`${CT(next.c)}`,
         m:`${who}\n${tbMMSS(n.left)} 남았어요 · 시간이 되면 그때 점수로 끝나요`,
         btn:'점수 넣기', act:`cb2Score(${next.gi})`};
-    /* 시간 대진이면 전환 시간에도 개별 시작 버튼을 주지 않는다 —
-       다음 회차가 되면 세 코트가 저절로 켜진다. */
-    if(tbIsOn())
+    /* 시간 대진이면 개별 시작 버튼을 주지 않는다 — 아직 시작 전이어도 마찬가지다.
+       위쪽 <오늘 경기 시작>을 한 번 누르면 세 코트가 저절로 켜진다. */
+    if(tbMode())
       return {kind:'now', lb:`내 차례 · ${leftTxt}`,
         big:`${CT(next.c)}`,
-        m:`${who}\n${next.r}회차가 시작되면 저절로 켜져요`};
+        m:`${who}\n${tbIsOn()?`${next.r}회차가 시작되면 저절로 켜져요`
+                             :'위에서 오늘 경기를 시작하면 저절로 켜져요'}`};
     return {kind:'now', lb:`내 차례 · ${leftTxt}`,
       big:`${CT(next.c)}\n${RD(next.r)}`,
       m:`${who}\n시작을 누르면 경기 시간이 재져요`,
@@ -14318,7 +14319,7 @@ function cbMyCard(){
       return 0;
     })();
     /* 시간 대진은 코트가 회차마다 정해져 있다 — 빈 코트로 옮겨 먼저 시작할 일이 없다 */
-    const moveTo = tbIsOn() ? 0 : (emptyCourt
+    const moveTo = tbMode() ? 0 : (emptyCourt
       || ((typeof cb2FreeCourts==='function') ? (cb2FreeCourts(next.gi)||[])[0] : 0));
     if(moveTo) return {kind:'now', lb:`내 차례 · ${leftTxt}`,
       big:`${CT(moveTo)}가 비었어요\n옮겨서 시작할까요`,
@@ -14686,7 +14687,7 @@ function cbFreeLine(court){
     /* 이 코트 경기는 끝났는데 옮겨올 수 있는 경기가 있으면 바로 권한다 —
        코트가 통째로 노는 것이 가장 아까운 경우다. */
     /* 시간 대진은 코트가 회차마다 정해져 있다 — 옮겨오라는 권유를 하지 않는다 */
-    const spare=(!tbIsOn() && fm===0 && typeof cbSpareGameFor==='function') ? cbSpareGameFor(c) : null;
+    const spare=(!tbMode() && fm===0 && typeof cbSpareGameFor==='function') ? cbSpareGameFor(c) : null;
     rows.push(`<div class="cfr"><span class="n">${c}번</span>
       <span class="tr${fm===null?' on':''}"><i style="width:${pct}%"></i></span>
       ${spare
@@ -14883,6 +14884,11 @@ let SC_OPEN=false;   // 점수 시트가 떠 있는가 — 시계가 덮어쓰�
      tb = { startedAt, by, byName, mins, rounds }
    지금 몇 회차인지·경기 중인지 전환 중인지는 startedAt 에서 계산한다.
    따로 저장하지 않아야 앱을 껐다 켜도, 다른 사람 폰에서도 같은 시각이 나온다. */
+/* 이 대진이 <시간 대진>인가 — 시작 여부와 무관하다.
+   예전에는 tb.startedAt 까지 봤더니, 시작 전에는 false 라서
+   코트마다 <시작> 버튼이 그대로 보였다. 그건 눌러선 안 되는 버튼이다. */
+function tbMode(){ return !!(CB2 && CB2.mode==='normal' && (CB2.mins || (CB2.tb&&CB2.tb.mins))); }
+/* 시계가 돌고 있는가 — 남은 시간·회차를 계산할 때 쓴다 */
 function tbIsOn(){ return !!(CB2 && CB2.mode==='normal' && CB2.tb && CB2.tb.startedAt); }
 function tbNow(){
   if(!tbIsOn()) return null;
@@ -15271,7 +15277,7 @@ function cbOfficerCard(){
   /* ③-0 코트 경기가 다 끝나 통째로 노는데, 옮겨오면 바로 시작할 경기가 있는 경우.
      코트 현황 줄에만 두면 훑어보다 지나친다 — 지금 누군가 움직여야 하는 일이라 카드로 올린다.
      시간 대진은 회차마다 코트가 정해져 있고 다 같이 시작하므로 이 권유가 필요 없다. */
-  if(!tbIsOn()){
+  if(!tbMode()){
     for(let c=1;c<=(CB2.courts||0);c++){
       const sp=(typeof cbSpareGameFor==='function') ? cbSpareGameFor(c) : null;
       if(!sp) continue;
@@ -15817,7 +15823,7 @@ function drawCB2View(){
           const wait=t=>`<span style="background:#f2f0ea;color:#8b8378;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px">${t}</span>`;
           /* 시간 대진은 회차 시계가 세 코트를 한꺼번에 켠다 — 개별 시작이 없다.
              <대기 · 코트 만석> 같은 문구도 여기서는 뜻이 없으므로 맨 앞에서 갈라낸다. */
-          if(tbIsOn()){
+          if(tbMode()){
             const nw=tbNow();
             sc = (nw && !nw.done && g.r===nw.round)
               ? `<span style="font-size:11px;font-weight:600;color:var(--coral-d)">경기 중</span>`
@@ -15916,7 +15922,7 @@ function drawCB2View(){
           </div>
           ${(()=>{
             /* 옮겨온 경기·옮길 수 있는 경기는 <글자 한 줄>로. 버튼 옆에 딱지를 더 붙이지 않는다. */
-            const frees=(!tbIsOn()&&!done(g)&&!g.startedAt&&nextUp&&typeof cb2FreeCourts==='function')
+            const frees=(!tbMode()&&!done(g)&&!g.startedAt&&nextUp&&typeof cb2FreeCourts==='function')
               ? (cb2FreeCourts(g.gi)||[]) : [];
             const parts=[];
             if(movedTxt) parts.push(movedTxt);
@@ -17344,7 +17350,12 @@ function drawCB2Build(){
       한울 여성 코트와 성비 대진에 반영돼요. <b>회원 프로필은 바뀌지 않아요.</b></div>
 
     <div style="display:flex;gap:10px;margin-top:10px">
-      <div class="fld" style="flex:1"><label>코트 수</label><select id="cb2Courts" onchange="drawCB2Build()">
+      <div class="fld" style="flex:1">
+        <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:7px">
+          <strong style="font-size:11px;font-weight:700;letter-spacing:.01em;color:#4a463f">코트 수</strong></div>
+        <select id="cb2Courts" onchange="drawCB2Build()"
+          style="height:42px;border:1px solid #e6e0d5;border-radius:12px;padding:0 13px;
+            font-size:13.5px;font-weight:700;background:#fff;width:100%;font-family:inherit">
         ${(()=>{
           /* 되는 코트를 먼저 보여준다 — 안 되는 것부터 뜨면 고를 것을 찾느라 헤맨다 */
           const n=cb2Head();
@@ -17358,35 +17369,40 @@ function drawCB2Build(){
             `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트</option>`
           ).join('');
         })()}</select></div>
-      <div class="fld" style="flex:1"><label style="display:flex;align-items:baseline;gap:4px">
-        <span style="flex:none">코트 대관 시간</span>${(()=>{
+      <div class="fld" style="flex:1">
+        <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:7px">
+          <strong style="font-size:11px;font-weight:700;letter-spacing:.01em;color:#4a463f;
+            flex:none">대관 시간</strong>${(()=>{
         /* 일정에서 가져온 값이면 그렇다고 알려준다 — 왜 이미 골라져 있는지.
            라벨이 두 줄로 넘어가지 않게 시각만 짧게 적는다. */
         const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(CB2_EVENT));
         const d=ev?evParseDate(ev.date):{};
-        return (d.time&&d.end) ? `<span style="font-weight:500;color:var(--lgray);
-          font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          >${esc(d.time)}~${esc(d.end)}</span>` : '';
-      })()}</label>
-        <div style="display:flex;gap:6px">
+        return (d.time&&d.end) ? `<em style="font-style:normal;font-size:10px;font-weight:500;
+          color:var(--lgray);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          >${esc(d.time)}~${esc(d.end)}</em>` : '';
+      })()}</div>
+        <div style="display:flex;gap:6px;height:42px">
           ${[[120,'2시간'],[180,'3시간']].map(([m,t])=>`
-            <span onclick="cb2SetMins(${m})" style="flex:1;text-align:center;font-size:12.5px;
-              font-weight:700;padding:10px 0;border-radius:11px;cursor:pointer;
-              ${CB2_MINS===m?'background:var(--coral);color:#fff;border:1.5px solid var(--coral)'
-                            :'background:#fff;color:var(--gray);border:1.5px solid #e9dfcf'}">${t}</span>`).join('')}
+            <span onclick="cb2SetMins(${m})" style="flex:1;display:flex;align-items:center;
+              justify-content:center;font-size:13px;font-weight:700;border-radius:12px;cursor:pointer;
+              ${CB2_MINS===m
+                ? 'background:var(--coral);color:#fff;border:1px solid var(--coral);'
+                  +'box-shadow:0 2px 7px rgba(236,106,46,.24)'
+                : 'background:#fff;color:#8b857a;border:1px solid #e6e0d5'}">${t}</span>`).join('')}
         </div></div></div>
     ${(()=>{ /* 되는 조합이면 회차·소요 시간을, 안 되면 대안을 적는다.
                  두 경우 모두 같은 상자·같은 줄 모양을 쓴다 — 값만 바뀐다. */
       const n=cb2Head(), r=cbCourtOk(n, courts, CB2_MINS);
       const row=(k,v,mute)=>`<div style="display:flex;justify-content:space-between;
-        align-items:baseline;gap:10px;padding:2.5px 0">
-        <span style="color:var(--gray);font-weight:500;flex:none">${k}</span>
-        <b style="font-weight:700;text-align:right;${mute?'color:var(--lgray)':''}">${v}</b></div>`;
+        align-items:baseline;gap:12px;padding:0 0 7px">
+        <span style="font-size:11.5px;color:#8b857a;font-weight:500;flex:none">${k}</span>
+        <b style="font-size:12.5px;font-weight:700;text-align:right;letter-spacing:-.02em;
+          ${mute?'color:#b3aea4;font-weight:600':''}">${v}</b></div>`;
       if(r.ok){
         const h=Math.floor(r.mins/60), mm=r.mins%60;
         const spare=CB2_MINS - r.mins;
-        return `<div style="background:#f8f6f2;border-radius:12px;padding:11px 13px;margin-top:9px;
-            font-size:11.5px;color:#5a544b;line-height:1.6">
+        return `<div style="background:#f7f5f1;border-radius:14px;padding:13px 15px 6px;margin-top:10px;
+            color:#5a544b;line-height:1.55">
           ${row('경기 수', `${n}경기 · 1인 4게임`)}
           ${row('한 회차', '25분 + 전환 5분')}
           ${row('예상 소요', `${h}시간${mm?' '+mm+'분':''}`)}
@@ -17414,8 +17430,8 @@ function drawCB2Build(){
         : '이 인원으로는 어려워요';
       /* 지금 인원·코트로 고를 수 있는 방식 이름을 실제로 확인해서 적는다 */
       const ways=CB2_MODES.filter(m=>m.k!=='normal' && cb2ModeOk(m.k)).map(m=>m.n);
-      return `<div style="background:#f8f6f2;border-radius:12px;padding:11px 13px;
-          margin-top:9px;font-size:11.5px;color:#5a544b;line-height:1.6">
+      return `<div style="background:#f7f5f1;border-radius:14px;padding:13px 15px 6px;
+          margin-top:10px;color:#5a544b;line-height:1.55">
         ${row('참석', `${n}명 · ${courts}코트`)}
         ${row('시간 대진', tbTip, true)}
         ${row('지금 되는 방식', ways.length?ways.join(' · '):'없어요 · 인원을 조정해 주세요')}
@@ -19414,9 +19430,10 @@ async function cb2StartGame(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g||g.startedAt||g.sa!=null) return;
   /* 시간 대진은 회차 시계가 대신 돈다 — 각자 시작을 누를 일이 없다.
      앞선 회차를 미리 시작하면 시계와 어긋나므로 막는다. */
-  if(tbIsOn()){
+  if(tbMode()){
     const n=tbNow();
-    if(n && !n.done && g.r!==n.round){
+    if(!n){ toast('위에서 오늘 경기를 시작해 주세요'); return; }
+    if(!n.done && g.r!==n.round){
       toast(`${n.round}회차가 진행 중이에요 · ${g.r}회차는 차례가 되면 저절로 시작돼요`);
       return;
     }
