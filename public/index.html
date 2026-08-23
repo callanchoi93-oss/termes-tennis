@@ -16819,7 +16819,13 @@ function cb2GoStep(n){
     if(CB2_SEL.size<4){ toast('참석자를 4명 이상 골라주세요'); return; }
     CB2_COURTS=+((document.getElementById('cb2Courts')||{}).value||3);   // 2단계엔 이 select 가 없다
   }
-  if(n===2 && !cb2ModeOk(CB2_MODE)) CB2_MODE='normal';   // 조건을 못 채우면 기본으로 되돌린다
+  /* 지금 고른 방식이 이 인원으로 안 되면 되는 방식으로 옮긴다.
+     예전에는 무조건 normal(시간 대진)로 되돌렸는데, 그 방식이 안 되는 인원이면
+     아무것도 못 고르는 상태가 됐다. 한울은 8명부터 거의 항상 된다. */
+  if(n===2 && !cb2ModeOk(CB2_MODE)){
+    const alt=CB2_MODES.map(m=>m.k).find(k=>cb2ModeOk(k));
+    CB2_MODE = alt || 'normal';
+  }
   CB2_STEP=n; drawCB2Build();
   setTimeout(()=>{const e=document.getElementById('sheet'); if(e) e.scrollTop=0;},0);
 }
@@ -16969,8 +16975,14 @@ function cb2ModeWhy(k){
   const m=CB2_MODES.find(x=>x.k===k); if(!m) return null;
   const n=CB2_SEL.size, courts=cb2Courts();
   /* 대회 준비는 조를 직접 짜는 방식이라 바퀴 제약을 받지 않는다 */
-  if(k==='normal' || k==='gender' || k==='monthly'){
+  /* 회차·시간 조건은 <시간 대진>만의 규칙이다.
+     예전에는 월례대회까지 함께 묶여 있어서, 한울로는 되는 인원인데
+     월례대회도 덩달아 막혔다. */
+  if(k==='normal'){
     const w=cbRoundWhy(); if(w) return w;
+  }
+  if(k==='monthly'){
+    const w=cbLateWhy(); if(w) return w;   // 늦참 조건만 본다
   }
   if(m.min && n<m.min) return `${m.min}명부터 가능해요 (지금 ${n}명)`;
   if(m.minCourts && courts<m.minCourts) return `${m.minCourts}코트부터 가능해요 (지금 ${courts}코트)`;
@@ -17004,20 +17016,9 @@ function cb2SetMins(m){ CB2_MINS=m; drawCB2Build(); }
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
   const v = el ? (+el.value||3) : CB2_COURTS;
-  /* 지금 인원으로 안 되는 코트가 골라져 있으면 되는 쪽으로 옮긴다 —
-     인원이 바뀌었을 때 <안 돼요> 가 선택된 채로 남아 있지 않게 한다. */
-  if(CB2_MODE==='normal'){
-    const n=cb2Head();
-    if(n>=4 && !cbCourtOk(n, v).ok){
-      const ok=cbCourtsFor(n);
-      if(ok.length){
-        /* 원래 고른 값에 가장 가까운 코트로 */
-        const near=ok.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
-        if(el) el.value=near;
-        return near;
-      }
-    }
-  }
+  /* 예전에는 <시간 대진이 안 되는 코트>가 골라지면 자동으로 옮겼다.
+     그런데 한울처럼 그 코트로 되는 방식이 있는데도 코트가 멋대로 바뀌어,
+     실제로 쓸 코트 수를 못 고르게 됐다. 이제 고른 값을 그대로 둔다. */
   return v;
 }
 /* 전원 4경기이므로 총 경기 수 = 참석 인원 (4n 자리 ÷ 4명).
@@ -17326,8 +17327,10 @@ function drawCB2Build(){
           const n=cb2Head();
           const all=[1,2,3,4].map(c=>({c, r:cbCourtOk(n,c)}));
           const good=all.filter(x=>x.r.ok), bad=all.filter(x=>!x.r.ok);
+          /* <안 돼요>는 시간 대진 기준이다 — 한울 같은 방식은 이 코트로도 된다.
+             그래서 <시간 대진 X> 로 무엇에 대한 말인지 밝힌다. */
           return good.concat(bad).map(({c,r})=>
-            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 안 돼요'}</option>`
+            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 시간 대진 X'}</option>`
           ).join('');
         })()}</select></div>
       <div class="fld" style="flex:1"><label>코트 대관 시간</label>
@@ -17357,20 +17360,20 @@ function drawCB2Build(){
             쉬는 사람이 없어요 · <b style="color:#8a4f1c;font-weight:700">4게임을 내리 뛰어요</b></div>`:''}
         </div>`;
       }
+      /* 여기서 막는 것은 <시간 대진>뿐이다. 한울·월례대회·청백전은 이 인원으로도 된다.
+         그래서 <안 돼요>가 아니라 <시간 대진은 안 되고 다른 방식은 된다>고 적는다.
+         다음 단계로 넘어가는 것도 막지 않는다 — 거기서 방식을 고르면 된다. */
       const okc=cbCourtsFor(n, CB2_MINS);
-      return `<div style="background:#fdf6f1;border:1px solid #f0d9c6;border-radius:12px;
-          padding:11px 13px;margin-top:9px;font-size:11.5px;color:#a06a3a;line-height:1.7">
-        <b style="color:#8a4f1c;font-weight:700">${n}명 · ${courts}코트는 ${esc(r.why)}</b><br>
-        ${okc.length ? `${CB2_MINS/60}시간이면 이 인원은 <b>${okc.join(' · ')}코트</b>가 돼요.<br>` : ''}
-        ${(()=>{ /* 다른 대관 시간으로 하면 되는지 */
-          const other = CB2_MINS===120 ? 180 : 120;
-          const r2=cbCourtOk(n, courts, other);
-          if(r2.ok) return `<b>${other/60}시간</b>으로 잡으면 ${courts}코트로 돼요 · ${r2.rounds}회차.<br>`;
-          const lo=courts*4, hi=tbRoundsFor(CB2_MINS)*courts;
-          return `${courts}코트는 <b>${lo}~${hi}명</b>일 때 돼요.<br>`;
-        })()}
-        <b>한울</b>로 하면 코트마다 따로 돌아서 어떤 인원이든 됩니다 —
-        대신 그 코트 사람들끼리만 쳐요.</div>`;
+      const other = CB2_MINS===120 ? 180 : 120;
+      const r2=cbCourtOk(n, courts, other);
+      return `<div style="background:#f8f6f2;border-radius:12px;
+          padding:11px 13px;margin-top:9px;font-size:11.5px;color:#5a544b;line-height:1.7">
+        <b style="color:var(--ink);font-weight:700">${n}명 · ${courts}코트는 시간 대진이 안 돼요</b>
+        <span style="color:var(--lgray)"> · ${esc(r.why)}</span><br>
+        ${r2.ok ? `<b style="color:var(--coral-d)">${other/60}시간</b>으로 잡으면 돼요 · ${r2.rounds}회차<br>` : ''}
+        ${okc.length ? `${CB2_MINS/60}시간이면 <b style="color:var(--coral-d)">${okc.join(' · ')}코트</b>가 돼요<br>` : ''}
+        <span style="color:var(--gray)">한울 · 월례대회 · 청백전은 이 인원으로도 됩니다 ·
+        다음에서 골라주세요</span></div>`;
     })()}
     <button class="btn" style="margin-top:18px" onclick="cb2GoStep(2)">다음 · 방식 고르기</button>  </div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
