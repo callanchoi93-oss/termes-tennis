@@ -17327,10 +17327,12 @@ function drawCB2Build(){
           const n=cb2Head();
           const all=[1,2,3,4].map(c=>({c, r:cbCourtOk(n,c)}));
           const good=all.filter(x=>x.r.ok), bad=all.filter(x=>!x.r.ok);
-          /* <안 돼요>는 시간 대진 기준이다 — 한울 같은 방식은 이 코트로도 된다.
-             그래서 <시간 대진 X> 로 무엇에 대한 말인지 밝힌다. */
-          return good.concat(bad).map(({c,r})=>
-            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트${r.ok?'':' · 시간 대진 X'}</option>`
+          /* 딱지를 붙이지 않는다. 코트 선택은 모든 방식이 함께 쓰는 값인데
+             여기에 시간 대진 조건을 적으면 어느 코트를 골라도 <안 돼요>가 되어
+             한울조차 못 쓰는 것처럼 보인다. 어느 방식이 되는지는 2단계에서 알려준다.
+             다만 시간 대진이 되는 코트를 위로 올려 고르기 쉽게 둔다. */
+          return good.concat(bad).map(({c})=>
+            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트</option>`
           ).join('');
         })()}</select></div>
       <div class="fld" style="flex:1"><label>코트 대관 시간</label>
@@ -17341,19 +17343,22 @@ function drawCB2Build(){
               ${CB2_MINS===m?'background:var(--coral);color:#fff;border:1.5px solid var(--coral)'
                             :'background:#fff;color:var(--gray);border:1.5px solid #e9dfcf'}">${t}</span>`).join('')}
         </div></div></div>
-    ${(()=>{ /* 되는 조합이면 회차·소요 시간을, 안 되면 대안을 적는다 */
+    ${(()=>{ /* 되는 조합이면 회차·소요 시간을, 안 되면 대안을 적는다.
+                 두 경우 모두 같은 상자·같은 줄 모양을 쓴다 — 값만 바뀐다. */
       const n=cb2Head(), r=cbCourtOk(n, courts, CB2_MINS);
+      const row=(k,v,mute)=>`<div style="display:flex;justify-content:space-between;
+        align-items:baseline;gap:10px;padding:2.5px 0">
+        <span style="color:var(--gray);font-weight:500;flex:none">${k}</span>
+        <b style="font-weight:700;text-align:right;${mute?'color:var(--lgray)':''}">${v}</b></div>`;
       if(r.ok){
         const h=Math.floor(r.mins/60), mm=r.mins%60;
         const spare=CB2_MINS - r.mins;
         return `<div style="background:#f8f6f2;border-radius:12px;padding:11px 13px;margin-top:9px;
-            font-size:11.5px;color:#5a544b;line-height:1.75">
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">한 회차</span>
-            <b style="font-weight:700">25분 + 전환 5분</b></div>
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">예상 소요</span>
-            <b style="font-weight:700">${h}시간${mm?' '+mm+'분':''}</b></div>
-          <div style="display:flex;justify-content:space-between"><span style="color:var(--gray)">쉬는 사람</span>
-            <b style="font-weight:700">${r.rest?`회차마다 ${r.rest}명`:'없어요'}</b></div>
+            font-size:11.5px;color:#5a544b;line-height:1.6">
+          ${row('경기 수', `${n}경기 · 1인 4게임`)}
+          ${row('한 회차', '25분 + 전환 5분')}
+          ${row('예상 소요', `${h}시간${mm?' '+mm+'분':''}`)}
+          ${row('쉬는 사람', r.rest?`회차마다 ${r.rest}명`:'없어요')}
           ${spare>0?`<div style="margin-top:5px;color:#a06a3a">
             <b style="color:#8a4f1c;font-weight:700">${spare}분이 남아요</b> · 번외 경기를 하시면 돼요</div>`:''}
           ${r.tight?`<div style="margin-top:5px;color:#a06a3a">
@@ -17363,17 +17368,23 @@ function drawCB2Build(){
       /* 여기서 막는 것은 <시간 대진>뿐이다. 한울·월례대회·청백전은 이 인원으로도 된다.
          그래서 <안 돼요>가 아니라 <시간 대진은 안 되고 다른 방식은 된다>고 적는다.
          다음 단계로 넘어가는 것도 막지 않는다 — 거기서 방식을 고르면 된다. */
-      const okc=cbCourtsFor(n, CB2_MINS);
+      /* 되는 조합일 때와 같은 상자 모양을 쓴다.
+         코트·시간을 바꿔가며 볼 때 상자가 통째로 달라지면 눈이 흔들린다.
+         안쪽 값만 바뀌게 두고, <지금 되는 방식>을 오른쪽에 굵게 둔다. */
       const other = CB2_MINS===120 ? 180 : 120;
       const r2=cbCourtOk(n, courts, other);
-      return `<div style="background:#f8f6f2;border-radius:12px;
-          padding:11px 13px;margin-top:9px;font-size:11.5px;color:#5a544b;line-height:1.7">
-        <b style="color:var(--ink);font-weight:700">${n}명 · ${courts}코트는 시간 대진이 안 돼요</b>
-        <span style="color:var(--lgray)"> · ${esc(r.why)}</span><br>
-        ${r2.ok ? `<b style="color:var(--coral-d)">${other/60}시간</b>으로 잡으면 돼요 · ${r2.rounds}회차<br>` : ''}
-        ${okc.length ? `${CB2_MINS/60}시간이면 <b style="color:var(--coral-d)">${okc.join(' · ')}코트</b>가 돼요<br>` : ''}
-        <span style="color:var(--gray)">한울 · 월례대회 · 청백전은 이 인원으로도 됩니다 ·
-        다음에서 골라주세요</span></div>`;
+      const okc=cbCourtsFor(n, CB2_MINS);
+      const tbTip = r2.ok ? `${other/60}시간이면 돼요`
+        : okc.length ? `${okc.join('·')}코트면 돼요`
+        : '이 인원으로는 어려워요';
+      /* 지금 인원·코트로 고를 수 있는 방식 이름을 실제로 확인해서 적는다 */
+      const ways=CB2_MODES.filter(m=>m.k!=='normal' && cb2ModeOk(m.k)).map(m=>m.n);
+      return `<div style="background:#f8f6f2;border-radius:12px;padding:11px 13px;
+          margin-top:9px;font-size:11.5px;color:#5a544b;line-height:1.6">
+        ${row('참석', `${n}명 · ${courts}코트`)}
+        ${row('시간 대진', tbTip, true)}
+        ${row('지금 되는 방식', ways.length?ways.join(' · '):'없어요 · 인원을 조정해 주세요')}
+      </div>`;
     })()}
     <button class="btn" style="margin-top:18px" onclick="cb2GoStep(2)">다음 · 방식 고르기</button>  </div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
