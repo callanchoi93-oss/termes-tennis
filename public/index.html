@@ -14934,9 +14934,14 @@ let TB_TIMER=null;
 function tbTick(){
   clearInterval(TB_TIMER);
   if(!tbIsOn()) return;
+  /* 모든 회차가 끝났으면 시계를 아예 켜지 않는다.
+     예전에는 여기서 켜고 1초 뒤 drawCB2View() 를 불렀는데,
+     그 함수 끝에서 다시 tbTick() 이 돌아 <매초 화면 다시 그리기>가 됐다.
+     그 바람에 점수 시트가 뜨자마자 사라졌다. */
+  { const n0=tbNow(); if(!n0 || n0.done) return; }
   TB_TIMER=setInterval(()=>{
     const n=tbNow(); if(!n) { clearInterval(TB_TIMER); return; }
-    if(n.done){ clearInterval(TB_TIMER); drawCB2View(); return; }
+    if(n.done){ clearInterval(TB_TIMER); if(!SC_OPEN) drawCB2View(); return; }
     /* ── 알림 ── */
     const secs=Math.ceil(n.left/1000);
     if(n.playing && secs<=180 && secs>176)
