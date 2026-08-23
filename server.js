@@ -1475,11 +1475,17 @@ app.get('/clubs/:id/roster', (req, res) => {
     guests = db.prepare('SELECT id,name,gender,grade FROM event_guests WHERE event_id=? ORDER BY id').all(ev.id)
       .map(g => ({ user_id: null, name: g.name, gender: g.gender, grade: g.grade, is_guest: 1, guest_id: g.id }));
   }
-  if (!rows || !rows.length) {
+  /* 참석자가 아직 없으면 명단은 비는 게 맞다.
+     예전에는 여기서 회원 전체를 채워 넣었는데, 모임을 복제하면 아직 아무도
+     참석을 안 눌렀는데 29명이 통째로 딸려왔다.
+     <이 모임 참석자로 짜기>가 거짓이 되므로, 모임을 지정한 경우에는 비워 보낸다.
+     모임 없이 부른 경우(클럽 전체 명단이 필요한 화면)에만 예전대로 채운다. */
+  if ((!rows || !rows.length) && !ev) {
     rows = db.prepare(`SELECT u.id user_id, COALESCE(NULLIF(cm.alias,''), u.name) AS name, COALESCE(cm.gender_ov, u.gender) AS gender, u.photos, cm.grade, cm.is_captain, cm.role, u.sport_started, u.rating
       FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY u.name`).all(cid);
   }
+  if (!rows) rows = [];
   res.json({ event_id: ev ? ev.id : null, members: [...rows, ...guests] });
 });
 // 가입 신청 목록 (임원진)
