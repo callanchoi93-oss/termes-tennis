@@ -14224,6 +14224,12 @@ function cbMyCard(){
         big:`${CT(next.c)}`,
         m:`${who}\n${tbMMSS(n.left)} 남았어요 · 시간이 되면 그때 점수로 끝나요`,
         btn:'점수 넣기', act:`cb2Score(${next.gi})`};
+    /* 시간 대진이면 전환 시간에도 개별 시작 버튼을 주지 않는다 —
+       다음 회차가 되면 세 코트가 저절로 켜진다. */
+    if(tbIsOn())
+      return {kind:'now', lb:`내 차례 · ${leftTxt}`,
+        big:`${CT(next.c)}`,
+        m:`${who}\n${next.r}회차가 시작되면 저절로 켜져요`};
     return {kind:'now', lb:`내 차례 · ${leftTxt}`,
       big:`${CT(next.c)}\n${RD(next.r)}`,
       m:`${who}\n시작을 누르면 경기 시간이 재져요`,
@@ -15820,6 +15826,14 @@ function drawCB2View(){
              오히려 코트가 더 놀고 종료가 늦어졌다(18명 3코트: 119분 → 128분).
              편성기가 이미 <다음 바퀴는 이번에 쉬는 넷>으로 짜 두기 때문이다.
              누를 수는 있게 둔다 — 코트 사정으로 순서를 바꾸는 일은 실제로 있다. */
+          else if(tbIsOn()){
+            /* 시간 대진은 회차 시계가 세 코트를 한꺼번에 켠다 —
+               코트마다 시작을 누를 일이 없다. 버튼 대신 언제 시작하는지만 적는다. */
+            const nw=tbNow();
+            sc = (nw && !nw.done && g.r===nw.round)
+              ? `<span style="font-size:11px;font-weight:600;color:var(--coral-d)">경기 중</span>`
+              : `<span style="font-size:11px;font-weight:500;color:var(--lgray)">${g.r}회차</span>`;
+          }
           else {
             sc = nextUp
               ? `<span onclick="cb2StartGame(${g.gi})" style="background:var(--coral);color:#fff;border-radius:8px;padding:4px 10px;font-weight:500;font-size:11px;cursor:pointer">시작 ▶</span>`
