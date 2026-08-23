@@ -14422,6 +14422,10 @@ function cbSpareGameFor(court){
 }
 function cbCourtFreeMin(court){
   if(!CB2 || !(CB2.games||[]).length) return null;
+  /* 시간 대진은 회차마다 모든 코트가 함께 켜지고 함께 끝난다 — 비는 코트가 없다.
+     이 함수는 g.startedAt 으로 판단하는데 시간 대진은 회차 시계로 돌기 때문에
+     경기 중인 코트를 <비어 있다>고 잘못 읽었다. 여기서 한 번에 막는다. */
+  if(tbMode()) return null;
   const gs=CB2.games.map((g,gi)=>({...g,gi}));
   const done=g=>g.sa!=null&&g.sb!=null;
   if((CB2.offCourts||[]).includes(court)) return null;
@@ -14968,6 +14972,13 @@ function tbTick(){
      그 바람에 점수 시트가 뜨자마자 사라졌다. */
   { const n0=tbNow(); if(!n0 || n0.done) return; }
   TB_TIMER=setInterval(()=>{
+    /* 시트를 닫았으면 시계를 멈춘다.
+       drawCB2View() 는 시트를 다시 열기 때문에, 이 확인이 없으면
+       닫아도 1초 뒤 화면이 되살아난다. */
+    const ov=document.getElementById('ov');
+    if(!ov || !ov.classList.contains('on') || !document.getElementById('cb2v')){
+      clearInterval(TB_TIMER); TB_TIMER=null; return;
+    }
     const n=tbNow(); if(!n) { clearInterval(TB_TIMER); return; }
     if(n.done){ clearInterval(TB_TIMER); if(!SC_OPEN) drawCB2View(); return; }
     /* ── 알림 ── */
@@ -27563,6 +27574,12 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
 function closeOv(){
   /* 시트를 닫으면 점수 시트 표시를 지운다 — 안 지우면 시계가 화면을 영영 다시 안 그린다 */
   if(typeof SC_OPEN!=='undefined') SC_OPEN=false;
+  /* 대진 화면의 타이머들도 여기서 끊는다.
+     특히 회차 시계는 drawCB2View() 를 부르는데 그 함수가 시트를 다시 열기 때문에,
+     안 끊으면 닫아도 1초 뒤 화면이 되살아난다. */
+  try{ if(typeof TB_TIMER!=='undefined' && TB_TIMER){ clearInterval(TB_TIMER); TB_TIMER=null; } }catch(e){}
+  try{ if(typeof CB2_TIMER!=='undefined' && CB2_TIMER){ clearInterval(CB2_TIMER); CB2_TIMER=null; } }catch(e){}
+  try{ if(window._cb2Tick){ clearInterval(window._cb2Tick); window._cb2Tick=null; } }catch(e){}
   document.getElementById('ov').classList.remove('on');
 }
 let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
