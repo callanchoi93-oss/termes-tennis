@@ -10237,9 +10237,11 @@ function clubTabRecords(){
   const list=Object.values(st).map(t=>{
     const pt=dayPoints(t.w,t.d), dayN=t.days.size||1;
     return {...t, help:t.help||0, gd:t.gf-t.ga, pt, dayN:t.days.size,
+      wr: t.g?Math.round(t.w/t.g*100):0,              // 승률 — 명예의 전당이 쓴다
       avg: Math.round(pt/dayN*10)/10,                 // 하루 평균 점수
       gdAvg: Math.round((t.gf-t.ga)/dayN*10)/10};
-  }).sort((a,b)=> b.avg-a.avg || b.gdAvg-a.gdAvg || b.pt-a.pt || b.g-a.g);
+  }).filter(t=>t.name && t.g>0)      // 이름을 못 찾았거나 한 경기도 안 뛴 사람은 뺀다
+    .sort((a,b)=> b.avg-a.avg || b.gdAvg-a.gdAvg || b.pt-a.pt || b.g-a.g);
   const days=new Set(games.map(g=>g.date).filter(Boolean));
 
   /* ── 명예의 전당 ──
