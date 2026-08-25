@@ -2996,7 +2996,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0825a';
+const BUILD='v1.1.2-0825b';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -13421,6 +13421,13 @@ function tbPlan(mem, courts, mins, seed){
           const nf=cand.filter(i=>hnF(mem[i])).length;
           /* 남복을 강하게 밀어준다 — 겹침(파트너 60·상대 18)과 견줄 만큼은 돼야
              실제로 남복이 늘어난다. 다만 겹침을 이기지는 못하게 둔다. */
+          /* 넷을 고를 때부터 실력을 본다 — 넷이 정해진 뒤에는 어떻게 갈라도
+             균형이 안 맞는 조합이 있다(C1·C1 대 B2·B2). 겹침(60·18)을
+             이기지 못하도록 가중치는 낮게 둔다. */
+          { const q=cand.map(i=>tbLv(mem[i]));
+            v += 4*Math.min(Math.abs(q[0]+q[1]-q[2]-q[3]),
+                            Math.abs(q[0]+q[2]-q[1]-q[3]),
+                            Math.abs(q[0]+q[3]-q[1]-q[2])); }
           if(nf===0) v-=55;                            // 남복
           else if(nf===4) v-=20;                       // 여복
           else if(nf===2) v+=4;                        // 혼복
@@ -16177,11 +16184,13 @@ const GRADE_LADDER=['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3',
    글자는 1칸, 번호는 3분의 1칸 — C1=1.00 · B1=2.00 · A1=3.00 으로
    옛 GV(C=1·B=2·A=3)와 범위가 같다. 그래서 가중치는 그대로 둔다. */
 function cbLv(p){
-  if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
   const code=String((p&&(p.glabel||p.grade))||'').toUpperCase();
   const i=GRADE_LADDER.indexOf(code);
   if(i>=0) return 1 + i/3;
-  const GV={SS:5,S:4,A:3,B:2,C:1};                 // 번호가 없으면 옛 방식
+  /* 레이팅은 등급이 없을 때만. 1000은 <아직 리그를 안 뛴 사람>의 기본값이라
+     클럽 전원이 1000인 경우가 대부분이고, 그러면 변별력이 0이다. */
+  if(p && p.rating!=null && p.rating!==1000) return (p.rating-1000)/100 + 3;
+  const GV={SS:5,S:4,A:3,B:2,C:1};                 // 번호가 없으면 글자만이라도
   return GV[code.replace(/[0-9]/g,'')] || 2;
 }
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
@@ -17756,8 +17765,12 @@ async function cb2Gen(mode){
   if(sel.length<4){ toast('대진은 최소 4명이 필요해요 · 게스트를 추가해 채워보세요'); return; }
   const gRank=g=>{ const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-i; };  // SS 5 · S 4 · A 3 · B 2 · C 1
   /* gender 는 '대진 성별' — 프로필 성별과 다를 수 있다(입문 남성을 여성 코트로 보내는 경우) */
+  /* glabel(B2) 을 반드시 함께 보낸다 — 이게 빠져 있어서 편성기가 세부 등급을 못 봤다.
+     rating 은 있는 값만 넘긴다. 예전에는 || 1000 으로 없는 사람에게도 1000을 붙였는데,
+     실력 값이 레이팅을 먼저 보므로 <전원 1000 = 전원 동일 실력>이 되어
+     등급을 보는 코드가 한 번도 실행되지 않았다(대진 균형이 늘 무작위였던 원인). */
   const ps=sel.map(p=>({id:p.user_id,name:p.name,gender:cbSexOf(p),sexAdj:cbSexAdj(p),
-      grade:p.grade||'',rating:p.rating||1000,
+      grade:p.grade||'',glabel:p.glabel||'',rating:(p.rating!=null?p.rating:undefined),
       /* 게스트는 구력(개월)을 직접 받는다 — 여기서 안 들고 오면 대진에도 저장되지 않아
          나중에 평균 등급을 낼 근거가 사라진다(게스트만 빈칸이 되던 원인). */
       months:(p.months!=null ? p.months : undefined),
