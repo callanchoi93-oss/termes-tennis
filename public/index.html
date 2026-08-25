@@ -2996,7 +2996,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.1-0824a';
+const BUILD='v1.1.2-0825a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -12848,7 +12848,7 @@ const HANUL_AB = {
    상대 중복도 2회 이하로 떨어진다. 4명 조는 조합이 3가지뿐이라
    4게임 중 한 조합이 한 번 반복된다(수학적으로 불가피). */
 const HN_GV={SS:5,S:4,A:3,B:2,C:1};
-const hnG=p=>HN_GV[String(p.grade||'B').toUpperCase()]||2;
+const hnG=p=>cbLv(p);                                 // 조 나누기도 같은 잣대로
 const hnF=p=>isFem(cbSexOf(p));
 const hnK=(a,b)=>a<b?a+'_'+b:b+'_'+a;
 function hnCombos(arr,k){
@@ -13352,9 +13352,7 @@ function tbFit(n, courts, mins){
 }
 /* 실력값 — 남성은 반등급 위로 본다 */
 function tbLv(p){
-  const base = (p && p.rating!=null) ? (p.rating-1000)/100 + 3
-             : (HN_GV[String((p&&p.grade)||'B').toUpperCase()] || 2);
-  return base + (hnF(p) ? 0 : 0.5);
+  return cbLv(p) + (hnF(p) ? 0 : 0.5);             // 남성 반등급 보정은 그대로
 }
 /* 네 명을 두 팀으로 — 성별 구성마다 규칙이 다르다 */
 function tbSplit(four){
@@ -13471,10 +13469,7 @@ function cbPlanTight(mem, courts, seed){
   if(N !== courts*4) return null;
   const isF=i=>isFem(cbSexOf(mem[i]));   // 대진에서 바꿔둔 성별을 따른다
   const okKind=g=>{ const f=g.filter(isF).length; return f===0||f===2||f===4; };
-  const GV={SS:5,S:4,A:3,B:2,C:1};
-  const lv=i=>{ const p=mem[i];
-    if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
-    return GV[String((p&&p.grade)||'B').toUpperCase()] || 2; };
+  const lv=i=>cbLv(mem[i]);          // 실력 값은 cbLv 한 곳에서 정한다
   const pk=(a,b)=>a<b?a+'-'+b:b+'-'+a;
   /* 네 명을 두 팀으로 — 가장 팽팽한 조합을 고른다 */
   const split=g=>{
@@ -13564,10 +13559,7 @@ function cbPlanNoWait(mem, courts, seed){
      여성이 5명 이상이면 조합이 넉넉하므로 예전처럼 혼성을 막는다. */
   const nFemAll=[...Array(N).keys()].filter(isF).length;
   const ALLOW_MIX = nFemAll>0 && nFemAll<5;
-  const GV={SS:5,S:4,A:3,B:2,C:1};
-  const lv=i=>{ const p=mem[i];
-    if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
-    return GV[String((p&&p.grade)||'B').toUpperCase()] || 2; };
+  const lv=i=>cbLv(mem[i]);          // 실력 값은 cbLv 한 곳에서 정한다
   const pk=(a,b)=>a<b?a+'-'+b:b+'-'+a;
   const split=g=>{ const [i,j,k,l]=g;
     const opts=[[i,j,k,l],[i,k,j,l],[i,l,j,k]];
@@ -13697,10 +13689,7 @@ function cbPlanIdleFree(mem, courts, seed){
   const femGoal=nFem>=4 ? Math.floor(nFem*2/3) : 0;
   /* 실력 — 두 팀의 합이 비슷해야 재미있는 경기가 된다.
      등급(SS~C)을 숫자로 바꾸고 레이팅이 있으면 그걸 우선한다. */
-  const GV={SS:5,S:4,A:3,B:2,C:1};
-  const lv=i=>{ const p=mem[i];
-    if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
-    return GV[String((p&&p.grade)||'B').toUpperCase()] || 2; };
+  const lv=i=>cbLv(mem[i]);          // 실력 값은 cbLv 한 곳에서 정한다
   /* 네 명을 두 팀으로 갈랐을 때 가장 팽팽한 조합의 차이 */
   const gap=g=>{ const [a,b,c,d]=g.map(lv);
     return Math.min(Math.abs(a+b-c-d), Math.abs(a+c-b-d), Math.abs(a+d-b-c)); };
@@ -16182,6 +16171,19 @@ function gradeStepFromMonths(m){
    번호는 <그 등급에 갓 올라왔을수록 1>이다 — 구력 2년이면 B1, 4년 11개월이면 B3.
    그러니 낮은 쪽부터 C1 · C2 · C3 · B1 … 순으로 세운다. */
 const GRADE_LADDER=['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3','SS1','SS2','SS3'];
+/* 편성이 쓰는 실력 값 — 화면 표시와 같은 잣대를 쓴다.
+   예전에는 글자만 봐서 C1과 C3이 같은 값이었다. 그래서 C1·C1 팀이 B2·B2 팀을
+   만나도 <한 단계 차이>로만 계산돼, 네 칸 벌어진 경기가 그냥 통과했다.
+   글자는 1칸, 번호는 3분의 1칸 — C1=1.00 · B1=2.00 · A1=3.00 으로
+   옛 GV(C=1·B=2·A=3)와 범위가 같다. 그래서 가중치는 그대로 둔다. */
+function cbLv(p){
+  if(p && p.rating!=null) return (p.rating-1000)/100 + 3;
+  const code=String((p&&(p.glabel||p.grade))||'').toUpperCase();
+  const i=GRADE_LADDER.indexOf(code);
+  if(i>=0) return 1 + i/3;
+  const GV={SS:5,S:4,A:3,B:2,C:1};                 // 번호가 없으면 옛 방식
+  return GV[code.replace(/[0-9]/g,'')] || 2;
+}
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
 function cbAvgGrade(list){
   const idx=(list||[]).map(c=>GRADE_LADDER.indexOf(String(c||'').toUpperCase()))
@@ -16294,7 +16296,10 @@ function assignGradeRanks(list){
     const g=p.grade||'C'; (by[g]=by[g]||[]).push(p);
   });
   Object.keys(by).forEach(g=>{
-    by[g].sort((a,b)=>(careerMonthsOf(b)-careerMonthsOf(a))||((b.rating||0)-(a.rating||0))
+    /* 사다리(C1·C2·C3·B1…)와 방향을 맞춘다 — 구력이 짧을수록 1번, 길수록 3번.
+       예전에는 내림차순이라 그 등급 최고참이 C1이 됐다. 화면 평균은 사다리로 내는데
+       번호 뜻이 반대여서, 같은 글자 안에서는 강약이 뒤집힌 채 표시됐다. */
+    by[g].sort((a,b)=>(careerMonthsOf(a)-careerMonthsOf(b))||((a.rating||0)-(b.rating||0))
                      ||String(a.name||'').localeCompare(String(b.name||'')));
     /* 한 등급 안은 3단계까지만 나눈다 — C1·C2·C3 (구력이 길수록 앞 번호) */
     const n=by[g].length;
