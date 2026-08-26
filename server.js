@@ -8523,9 +8523,10 @@ function omWaitPayload(uid) {
   const count = db.prepare('SELECT COUNT(*) c FROM om_waitlist').get().c;
   const mine  = !!db.prepare('SELECT 1 FROM om_waitlist WHERE user_id=?').get(uid);
   // 얼굴 몇 개 — 사진이 없으면 앱이 색 원으로 그린다
-  const faces = db.prepare(`SELECT u.photo FROM om_waitlist w JOIN users u ON u.id=w.user_id
+  /* 열 이름은 photos 다 — photo 로 물으면 SQL 이 통째로 실패해 500 이 난다 */
+  const faces = db.prepare(`SELECT u.photos FROM om_waitlist w JOIN users u ON u.id=w.user_id
                             ORDER BY w.created_at DESC LIMIT 4`).all()
-    .map(r => ({ photo: r.photo || null }));
+    .map(r => ({ photo: r.photos || null }));
   return { count, mine, goal: OM_GOAL, faces };
 }
 
