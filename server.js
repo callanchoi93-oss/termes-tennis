@@ -8607,11 +8607,13 @@ function xcEntries(eid) {
 /* 그 클럽이 이 교류전에 낼 수 있는 사람 — 참석을 누른 회원 중에서 센다.
    게스트는 명부에 guest 로 올라 있고, 어느 클럽에서도 정회원이 아닌 사람만. */
 function xcRoster(eid, clubId) {
+  /* club_members 에 같은 사람이 두 줄 있으면 참석자가 두 번 나온다 — user_id 로 묶는다 */
   const rows = db.prepare(`SELECT u.id, COALESCE(NULLIF(cm.alias,''), u.name) name,
-      COALESCE(cm.gender_ov, u.gender) gender, cm.role, u.sport_started, cm.grade
+      COALESCE(cm.gender_ov, u.gender) gender, cm.role, u.sport_started, cm.grade, u.photos
     FROM event_attendees ea JOIN users u ON u.id=ea.user_id
     LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
-    WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going')`).all(clubId, eid);
+    WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going')
+    GROUP BY u.id`).all(clubId, eid);
   return rows.filter(r => {
     if (r.role !== 'guest') return true;
     const elsewhere = db.prepare(`SELECT 1 FROM club_members
@@ -8639,6 +8641,7 @@ function xcView(ev, uid) {
         men: r.filter(p => p.gender === 'M').length,
         women: r.filter(p => p.gender === 'F').length,
         names: r.map(p => p.name),                   // 이름만. 등급은 대진이 나오면 공개된다
+        people: r.map(p => ({ name: p.name, photos: p.photos || null })),
       };
     }),
     my_clubs: (db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
