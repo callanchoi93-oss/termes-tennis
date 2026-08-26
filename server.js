@@ -8626,11 +8626,16 @@ function xcView(ev, uid) {
     courts: ev.courts, per_club: ev.per_club, club_slots: ev.club_slots || 2,
     squad_mix: ev.squad_mix, status: ev.match_status, close_at: ev.close_at,
     court_fee: ev.court_fee || 0, need: mix,
-    clubs: ent.map(e => ({
-      club_id: e.club_id, name: e.club_name, seat_no: e.seat_no, host: e.seat_no === 1,
-      ready: xcRoster(ev.id, e.club_id).length >= (ev.per_club || 0),
-      count: xcRoster(ev.id, e.club_id).length,
-    })),
+    clubs: ent.map(e => {
+      const r = xcRoster(ev.id, e.club_id);          // 참석을 누른 사람들
+      return {
+        club_id: e.club_id, name: e.club_name, seat_no: e.seat_no, host: e.seat_no === 1,
+        count: r.length, ready: r.length >= (ev.per_club || 0),
+        men: r.filter(p => p.gender === 'M').length,
+        women: r.filter(p => p.gender === 'F').length,
+        names: r.map(p => p.name),                   // 이름만. 등급은 대진이 나오면 공개된다
+      };
+    }),
     my_clubs: (db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
       AND role IN ('member','officer','owner')`).all(uid) || []).map(r => r.club_id),
   };
