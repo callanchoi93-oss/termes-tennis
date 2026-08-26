@@ -8401,6 +8401,144 @@ app.use(express.static(new URL('./public', import.meta.url).pathname));
 app.use((err, req, res, _next) => { console.error(err); res.status(500).json({ error: String(err && err.message || err) }); });
 app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
 
+/* ── 대진표 ── 확정되면 누구나 본다. 감출 이유가 없다 */
+app.get('/exchange/:id/games', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const rows = db.prepare('SELECT * FROM exchange_games WHERE event_id=? ORDER BY round, court').all(eid);
+  res.json({
+    event: xcView(ev, req.uid),
+    games: rows.map(g => ({
+      id: g.id, round: g.round, court: g.court, kind: g.kind,
+      home: { club_id: g.home_club, seat: g.home_seat, players: JSON.parse(g.home_json || '[]') },
+      away: { club_id: g.away_club, seat: g.away_seat, players: JSON.parse(g.away_json || '[]') },
+      sa: g.sa, sb: g.sb,
+    })),
+    result: xcResult(eid),
+  });
+});
+
+/* ── 점수 ── 한 코트에 한 명만 넣으면 된다. 나중에 고칠 수 있다 */
+app.post('/exchange/:id/score', auth, (req, res) => {
+  const eid = +req.params.id;
+  const { game_id, sa, sb } = req.body || {};
+  const g = db.prepare('SELECT * FROM exchange_games WHERE id=? AND event_id=?').get(+game_id, eid);
+  if (!g) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(g.home_club, req.uid) && !isMember(g.away_club, req.uid))
+    return res.status(403).json({ error: 'not_in_match', message: '참가한 클럽만 넣을 수 있어요' });
+  db.prepare('UPDATE exchange_games SET sa=?, sb=?, scored_by=?, scored_at=? WHERE id=?')
+    .run(sa == null ? null : +sa, sb == null ? null : +sb, req.uid, now(), g.id);
+  res.json({ ok: true, result: xcResult(eid) });
+});
+
+/* ── 승점 ── 1승 3점 · 무승부 1점. 합산이 큰 쪽이 이긴다.
+   개인 등급에는 반영하지 않는다 — 친선이고, 클럽 기록으로만 남는다. */
+function xcResult(eid) {
+  const ev = xcEvent(eid);
+  const ent = xcEntries(eid);
+  if (!ev || ent.length < 2) return null;
+  const A = ent[0].club_id, B = ent[1].club_id;
+  const rows = db.prepare('SELECT * FROM exchange_games WHERE event_id=?').all(eid);
+  const t = { [A]: { w: 0, d: 0, l: 0, pt: 0, gf: 0, ga: 0 }, [B]: { w: 0, d: 0, l: 0, pt: 0, gf: 0, ga: 0 } };
+  let played = 0;
+  rows.forEach(g => {
+    if (g.sa == null || g.sb == null) return;
+    played++;
+    t[g.home_club].gf += g.sa; t[g.home_club].ga += g.sb;
+    t[g.away_club].gf += g.sb; t[g.away_club].ga += g.sa;
+    if (g.sa > g.sb) { t[g.home_club].w++; t[g.home_club].pt += 3; t[g.away_club].l++; }
+    else if (g.sa < g.sb) { t[g.away_club].w++; t[g.away_club].pt += 3; t[g.home_club].l++; }
+    else { t[A].d++; t[B].d++; t[A].pt += 1; t[B].pt += 1; }
+  });
+  const name = id => (db.prepare('SELECT name FROM clubs WHERE id=?').get(id) || {}).name || '';
+  const side = id => ({ club_id: id, name: name(id), ...t[id] });
+  const a = side(A), b = side(B);
+  const done = played >= rows.length && rows.length > 0;
+  return {
+    played, total: rows.length, done,
+    home: a, away: b,
+    winner: !done ? null : a.pt > b.pt ? A : b.pt > a.pt ? B
+      : (a.gf - a.ga) > (b.gf - b.ga) ? A : (b.gf - b.ga) > (a.gf - a.ga) ? B : null,
+  };
+}
+
+/* ── 클럽 기록 ── 상대 클럽별 통산 */
+app.get('/clubs/:id/exchange/record', auth, (req, res) => {
+  const cid = +req.params.id;
+  const evs = db.prepare(`SELECT e.id FROM club_events e
+     JOIN exchange_entries x ON x.event_id=e.id AND x.club_id=? AND x.status<>'dropped'
+     WHERE e.kind='exchange' AND e.match_status IN ('confirmed','done')`).all(cid);
+  const vs = {};
+  let w = 0, d = 0, l = 0;
+  evs.forEach(({ id }) => {
+    const r = xcResult(id);
+    if (!r || !r.done) return;
+    const me = r.home.club_id === cid ? r.home : r.away;
+    const op = r.home.club_id === cid ? r.away : r.home;
+    const k = op.club_id;
+    vs[k] = vs[k] || { club_id: k, name: op.name, w: 0, d: 0, l: 0 };
+    if (r.winner === cid) { w++; vs[k].w++; }
+    else if (r.winner == null) { d++; vs[k].d++; }
+    else { l++; vs[k].l++; }
+  });
+  res.json({ total: { w, d, l }, vs: Object.values(vs) });
+});
+
+/* ── 마감 처리 ── 인원을 못 채운 클럽은 하차, 자리가 안 차면 취소.
+   하루 한 번 도는 것으로 충분하다 — 마감은 밤 12시다. */
+function xcSweep() {
+  const t = now();
+  db.prepare(`SELECT * FROM club_events WHERE kind='exchange'
+      AND match_status IN ('open','filled') AND close_at IS NOT NULL AND close_at < ?`).all(t)
+    .forEach(ev => {
+      const ent = xcEntries(ev.id);
+      const short = ent.filter(e => xcRoster(ev.id, e.club_id).length < (ev.per_club || 0));
+      short.forEach(e => {
+        db.prepare("UPDATE exchange_entries SET status='dropped' WHERE id=?").run(e.id);
+        notifyClub(e.club_id, null, '🆚', '교류전에서 빠졌어요',
+          `${ev.title} · 마감까지 인원을 채우지 못했어요`);
+      });
+      const left = xcEntries(ev.id);
+      if (left.length < (ev.club_slots || 2)) {
+        db.prepare("UPDATE club_events SET match_status='cancelled' WHERE id=?").run(ev.id);
+        left.forEach(e => notifyClub(e.club_id, null, '🆚', '교류전이 취소됐어요',
+          `${ev.title} · 코트 취소는 직접 해주셔야 해요`));
+      }
+    });
+}
+setInterval(() => { try { xcSweep(); } catch (e) { console.error('xcSweep', e); } }, 30 * 60 * 1000);
+
+// ── 오픈매치 대기 명단 ─────────────────────────────────────────
+// 구장 계약 전이라 매치가 하나도 없다. om_likes 는 매치별 관심이라 쓸 수 없어
+// 서비스 오픈을 기다리는 사람을 따로 모은다.
+db.exec(`CREATE TABLE IF NOT EXISTS om_waitlist (
+  user_id INTEGER PRIMARY KEY,
+  region TEXT, sport TEXT, created_at BIGINT
+);`);
+
+const OM_GOAL = 50;   // 이만큼 모이면 첫 코트를 연다 (앱의 OM_GOAL 과 같은 값)
+
+function omWaitPayload(uid) {
+  const count = db.prepare('SELECT COUNT(*) c FROM om_waitlist').get().c;
+  const mine  = !!db.prepare('SELECT 1 FROM om_waitlist WHERE user_id=?').get(uid);
+  // 얼굴 몇 개 — 사진이 없으면 앱이 색 원으로 그린다
+  const faces = db.prepare(`SELECT u.photo FROM om_waitlist w JOIN users u ON u.id=w.user_id
+                            ORDER BY w.created_at DESC LIMIT 4`).all()
+    .map(r => ({ photo: r.photo || null }));
+  return { count, mine, goal: OM_GOAL, faces };
+}
+
+app.get('/om/waitlist', auth, (req, res) => res.json(omWaitPayload(req.uid)));
+
+app.post('/om/waitlist', auth, (req, res) => {
+  const { region, sport } = req.body || {};
+  db.prepare(`INSERT INTO om_waitlist (user_id,region,sport,created_at) VALUES (?,?,?,?)
+              ON CONFLICT(user_id) DO UPDATE SET region=excluded.region, sport=excluded.sport`)
+    .run(req.uid, String(region || '전국'), String(sport || 'tennis'), now());
+  res.json(omWaitPayload(req.uid));
+});
+
 // ══════════════════════════════════════════════════════════════
 //  교류전 — 두 클럽이 한 날 한 구장에서 붙는다
 //  모임(club_events)을 그대로 쓰고 열 몇 개를 더한다. 새 표는 참가 클럽 하나뿐.
@@ -8417,6 +8555,15 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN match_status TEXT"); } catch (
 try { db.exec("ALTER TABLE club_events ADD COLUMN close_at BIGINT"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN court_fee INTEGER"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}        // 대관 시간(분)
+
+db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER, round INTEGER, court INTEGER, kind TEXT,
+  home_club INTEGER, away_club INTEGER, home_seat INTEGER, away_seat INTEGER,
+  home_json TEXT, away_json TEXT,
+  sa INTEGER, sb INTEGER, scored_by INTEGER, scored_at BIGINT
+);`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_xg ON exchange_games(event_id)'); } catch (e) {}
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8611,6 +8758,13 @@ app.post('/exchange/:id/draw', auth, (req, res) => {
      언제나 1인 6경기, 회차는 코트 수와 무관하게 6이 된다. */
   const rounds = Math.round((ev.per_club * 2 * 6) / (ev.courts * 4));
   const games = xcDraw(ent, squads, ev.courts, rounds);
+  db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);
+  const ins = db.prepare(`INSERT INTO exchange_games
+    (event_id,round,court,kind,home_club,away_club,home_seat,away_seat,home_json,away_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  games.forEach(g => ins.run(eid, g.round, g.court, g.kind,
+    g.home.club_id, g.away.club_id, g.home.seat, g.away.seat,
+    JSON.stringify(g.home.players), JSON.stringify(g.away.players)));
   db.prepare("UPDATE club_events SET match_status='confirmed' WHERE id=?").run(eid);
   ent.forEach(e => notifyClub(e.club_id, null, '📋', '교류전 대진이 나왔어요',
     `${ev.title}${ev.date ? ' · ' + ev.date : ''}`));
