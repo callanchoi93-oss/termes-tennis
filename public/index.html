@@ -2316,8 +2316,10 @@
   .xc-card{ border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:8px;
     background:#fff;cursor:pointer }
   .xc-top{ display:flex;align-items:center;justify-content:space-between;gap:8px }
-  .xc-k{ font-size:11px;font-weight:700;color:var(--coral-d) }
+  .xc-k{ display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--coral-d) }
+  .xc-k::before{ content:'';width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none }
   .xc-k.wait{ color:var(--lgray);font-weight:600 }
+  .xc-k.wait::before{ background:var(--lgray) }
   .xc-d{ font-size:11px;color:var(--lgray) }
   /* 양 클럽이 맞붙는 줄 */
   .xc-vs{ display:flex;align-items:center;gap:13px;margin-top:13px }
@@ -2360,9 +2362,11 @@
   .xf-h{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:var(--xlh);margin:-4px 2px 8px }
   .xf-in{ font-size:var(--x1);line-height:var(--xlh) }
   .xf-c{ display:flex;gap:6px }
-  .xf-c b{ flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;padding:10px 0;
+  .xf-c b{ flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;padding:9px 0;
     font-size:var(--x1);font-weight:600;line-height:1.272;cursor:pointer;transition:.12s }
   .xf-c b.on{ background:var(--coral);color:#fff;border-color:var(--coral);font-weight:700 }
+  /* 코랄은 이 화면의 주 동작(버튼) 몫이다 — 고른 상태는 잉크로 눌러 둔다 */
+  .xf-c.ink b.on{ background:var(--ink);border-color:var(--ink) }
   .xf-plan{ background:#fffaf6;border:1px solid #f3d9c5;border-radius:13px;padding:13px 14px;margin-top:13px }
   .xf-plan .big{ font-size:var(--x2);font-weight:700;letter-spacing:-.035em;
     line-height:1.272;color:var(--coral-d) }
@@ -2377,83 +2381,66 @@
   .xf-warn{ background:#fceee4;border-radius:11px;padding:12px 13px;margin-top:10px;
     font-size:var(--x1);font-weight:400;color:#c2410c;line-height:var(--xlh) }
   /* 일정 목록의 교류전 카드 — 상세 화면과 같은 클레이 */
-  .psess.xc-sess{ background:linear-gradient(160deg,#fdf1e8 0%,#f9ddc9 100%);color:var(--ink) }
+  /* 교류전 일정 카드 — 색면 대신 테두리 하나로 구분한다.
+     정기·번개가 살구 계열 면이라, 흰 바탕이 오히려 눈에 띈다. */
+  .psess.xc-sess{ background:#fff;border:1.5px solid var(--coral);color:var(--ink) }
   /* 교류전 상세 — 시트가 아니라 페이지로. 밑에서 올라오는 창은 <잠깐 보는 것>이라
      양쪽 클럽이 마주 선 그림을 담기에 좁다. 검은 머리판이 대결 구도를 만든다. */
-  /* 옅은 클레이 — 짙은 흙색은 브랜드 코랄보다 더 튀어서 버튼이 죽는다.
-     같은 계열을 밝은 쪽으로 내리고 글자를 잉크로 두면, 판은 조용해지고
-     코랄 버튼 하나만 남는다. */
-  .xd-hero{ background:linear-gradient(165deg,#fdf3ec 0%,#f7e0d0 100%);color:var(--ink);
-    border-radius:20px;padding:21px;margin-top:8px }
-  .xd-k{ display:flex;align-items:center;justify-content:space-between }
-  .xd-k b{ font-size:10px;font-weight:700;color:var(--coral-d);letter-spacing:.14em }
-  .xd-k span{ font-size:10px;color:#a5896f }
-  .xd-vs{ display:flex;align-items:center;gap:13px;margin-top:21px }
+  /* ── 교류전 ──
+     색면을 크게 깔면 탁해진다. 흰 바탕 + 1px 선이 기본이고 색은 점처럼 쓴다.
+     코랄은 상태·버튼·우리 인원 숫자 셋에만. 고른 것과 진행 막대는 잉크로 둬
+     두 색이 서로 자리를 침범하지 않게 한다. 간격은 8·13·21 만. */
+  .xd-hero{ padding:0;margin-top:13px }
+  .xd-k{ display:flex;align-items:center;gap:6px }
+  .xd-k i{ width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none;display:block }
+  .xd-k b{ font-size:11px;font-weight:700;color:var(--coral-d) }
+  .xd-k b.wait{ color:var(--lgray) }
+  .xd-k b.wait + i, .xd-k i.off{ background:var(--lgray) }
+  .xd-k span{ font-size:11px;color:var(--lgray);margin-left:auto }
+  .xd-vs{ display:flex;align-items:flex-start;gap:13px;margin-top:21px }
   .xd-side{ flex:1;text-align:center;min-width:0 }
-  .xd-lg{ width:42px;height:42px;border-radius:50%;margin:0 auto 7px;display:flex;
-    align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;
-    background-size:cover;background-position:center }
-  .xd-lg.wait{ background:rgba(255,255,255,.6);border:1.5px dashed #dcbb99;color:#b09477 }
-  .xd-nm{ font-size:12.7px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .xd-nm.off{ color:#a5896f }
-  .xd-sub{ font-size:10px;color:var(--coral-d);font-weight:600;margin-top:3px }
-  .xd-sub.off{ color:#b09477;font-weight:400 }
-  .xd-x{ font-size:16.2px;font-weight:700;color:#c9a889;letter-spacing:-.03em;flex:none }
-  .xd-ft{ border-top:1px solid rgba(150,100,60,.18);margin-top:21px;padding-top:13px;
-    font-size:12.7px;color:#6b5240;line-height:1.618 }
+  .xd-lg{ width:56px;height:56px;border-radius:50%;margin:0 auto;background-size:cover;
+    background-position:center;display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;color:#fff }
+  .xd-lg.wait{ background:#fff;border:1.5px dashed #ddd7cb;color:#d6d2ca;font-weight:400 }
+  .xd-nm{ font-size:13.5px;font-weight:700;letter-spacing:-.03em;margin-top:10px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .xd-nm.off{ color:var(--lgray);font-weight:500 }
+  .xd-sub{ font-size:20.5px;font-weight:700;letter-spacing:-.04em;color:var(--coral);margin-top:5px }
+  .xd-sub em{ font-style:normal;font-size:12.7px;color:var(--lgray);font-weight:500 }
+  .xd-sub.off{ font-size:12.7px;color:#d6d2ca;font-weight:400;margin-top:8px }
+  .xd-x{ width:1px;align-self:stretch;background:var(--line);margin-top:14px;flex:none }
+  .xd-ft{ border-top:1px solid var(--line);margin-top:21px;padding-top:13px;
+    font-size:12.7px;color:#57503f;line-height:1.618 }
   .xd-ft .r{ display:flex;justify-content:space-between }
   .xd-ft .r b{ color:var(--ink) }
-  /* 지금 막힌 한 가지 — 진행 단계 네 줄을 대신한다 */
-  .xd-todo{ background:#fffaf6;border:1px solid #f3d9c5;border-radius:14px;
-    padding:13px 16px;margin-top:21px }
-  .xd-todo b{ display:block;font-size:12.7px;font-weight:700;color:var(--coral-d);line-height:1.4 }
-  .xd-todo span{ display:block;font-size:12.7px;font-weight:400;color:#57503f;
-    margin-top:4px;line-height:1.618 }
-  .xd-3{ display:flex;gap:8px;margin-top:13px }
-  .xd-3 > div{ flex:1;border:1px solid var(--line);border-radius:12px;padding:11px 6px;text-align:center }
-  .xd-3 .l{ font-size:10px;color:var(--lgray);font-weight:700;letter-spacing:.08em }
-  .xd-3 .v{ font-size:16.2px;font-weight:700;margin-top:5px;line-height:1.2 }
-  .xd-bar{ display:flex;align-items:center;gap:8px;margin-top:9px }
-  .xd-bar i{ flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden;display:block }
-  .xd-bar i em{ display:block;height:100%;background:var(--coral);border-radius:4px }
-  .xd-bar b{ font-size:12.7px;font-weight:700;color:var(--coral-d);flex:none }
-  .xd-mine{ border:1.5px solid #f3d9c5;background:#fffaf6;border-radius:13px;padding:12px 13px;margin-top:9px }
-  .xd-mine .k{ font-size:10px;color:var(--coral-d);font-weight:700 }
-  .xd-mine .n{ font-size:12.7px;font-weight:700;margin-top:6px }
-  .xd-mine .s{ font-size:12.7px;color:#57503f;font-weight:400;line-height:1.618;margin-top:6px }
-  .xd-op{ font-size:12.7px;line-height:1.618 }
-  .xd-op > div{ display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0efec }
-  .xd-op span{ color:var(--lgray) }
-  .xd-op b{ font-weight:600 }
-  /* 이 화면에서 눌러야 할 건 하나뿐이다. 히어로(클레이)보다 밝은 코랄로 띄운다 */
-  .xd-dark{ background:var(--coral);color:#fff;border-radius:13px;text-align:center;
-    font-size:12.7px;font-weight:600;padding:15px 0;margin-top:13px;cursor:pointer;
-    box-shadow:0 4px 14px rgba(236,106,46,.18) }
-  .xd-ghost{ border:1px solid var(--line);color:#57503f;border-radius:13px;text-align:center;
+  /* 지금 막힌 한 가지 */
+  .xd-todo{ border:1px solid var(--line);border-radius:14px;padding:14px 15px;margin-top:21px }
+  .xd-todo b{ display:block;font-size:12.7px;font-weight:700;line-height:1.4 }
+  .xd-todo span{ display:block;font-size:12.7px;font-weight:400;color:var(--gray);
+    margin-top:5px;line-height:1.618 }
+  /* 이 화면에서 눌러야 할 건 하나 */
+  .xd-dark{ background:var(--coral);color:#fff;border-radius:14px;text-align:center;
+    font-size:13.5px;font-weight:600;padding:15px 0;margin-top:13px;cursor:pointer }
+  .xd-ghost{ border:1px solid var(--line);color:#57503f;border-radius:14px;text-align:center;
     font-size:12.7px;font-weight:600;padding:14px 0;margin-top:8px;cursor:pointer }
-  /* 진행 단계 — 빈 화면의 원인은 여백이 아니라 <다음에 할 일>이 안 보여서다 */
-  .xd-step{ display:flex;gap:9px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f0efec }
-  .xd-step:last-child{ border-bottom:0 }
-  .xd-step i{ width:18px;height:18px;border-radius:50%;flex:none;font-style:normal;font-size:9px;
-    font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px;
-    background:var(--coral);color:#fff }
-  .xd-step.dim i{ background:var(--felt);color:var(--lgray) }
-  .xd-step b{ font-size:12.7px;font-weight:700;display:block;line-height:1.4 }
-  .xd-step span{ font-size:12.7px;color:var(--gray);font-weight:400;display:block;
-    margin-top:3px;line-height:1.618 }
-  .xd-step.dim b{ color:var(--lgray) }
-  /* 종목 뱃지 — 알약에 점 하나. 색은 앱이 이미 쓰던 값(남복 파랑·혼복 보라·여복 분홍) */
-  .xd-kind{ display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
-    border-radius:20px;padding:4px 10px;line-height:1.272 }
-  .xd-kind i{ width:5px;height:5px;border-radius:50%;flex:none;display:block }
-  /* 참석자 — 이름 알약을 늘어놓으면 지저분하고 아이콘이 겹쳐 보인다. 얼굴만 쌓는다 */
-  .xd-faces{ display:flex;align-items:center;margin-top:13px }
-  .xd-faces > *{ width:30px;height:30px;border-radius:50%;border:2px solid #fff;
-    margin-right:-9px;flex:none }
-  .xd-faces b{ font-size:12px;font-weight:700;color:var(--gray);margin-left:17px;
-    border:0;width:auto;height:auto }
-  /* 정보는 세 칸 상자보다 목록이 낫다 — 항목이 늘어도 무너지지 않는다 */
-  .xd-info{ border-top:1px solid var(--line) }
+  /* 진행 — 코랄과 겹치지 않게 잉크로 */
+  .xd-bar{ height:3px;border-radius:2px;background:var(--felt);overflow:hidden;margin-top:8px }
+  .xd-bar em{ display:block;height:100%;background:var(--ink) }
+  .xd-cap{ display:flex;align-items:center;justify-content:space-between;margin-top:21px }
+  .xd-cap span:first-child{ font-size:10px;font-weight:700;color:var(--lgray);letter-spacing:.09em }
+  .xd-cap span:last-child{ font-size:12.7px;color:var(--gray) }
+  .xd-cap b{ color:var(--ink);font-weight:700 }
+  /* 참석자 — 얼굴과 이름을 함께. 두 줄로 */
+  .xd-who{ display:flex;flex-wrap:wrap;gap:13px;margin-top:16px }
+  .xd-who > div{ display:flex;align-items:center;gap:8px;width:calc(50% - 7px);min-width:0 }
+  .xd-who > div > *:first-child{ width:32px;height:32px;border-radius:50%;flex:none }
+  .xd-who .nm{ font-size:12.7px;font-weight:600;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap }
+  /* 종목은 글자색만 — 알약을 쓰면 색면이 또 생긴다 */
+  .xd-kind{ font-size:11px;font-weight:700 }
+  /* 정보 목록 */
+  .xd-info{ border-top:1px solid var(--line);margin-top:8px }
   .xd-info .r{ display:flex;align-items:center;justify-content:space-between;gap:13px;
     padding:13px 2px;border-bottom:1px solid var(--line) }
   .xd-info .r span{ font-size:12.7px;color:var(--gray);font-weight:400 }
@@ -3214,7 +3201,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826r';
+const BUILD='v1.1.2-0826s';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10391,8 +10378,7 @@ async function openXc(id){
   const mixCode=String(x.squad_mix||'');
   const chips=['md','mx','wd'].map(k=>{
     const m=mixCode.match(new RegExp(k+'(\\d+)')); if(!m) return '';
-    return `<span class="xd-kind" style="background:${K[k][0]};color:${K[k][1]}">
-      <i style="background:${K[k][1]}"></i>${K[k][2]} ${m[1]}조</span>`; }).join('');
+    return `<b class="xd-kind" style="color:${K[k][1]}">${K[k][2]} ${m[1]}</b>`; }).join('');
   const dleft=(()=>{ const d=evParseDate(x.date); if(d.day==null) return '';
     const t=evTime({date:x.date}); const n=Math.ceil((t-Date.now())/864e5);
     return n>0?`D-${n}`:(n===0?'오늘':''); })();
@@ -10456,23 +10442,25 @@ async function openXc(id){
 
   if(mine){
     const st=x.my_status||null;
-    h+=`<div class="xf-l">참석</div>
+    const ppl=(mine.people||(mine.names||[]).map(n=>({name:n})));
+    h+=`<div class="xf-l" style="display:flex;align-items:center;justify-content:space-between">
+        <span>참석</span>
+        <span style="font-size:12.7px;letter-spacing:0"><b style="color:var(--coral)">${mine.count}</b><span
+          style="color:var(--lgray);font-weight:400"> / ${x.per_club}명</span></span></div>
       <div class="xf-c">${[['going','참석'],['absent','불참'],['undecided','미정']].map(([v,t])=>
         `<b class="${st===v?'on':''}" onclick="xcRsvp(${x.id},'${v}')">${t}</b>`).join('')}</div>
-      <div class="xd-bar" style="margin-top:12px"><i><em style="width:${pct}%"></em></i>
-        <b>${mine.count}/${x.per_club}</b></div>
-      ${(mine.people||mine.names||[]).length?`<div class="xd-faces">${
-        (mine.people||(mine.names||[]).map(n=>({name:n}))).slice(0,8).map(p=>
-          evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 30)).join('')}${
-        (mine.count||0)>8?`<b>+${mine.count-8}</b>`:''}</div>`:''}
-      ${!mine.ready?`<div class="xf-h" style="margin:10px 2px 0">${(()=>{
+      <div class="xd-bar" style="margin-top:13px"><i><em style="width:${pct}%"></em></i></div>
+      <div class="xd-faces">${ppl.slice(0,12).map(p=>
+          `<div class="xd-face" onclick="openMemberCard('${esc(p.name)}')">${
+            evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 38)}<em>${esc(p.name)}</em></div>`).join('')}${
+        (!mine.ready && xcIsOfficer())
+          ? `<div class="xd-face add" onclick="go('sched')"><div>＋</div><em>부르기</em></div>`:''}</div>
+      ${!mine.ready?`<div class="xf-h" style="margin:13px 2px 0">${(()=>{
         const nm=Math.max(0,(x.need?x.need.men:0)-(mine.men||0));
         const nf=Math.max(0,(x.need?x.need.women:0)-(mine.women||0));
         return (nm||nf)
           ? `${nm?`<b>남성 ${nm}분</b>`:''}${nm&&nf?', ':''}${nf?`<b>여성 ${nf}분</b>`:''}이 더 필요해요.`
           : `<b>${x.per_club-mine.count}명</b> 더 필요해요.`; })()}</div>`:''}`;
-    if(!mine.ready && xcIsOfficer())
-      h+=`<div class="xd-ghost" onclick="go('sched')">회원들에게 알리기</div>`;
   }
 
   /* 한 번 보면 다시 볼 일이 없는 것들은 아래로 */
@@ -10483,13 +10471,13 @@ async function openXc(id){
       <div class="r"><span>1인 참가비</span><b>${x.per_head?won0(x.per_head):'—'}</b></div>
       <div class="r"><span>종목</span><b style="display:flex;gap:6px">${chips}</b></div>
     </div>
-    <div class="xf-note">25분씩 여섯 번 · 내 코트는 고정이고 상대만 한 조씩 옮겨와요.
+    <div class="xd-fine">25분씩 여섯 번 · 내 코트는 고정이고 상대만 한 조씩 옮겨와요.
       1승 3점 · 1무 1점으로 합산해 이긴 클럽을 가려요.${
       x.close_at&&!done?`<br>${new Date(x.close_at).getMonth()+1}월 ${new Date(x.close_at).getDate()}일 밤 12시까지
-      안 차면 취소돼요. <b>구장 취소는 직접</b> 해주세요.`:''}</div>`;
+      안 차면 취소돼요. 구장 취소는 직접 해주세요.`:''}</div>`;
 
   if(op) h+=`<div class="xf-l">지난 만남</div>
-    <div class="xf-note" id="xcVs" style="margin-top:0">불러오는 중…</div>`;
+    <div class="xd-fine" id="xcVs" style="margin-top:0">불러오는 중…</div>`;
   xcPage(`교류전`, h);
   if(op) xcVsLoad(cid, op.club_id);
 }
