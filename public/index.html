@@ -2442,15 +2442,22 @@
   .xd-step span{ font-size:12.7px;color:var(--gray);font-weight:400;display:block;
     margin-top:3px;line-height:1.618 }
   .xd-step.dim b{ color:var(--lgray) }
-  .xd-chips{ display:flex;gap:6px;flex-wrap:wrap;margin-top:13px }
   /* 종목 뱃지 — 알약에 점 하나. 색은 앱이 이미 쓰던 값(남복 파랑·혼복 보라·여복 분홍) */
-  .xd-kind{ display:inline-flex;align-items:center;gap:6px;font-size:12.7px;font-weight:700;
-    border-radius:24px;padding:7px 14px;line-height:1.272 }
-  .xd-kind i{ width:6px;height:6px;border-radius:50%;flex:none;display:block }
-  .xd-chips{ gap:6px }
-  .xd-chips span{ display:inline-flex;align-items:center;gap:7px;font-size:12.7px;font-weight:500;
-    background:var(--felt);border-radius:24px;padding:5px 13px 5px 5px;cursor:pointer }
-  .xd-chips span > *{ flex:none }
+  .xd-kind{ display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+    border-radius:20px;padding:4px 10px;line-height:1.272 }
+  .xd-kind i{ width:5px;height:5px;border-radius:50%;flex:none;display:block }
+  /* 참석자 — 이름 알약을 늘어놓으면 지저분하고 아이콘이 겹쳐 보인다. 얼굴만 쌓는다 */
+  .xd-faces{ display:flex;align-items:center;margin-top:13px }
+  .xd-faces > *{ width:30px;height:30px;border-radius:50%;border:2px solid #fff;
+    margin-right:-9px;flex:none }
+  .xd-faces b{ font-size:12px;font-weight:700;color:var(--gray);margin-left:17px;
+    border:0;width:auto;height:auto }
+  /* 정보는 세 칸 상자보다 목록이 낫다 — 항목이 늘어도 무너지지 않는다 */
+  .xd-info{ border-top:1px solid var(--line) }
+  .xd-info .r{ display:flex;align-items:center;justify-content:space-between;gap:13px;
+    padding:13px 2px;border-bottom:1px solid var(--line) }
+  .xd-info .r span{ font-size:12.7px;color:var(--gray);font-weight:400 }
+  .xd-info .r b{ font-size:12.7px;font-weight:700 }
   /* 교류전 대진표 — 종목 색은 앱이 이미 쓰는 값(남복 파랑·혼복 보라·여복 분홍) 그대로 */
   .xg-hd{ display:flex;align-items:baseline;justify-content:space-between;
     border-bottom:1px solid var(--ink);padding-bottom:6px;margin:18px 2px 2px }
@@ -3207,7 +3214,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826q';
+const BUILD='v1.1.2-0826r';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10217,8 +10224,19 @@ function xcPick(k,v){ XCF[k]=v; xcForm(); }
 /* 시각을 직접 넣고 싶을 때 — 칩에 없는 시간대가 실제로 많다 */
 function xcTimeOpen(){
   const el=document.getElementById('xcTime'); if(!el) return;
-  el.style.display='block'; el.focus();
-  if(el.showPicker) try{ el.showPicker(); }catch(e){}
+  el.style.display='block'; el.value=''; el.focus();
+}
+/* 숫자만 받아 1930 → 19:30 으로 콜론을 넣어준다 */
+function xcTimeType(el){
+  const n=el.value.replace(/[^0-9]/g,'').slice(0,4);
+  el.value = n.length>2 ? n.slice(0,2)+':'+n.slice(2) : n;
+}
+function xcTimeDone(el){
+  const m=String(el.value).match(/^(\d{1,2}):?(\d{2})$/);
+  if(!m){ if(el.value) toast('시각을 19:30 처럼 적어주세요'); return; }
+  const hh=Math.min(23,+m[1]), mm=Math.min(59,+m[2]);
+  XCF.start=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  xcForm();
 }
 function xcMixOf(per, women){
   const W=Math.max(0,Math.min(per, women)), M=per-W;
@@ -10269,7 +10287,9 @@ function xcForm(){
         onclick="xcPick('start','${t}')">${t}</b>`).join('')}
       <b class="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':'on'}"
         style="flex:0 0 auto;padding:10px 13px" onclick="xcTimeOpen()">직접</b></div>
-    <input id="xcTime" type="time" value="${esc(XCF.start)}" onchange="xcPick('start',this.value||'19:00')"
+    <input id="xcTime" type="text" inputmode="numeric" maxlength="5" placeholder="19:30"
+      value="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':esc(XCF.start)}"
+      oninput="xcTimeType(this)" onblur="xcTimeDone(this)"
       style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
         font-size:12.7px;font-family:inherit;margin-top:8px;
         display:${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'none':'block'}">
@@ -10402,15 +10422,7 @@ async function openXc(id){
         x.courts?` · ${x.courts}면`:''}</div>
     </div>
 
-    <div class="xd-3">
-      <div><div class="l">클럽마다</div><div class="v">${x.per_club}명</div></div>
-      <div><div class="l">1인</div><div class="v">${Math.round(x.courts*Math.floor(180/30)*4/(x.per_club*2))||6}경기</div></div>
-      <div><div class="l">1인 참가비</div><div class="v">${
-        x.per_head?won0(x.per_head).replace('원',''):'—'}</div></div>
-    </div>
-
-    <div class="xf-l">종목</div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap">${chips}</div>`;
+`;
 
   /* C 배치 — 이 화면을 여는 사람은 둘 중 하나다.
      임원은 <다음에 뭘 하나>, 회원은 <참석 누르면 되나>.
@@ -10449,11 +10461,10 @@ async function openXc(id){
         `<b class="${st===v?'on':''}" onclick="xcRsvp(${x.id},'${v}')">${t}</b>`).join('')}</div>
       <div class="xd-bar" style="margin-top:12px"><i><em style="width:${pct}%"></em></i>
         <b>${mine.count}/${x.per_club}</b></div>
-      ${(mine.people||mine.names||[]).length?`<div class="xd-chips">${
-        (mine.people||(mine.names||[]).map(n=>({name:n}))).slice(0,10).map(p=>
-          `<span onclick="openMemberCard('${esc(p.name)}')">${
-            evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 28)}${esc(p.name)}</span>`).join('')}${
-        (mine.count||0)>10?`<span style="color:var(--lgray);padding:8px 12px">+${mine.count-10}</span>`:''}</div>`:''}
+      ${(mine.people||mine.names||[]).length?`<div class="xd-faces">${
+        (mine.people||(mine.names||[]).map(n=>({name:n}))).slice(0,8).map(p=>
+          evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 30)).join('')}${
+        (mine.count||0)>8?`<b>+${mine.count-8}</b>`:''}</div>`:''}
       ${!mine.ready?`<div class="xf-h" style="margin:10px 2px 0">${(()=>{
         const nm=Math.max(0,(x.need?x.need.men:0)-(mine.men||0));
         const nf=Math.max(0,(x.need?x.need.women:0)-(mine.women||0));
@@ -10466,13 +10477,12 @@ async function openXc(id){
 
   /* 한 번 보면 다시 볼 일이 없는 것들은 아래로 */
   h+=`<div class="xf-l">교류전 정보</div>
-    <div class="xd-3" style="margin-top:0">
-      <div><div class="l">클럽마다</div><div class="v">${x.per_club}명</div></div>
-      <div><div class="l">1인</div><div class="v">${Math.round(x.courts*6*4/(x.per_club*2))||6}경기</div></div>
-      <div><div class="l">1인 참가비</div><div class="v">${
-        x.per_head?won0(x.per_head).replace('원',''):'—'}</div></div>
+    <div class="xd-info">
+      <div class="r"><span>클럽마다</span><b>${x.per_club}명</b></div>
+      <div class="r"><span>1인 경기</span><b>${Math.round(x.courts*6*4/(x.per_club*2))||6}경기</b></div>
+      <div class="r"><span>1인 참가비</span><b>${x.per_head?won0(x.per_head):'—'}</b></div>
+      <div class="r"><span>종목</span><b style="display:flex;gap:6px">${chips}</b></div>
     </div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px">${chips}</div>
     <div class="xf-note">25분씩 여섯 번 · 내 코트는 고정이고 상대만 한 조씩 옮겨와요.
       1승 3점 · 1무 1점으로 합산해 이긴 클럽을 가려요.${
       x.close_at&&!done?`<br>${new Date(x.close_at).getMonth()+1}월 ${new Date(x.close_at).getDate()}일 밤 12시까지
