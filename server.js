@@ -949,7 +949,9 @@ app.post('/clubs/:id/join', auth, (req, res) => {
   const me = getUser(req.uid);
   // 클럽장·임원에게 알림
   db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(cid)
-    .forEach(r => sendPush(r.user_id, { icon: '👤', title: '가입 신청', body: `${me.name} 님이 ${club.name} 가입을 신청했어요` }));
+    /* 임원이 누르면 가입 신청 목록이 바로 열린다 */
+    .forEach(r => sendPush(r.user_id, { icon: '👤', title: '가입 신청',
+      body: `${me.name} 님이 ${club.name} 가입을 신청했어요`, link: 'club:join' }));
   res.json({ ok: true, status: 'pending' });
 });
 app.get('/clubs/:id/members', (req, res) => {
@@ -2046,7 +2048,7 @@ function omSettle(mid) {
         db.prepare('UPDATE open_match_joins SET refund=? WHERE id=?').run(diff, j.id);
         refunded += diff;
       }
-      sendPush(j.user_id, { icon: '✅', title: '매치가 확정됐어요',
+      sendPush(j.user_id, { icon: '✅', title: '매치가 확정됐어요', link: `match:${m.id}`,
         body: diff > 0
           ? `${joins.length}명이 모여 ${finalPrice.toLocaleString()}원으로 내려갔어요 · ${diff.toLocaleString()}원 돌려드렸어요`
           : `${m.loc} · ${m.dt}` });
@@ -2321,7 +2323,8 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
   // 최소 인원을 막 채웠으면 전원에게 성사 알림 (내 신청으로 정확히 채워진 경우)
   if (isNewJoin && after === (m.min_cnt || 0)) {
     db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(mid)
-      .forEach(p => sendPush(p.user_id, { icon: '✅', title: '경기가 성사됐어요', body: `${m.dt} · ${m.loc} · ${after}명` }));
+      .forEach(p => sendPush(p.user_id, { icon: '✅', title: '경기가 성사됐어요',
+        body: `${m.dt} · ${m.loc} · ${after}명`, link: `match:${mid}` }));
     try { venueConfirm(null, mid); } catch (e) { console.error('venueConfirm', e); }  // 코트 확정 + 사장님 정산 예약
   }
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
@@ -3680,12 +3683,17 @@ async function sendPush(userId, msg, opts) {
   if (!(opts && opts.skipInbox))
     db.prepare('INSERT INTO notifications (user_id,icon,title,sub,created_at,link) VALUES (?,?,?,?,?,?)')
       .run(userId, msg.icon || '🔔', msg.title || '', msg.body || '', now(), link);
+  /* 알림함에만 넣던 link 를 폰 알림에도 함께 보낸다.
+     예전에는 apnsSend 가 msg.url 을 찾는데 그 값을 채우는 곳이 없어 항상 '/' 였다.
+     그래서 무엇을 눌러도 앱이 홈으로 갔다. */
+  const out = Object.assign({}, msg, { url: msg.url || link || 'home' });
+
   const rows = db.prepare('SELECT token, platform FROM devices WHERE user_id=?').all(userId);
 
   /* iOS 는 APNs 로 — 예전에는 이 갈래가 없어 폰 알림이 하나도 안 갔다 */
   if (apnsReady()) {
     rows.filter(r => r.platform === 'ios').forEach(({ token }) => {
-      apnsSend(token, msg).then(r => {
+      apnsSend(token, out).then(r => {
         /* Unregistered = 앱을 지웠거나 토큰이 만료됐다 — 표에서 지운다.
            BadDeviceToken 으로는 더 이상 지우지 않는다: 위에서 양쪽 서버를 다 시도하므로
            여기 도달했다면 <정말 죽은 토큰>과 <아직 설정이 덜 된 상태>를 구분할 수 없다.
@@ -3703,7 +3711,7 @@ async function sendPush(userId, msg, opts) {
     try { sub = JSON.parse(token); } catch { continue; }        // 구독 객체가 아니면 건너뛴다
     if (!sub || !sub.endpoint) continue;
     webpush.sendNotification(sub, JSON.stringify({
-      title: msg.title || 'MATSU', body: msg.body || '', url: msg.url || '/',
+      title: out.title || 'MATSU', body: out.body || '', url: out.url,
     })).catch(err => {
       if (err && (err.statusCode === 404 || err.statusCode === 410)) {   // 만료된 구독은 정리
         db.prepare('DELETE FROM devices WHERE token=?').run(token);
@@ -5449,7 +5457,7 @@ app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
     db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id)
       .forEach(p => sendPush(p.user_id, { icon: '📋', title: '대진표가 나왔어요',
         body: `${m.loc || ''}${rounds ? ` · ${rounds}라운드` : ''}${gpp ? ` · 1인 ${gpp}게임` : ''}`,
-        link: 'match' }));
+        link: `match:${m.id}` }));
   }
   res.json({ ok: true });
 });
@@ -8392,3 +8400,267 @@ app.use(express.static(new URL('./public', import.meta.url).pathname));
 // 에러는 JSON으로
 app.use((err, req, res, _next) => { console.error(err); res.status(500).json({ error: String(err && err.message || err) }); });
 app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
+
+// ══════════════════════════════════════════════════════════════
+//  교류전 — 두 클럽이 한 날 한 구장에서 붙는다
+//  모임(club_events)을 그대로 쓰고 열 몇 개를 더한다. 새 표는 참가 클럽 하나뿐.
+//  2클럽 전용이지만 club_slots·format 은 미리 둔다 — 3·4클럽을 켤 때
+//  서버를 갈아엎지 않기 위해서다.
+// ══════════════════════════════════════════════════════════════
+try { db.exec("ALTER TABLE club_events ADD COLUMN kind TEXT"); } catch (e) {}           // 'exchange'
+try { db.exec("ALTER TABLE club_events ADD COLUMN club_slots INTEGER"); } catch (e) {}  // 지금은 항상 2
+try { db.exec("ALTER TABLE club_events ADD COLUMN per_club INTEGER"); } catch (e) {}    // 클럽당 인원
+try { db.exec("ALTER TABLE club_events ADD COLUMN courts INTEGER"); } catch (e) {}
+try { db.exec("ALTER TABLE club_events ADD COLUMN squad_mix TEXT"); } catch (e) {}      // 'md2,mx4'
+try { db.exec("ALTER TABLE club_events ADD COLUMN format TEXT"); } catch (e) {}         // 'single'
+try { db.exec("ALTER TABLE club_events ADD COLUMN match_status TEXT"); } catch (e) {}
+try { db.exec("ALTER TABLE club_events ADD COLUMN close_at BIGINT"); } catch (e) {}
+try { db.exec("ALTER TABLE club_events ADD COLUMN court_fee INTEGER"); } catch (e) {}
+try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}        // 대관 시간(분)
+
+db.exec(`CREATE TABLE IF NOT EXISTS exchange_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER, club_id INTEGER, seat_no INTEGER,
+  status TEXT, squad_json TEXT, joined_at BIGINT
+);`);
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_xe ON exchange_entries(event_id, club_id)'); } catch (e) {}
+
+/* 코트 수와 대관 시간으로 규모를 계산한다.
+   회차 = 경기 25분 + 교체 5분 = 30분.  총원 × 1인경기 = 코트 × 회차 × 4 */
+const XC_UNIT = 30;
+function xcPlanFor(courts, mins) {
+  const R = Math.floor((+mins || 0) / XC_UNIT);
+  const c = +courts || 0;
+  if (R < 2 || c < 2) return null;
+  // 2클럽은 대전 하나가 전 코트를 계속 쓴다 → 클럽당 인원 = 코트 × 2
+  const per = c * 2;
+  const games = Math.floor(c * R * 4 / (per * 2));   // 1인 경기 수
+  return { rounds: R, per_club: per, games, total: per * 2 };
+}
+
+/* 종목 구성 — 'md2,mx4' 를 {남복,혼복,여복} 과 필요 성비로 푼다 */
+function xcMix(code) {
+  const out = { md: 0, mx: 0, wd: 0 };
+  String(code || 'md2,mx4').split(',').forEach(t => {
+    const m = String(t).trim().match(/^(md|mx|wd)(\d+)$/);
+    if (m) out[m[1]] = +m[2];
+  });
+  return { ...out, men: out.md * 2 + out.mx, women: out.wd * 2 + out.mx };
+}
+
+function xcEvent(eid) {
+  return db.prepare("SELECT * FROM club_events WHERE id=? AND kind='exchange'").get(eid);
+}
+function xcEntries(eid) {
+  return db.prepare(`SELECT e.*, c.name club_name, c.region
+     FROM exchange_entries e JOIN clubs c ON c.id=e.club_id
+     WHERE e.event_id=? AND e.status<>'dropped' ORDER BY e.seat_no`).all(eid);
+}
+/* 그 클럽이 이 교류전에 낼 수 있는 사람 — 참석을 누른 회원 중에서 센다.
+   게스트는 명부에 guest 로 올라 있고, 어느 클럽에서도 정회원이 아닌 사람만. */
+function xcRoster(eid, clubId) {
+  const rows = db.prepare(`SELECT u.id, COALESCE(NULLIF(cm.alias,''), u.name) name,
+      COALESCE(cm.gender_ov, u.gender) gender, cm.role, u.sport_started, cm.grade
+    FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+    LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+    WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going')`).all(clubId, eid);
+  return rows.filter(r => {
+    if (r.role !== 'guest') return true;
+    const elsewhere = db.prepare(`SELECT 1 FROM club_members
+      WHERE user_id=? AND role IN ('member','officer','owner')`).get(r.id);
+    return !elsewhere;                       // 어디서든 정회원이면 게스트로는 못 나간다
+  });
+}
+function xcView(ev, uid) {
+  const ent = xcEntries(ev.id);
+  const mix = xcMix(ev.squad_mix);
+  return {
+    id: ev.id, kind: 'exchange', title: ev.title, date: ev.date, place: ev.place,
+    courts: ev.courts, per_club: ev.per_club, club_slots: ev.club_slots || 2,
+    squad_mix: ev.squad_mix, status: ev.match_status, close_at: ev.close_at,
+    court_fee: ev.court_fee || 0, need: mix,
+    clubs: ent.map(e => ({
+      club_id: e.club_id, name: e.club_name, seat_no: e.seat_no, host: e.seat_no === 1,
+      ready: xcRoster(ev.id, e.club_id).length >= (ev.per_club || 0),
+      count: xcRoster(ev.id, e.club_id).length,
+    })),
+    my_clubs: (db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
+      AND role IN ('member','officer','owner')`).all(uid) || []).map(r => r.club_id),
+  };
+}
+
+/* ── 열기 ── 코트를 잡은 클럽의 임원만 */
+app.post('/clubs/:id/exchange', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '임원만 교류전을 열 수 있어요' });
+  const { title, date, place, courts, mins, squad_mix, close_at, court_fee } = req.body || {};
+  const plan = xcPlanFor(courts, mins);
+  if (!plan) return res.status(400).json({ error: 'bad_size', message: '코트 수와 시간을 확인해 주세요' });
+  const mix = xcMix(squad_mix);
+  if (mix.men + mix.women !== plan.per_club)
+    return res.status(400).json({ error: 'bad_mix',
+      message: `${plan.per_club}명에 맞는 종목 구성을 골라주세요` });
+  const r = db.prepare(`INSERT INTO club_events
+      (club_id,title,date,tag,place,created_by,created_at,
+       kind,club_slots,per_club,courts,squad_mix,format,match_status,close_at,court_fee)
+      VALUES (?,?,?,?,?,?,?, 'exchange',2,?,?,?, 'single','open',?,?)`)
+    .run(cid, String(title || '교류전'), String(date || ''), '교류전',
+         String(place || '').trim().slice(0, 60) || null, req.uid, now(),
+         plan.per_club, +courts, String(squad_mix || 'md2,mx4'),
+         +close_at || null, +court_fee || 0);
+  const eid = rid(r);
+  db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
+              VALUES (?,?,1,'joined',?)`).run(eid, cid, now());
+  notifyClub(cid, req.uid, '🆚', '교류전이 열렸어요',
+    `${title || '교류전'}${date ? ' · ' + date : ''} · 참석을 눌러주세요`);
+  res.json({ ok: true, id: eid, plan });
+});
+
+/* ── 자리 신청 ── 상대 클럽 임원만. 승낙 없이 선착순 */
+app.post('/exchange/:id/join', auth, (req, res) => {
+  const eid = +req.params.id, cid = +((req.body || {}).club_id || 0);
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (ev.match_status !== 'open')
+    return res.status(409).json({ error: 'closed', message: '이미 자리가 찼어요' });
+  if (!isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '임원만 신청할 수 있어요' });
+  const ent = xcEntries(eid);
+  if (ent.some(e => e.club_id === cid))
+    return res.status(409).json({ error: 'already', message: '이미 신청한 클럽이에요' });
+  if (ent.length >= (ev.club_slots || 2))
+    return res.status(409).json({ error: 'full', message: '자리가 다 찼어요' });
+
+  /* 성비를 못 맞추는 클럽은 여기서 막는다 — 당일에 알면 늦다 */
+  const mix = xcMix(ev.squad_mix);
+  const pool = db.prepare(`SELECT COALESCE(cm.gender_ov, u.gender) g, cm.role
+      FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')`).all(cid);
+  const nM = pool.filter(p => p.g === 'M').length, nF = pool.filter(p => p.g === 'F').length;
+  if (nM < mix.men || nF < mix.women)
+    return res.status(400).json({ error: 'roster_short',
+      message: `남 ${mix.men}명 · 여 ${mix.women}명이 필요해요 (우리 클럽 남 ${nM} · 여 ${nF})` });
+
+  const seat = ent.length + 1;
+  db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
+              VALUES (?,?,?,'joined',?)`).run(eid, cid, seat, now());
+  if (seat >= (ev.club_slots || 2))
+    db.prepare("UPDATE club_events SET match_status='filled' WHERE id=?").run(eid);
+
+  const host = ent[0];
+  if (host) notifyClub(host.club_id, null, '🆚', '교류전 상대가 정해졌어요',
+    `${db.prepare('SELECT name FROM clubs WHERE id=?').get(cid).name} 클럽이 참가해요`);
+  notifyClub(cid, req.uid, '🆚', '교류전에 참가해요',
+    `${ev.title}${ev.date ? ' · ' + ev.date : ''} · 참석을 눌러주세요`);
+  res.json(xcView(xcEvent(eid), req.uid));
+});
+
+/* ── 회원이 임원에게 제안 ── */
+app.post('/exchange/:id/suggest', auth, (req, res) => {
+  const eid = +req.params.id, cid = +((req.body || {}).club_id || 0);
+  if (!isMember(cid, req.uid))
+    return res.status(403).json({ error: 'member_only' });
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const me = getUser(req.uid);
+  db.prepare(`SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')`)
+    .all(cid).forEach(r => sendPush(r.user_id, { icon: '🆚', title: '교류전 참가 제안',
+      body: `${me.name} 님이 ${ev.title} 참가를 제안했어요`, link: `club:${cid}` }));
+  res.json({ ok: true });
+});
+
+/* ── 조회 ── */
+app.get('/exchange/:id', auth, (req, res) => {
+  const ev = xcEvent(+req.params.id);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  res.json(xcView(ev, req.uid));
+});
+app.get('/clubs/:id/exchange', auth, (req, res) => {
+  const cid = +req.params.id;
+  const rows = db.prepare(`SELECT e.* FROM club_events e
+     JOIN exchange_entries x ON x.event_id=e.id AND x.club_id=? AND x.status<>'dropped'
+     WHERE e.kind='exchange' ORDER BY e.id DESC LIMIT 20`).all(cid);
+  res.json(rows.map(ev => xcView(ev, req.uid)));
+});
+
+/* ── 대진 ── 양쪽 인원이 다 차면 짜서 바로 공개한다. 사람이 손대지 않는다 */
+app.post('/exchange/:id/draw', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const ent = xcEntries(eid);
+  if (ent.length < (ev.club_slots || 2))
+    return res.status(409).json({ error: 'need_clubs', message: '상대 클럽이 아직 없어요' });
+
+  const mix = xcMix(ev.squad_mix);
+  const squads = {};
+  for (const e of ent) {
+    const roster = xcRoster(eid, e.club_id);
+    if (roster.length < ev.per_club)
+      return res.status(409).json({ error: 'need_players',
+        message: `${e.club_name} 인원이 ${roster.length}/${ev.per_club}명이에요` });
+    const sq = xcSquad(roster, mix);
+    if (!sq) return res.status(409).json({ error: 'bad_gender',
+      message: `${e.club_name}: 남 ${mix.men}명 · 여 ${mix.women}명이 필요해요` });
+    squads[e.club_id] = sq;
+    db.prepare('UPDATE exchange_entries SET squad_json=? WHERE event_id=? AND club_id=?')
+      .run(JSON.stringify(sq), eid, e.club_id);
+  }
+  /* 회차 수 = 총원 × 1인경기 ÷ (코트 × 4). 2클럽은 클럽당 인원 = 코트 × 2 이므로
+     언제나 1인 6경기, 회차는 코트 수와 무관하게 6이 된다. */
+  const rounds = Math.round((ev.per_club * 2 * 6) / (ev.courts * 4));
+  const games = xcDraw(ent, squads, ev.courts, rounds);
+  db.prepare("UPDATE club_events SET match_status='confirmed' WHERE id=?").run(eid);
+  ent.forEach(e => notifyClub(e.club_id, null, '📋', '교류전 대진이 나왔어요',
+    `${ev.title}${ev.date ? ' · ' + ev.date : ''}`));
+  res.json({ ok: true, games, squads });
+});
+
+/* 조 묶기 — 잘 치는 사람과 이제 시작한 사람을 섞는다.
+   강한 사람끼리 묶으면 1조는 무적이고 6조는 학살당한다(실측 최대 4.0칸 → 2.5칸). */
+function xcSquad(roster, mix) {
+  const lv = p => {
+    const m = String(p.sport_started || '').match(/^(\d{4})-(\d{1,2})/);
+    if (!m) return 24;                                  // 모르면 중간값(2년)
+    return Math.max(0, (new Date().getFullYear() - +m[1]) * 12 +
+                       (new Date().getMonth() + 1 - +m[2]));   // 구력 개월
+  };
+  const men = roster.filter(p => p.gender === 'M').sort((a, b) => lv(b) - lv(a));
+  const women = roster.filter(p => p.gender === 'F').sort((a, b) => lv(b) - lv(a));
+  if (men.length < mix.men || women.length < mix.women) return null;
+  const M = men.slice(0, mix.men), W = women.slice(0, mix.women);
+  const out = [];
+  const mdPool = M.slice(0, mix.md * 2);
+  for (let i = 0; i < mix.md; i++)                       // 강+약 짝짓기
+    out.push({ kind: '남복', p: [mdPool[i], mdPool[mdPool.length - 1 - i]] });
+  const mxM = M.slice(mix.md * 2);
+  for (let i = 0; i < mix.mx; i++)
+    out.push({ kind: '혼복', p: [mxM[i], W[mix.mx - 1 - i]] });   // 센 남자에 약한 여자
+  const wdPool = W.slice(mix.mx);
+  for (let i = 0; i < mix.wd; i++)
+    out.push({ kind: '여복', p: [wdPool[i], wdPool[wdPool.length - 1 - i]] });
+  return out.map(g => ({ kind: g.kind, players: g.p.map(x => ({ id: x.id, name: x.name })) }));
+}
+
+/* 대진 — 종목이 같은 조끼리, 회차마다 상대를 한 칸씩 민다.
+   한 조는 회차마다 정확히 한 경기. 우리 조는 자기 코트에 붙박이. */
+function xcDraw(ent, squads, courts, rounds) {
+  const A = squads[ent[0].club_id], B = squads[ent[1].club_id];
+  const games = [];
+  for (let r = 0; r < rounds; r++) {
+    let court = 0;
+    ['남복', '혼복', '여복'].forEach(kind => {
+      const ia = A.map((g, i) => [g, i]).filter(([g]) => g.kind === kind);
+      const ib = B.map((g, i) => [g, i]).filter(([g]) => g.kind === kind);
+      const n = ia.length;
+      for (let j = 0; j < n; j++) {
+        const a = ia[j], b = ib[(j + r) % n];
+        games.push({ round: r + 1, court: ++court, kind,
+          home: { club_id: ent[0].club_id, seat: a[1] + 1, players: a[0].players },
+          away: { club_id: ent[1].club_id, seat: b[1] + 1, players: b[0].players } });
+      }
+    });
+  }
+  return games;
+}
