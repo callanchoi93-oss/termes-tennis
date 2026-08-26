@@ -2296,6 +2296,28 @@
   .omg-lead-t{ font-size:14px;font-weight:700;letter-spacing:-.02em;color:var(--coral-d) }
   .omg-lead-s{ font-size:11.5px;color:#9a6544;font-weight:500;margin-top:2px }
   .omg-lead-a{ color:var(--coral-d);font-size:16px;flex:none }
+  /* ── 교류전 ──
+     클럽 탭, 내 클럽 바로 아래. 열고 신청하는 사람은 임원이고 임원이 사는 곳이 여기다. */
+  .xc-h{ display:flex;align-items:baseline;justify-content:space-between;margin:20px 2px 10px }
+  .xc-h b{ font-size:15px;font-weight:700;letter-spacing:-.03em }
+  .xc-h span{ font-size:11px;color:var(--lgray) }
+  .xc-card{ border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:9px;
+    background:#fff;cursor:pointer }
+  .xc-top{ display:flex;align-items:center;justify-content:space-between;gap:8px }
+  .xc-k{ font-size:10px;font-weight:700;color:var(--coral-d);background:var(--coral-s);
+    border-radius:6px;padding:3px 8px }
+  .xc-k.wait{ color:#6b6357;background:var(--felt) }
+  .xc-d{ font-size:10.5px;color:var(--lgray) }
+  .xc-t{ font-size:13.5px;font-weight:700;letter-spacing:-.03em;margin-top:9px }
+  .xc-s{ font-size:11.5px;color:var(--gray);font-weight:400;margin-top:3px;line-height:1.6 }
+  .xc-vs{ display:flex;align-items:center;gap:7px;margin-top:11px;flex-wrap:wrap }
+  .xc-vs em{ font-style:normal;font-size:11px;font-weight:600;background:var(--felt);
+    color:#6b6357;border-radius:7px;padding:4px 9px }
+  .xc-vs em.on{ background:var(--coral-s);color:var(--coral-d) }
+  .xc-vs em.open{ background:#fff;border:1px dashed #ddd7cb;color:var(--lgray) }
+  .xc-new{ border:1px solid var(--line);border-radius:16px;padding:14px 15px;background:#fff }
+  .xc-new b{ font-size:13px;font-weight:600 }
+  .xc-new p{ font-size:11.5px;color:var(--gray);font-weight:400;margin:5px 0 11px;line-height:1.6 }
   /* ── 오픈 전 화면 ──
      구장 계약이 아직이라 코트가 하나도 없다. 이때는 주간 스트립(0이 일곱 개)을
      보여주면 고장 난 것처럼 보인다. 대신 빈 코트 사진 한 장과 대기 명단을 둔다.
@@ -3032,7 +3054,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826c';
+const BUILD='v1.1.2-0826f';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -7521,7 +7543,23 @@ function notifGo(link){
     if(room && SERVER_OK) loadRoomMsgs().then(()=>{ if(state.view==='chat') renderChat(); }).catch(()=>{});
     return;
   }
-  const map={home:'home', club:'club', bracket:'bracket', match:'match', chat:'chat', league:'league', lounge:'lounge', me:'me'};
+  if(link.startsWith('club:')){                     // 가입 신청 목록 · 특정 클럽
+    const arg=link.slice(5);
+    go('club');
+    setTimeout(()=>{ try{
+      if(arg==='join') return openJoinRequests();
+      const c=(SRV_MYCLUBS||[]).find(x=>String(x.id)===String(arg));
+      if(c && c.name) switchClub(c.name);
+    }catch(e){} }, 220);
+    return;
+  }
+  if(link.startsWith('match:')){                    // 오픈매치 상세
+    const id=link.slice(6);
+    go('match');
+    setTimeout(()=>{ try{ openOmDetail(isNaN(+id)?id:+id); }catch(e){} }, 260);
+    return;
+  }
+  const map={home:'home', club:'club', bracket:'bracket', match:'match', chat:'chat', league:'league', lounge:'lounge', me:'me', sched:'sched'};
   if(map[link]) go(map[link]);
 }
 async function toggleNotif(ev){
@@ -8423,6 +8461,7 @@ function renderClub(){
        일정 탭에 다 쌓아두면 스크롤만 길어지고 무엇이 중요한지 안 보인다. */
   } else {
     h+=myClubsBlock();
+    h+=xcSection();
     /* 지역 칩 — '경기도 용인시 처인구'와 '용인 처인구'가 각각 칩이 되던 문제.
        시·도와 시·군·구만 짧게 남겨 같은 지역은 한 칩으로 묶는다. */
     const regShort = r => { const t=String(r||'').trim().split(/\s+/);
@@ -9913,6 +9952,150 @@ function openClubPost(){
   setClubSub('news');
 }
 /* 내 클럽 — 목록 위에 얹는다. 없으면 만들기 유도. */
+/* ── 교류전 ────────────────────────────────────────────────
+   두 클럽이 한 날 한 구장에서 붙는다. 자리 신청은 임원, 참석 체크는 회원.
+   대진은 인원이 다 차면 앱이 짜서 바로 공개한다 — 사람이 손대지 않는다. */
+let XC_LIST=null;
+/* 시트 열기 — 다른 화면들과 같은 방식(sheet 에 넣고 ov 를 켠다) */
+function xcSheet(h){
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+function xcMyClubId(){ return clubId(); }
+function xcIsOfficer(){ return !!(state.bcfg && (state.bcfg.role==='officer'||state.bcfg.role==='owner')); }
+async function xcLoad(){
+  const cid=xcMyClubId();
+  if(!SERVER_OK || !cid) return;
+  try{ XC_LIST=await api(`/clubs/${cid}/exchange`); }catch(e){ XC_LIST=[]; }
+  if(state.view==='club') renderClub();
+}
+function xcSection(){
+  const cid=xcMyClubId();
+  if(!SERVER_OK || !cid) return '';
+  if(XC_LIST===null){ xcLoad(); return ''; }          // 처음 한 번만 당겨온다
+  let h=`<div class="xc-h"><b>교류전</b><span>${
+    XC_LIST.length?`${XC_LIST.length}건`:'아직 없어요'}</span></div>`;
+  XC_LIST.slice(0,3).forEach(x=>{
+    const full=(x.clubs||[]).length>=(x.club_slots||2);
+    const mine=(x.clubs||[]).find(c=>c.club_id===cid);
+    h+=`<div class="xc-card" onclick="openXc(${x.id})">
+      <div class="xc-top">
+        <span class="xc-k ${full?'':'wait'}">${full?'상대 정해짐':'상대를 기다려요'}</span>
+        <span class="xc-d">${esc(x.date||'')}</span></div>
+      <div class="xc-t">${esc(x.title||'교류전')}</div>
+      <div class="xc-s">${esc(x.place||'')} · 코트 ${x.courts}면 · 클럽당 ${x.per_club}명</div>
+      <div class="xc-vs">
+        ${(x.clubs||[]).map(c=>`<em class="${c.club_id===cid?'on':''}">${esc(c.name)} ${c.count}/${x.per_club}</em>`).join('')}
+        ${full?'':'<em class="open">빈자리</em>'}</div></div>`;
+  });
+  if(xcIsOfficer()){
+    h+=`<div class="xc-new"><b>다른 클럽과 붙어보세요</b>
+      <p>코트를 잡아 올리면 상대 클럽이 자리를 채워요. 대진은 인원이 차면 앱이 짜드려요.</p>
+      <button class="btn sm" onclick="openXcNew()">교류전 열기</button></div>`;
+  } else if(!XC_LIST.length){
+    h+=`<div class="xc-new"><b>다른 클럽과 붙어보세요</b>
+      <p>교류전은 임원이 엽니다. 하고 싶은 교류전이 있으면 임원에게 제안해 보세요.</p></div>`;
+  }
+  return h;
+}
+/* 열기 — 코트 수와 시간을 넣으면 규모는 앱이 계산한다 */
+function openXcNew(){
+  const c=AC()||{};
+  xcSheet(`<div class="sh-top"><h3>교류전 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">코트를 잡아두면 나머지는 앱이 채워요. <b>인원과 회차는 코트 수로 정해집니다.</b></div>
+    <div class="fld"><label>날짜</label><input id="xcDate" type="date"></div>
+    <div class="fld"><label>장소</label><input id="xcPlace" placeholder="용인 테니스파크" value="${esc(c.court||'')}"></div>
+    <div class="ymrow">
+      <div class="fld"><label>코트 수</label>
+        <select id="xcCourts" onchange="xcCalc()">${[2,3,4,5,6,7,8].map(n=>`<option value="${n}"${n===6?' selected':''}>${n}면</option>`).join('')}</select></div>
+      <div class="fld"><label>대관 시간</label>
+        <select id="xcMins" onchange="xcCalc()"><option value="120">2시간</option><option value="180" selected>3시간</option></select></div>
+    </div>
+    <div id="xcPlan" class="gnote" style="margin-top:2px"></div>
+    <div class="fld"><label>종목 구성</label>
+      <select id="xcMix" onchange="xcCalc()">
+        <option value="md2,mx4">남복 2조 · 혼복 4조</option>
+        <option value="md4,wd2">남복 4조 · 여복 2조</option>
+        <option value="wd6">여복 6조 (여성 클럽)</option>
+        <option value="md3,mx2,wd1">남복 3 · 혼복 2 · 여복 1</option>
+      </select></div>
+    <div class="fld"><label>모집 마감 · 구장에서 그냥 물릴 수 있는 마지막 날</label>
+      <input id="xcClose" type="date"></div>
+    <div class="fld"><label>코트비 (전체)</label><input id="xcFee" type="number" placeholder="120000"></div>
+    <button class="btn" onclick="xcCreate()">열기</button>`);
+  setTimeout(xcCalc, 40);
+}
+/* 코트 수 × 시간 → 인원·회차. 주최자가 산수를 하지 않아도 된다 */
+function xcCalc(){
+  const c=+(document.getElementById('xcCourts')||{}).value||0;
+  const m=+(document.getElementById('xcMins')||{}).value||0;
+  const R=Math.floor(m/30), per=c*2, games=R? Math.floor(c*R*4/(per*2)) : 0;
+  const mixCode=(document.getElementById('xcMix')||{}).value||'md2,mx4';
+  const mix={md:0,mx:0,wd:0};
+  mixCode.split(',').forEach(t=>{ const g=t.match(/^(md|mx|wd)(\d+)$/); if(g) mix[g[1]]=+g[2]; });
+  const men=mix.md*2+mix.mx, women=mix.wd*2+mix.mx;
+  const el=document.getElementById('xcPlan'); if(!el) return;
+  const ok=(men+women)===per;
+  el.innerHTML=`<div class="gt">클럽마다 ${per}명 · 1인 ${games}경기</div>
+    <div class="gsub">${R}회차 · 경기 25분 + 코트 바꾸기 5분.
+      ${ok?`남 ${men}명 · 여 ${women}명이 필요해요.`
+          :`<b style="color:var(--coral-d)">이 종목 구성은 ${men+women}명짜리예요 · ${per}명에 맞는 걸 골라주세요</b>`}</div>`;
+}
+async function xcCreate(){
+  const cid=xcMyClubId(); if(!cid) return toast('클럽이 필요해요');
+  const v=id=>(document.getElementById(id)||{}).value||'';
+  const date=v('xcDate'); if(!date) return toast('날짜를 골라주세요');
+  const close=v('xcClose');
+  try{
+    await api(`/clubs/${cid}/exchange`,{method:'POST',body:JSON.stringify({
+      title:`교류전 ${date.slice(5).replace('-','/')}`, date, place:v('xcPlace'),
+      courts:+v('xcCourts'), mins:+v('xcMins'), squad_mix:v('xcMix'),
+      close_at: close? Date.parse(close+'T23:59:59+09:00') : null,
+      court_fee:+v('xcFee')||0 })});
+    closeOv(); toast('교류전을 열었어요 · 상대 클럽에 링크를 보내세요');
+    XC_LIST=null; xcLoad();
+  }catch(e){ toast(e && e.message ? e.message : '열지 못했어요'); }
+}
+/* 상세 — 참가 클럽 현황과 우리 인원 */
+async function openXc(id){
+  let x; try{ x=await api(`/exchange/${id}`); }catch(e){ return toast('불러오지 못했어요'); }
+  const cid=xcMyClubId();
+  const mine=(x.clubs||[]).find(c=>c.club_id===cid);
+  const full=(x.clubs||[]).length>=(x.club_slots||2);
+  xcSheet(`<div class="sh-top"><h3>교류전</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="sd">${esc(x.date||'')} · ${esc(x.place||'')} · 코트 ${x.courts}면</div>
+    <div class="gnote" style="margin-top:0">
+      <div class="gt">클럽마다 ${x.per_club}명 · 남 ${x.need.men} · 여 ${x.need.women}</div>
+      <div class="gsub">${x.court_fee?`코트비 ${won0(x.court_fee)} · 두 클럽이 ${won0(Math.round(x.court_fee/2))}씩. 주고받는 건 클럽끼리 하세요.`:''}</div>
+    </div>
+    ${(x.clubs||[]).map(c=>`<div class="clrow" style="cursor:default">
+      <div style="flex:1;min-width:0"><div class="cln">${esc(c.name)}${c.host?' · 주최':''}</div>
+        <div class="clr">${c.count} / ${x.per_club}명 ${c.ready?'· 다 모였어요':''}</div></div>
+      <span style="font-size:11px;font-weight:600;color:${c.ready?'#2f7d53':'var(--coral-d)'}">${c.ready?'준비됨':'모으는 중'}</span></div>`).join('')}
+    ${!full && !mine ? (xcIsOfficer()
+        ? `<button class="btn" onclick="xcJoin(${x.id})">우리 클럽으로 참가 신청</button>
+           <div class="sd" style="text-align:center;margin-top:9px">임원만 신청할 수 있어요</div>`
+        : `<button class="btn" onclick="xcSuggest(${x.id})">임원에게 제안하기</button>`) : ''}
+    ${mine ? `<div class="sd" style="margin-top:12px">회원들이 <b>참석</b>을 누르면 인원이 채워져요.
+       양쪽이 다 차면 대진이 나옵니다.</div>
+       ${xcIsOfficer() && (x.clubs||[]).every(c=>c.ready) && x.status!=='confirmed'
+         ? `<button class="btn" onclick="xcDrawNow(${x.id})">대진 만들기</button>`:''}` : ''}`);
+}
+async function xcJoin(id){
+  try{ await api(`/exchange/${id}/join`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
+    closeOv(); toast('참가 신청했어요 · 회원들에게 참석을 받아주세요'); XC_LIST=null; xcLoad();
+  }catch(e){ toast(e && e.message ? e.message : '신청하지 못했어요'); }
+}
+async function xcSuggest(id){
+  try{ await api(`/exchange/${id}/suggest`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
+    closeOv(); toast('임원에게 전달했어요');
+  }catch(e){ toast('전달하지 못했어요'); }
+}
+async function xcDrawNow(id){
+  try{ const r=await api(`/exchange/${id}/draw`,{method:'POST',body:'{}'});
+    closeOv(); toast(`대진이 나왔어요 · ${(r.games||[]).length}경기`); XC_LIST=null; xcLoad();
+  }catch(e){ toast(e && e.message ? e.message : '아직 대진을 만들 수 없어요'); }
+}
 function myClubsBlock(){
   const mine=(state.myClubs||[]).filter(n=>{
     const c=(state.clubs||[]).find(x=>x.n===n);
@@ -20848,6 +21031,15 @@ function omGuideCard(){
       <span class="omgc-ch">안 모이면 전액 환불</span></div>
   </div>`;
 }
+/* 푸시를 눌렀을 때 — 알림함과 같은 처리를 쓴다.
+   두 경로를 따로 두면 한쪽만 고치고 다른 쪽은 잊게 된다. */
+function pushLand(raw){
+  const link=String(raw||'').trim();
+  const v=link.split(':')[0];
+  const OK=['home','match','club','league','chat','sched','me','bracket','lounge','duel','book','feed','post'];
+  if(!OK.includes(v)) return go('home');
+  try{ notifGo(link); }catch(e){ go('home'); }
+}
 /* 오픈 전인가 — 구장 계약이 끝나 첫 코트가 올라오면 false 로 바꾼다.
    그때부터는 평소 빈 화면(주간 스트립)이 나온다. */
 const OM_PRELAUNCH=true;
@@ -28037,13 +28229,12 @@ async function initNativePush(){
          예전에는 무엇을 눌러도 홈으로 갔다 — 가입 신청 알림을 눌러도 홈이었다.
          서버가 페이로드에 url 을 실어 보낸다(없으면 홈). */
       P.addListener('pushNotificationActionPerformed', (a)=>{
-        let v='home';
+        let raw='home';
         try{
           const d=(a&&a.notification&&a.notification.data)||{};
-          v=String(d.url||d.link||'').trim().replace(/^\/+/,'')||'home';
+          raw=String(d.url||d.link||'').trim().replace(/^\/+/,'')||'home';
         }catch(e){}
-        const OK=['home','match','club','league','chat','sched','me','bracket','lounge','duel','book'];
-        go(OK.includes(v)?v:'home');
+        pushLand(raw);
       });
     }
     await P.register();
