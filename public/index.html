@@ -2306,6 +2306,8 @@
   /* ── 교류전 ──
      클럽 탭, 내 클럽 바로 아래. 열고 신청하는 사람은 임원이고 임원이 사는 곳이 여기다. */
   .xc-h{ display:flex;align-items:baseline;justify-content:space-between;margin:20px 2px 10px }
+  /* 교류전 블록과 <클럽 모집> 사이 — 붙어 있으면 같은 묶음처럼 보인다 */
+  .xc-wrap{ padding-bottom:26px;margin-bottom:6px;border-bottom:1px solid var(--line) }
   .xc-h b{ font-size:15px;font-weight:700;letter-spacing:-.03em }
   .xc-h span{ font-size:11px;color:var(--lgray) }
   .xc-card{ border:1px solid var(--line);border-radius:16px;padding:14px 15px;margin-bottom:9px;
@@ -2315,8 +2317,8 @@
     border-radius:6px;padding:3px 8px }
   .xc-k.wait{ color:#6b6357;background:var(--felt) }
   .xc-d{ font-size:10.5px;color:var(--lgray) }
-  .xc-t{ font-size:13.5px;font-weight:700;letter-spacing:-.03em;margin-top:9px }
-  .xc-s{ font-size:11.5px;color:var(--gray);font-weight:400;margin-top:3px;line-height:1.6 }
+  .xc-t{ font-size:var(--x2);font-weight:700;letter-spacing:-.03em;line-height:1.272;margin-top:10px }
+  .xc-s{ font-size:var(--x1);color:var(--gray);font-weight:400;margin-top:6px;line-height:var(--xlh) }
   .xc-vs{ display:flex;align-items:center;gap:7px;margin-top:11px;flex-wrap:wrap }
   .xc-vs em{ font-style:normal;font-size:11px;font-weight:600;background:var(--felt);
     color:#6b6357;border-radius:7px;padding:4px 9px }
@@ -2325,13 +2327,44 @@
   .xc-new{ border:1px solid var(--line);border-radius:16px;padding:14px 15px;background:#fff }
   .xc-new b{ font-size:13px;font-weight:600 }
   .xc-new p{ font-size:11.5px;color:var(--gray);font-weight:400;margin:5px 0 11px;line-height:1.6 }
+  /* ── 교류전 활자 눈금 ──
+     크기는 황금비의 제곱근(1.272)으로 등비수열을 만든다. 1.618 을 그대로 쓰면
+     단계가 너무 벌어져 한 화면에 못 담긴다.
+       라벨 10 · 본문 12.7 · 소제목 16.2 · 제목 20.5 · 숫자 26.1
+     제목은 본문의 정확히 1.618배다.
+     행간은 본문에 1.618 을 그대로 쓰고(12.7 × 1.618 = 20.5), 큰 글자일수록 좁힌다.
+     굵기에는 황금비에 대응하는 개념이 없다 — 두 단계(400·700)만 쓰고
+     누를 수 있는 것에만 600 을 준다. 여백도 같은 수열(6 · 8 · 10 · 13 · 21)을 쓴다. */
+  .xf, .xg, .xr, .xc-card, .xf-l, .xf-h, .xf-c, .xf-plan, .xf-mix, .xf-note{
+    --x0:10px; --x1:12.7px; --x2:16.2px; --x3:20.5px; --x4:26.1px; --xlh:1.618 }
+  .xf-l{ font-size:var(--x0);font-weight:700;color:var(--lgray);letter-spacing:.09em;
+    line-height:1.4;margin:21px 2px 8px }
+  .xf-h{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:var(--xlh);margin:-4px 2px 8px }
+  .xf-in{ font-size:var(--x1);line-height:var(--xlh) }
+  .xf-c{ display:flex;gap:6px }
+  .xf-c b{ flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;padding:10px 0;
+    font-size:var(--x1);font-weight:600;line-height:1.272;cursor:pointer;transition:.12s }
+  .xf-c b.on{ background:var(--coral);color:#fff;border-color:var(--coral);font-weight:700 }
+  .xf-plan{ background:#fffaf6;border:1px solid #f3d9c5;border-radius:13px;padding:13px 14px;margin-top:13px }
+  .xf-plan .big{ font-size:var(--x2);font-weight:700;letter-spacing:-.035em;
+    line-height:1.272;color:var(--coral-d) }
+  .xf-plan .sm{ font-size:var(--x1);font-weight:400;color:#57503f;margin-top:6px;line-height:var(--xlh) }
+  .xf-mix{ border:1px solid var(--line);border-radius:13px;padding:13px 14px;margin-top:13px }
+  .xf-mix .t{ font-size:var(--x1);font-weight:700;line-height:1.4 }
+  .xf-mix .r{ display:flex;gap:5px;flex-wrap:wrap;margin-top:10px }
+  .xf-mix .r span{ font-size:var(--x0);font-weight:700;border-radius:6px;padding:4px 9px;line-height:1.4 }
+  .xf-mix .s{ font-size:var(--x1);font-weight:400;color:#57503f;margin-top:10px;line-height:var(--xlh) }
+  .xf-note{ background:var(--cream2);border-radius:11px;padding:12px 13px;margin-top:10px;
+    font-size:var(--x1);font-weight:400;color:#57503f;line-height:var(--xlh) }
+  .xf-warn{ background:#fceee4;border-radius:11px;padding:12px 13px;margin-top:10px;
+    font-size:var(--x1);font-weight:400;color:#c2410c;line-height:var(--xlh) }
   /* 교류전 대진표 — 종목 색은 앱이 이미 쓰는 값(남복 파랑·혼복 보라·여복 분홍) 그대로 */
   .xg-hd{ display:flex;align-items:baseline;justify-content:space-between;
     border-bottom:1px solid var(--ink);padding-bottom:6px;margin:18px 2px 2px }
   .xg-hd b{ font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--lgray) }
   .xg-hd span{ font-size:11px;color:var(--lgray) }
-  .xg{ display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid #f0efec;
-    font-size:11.5px;cursor:pointer }
+  .xg{ display:flex;align-items:center;gap:8px;padding:10px 2px;border-bottom:1px solid #f0efec;
+    font-size:var(--x1);line-height:1.4;cursor:pointer }
   .xg .c{ flex:none;width:13px;color:var(--lgray);font-variant-numeric:tabular-nums }
   .xg .k{ flex:none;font-size:9px;font-weight:700;border-radius:4px;padding:2px 5px }
   .xg .t{ flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
@@ -2342,9 +2375,9 @@
   .xr{ display:flex;align-items:stretch;gap:9px;margin:4px 0 14px }
   .xr > div{ flex:1;border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:center }
   .xr > div.win{ border-color:#f3d9c5;background:#fffaf6 }
-  .xr .nm{ font-size:11.5px;color:var(--gray);font-weight:500 }
-  .xr .pt{ font-size:26px;font-weight:700;letter-spacing:-.04em;margin-top:4px }
-  .xr .wd{ font-size:10.5px;color:var(--lgray);margin-top:3px }
+  .xr .nm{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:1.4 }
+  .xr .pt{ font-size:var(--x4);font-weight:700;letter-spacing:-.04em;line-height:1.1;margin-top:6px }
+  .xr .wd{ font-size:var(--x0);color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.4 }
   /* ── 오픈 전 화면 ──
      구장 계약이 아직이라 코트가 하나도 없다. 이때는 주간 스트립(0이 일곱 개)을
      보여주면 고장 난 것처럼 보인다. 대신 빈 코트 사진 한 장과 대기 명단을 둔다.
@@ -3081,7 +3114,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826g';
+const BUILD='v1.1.2-0826i';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10000,8 +10033,8 @@ function xcSection(){
   const cid=xcMyClubId();
   if(!SERVER_OK || !cid) return '';
   if(XC_LIST===null){ xcLoad(); return ''; }          // 처음 한 번만 당겨온다
-  let h=`<div class="xc-h"><b>교류전</b><span>${
-    XC_LIST.length?`${XC_LIST.length}건`:'아직 없어요'}</span></div>`;
+  let h=`<div class="xc-h"><b>교류전</b>${
+    XC_LIST.length?`<span>${XC_LIST.length}건</span>`:''}</div>`;
   XC_LIST.slice(0,3).forEach(x=>{
     const full=(x.clubs||[]).length>=(x.club_slots||2);
     const mine=(x.clubs||[]).find(c=>c.club_id===cid);
@@ -10024,65 +10057,118 @@ function xcSection(){
     h+=`<div class="xc-new"><b>다른 클럽과 붙어보세요</b>
       <p>교류전은 임원이 엽니다. 하고 싶은 교류전이 있으면 임원에게 제안해 보세요.</p></div>`;
   }
-  return h;
+  return `<div class="xc-wrap">${h}</div>`;
 }
-/* 열기 — 코트 수와 시간을 넣으면 규모는 앱이 계산한다 */
+/* 열기 — 고를 수 없는 걸 고르게 하지 않는다.
+   코트와 시간이 인원을 정하고, 여성 인원이 종목 구성을 정한다.
+   혼복 = min(남,여) 로 잡으면 구성이 하나로 떨어져 잘못 고를 수가 없다. */
+const XCF={ date:'', place:'', courts:6, mins:180, women:4, close:2, fee:0 };
+function xcPick(k,v){ XCF[k]=v; xcForm(); }
+function xcMixOf(per, women){
+  const W=Math.max(0,Math.min(per, women)), M=per-W;
+  const mx=Math.min(M,W), md=(M-mx)/2, wd=(W-mx)/2;
+  return { md, mx, wd, men:M, women:W };
+}
+function xcMixCode(m){ return [m.md?`md${m.md}`:'', m.mx?`mx${m.mx}`:'', m.wd?`wd${m.wd}`:'']
+  .filter(Boolean).join(','); }
 function openXcNew(){
   const c=AC()||{};
-  xcSheet(`<div class="sh-top"><h3>교류전 열기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">코트를 잡아두면 나머지는 앱이 채워요. <b>인원과 회차는 코트 수로 정해집니다.</b></div>
-    <div class="fld"><label>날짜</label><input id="xcDate" type="date"></div>
-    <div class="fld"><label>장소</label><input id="xcPlace" placeholder="용인 테니스파크" value="${esc(c.court||'')}"></div>
-    <div class="ymrow">
-      <div class="fld"><label>코트 수</label>
-        <select id="xcCourts" onchange="xcCalc()">${[2,3,4,5,6,7,8].map(n=>`<option value="${n}"${n===6?' selected':''}>${n}면</option>`).join('')}</select></div>
-      <div class="fld"><label>대관 시간</label>
-        <select id="xcMins" onchange="xcCalc()"><option value="120">2시간</option><option value="180" selected>3시간</option></select></div>
+  XCF.date=''; XCF.place=c.court||''; XCF.courts=6; XCF.mins=180; XCF.women=4; XCF.close=2; XCF.fee=0;
+  xcForm();
+}
+function xcForm(){
+  const per=XCF.courts*2, R=Math.floor(XCF.mins/30), games=R?Math.floor(XCF.courts*R*4/(per*2)):0;
+  if(XCF.women>per) XCF.women=per;
+  const mix=xcMixOf(per, XCF.women);
+  const K={md:['#eaf2ff','#2b62c9','남복'],mx:['#f0ecfd','#6a4cc4','혼복'],wd:['#fdeef4','#c94378','여복']};
+  const chips=Object.keys(K).filter(k=>mix[k]).map(k=>
+    `<span style="background:${K[k][0]};color:${K[k][1]}">${K[k][2]} ${mix[k]}조</span>`).join('');
+  const wOpts=[]; for(let w=0; w<=per; w+=2) wOpts.push(w);
+  const closeTxt=()=>{
+    if(!XCF.date || XCF.close==null) return '';
+    const d=new Date(XCF.date+'T00:00:00+09:00'); d.setDate(d.getDate()-XCF.close);
+    return `${d.getMonth()+1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) 밤 12시`;
+  };
+  xcSheet(`<div class="xf"><div class="sh-top">
+      <h3 style="font-size:20.5px;letter-spacing:-.045em;line-height:1.272">교류전 열기</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="font-size:12.7px;color:var(--gray);font-weight:400;line-height:1.618;margin:6px 2px 0">
+      코트만 잡아두면 나머지는 앱이 채워요.</div>
+
+    <div class="xf-l">언제 · 어디서</div>
+    <input class="xf-in" type="date" value="${XCF.date}" onchange="XCF.date=this.value;xcForm()"
+      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+        font-size:12.5px;font-weight:600;font-family:inherit">
+    <input placeholder="용인 테니스파크" value="${esc(XCF.place)}" oninput="XCF.place=this.value"
+      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+        font-size:12.5px;font-family:inherit;margin-top:6px">
+
+    <div class="xf-l">코트</div>
+    <div class="xf-c">${[2,3,4,5,6,7,8].map(n=>
+      `<b class="${XCF.courts===n?'on':''}" onclick="xcPick('courts',${n})">${n}</b>`).join('')}</div>
+
+    <div class="xf-l">대관 시간</div>
+    <div class="xf-c">${[[120,'2시간'],[180,'3시간']].map(([v,t])=>
+      `<b class="${XCF.mins===v?'on':''}" onclick="xcPick('mins',${v})">${t}</b>`).join('')}</div>
+
+    <div class="xf-plan">
+      <div class="big">클럽마다 ${per}명 · 1인 ${games}경기</div>
+      <div class="sm">${R}회차 · 경기 25분 + 코트 바꾸기 5분<br>쉬는 사람 없이 계속 돌아가요</div>
     </div>
-    <div id="xcPlan" class="gnote" style="margin-top:2px"></div>
-    <div class="fld"><label>종목 구성</label>
-      <select id="xcMix" onchange="xcCalc()">
-        <option value="md2,mx4">남복 2조 · 혼복 4조</option>
-        <option value="md4,wd2">남복 4조 · 여복 2조</option>
-        <option value="wd6">여복 6조 (여성 클럽)</option>
-        <option value="md3,mx2,wd1">남복 3 · 혼복 2 · 여복 1</option>
-      </select></div>
-    <div class="fld"><label>모집 마감 · 구장에서 그냥 물릴 수 있는 마지막 날</label>
-      <input id="xcClose" type="date"></div>
-    <div class="fld"><label>코트비 (전체)</label><input id="xcFee" type="number" placeholder="120000"></div>
-    <button class="btn" onclick="xcCreate()">열기</button>`);
-  setTimeout(xcCalc, 40);
+
+    <div class="xf-l">우리 클럽에서 여성이 몇 분 나오나요</div>
+    <div class="xf-c" style="flex-wrap:wrap">${wOpts.map(w=>
+      `<b class="${XCF.women===w?'on':''}" style="min-width:32px;flex:0 0 auto;padding:9px 11px"
+        onclick="xcPick('women',${w})">${w}</b>`).join('')}</div>
+    <div class="xf-mix">
+      <div class="t">이렇게 나뉘어요</div>
+      <div class="r">${chips||'<span style="background:var(--felt);color:#6b6357">조를 만들 수 없어요</span>'}</div>
+      <div class="s">남 ${mix.men}명 · 여 ${mix.women}명 · ${mix.md+mix.mx+mix.wd}개 조${
+        mix.mx?`<br>여성 ${mix.mx}분이 ${R}회차 내내 코트에 서요`:''}</div>
+    </div>
+    <div class="xf-note">두 명씩 조를 짜기 때문에 <b>짝수로만</b> 고를 수 있어요.
+      여성이 ${XCF.women+1}분 나오시면 한 분은 게스트로 한 분 더 모시거나,
+      그날은 ${XCF.women}분으로 맞춰주세요.</div>
+
+    <div class="xf-l">모집 마감</div>
+    <div class="xf-h">구장에서 그냥 물릴 수 있는 마지막 날이요</div>
+    <div class="xf-c">${[[3,'3일 전'],[2,'2일 전'],[0,'전날']].map(([v,t])=>
+      `<b class="${XCF.close===v?'on':''}" onclick="xcPick('close',${v})">${t}</b>`).join('')}</div>
+    ${closeTxt()?`<div class="xf-note"><b>${closeTxt()}</b>까지 ${per*2}명이 안 모이면 취소돼요.
+      그날 아침에 알려드릴게요 — <b>구장 취소는 직접</b> 해주세요.</div>`:''}
+
+    <div class="xf-l">코트비 (전체)</div>
+    <input type="number" placeholder="120000" value="${XCF.fee||''}" oninput="XCF.fee=+this.value||0;xcFee()"
+      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+        font-size:12.5px;font-family:inherit">
+    <div id="xcFeeTxt" class="xf-h" style="margin:6px 2px 0">${
+      XCF.fee?`두 클럽이 ${won0(Math.round(XCF.fee/2))}씩 · 주고받는 건 클럽끼리`:'적어두면 나눠서 보여드려요'}</div>
+
+    <button class="btn" style="margin-top:21px" onclick="xcCreate()">열기</button></div>`);
 }
-/* 코트 수 × 시간 → 인원·회차. 주최자가 산수를 하지 않아도 된다 */
-function xcCalc(){
-  const c=+(document.getElementById('xcCourts')||{}).value||0;
-  const m=+(document.getElementById('xcMins')||{}).value||0;
-  const R=Math.floor(m/30), per=c*2, games=R? Math.floor(c*R*4/(per*2)) : 0;
-  const mixCode=(document.getElementById('xcMix')||{}).value||'md2,mx4';
-  const mix={md:0,mx:0,wd:0};
-  mixCode.split(',').forEach(t=>{ const g=t.match(/^(md|mx|wd)(\d+)$/); if(g) mix[g[1]]=+g[2]; });
-  const men=mix.md*2+mix.mx, women=mix.wd*2+mix.mx;
-  const el=document.getElementById('xcPlan'); if(!el) return;
-  const ok=(men+women)===per;
-  el.innerHTML=`<div class="gt">클럽마다 ${per}명 · 1인 ${games}경기</div>
-    <div class="gsub">${R}회차 · 경기 25분 + 코트 바꾸기 5분.
-      ${ok?`남 ${men}명 · 여 ${women}명이 필요해요.`
-          :`<b style="color:var(--coral-d)">이 종목 구성은 ${men+women}명짜리예요 · ${per}명에 맞는 걸 골라주세요</b>`}</div>`;
-}
+function xcFee(){ const el=document.getElementById('xcFeeTxt'); if(!el) return;
+  el.textContent = XCF.fee ? `두 클럽이 ${won0(Math.round(XCF.fee/2))}씩 · 주고받는 건 클럽끼리`
+                           : '적어두면 나눠서 보여드려요'; }
 async function xcCreate(){
   const cid=xcMyClubId(); if(!cid) return toast('클럽이 필요해요');
-  const v=id=>(document.getElementById(id)||{}).value||'';
-  const date=v('xcDate'); if(!date) return toast('날짜를 골라주세요');
-  const close=v('xcClose');
+  if(!XCF.date) return toast('날짜를 골라주세요');
+  const per=XCF.courts*2, mix=xcMixOf(per, XCF.women);
+  const d=new Date(XCF.date+'T23:59:59+09:00'); d.setDate(d.getDate()-XCF.close);
   try{
     await api(`/clubs/${cid}/exchange`,{method:'POST',body:JSON.stringify({
-      title:`교류전 ${date.slice(5).replace('-','/')}`, date, place:v('xcPlace'),
-      courts:+v('xcCourts'), mins:+v('xcMins'), squad_mix:v('xcMix'),
-      close_at: close? Date.parse(close+'T23:59:59+09:00') : null,
-      court_fee:+v('xcFee')||0 })});
+      title:`교류전 ${XCF.date.slice(5).replace('-','/')}`, date:XCF.date, place:XCF.place,
+      courts:XCF.courts, mins:XCF.mins, squad_mix:xcMixCode(mix),
+      close_at:d.getTime(), court_fee:XCF.fee||0 })});
     closeOv(); toast('교류전을 열었어요 · 상대 클럽에 링크를 보내세요');
     XC_LIST=null; xcLoad();
-  }catch(e){ toast(e && e.message ? e.message : '열지 못했어요'); }
+  }catch(e){ toast(xcErr(e,'열지 못했어요')); }
+}
+/* 서버 오류를 화면에 그대로 뱉지 않는다 — 예전에는 JSON 이 통째로 토스트에 떴다 */
+function xcErr(e, fallback){
+  let m=String((e&&e.message)||'');
+  try{ const j=JSON.parse(m); if(j&&j.message) return j.message; }catch(_){}
+  if(/^\s*\{/.test(m)) return fallback;
+  return m||fallback;
 }
 /* 상세 — 참가 클럽 현황과 우리 인원 */
 async function openXc(id){
@@ -10114,7 +10200,7 @@ async function openXc(id){
 async function xcJoin(id){
   try{ await api(`/exchange/${id}/join`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
     closeOv(); toast('참가 신청했어요 · 회원들에게 참석을 받아주세요'); XC_LIST=null; xcLoad();
-  }catch(e){ toast(e && e.message ? e.message : '신청하지 못했어요'); }
+  }catch(e){ toast(xcErr(e,'신청하지 못했어요')); }
 }
 async function xcSuggest(id){
   try{ await api(`/exchange/${id}/suggest`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
@@ -10191,13 +10277,13 @@ function xcScore(eid, gid){
   const sb=prompt('상대 점수'); if(sb===null) return;
   api(`/exchange/${eid}/score`,{method:'POST',body:JSON.stringify({game_id:gid, sa:+sa, sb:+sb})})
     .then(()=>{ toast('넣었어요'); openXcGames(eid); })
-    .catch(e=>toast(e && e.message ? e.message : '넣지 못했어요'));
+    .catch(e=>toast(xcErr(e,'넣지 못했어요')));
 }
 async function xcDrawNow(id){
   try{ const r=await api(`/exchange/${id}/draw`,{method:'POST',body:'{}'});
     toast(`대진이 나왔어요 · ${(r.games||[]).length}경기`); XC_LIST=null; xcLoad();
     openXcGames(id);
-  }catch(e){ toast(e && e.message ? e.message : '아직 대진을 만들 수 없어요'); }
+  }catch(e){ toast(xcErr(e,'아직 대진을 만들 수 없어요')); }
 }
 function myClubsBlock(){
   const mine=(state.myClubs||[]).filter(n=>{
