@@ -2355,8 +2355,9 @@
      행간은 본문에 1.618 을 그대로 쓰고(12.7 × 1.618 = 20.5), 큰 글자일수록 좁힌다.
      굵기에는 황금비에 대응하는 개념이 없다 — 두 단계(400·700)만 쓰고
      누를 수 있는 것에만 600 을 준다. 여백도 같은 수열(6 · 8 · 10 · 13 · 21)을 쓴다. */
-  .xf, .xg, .xr, .xc-card, .xf-l, .xf-h, .xf-c, .xf-plan, .xf-mix, .xf-note{
-    --x0:10px; --x1:12.7px; --x2:16.2px; --x3:20.5px; --x4:26.1px; --xlh:1.618 }
+  /* :root 에 둔다 — 선택자 목록에 없는 곳에서 var 를 쓰면 값이 없어
+     글자 크기가 통째로 커진다(지난 만남 문단이 그랬다) */
+  :root{ --x0:10px; --x1:12.7px; --x2:16.2px; --x3:20.5px; --x4:26.1px; --xlh:1.618 }
   .xf-l{ font-size:var(--x0);font-weight:700;color:var(--lgray);letter-spacing:.09em;
     line-height:1.4;margin:21px 2px 8px }
   .xf-h{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:var(--xlh);margin:-4px 2px 8px }
@@ -2427,7 +2428,8 @@
   /* 진행 — 코랄과 겹치지 않게 잉크로 */
   .xd-bar{ height:3px;border-radius:2px;background:var(--felt);overflow:hidden;margin-top:8px }
   .xd-bar em{ display:block;height:100%;background:var(--ink) }
-  .xd-cap{ display:flex;align-items:center;justify-content:space-between;margin-top:21px }
+  .xd-cap{ display:flex;align-items:center;justify-content:space-between;
+    margin:21px 2px 8px }
   .xd-cap span:first-child{ font-size:10px;font-weight:700;color:var(--lgray);letter-spacing:.09em }
   .xd-cap span:last-child{ font-size:12.7px;color:var(--gray) }
   .xd-cap b{ color:var(--ink);font-weight:700 }
@@ -3201,7 +3203,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826s';
+const BUILD='v1.1.2-0826t';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10443,18 +10445,16 @@ async function openXc(id){
   if(mine){
     const st=x.my_status||null;
     const ppl=(mine.people||(mine.names||[]).map(n=>({name:n})));
-    h+=`<div class="xf-l" style="display:flex;align-items:center;justify-content:space-between">
-        <span>참석</span>
-        <span style="font-size:12.7px;letter-spacing:0"><b style="color:var(--coral)">${mine.count}</b><span
-          style="color:var(--lgray);font-weight:400"> / ${x.per_club}명</span></span></div>
-      <div class="xf-c">${[['going','참석'],['absent','불참'],['undecided','미정']].map(([v,t])=>
+    h+=`<div class="xd-cap"><span>참석</span>
+        <span><b>${mine.count}</b> / ${x.per_club}명</span></div>
+      <div class="xf-c ink">${[['going','참석'],['absent','불참'],['undecided','미정']].map(([v,t])=>
         `<b class="${st===v?'on':''}" onclick="xcRsvp(${x.id},'${v}')">${t}</b>`).join('')}</div>
-      <div class="xd-bar" style="margin-top:13px"><i><em style="width:${pct}%"></em></i></div>
-      <div class="xd-faces">${ppl.slice(0,12).map(p=>
-          `<div class="xd-face" onclick="openMemberCard('${esc(p.name)}')">${
-            evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 38)}<em>${esc(p.name)}</em></div>`).join('')}${
-        (!mine.ready && xcIsOfficer())
-          ? `<div class="xd-face add" onclick="go('sched')"><div>＋</div><em>부르기</em></div>`:''}</div>
+      <div class="xd-bar"><em style="width:${pct}%"></em></div>
+      ${ppl.length?`<div class="xd-who">${ppl.slice(0,8).map(p=>
+          `<div onclick="openMemberCard('${esc(p.name)}')">${
+            evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 32)}
+            <span class="nm">${esc(p.name)}</span></div>`).join('')}${
+        (mine.count||0)>8?`<div><span class="nm" style="color:var(--lgray)">외 ${mine.count-8}명</span></div>`:''}</div>`:''}
       ${!mine.ready?`<div class="xf-h" style="margin:13px 2px 0">${(()=>{
         const nm=Math.max(0,(x.need?x.need.men:0)-(mine.men||0));
         const nf=Math.max(0,(x.need?x.need.women:0)-(mine.women||0));
