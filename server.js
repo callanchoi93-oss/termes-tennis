@@ -8555,6 +8555,7 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN match_status TEXT"); } catch (
 try { db.exec("ALTER TABLE club_events ADD COLUMN close_at BIGINT"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN court_fee INTEGER"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}        // 대관 시간(분)
+try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch (e) {}  // 회식비(전체)
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8625,7 +8626,11 @@ function xcView(ev, uid) {
     id: ev.id, kind: 'exchange', title: ev.title, date: ev.date, place: ev.place,
     courts: ev.courts, per_club: ev.per_club, club_slots: ev.club_slots || 2,
     squad_mix: ev.squad_mix, status: ev.match_status, close_at: ev.close_at,
-    court_fee: ev.court_fee || 0, need: mix,
+    court_fee: ev.court_fee || 0, dinner_fee: ev.dinner_fee || 0, need: mix,
+    /* 1인 참가비 = (코트비 ÷ 두 클럽 + 회식비 ÷ 두 클럽) ÷ 클럽당 인원.
+       회원이 알아야 하는 건 총액이 아니라 자기가 내는 돈이다. */
+    per_head: (ev.per_club ? Math.ceil(((ev.court_fee || 0) / 2 + (ev.dinner_fee || 0) / 2)
+                / ev.per_club / 100) * 100 : 0),
     clubs: ent.map(e => {
       const r = xcRoster(ev.id, e.club_id);          // 참석을 누른 사람들
       return {
@@ -8638,6 +8643,14 @@ function xcView(ev, uid) {
     }),
     my_clubs: (db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
       AND role IN ('member','officer','owner')`).all(uid) || []).map(r => r.club_id),
+    /* 참석 버튼을 교류전 화면에서 바로 누를 수 있게 — 모임 정보로 한 번 더
+       들어가게 하면 대부분 거기까지 가지 않는다 */
+    my_status: (() => {
+      const r = db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?')
+        .get(ev.id, uid);
+      return r ? (r.status || 'going') : null;
+    })(),
+    place: ev.place || '',
   };
 }
 
@@ -8655,12 +8668,12 @@ app.post('/clubs/:id/exchange', auth, (req, res) => {
       message: `${plan.per_club}명에 맞는 종목 구성을 골라주세요` });
   const r = db.prepare(`INSERT INTO club_events
       (club_id,title,date,tag,place,created_by,created_at,
-       kind,club_slots,per_club,courts,squad_mix,format,match_status,close_at,court_fee)
-      VALUES (?,?,?,?,?,?,?, 'exchange',2,?,?,?, 'single','open',?,?)`)
+       kind,club_slots,per_club,courts,squad_mix,format,match_status,close_at,court_fee,dinner_fee)
+      VALUES (?,?,?,?,?,?,?, 'exchange',2,?,?,?, 'single','open',?,?,?)`)
     .run(cid, String(title || '교류전'), String(date || ''), '교류전',
          String(place || '').trim().slice(0, 60) || null, req.uid, now(),
          plan.per_club, +courts, String(squad_mix || 'md2,mx4'),
-         +close_at || null, +court_fee || 0);
+         +close_at || null, +court_fee || 0, +((req.body||{}).dinner_fee) || 0);
   const eid = rid(r);
   db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
               VALUES (?,?,1,'joined',?)`).run(eid, cid, now());
