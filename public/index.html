@@ -2398,6 +2398,25 @@
   /* :root 에 둔다 — 선택자 목록에 없는 곳에서 var 를 쓰면 값이 없어
      글자 크기가 통째로 커진다(지난 만남 문단이 그랬다) */
   :root{ --x0:10px; --x1:12.7px; --x2:16.2px; --x3:20.5px; --x4:26.1px; --xlh:1.618 }
+  /* 단계 표시 — 클럽 만들기와 같은 방식 */
+  .xf-prog{ height:3px;border-radius:2px;background:var(--felt);overflow:hidden;margin-top:13px }
+  .xf-prog i{ display:block;height:100%;background:var(--coral);transition:width .25s }
+  .xf-step{ font-size:11px;color:var(--lgray);margin-top:8px }
+  .xf-t{ font-size:20.5px;font-weight:700;letter-spacing:-.045em;line-height:1.272;margin-top:13px }
+  .xf-s{ font-size:12.7px;color:var(--gray);font-weight:400;line-height:1.618;margin-top:6px }
+  .xf-nav{ display:flex;gap:8px;margin-top:21px }
+  .xf-back{ flex:none;padding:0 21px;border:1px solid var(--line);border-radius:14px;
+    background:#fff;color:#57503f;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer }
+  /* 날짜 — 입력창 대신 오늘부터 2주치 칩을 가로로 */
+  .xf-days{ display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch }
+  .xf-days::-webkit-scrollbar{ display:none }
+  .xf-days b{ flex:0 0 auto;width:46px;text-align:center;border:1px solid var(--line);
+    border-radius:12px;padding:9px 0;cursor:pointer;transition:.12s }
+  .xf-days b i{ font-style:normal;display:block;font-size:10px;color:var(--lgray) }
+  .xf-days b span{ display:block;font-size:16.2px;font-weight:700;letter-spacing:-.03em;margin-top:3px }
+  .xf-days b.on{ background:var(--coral);border-color:var(--coral) }
+  .xf-days b.on i{ color:rgba(255,255,255,.8) }
+  .xf-days b.on span{ color:#fff }
   .xf-l{ font-size:var(--x0);font-weight:700;color:var(--lgray);letter-spacing:.09em;
     line-height:1.4;margin:21px 2px 8px }
   .xf-h{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:var(--xlh);margin:-4px 2px 8px }
@@ -3249,7 +3268,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826z';
+const BUILD='v1.1.2-0827a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9449,6 +9468,44 @@ async function createClub(){
    가입 없이 판단할 재료(회비·정기모임·분위기)는 보여주고,
    대진표·회비 장부·공지처럼 '들어와야 쓸모 있는 것'은 잠가둔다. */
 let PV = null;
+/* 연령대 — 서버에 age_bands 로 이미 있는데 화면에 안 보였다.
+   클럽 만들기에서 받은 값(20대,30대 …)을 읽기 좋게 다듬는다. */
+const AGE_BANDS=['20대','30대','40대','50대','60대 이상'];
+/* 임원이 직접 고른다 — 회원 생년월일은 받지 않기 때문이다.
+   실력·홈구장·회비와 같은 방식이라 새 개념을 들이지 않는다. */
+function openAgeEdit(){
+  const cur=new Set(String((AC()||{}).age_bands||'').split(',').map(x=>x.trim()).filter(Boolean));
+  window._AGE=cur;
+  drawAgeEdit();
+}
+function drawAgeEdit(){
+  const cur=window._AGE||new Set();
+  document.getElementById('sheet').innerHTML=`<div class="xf">
+    <div class="sh-top"><h3>연령대</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="xf-s">주로 어떤 나이대가 모이는지 골라주세요. 여러 개 고를 수 있어요.</div>
+    <div class="xf-c" style="flex-wrap:wrap;margin-top:16px">${AGE_BANDS.map(a=>
+      `<b class="${cur.has(a)?'on':''}" style="flex:0 0 auto;padding:10px 14px"
+        onclick="ageToggle('${a}')">${a}</b>`).join('')}</div>
+    <div class="xf-note">넷 이상 고르면 <b>다양해요</b>로 보여드려요.</div>
+    <button class="btn" style="margin-top:16px" onclick="ageSave()">저장</button></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+function ageToggle(a){ const s=window._AGE; s.has(a)?s.delete(a):s.add(a); drawAgeEdit(); }
+async function ageSave(){
+  const cid=clubId(); if(!cid) return toast('클럽이 필요해요');
+  const v=AGE_BANDS.filter(a=>window._AGE.has(a)).join(',');
+  try{
+    await api(`/clubs/${cid}`,{method:'PATCH',body:JSON.stringify({age_bands:v})});
+    const c=AC(); if(c) c.age_bands=v;
+    closeOv(); toast('연령대를 저장했어요'); renderClub();
+  }catch(e){ toast('저장하지 못했어요'); }
+}
+function ageBandText(v){
+  const a=String(v||'').split(',').map(x=>x.trim()).filter(Boolean);
+  if(!a.length) return '';
+  if(a.length>=4) return '다양해요';
+  return a.join(' · ');
+}
 async function openClubPreview(n, idHint){
   /* 교류전 상대처럼 아직 우리 목록에 없는 클럽도 열 수 있어야 한다.
      예전에는 조용히 아무 일도 안 일어났다. */
@@ -9552,6 +9609,7 @@ function drawClubPreview(){
       ${kv('지역', esc(c.r))}
       ${kv('정기 모임', esc(c.meet_days||c.days||'미정'))}
       ${kv('실력', esc(c.avg_grade||c.level||'모든 레벨'))}
+      ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?kv('연령대', esc(t)):''; })()}
       ${kv('홈구장', esc(c.court||c.home_court||'미정'))}
       ${kv('입회비', c.entry?`${c.entry.toLocaleString()}원`:'없음')}
       ${kv('월 회비', c.season?`${c.season.toLocaleString()}원`:'없음')}
@@ -10265,16 +10323,22 @@ function xcAllDraw(){
   }
   xcPage('교류전', h);
 }
-/* 열기 — 고를 수 없는 걸 고르게 하지 않는다.
-   코트와 시간이 인원을 정하고, 여성 인원이 종목 구성을 정한다.
-   혼복 = min(남,여) 로 잡으면 구성이 하나로 떨어져 잘못 고를 수가 없다. */
-const XCF={ date:'', start:'19:00', place:'', courtNo:'', courts:6, mins:180, women:4, close:2, fee:0, dinner:0 };
-/* 앱의 모임 날짜는 <8/29 (토) 19:00~22:00 · 장소> 형식의 문자열이다.
-   여기에 맞춰 넣지 않으면 일정 목록이 날짜를 못 읽고 275760년으로 밀린다. */
+/* 열기 — 클럽 만들기처럼 네 걸음으로 나눈다.
+   한 화면에 다 넣으면 스크롤이 길고, 무엇을 다 골랐는지도 알기 어렵다. */
+const XCF={ step:1, date:'', start:'19:00', place:'', courtNo:'',
+            courts:6, mins:180, women:4, close:2, fee:0, dinner:0 };
+function xcPick(k,v){ XCF[k]=v; xcForm(); }
+function xcGo(d){
+  if(d>0 && !xcStepOk()) return;
+  XCF.step=Math.max(1,Math.min(4,XCF.step+d)); xcForm();
+}
+function xcStepOk(){
+  if(XCF.step===1 && !XCF.date){ toast('날짜를 골라주세요'); return false; }
+  return true;
+}
+/* 앱의 모임 날짜는 <8/29 (토) 19:00~22:00 · 장소> 형식이다. */
 function xcDateStr(){
   if(!XCF.date) return '';
-  /* 'T00:00:00+09:00' 로 만들면 기기 시간대에 따라 하루가 밀린다.
-     연·월·일을 그대로 넣어 로컬 날짜로 만든다. */
   const [Y,M,D]=XCF.date.split('-').map(Number);
   const d=new Date(Y, M-1, D);
   const [hh,mm]=XCF.start.split(':').map(Number);
@@ -10285,24 +10349,6 @@ function xcDateStr(){
     + (XCF.place?` · ${XCF.place}`:'')
     + (XCF.courtNo?` ${XCF.courtNo}번 코트`:'');
 }
-function xcPick(k,v){ XCF[k]=v; xcForm(); }
-/* 시각을 직접 넣고 싶을 때 — 칩에 없는 시간대가 실제로 많다 */
-function xcTimeOpen(){
-  const el=document.getElementById('xcTime'); if(!el) return;
-  el.style.display='block'; el.value=''; el.focus();
-}
-/* 숫자만 받아 1930 → 19:30 으로 콜론을 넣어준다 */
-function xcTimeType(el){
-  const n=el.value.replace(/[^0-9]/g,'').slice(0,4);
-  el.value = n.length>2 ? n.slice(0,2)+':'+n.slice(2) : n;
-}
-function xcTimeDone(el){
-  const m=String(el.value).match(/^(\d{1,2}):?(\d{2})$/);
-  if(!m){ if(el.value) toast('시각을 19:30 처럼 적어주세요'); return; }
-  const hh=Math.min(23,+m[1]), mm=Math.min(59,+m[2]);
-  XCF.start=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
-  xcForm();
-}
 function xcMixOf(per, women){
   const W=Math.max(0,Math.min(per, women)), M=per-W;
   const mx=Math.min(M,W), md=(M-mx)/2, wd=(W-mx)/2;
@@ -10310,13 +10356,31 @@ function xcMixOf(per, women){
 }
 function xcMixCode(m){ return [m.md?`md${m.md}`:'', m.mx?`mx${m.mx}`:'', m.wd?`wd${m.wd}`:'']
   .filter(Boolean).join(','); }
+function xcPerHead(){
+  const per=XCF.courts*2; if(!per) return 0;
+  return Math.ceil(((XCF.fee||0)/2 + (XCF.dinner||0)/2) / per / 100) * 100;
+}
 function openXcNew(){
   const c=AC()||{};
-  XCF.date=''; XCF.place=c.court||''; XCF.courts=6; XCF.mins=180; XCF.women=4; XCF.close=2; XCF.fee=0;
+  Object.assign(XCF,{ step:1, date:'', start:'19:00', place:c.court||'', courtNo:'',
+    courts:6, mins:180, women:4, close:2, fee:0, dinner:0 });
   xcForm();
 }
+/* 오늘부터 2주 — 날짜 입력창 대신 칩으로. 앱의 다른 화면과 같은 방식이다 */
+function xcDayChips(){
+  const out=[]; const t=new Date();
+  for(let i=0;i<14;i++){
+    const d=new Date(t.getFullYear(), t.getMonth(), t.getDate()+i);
+    const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const wd='일월화수목금토'[d.getDay()];
+    out.push(`<b class="${XCF.date===v?'on':''}" onclick="xcPick('date','${v}')">
+      <i>${wd}</i><span>${d.getDate()}</span></b>`);
+  }
+  return out.join('');
+}
 function xcForm(){
-  const per=XCF.courts*2, R=Math.floor(XCF.mins/30), games=R?Math.floor(XCF.courts*R*4/(per*2)):0;
+  const per=XCF.courts*2, R=Math.floor(XCF.mins/30);
+  const games=R?Math.floor(XCF.courts*R*4/(per*2)):0;
   if(XCF.women>per) XCF.women=per;
   const mix=xcMixOf(per, XCF.women);
   const K={md:['#eaf2ff','#2b62c9','남복'],mx:['#f0ecfd','#6a4cc4','혼복'],wd:['#fdeef4','#c94378','여복']};
@@ -10324,93 +10388,97 @@ function xcForm(){
     `<span style="background:${K[k][0]};color:${K[k][1]}">${K[k][2]} ${mix[k]}조</span>`).join('');
   const wOpts=[]; for(let w=0; w<=per; w+=2) wOpts.push(w);
   const closeTxt=()=>{
-    if(!XCF.date || XCF.close==null) return '';
+    if(!XCF.date) return '';
     const [Y,M,D]=XCF.date.split('-').map(Number);
     const d=new Date(Y, M-1, D); d.setDate(d.getDate()-XCF.close);
     return `${d.getMonth()+1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]}) 밤 12시`;
   };
-  xcSheet(`<div class="xf"><div class="sh-top">
+  const TITLES=['언제 어디서 하나요','규모를 정해요','누가 나오나요','마감과 비용'];
+  const SUBS=['코트를 잡아둔 날짜와 장소를 알려주세요',
+              '코트 수와 시간이 인원을 정해요',
+              '여성이 몇 분 나오는지만 고르면 종목이 정해져요',
+              '언제까지 모을지와 얼마나 드는지'];
+  let body='';
+
+  if(XCF.step===1){
+    body=`<div class="xf-l">날짜</div>
+      <div class="xf-days">${xcDayChips()}</div>
+      <div class="xf-l">시작 시각</div>
+      <div class="xf-c" style="flex-wrap:wrap">${['09:00','13:00','18:00','19:00','20:00'].map(t=>
+        `<b class="${XCF.start===t?'on':''}" style="flex:0 0 auto;padding:10px 13px"
+          onclick="xcPick('start','${t}')">${t}</b>`).join('')}
+        <b class="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':'on'}"
+          style="flex:0 0 auto;padding:10px 13px" onclick="xcTimeOpen()">직접</b></div>
+      <input id="xcTime" type="text" inputmode="numeric" maxlength="5" placeholder="19:30"
+        value="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':esc(XCF.start)}"
+        oninput="xcTimeType(this)" onblur="xcTimeDone(this)"
+        style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+          font-size:12.7px;font-family:inherit;margin-top:8px;
+          display:${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'none':'block'}">
+      <div class="xf-l">장소</div>
+      <input placeholder="용인 테니스파크" value="${esc(XCF.place)}" oninput="XCF.place=this.value"
+        style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+          font-size:12.7px;font-family:inherit">
+      <input placeholder="코트 번호 · 예) 1·2·3" value="${esc(XCF.courtNo)}" oninput="XCF.courtNo=this.value"
+        style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+          font-size:12.7px;font-family:inherit;margin-top:8px">`;
+  }
+  else if(XCF.step===2){
+    body=`<div class="xf-l">코트 수</div>
+      <div class="xf-c">${[2,3,4,5,6,7,8].map(n=>
+        `<b class="${XCF.courts===n?'on':''}" onclick="xcPick('courts',${n})">${n}</b>`).join('')}</div>
+      <div class="xf-l">대관 시간</div>
+      <div class="xf-c">${[[120,'2시간'],[180,'3시간']].map(([v,t])=>
+        `<b class="${XCF.mins===v?'on':''}" onclick="xcPick('mins',${v})">${t}</b>`).join('')}</div>
+      <div class="xf-plan">
+        <div class="big">클럽마다 ${per}명 · 1인 ${games}경기</div>
+        <div class="sm">${R}회차 · 경기 25분 + 코트 바꾸기 5분<br>쉬는 사람 없이 계속 돌아가요</div></div>`;
+  }
+  else if(XCF.step===3){
+    body=`<div class="xf-l">우리 클럽에서 여성이 몇 분</div>
+      <div class="xf-c" style="flex-wrap:wrap">${wOpts.map(w=>
+        `<b class="${XCF.women===w?'on':''}" style="min-width:34px;flex:0 0 auto;padding:10px 12px"
+          onclick="xcPick('women',${w})">${w}</b>`).join('')}</div>
+      <div class="xf-mix">
+        <div class="t">이렇게 나뉘어요</div>
+        <div class="r">${chips||'<span style="background:var(--felt);color:#6b6357">조를 만들 수 없어요</span>'}</div>
+        <div class="s">남 ${mix.men}명 · 여 ${mix.women}명 · ${mix.md+mix.mx+mix.wd}개 조${
+          mix.mx?`<br>여성 ${mix.mx}분이 ${R}회차 내내 코트에 서요`:''}</div></div>
+      <div class="xf-note">두 명씩 조를 짜기 때문에 <b>짝수로만</b> 고를 수 있어요.
+        여성이 ${XCF.women+1}분 나오시면 한 분을 게스트로 더 모시거나, 그날은 ${XCF.women}분으로 맞춰주세요.</div>`;
+  }
+  else {
+    body=`<div class="xf-l">모집 마감</div>
+      <div class="xf-h">구장에서 그냥 물릴 수 있는 마지막 날이요</div>
+      <div class="xf-c">${[[3,'3일 전'],[2,'2일 전'],[0,'전날']].map(([v,t])=>
+        `<b class="${XCF.close===v?'on':''}" onclick="xcPick('close',${v})">${t}</b>`).join('')}</div>
+      ${closeTxt()?`<div class="xf-note"><b>${closeTxt()}</b>까지 ${per*2}명이 안 모이면 취소돼요.
+        그날 아침에 알려드릴게요 — <b>구장 취소는 직접</b> 해주세요.</div>`:''}
+      <div class="xf-l">코트비 (전체)</div>
+      <input type="number" placeholder="120000" value="${XCF.fee||''}" oninput="XCF.fee=+this.value||0;xcFee()"
+        style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+          font-size:12.7px;font-family:inherit">
+      <div class="xf-l">회식비 (안 하면 비워두세요)</div>
+      <input type="number" placeholder="240000" value="${XCF.dinner||''}" oninput="XCF.dinner=+this.value||0;xcFee()"
+        style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+          font-size:12.7px;font-family:inherit">
+      <div id="xcFeeTxt" class="xf-plan" style="margin-top:10px">${xcFeeHtml()}</div>`;
+  }
+
+  xcSheet(`<div class="xf">
+    <div class="sh-top">
       <h3 style="font-size:20.5px;letter-spacing:-.045em;line-height:1.272">교류전 열기</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div style="font-size:12.7px;color:var(--gray);font-weight:400;line-height:1.618;margin:6px 2px 0">
-      코트만 잡아두면 나머지는 앱이 채워요.</div>
-
-    <div class="xf-l">언제 · 어디서</div>
-    <input class="xf-in" type="date" value="${XCF.date}" onchange="XCF.date=this.value;xcForm()"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.5px;font-weight:600;font-family:inherit">
-    <input placeholder="용인 테니스파크" value="${esc(XCF.place)}" oninput="XCF.place=this.value"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.7px;font-family:inherit;margin-top:6px">
-    <input placeholder="코트 번호 · 예) 1·2·3·4·5·6" value="${esc(XCF.courtNo)}" oninput="XCF.courtNo=this.value"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.7px;font-family:inherit;margin-top:6px">
-
-    <div class="xf-l">시작 시각</div>
-    <div class="xf-c" style="flex-wrap:wrap">${['09:00','13:00','18:00','19:00','20:00'].map(t=>
-      `<b class="${XCF.start===t?'on':''}" style="flex:0 0 auto;padding:10px 13px"
-        onclick="xcPick('start','${t}')">${t}</b>`).join('')}
-      <b class="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':'on'}"
-        style="flex:0 0 auto;padding:10px 13px" onclick="xcTimeOpen()">직접</b></div>
-    <input id="xcTime" type="text" inputmode="numeric" maxlength="5" placeholder="19:30"
-      value="${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'':esc(XCF.start)}"
-      oninput="xcTimeType(this)" onblur="xcTimeDone(this)"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.7px;font-family:inherit;margin-top:8px;
-        display:${['09:00','13:00','18:00','19:00','20:00'].includes(XCF.start)?'none':'block'}">
-
-    <div class="xf-l">코트</div>
-    <div class="xf-c">${[2,3,4,5,6,7,8].map(n=>
-      `<b class="${XCF.courts===n?'on':''}" onclick="xcPick('courts',${n})">${n}</b>`).join('')}</div>
-
-    <div class="xf-l">대관 시간</div>
-    <div class="xf-c">${[[120,'2시간'],[180,'3시간']].map(([v,t])=>
-      `<b class="${XCF.mins===v?'on':''}" onclick="xcPick('mins',${v})">${t}</b>`).join('')}</div>
-
-    <div class="xf-plan">
-      <div class="big">클럽마다 ${per}명 · 1인 ${games}경기</div>
-      <div class="sm">${R}회차 · 경기 25분 + 코트 바꾸기 5분${
-        xcDateStr()?`<br>${esc(xcDateStr().split(' · ')[0])}`:''}</div>
-    </div>
-
-    <div class="xf-l">우리 클럽에서 여성이 몇 분 나오나요</div>
-    <div class="xf-c" style="flex-wrap:wrap">${wOpts.map(w=>
-      `<b class="${XCF.women===w?'on':''}" style="min-width:32px;flex:0 0 auto;padding:9px 11px"
-        onclick="xcPick('women',${w})">${w}</b>`).join('')}</div>
-    <div class="xf-mix">
-      <div class="t">이렇게 나뉘어요</div>
-      <div class="r">${chips||'<span style="background:var(--felt);color:#6b6357">조를 만들 수 없어요</span>'}</div>
-      <div class="s">남 ${mix.men}명 · 여 ${mix.women}명 · ${mix.md+mix.mx+mix.wd}개 조${
-        mix.mx?`<br>여성 ${mix.mx}분이 ${R}회차 내내 코트에 서요`:''}</div>
-    </div>
-    <div class="xf-note">두 명씩 조를 짜기 때문에 <b>짝수로만</b> 고를 수 있어요.
-      여성이 ${XCF.women+1}분 나오시면 한 분은 게스트로 한 분 더 모시거나,
-      그날은 ${XCF.women}분으로 맞춰주세요.</div>
-
-    <div class="xf-l">모집 마감</div>
-    <div class="xf-h">구장에서 그냥 물릴 수 있는 마지막 날이요</div>
-    <div class="xf-c">${[[3,'3일 전'],[2,'2일 전'],[0,'전날']].map(([v,t])=>
-      `<b class="${XCF.close===v?'on':''}" onclick="xcPick('close',${v})">${t}</b>`).join('')}</div>
-    ${closeTxt()?`<div class="xf-note"><b>${closeTxt()}</b>까지 ${per*2}명이 안 모이면 취소돼요.
-      그날 아침에 알려드릴게요 — <b>구장 취소는 직접</b> 해주세요.</div>`:''}
-
-    <div class="xf-l">코트비 (전체)</div>
-    <input type="number" placeholder="120000" value="${XCF.fee||''}" oninput="XCF.fee=+this.value||0;xcFee()"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.7px;font-family:inherit">
-    <div class="xf-l">회식비 (전체 · 안 하면 비워두세요)</div>
-    <input type="number" placeholder="240000" value="${XCF.dinner||''}" oninput="XCF.dinner=+this.value||0;xcFee()"
-      style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
-        font-size:12.7px;font-family:inherit">
-    <div id="xcFeeTxt" class="xf-plan" style="margin-top:10px">${xcFeeHtml()}</div>
-
-    <button class="btn" style="margin-top:21px" onclick="xcCreate()">열기</button></div>`);
-}
-/* 1인 참가비 — 회원이 알아야 하는 건 총액이 아니라 자기가 내는 돈이다.
-   서버와 같은 식으로 계산한다(100원 단위 올림). */
-function xcPerHead(){
-  const per=XCF.courts*2; if(!per) return 0;
-  return Math.ceil(((XCF.fee||0)/2 + (XCF.dinner||0)/2) / per / 100) * 100;
+    <div class="xf-prog"><i style="width:${XCF.step*25}%"></i></div>
+    <div class="xf-step">${XCF.step}/4 단계</div>
+    <div class="xf-t">${TITLES[XCF.step-1]}</div>
+    <div class="xf-s">${SUBS[XCF.step-1]}</div>
+    ${body}
+    <div class="xf-nav">
+      ${XCF.step>1?`<button class="xf-back" onclick="xcGo(-1)">이전</button>`:''}
+      <button class="btn" style="flex:1;margin:0" onclick="${XCF.step<4?'xcGo(1)':'xcCreate()'}">${
+        XCF.step<4?'다음':'교류전 열기'}</button></div>
+  </div>`);
 }
 function xcFeeHtml(){
   const per=XCF.courts*2, head=xcPerHead();
@@ -10422,6 +10490,21 @@ function xcFeeHtml(){
       <br>${per}명이 나눠서 한 사람 ${won0(head)}이에요.</div>`;
 }
 function xcFee(){ const el=document.getElementById('xcFeeTxt'); if(el) el.innerHTML=xcFeeHtml(); }
+function xcTimeOpen(){
+  const el=document.getElementById('xcTime'); if(!el) return;
+  el.style.display='block'; el.value=''; el.focus();
+}
+function xcTimeType(el){
+  const n=el.value.replace(/[^0-9]/g,'').slice(0,4);
+  el.value = n.length>2 ? n.slice(0,2)+':'+n.slice(2) : n;
+}
+function xcTimeDone(el){
+  const m=String(el.value).match(/^(\d{1,2}):?(\d{2})$/);
+  if(!m){ if(el.value) toast('시각을 19:30 처럼 적어주세요'); return; }
+  const hh=Math.min(23,+m[1]), mm=Math.min(59,+m[2]);
+  XCF.start=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  xcForm();
+}
 async function xcCreate(){
   const cid=xcMyClubId(); if(!cid) return toast('클럽이 필요해요');
   if(!XCF.date) return toast('날짜를 골라주세요');
@@ -10437,7 +10520,6 @@ async function xcCreate(){
     XC_LIST=null; xcLoad();
   }catch(e){ toast(xcErr(e,'열지 못했어요')); }
 }
-/* 서버 오류를 화면에 그대로 뱉지 않는다 — 예전에는 JSON 이 통째로 토스트에 떴다 */
 function xcErr(e, fallback){
   let m=String((e&&e.message)||'');
   try{ const j=JSON.parse(m); if(j&&j.message) return j.message; }catch(_){}
@@ -11959,6 +12041,7 @@ function clubTabInfo(){
     <div class="card">
       ${kv('지역', esc(d.region||c.r||'—'), `openClubBasicEdit(1)`)}
       ${kv('정기 모임', esc(c.meet_days||c.days||'미정'), `openClubBasicEdit(1)`)}
+      ${kv('연령대', esc(ageBandText(d.age_bands||c.age_bands||c.age)||'미정'), `openAgeEdit()`)}
       ${kv('홈구장', esc(c.court||c.home_court||'미정'), `openClubBasicEdit(1)`)}
       ${kv('입회비', money(c.entry)?`<span style="color:var(--coral-d)">${money(c.entry)}</span>`:'없음', `openFeeEdit()`)}
       ${kv('월 회비', money(c.season)||'없음', `openFeeEdit()`)}
