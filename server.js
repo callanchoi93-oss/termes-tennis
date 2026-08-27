@@ -8401,6 +8401,74 @@ app.use(express.static(new URL('./public', import.meta.url).pathname));
 app.use((err, req, res, _next) => { console.error(err); res.status(500).json({ error: String(err && err.message || err) }); });
 app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
 
+/* ── 교류전 모임 보기 ──
+   교류전은 주최 클럽 소속 모임이라 상대 클럽 회원에게는 목록에 뜨지 않는다.
+   양쪽이 같은 자리에서 인사를 주고받을 수 있어야 하므로,
+   <그 교류전에 참가한 클럽의 회원>이면 모임과 댓글을 볼 수 있게 연다. */
+function xcCanSee(eid, uid) {
+  const ent = xcEntries(eid);
+  if (!ent.length) return false;
+  return ent.some(e => !!cbRole(e.club_id, uid));
+}
+app.get('/exchange/:id/event', auth, (req, res) => {
+  const eid = +req.params.id;
+  if (!xcCanSee(eid, req.uid))
+    return res.status(403).json({ error: 'not_in_match', message: '이 교류전에 참가한 클럽만 볼 수 있어요' });
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const my = db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  const byStatus = st => db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) name, u.photos, cm.club_id
+      FROM event_attendees ea JOIN users u ON u.id=ea.user_id
+      LEFT JOIN club_members cm ON cm.user_id=u.id AND cm.club_id IN (
+        SELECT club_id FROM exchange_entries WHERE event_id=? AND status='joined')
+      WHERE ea.event_id=? AND ${st === 'going' ? "(ea.status IS NULL OR ea.status='going')" : 'ea.status=?'}
+      GROUP BY u.id ORDER BY name`).all(...(st === 'going' ? [eid, eid] : [eid, eid, st]));
+  res.json({
+    id: ev.id, title: ev.title, date: ev.date, place: ev.place, tag: ev.tag,
+    attendees: byStatus('going'),
+    my_status: my ? (my.status || 'going') : null,
+    clubs: xcEntries(eid).map(e => ({ club_id: e.club_id, name: e.club_name })),
+  });
+});
+/* 댓글도 같은 잣대로 — 참가 클럽 회원이면 읽고 쓸 수 있다 */
+app.get('/exchange/:id/comments', auth, (req, res) => {
+  const eid = +req.params.id;
+  if (!xcCanSee(eid, req.uid)) return res.status(403).json({ error: 'not_in_match' });
+  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, c.parent_id, u.name, u.photos
+    FROM event_comments c JOIN users u ON u.id=c.user_id
+    WHERE c.event_id=? ORDER BY c.id ASC LIMIT 200`).all(eid);
+  /* 어느 클럽 사람인지 함께 — 뱃지 색을 나누기 위해서다 */
+  const ent = xcEntries(eid);
+  const of = uid => { const e = ent.find(x => cbRole(x.club_id, uid)); return e ? e.club_id : 0; };
+  res.json(rows.map(r => ({ ...r, club_id: of(r.user_id) })));
+});
+app.post('/exchange/:id/comments', auth, limitWrite, (req, res) => {
+  const eid = +req.params.id;
+  if (!xcCanSee(eid, req.uid))
+    return res.status(403).json({ error: 'not_in_match', message: '이 교류전에 참가한 클럽만 쓸 수 있어요' });
+  const ev = xcEvent(eid);
+  /* 경기가 끝난 교류전은 읽기만 — 진 쪽이 생기는 자리라 뒤끝이 남지 않게 닫는다 */
+  if (ev && ev.match_status === 'done')
+    return res.status(400).json({ error: 'closed', message: '끝난 교류전에는 댓글을 쓸 수 없어요' });
+  const body = String((req.body || {}).body || '').trim().slice(0, 300);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const r = db.prepare('INSERT INTO event_comments (event_id,user_id,body,created_at,parent_id) VALUES (?,?,?,?,?)')
+    .run(eid, req.uid, body, now(), (req.body || {}).parent_id ? +req.body.parent_id : null);
+  res.json({ ok: true, id: rid(r) });
+});
+/* 참석 체크도 상대 클럽 회원이 할 수 있어야 한다 */
+app.post('/exchange/:id/rsvp', auth, (req, res) => {
+  const eid = +req.params.id;
+  if (!xcCanSee(eid, req.uid))
+    return res.status(403).json({ error: 'not_in_match', message: '이 교류전에 참가한 클럽만 할 수 있어요' });
+  const st = String((req.body || {}).status || 'going');
+  const ok = ['going', 'absent', 'undecided'].includes(st) ? st : 'going';
+  const had = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
+  if (had) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(ok, had.id);
+  else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, ok);
+  res.json({ ok: true, status: ok });
+});
+
 /* ── 삭제 · 취소 · 하차 ──
    상대가 없으면 흔적 없이 지운다. 상대가 있으면 지우면 안 된다 —
    그쪽은 이미 회원들에게 알리고 인원을 모으고 있다. 취소로 남기고 알린다. */
