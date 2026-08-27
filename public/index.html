@@ -1487,17 +1487,36 @@
   .mact svg{width:16px;height:16px;flex:none}
 
   /* 시즌 랭킹 — 기간 세그먼트 */
-  /* 리포트 코멘트 — 첫 줄만 진하게, 나머지는 조용히 */
-  /* 위 컨테이너가 flex 라 폭을 안 주면 글자 폭까지 눌려 세로로 쏟아진다 */
-  .rp-cm{ width:100%;flex:none;box-sizing:border-box;
-    border:1px solid var(--line);border-radius:16px;padding:4px 15px;margin-bottom:14px }
-  .rp-f{ padding:13px 0;border-bottom:1px solid #f6f5f2;width:100% }
-  .rp-f:last-child{ border-bottom:0 }
-  .rp-f b{ display:block;font-size:14px;font-weight:700;letter-spacing:-.035em;
+  /* ── 리포트 코멘트 ──
+     첫 줄은 검은 카드로 크게 뽑고 나머지는 점 목록. 층이 나뉘어 겹칠 여지가 없다.
+     위 컨테이너가 flex 라 폭을 못 박으면 글자까지 눌린다 — width 를 반드시 준다. */
+  .rp-head{ width:100%;box-sizing:border-box;background:var(--ink);border-radius:16px;
+    padding:17px 18px;margin-bottom:13px }
+  .rp-head .k{ font-size:10px;font-weight:700;color:#f4a062;letter-spacing:.12em }
+  .rp-head b{ display:block;font-size:19px;font-weight:800;color:#fff;
+    letter-spacing:-.045em;margin-top:9px;line-height:1.4;word-break:keep-all }
+  .rp-head span{ display:block;font-size:12px;color:rgba(255,255,255,.7);
+    margin-top:8px;line-height:1.6;word-break:keep-all }
+  .rp-list{ width:100%;box-sizing:border-box;margin-bottom:14px }
+  .rp-i{ display:flex;padding:13px 2px;border-bottom:1px solid #f4f2ed }
+  .rp-i:last-child{ border-bottom:0 }
+  .rp-i i{ width:5px;height:5px;border-radius:50%;background:var(--coral);
+    flex:none;margin:8px 12px 0 0;display:block }
+  .rp-i > div{ flex:1;min-width:0 }
+  .rp-i b{ display:block;font-size:13px;font-weight:700;letter-spacing:-.03em;
     line-height:1.45;word-break:keep-all }
-  .rp-f span{ display:block;font-size:12px;color:var(--gray);margin-top:5px;
-    line-height:1.65;word-break:keep-all }
-  .rp-f.top b{ font-size:16.2px;color:var(--coral-d) }
+  .rp-i span{ display:block;font-size:11.5px;color:var(--gray);margin-top:4px;
+    line-height:1.6;word-break:keep-all }
+  /* 기록이 적을 때 */
+  .rp-wait{ width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:16px;
+    padding:22px 18px;text-align:center;margin-bottom:14px }
+  .rp-wait .ic{ width:44px;height:44px;border-radius:50%;background:var(--cream2);
+    margin:0 auto;display:flex;align-items:center;justify-content:center }
+  .rp-wait b{ display:block;font-size:14px;font-weight:700;margin-top:12px }
+  .rp-wait span{ display:block;font-size:11.5px;color:var(--gray);margin-top:7px;line-height:1.65 }
+  .rp-wait .bar{ height:5px;border-radius:3px;background:var(--felt);overflow:hidden;margin-top:14px }
+  .rp-wait .bar i{ display:block;height:100%;background:var(--coral);border-radius:3px }
+  .rp-wait em{ font-style:normal;display:block;font-size:10.5px;color:var(--lgray);margin-top:7px }
   /* 내 순위 추이 */
   .rk-card{ width:100%;flex:none;box-sizing:border-box;
     border:1px solid var(--line);border-radius:16px;padding:15px 14px 11px;margin-bottom:14px }
@@ -3313,7 +3332,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0827i';
+const BUILD='v1.1.2-0827j';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -11959,8 +11978,26 @@ function clubTabMe(){
     (function(){
       const fs=rpFindings(my);
       if(!fs.length) return;
-      h+=`<div class="rp-cm">${fs.map((f,i)=>`<div class="rp-f${i?'':' top'}">
-        <b>${esc(f.t)}</b><span>${esc(f.s)}</span></div>`).join('')}</div>`;
+      /* 기록이 적으면 얼마나 남았는지 보여준다 — 기다릴 이유가 생긴다 */
+      if(fs[0].k==='wait'){
+        const n=my.length, pct=Math.min(100, Math.round(n/15*100));
+        h+=`<div class="rp-wait">
+          <div class="ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+            stroke="var(--lgray)" stroke-width="1.6" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <b>조금만 더 치면 보여요</b>
+          <span>지금까지 ${n}판이에요.<br>${Math.max(1,15-n)}판쯤 더 쌓이면 특징이 드러납니다.</span>
+          <div class="bar"><i style="width:${pct}%"></i></div>
+          <em>${n} / 15판</em></div>`;
+        return;
+      }
+      const [head, ...rest] = fs;
+      h+=`<div class="rp-head">
+        <div class="k">이번 시즌 한 줄</div>
+        <b>${esc(head.t)}</b>
+        <span>${esc(head.s)}</span></div>`;
+      if(rest.length) h+=`<div class="rp-list">${rest.map(f=>`<div class="rp-i">
+        <i></i><div><b>${esc(f.t)}</b><span>${esc(f.s)}</span></div></div>`).join('')}</div>`;
     })();
     /* 내 순위 추이 — 등수 하나만 보면 올랐는지 내렸는지 알 수 없다.
        리포트 탭은 본인에게만 보이므로, 남의 등수 변화를 들여다보게 되지 않는다. */
