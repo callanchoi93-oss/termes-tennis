@@ -1487,6 +1487,13 @@
   .mact svg{width:16px;height:16px;flex:none}
 
   /* 시즌 랭킹 — 기간 세그먼트 */
+  /* 리포트 코멘트 — 첫 줄만 진하게, 나머지는 조용히 */
+  .rp-cm{ border:1px solid var(--line);border-radius:16px;padding:4px 15px;margin-bottom:14px }
+  .rp-f{ padding:13px 0;border-bottom:1px solid #f6f5f2 }
+  .rp-f:last-child{ border-bottom:0 }
+  .rp-f b{ display:block;font-size:14px;font-weight:700;letter-spacing:-.035em;line-height:1.4 }
+  .rp-f span{ display:block;font-size:12px;color:var(--gray);margin-top:5px;line-height:1.6 }
+  .rp-f.top b{ font-size:16.2px;color:var(--coral-d) }
   /* 내 순위 추이 */
   .rk-card{ border:1px solid var(--line);border-radius:16px;padding:15px 14px 11px;margin-bottom:14px }
   .rk-h{ display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px }
@@ -3301,7 +3308,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0827f';
+const BUILD='v1.1.2-0827h';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -11365,29 +11372,7 @@ function clubTabRecords(){
   if(!games.length) return h+`<div class="card" style="text-align:center;padding:30px 20px">
     <span class="gt1 gmute">이 기간에는 확정된 경기가 없어요</span></div>`;
 
-  /* 내 순위 추이 — 등수 하나만 보면 올랐는지 내렸는지 알 수 없다.
-     같은 잣대로 달마다 다시 매겨 흐름을 보여준다. */
-  (function(){
-    const ser=monthRankSeries(all, meId);
-    if(ser.length<2) return;
-    const last=ser[ser.length-1], first=ser[0];
-    const diff=first.rank-last.rank;
-    h+=`<div class="rk-card">
-      <div class="rk-h"><b>내 순위 추이</b><span>${last.total}명 중</span></div>
-      ${rankTrendSvg(ser)}
-      <div class="rk-f">
-        <div><b>${last.rank}위</b><i>이번 달</i></div>
-        <div><b>${(()=>{ const g=all.filter(x=>x.sa!=null&&x.sb!=null);
-          let w=0,t=0; g.forEach(x=>{
-            const inA=(x.teamA||[]).some(p=>p&&String(p.id)===String(meId));
-            const inB=(x.teamB||[]).some(p=>p&&String(p.id)===String(meId));
-            if(!inA&&!inB) return; t++;
-            if((inA&&x.sa>x.sb)||(inB&&x.sb>x.sa)) w++; });
-          return t?Math.round(w/t*100)+'%':'—'; })()}</b><i>시즌 승률</i></div>
-        <div class="${diff>0?'up':diff<0?'dn':''}">
-          <b>${diff>0?'+':''}${diff||'—'}</b><i>${first.m}월 대비</i></div>
-      </div></div>`;
-  })();
+
 
   const st={};
   games.forEach(g=>{
@@ -11769,6 +11754,108 @@ function loadClubMeGames(){
     .catch(()=>{ CLUBME_GAMES=[]; })
     .finally(()=>{ window._clubMeLoading=false; if(state.view==='club') renderClub(); });
 }
+/* ── 리포트 코멘트 ──
+   발견을 문장으로 바꾸되, 우연을 특징이라 부르지 않는다.
+   세 가지를 정한다.
+   ① 말의 세기 — 표본이 정한다. 15판↑ 단정 · 8~14판 관찰 · 5~7판 추측 · 5판 미만 침묵
+   ② 우연 거르기 — 두 승률 차이가 표준오차의 2.4배를 넘을 때만 특징으로 본다.
+      10판이면 우연히 20%p 차가 흔하다. 안 거르면 리포트가 헛소리를 한다.
+   ③ 개수 — (차이 × 표본) 점수 상위 셋만. 스무 줄이 다 뜨면 아무것도 안 읽힌다. */
+function rpWr(rows){ return rows.length ? rows.filter(r=>r.win).length/rows.length : null; }
+function rpPct(x){ return Math.round(x*100); }
+function rpTone(n){ return n>=15?'sure' : n>=8?'seen' : n>=5?'maybe' : null; }
+function rpSay(t, sure, seen, maybe){ return {sure,seen,maybe}[t]; }
+function rpScore(diff, n){ return Math.abs(diff)*Math.min(n,24)/24; }
+/* 두 승률 차이가 우연으로 보기 어려운가 — 표준오차의 2.4배를 문턱으로 */
+function rpReal(p1,n1,p2,n2){
+  if(!n1||!n2||p1==null||p2==null) return false;
+  const se=Math.sqrt(p1*(1-p1)/n1 + p2*(1-p2)/n2);
+  return se===0 ? Math.abs(p1-p2)>0 : Math.abs(p1-p2) >= se*2.4;
+}
+function rpFindings(my){
+  const N=my.length, W=rpWr(my);
+  if(N<15) return [{k:'wait', t:'아직 리포트를 내기 일러요',
+    s:`지금까지 ${N}판. 열 판쯤 더 치면 특징이 보입니다.`}];
+  const out=[];
+
+  /* ① 접전 대 큰 점수 차 */
+  const close=my.filter(r=>Math.abs(r.ms-r.os)<=2), blow=my.filter(r=>Math.abs(r.ms-r.os)>=4);
+  if(close.length>=5){
+    const d=rpWr(close)-W, t=rpTone(close.length);
+    if(t && Math.abs(d)>=.10 && rpReal(rpWr(close),close.length, rpWr(blow)??W, blow.length||N)){
+      const up=d>0;
+      out.push({k:'close', sc:rpScore(d,close.length),
+        t: up ? rpSay(t,'접전에 강한 뒷심형','접전에서 잘 버텼어요','접전에 강한 편일 수 있어요')
+              : rpSay(t,'접전에서 흔들리는 편','접전을 자주 놓쳤어요','접전이 약한 편일 수 있어요'),
+        s:`2점 차 이내 승부 ${close.length}판에서 ${rpPct(rpWr(close))}%. `
+          +`전체 승률 ${rpPct(W)}%보다 ${Math.abs(rpPct(d))}%p ${up?'높아요':'낮아요'}.`});
+    }
+  }
+  /* ② 회차 — 초반 대 후반 */
+  const early=my.filter(r=>r.r&&r.r<=2), late=my.filter(r=>r.r&&r.r>=5);
+  if(early.length>=5 && late.length>=5){
+    const d=rpWr(late)-rpWr(early), t=rpTone(Math.min(early.length,late.length));
+    if(t && Math.abs(d)>=.15 && rpReal(rpWr(late),late.length,rpWr(early),early.length)){
+      const up=d>0;
+      out.push({k:'round', sc:rpScore(d,Math.min(early.length,late.length)),
+        t: up ? rpSay(t,'갈수록 살아나는 유형','후반에 더 이겼어요','후반에 강한 편일 수 있어요')
+              : rpSay(t,'초반에 몰아치는 유형','후반에 힘이 빠지는 편이었어요','후반이 아쉬울 수 있어요'),
+        s:`1~2회차 ${rpPct(rpWr(early))}% → 5~6회차 ${rpPct(rpWr(late))}%. `
+          +`${Math.abs(rpPct(d))}%p ${up?'올라요':'떨어져요'}.`});
+    }
+  }
+  /* ③ 종목별 */
+  const K={};
+  ['남복','혼복','여복'].forEach(k=>{ const rows=my.filter(r=>r.label===k); if(rows.length>=5) K[k]=rows; });
+  const ks=Object.keys(K);
+  if(ks.length>=2){
+    ks.sort((a,b)=>rpWr(K[b])-rpWr(K[a]));
+    const b=ks[0], w=ks[ks.length-1], d=rpWr(K[b])-rpWr(K[w]);
+    const t=rpTone(Math.min(K[b].length,K[w].length));
+    if(t && d>=.18 && rpReal(rpWr(K[b]),K[b].length,rpWr(K[w]),K[w].length))
+      out.push({k:'kind', sc:rpScore(d,Math.min(K[b].length,K[w].length)),
+        t:rpSay(t,`${b}에서 확실히 강해요`,`${b}에서 더 잘 나왔어요`,`${b} 쪽이 나은 편일 수 있어요`),
+        s:`${b} ${rpPct(rpWr(K[b]))}% · ${w} ${rpPct(rpWr(K[w]))}%. ${Math.abs(rpPct(d))}%p 차이예요.`});
+  }
+  /* ④ 교차 — 종목 × 회차. 쪼갤수록 표본이 줄어드니 문턱을 높인다 */
+  ks.forEach(k=>{
+    const a=K[k].filter(r=>r.r&&r.r<=2), b=K[k].filter(r=>r.r&&r.r>=5);
+    if(a.length<5||b.length<5) return;
+    const d=rpWr(b)-rpWr(a), t=rpTone(Math.min(a.length,b.length));
+    if(t && Math.abs(d)>=.26 && rpReal(rpWr(b),b.length,rpWr(a),a.length)){
+      const up=d>0;
+      out.push({k:'cross', sc:rpScore(d,Math.min(a.length,b.length))*1.15,
+        t:rpSay(t, `${k} 후반이 ${up?'강해요':'무너져요'}`,
+                   `${k} 후반에 ${up?'더 이겼어요':'많이 졌어요'}`,
+                   `${k} 후반이 ${up?'나은':'아쉬운'} 편일 수 있어요`),
+        s:`${k} 1~2회차 ${rpPct(rpWr(a))}% → 5~6회차 ${rpPct(rpWr(b))}%.`});
+    }
+  });
+  /* ⑤ 파트너 궁합 — 표본이 작아 특히 잘 새므로 10판 이상만 */
+  const P={};
+  my.forEach(r=>{ if(r.partner&&r.partner.name) (P[r.partner.name]=P[r.partner.name]||[]).push(r); });
+  const good=Object.entries(P).filter(([,v])=>v.length>=10).sort((a,b)=>rpWr(b[1])-rpWr(a[1]));
+  if(good.length>=2){
+    const [bn,bv]=good[0], [wn,wv]=good[good.length-1], d=rpWr(bv)-rpWr(wv);
+    const t=rpTone(Math.min(bv.length,wv.length));
+    if(t && d>=.34 && rpReal(rpWr(bv),bv.length,rpWr(wv),wv.length))
+      out.push({k:'partner', sc:rpScore(d,Math.min(bv.length,wv.length))*.9,
+        t:rpSay(t,`${bn} 님과 특히 잘 맞아요`,`${bn} 님과 뛸 때 잘 나왔어요`,`${bn} 님과 맞는 편일 수 있어요`),
+        s:`${bn} 님과 ${bv.length}판 ${rpPct(rpWr(bv))}% · ${wn} 님과 ${wv.length}판 ${rpPct(rpWr(wv))}%.`});
+  }
+  /* ⑥ 최근 폼 */
+  if(N>=20){
+    const rec=my.slice(-8), d=rpWr(rec)-W;
+    if(Math.abs(d)>=.30 && rpReal(rpWr(rec),8,W,N))
+      out.push({k:'form', sc:rpScore(d,8)*.8,
+        t: d>0?'요즘 올라오고 있어요':'최근 흐름이 주춤해요',
+        s:`최근 8판 ${rpPct(rpWr(rec))}% · 시즌 전체 ${rpPct(W)}%.`});
+  }
+  /* ⑦ 아무것도 안 걸리면 — 억지로 특징을 만들지 않는다 */
+  if(!out.length) return [{k:'flat', t:'고르게 치는 편이에요',
+    s:`${N}판을 봤는데 크게 튀는 구석이 없어요. 어디서든 제 몫을 합니다.`}];
+  return out.sort((a,b)=>b.sc-a.sc).slice(0,3);
+}
 function clubTabMe(){
   const meId=(state.serverUser||{}).id;
   const isMe=!CLUBME_WHO;
@@ -11863,6 +11950,38 @@ function clubTabMe(){
     <div class="mi-rec">${maskNum(rec,nm)}</div></div>`; };
 
   if(CLUBME_TAB==='report'){
+    /* 코멘트가 먼저다 — 숫자를 읽기 전에 무엇을 봐야 하는지 알려준다 */
+    (function(){
+      const fs=rpFindings(my);
+      if(!fs.length) return;
+      h+=`<div class="rp-cm">${fs.map((f,i)=>`<div class="rp-f${i?'':' top'}">
+        <b>${esc(f.t)}</b><span>${esc(f.s)}</span></div>`).join('')}</div>`;
+    })();
+    /* 내 순위 추이 — 등수 하나만 보면 올랐는지 내렸는지 알 수 없다.
+       리포트 탭은 본인에게만 보이므로, 남의 등수 변화를 들여다보게 되지 않는다. */
+    (function(){
+      const ser=monthRankSeries(CLUBME_GAMES||[], (CLUBME_WHO||{}).id||(state.serverUser||{}).id);
+      if(ser.length<2) return;
+      const last=ser[ser.length-1], first=ser[0];
+      const diff=first.rank-last.rank;
+      const g=(CLUBME_GAMES||[]).filter(x=>x.sa!=null&&x.sb!=null);
+      const meId=(CLUBME_WHO||{}).id||(state.serverUser||{}).id;
+      let w=0,t=0;
+      g.forEach(x=>{
+        const inA=(x.teamA||[]).some(p=>p&&String(p.id)===String(meId));
+        const inB=(x.teamB||[]).some(p=>p&&String(p.id)===String(meId));
+        if(!inA&&!inB) return; t++;
+        if((inA&&x.sa>x.sb)||(inB&&x.sb>x.sa)) w++; });
+      h+=`<div class="rk-card">
+        <div class="rk-h"><b>내 순위 추이</b><span>${last.total}명 중</span></div>
+        ${rankTrendSvg(ser)}
+        <div class="rk-f">
+          <div><b>${last.rank}위</b><i>이번 달</i></div>
+          <div><b>${t?Math.round(w/t*100)+'%':'—'}</b><i>시즌 승률</i></div>
+          <div class="${diff>0?'up':diff<0?'dn':''}">
+            <b>${diff>0?'+':''}${diff||'—'}</b><i>${first.m}월 대비</i></div>
+        </div></div>`;
+    })();
     /* 계산식
        승률 = 이긴 경기 ÷ 전체 × 100
        득실 = 50 + (경기당 평균 득실 ÷ 3) × 50   (6점제 · ±3점을 0~100으로)
