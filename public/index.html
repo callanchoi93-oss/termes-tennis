@@ -1487,6 +1487,17 @@
   .mact svg{width:16px;height:16px;flex:none}
 
   /* 시즌 랭킹 — 기간 세그먼트 */
+  /* 내 순위 추이 */
+  .rk-card{ border:1px solid var(--line);border-radius:16px;padding:15px 14px 11px;margin-bottom:14px }
+  .rk-h{ display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px }
+  .rk-h b{ font-size:13px;font-weight:700;letter-spacing:-.03em }
+  .rk-h span{ font-size:11px;color:var(--lgray) }
+  .rk-f{ display:flex;gap:8px;margin-top:11px }
+  .rk-f > div{ flex:1;text-align:center;background:var(--cream2);border-radius:11px;padding:11px 4px }
+  .rk-f b{ display:block;font-size:19px;font-weight:700;letter-spacing:-.03em }
+  .rk-f i{ font-style:normal;display:block;font-size:10.5px;color:var(--lgray);margin-top:3px }
+  .rk-f > div.up b{ color:#1f7d4d }
+  .rk-f > div.dn b{ color:var(--coral-d) }
   .recseg{display:flex;background:var(--felt);border-radius:12px;padding:3px;margin:0 0 var(--s4)}
   .recseg div{flex:1;text-align:center;padding:9px 0;border-radius:9px;cursor:pointer;
     font-size:var(--t1);font-weight:600;color:var(--gray);transition:.14s}
@@ -2516,6 +2527,22 @@
   .xd-info .r b{ font-size:12.7px;font-weight:700 }
   /* 상세 맨 아래 규칙 — 참고 글이지 본론이 아니다. 클래스는 있는데 규칙이 없어
      크기 지정이 통째로 빠져 본문보다 커 보였다. */
+  /* 교류전 댓글 — 클럽 뱃지 색으로 누가 어느 쪽인지 바로 보인다 */
+  .xd-cm{ display:flex;gap:11px;padding:13px 0;border-bottom:1px solid #f2f0ea }
+  .xd-cm > *:first-child{ flex:none }
+  .xd-cm .b{ flex:1;min-width:0 }
+  .xd-cm .t{ display:flex;align-items:center;gap:6px;flex-wrap:wrap }
+  .xd-cm .t b{ font-size:12.7px;font-weight:700 }
+  .xd-cm .t em{ font-style:normal;font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px }
+  .xd-cm .t em.me{ background:var(--coral-s);color:var(--coral-d) }
+  .xd-cm .t em.op{ background:#eef4ff;color:#2b62c9 }
+  .xd-cm .t i{ font-style:normal;font-size:10px;color:var(--lgray) }
+  .xd-cm p{ font-size:12.7px;line-height:1.618;margin-top:4px;word-break:break-word }
+  .xd-write{ display:flex;gap:7px;margin-top:13px }
+  .xd-write input{ flex:1;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
+    font-size:12.7px;font-family:inherit }
+  .xd-write b{ flex:none;background:var(--coral);color:#fff;border-radius:11px;
+    padding:11px 16px;font-size:12.7px;font-weight:600;cursor:pointer }
   .xd-fine{ font-size:var(--x1);font-weight:400;color:var(--gray);
     line-height:var(--xlh);margin-top:13px }
   /* 교류전 대진표 — 종목 색은 앱이 이미 쓰는 값(남복 파랑·혼복 보라·여복 분홍) 그대로 */
@@ -3274,7 +3301,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0827c';
+const BUILD='v1.1.2-0827f';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10649,6 +10676,14 @@ async function openXc(id){
   if(op) h+=`<div class="xf-l">지난 만남</div>
     <div class="xd-fine" id="xcVs" style="margin-top:0">불러오는 중…</div>`;
 
+  /* 양쪽 클럽이 같은 자리에서 이야기한다 — 카톡방을 따로 파지 않아도 되게 */
+  h+=`<div class="xf-l">댓글</div>
+    <div class="xf-h" style="margin:-4px 2px 8px">${op?'양쪽 클럽이 같이 봐요':'상대가 정해지면 함께 볼 수 있어요'}</div>
+    <div id="xcCmt"><div class="xd-fine" style="margin-top:0">불러오는 중…</div></div>
+    <div class="xd-write">
+      <input id="xcCmtIn" placeholder="주차·도착 시간 같은 걸 남겨보세요" maxlength="300">
+      <b onclick="xcSend(${x.id})">등록</b></div>`;
+
   /* 되돌릴 방법이 없으면 사람들은 잘못 연 교류전을 그냥 방치한다.
      연 클럽은 삭제·취소, 참가 클럽은 하차. */
   if(xcIsOfficer() && x.status!=='cancelled'){
@@ -10660,6 +10695,7 @@ async function openXc(id){
   }
   xcPage(`교류전`, h);
   if(op) xcVsLoad(cid, op.club_id);
+  xcCmtLoad(x.id, x.clubs);
 }
 /* 삭제 · 취소 — 상대가 있으면 지우지 않고 취소로 남긴다 */
 async function xcKill(id, hasOp, drawn){
@@ -10684,6 +10720,31 @@ async function xcLeave(id){
     await api(`/exchange/${id}/leave`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
     toast('빠졌어요'); XC_LIST=null; state._xcOpen=0; renderClub();
   }catch(e){ toast(xcErr(e,'처리하지 못했어요')); }
+}
+/* 댓글 — 어느 클럽 사람인지 색으로 나눈다 */
+async function xcCmtLoad(id, clubs){
+  const el=()=>document.getElementById('xcCmt'); if(!el()) return;
+  let rows=[]; try{ rows=await api(`/exchange/${id}/comments`)||[]; }catch(e){ if(el()) el().innerHTML=''; return; }
+  if(!el()) return;
+  const cid=xcMyClubId();
+  const nameOf=c=>((clubs||[]).find(x=>x.club_id===c)||{}).name||'';
+  el().innerHTML = rows.length ? rows.map(r=>{
+    const mine=r.club_id===cid;
+    return `<div class="xd-cm">
+      ${evAvatar(r.name, r.photos, 34)}
+      <div class="b"><div class="t"><b>${esc(r.name)}</b>
+        ${r.club_id?`<em class="${mine?'me':'op'}">${esc(nameOf(r.club_id))}</em>`:''}
+        <i>${timeAgo(r.created_at)}</i></div>
+        <p>${esc(r.body)}</p></div></div>`; }).join('')
+    : `<div class="xd-fine" style="margin-top:0">아직 댓글이 없어요. 먼저 인사를 건네보세요.</div>`;
+}
+async function xcSend(id){
+  const el=document.getElementById('xcCmtIn'); const v=(el&&el.value||'').trim();
+  if(!v) return toast('댓글을 입력해 주세요');
+  try{
+    await api(`/exchange/${id}/comments`,{method:'POST',body:JSON.stringify({body:v})});
+    el.value=''; openXc(id);
+  }catch(e){ toast(xcErr(e,'남기지 못했어요')); }
 }
 async function xcRsvp(id, status){
   try{
@@ -10759,11 +10820,21 @@ function xcKindChip(k){ const c=XC_KIND[k]||['#f2f1ec','#6b6357'];
 async function openXcGames(id){
   let d; try{ d=await api(`/exchange/${id}/games`); }catch(e){ return toast('불러오지 못했어요'); }
   const cid=xcMyClubId(), ev=d.event, R=d.result;
-  const start=(ev.date||'')+'T'+((ev.time||'14:00'))+':00';
-  const t0=Date.parse(start); const at=r=>isNaN(t0)?'':tbHHMM(t0+(r-1)*30*60000);
+  /* 모임 날짜는 <8/29 (토) 19:00~22:00 · 장소> 문자열이다.
+     Date.parse 에 그대로 넣으면 NaN 이 되어 회차 시각이 통째로 빈칸이 된다. */
+  const t0=(()=>{
+    const D=String(ev.date||'');
+    const md=D.match(/(\d{1,2})\/(\d{1,2})/), hm=D.match(/(\d{1,2}):(\d{2})/);
+    if(!md || !hm) return NaN;
+    const y=new Date().getFullYear();
+    return new Date(y, +md[1]-1, +md[2], +hm[1], +hm[2]).getTime();
+  })();
+  const at=r=>isNaN(t0)?'':tbHHMM(t0+(r-1)*30*60000);
   const rounds=[...new Set(d.games.map(g=>g.round))];
   let h=`<div class="sh-top"><h3>교류전 대진</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">${esc(ev.date||'')} · ${esc(ev.place||'')} · 코트 ${ev.courts}면</div>`;
+    <div class="sd">${[esc((ev.date||'').split(' · ')[0]),
+      esc((ev.date||'').split(' · ').slice(1).join(' · ')||ev.place||''),
+      ev.courts?`코트 ${ev.courts}면`:''].filter(Boolean).join(' · ')}</div>`;
   if(R) h+=xcScoreBoard(R, cid);
   rounds.forEach(r=>{
     h+=`<div class="xg-hd"><b>${r}회차</b><span>${at(r)?at(r)+' 시작':''}</span></div>`;
@@ -11218,6 +11289,59 @@ function inSpan(dstr){
   if(mon==null) return false;
   return mon>=sp[2] && mon<=sp[3];
 }
+/* ── 월별 순위 추이 ──
+   시즌 랭킹은 <하루 평균 점수>로 매긴다. 같은 잣대를 월마다 다시 돌려
+   그 달 내 자리가 몇 번째였는지 뽑는다.
+   누적이 아니라 그 달의 성적만 보기 때문에 "이번 달 잘했다"가 그대로 보인다. */
+function monthRankSeries(games, meId){
+  const key=d=>{ const m=String(d||'').match(/^(\d{4})-(\d{2})/); return m?`${m[1]}-${m[2]}`:''; };
+  const months=[...new Set((games||[]).map(g=>key(g.date)).filter(Boolean))].sort();
+  const out=[];
+  months.forEach(mk=>{
+    const gs=games.filter(g=>key(g.date)===mk);
+    const st={};
+    gs.forEach(g=>{
+      const done = g.sa!=null && g.sb!=null;
+      if(!done) return;
+      [['A','a'],['B','b']].forEach(([T,k])=>{
+        const opk = k==='a'?'b':'a';
+        (g['team'+T]||[]).forEach(p=>{ if(!p||!p.id) return;
+          const t=st[p.id]=st[p.id]||{id:p.id,w:0,d:0,g:0,gf:0,ga:0,days:new Set()};
+          t.g++; t.gf+=g['s'+k]; t.ga+=g['s'+opk]; if(g.date) t.days.add(g.date);
+          if(g['s'+k]>g['s'+opk]) t.w++; else if(g['s'+k]===g['s'+opk]) t.d++; });
+      });
+    });
+    const list=Object.values(st).map(t=>{
+      const dayN=t.days.size||1;
+      return {...t, avg:dayPoints(t.w,t.d)/dayN, gdAvg:(t.gf-t.ga)/dayN};
+    }).filter(t=>t.g>0).sort((a,b)=> b.avg-a.avg || b.gdAvg-a.gdAvg || b.g-a.g);
+    const i=list.findIndex(t=>String(t.id)===String(meId));
+    if(i>=0) out.push({ m:+mk.slice(5), rank:i+1, total:list.length });
+  });
+  return out.slice(-6);        // 최근 여섯 달
+}
+/* 꺾은선 하나 — 1위가 위로 가야 읽힌다 */
+function rankTrendSvg(series){
+  if(series.length<2) return '';
+  const W=320, H=132, P=26;
+  const xs=series.map((_,i)=>P+i*(W-P*2)/(series.length-1));
+  const rs=series.map(s=>s.rank);
+  const lo=Math.min(...rs), hi=Math.max(...rs);
+  const ys=series.map(s=>26+((s.rank-lo)/((hi-lo)||1))*(H-62));
+  const line=xs.map((x,i)=>`${x.toFixed(0)},${ys[i].toFixed(0)}`).join(' ');
+  const area=`${xs[0].toFixed(0)},${H-22} ${line} ${xs[xs.length-1].toFixed(0)},${H-22}`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    <polygon points="${area}" fill="var(--coral)" fill-opacity=".10"/>
+    <polyline points="${line}" fill="none" stroke="var(--coral)" stroke-width="2.4"
+      stroke-linejoin="round" stroke-linecap="round"/>
+    ${xs.map((x,i)=>`<circle cx="${x.toFixed(0)}" cy="${ys[i].toFixed(0)}" r="4.4"
+      fill="#fff" stroke="var(--coral)" stroke-width="2.4"/>`).join('')}
+    ${xs.map((x,i)=>`<text x="${x.toFixed(0)}" y="${(ys[i]-11).toFixed(0)}" text-anchor="middle"
+      font-size="11" font-weight="700" fill="var(--ink)">${series[i].rank}위</text>`).join('')}
+    ${xs.map((x,i)=>`<text x="${x.toFixed(0)}" y="${H-5}" text-anchor="middle"
+      font-size="9.5" fill="var(--lgray)">${series[i].m}월</text>`).join('')}
+  </svg>`;
+}
 function clubTabRecords(){
   /* 게스트 판단에 전체 명단이 필요하다 — 없으면 딱지를 아예 안 붙이므로 먼저 받아 둔다 */
   if(typeof loadClubRoster==='function' && CLUB_ROSTER===null) loadClubRoster();
@@ -11240,6 +11364,30 @@ function clubTabRecords(){
 
   if(!games.length) return h+`<div class="card" style="text-align:center;padding:30px 20px">
     <span class="gt1 gmute">이 기간에는 확정된 경기가 없어요</span></div>`;
+
+  /* 내 순위 추이 — 등수 하나만 보면 올랐는지 내렸는지 알 수 없다.
+     같은 잣대로 달마다 다시 매겨 흐름을 보여준다. */
+  (function(){
+    const ser=monthRankSeries(all, meId);
+    if(ser.length<2) return;
+    const last=ser[ser.length-1], first=ser[0];
+    const diff=first.rank-last.rank;
+    h+=`<div class="rk-card">
+      <div class="rk-h"><b>내 순위 추이</b><span>${last.total}명 중</span></div>
+      ${rankTrendSvg(ser)}
+      <div class="rk-f">
+        <div><b>${last.rank}위</b><i>이번 달</i></div>
+        <div><b>${(()=>{ const g=all.filter(x=>x.sa!=null&&x.sb!=null);
+          let w=0,t=0; g.forEach(x=>{
+            const inA=(x.teamA||[]).some(p=>p&&String(p.id)===String(meId));
+            const inB=(x.teamB||[]).some(p=>p&&String(p.id)===String(meId));
+            if(!inA&&!inB) return; t++;
+            if((inA&&x.sa>x.sb)||(inB&&x.sb>x.sa)) w++; });
+          return t?Math.round(w/t*100)+'%':'—'; })()}</b><i>시즌 승률</i></div>
+        <div class="${diff>0?'up':diff<0?'dn':''}">
+          <b>${diff>0?'+':''}${diff||'—'}</b><i>${first.m}월 대비</i></div>
+      </div></div>`;
+  })();
 
   const st={};
   games.forEach(g=>{
