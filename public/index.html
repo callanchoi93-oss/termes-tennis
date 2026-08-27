@@ -3249,7 +3249,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0826y';
+const BUILD='v1.1.2-0826z';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9449,9 +9449,13 @@ async function createClub(){
    가입 없이 판단할 재료(회비·정기모임·분위기)는 보여주고,
    대진표·회비 장부·공지처럼 '들어와야 쓸모 있는 것'은 잠가둔다. */
 let PV = null;
-async function openClubPreview(n){
-  const c=state.clubs.find(x=>x.n===n); if(!c) return;
-  const cid=CLUB_IDS[n];
+async function openClubPreview(n, idHint){
+  /* 교류전 상대처럼 아직 우리 목록에 없는 클럽도 열 수 있어야 한다.
+     예전에는 조용히 아무 일도 안 일어났다. */
+  let c=(state.clubs||[]).find(x=>x.n===n);
+  const cid=CLUB_IDS[n] || idHint || 0;
+  if(!c && !cid) return toast('클럽 정보를 찾지 못했어요');
+  if(!c) c={ n, region:'', sport:state.sport };
   let roster=[], events=[];
   if(TRIAL) roster=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'}));
   else if(SERVER_OK&&cid){
@@ -10466,12 +10470,12 @@ async function openXc(id){
   let h=`<div class="xd-hero">
       <div class="xd-k"><b>교류전${x.status==='confirmed'?' · 대진 완성':''}</b><span>${dleft}</span></div>
       <div class="xd-vs">
-        <div class="xd-side">
+        <div class="xd-side"${mine?` onclick="openClubPreview(${jsArg(mine.name)},${mine.club_id})" style="cursor:pointer"`:''}>
           <div class="xd-lg" style="${logo(mine)}">${initial(mine)}</div>
           <div class="xd-nm">${mine?esc(mine.name):'우리 클럽'}</div>
           <div class="xd-sub">${mine?`${mine.count} / ${x.per_club}명`:''}</div></div>
         <div class="xd-x">VS</div>
-        <div class="xd-side">
+        <div class="xd-side"${op?` onclick="openClubPreview(${jsArg(op.name)},${op.club_id})" style="cursor:pointer"`:''}>
           <div class="xd-lg ${op?'':'wait'}" style="${op?logo(op):''}">${op?initial(op):'?'}</div>
           <div class="xd-nm ${op?'':'off'}">${op?esc(op.name):'상대를 기다려요'}</div>
           <div class="xd-sub ${op?'':'off'}">${op?`${op.count} / ${x.per_club}명`:'빈자리 1'}</div></div>
