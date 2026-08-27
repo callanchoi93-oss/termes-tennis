@@ -8401,6 +8401,60 @@ app.use(express.static(new URL('./public', import.meta.url).pathname));
 app.use((err, req, res, _next) => { console.error(err); res.status(500).json({ error: String(err && err.message || err) }); });
 app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
 
+/* ── 삭제 · 취소 · 하차 ──
+   상대가 없으면 흔적 없이 지운다. 상대가 있으면 지우면 안 된다 —
+   그쪽은 이미 회원들에게 알리고 인원을 모으고 있다. 취소로 남기고 알린다. */
+app.delete('/exchange/:id', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const ent = xcEntries(eid);
+  const host = ent.find(e => e.seat_no === 1);
+  if (!host || !isOfficer(host.club_id, req.uid))
+    return res.status(403).json({ error: 'host_only', message: '연 클럽의 임원만 할 수 있어요' });
+
+  const others = ent.filter(e => e.club_id !== host.club_id);
+  if (!others.length) {
+    /* 아무도 안 들어왔다 — 그냥 지운다 */
+    db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);
+    db.prepare('DELETE FROM exchange_entries WHERE event_id=?').run(eid);
+    db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
+    return res.json({ ok: true, deleted: true });
+  }
+  /* 상대가 있다 — 취소로 남기고 양쪽에 알린다 */
+  const why = String((req.body || {}).reason || '').trim().slice(0, 60);
+  db.prepare("UPDATE club_events SET match_status='cancelled' WHERE id=?").run(eid);
+  ent.forEach(e => notifyClub(e.club_id, null, '🆚', '교류전이 취소됐어요',
+    `${ev.title}${ev.date ? ' · ' + ev.date : ''}${why ? ' · ' + why : ''}`));
+  res.json({ ok: true, cancelled: true });
+});
+
+/* 참가 클럽이 스스로 빠진다 — 마감까지 기다리는 것보다 미리 알리는 편이 낫다.
+   주최 클럽이 다른 상대를 찾을 시간이 생긴다. */
+app.post('/exchange/:id/leave', auth, (req, res) => {
+  const eid = +req.params.id;
+  const cid = +((req.body || {}).club_id || 0);
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '임원만 할 수 있어요' });
+  const ent = xcEntries(eid);
+  const me = ent.find(e => e.club_id === cid);
+  if (!me) return res.status(404).json({ error: 'not_joined' });
+  if (me.seat_no === 1)
+    return res.status(400).json({ error: 'host', message: '연 클럽은 하차 대신 취소를 해주세요' });
+
+  db.prepare("UPDATE exchange_entries SET status='dropped' WHERE id=?").run(me.id);
+  db.prepare("UPDATE club_events SET match_status='open' WHERE id=?").run(eid);
+  db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);   // 대진이 있었다면 무효
+  const host = ent.find(e => e.seat_no === 1);
+  const name = (db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {}).name || '';
+  if (host) notifyClub(host.club_id, null, '🆚', '상대 클럽이 빠졌어요',
+    `${name} 클럽이 하차했어요 · 자리가 다시 열렸어요`);
+  notifyClub(cid, req.uid, '🆚', '교류전에서 빠졌어요', `${ev.title}`);
+  res.json({ ok: true });
+});
+
 /* ── 대진표 ── 확정되면 누구나 본다. 감출 이유가 없다 */
 app.get('/exchange/:id/games', auth, (req, res) => {
   const eid = +req.params.id;
