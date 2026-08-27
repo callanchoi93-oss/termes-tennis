@@ -2361,8 +2361,12 @@
   .xc-seg{ display:flex;gap:6px;margin:13px 0 8px }
   .xc-seg b{ flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;
     padding:9px 0;font-size:12.7px;font-weight:600;color:#57503f;cursor:pointer }
-  .xc-seg b.on{ background:var(--ink);color:#fff;border-color:var(--ink) }
+  .xc-seg b.on{ background:#fffaf6;color:var(--coral-d);border:1.5px solid var(--coral);font-weight:700 }
   .xc-mo{ font-size:10px;font-weight:700;color:var(--lgray);letter-spacing:.09em;margin:21px 2px 3px }
+  /* 되돌리는 동작 — 눈에 띄되 실수로 누르지 않게 아래쪽에 조용히 */
+  .xd-danger{ text-align:center;margin-top:34px;padding-top:21px;border-top:1px solid var(--line) }
+  .xd-danger span{ font-size:12.7px;font-weight:600;color:var(--lgray);cursor:pointer;
+    padding:8px 14px;border-radius:10px }
   /* 지난 대진 카드 — 왼쪽 날짜, 가운데 모임, 오른쪽 그날 1위 */
   .bk-card{ display:flex;align-items:center;gap:13px;background:#fff;
     border:1px solid var(--line);border-radius:16px;padding:15px 16px;margin-bottom:8px;cursor:pointer }
@@ -2414,9 +2418,9 @@
     border-radius:12px;padding:9px 0;cursor:pointer;transition:.12s }
   .xf-days b i{ font-style:normal;display:block;font-size:10px;color:var(--lgray) }
   .xf-days b span{ display:block;font-size:16.2px;font-weight:700;letter-spacing:-.03em;margin-top:3px }
-  .xf-days b.on{ background:var(--coral);border-color:var(--coral) }
-  .xf-days b.on i{ color:rgba(255,255,255,.8) }
-  .xf-days b.on span{ color:#fff }
+  .xf-days b.on{ background:#fffaf6;border:1.5px solid var(--coral);padding:8.5px 0 }
+  .xf-days b.on i{ color:var(--coral-d);font-weight:600 }
+  .xf-days b.on span{ color:var(--coral-d) }
   .xf-l{ font-size:var(--x0);font-weight:700;color:var(--lgray);letter-spacing:.09em;
     line-height:1.4;margin:21px 2px 8px }
   .xf-h{ font-size:var(--x1);color:var(--gray);font-weight:400;line-height:var(--xlh);margin:-4px 2px 8px }
@@ -2424,9 +2428,11 @@
   .xf-c{ display:flex;gap:6px }
   .xf-c b{ flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;padding:9px 0;
     font-size:var(--x1);font-weight:600;line-height:1.272;cursor:pointer;transition:.12s }
-  .xf-c b.on{ background:var(--coral);color:#fff;border-color:var(--coral);font-weight:700 }
-  /* 코랄은 이 화면의 주 동작(버튼) 몫이다 — 고른 상태는 잉크로 눌러 둔다 */
-  .xf-c.ink b.on{ background:var(--ink);border-color:var(--ink) }
+  /* 고른 칩 — 채우면 여러 개 골랐을 때 색이 넓게 깔려 아래 버튼이 묻힌다.
+     테두리와 글자만 코랄로. 두께 차이는 padding 으로 메워 줄이 흔들리지 않게 한다. */
+  .xf-c b.on{ background:#fffaf6;color:var(--coral-d);border:1.5px solid var(--coral);
+    font-weight:700;padding:9.5px 0 }
+  .xf-c.ink b.on{ background:#fffaf6;color:var(--coral-d);border-color:var(--coral) }
   .xf-plan{ background:#fffaf6;border:1px solid #f3d9c5;border-radius:13px;padding:13px 14px;margin-top:13px }
   .xf-plan .big{ font-size:var(--x2);font-weight:700;letter-spacing:-.035em;
     line-height:1.272;color:var(--coral-d) }
@@ -3268,7 +3274,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0827a';
+const BUILD='v1.1.2-0827c';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9470,11 +9476,14 @@ async function createClub(){
 let PV = null;
 /* 연령대 — 서버에 age_bands 로 이미 있는데 화면에 안 보였다.
    클럽 만들기에서 받은 값(20대,30대 …)을 읽기 좋게 다듬는다. */
-const AGE_BANDS=['20대','30대','40대','50대','60대 이상'];
+/* <60대 이상>이라고 하면 70·80대까지 있는 것처럼 읽힌다. 딱 떨어지게 둔다.
+   저장·표시 모두 이 순서(나이순)를 따른다 — 고른 순서대로 두면 <40대 · 30대> 가 된다. */
+const AGE_BANDS=['20대','30대','40대','50대','60대'];
 /* 임원이 직접 고른다 — 회원 생년월일은 받지 않기 때문이다.
    실력·홈구장·회비와 같은 방식이라 새 개념을 들이지 않는다. */
 function openAgeEdit(){
   const cur=new Set(String((AC()||{}).age_bands||'').split(',').map(x=>x.trim()).filter(Boolean));
+  if(cur.delete('60대 이상')) cur.add('60대');
   window._AGE=cur;
   drawAgeEdit();
 }
@@ -9501,7 +9510,10 @@ async function ageSave(){
   }catch(e){ toast('저장하지 못했어요'); }
 }
 function ageBandText(v){
-  const a=String(v||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const set=new Set(String(v||'').split(',').map(x=>x.trim()).filter(Boolean));
+  /* 예전 값 <60대 이상> 도 읽어준다 */
+  if(set.delete('60대 이상')) set.add('60대');
+  const a=AGE_BANDS.filter(x=>set.has(x));          // 나이순으로 다시 세운다
   if(!a.length) return '';
   if(a.length>=4) return '다양해요';
   return a.join(' · ');
@@ -10276,7 +10288,7 @@ function xcDay(x){
 }
 function xcUpcoming(list){
   const t=new Date(), y=t.getFullYear();
-  return (list||[]).filter(x=>{
+  return (list||[]).filter(x=>x.status!=='cancelled').filter(x=>{
     const d=xcDay(x); if(!d.mon) return true;
     return new Date(y, d.mon-1, d.day, 23, 59) >= t;
   }).sort((a,b)=>{ const A=xcDay(a),B=xcDay(b);
@@ -10636,8 +10648,42 @@ async function openXc(id){
 
   if(op) h+=`<div class="xf-l">지난 만남</div>
     <div class="xd-fine" id="xcVs" style="margin-top:0">불러오는 중…</div>`;
+
+  /* 되돌릴 방법이 없으면 사람들은 잘못 연 교류전을 그냥 방치한다.
+     연 클럽은 삭제·취소, 참가 클럽은 하차. */
+  if(xcIsOfficer() && x.status!=='cancelled'){
+    const host=(x.clubs||[]).find(c=>c.host);
+    const iAmHost=host && host.club_id===cid;
+    h+=`<div class="xd-danger">${iAmHost
+      ? `<span onclick="xcKill(${x.id},${op?1:0},${done?1:0})">${op?'교류전 취소':'교류전 삭제'}</span>`
+      : (mine?`<span onclick="xcLeave(${x.id})">교류전에서 빠지기</span>`:'')}</div>`;
+  }
   xcPage(`교류전`, h);
   if(op) xcVsLoad(cid, op.club_id);
+}
+/* 삭제 · 취소 — 상대가 있으면 지우지 않고 취소로 남긴다 */
+async function xcKill(id, hasOp, drawn){
+  const msg = !hasOp
+    ? '이 교류전을 삭제할까요?\n아직 상대가 없어서 흔적 없이 지워져요.'
+    : drawn
+      ? '대진까지 나온 교류전이에요.\n취소하면 양쪽 클럽 모두에게 알림이 갑니다.\n정말 취소할까요?'
+      : '상대 클럽이 이미 들어와 있어요.\n취소하면 양쪽 클럽에 알림이 갑니다.\n정말 취소할까요?';
+  if(!confirm(msg)) return;
+  let reason='';
+  if(hasOp){ reason=prompt('이유를 적어주시면 상대 클럽에 함께 전해드려요 (선택)')||''; }
+  try{
+    await api(`/exchange/${id}`,{method:'DELETE',body:JSON.stringify({reason})});
+    toast(hasOp?'취소했어요 · 양쪽에 알렸어요':'삭제했어요');
+    XC_LIST=null; state._xcOpen=0; renderClub();
+  }catch(e){ toast(xcErr(e,'처리하지 못했어요')); }
+}
+/* 하차 — 마감까지 기다리는 것보다 미리 알리는 편이 주최 클럽에 낫다 */
+async function xcLeave(id){
+  if(!confirm('이 교류전에서 빠질까요?\n자리가 다시 열리고 주최 클럽에 알림이 갑니다.')) return;
+  try{
+    await api(`/exchange/${id}/leave`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
+    toast('빠졌어요'); XC_LIST=null; state._xcOpen=0; renderClub();
+  }catch(e){ toast(xcErr(e,'처리하지 못했어요')); }
 }
 async function xcRsvp(id, status){
   try{
