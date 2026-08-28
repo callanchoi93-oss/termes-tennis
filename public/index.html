@@ -5892,6 +5892,7 @@ async function delEvent(eid){
   }catch(e){ toast('취소하지 못했어요'); }
 }
 async function createClubEvent(){
+  try{ track('event:create'); }catch(e){}
   const t=(NE.title||'').trim();
   if(!t){ toast('모임 이름을 입력해 주세요'); return; }
   if(!NE.day){ toast('날짜를 선택해 주세요'); return; }
@@ -5983,6 +5984,7 @@ async function decideJoin(uid, approve, role, cid){
 
 /* 가입 신청 (일반) */
 async function createClubServer(name, region, sport, extra){
+  try{ track('club:create'); }catch(e){}
   if(!SERVER_OK) return null;
   try{
     const c = await api('/clubs', {method:'POST', body: JSON.stringify(
@@ -10576,6 +10578,7 @@ function xcTimeDone(el){
   xcForm();
 }
 async function xcCreate(){
+  try{ track('xc:create'); }catch(e){}
   const cid=xcMyClubId(); if(!cid) return toast('클럽이 필요해요');
   if(!XCF.date) return toast('날짜를 골라주세요');
   const per=XCF.courts*2, mix=xcMixOf(per, XCF.women);
@@ -10814,6 +10817,7 @@ function xcShare(id){
   else { try{ navigator.clipboard.writeText(url); toast('링크를 복사했어요'); }catch(e){ toast(url); } }
 }
 async function xcJoin(id){
+  try{ track('xc:join'); }catch(e){}
   try{ await api(`/exchange/${id}/join`,{method:'POST',body:JSON.stringify({club_id:xcMyClubId()})});
     toast('참가 신청했어요 · 회원들에게 참석을 받아주세요'); XC_LIST=null; openXc(id);
   }catch(e){ toast(xcErr(e,'신청하지 못했어요')); }
@@ -10906,6 +10910,7 @@ function xcScore(eid, gid){
     .catch(e=>toast(xcErr(e,'넣지 못했어요')));
 }
 async function xcDrawNow(id){
+  try{ track('xc:draw'); }catch(e){}
   try{ const r=await api(`/exchange/${id}/draw`,{method:'POST',body:'{}'});
     toast(`대진이 나왔어요 · ${(r.games||[]).length}경기`); XC_LIST=null; openXcGames(id);
   }catch(e){ toast(xcErr(e,'아직 대진을 만들 수 없어요')); }
@@ -16225,6 +16230,7 @@ function cbHomeStrip(c){
    높이를 못 박고, 라벨 줄은 <운영진 배지가 있든 없든> 같은 자리를 차지한다. */
 /* 대진 상태를 서버에 올린다 — 시계·점수가 다른 사람 폰에도 즉시 보이게 */
 async function cb2Save(){
+  try{ track('draw:publish'); }catch(e){}
   CB2.updated_at=Date.now();
   if(typeof TRIAL!=='undefined' && TRIAL) return;
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }
@@ -17430,6 +17436,7 @@ function cbNearestEvent(evs){
   return list[0].e;
 }
 async function openClubBracketBuild(){
+  try{ track('draw:open'); }catch(e){}
   if(!cb2CanEdit()){ toast('대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요'); return; }
   CB2_STEP=1;                                    // 열 때는 언제나 참석자 고르기부터
   { const evs=clubEvents();
@@ -21592,6 +21599,7 @@ function fmtAgo(ts){ const s=Math.floor((Date.now()-ts)/1000);
   if(s<86400) return Math.floor(s/3600)+'시간 전'; return Math.floor(s/86400)+'일 전'; }
 async function evRsvp(status){
   if(!EVD) return;
+  try{ track('rsvp', {s:status}); }catch(e){}
   try{ const r=await api(`/events/${EVD.ev.id}/rsvp`,{method:'POST',body:JSON.stringify({status})});
     const list=await api(`/clubs/${clubId()}/events`); SRV_EVENTS=list;
     EVD.ev=list.find(x=>String(x.id)===String(EVD.ev.id))||EVD.ev;
@@ -29095,7 +29103,31 @@ function openDiag(){
     <div class="note">로고를 빠르게 5번 탭하면 언제든 이 화면이 열려요. 스크린샷을 개발에 보내주세요.</div>`;
   document.getElementById('ov').classList.add('on');
 }
+/* ── 사용 기록 ──
+   어느 화면에서 멈추는지 알아야 고칠 곳이 보인다.
+   외부 도구를 붙이면 회원 정보가 밖으로 나가므로 우리 서버에만 쌓는다.
+   화면을 옮길 때마다 보내면 배터리를 먹으므로 모아서 한 번에 보낸다. */
+const TRK=[]; let TRK_T=null;
+function track(name, props){
+  if(!SERVER_OK || !authToken()) return;
+  TRK.push({ n:name, p:props||null, t:Date.now() });
+  if(TRK.length>=20) return trackFlush();
+  if(!TRK_T) TRK_T=setTimeout(trackFlush, 8000);
+}
+function trackFlush(){
+  if(TRK_T){ clearTimeout(TRK_T); TRK_T=null; }
+  if(!TRK.length) return;
+  const batch=TRK.splice(0, 40);
+  try{ api('/track',{method:'POST',body:JSON.stringify({events:batch})}).catch(()=>{}); }catch(e){}
+}
+/* 앱을 닫을 때 남은 것을 흘려보낸다 */
+try{
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) trackFlush(); });
+  window.addEventListener('pagehide', trackFlush);
+}catch(e){}
+
 function go(v, isBack){ try{ closeEventPage(); }catch(e){}
+  try{ track('view:'+v); }catch(e){}
   if(state._xcOpen && v!=='club') state._xcOpen=0;
   /* 구장예약은 오픈매치로 합쳤다 — 예전 링크·알림이 venue 로 오면 여기서 돌린다.
      화면과 코드는 남겨두되(예약 취소·환불 조회가 아직 그 안에 있다) 탭에서는 내렸다. */

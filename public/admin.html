@@ -175,6 +175,43 @@ body{background:var(--paper);color:var(--ink);
   .uact button{border:1px solid var(--line,#ececea);background:#fff;border-radius:12px;
     padding:14px 0;font-size:13px;font-weight:600;color:#57503f;font-family:inherit;cursor:pointer}
   .uact button.danger{color:#c2410c;border-color:#f3d9c5}
+  /* 분석 */
+  .ct{font-size:13px;font-weight:700;letter-spacing:-.03em;padding:4px 2px 10px}
+  .tbar{display:flex;align-items:center;gap:10px;padding:7px 2px;font-size:12.5px}
+  .tbar .l{width:96px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tbar .t{flex:1;height:9px;background:#f2f1ec;border-radius:5px;overflow:hidden}
+  .tbar .t i{display:block;height:100%;border-radius:5px}
+  .tbar .v{width:86px;text-align:right;font-weight:700}
+  .tbar .v em{font-style:normal;font-size:10.5px;color:#b3aea4;margin-left:5px;font-weight:500}
+  .fstep{padding:9px 2px}
+  .fl{display:flex;align-items:center;gap:8px}
+  .fl b{font-size:13px;font-weight:700}
+  .fl em{font-style:normal;font-size:11px;font-weight:700;color:#b3aea4}
+  .fl em.bad{color:#c2410c}
+  .ft{height:10px;background:#f2f1ec;border-radius:5px;overflow:hidden;margin:6px 0 4px}
+  .ft i{display:block;height:100%;background:#ec6a2e;border-radius:5px}
+  .fn{font-size:11.5px;color:#7d7870}
+  .fn span{color:#b3aea4;margin-left:4px}
+  /* 교류전 테스트 */
+  .xrw{padding:14px 4px;border-bottom:1px solid #f2f0ea}
+  .xrw:last-child{border-bottom:0}
+  .xh{display:flex;align-items:center;gap:8px}
+  .xh b{font-size:14.5px;font-weight:700;letter-spacing:-.03em}
+  .xh .st{font-size:10.5px;font-weight:700;color:#b3aea4;background:#f6f5f2;
+    border-radius:20px;padding:3px 9px}
+  .xh .st.ok{background:#fceee4;color:#cf5418}
+  .xs{font-size:11.5px;color:#b3aea4;margin-top:5px}
+  .xc{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .xc span{font-size:11.5px;font-weight:600;border:1px solid #ececea;border-radius:20px;padding:4px 11px}
+  .xc span.on{border-color:#f3d9c5;background:#fffaf6;color:#cf5418}
+  .xc span.none{color:#b3aea4;border-style:dashed}
+  .xb{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+  .xb button{border:1px solid #ececea;background:#fff;border-radius:10px;padding:9px 14px;
+    font-size:12px;font-weight:600;color:#57503f;font-family:inherit;cursor:pointer}
+  .xb button.pri{background:#161412;color:#fff;border-color:#161412}
+  .xb button.danger{color:#c2410c;border-color:#f3d9c5}
+  .ut i.dv{color:#b3aea4;font-weight:600}
+  .ut i.dv.ios{color:#161412}
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -221,7 +258,8 @@ const ago=t=>{
    안쪽 탭으로 나누고, 매치와 인원 미달, 계정과 매니저 등급도 함께 본다.
    가로로 흐르던 14개는 뒤쪽에 무엇이 있는지 알 수 없었다. */
 const MAIN=[['stats','현황'],['users','회원'],['clubs','클럽'],['matches','매치']];
-const MORE=[['venues','구장'],['reports','신고'],['payouts','정산'],['staff','계정'],['banners','배너']];
+const MORE=[['track','분석'],['xctest','교류전'],['venues','구장'],['reports','신고'],
+  ['payouts','정산'],['staff','계정'],['banners','배너']];
 let TAB='stats', SUB='', UQ='', SEL=null, CACHE={};
 
 function gLabel(v){ const t=String(v||'').trim();
@@ -260,6 +298,8 @@ async function saveKey(){ const v=($('k')||{}).value||''; if(!v) return;
 
 async function draw(){
   if(TAB==='stats')   return drawStats();
+  if(TAB==='track')   return drawTrack();
+  if(TAB==='xctest')  return drawXcTest();
   if(TAB==='users')   return drawUsers();
   if(TAB==='clubs')   return drawClubs();
   if(TAB==='matches') return drawMatches();
@@ -314,6 +354,16 @@ async function drawStats(){
         전체 클럽 ${fmt(s.clubs)}개 중 ${fmt(s.clubsAlive)}개가 이번 달에 모임을 열었어요.
         ${s.clubs>s.clubsAlive ? `나머지 ${fmt(s.clubs-s.clubsAlive)}개는 만들어만 두고 안 쓰는 중이에요.` : ''}</div>
     </div>
+    ${(s.byPlat||[]).length ? `<div class="card"><div class="ct">어느 기기로 쓰나</div>
+      ${s.byPlat.map(p=>{
+        const NM={ios:'아이폰 앱', web:'웹'};
+        const tot=s.byPlat.reduce((a,b)=>a+b.n,0)||1;
+        const w=Math.round(p.n/tot*100);
+        return `<div class="prow"><span class="l">${NM[p.p]||p.p}</span>
+          <span class="t"><i style="width:${w}%;background:${p.p==='ios'?'#161412':'#ec6a2e'}"></i></span>
+          <span class="v">${fmt(p.n)}<em>${w}%</em></span></div>`; }).join('')}
+      <div class="note" style="margin-top:8px">한 번이라도 접속한 회원 기준이에요</div>
+    </div>` : ''}
     ${(s.byProvider||[]).length ? `<div class="card"><div class="ct">어디로 가입했나</div>
       ${s.byProvider.map(p=>{
         const NM={kakao:'카카오',google:'구글',apple:'애플',dev:'개발'};
@@ -389,6 +439,8 @@ async function drawUsers(){
     week:    u=>u.last_seen && now-u.last_seen < 7*D,
     old:     u=>u.last_seen && now-u.last_seen >= 30*D,
     never:   u=>!u.last_seen,
+    ios:     u=>u.last_plat==='ios',
+    web:     u=>u.last_plat && u.last_plat!=='ios',
     nog:     u=>!gLabel(u.gender),
   };
   const list=rows.filter(F[USEEN]||F['']);
@@ -405,7 +457,7 @@ async function drawUsers(){
         border:1px solid var(--line)">내려받기</button></div>
 
     <div class="fbar">${chip('','전체')}${chip('today','오늘')}${chip('week','7일')}
-      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('nog','성별 없음',1)}</div>
+      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('ios','아이폰')}${chip('web','웹')}${chip('nog','성별 없음',1)}</div>
 
     ${USEEN==='nog'&&noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
       <u onclick="fillGender()">클럽 값으로 채우기</u></div>`:''}
@@ -425,8 +477,10 @@ async function drawUsers(){
           esc(String(u.name||'?')[0])}</span>
         <div class="ub">
           <div class="ut"><b>${esc(u.name||'이름 없음')}</b>${
-            g ? `<i class="${g==='여성'?'f':'m'}">${g[0]}</i><s>·</s><i class="p">${esc(pv)}</i>`
-              : `<i class="none">성별 없음</i><s>·</s><i class="p">${esc(pv)}</i>`}</div>
+            g ? `<i class="${g==='여성'?'f':'m'}">${g[0]}</i>`
+              : `<i class="none">성별 없음</i>`}<s>·</s><i class="p">${esc(pv)}</i>${
+            u.last_plat ? `<s>·</s><i class="dv ${u.last_plat==='ios'?'ios':''}">${
+              u.last_plat==='ios'?'아이폰':u.last_plat==='web'?'웹':esc(u.last_plat)}</i>`:''}</div>
           <span class="us">#${u.id} · 티어 ${fmt(u.rating_doubles||1000)}${
             (u.tier_games||0)<TIER_MIN ? ' · 배치 전' : ` · ${u.tier_games}경기`}</span></div>
         <div class="usn"><b class="${a.cls}">${a.txt}</b><i>${
@@ -454,6 +508,8 @@ async function openU(id){
       u.last_seen?` · ${stamp(u.last_seen)}`:''}</b></div>${
       u.last_seen?'':`<div class="unote">접속 기록은 2026년 8월 28일부터 쌓입니다.
         그 전에 다녀간 분도 값이 비어 있어요.</div>`}
+    <div class="ur"><span>기기</span><b>${
+      u.last_plat==='ios'?'아이폰 앱':u.last_plat==='web'?'웹':u.last_plat?esc(u.last_plat):'모름'}</b></div>
     <div class="ur"><span>티어 레이팅</span><b>${fmt(u.rating_doubles||1000)}${
       (u.tier_games||0)<TIER_MIN ? ` · 배치까지 ${TIER_MIN-(u.tier_games||0)}경기` : ` · ${u.tier_games}경기`}</b></div>
     <div class="ur"><span>성별</span><b>${g||'없음'}${
@@ -470,6 +526,122 @@ async function openU(id){
   $('ov').classList.add('on');
 }
 function closeU(){ $('ov').classList.remove('on'); UROWS=null; }
+
+/* ── 분석 ──
+   외부 도구를 붙이면 회원 정보가 밖으로 나가므로 우리 서버에 쌓은 것만 본다.
+   숫자를 늘어놓기보다 <어디서 멈추는가>를 먼저 보여준다. */
+let TDAYS=7;
+async function drawTrack(){
+  const [t, fn] = await Promise.all([
+    api('/admin/track?days='+TDAYS),
+    api('/admin/funnel?days=30&steps=' + encodeURIComponent(
+      'view:club,event:create,draw:open,draw:publish')).catch(()=>({steps:[]})),
+  ]);
+  const NM={ 'view:home':'홈','view:om':'오픈매치','view:club':'클럽','view:sched':'일정',
+    'view:me':'내 정보','draw:open':'대진 짜기 열기','draw:publish':'대진 발행',
+    'rsvp':'참석 체크','xc:create':'교류전 열기','xc:join':'교류전 참가',
+    'xc:draw':'교류전 대진','club:create':'클럽 만들기','event:create':'모임 만들기' };
+  const nm=k=>NM[k]||k;
+  const maxS=Math.max(1, ...(t.screens||[]).map(x=>x.n));
+  const maxA=Math.max(1, ...(t.actions||[]).map(x=>x.n));
+  const bar=(l,n,u,mx,col)=>`<div class="tbar">
+    <span class="l">${esc(l)}</span>
+    <span class="t"><i style="width:${Math.round(n/mx*100)}%;background:${col||'#ec6a2e'}"></i></span>
+    <span class="v">${fmt(n)}<em>${fmt(u)}명</em></span></div>`;
+
+  /* 깔때기 — 앞 단계를 거친 사람 중 몇이 다음으로 갔나 */
+  const F=(fn.steps||[]);
+  const f0=F.length?F[0].n:0;
+  const funnel = !F.length ? '' : `<div class="card"><div class="ct">클럽 → 대진 (30일)</div>
+    ${F.map((st,i)=>{
+      const pct=f0?Math.round(st.n/f0*100):0;
+      const drop=i? (F[i-1].n? Math.round((1-st.n/F[i-1].n)*100):0) : 0;
+      return `<div class="fstep">
+        <div class="fl"><b>${nm(st.name)}</b>${i?`<em class="${drop>50?'bad':''}">−${drop}%</em>`:''}</div>
+        <div class="ft"><i style="width:${pct}%"></i></div>
+        <div class="fn">${fmt(st.n)}명 <span>${pct}%</span></div></div>`;}).join('')}
+    <div class="note" style="margin-top:8px">
+      앞 단계를 거친 사람 중 몇이 다음으로 갔는지예요.
+      한 칸에서 절반 넘게 빠지면 거기가 막힌 곳입니다.</div></div>`;
+
+  $('app').innerHTML=shell(`
+    <div class="fbar">${[[1,'오늘'],[7,'7일'],[30,'30일'],[90,'90일']].map(([d,l])=>
+      `<span class="fchip ${TDAYS===d?'on':''}" onclick="TDAYS=${d};render()">${l}</span>`).join('')}</div>
+    <div class="card"><div class="ct">${TDAYS}일 동안</div>
+      <div class="kpi3">
+        <div><b>${fmt(t.users)}</b><i>쓴 사람</i></div>
+        <div><b>${fmt(t.total)}</b><i>기록 수</i></div>
+        <div><b>${t.users?Math.round(t.total/t.users):0}</b><i>1인 평균</i></div>
+      </div></div>
+    ${funnel}
+    <div class="card"><div class="ct">어느 화면을 보나</div>
+      ${(t.screens||[]).length ? t.screens.map(x=>bar(nm(x.name),x.n,x.u,maxS)).join('')
+        : '<div class="empty">아직 기록이 없어요</div>'}</div>
+    <div class="card"><div class="ct">무엇을 하나</div>
+      ${(t.actions||[]).length ? t.actions.map(x=>bar(nm(x.name),x.n,x.u,maxA,'#2b62c9')).join('')
+        : '<div class="empty">아직 기록이 없어요</div>'}</div>
+    ${(t.platforms||[]).length?`<div class="card"><div class="ct">기기</div>
+      ${t.platforms.map(p=>bar(p.p==='ios'?'아이폰':p.p==='web'?'웹':p.p, p.n, p.n,
+        Math.max(1,...t.platforms.map(x=>x.n)), '#1f7d4d')).join('')}</div>`:''}
+    <div class="note">기록은 우리 서버에만 쌓아요 · 화면 이름과 행동만 남고 내용은 담지 않습니다</div>`);
+}
+
+/* ── 교류전 테스트 ──
+   24명을 실제로 모아야 대진을 볼 수 있는데 그건 무리다.
+   그 클럽의 진짜 회원을 골라 참석 처리해서 대진까지 돌려본다. */
+async function drawXcTest(){
+  const rows=await api('/admin/exchange');
+  $('app').innerHTML=shell(`
+    <div class="card">${rows.length? rows.map(x=>{
+      const full=(x.clubs||[]).every(c=>c.count>=x.per_club) && (x.clubs||[]).length>=2;
+      return `<div class="xrw">
+        <div class="xh"><b>${esc(x.title||'교류전')}</b>
+          <span class="st ${x.match_status==='confirmed'?'ok':''}">${
+            x.match_status==='confirmed'?'대진 완성':x.match_status==='cancelled'?'취소됨':'모으는 중'}</span></div>
+        <div class="xs">#${x.id} · ${esc(x.date||'')} · 클럽당 ${x.per_club}명 · ${x.courts}면
+          ${x.squad_mix?` · ${esc(x.squad_mix)}`:''}</div>
+        <div class="xc">${(x.clubs||[]).map(c=>
+          `<span class="${c.count>=x.per_club?'on':''}">${esc(c.name)} ${c.count}/${x.per_club}</span>`
+        ).join('') || '<span class="none">참가 클럽 없음</span>'}</div>
+        ${x.games?`<div class="xs">대진 ${x.games}경기 · 점수 ${x.scored}개 입력됨</div>`:''}
+        <div class="xb">
+          <button onclick="xcFill(${x.id})">참석 채우기</button>
+          ${full&&!x.games?`<button class="pri" onclick="xcDraw(${x.id})">대진 만들기</button>`:''}
+          ${x.games?`<button class="pri" onclick="xcScores(${x.id})">점수 채우기</button>`:''}
+          <button class="danger" onclick="xcClear(${x.id})">비우기</button>
+        </div></div>`;}).join('')
+      : '<div class="empty">교류전이 없어요 · 앱에서 먼저 하나 열어주세요</div>'}
+    </div>
+    <div class="note">
+      <b>순서</b> 앱에서 교류전 열기 → 다른 클럽이 참가 신청 → 여기서 <b>참석 채우기</b> →
+      <b>대진 만들기</b> → <b>점수 채우기</b><br>
+      참석은 그 클럽의 실제 회원 중에서 성비에 맞춰 골라요 · 가짜 계정을 만들지 않습니다</div>`);
+}
+async function xcFill(id){
+  try{ const r=await api(`/admin/exchange/${id}/fill`,{method:'POST'});
+    toast((r.clubs||[]).map(c=>`${c.club} ${c.filled}/${c.need}`).join(' · ')); render(); }
+  catch(e){ toast(errMsg(e,'채우지 못했어요')); }
+}
+async function xcDraw(id){
+  try{ const r=await api(`/exchange/${id}/draw`,{method:'POST'});
+    toast(`대진 ${(r.games||[]).length}경기가 나왔어요`); render(); }
+  catch(e){ toast(errMsg(e,'대진을 만들지 못했어요')); }
+}
+async function xcScores(id){
+  try{ const r=await api(`/admin/exchange/${id}/scores`,{method:'POST'});
+    toast(`${r.n}경기 점수를 채웠어요`); render(); }
+  catch(e){ toast(errMsg(e,'점수를 채우지 못했어요')); }
+}
+async function xcClear(id){
+  if(!confirm('참석과 대진을 모두 지울까요?')) return;
+  try{ await api(`/admin/exchange/${id}/clear`,{method:'POST'}); toast('비웠어요'); render(); }
+  catch(e){ toast('비우지 못했어요'); }
+}
+function errMsg(e, fb){
+  let m=String((e&&e.message)||'');
+  try{ const j=JSON.parse(m); if(j&&j.message) return j.message; }catch(_){}
+  return /^\s*\{/.test(m) ? fb : (m||fb);
+}
 
 /* ── 클럽 ── */
 async function drawClubs(){
