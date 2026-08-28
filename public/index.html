@@ -2543,6 +2543,27 @@
   .xd-cap span:last-child{ font-size:12.7px;color:var(--gray) }
   .xd-cap b{ color:var(--ink);font-weight:700 }
   /* 참석자 — 얼굴과 이름을 함께. 두 줄로 */
+  /* 교류전 명단 — 양쪽을 나란히. 위 VS 카드와 같은 구도로 읽힌다 */
+  .xd-two{ display:flex;gap:11px;margin-top:13px;align-items:flex-start }
+  .xd-col{ flex:1 1 0;min-width:0;max-width:50% }
+  /* 오래된 엔진에서 flex 의 margin-left:auto 와 grid 가 다르게 그려진다 —
+     표로 두면 어디서든 한 줄로 선다 */
+  .xd-col .hd{ display:flex;align-items:center;padding-bottom:9px;
+    border-bottom:2px solid var(--line) }
+  .xd-col.me .hd{ border-bottom-color:var(--coral) }
+  .xd-col .hd i{ width:14px;height:14px;border-radius:50%;flex:none;margin-right:7px }
+  .xd-col .hd b{ font-size:11.5px;font-weight:700;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;min-width:0 }
+  .xd-col .hd em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);
+    margin-left:6px }
+  .xd-col.me .hd b em{ color:var(--coral-d) }
+  .xd-col .pr{ display:flex;align-items:center;padding:6px 0;cursor:pointer }
+  .xd-col .pr > *:first-child{ flex:none;margin-right:8px }
+  .xd-col .pr span{ font-size:12px;font-weight:600;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap }
+  .xd-col .more{ font-size:11px;color:var(--lgray);padding:6px 0 0 3px }
+  .xd-all{ text-align:center;font-size:12px;color:var(--gray);border-top:1px solid #f2f0ea;
+    margin-top:12px;padding-top:11px;cursor:pointer }
   .xd-who{ display:flex;flex-wrap:wrap;gap:13px;margin-top:16px }
   .xd-who > div{ display:flex;align-items:center;gap:8px;width:calc(50% - 7px);min-width:0 }
   .xd-who > div > *:first-child{ width:32px;height:32px;border-radius:50%;flex:none }
@@ -3332,7 +3353,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0828a';
+const BUILD='v1.1.2-0828b';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10685,11 +10706,27 @@ async function openXc(id){
       <div class="xf-c ink">${[['going','참석'],['absent','불참'],['undecided','미정']].map(([v,t])=>
         `<b class="${st===v?'on':''}" onclick="xcRsvp(${x.id},'${v}')">${t}</b>`).join('')}</div>
       <div class="xd-bar"><em style="width:${pct}%"></em></div>
-      ${ppl.length?`<div class="xd-who">${ppl.slice(0,8).map(p=>
-          `<div onclick="openMemberCard('${esc(p.name)}')">${
-            evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 32)}
-            <span class="nm">${esc(p.name)}</span></div>`).join('')}${
-        ppl.length>8?`<div><span class="nm" style="color:var(--lgray)">외 ${ppl.length-8}명</span></div>`:''}</div>`:''}
+      ${(()=>{
+        /* 교류전은 대결이다 — 위 VS 카드와 같은 구도로 양쪽 명단을 나란히 둔다.
+           탭으로 나누면 상대를 보려고 한 번 더 눌러야 하는데, 그 한 번을 대부분 안 누른다. */
+        const cols=(x.clubs||[]).filter(c=>c.club_id);
+        if(cols.length<2) return ppl.length ? oneRoster(ppl, x, mine) : '';
+        const N = XC_ALL ? 99 : 4;
+        return `<div class="xd-two">${cols.map(c=>{
+          const list=(c.people||[]).map(p=>({name:p.name, photos:p.photos}));
+          const isMine = c.club_id===mine.club_id;
+          return `<div class="xd-col${isMine?' me':''}">
+            <div class="hd"><i style="background:${xcClubColor(c.name)}"></i>
+              <b>${esc(shortClub(c.name))}<em>${list.length}</em></b></div>
+            ${list.slice(0,N).map(p=>`<div class="pr" onclick="openMemberCard('${esc(p.name)}')">
+              ${evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 26)}
+              <span>${esc(p.name)}</span></div>`).join('')}
+            ${list.length>N?`<div class="more">외 ${list.length-N}명</div>`:''}
+            ${!list.length?`<div class="more">아직 없어요</div>`:''}
+          </div>`;}).join('')}</div>
+          ${cols.some(c=>(c.people||[]).length>4) ? `<div class="xd-all"
+            onclick="XC_ALL=!XC_ALL;openXc(${x.id})">${XC_ALL?'접기':'모두 보기'}</div>`:''}`;
+      })()}
       ${!mine.ready?`<div class="xf-h" style="margin:13px 2px 0">${(()=>{
         const nm=Math.max(0,(x.need?x.need.men:0)-(mine.men||0));
         const nf=Math.max(0,(x.need?x.need.women:0)-(mine.women||0));
@@ -10783,6 +10820,29 @@ async function xcSend(id){
     await api(`/exchange/${id}/comments`,{method:'POST',body:JSON.stringify({body:v})});
     el.value=''; openXc(id);
   }catch(e){ toast(xcErr(e,'남기지 못했어요')); }
+}
+let XC_ALL=false;
+/* 클럽 이름이 길면 두 칸이 무너진다 — 앞부분만 남긴다 */
+function shortClub(n){
+  const t=String(n||'').trim();
+  if(t.length<=6) return t;
+  const sp=t.split(/\s+/);
+  return sp.length>1 && sp[sp.length-1].length<=6 ? sp[sp.length-1] : t.slice(0,6)+'…';
+}
+/* 클럽마다 다른 색 — 위 VS 카드의 로고 색과 같은 규칙으로 뽑는다 */
+function xcClubColor(name){
+  const P=['#1f5c34','#EC6A2E','#2b62c9','#6a4cc4','#c94378','#8a6d0b'];
+  let h=0; for(const ch of String(name||'')) h=(h*31+ch.charCodeAt(0))%997;
+  return P[h%P.length];
+}
+/* 상대가 없을 때 — 우리 클럽만 */
+function oneRoster(ppl, x, mine){
+  const N = XC_ALL ? 99 : 8;
+  return `<div class="xd-who">${ppl.slice(0,N).map(p=>
+      `<div onclick="openMemberCard('${esc(p.name)}')">${
+        evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 32)}
+        <span class="nm">${esc(p.name)}</span></div>`).join('')}${
+    ppl.length>N?`<div><span class="nm" style="color:var(--lgray)">외 ${ppl.length-N}명</span></div>`:''}</div>`;
 }
 async function xcRsvp(id, status){
   try{
