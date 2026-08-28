@@ -9128,11 +9128,23 @@ function xcRoster(eid, clubId) {
       AND (cm.status IS NULL OR cm.status='active')
     WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going')
     GROUP BY u.id`).all(clubId, eid);
-  return rows.filter(r => {
+  const ok = rows.filter(r => {
     if (r.role !== 'guest') return true;
     const elsewhere = db.prepare(`SELECT 1 FROM club_members
       WHERE user_id=? AND role IN ('member','officer','owner')`).get(r.id);
     return !elsewhere;                       // 어디서든 정회원이면 게스트로는 못 나간다
+  });
+  /* 같은 사람이 계정 두 개(카카오·네이버)로 클럽에 들어와 있으면 user_id 가 달라
+     GROUP BY 로는 안 걸린다 — 대진에 <최민혁 · 최민혁> 이 한 팀으로 나온 이유다.
+     한 클럽 안에서 이름이 겹치면 먼저 들어온 계정만 남긴다.
+     동명이인이 진짜로 있으면 클럽 명단에서 별명(alias)을 달아 갈라 놓는다. */
+  const seen = new Set();
+  return ok.filter(r => {
+    const k = String(r.name || '').trim();
+    if (!k) return true;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
   });
 }
 function xcView(ev, uid) {
@@ -9347,6 +9359,10 @@ function xcSquad(roster, mix) {
   const wdPool = W.slice(mix.mx);
   for (let i = 0; i < mix.wd; i++)
     out.push({ kind: '여복', p: [wdPool[i], wdPool[wdPool.length - 1 - i]] });
+  /* 자기 자신과 짝이 되는 일은 없어야 한다 — 명단이 홀수로 잘리면
+     가운데 사람이 mdPool[i] 와 mdPool[len-1-i] 양쪽에 걸린다.
+     그런 조는 만들지 않고 편성을 실패시켜, 왜 안 되는지 화면에서 묻게 한다. */
+  if (out.some(g => !g.p[0] || !g.p[1] || g.p[0].id === g.p[1].id)) return null;
   return out.map(g => ({ kind: g.kind, players: g.p.map(x => ({ id: x.id, name: x.name })) }));
 }
 
