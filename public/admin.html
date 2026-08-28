@@ -605,6 +605,7 @@ async function drawXcTest(){
         ).join('') || '<span class="none">참가 클럽 없음</span>'}</div>
         ${x.games?`<div class="xs">대진 ${x.games}경기 · 점수 ${x.scored}개 입력됨</div>`:''}
         <div class="xb">
+          ${(x.clubs||[]).length<2?`<button class="pri" onclick="xcOpp(${x.id})">상대 클럽 붙이기</button>`:''}
           <button onclick="xcFill(${x.id})">참석 채우기</button>
           ${full&&!x.games?`<button class="pri" onclick="xcDraw(${x.id})">대진 만들기</button>`:''}
           ${x.games?`<button class="pri" onclick="xcScores(${x.id})">점수 채우기</button>`:''}
@@ -613,9 +614,29 @@ async function drawXcTest(){
       : '<div class="empty">교류전이 없어요 · 앱에서 먼저 하나 열어주세요</div>'}
     </div>
     <div class="note">
-      <b>순서</b> 앱에서 교류전 열기 → 다른 클럽이 참가 신청 → 여기서 <b>참석 채우기</b> →
+      <b>순서</b> 앱에서 교류전 열기 → <b>상대 클럽 붙이기</b> → <b>참석 채우기</b> →
       <b>대진 만들기</b> → <b>점수 채우기</b><br>
       참석은 그 클럽의 실제 회원 중에서 성비에 맞춰 골라요 · 가짜 계정을 만들지 않습니다</div>`);
+}
+/* 상대 클럽 붙이기 — 다른 계정으로 로그인해 신청하기가 번거롭다 */
+async function xcOpp(id){
+  let list=[]; try{ list=await api(`/admin/exchange/${id}/clubs`); }catch(e){ return toast('클럽을 불러오지 못했어요'); }
+  if(!list.length) return toast('붙일 클럽이 없어요');
+  $('sheet').innerHTML=`
+    <div class="sh-top"><h3>상대 클럽 고르기</h3>
+      <div class="cl" onclick="closeU()">×</div></div>
+    <div class="note" style="margin-bottom:10px">회원이 많은 순이에요 · 참석 채우기가 쉬운 클럽을 고르세요</div>
+    ${list.map(c=>`<div class="ur" style="cursor:pointer" onclick="xcOppPick(${id},${c.id})">
+      <span><b style="color:#161412">${esc(c.name)}</b><br>
+        <em style="font-style:normal;font-size:11px;color:#b3aea4">${esc(c.region||'')}</em></span>
+      <b>${c.members}명</b></div>`).join('')}`;
+  $('ov').classList.add('on');
+}
+async function xcOppPick(id, cid){
+  try{ const r=await api(`/admin/exchange/${id}/opponent`,{method:'POST',
+    body:JSON.stringify({club_id:cid})});
+    closeU(); toast(`${r.club} 클럽이 참가했어요`); render(); }
+  catch(e){ toast(errMsg(e,'붙이지 못했어요')); }
 }
 async function xcFill(id){
   try{ const r=await api(`/admin/exchange/${id}/fill`,{method:'POST'});

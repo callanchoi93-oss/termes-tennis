@@ -3332,7 +3332,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0827j';
+const BUILD='v1.1.2-0828a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10419,7 +10419,11 @@ function xcDateStr(){
   return `${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]}) `
     + `${XCF.start}~${p(e.getHours())}:${p(e.getMinutes())}`
     + (XCF.place?` · ${XCF.place}`:'')
-    + (XCF.courtNo?` ${XCF.courtNo}번 코트`:'');
+    + (()=>{ const c=String(XCF.courtNo||'').trim();
+        if(!c) return '';
+        /* <1-3번코트> 처럼 이미 단위를 적어둔 경우 <번 코트>를 또 붙이면 겹친다 */
+        /* 숫자와 구분자만 적었을 때만 <번 코트>를 붙인다 */
+        return /^[0-9\s,.·~\-]+$/.test(c) ? ` ${c}번 코트` : ` ${c}`; })();
 }
 function xcMixOf(per, women){
   const W=Math.max(0,Math.min(per, women)), M=per-W;
@@ -10491,7 +10495,7 @@ function xcForm(){
       <input placeholder="용인 테니스파크" value="${esc(XCF.place)}" oninput="XCF.place=this.value"
         style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
           font-size:12.7px;font-family:inherit">
-      <input placeholder="코트 번호 · 예) 1·2·3" value="${esc(XCF.courtNo)}" oninput="XCF.courtNo=this.value"
+      <input placeholder="코트 번호 · 예) 1·2·3 (숫자만)" value="${esc(XCF.courtNo)}" oninput="XCF.courtNo=this.value"
         style="width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;
           font-size:12.7px;font-family:inherit;margin-top:8px">`;
   }
@@ -10685,7 +10689,7 @@ async function openXc(id){
           `<div onclick="openMemberCard('${esc(p.name)}')">${
             evAvatar(p.name, p.photos||(XC_PHOTOS||{})[p.name], 32)}
             <span class="nm">${esc(p.name)}</span></div>`).join('')}${
-        (mine.count||0)>8?`<div><span class="nm" style="color:var(--lgray)">외 ${mine.count-8}명</span></div>`:''}</div>`:''}
+        ppl.length>8?`<div><span class="nm" style="color:var(--lgray)">외 ${ppl.length-8}명</span></div>`:''}</div>`:''}
       ${!mine.ready?`<div class="xf-h" style="margin:13px 2px 0">${(()=>{
         const nm=Math.max(0,(x.need?x.need.men:0)-(mine.men||0));
         const nf=Math.max(0,(x.need?x.need.women:0)-(mine.women||0));
