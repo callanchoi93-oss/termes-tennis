@@ -152,7 +152,9 @@ function auth(req, res, next) {
       const t0 = now();
       if (!SEEN.has(req.uid) || t0 - SEEN.get(req.uid) > 300000) {
         SEEN.set(req.uid, t0);
-        db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(t0, req.uid);
+        /* 어느 기기로 들어왔는지도 함께 — iOS 앱은 헤더를 보내고, 없으면 웹이다 */
+        const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
+        db.prepare('UPDATE users SET last_seen=?, last_plat=? WHERE id=?').run(t0, plat, req.uid);
       }
     } catch (e) {}
     next();
@@ -6211,6 +6213,11 @@ app.get('/admin/stats', admin, (_req, res) => {
                           WHERE updated_at > ${Date.now() - 30 * 864e5}`),
     exchanges: one("SELECT COUNT(*) n FROM club_events WHERE kind='exchange'"),
 
+    /* 어느 기기로 쓰나 — 아이폰 앱과 웹 중 어디가 주인가 */
+    byPlat: db.prepare(`SELECT COALESCE(last_plat,'?') p, COUNT(*) n FROM users
+      WHERE last_seen IS NOT NULL GROUP BY p ORDER BY n DESC`).all(),
+    iosUsers: one(`SELECT COUNT(*) n FROM users WHERE last_plat='ios'`),
+
     /* 가입 경로 — 어디서 들어오는지 */
     byProvider: db.prepare(`SELECT COALESCE(provider,'?') p, COUNT(*) n
       FROM users GROUP BY provider ORDER BY n DESC`).all(),
@@ -6293,7 +6300,7 @@ app.get('/admin/users', admin, (req, res) => {
   /* suspended 를 함께 내려준다 — 탈퇴한 계정만 영구 삭제 버튼을 보여주기 위해서.
      이게 없으면 화면에서 <탈퇴한 회원>과 활성 회원을 구분할 방법이 없다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
-    u.last_seen,
+    u.last_seen, u.last_plat,
     COALESCE(u.rating_doubles,1000) AS rating_doubles,
     (SELECT COUNT(*) FROM matches WHERE status='confirmed'
       AND (home_user_id=u.id OR away_user_id=u.id)) AS tier_games,
@@ -8513,6 +8520,161 @@ app.post('/exchange/:id/rsvp', auth, (req, res) => {
   res.json({ ok: true, status: ok });
 });
 
+/* ── 사용 기록 ──
+   어느 화면을 보고 어디서 멈추는지 알아야 고칠 곳이 보인다.
+   외부 도구를 붙이면 회원 정보가 밖으로 나가므로 직접 쌓는다.
+   이름과 몇 개의 값만 남기고, 개인을 특정할 내용은 담지 않는다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, props TEXT,
+    platform TEXT, at INTEGER)`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_ev_at ON events(at)');
+  db.exec('CREATE INDEX IF NOT EXISTS ix_ev_name ON events(name, at)');
+} catch (e) {}
+
+/* 앱은 모아서 한 번에 보낸다 — 화면을 옮길 때마다 요청하면 배터리를 먹는다 */
+app.post('/track', auth, (req, res) => {
+  const list = Array.isArray((req.body || {}).events) ? req.body.events.slice(0, 40) : [];
+  const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
+  const ins = db.prepare('INSERT INTO events (user_id,name,props,platform,at) VALUES (?,?,?,?,?)');
+  const t = db.transaction(rows => rows.forEach(r => {
+    const nm = String(r.n || '').slice(0, 40);
+    if (!nm) return;
+    let p = null;
+    try { p = r.p ? JSON.stringify(r.p).slice(0, 400) : null; } catch (e) {}
+    ins.run(req.uid, nm, p, plat, +r.t || now());
+  }));
+  try { t(list); } catch (e) {}
+  res.json({ ok: true });
+});
+
+/* 관리자 — 무엇을 보고 무엇을 하는가 */
+app.get('/admin/track', admin, (req, res) => {
+  const days = Math.min(90, Math.max(1, +(req.query.days || 7)));
+  const from = Date.now() - days * 864e5;
+  const one = sql => db.prepare(sql).get(from);
+  res.json({
+    days,
+    total: one('SELECT COUNT(*) n FROM events WHERE at > ?').n,
+    users: one('SELECT COUNT(DISTINCT user_id) n FROM events WHERE at > ?').n,
+    /* 화면별 조회 — 어디에 사람이 몰리나 */
+    screens: db.prepare(`SELECT name, COUNT(*) n, COUNT(DISTINCT user_id) u
+      FROM events WHERE at > ? AND name LIKE 'view:%'
+      GROUP BY name ORDER BY n DESC LIMIT 20`).all(from),
+    /* 행동별 — 무엇을 실제로 하나 */
+    actions: db.prepare(`SELECT name, COUNT(*) n, COUNT(DISTINCT user_id) u
+      FROM events WHERE at > ? AND name NOT LIKE 'view:%'
+      GROUP BY name ORDER BY n DESC LIMIT 25`).all(from),
+    /* 일별 추이 */
+    daily: db.prepare(`SELECT (at/86400000) d, COUNT(*) n, COUNT(DISTINCT user_id) u
+      FROM events WHERE at > ? GROUP BY d ORDER BY d`).all(from),
+    /* 기기 */
+    platforms: db.prepare(`SELECT COALESCE(platform,'?') p, COUNT(DISTINCT user_id) n
+      FROM events WHERE at > ? GROUP BY p ORDER BY n DESC`).all(from),
+  });
+});
+/* 깔때기 — 어디서 떨어지나. 단계 이름을 순서대로 받아 각 단계 인원을 센다 */
+app.get('/admin/funnel', admin, (req, res) => {
+  const steps = String(req.query.steps || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
+  const days = Math.min(90, Math.max(1, +(req.query.days || 30)));
+  const from = Date.now() - days * 864e5;
+  if (!steps.length) return res.json({ steps: [] });
+  const out = [];
+  let prev = null;
+  steps.forEach(nm => {
+    /* 앞 단계를 거친 사람 중에서만 센다 — 그래야 <떨어진 비율>이 뜻을 갖는다 */
+    const rows = prev
+      ? db.prepare(`SELECT DISTINCT user_id FROM events
+          WHERE at > ? AND name=? AND user_id IN (${prev.map(() => '?').join(',') || '0'})`)
+          .all(from, nm, ...prev)
+      : db.prepare('SELECT DISTINCT user_id FROM events WHERE at > ? AND name=?').all(from, nm);
+    const ids = rows.map(r => r.user_id);
+    out.push({ name: nm, n: ids.length });
+    prev = ids.length ? ids : ['0'];
+  });
+  res.json({ days, steps: out });
+});
+
+/* ── 교류전 테스트 도구 (관리자) ──
+   24명을 실제로 모아야 대진을 볼 수 있는데, 그건 무리다.
+   가짜 회원을 만들지 않고 <그 클럽의 실제 회원>을 골라 참석 처리한다 —
+   데이터가 지저분해지지 않고, 대진도 진짜 등급·성별로 짜인다. */
+app.post('/admin/exchange/:id/fill', admin, (req, res) => {
+  const eid = +req.params.id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const ent = xcEntries(eid);
+  if (!ent.length) return res.status(400).json({ error: 'no_club', message: '참가 클럽이 없어요' });
+
+  const per = ev.per_club || 12;
+  const mix = xcMix(ev.squad_mix || '');
+  const out = [];
+  ent.forEach(e => {
+    /* 성비를 맞춰 뽑는다 — 아무나 채우면 혼복 조가 안 만들어진다 */
+    const pick = (g, n) => db.prepare(`SELECT u.id FROM club_members cm
+        JOIN users u ON u.id=cm.user_id
+        WHERE cm.club_id=? AND cm.role IN ('member','officer','owner')
+          AND (cm.status IS NULL OR cm.status='active')
+          AND COALESCE(NULLIF(cm.gender_ov,''), u.gender) = ?
+        ORDER BY u.id LIMIT ?`).all(e.club_id, g, n).map(r => r.id);
+    let ids = [...pick('남성', mix.men), ...pick('여성', mix.women)];
+    /* 성별이 맞는 사람이 모자라면 나머지는 아무나 채운다 */
+    if (ids.length < per) {
+      const more = db.prepare(`SELECT u.id FROM club_members cm JOIN users u ON u.id=cm.user_id
+        WHERE cm.club_id=? AND cm.role IN ('member','officer','owner')
+          AND (cm.status IS NULL OR cm.status='active')
+          AND u.id NOT IN (${ids.length ? ids.map(() => '?').join(',') : '0'})
+        ORDER BY u.id LIMIT ?`).all(e.club_id, ...ids, per - ids.length).map(r => r.id);
+      ids = ids.concat(more);
+    }
+    ids.forEach(uid => {
+      const had = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, uid);
+      if (had) db.prepare("UPDATE event_attendees SET status='going' WHERE id=?").run(had.id);
+      else db.prepare("INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,'going')").run(eid, uid);
+    });
+    const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(e.club_id) || {};
+    out.push({ club: club.name || e.club_id, filled: ids.length, need: per });
+  });
+  res.json({ ok: true, clubs: out });
+});
+/* 참석을 전부 지운다 — 다시 테스트하려면 비워야 한다 */
+app.post('/admin/exchange/:id/clear', admin, (req, res) => {
+  const eid = +req.params.id;
+  db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);
+  db.prepare("UPDATE club_events SET match_status='open' WHERE id=?").run(eid);
+  res.json({ ok: true });
+});
+/* 점수를 무작위로 채운다 — 승점 계산과 순위표를 보려면 결과가 있어야 한다 */
+app.post('/admin/exchange/:id/scores', admin, (req, res) => {
+  const eid = +req.params.id;
+  const gs = db.prepare('SELECT id FROM exchange_games WHERE event_id=?').all(eid);
+  if (!gs.length) return res.status(400).json({ error: 'no_games', message: '대진을 먼저 만들어 주세요' });
+  gs.forEach(g => {
+    /* 6점제 — 6:0 부터 5:6 까지, 접전이 조금 더 자주 나오게 */
+    const a = 6, b = [0, 1, 2, 3, 4, 4, 5, 5, 6][Math.floor(Math.random() * 9)];
+    const flip = Math.random() < 0.5;
+    db.prepare('UPDATE exchange_games SET sa=?, sb=? WHERE id=?')
+      .run(flip ? b : a, flip ? a : b, g.id);
+  });
+  res.json({ ok: true, n: gs.length });
+});
+/* 관리자용 교류전 목록 */
+app.get('/admin/exchange', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT e.id, e.title, e.date, e.per_club, e.courts, e.squad_mix,
+      e.match_status FROM club_events e WHERE e.kind='exchange' ORDER BY e.id DESC LIMIT 40`).all();
+  res.json(rows.map(ev => ({
+    ...ev,
+    clubs: xcEntries(ev.id).map(e => ({
+      id: e.club_id, name: e.club_name,
+      count: xcRoster(ev.id, e.club_id).length,
+    })),
+    games: db.prepare('SELECT COUNT(*) n FROM exchange_games WHERE event_id=?').get(ev.id).n,
+    scored: db.prepare('SELECT COUNT(*) n FROM exchange_games WHERE event_id=? AND sa IS NOT NULL')
+      .get(ev.id).n,
+  })));
+});
+
 /* ── 삭제 · 취소 · 하차 ──
    상대가 없으면 흔적 없이 지운다. 상대가 있으면 지우면 안 된다 —
    그쪽은 이미 회원들에게 알리고 인원을 모으고 있다. 취소로 남기고 알린다. */
@@ -8533,11 +8695,17 @@ app.delete('/exchange/:id', auth, (req, res) => {
     db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
     return res.json({ ok: true, deleted: true });
   }
-  /* 상대가 있다 — 취소로 남기고 양쪽에 알린다 */
+  /* 상대가 있다 — 양쪽에 알리고 모임을 지운다.
+     상태만 바꾸면 클럽 일정에 계속 남는다. 열리지 않은 모임을 달력에 두면
+     회원들이 그날 코트가 잡혀 있는 줄 안다. */
   const why = String((req.body || {}).reason || '').trim().slice(0, 60);
-  db.prepare("UPDATE club_events SET match_status='cancelled' WHERE id=?").run(eid);
   ent.forEach(e => notifyClub(e.club_id, null, '🆚', '교류전이 취소됐어요',
     `${ev.title}${ev.date ? ' · ' + ev.date : ''}${why ? ' · ' + why : ''}`));
+  db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM exchange_entries WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM event_comments WHERE event_id=?').run(eid);
+  db.prepare('DELETE FROM club_events WHERE id=?').run(eid);
   res.json({ ok: true, cancelled: true });
 });
 
@@ -8667,13 +8835,35 @@ function xcSweep() {
       });
       const left = xcEntries(ev.id);
       if (left.length < (ev.club_slots || 2)) {
-        db.prepare("UPDATE club_events SET match_status='cancelled' WHERE id=?").run(ev.id);
+        /* 상태만 바꾸면 모임이 클럽 일정에 계속 남는다 —
+           일정 탭은 club_events 를 그대로 읽기 때문이다.
+           성사되지 않은 교류전은 흔적을 남길 이유가 없으므로 통째로 지운다. */
         left.forEach(e => notifyClub(e.club_id, null, '🆚', '교류전이 취소됐어요',
-          `${ev.title} · 코트 취소는 직접 해주셔야 해요`));
+          `${ev.title} · 인원이 차지 않았어요 · 코트 취소는 직접 해주셔야 해요`));
+        db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(ev.id);
+        db.prepare('DELETE FROM exchange_entries WHERE event_id=?').run(ev.id);
+        db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(ev.id);
+        db.prepare('DELETE FROM event_comments WHERE event_id=?').run(ev.id);
+        db.prepare('DELETE FROM club_events WHERE id=?').run(ev.id);
       }
     });
 }
+/* 예전에 상태만 바꿔둔 교류전이 일정에 남아 있다 — 한 번 치운다 */
+try {
+  const stale = db.prepare(`SELECT id, title FROM club_events
+    WHERE kind='exchange' AND match_status='cancelled'`).all();
+  stale.forEach(ev => {
+    db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(ev.id);
+    db.prepare('DELETE FROM exchange_entries WHERE event_id=?').run(ev.id);
+    db.prepare('DELETE FROM event_attendees WHERE event_id=?').run(ev.id);
+    db.prepare('DELETE FROM event_comments WHERE event_id=?').run(ev.id);
+    db.prepare('DELETE FROM club_events WHERE id=?').run(ev.id);
+  });
+  if (stale.length) console.log('취소된 교류전 정리:', stale.length, '건');
+} catch (e) {}
 setInterval(() => { try { xcSweep(); } catch (e) { console.error('xcSweep', e); } }, 30 * 60 * 1000);
+/* 서버가 뜰 때 한 번 — 30분을 기다리면 그 사이 일정에 남아 있다 */
+setTimeout(() => { try { xcSweep(); } catch (e) {} }, 5000);
 
 // ── 오픈매치 대기 명단 ─────────────────────────────────────────
 // 구장 계약 전이라 매치가 하나도 없다. om_likes 는 매치별 관심이라 쓸 수 없어
@@ -8724,6 +8914,7 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN court_fee INTEGER"); } catch (
 try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}        // 대관 시간(분)
 try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch (e) {}  // 회식비(전체)
 try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {}        // 마지막 접속
+try { db.exec("ALTER TABLE users ADD COLUMN last_plat TEXT"); } catch (e) {}          // 마지막에 쓴 기기
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
