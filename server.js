@@ -8635,13 +8635,28 @@ app.post('/admin/exchange/:id/fill', admin, (req, res) => {
     const mkTest = (g, want, used) => {
       const out = [];
       const pool = g === 'M' ? MEN : WOMEN;
-      for (let i = 0; out.length < want && i < pool.length * 2; i++) {
-        const nm = `${pool[i % pool.length]}${i >= pool.length ? i - pool.length + 2 : ''}`;
-        let u = db.prepare('SELECT id FROM users WHERE name=? AND is_test=1').get(nm);
+      /* 클럽마다 다른 사람이어야 한다 — 같은 이름을 두 클럽에 넣으면
+         양쪽 명단에 같은 사람이 나오고 대진도 자기 자신과 붙는다.
+         클럽 번호를 이름 뒤에 붙여 갈라 둔다. */
+      for (let i = 0; out.length < want && i < pool.length * 3; i++) {
+        const base = pool[i % pool.length];
+        const dup = Math.floor(i / pool.length);
+        const nm = `${base}${dup ? dup + 1 : ''}`;
+        const key = `${nm}#${e.club_id}`;
+        let u = db.prepare('SELECT id FROM users WHERE test_key=?').get(key);
         if (!u) {
+          /* 등급 계산에 쓰이는 값을 채워 둔다 — 대진이 실력을 보고 짝을 맞춘다.
+             구력을 흩어 놓아야 A·B·C 가 섞인 실제 대진처럼 나온다. */
+          const yrs = [1, 2, 3, 4, 5, 6, 8, 10][out.length % 8];
+          /* sport_started 는 {"tennis":"2019-05"} 꼴이다 — 이 값으로 C·B·A·S 가 정해진다 */
+          const d = new Date(now() - yrs * 365 * 864e5);
+          const started = JSON.stringify({ tennis:
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` });
+          const rd = 1000 + (yrs - 4) * 45;
           const r = db.prepare(`INSERT INTO users (name,gender,provider,rating,rating_doubles,
-              created_at,is_test,sport) VALUES (?,?,'test',1000,1000,?,1,'tennis')`)
-            .run(nm, g, now());
+              created_at,is_test,sport,sport_started,test_key)
+            VALUES (?,?,'test',?,?,?,1,'tennis',?,?)`)
+            .run(nm, g, rd, rd, now(), started, key);
           u = { id: rid(r) };
         }
         if (used.has(u.id)) continue;
@@ -8922,6 +8937,19 @@ function xcSweep() {
       }
     });
 }
+/* test_key 가 없는 예전 테스트 계정은 클럽이 갈리지 않아 양쪽에 같은 이름이 나온다 — 치운다 */
+try {
+  const old = db.prepare('SELECT id FROM users WHERE is_test=1 AND test_key IS NULL').all().map(r => r.id);
+  if (old.length) {
+    const ph = old.map(() => '?').join(',');
+    [`DELETE FROM event_attendees WHERE user_id IN (${ph})`,
+     `DELETE FROM club_members WHERE user_id IN (${ph})`,
+     `DELETE FROM users WHERE id IN (${ph})`].forEach(sql => {
+      try { db.prepare(sql).run(...old); } catch (e) {}
+    });
+    console.log('예전 테스트 계정 정리:', old.length, '명');
+  }
+} catch (e) {}
 /* 예전에 상태만 바꿔둔 교류전이 일정에 남아 있다 — 한 번 치운다 */
 try {
   const stale = db.prepare(`SELECT id, title FROM club_events
@@ -8990,6 +9018,7 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch 
 try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {}        // 마지막 접속
 try { db.exec("ALTER TABLE users ADD COLUMN last_plat TEXT"); } catch (e) {}          // 마지막에 쓴 기기
 try { db.exec("ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0"); } catch (e) {}  // 테스트용 가짜 회원
+try { db.exec("ALTER TABLE users ADD COLUMN test_key TEXT"); } catch (e) {}           // 이름#클럽 — 클럽마다 다른 사람
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9042,10 +9071,13 @@ function xcEntries(eid) {
    게스트는 명부에 guest 로 올라 있고, 어느 클럽에서도 정회원이 아닌 사람만. */
 function xcRoster(eid, clubId) {
   /* club_members 에 같은 사람이 두 줄 있으면 참석자가 두 번 나온다 — user_id 로 묶는다 */
+  /* LEFT JOIN 이라 그 클럽 사람이 아니어도 다 나왔다 — 양쪽 참석자가 섞여
+     클럽마다 24명으로 보이고 명단이 똑같았다. 그 클럽 회원만 남긴다. */
   const rows = db.prepare(`SELECT u.id, COALESCE(NULLIF(cm.alias,''), u.name) name,
       COALESCE(cm.gender_ov, u.gender) gender, cm.role, u.sport_started, cm.grade, u.photos
     FROM event_attendees ea JOIN users u ON u.id=ea.user_id
-    LEFT JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+    JOIN club_members cm ON cm.club_id=? AND cm.user_id=u.id
+      AND (cm.status IS NULL OR cm.status='active')
     WHERE ea.event_id=? AND (ea.status IS NULL OR ea.status='going')
     GROUP BY u.id`).all(clubId, eid);
   return rows.filter(r => {
