@@ -9210,7 +9210,10 @@ function xcView(ev, uid) {
         names: r.map(p => p.name),
         /* 성별·등급까지 보낸다 — 교류전은 <남 10 · 여 2> 로 자리가 정해져 있어서
            명단 화면이 <몇 명 왔나>가 아니라 <어느 자리가 비었나>를 답해야 한다. */
-        people: r.map(p => ({ name: p.name, photos: p.photos || null,
+        /* 등급은 운영진이 손으로 적어둔 값(cm.grade)이 없는 회원이 많다 —
+           그러면 구력으로 계산해 채운다. 명단에서 어떤 사람만 등급이 뜨면
+           <저 사람은 왜 없지> 를 매번 묻게 된다. */
+        people: withGrade(r).map(p => ({ name: p.name, photos: p.photos || null,
           gender: p.gender || null, grade: p.grade || null, guest: p.role === 'guest' ? 1 : 0 })),
         /* 이름 표기가 다른 같은 사람(카카오/네이버 계정) — 운영진에게만 귀띔한다.
            로마자 이름이 섞여 있으면 자동으로는 못 걸러낸다. */
