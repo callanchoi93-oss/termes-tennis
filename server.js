@@ -133,6 +133,7 @@ function sign(user) {
   const u = db.prepare('SELECT token_version FROM users WHERE id=?').get(user.id) || {};
   return jwt.sign({ id: user.id, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '30d' });
 }
+const SEEN = new Map();          // uid → 마지막으로 DB 에 쓴 시각
 function auth(req, res, next) {
   const h = req.headers.authorization || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -145,6 +146,15 @@ function auth(req, res, next) {
     if (u.suspended) return res.status(403).json({ error: 'suspended' });
     if ((p.tv || 0) !== (u.token_version || 0))          // 다른 기기에서 전체 로그아웃함
       return res.status(401).json({ error: 'token_revoked' });
+    /* 마지막 접속 — 모든 요청이 이 문을 지나므로 여기 한 곳이면 된다.
+       매 요청마다 쓰면 DB 가 바쁘니 5분에 한 번만 갱신한다. */
+    try {
+      const t0 = now();
+      if (!SEEN.has(req.uid) || t0 - SEEN.get(req.uid) > 300000) {
+        SEEN.set(req.uid, t0);
+        db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(t0, req.uid);
+      }
+    } catch (e) {}
     next();
   } catch { return res.status(401).json({ error: 'bad_token' }); }
 }
@@ -6178,6 +6188,36 @@ app.get('/admin/stats', admin, (_req, res) => {
     paidOrders: one("SELECT COUNT(*) n FROM orders WHERE status='paid'"),
     revenueWon: db.prepare("SELECT COALESCE(SUM(amount),0) n FROM orders WHERE status='paid'").get().n,
     cashIssued: db.prepare("SELECT COALESCE(SUM(cash),0) n FROM orders WHERE status='paid'").get().n,
+
+    /* ── 살아 있는 앱인지 보는 값들 ──
+       총계만 보면 늘고 있는지 줄고 있는지 알 수 없다.
+       가입자 수보다 <이번 주에 들어온 사람>이 더 중요하다. */
+    dau: one(`SELECT COUNT(*) n FROM users WHERE last_seen > ${Date.now() - 864e5}`),
+    wau: one(`SELECT COUNT(*) n FROM users WHERE last_seen > ${Date.now() - 7 * 864e5}`),
+    mau: one(`SELECT COUNT(*) n FROM users WHERE last_seen > ${Date.now() - 30 * 864e5}`),
+    /* 한 번도 안 들어온 사람 — 가입만 하고 이탈했다 */
+    ghost: one(`SELECT COUNT(*) n FROM users WHERE last_seen IS NULL
+                  AND created_at < ${Date.now() - 864e5}`),
+    /* 30일 넘게 안 들어온 사람 */
+    dormant: one(`SELECT COUNT(*) n FROM users
+                    WHERE last_seen IS NOT NULL AND last_seen < ${Date.now() - 30 * 864e5}`),
+    newWeek: one(`SELECT COUNT(*) n FROM users WHERE created_at > ${Date.now() - 7 * 864e5}`),
+    newMonth: one(`SELECT COUNT(*) n FROM users WHERE created_at > ${Date.now() - 30 * 864e5}`),
+
+    /* 클럽이 실제로 돌아가는가 — 만들어만 놓고 안 쓰는 클럽이 얼마나 되나 */
+    clubsAlive: one(`SELECT COUNT(DISTINCT club_id) n FROM club_events
+                       WHERE created_at > ${Date.now() - 30 * 864e5}`),
+    bracketsMonth: one(`SELECT COUNT(*) n FROM club_bracket_logs
+                          WHERE updated_at > ${Date.now() - 30 * 864e5}`),
+    exchanges: one("SELECT COUNT(*) n FROM club_events WHERE kind='exchange'"),
+
+    /* 가입 경로 — 어디서 들어오는지 */
+    byProvider: db.prepare(`SELECT COALESCE(provider,'?') p, COUNT(*) n
+      FROM users GROUP BY provider ORDER BY n DESC`).all(),
+    /* 최근 2주 일별 가입 — 늘고 있는지 한눈에 */
+    signups: db.prepare(`SELECT COUNT(*) n,
+        (created_at / 86400000) d FROM users
+      WHERE created_at > ${Date.now() - 14 * 864e5} GROUP BY d ORDER BY d`).all(),
   });
 });
 // ── 오픈매치 봇 (admin.html 오픈매치·봇 탭) ──────────────────────
@@ -6253,6 +6293,10 @@ app.get('/admin/users', admin, (req, res) => {
   /* suspended 를 함께 내려준다 — 탈퇴한 계정만 영구 삭제 버튼을 보여주기 위해서.
      이게 없으면 화면에서 <탈퇴한 회원>과 활성 회원을 구분할 방법이 없다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
+    u.last_seen,
+    COALESCE(u.rating_doubles,1000) AS rating_doubles,
+    (SELECT COUNT(*) FROM matches WHERE status='confirmed'
+      AND (home_user_id=u.id OR away_user_id=u.id)) AS tier_games,
     COALESCE(u.suspended,0) AS suspended,
     COALESCE(NULLIF(u.gender,''), ${OV}) AS gender,
     NULLIF(u.gender,'') AS gender_self,
@@ -8679,6 +8723,7 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN close_at BIGINT"); } catch (e)
 try { db.exec("ALTER TABLE club_events ADD COLUMN court_fee INTEGER"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}        // 대관 시간(분)
 try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch (e) {}  // 회식비(전체)
+try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {}        // 마지막 접속
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
