@@ -914,12 +914,14 @@ app.post('/clubs', auth, (req, res) => {
   const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport=?').get(name, sport);
   if (dup) return res.status(409).json({ error: 'name_taken', message: '이미 있는 클럽 이름이에요' });
   const txt = (v, n) => String(v || '').trim().slice(0, n) || null;
+  const hc = splitCourt(req.body.home_court);
   const r = db.prepare(`INSERT INTO clubs
-      (name,sport,region,owner_id,created_at,avg_grade,home_court,meet_days,
+      (name,sport,region,owner_id,created_at,avg_grade,home_court,home_courts,meet_days,
        intro,logo,logo_ic,logo_bg,meet_time,age_bands,gender_pref)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(name, sport, region || '', req.uid, now(),
-         cleanGrade(req.body.avg_grade), txt(req.body.home_court, 40), txt(req.body.meet_days, 30),
+         cleanGrade(req.body.avg_grade), txt(hc.venue, 40), txt(hc.courts, 20),
+         txt(req.body.meet_days, 30),
          txt(req.body.intro, 40), txt(req.body.logo, 300), txt(req.body.logo_ic, 8),
          txt(req.body.logo_bg, 12), txt(req.body.meet_time, 30),
          txt(req.body.age_bands, 40), txt(req.body.gender_pref, 10));
@@ -3256,10 +3258,15 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
   if (!m || !['owner','officer'].includes(m.role)) return res.status(403).json({ error: 'officer_only' });
   const has = k => Object.prototype.hasOwnProperty.call(req.body || {}, k);
   const pick = (k, n) => has(k) ? (String(req.body[k] || '').trim().slice(0, n) || null) : c[k];
-  db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, meet_days=?, intro=?,
+  /* 홈구장에 코트 번호까지 적어 넣는 분이 많다 — 저장할 때 갈라 둔다.
+     그래야 모임 제목에서 코트 표기가 겹치지 않는다. */
+  const _hc = has('home_court') ? splitCourt(req.body.home_court)
+                                : { venue: c.home_court, courts: c.home_courts };
+  db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, home_courts=?, meet_days=?, intro=?,
       logo=?, logo_ic=?, logo_bg=?, meet_time=?, age_bands=?, gender_pref=? WHERE id=?`).run(
     has('avg_grade') ? cleanGrade(req.body.avg_grade) : c.avg_grade,
-    pick('home_court', 40), pick('meet_days', 30), pick('intro', 40),
+    (_hc.venue || '').slice(0, 40) || null, (_hc.courts || '').slice(0, 20) || null,
+    pick('meet_days', 30), pick('intro', 40),
     pick('logo', 300), pick('logo_ic', 8), pick('logo_bg', 12),
     pick('meet_time', 30), pick('age_bands', 40), pick('gender_pref', 10),
     c.id);
@@ -4369,6 +4376,40 @@ try { db.exec('ALTER TABLE clubs ADD COLUMN logo_bg TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN meet_time TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN age_bands TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE clubs ADD COLUMN gender_pref TEXT'); } catch (e) {}
+/* 홈구장 이름에 코트 번호가 섞여 저장된 클럽이 있다 — <용인 테니스파크 1-3번코트>.
+   코트 번호는 모임마다 달라지는 값이라 구장 이름에 박혀 있으면
+   모임 제목에서 <1-3번코트번 코트> 처럼 계속 겹친다. 둘을 갈라 둔다. */
+try { db.exec('ALTER TABLE clubs ADD COLUMN home_courts TEXT'); } catch (e) {}
+
+/* 구장 이름과 코트 번호를 가른다.
+   반환: { venue, courts } — 코트 표기가 없으면 courts 는 빈 문자열. */
+function splitCourt(raw) {
+  const t = String(raw || '')
+    .replace(/번\s*코트/g, '번 코트')
+    .replace(/(번 코트)(\s*번 코트)+/g, '$1')
+    .replace(/\s{2,}/g, ' ').trim();
+  /* 끝에 붙은 <1-3번 코트> · <1·2·3번 코트> · <3면> 같은 꼬리를 떼어낸다 */
+  const m = t.match(/^(.*?)[\s,·]*([0-9][0-9\s,.·~\-]*)\s*번\s*코트\s*$/);
+  if (m && m[1].trim()) return { venue: m[1].trim(), courts: m[2].replace(/\s+/g, '') };
+  return { venue: t, courts: '' };
+}
+
+/* 한 번만 도는 정리 — 이미 저장된 홈구장에서 코트 번호를 떼어 home_courts 로 옮긴다.
+   지우지 않고 옮기기만 하므로 되돌릴 수 있다. */
+(function normalizeHomeCourts() {
+  let rows = [];
+  try { rows = db.prepare('SELECT id, home_court, home_courts FROM clubs').all(); } catch (e) { return; }
+  const up = db.prepare('UPDATE clubs SET home_court=?, home_courts=? WHERE id=?');
+  let n = 0;
+  rows.forEach(c => {
+    if (c.home_courts != null) return;                 // 이미 정리된 클럽
+    const { venue, courts } = splitCourt(c.home_court);
+    if (venue === (c.home_court || '') && !courts) return;
+    up.run(venue, courts, c.id);
+    n++;
+  });
+  if (n) console.log(`[migrate] 홈구장에서 코트 번호를 분리했어요 · ${n}개 클럽`);
+})();
 
 function isPremium(clubId) {
   const c = db.prepare('SELECT premium, premium_until FROM clubs WHERE id=?').get(clubId);
