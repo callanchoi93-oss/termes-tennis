@@ -8825,6 +8825,28 @@ app.post('/exchange/:id/leave', auth, (req, res) => {
 });
 
 /* ── 대진표 ── 확정되면 누구나 본다. 감출 이유가 없다 */
+/* 대진에 등급을 붙인다 — 처음 만나는 상대라 실력을 짐작할 수 없다.
+   클럽 대진과 같은 잣대(구력)를 쓴다. */
+function withGrade(players) {
+  return (players || []).map(p => {
+    if (!p || !p.id) return p;
+    let g = null;
+    try {
+      const m = careerMonths(p.id, 'tennis');
+      if (m != null) g = m < 24 ? 'C' : m < 60 ? 'B' : m < 120 ? 'A' : 'S';
+    } catch (e) {}
+    return { ...p, grade: p.grade || g };
+  });
+}
+/* 팀 평균 — 글자 하나로는 두 사람의 무게가 안 보인다. C=1 · B=2 · A=3 · S=4 로 세어 평균을 낸다 */
+function teamGrade(players) {
+  const V = { C: 1, B: 2, A: 3, S: 4 };
+  const xs = (players || []).map(p => V[(p.grade || '').toUpperCase()]).filter(Boolean);
+  if (!xs.length) return null;
+  const avg = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return ['C', 'B', 'A', 'S'][Math.max(0, Math.min(3, Math.round(avg) - 1))];
+}
+
 app.get('/exchange/:id/games', auth, (req, res) => {
   const eid = +req.params.id;
   const ev = xcEvent(eid);
@@ -8834,12 +8856,36 @@ app.get('/exchange/:id/games', auth, (req, res) => {
     event: xcView(ev, req.uid),
     games: rows.map(g => ({
       id: g.id, round: g.round, court: g.court, kind: g.kind,
-      home: { club_id: g.home_club, seat: g.home_seat, players: JSON.parse(g.home_json || '[]') },
-      away: { club_id: g.away_club, seat: g.away_seat, players: JSON.parse(g.away_json || '[]') },
-      sa: g.sa, sb: g.sb,
+      home: { club_id: g.home_club, seat: g.home_seat,
+        players: withGrade(JSON.parse(g.home_json || '[]')) },
+      away: { club_id: g.away_club, seat: g.away_seat,
+        players: withGrade(JSON.parse(g.away_json || '[]')) },
+      sa: g.sa, sb: g.sb, by: g.scored_by, at: g.scored_at,
     })),
     result: xcResult(eid),
+    started_at: ev.started_at || null,
+    started_by: ev.started_by || null,
+    started_name: ev.started_by
+      ? (db.prepare('SELECT name FROM users WHERE id=?').get(ev.started_by) || {}).name || null
+      : null,
   });
+});
+
+/* 시작 — 시간 대진처럼 아무나 누르면 모두의 화면에서 시계가 돈다.
+   누가 눌렀는지 남겨 둔다. 코트에서 <시작했어요?> 를 묻지 않게. */
+app.post('/exchange/:id/start', auth, (req, res) => {
+  const eid = +req.params.id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!xcCanSee(eid, req.uid))
+    return res.status(403).json({ error: 'not_in_match', message: '이 교류전에 참가한 클럽만 할 수 있어요' });
+  if (ev.started_at) return res.json({ ok: true, started_at: ev.started_at, already: true });
+  const t = now();
+  db.prepare('UPDATE club_events SET started_at=?, started_by=? WHERE id=?').run(t, req.uid, eid);
+  const who = (db.prepare('SELECT name FROM users WHERE id=?').get(req.uid) || {}).name || '누군가';
+  xcEntries(eid).forEach(e => notifyClub(e.club_id, null, '⏱', '교류전이 시작됐어요',
+    `${who} 님이 시작을 눌렀어요 · 1회차부터 시계가 돌아요`));
+  res.json({ ok: true, started_at: t, by: req.uid, name: who });
 });
 
 /* ── 점수 ── 한 코트에 한 명만 넣으면 된다. 나중에 고칠 수 있다 */
@@ -9019,6 +9065,8 @@ try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {} 
 try { db.exec("ALTER TABLE users ADD COLUMN last_plat TEXT"); } catch (e) {}          // 마지막에 쓴 기기
 try { db.exec("ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0"); } catch (e) {}  // 테스트용 가짜 회원
 try { db.exec("ALTER TABLE users ADD COLUMN test_key TEXT"); } catch (e) {}           // 이름#클럽 — 클럽마다 다른 사람
+try { db.exec("ALTER TABLE club_events ADD COLUMN started_at INTEGER"); } catch (e) {}  // 교류전 시작 시각
+try { db.exec("ALTER TABLE club_events ADD COLUMN started_by INTEGER"); } catch (e) {}  // 시작 버튼을 누른 사람
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
