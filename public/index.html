@@ -2681,10 +2681,12 @@
     margin-bottom:8px;cursor:pointer }
   .xcc.hot{ border-color:#f3d9c5;background:#fffaf6 }
   .xcc .r1{ display:flex;align-items:center;gap:7px;flex-wrap:wrap }
-  .xcc .dd{ font-size:11px;font-weight:800;color:var(--coral-d);background:#fff;
-    border:1px solid #f3d9c5;border-radius:20px;padding:3px 9px }
-  .xcc .st{ font-size:11px;font-weight:700;color:var(--gray);background:var(--felt);
-    border-radius:20px;padding:4px 10px }
+  /* 두 알약이 나란히 선다 — 테두리 유무 때문에 높이가 1px 어긋나 보이던 것을 맞춘다 */
+  .xcc .dd,.xcc .st{ display:inline-flex;align-items:center;height:23px;padding:0 10px;
+    border-radius:20px;font-size:11px;line-height:1;border:1px solid transparent;
+    box-sizing:border-box }
+  .xcc .dd{ font-weight:800;color:var(--coral-d);background:#fff;border-color:#f3d9c5 }
+  .xcc .st{ font-weight:700;color:var(--gray);background:var(--felt) }
   .xcc .st.ok{ background:#e7f4ec;color:#2f7d4f }
   .xcc .when{ margin-left:auto;font-size:11.5px;font-weight:600;color:var(--lgray) }
   .xcc h4{ font-size:17px;font-weight:800;letter-spacing:-.045em;margin:11px 0 0 }
@@ -2715,13 +2717,16 @@
   .xc-new .go{ flex:none;color:var(--lgray);font-size:17px }
   /* ── 내 클럽 카드 ──
      원 아바타 두 개는 예뻤지만 아무 말도 하지 않는다. 오늘 모임과 참여 인원을 담는다. */
+  /* button 은 iOS 사파리에서 글자색이 시스템 파랑으로 잡힌다 — 색을 못 박아 둔다 */
   .mcbig{ display:flex;align-items:center;gap:13px;width:100%;background:#fff;
     border:1px solid var(--line);border-radius:18px;padding:14px;text-align:left;
-    font-family:inherit;cursor:pointer;box-shadow:0 1px 2px rgba(40,30,18,.04);margin-bottom:7px }
-  .mcbig .lg{ flex:none;width:50px;height:50px;border-radius:16px;overflow:hidden;
-    display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;
-    color:#fff;background:var(--ink);letter-spacing:-.03em }
-  .mcbig .lg img{ width:100%;height:100%;object-fit:cover }
+    font-family:inherit;cursor:pointer;box-shadow:0 1px 2px rgba(40,30,18,.04);margin-bottom:7px;
+    color:var(--ink);-webkit-text-fill-color:currentColor;appearance:none;-webkit-appearance:none }
+  /* 로고는 자기 배경과 동그란 모양을 이미 갖고 있다 — 네모 상자로 감싸면 모서리가 검게 남는다 */
+  .mcbig .clogo{ flex:none }
+  .mcbig .lg{ flex:none;width:50px;height:50px;border-radius:50%;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;
+    color:#fff;letter-spacing:-.03em;background:linear-gradient(150deg,#3f9e6b,#2c7d50) }
   .mcbig .c{ flex:1;min-width:0 }
   .mcbig .c b{ display:block;font-size:16px;font-weight:800;letter-spacing:-.04em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
@@ -2732,7 +2737,8 @@
   .mcbig .go{ flex:none;color:var(--lgray);font-size:17px }
   .mcadd{ display:flex;align-items:center;gap:9px;width:100%;border:1px dashed #ded9d0;
     border-radius:16px;padding:13px 14px;font-size:12.5px;font-weight:600;color:var(--gray);
-    background:none;font-family:inherit;cursor:pointer }
+    background:none;font-family:inherit;cursor:pointer;-webkit-text-fill-color:currentColor;
+    appearance:none;-webkit-appearance:none }
   .mcadd b{ flex:none;width:24px;height:24px;border-radius:9px;background:var(--felt);
     display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;
     color:var(--gray) }
@@ -4867,7 +4873,7 @@ async function loadPublicData(){
     const cs = await api('/clubs');
     state.clubs = (cs||[]).map(c=>({ id:c.id, n:c.name, r:c.region||'', m:c.members||0, sport:c.sport||'',
       guestFee:c.guest_fee||0, guestReq:c.guest_cap||0, entry:c.entry_fee||0, season:c.season_fee||0,
-      avg_grade:c.avg_grade||null, court:c.home_court||'', meet_days:c.meet_days||'',
+      avg_grade:c.avg_grade||null, court:c.home_court||'', courtNo:c.home_courts||'', meet_days:c.meet_days||'',
       /* 성별 구성·모임 시간·연령대는 목록에서 배지와 필터가 함께 쓴다.
          여기서 빠뜨리면 '여성 클럽' 배지가 붙을 자리는 있는데 붙을 값이 없다. */
       gender_pref:c.gender_pref||'', meet_time:c.meet_time||'', age_bands:c.age_bands||'',
@@ -5185,7 +5191,7 @@ async function adoptServerClubs(){
     if(!state.clubs.some(x=>x.n===c.name)){
       state.clubs.unshift({n:c.name, r:c.region||'', m:c.member_count||1, ic:SP().ic, sport:c.sport||state.sport,
         entry:c.entry_fee, season:c.season_fee, guestFee:c.guest_fee, guestReq:c.guest_cap,
-        avg_grade:c.avg_grade, court:c.home_court, meet_days:c.meet_days});
+        avg_grade:c.avg_grade, court:c.home_court, courtNo:c.home_courts||'', meet_days:c.meet_days});
     }
     // 데모용 approveMember 를 쓰면 가짜 신청자·환영 토스트·화면 이동까지 딸려온다.
     // 서버 채택은 조용히, 실데이터 자리만 만든다.
@@ -9795,7 +9801,9 @@ function openCreateClub(){
       <div class="cw-chips">${CW_DAYS.map(d=>
         `<span class="cw-c ${c.days.includes(d)?'on':''}" onclick="cwTog('days','${d}')">${d}</span>`).join('')}</div>
       <div class="fld"><label>주 사용 ${SP().place} <span style="color:var(--coral-d)">*</span></label>
-        <input id="cwCourt" maxlength="30" placeholder="예) ${clubEg().p}" value="${esc(c.court)}" oninput="cwLive()"></div>`;
+        <input id="cwCourt" maxlength="30" placeholder="예) ${clubEg().p}" value="${esc(c.court)}" oninput="cwLive()">
+        <div class="xf-h" style="margin-top:6px">구장 이름만 적어 주세요 ·
+          코트 번호는 모임을 만들 때 따로 고릅니다</div></div>`;
   } else if(st===4){
     body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 멤버 정보</h3>
       <div class="sd">어떤 분들이 모이는지 알려주세요 · 정확하지 않아도 괜찮아요</div>
@@ -10709,6 +10717,15 @@ function xcPast(list){
     const A=xcDay(a),B=xcDay(b); return (B.mon-A.mon)||(B.day-A.day); });
 }
 /* 한 줄 — 날짜를 왼쪽에 세우면 여러 개가 쌓여도 스캔이 된다 */
+/* 장소에 <1-3번코트> 라고 이미 적힌 곳에 <번 코트> 가 한 번 더 붙어 저장된 데이터가 있다.
+   지우지는 못하고 보여줄 때만 겹친 말을 걷어낸다. */
+function xcPlace(p){
+  return String(p||'')
+    .replace(/번\s*코트/g, '번 코트')            // <1-3번코트> 처럼 붙여 쓴 것부터 띄운다
+    .replace(/(번 코트)(\s*번 코트)+/g, '$1')    // 겹쳐 붙은 것은 하나로
+    .replace(/코트\s*번 코트/g, '번 코트')
+    .replace(/\s{2,}/g, ' ').trim();
+}
 function xcRow(x, cid){
   const d=xcDay(x);
   const mine=(x.clubs||[]).find(c=>c.club_id===cid);
@@ -10757,7 +10774,7 @@ function xcRow(x, cid){
       <span class="when">${d.mon?`${d.mon}/${d.day} (${esc(d.wd)})`:''}${time?' '+time:''}</span></div>
     <h4>${esc(shortClub((mine||{}).name||'우리 클럽'))} <em>vs</em> ${
       op?esc(shortClub(op.name)):'<span style="color:var(--lgray)">상대 미정</span>'}</h4>
-    <div class="meta">${esc(place)}${x.courts?` · ${x.courts}면`:''}${
+    <div class="meta">${esc(xcPlace(place))}${x.courts?` · ${x.courts}면`:''}${
       x.per_club?` · 클럽당 ${x.per_club}명`:''}</div>
     <div class="rows">${bar(mine)}${bar(op)}</div>
     ${cta?`<button class="cta" onclick="${cta[1]}">${esc(cta[0])}</button>`:''}</div>`;
@@ -10804,14 +10821,18 @@ function xcDateStr(){
   const [hh,mm]=XCF.start.split(':').map(Number);
   const e=new Date(d); e.setHours(hh, mm+XCF.mins);
   const p=n=>String(n).padStart(2,'0');
-  return `${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]}) `
+  const court=(()=>{
+    const c=String(XCF.courtNo||'').trim();
+    if(!c) return '';
+    /* 홈구장 이름에 이미 코트가 적혀 있으면(<용인 테니스파크 1-3번코트>) 또 붙이지 않는다.
+       예전에는 이 검사가 없어서 <1-3번코트번 코트> 로 저장된 모임이 남아 있다. */
+    if(/코트/.test(String(XCF.place||''))) return '';
+    /* 숫자와 구분자만 적었을 때만 <번 코트>를 붙인다 */
+    return /^[0-9\s,.·~\-]+$/.test(c) ? ` ${c}번 코트` : ` ${c}`;
+  })();
+  return xcPlace(`${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]}) `
     + `${XCF.start}~${p(e.getHours())}:${p(e.getMinutes())}`
-    + (XCF.place?` · ${XCF.place}`:'')
-    + (()=>{ const c=String(XCF.courtNo||'').trim();
-        if(!c) return '';
-        /* <1-3번코트> 처럼 이미 단위를 적어둔 경우 <번 코트>를 또 붙이면 겹친다 */
-        /* 숫자와 구분자만 적었을 때만 <번 코트>를 붙인다 */
-        return /^[0-9\s,.·~\-]+$/.test(c) ? ` ${c}번 코트` : ` ${c}`; })();
+    + (XCF.place?` · ${XCF.place}`:'') + court);
 }
 function xcMixOf(per, women){
   const W=Math.max(0,Math.min(per, women)), M=per-W;
@@ -10826,7 +10847,10 @@ function xcPerHead(){
 }
 function openXcNew(){
   const c=AC()||{};
-  Object.assign(XCF,{ step:1, date:'', start:'19:00', place:c.court||'', courtNo:'',
+  /* 홈구장과 코트 번호는 서버에서 갈라 내려온다 — 각 칸에 나눠 채운다.
+     예전에는 구장 이름에 코트가 섞여 있어 <1-3번코트번 코트> 로 저장됐다. */
+  Object.assign(XCF,{ step:1, date:'', start:'19:00',
+    place:c.court||'', courtNo:c.courtNo||'',
     courts:6, mins:180, women:4, close:2, fee:0, dinner:0 });
   xcForm();
 }
@@ -11028,7 +11052,7 @@ async function openXc(id){
           <div class="xd-sub ${op?'':'off'}">${op?`${op.count} / ${x.per_club}명`:'빈자리 1'}</div></div>
       </div>
       <div class="xd-ft">${esc((x.date||'').split(' · ')[0])}${
-        (()=>{ const p=(x.date||'').split(' · ').slice(1).join(' · ') || x.place || '';
+        (()=>{ const p=xcPlace((x.date||'').split(' · ').slice(1).join(' · ') || x.place || '');
                return p?`<br>${esc(p)}`:''; })()}${
         x.courts?` · ${x.courts}면`:''}</div>
     </div>
@@ -11339,8 +11363,8 @@ function xcDrawGames(id){
   let h=`<div class="om-detail" id="xcv"><div class="sh-top"><h3 class="gt4">교류전 대진</h3>
     <div class="cl" role="button" tabindex="0" onclick="xcClose()">×</div></div>
     <div class="sd">${[esc((ev.date||'').split(' · ')[0]),
-      esc((ev.date||'').split(' · ').slice(1).join(' · ')||ev.place||''),
-      ev.courts?`코트 ${ev.courts}면`:''].filter(Boolean).join(' · ')}</div>`;
+      esc(xcPlace((ev.date||'').split(' · ').slice(1).join(' · ')||ev.place||'')),
+      ev.courts?`${ev.courts}면 사용`:''].filter(Boolean).join(' · ')}</div>`;
   if(R) h+=xcScoreBoard(R, cid);
 
   if(!nAll){
@@ -11827,6 +11851,35 @@ async function xcDrawNow(id){
     toast(`대진이 나왔어요 · ${(r.games||[]).length}경기`); XC_LIST=null; openXcGames(id);
   }catch(e){ toast(xcErr(e,'아직 대진을 만들 수 없어요')); }
 }
+
+/* 그 클럽의 다음 모임 — 클럽 이름만 보여주면 눌러 봐야 오늘 뭐가 있는지 안다.
+   모임 날짜는 '8/29 (토) 19:00 · 장소' 꼴로 한 줄에 들어 있다.
+   예전에는 앞 열 글자를 잘라 오늘 날짜와 문자열로 견줬는데,
+   '8/14 (목)' 가 '2026-08-28' 보다 크게 나와서 지난 모임이 <다음>으로 떴다. */
+function mcNextEvent(n){
+  try{
+    if(typeof clubEvents!=='function' || state.activeClub!==n) return null;
+    const t0=new Date(); t0.setHours(0,0,0,0);
+    const Y=t0.getFullYear(), W=['일','월','화','수','목','금','토'];
+    const up=(clubEvents()||[]).map(e=>{
+      const m=String(e.date||'').match(/(\d{1,2})[\/.](\d{1,2})/);
+      if(!m) return null;
+      let d=new Date(Y, +m[1]-1, +m[2]);
+      /* 12월에 1월 모임을 보면 해가 넘어간다 — 반년 넘게 지난 날짜는 내년으로 읽는다 */
+      if(d < t0 && (t0-d) > 183*864e5) d=new Date(Y+1, +m[1]-1, +m[2]);
+      return {e, d, t:(String(e.date||'').match(/(\d{1,2}:\d{2})/)||[''])[0]};
+    }).filter(x=>x && x.d>=t0).sort((a,b)=>a.d-b.d)[0];
+    if(!up) return null;
+    const today = up.d.getTime()===t0.getTime();
+    /* 제목에 이미 [08/14] 가 박혀 있는 모임이 있다 — 날짜를 두 번 쓰지 않는다 */
+    const title=String(up.e.title||'모임').replace(/^\s*\[?\d{1,2}[\/.]\d{1,2}\]?\s*/,'') || '모임';
+    const when = today ? `오늘${up.t?' '+up.t:''}`
+      : `${up.d.getMonth()+1}/${up.d.getDate()} (${W[up.d.getDay()]})${up.t?' '+up.t:''}`;
+    const cnt=((up.e.attendees||[]).length)||up.e.going||0;
+    return { when, title, cnt };
+  }catch(e){ return null; }
+}
+
 function myClubsBlock(){
   const mine=(state.myClubs||[]).filter(n=>{
     const c=(state.clubs||[]).find(x=>x.n===n);
@@ -11846,23 +11899,12 @@ function myClubsBlock(){
   return mine.map(n=>{
     const c=(state.clubs||[]).find(x=>x.n===n)||{};
     const av=clubAvatar(n,50);
-    /* 오늘·다음 모임 — 클럽 이름만 보여주면 눌러 봐야 오늘 뭐가 있는지 안다 */
-    const ev=(()=>{
-      try{
-        const list=(typeof clubEvents==='function' && state.activeClub===n) ? clubEvents() : [];
-        const today=ymd();
-        const up=list.map(e=>({e, d:String(e.date||'').slice(0,10)}))
-          .filter(x=>x.d && x.d>=today).sort((a,b)=>a.d.localeCompare(b.d))[0];
-        if(!up) return null;
-        const cnt=((up.e.attendees||[]).length)||up.e.going||0;
-        return { today: up.d===today, t: up.e.time||'', title: up.e.title||'모임', cnt };
-      }catch(err){ return null; }
-    })();
+    const ev=mcNextEvent(n);
     return `<button class="mcbig" onclick="openClubPage('${esc(n)}')">
-      <span class="lg">${av||esc(n.slice(0,1))}</span>
+      ${av||`<span class="lg">${esc(n.slice(0,1))}</span>`}
       <span class="c"><b>${esc(n)}</b>
-        <span class="s">${[c.region||c.loc||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
-        ${ev?`<span class="t"><i></i>${ev.today?'오늘':'다음'} ${esc(ev.t)} ${esc(ev.title)}${
+        <span class="s">${[c.r||c.region||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
+        ${ev?`<span class="t"><i></i>${esc(ev.when)} ${esc(ev.title)}${
           ev.cnt?` · ${ev.cnt}명`:''}</span>`:''}</span>
       <span class="go">›</span></button>`;
   }).join('')
