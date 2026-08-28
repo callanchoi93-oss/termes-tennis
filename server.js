@@ -8637,6 +8637,36 @@ app.post('/admin/exchange/:id/fill', admin, (req, res) => {
   });
   res.json({ ok: true, clubs: out });
 });
+/* 상대 클럽을 붙인다 — 테스트할 때 다른 클럽 계정으로 로그인해 신청하기가 번거롭다.
+   실제 클럽 중 하나를 골라 참가시킨다. */
+app.post('/admin/exchange/:id/opponent', admin, (req, res) => {
+  const eid = +req.params.id;
+  const cid = +((req.body || {}).club_id || 0);
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  const ent = xcEntries(eid);
+  if (ent.some(e => e.club_id === cid))
+    return res.status(400).json({ error: 'already', message: '이미 참가한 클럽이에요' });
+  if (ent.length >= (ev.club_slots || 2))
+    return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'no_club' });
+  const seat = ent.length + 1;
+  db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
+    VALUES (?,?,?,'joined',?)`).run(eid, cid, seat, now());
+  res.json({ ok: true, club: club.name });
+});
+/* 고를 수 있는 클럽 — 이미 참가한 클럽은 뺀다 */
+app.get('/admin/exchange/:id/clubs', admin, (req, res) => {
+  const eid = +req.params.id;
+  const inIt = xcEntries(eid).map(e => e.club_id);
+  const rows = db.prepare(`SELECT c.id, c.name, c.region,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id
+        AND m.role IN ('member','officer','owner')) members
+    FROM clubs c ORDER BY members DESC LIMIT 30`).all();
+  res.json(rows.filter(c => !inIt.includes(c.id)));
+});
+
 /* 참석을 전부 지운다 — 다시 테스트하려면 비워야 한다 */
 app.post('/admin/exchange/:id/clear', admin, (req, res) => {
   const eid = +req.params.id;
