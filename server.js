@@ -9293,14 +9293,21 @@ app.post('/exchange/:id/draw', auth, (req, res) => {
   if (ent.length < (ev.club_slots || 2))
     return res.status(409).json({ error: 'need_clubs', message: '상대 클럽이 아직 없어요' });
 
+  /* 이미 점수가 들어간 대진을 말없이 지우면 안 된다 — 다시 짜려면 한 번 더 묻는다 */
+  const scored = db.prepare(
+    'SELECT COUNT(*) n FROM exchange_games WHERE event_id=? AND sa IS NOT NULL').get(eid).n;
+  if (scored && !(req.body || {}).force)
+    return res.status(409).json({ error: 'has_scores',
+      message: `이미 ${scored}경기 점수가 들어가 있어요 · 다시 짜면 모두 지워집니다` });
+
   const mix = xcMix(ev.squad_mix);
-  const squads = {};
+  const squads = {}, rosters = {};
   for (const e of ent) {
     const roster = xcRoster(eid, e.club_id);
     if (roster.length < ev.per_club)
       return res.status(409).json({ error: 'need_players',
         message: `${e.club_name} 인원이 ${roster.length}/${ev.per_club}명이에요` });
-    const sq = xcSquad(roster, mix);
+    const sq = xcSquadAt(roster, mix, 0);            // 1회차 조 — 성비가 맞는지 여기서 걸러진다
     if (!sq) {
       /* 총 필요 인원을 말하면 <12명 다 모였는데 왜?> 가 된다.
          모자란 쪽과 그 수만 말한다. */
@@ -9316,13 +9323,14 @@ app.post('/exchange/:id/draw', auth, (req, res) => {
           : `${e.club_name}: 성별 구성이 맞지 않아요 (남 ${nM} · 여 ${nF})` });
     }
     squads[e.club_id] = sq;
+    rosters[e.club_id] = roster;
     db.prepare('UPDATE exchange_entries SET squad_json=? WHERE event_id=? AND club_id=?')
       .run(JSON.stringify(sq), eid, e.club_id);
   }
   /* 회차 수 = 총원 × 1인경기 ÷ (코트 × 4). 2클럽은 클럽당 인원 = 코트 × 2 이므로
      언제나 1인 6경기, 회차는 코트 수와 무관하게 6이 된다. */
   const rounds = Math.round((ev.per_club * 2 * 6) / (ev.courts * 4));
-  const games = xcDraw(ent, squads, ev.courts, rounds);
+  const games = xcDraw(ent, rosters, mix, ev.courts, rounds);
   db.prepare('DELETE FROM exchange_games WHERE event_id=?').run(eid);
   const ins = db.prepare(`INSERT INTO exchange_games
     (event_id,round,court,kind,home_club,away_club,home_seat,away_seat,home_json,away_json)
@@ -9336,49 +9344,112 @@ app.post('/exchange/:id/draw', auth, (req, res) => {
   res.json({ ok: true, games, squads });
 });
 
-/* 조 묶기 — 잘 치는 사람과 이제 시작한 사람을 섞는다.
-   강한 사람끼리 묶으면 1조는 무적이고 6조는 학살당한다(실측 최대 4.0칸 → 2.5칸). */
-function xcSquad(roster, mix) {
-  const lv = p => {
-    const m = String(p.sport_started || '').match(/^(\d{4})-(\d{1,2})/);
-    if (!m) return 24;                                  // 모르면 중간값(2년)
-    return Math.max(0, (new Date().getFullYear() - +m[1]) * 12 +
-                       (new Date().getMonth() + 1 - +m[2]));   // 구력 개월
-  };
-  const men = roster.filter(p => p.gender === 'M').sort((a, b) => lv(b) - lv(a));
-  const women = roster.filter(p => p.gender === 'F').sort((a, b) => lv(b) - lv(a));
-  if (men.length < mix.men || women.length < mix.women) return null;
-  const M = men.slice(0, mix.men), W = women.slice(0, mix.women);
-  const out = [];
-  const mdPool = M.slice(0, mix.md * 2);
-  for (let i = 0; i < mix.md; i++)                       // 강+약 짝짓기
-    out.push({ kind: '남복', p: [mdPool[i], mdPool[mdPool.length - 1 - i]] });
-  const mxM = M.slice(mix.md * 2);
-  for (let i = 0; i < mix.mx; i++)
-    out.push({ kind: '혼복', p: [mxM[i], W[mix.mx - 1 - i]] });   // 센 남자에 약한 여자
-  const wdPool = W.slice(mix.mx);
-  for (let i = 0; i < mix.wd; i++)
-    out.push({ kind: '여복', p: [wdPool[i], wdPool[wdPool.length - 1 - i]] });
-  /* 자기 자신과 짝이 되는 일은 없어야 한다 — 명단이 홀수로 잘리면
-     가운데 사람이 mdPool[i] 와 mdPool[len-1-i] 양쪽에 걸린다.
-     그런 조는 만들지 않고 편성을 실패시켜, 왜 안 되는지 화면에서 묻게 한다. */
-  if (out.some(g => !g.p[0] || !g.p[1] || g.p[0].id === g.p[1].id)) return null;
-  return out.map(g => ({ kind: g.kind, players: g.p.map(x => ({ id: x.id, name: x.name })) }));
+/* 구력(개월) — 조를 짤 때 쓰는 실력 잣대. 모르면 중간값 2년으로 본다. */
+function xcLevel(p) {
+  const m = String((p && p.sport_started) || '').match(/^(\d{4})-(\d{1,2})/);
+  if (!m) return 24;
+  return Math.max(0, (new Date().getFullYear() - +m[1]) * 12 +
+                     (new Date().getMonth() + 1 - +m[2]));
 }
 
-/* 대진 — 종목이 같은 조끼리, 회차마다 상대를 한 칸씩 민다.
-   한 조는 회차마다 정확히 한 경기. 우리 조는 자기 코트에 붙박이. */
-function xcDraw(ent, squads, courts, rounds) {
-  const A = squads[ent[0].club_id], B = squads[ent[1].club_id];
+/* 조 묶기 — 회차마다 다시 짠다.
+   예전에는 조를 한 번 짜서 squad_json 에 굳혀 두고 여섯 회차를 그대로 돌렸다.
+   그래서 파트너가 세 시간 내내 고정이었고, 남복은 상대 조가 넷뿐인데 6회차라
+   5·6회차가 1·2회차의 재대결이 됐다(혼복은 상대가 둘이라 같은 팀을 세 번 만났다).
+
+   두 가지를 회차 번호 r 로 민다.
+     ① 혼복에 나갈 사람 — 늘 같은 두 명이 혼복만 뛰지 않게 순번을 민다
+     ② 파트너 — 약한 쪽 줄을 두 회차마다 한 칸씩 민다
+   강+약 짝짓기는 그대로다. 강한 사람끼리 묶으면 1조는 무적이고 마지막 조는 학살당한다.
+   12명·6코트 기준으로 재어 보면 한 사람이 여섯 회차 동안 만나는
+   서로 다른 파트너가 1명 → 4~6명, 같은 네 사람이 다시 붙는 판은 12번 → 1~3번이 된다. */
+function xcSquadAt(roster, mix, r) {
+  const men = (roster || []).filter(p => p.gender === 'M').sort((a, b) => xcLevel(b) - xcLevel(a));
+  const women = (roster || []).filter(p => p.gender === 'F').sort((a, b) => xcLevel(b) - xcLevel(a));
+  if (men.length < mix.men || women.length < mix.women) return null;
+  const M = men.slice(0, mix.men), W = women.slice(0, mix.women);
+  const R = Math.max(0, r | 0);
+  const out = [];
+
+  /* ① 혼복 당번 — 회차마다 mix.mx 칸씩 민다.
+     한 바퀴 돌 때마다 한 칸을 더 밀어(+floor) 같은 조합으로 되돌아오지 않게 한다.
+     그냥 mx 칸씩만 밀면 8명 중 4명을 뽑는 경우 두 회차 만에 처음으로 돌아온다. */
+  const rot = (len, n) => {
+    const base = R * n + Math.floor((R * n) / len);
+    const set = new Set();
+    for (let k = 0; k < n; k++) set.add(((base + k) % len + len) % len);
+    return set;
+  };
+  const mxMi = mix.mx ? rot(M.length, mix.mx) : new Set();
+  const mxWi = mix.mx ? rot(W.length, mix.mx) : new Set();
+  const mxM = M.filter((_, i) => mxMi.has(i));
+  const mxW = W.filter((_, i) => mxWi.has(i));
+  const mdPool = M.filter((_, i) => !mxMi.has(i));       // 남은 남자가 남복
+  const wdPool = W.filter((_, i) => !mxWi.has(i));       // 남은 여자가 여복
+
+  /* ② 강+약 짝짓기 — 뒤 절반을 뒤집어(약한 순) 앞 절반에 붙인다.
+     그대로 붙이면 어느 조나 두 사람의 무게 합이 같다. 여기서 약한 쪽 줄을
+     두 회차마다 한 칸씩 민다 — 여섯 회차 동안 최대 두 칸이라 등수가 크게 어긋나지 않고,
+     파트너는 계속 새로 만난다. 조끼리 생기는 약간의 무게 차이는
+     아래 xcDraw 가 <무게 비슷한 조끼리> 붙여서 상쇄한다. */
+  const pairUp = (pool, n, kind) => {
+    if (!n) return;
+    const S = pool.slice(0, n), Wk = pool.slice(n).reverse();
+    const shift = Math.floor(R / 2);
+    for (let i = 0; i < n; i++) out.push({ kind, p: [S[i], Wk[(i + shift) % n]] });
+  };
+  pairUp(mdPool, mix.md, '남복');
+  for (let i = 0; i < mix.mx; i++)                        // 센 남자에 약한 여자
+    out.push({ kind: '혼복', p: [mxM[i], mxW[(mix.mx - 1 - i + R) % mix.mx]] });
+  pairUp(wdPool, mix.wd, '여복');
+
+  /* 자기 자신과 짝이 되는 일은 없어야 한다 — 명단이 홀수로 잘리면
+     가운데 사람이 앞뒤 양쪽에 걸린다. 그런 조는 만들지 않고 편성을 실패시켜,
+     왜 안 되는지 화면에서 묻게 한다. */
+  if (out.some(g => !g.p[0] || !g.p[1] || g.p[0].id === g.p[1].id)) return null;
+  /* lv = 조의 무게(구력 합). 상대를 고를 때 쓴다 — 선수 정보에는 안 들어간다. */
+  return out.map(g => ({ kind: g.kind, lv: xcLevel(g.p[0]) + xcLevel(g.p[1]),
+    players: g.p.map(x => ({ id: x.id, name: x.name })) }));
+}
+/* 예전 이름 — 1회차 조를 뜻한다 */
+function xcSquad(roster, mix) { return xcSquadAt(roster, mix, 0); }
+
+/* 대진 — 회차마다 양쪽 클럽의 조를 새로 짜고, 같은 종목끼리 <무게가 비슷한 조>를 맞붙인다.
+
+   예전에는 상대를 한 칸씩 미는 방식이었다(j+r). 조가 고정일 때는 모든 조의 무게가
+   같아서 그래도 됐지만, 회차마다 조를 새로 짜면 조마다 무게가 달라져 한 칸씩 밀면
+   센 조가 약한 조를 만나는 판이 생긴다. 그래서 양쪽을 무게 순으로 세워 같은 자리끼리 붙인다.
+   무게가 같은 조가 여럿이면 그 안에서 회차마다 순번을 돌린다 —
+   그래야 같은 네 사람이 두 번 만나는 일이 없다.
+
+   코트 번호가 뜻하는 종목(1~4 남복 · 5~6 혼복 식)은 회차가 바뀌어도 그대로다. */
+function xcDraw(ent, rosters, mix, courts, rounds) {
   const games = [];
   for (let r = 0; r < rounds; r++) {
+    const A = xcSquadAt(rosters[ent[0].club_id], mix, r);
+    const B = xcSquadAt(rosters[ent[1].club_id], mix, r);
+    if (!A || !B) break;
     let court = 0;
     ['남복', '혼복', '여복'].forEach(kind => {
       const ia = A.map((g, i) => [g, i]).filter(([g]) => g.kind === kind);
-      const ib = B.map((g, i) => [g, i]).filter(([g]) => g.kind === kind);
-      const n = ia.length;
-      for (let j = 0; j < n; j++) {
-        const a = ia[j], b = ib[(j + r) % n];
+      let ib = B.map((g, i) => [g, i]).filter(([g]) => g.kind === kind)
+        .sort((x, y) => y[0].lv - x[0].lv);
+      /* 무게가 같은 구간은 회차마다 돌린다 */
+      const rot = [];
+      for (let i = 0; i < ib.length;) {
+        let j = i;
+        while (j < ib.length && ib[j][0].lv === ib[i][0].lv) j++;
+        const grp = ib.slice(i, j);
+        for (let k = 0; k < grp.length; k++) rot.push(grp[(k + r) % grp.length]);
+        i = j;
+      }
+      ib = rot;
+      /* 우리 조도 무게 순으로 세워, 같은 자리끼리 붙인다 (코트 순서는 그대로 둔다) */
+      const order = ia.map((x, i) => [x, i]).sort((x, y) => y[0][0].lv - x[0][0].lv);
+      const pick = new Array(ia.length);
+      order.forEach(([, i], k) => { pick[i] = ib[k]; });
+      for (let j = 0; j < ia.length; j++) {
+        const a = ia[j], b = pick[j];
         games.push({ round: r + 1, court: ++court, kind,
           home: { club_id: ent[0].club_id, seat: a[1] + 1, players: a[0].players },
           away: { club_id: ent[1].club_id, seat: b[1] + 1, players: b[0].players } });
