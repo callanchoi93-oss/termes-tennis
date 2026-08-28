@@ -100,6 +100,24 @@ body{background:var(--paper);color:var(--ink);
 #toast.on{opacity:1}
 .sk{background:#f4f1ea;border-radius:8px;height:12px;animation:p 1.2s ease-in-out infinite}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.5}}
+  /* 마지막 접속 — 색으로 최근인지 오래됐는지 바로 읽히게 */
+  .seen{font-weight:700}
+  .seen.now{color:#1f7d4d}
+  .seen.wk{color:#cf5418}
+  .seen.mo{color:#8a8378}
+  .seen.old,.seen.off{color:#c2410c}
+  .rt{font-size:11px;color:#b3aea4}
+  .kpi3{display:flex;gap:8px;margin-top:10px}
+  .kpi3>div{flex:1;text-align:center;background:var(--cream2,#f6f5f2);border-radius:12px;padding:12px 4px}
+  .kpi3 b{display:block;font-size:22px;font-weight:800;letter-spacing:-.03em}
+  .kpi3 b.warn{color:#c2410c}
+  .kpi3 i{font-style:normal;display:block;font-size:11px;color:#b3aea4;margin-top:4px}
+  .prow{display:flex;align-items:center;gap:10px;padding:8px 2px;font-size:13px}
+  .prow .l{width:56px;font-weight:600}
+  .prow .t{flex:1;height:8px;background:#f2f1ec;border-radius:5px;overflow:hidden}
+  .prow .t i{display:block;height:100%;background:#ec6a2e;border-radius:5px}
+  .prow .v{width:70px;text-align:right;font-weight:700}
+  .prow .v em{font-style:normal;font-size:11px;color:#b3aea4;margin-left:5px;font-weight:500}
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div id="toast"></div>
@@ -117,6 +135,23 @@ const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const fmt=n=>Number(n||0).toLocaleString('ko-KR');
 const ymd=t=>{ if(!t) return ''; const d=new Date(t); if(isNaN(d)) return '';
   return `${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; };
+/* 마지막 접속 — 날짜보다 <얼마나 전인지>가 관리에 쓸모 있다.
+   오늘 들어온 사람과 두 달 전에 끊긴 사람을 한눈에 갈라야 하기 때문이다. */
+const TIER_MIN=2;                 // 서버의 TIER_MIN_GAMES 와 같은 값
+const ago=t=>{
+  if(!t) return {txt:'기록 없음', cls:'off'};
+  const m=Math.floor((Date.now()-t)/60000);
+  if(m<1)    return {txt:'방금',        cls:'now'};
+  if(m<60)   return {txt:`${m}분 전`,   cls:'now'};
+  const h=Math.floor(m/60);
+  if(h<24)   return {txt:`${h}시간 전`, cls:'now'};
+  const d=Math.floor(h/24);
+  if(d===1)  return {txt:'어제',        cls:'wk'};
+  if(d<7)    return {txt:`${d}일 전`,   cls:'wk'};
+  if(d<30)   return {txt:`${Math.floor(d/7)}주 전`, cls:'mo'};
+  if(d<365)  return {txt:`${Math.floor(d/30)}개월 전`, cls:'old'};
+  return {txt:'1년 이상', cls:'old'};
+};
 
 /* 탭 14개를 9개로 묶었다. 구장 관련 넷(구장·예약·열린 시간·정산)은 한 화면에서
    안쪽 탭으로 나누고, 매치와 인원 미달, 계정과 매니저 등급도 함께 본다.
@@ -185,6 +220,44 @@ async function drawStats(){
   if(noG) todo.push(['성별이 빈 회원','대진에서 남복·혼복이 잘못 잡혀요',`${noG}명`,`UONLY='nog';go('users')`]);
   if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`]);
   const kpi=[['회원',s.users],['클럽',s.clubs],['오픈매치',s.open_matches!=null?s.open_matches:s.matches]];
+
+  /* ── 살아 있는 앱인지 ──
+     총계만 보면 늘고 있는지 줄고 있는지 알 수 없다.
+     오늘·이번 주·이번 달 들어온 사람이 진짜 지표다. */
+  const live = s.dau==null ? '' : `
+    <div class="card"><div class="ct">얼마나 쓰고 있나</div>
+      <div class="kpi3">
+        <div><b>${fmt(s.dau)}</b><i>오늘 접속</i></div>
+        <div><b>${fmt(s.wau)}</b><i>이번 주</i></div>
+        <div><b>${fmt(s.mau)}</b><i>이번 달</i></div>
+      </div>
+      <div class="kpi3">
+        <div><b>${fmt(s.newWeek)}</b><i>주간 가입</i></div>
+        <div><b class="${s.ghost?'warn':''}">${fmt(s.ghost)}</b><i>가입 후 미접속</i></div>
+        <div><b class="${s.dormant?'warn':''}">${fmt(s.dormant)}</b><i>30일 이상 잠듦</i></div>
+      </div>
+      <div class="note" style="margin-top:8px">
+        가입 후 한 번도 안 들어온 사람이 많으면 첫 화면에서 막히는 것이다.<br>
+        30일 이상 잠든 사람은 다시 부를 대상이다.</div>
+    </div>
+    <div class="card"><div class="ct">클럽이 돌아가나</div>
+      <div class="kpi3">
+        <div><b>${fmt(s.clubsAlive)}</b><i>이번 달 활동 클럽</i></div>
+        <div><b>${fmt(s.bracketsMonth)}</b><i>이번 달 대진</i></div>
+        <div><b>${fmt(s.exchanges)}</b><i>교류전</i></div>
+      </div>
+      <div class="note" style="margin-top:8px">
+        전체 클럽 ${fmt(s.clubs)}개 중 ${fmt(s.clubsAlive)}개가 이번 달에 모임을 열었어요.
+        ${s.clubs>s.clubsAlive ? `나머지 ${fmt(s.clubs-s.clubsAlive)}개는 만들어만 두고 안 쓰는 중이에요.` : ''}</div>
+    </div>
+    ${(s.byProvider||[]).length ? `<div class="card"><div class="ct">어디로 가입했나</div>
+      ${s.byProvider.map(p=>{
+        const NM={kakao:'카카오',google:'구글',apple:'애플',dev:'개발'};
+        const w=Math.round(p.n/s.users*100);
+        return `<div class="prow"><span class="l">${NM[p.p]||p.p}</span>
+          <span class="t"><i style="width:${w}%"></i></span>
+          <span class="v">${fmt(p.n)}<em>${w}%</em></span></div>`; }).join('')}
+    </div>` : ''}`;
   /* 알림 상태 — 준비됐는지, 폰이 몇 대 붙어 있는지 */
   const ios=push ? ((push.devices||[]).find(d=>d.platform==='ios')||{}).n||0 : 0;
   const web=push ? ((push.devices||[]).find(d=>d.platform==='web')||{}).n||0 : 0;
@@ -230,7 +303,7 @@ async function drawStats(){
     </div>`;
   $('app').innerHTML=shell(`
     <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
-    ${pushBlock}
+    ${live+pushBlock}
     ${todo.length?`<div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>`:''}
     <div class="card">${todo.length? todo.map(([t,d,n,act])=>
       `<div class="rw" onclick="${act}" style="cursor:pointer">
@@ -256,6 +329,7 @@ async function drawUsers(){
     <div class="card">${list.length? list.map(u=>{
       const g=gLabel(u.gender);
       const cls=g==='여성'?'f':g==='남성'?'m':'';
+      const a=ago(u.last_seen);
       /* 성별이 어디서 온 값인지 — 본인이 정한 값과 클럽에서 고쳐 둔 값은 뜻이 다르다 */
       const src=u.gender_src==='club' ? '클럽 지정' : '';
       /* 성별과 가입 경로는 다른 정보다 — 한 자리를 나눠 쓰면 성별이 정해진 회원의
@@ -267,8 +341,11 @@ async function drawUsers(){
         <div class="nm"><b>${esc(u.name||'이름 없음')}
           ${g?`<span class="tag ${cls}">${g}</span>`:''}
           ${pv?`<span class="tag ${pcls}">${esc(pv)}</span>`:''}</b>
-          <span>#${u.id} · ${ymd(u.created_at)} 가입 · 레이팅 ${fmt(u.rating)}${
-            src?` · ${src}`:''}</span></div>
+          <span>#${u.id} · ${ymd(u.created_at)} 가입 · <b class="seen ${a.cls}">${a.txt}</b>${
+            src?` · ${src}`:''}<br>
+            <span class="rt">티어 ${fmt(u.rating_doubles||1000)}${
+              (u.tier_games||0)<TIER_MIN ? ` · 배치까지 ${TIER_MIN-(u.tier_games||0)}경기`
+                                         : ` · ${u.tier_games}경기`}</span></span></div>
         <div class="seg3">
           <button class="b ${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남</button>
           <button class="b ${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여</button>
