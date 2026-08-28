@@ -105,7 +105,8 @@ body{background:var(--paper);color:var(--ink);
   .now{color:#1f7d4d}
   .wk{color:#cf5418}
   .mo{color:#8a8378}
-  .old,.off{color:#c2410c}
+  .old{color:#c2410c}
+  .unk{color:#c9c3b8}
   .rt{font-size:11px;color:#b3aea4}
   .kpi3{display:flex;gap:8px;margin-top:10px}
   .kpi3>div{flex:1;text-align:center;background:var(--cream2,#f6f5f2);border-radius:12px;padding:12px 4px}
@@ -132,7 +133,9 @@ body{background:var(--paper);color:var(--ink);
   .urw{display:flex;align-items:center;gap:12px;padding:13px 4px;
     border-bottom:1px solid #f4f2ed;cursor:pointer}
   .urw:last-child{border-bottom:0}
-  .urw.gone{opacity:.62}
+  /* 줄 전체를 흐리게 하면 목록이 통째로 죽는다.
+     안 오는 사람은 오른쪽 접속 글자 색으로만 구분한다. */
+  .urw.gone .us{color:#c9c3b8}
   .av{width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;
     justify-content:center;font-size:13px;font-weight:700}
   .ub{flex:1;min-width:0}
@@ -162,6 +165,7 @@ body{background:var(--paper);color:var(--ink);
     padding:12px 2px;border-bottom:1px solid #f4f2ed;font-size:13px}
   .ur span{color:#7d7870}
   .ur b{font-weight:700}
+  .unote{font-size:11px;color:#b3aea4;line-height:1.6;padding:10px 2px 0}
   .ul{font-size:10.5px;font-weight:700;color:#b3aea4;letter-spacing:.08em;margin:18px 0 8px}
   .useg{display:flex;gap:6px}
   .useg b{flex:1;text-align:center;border:1px solid var(--line,#ececea);border-radius:11px;
@@ -198,7 +202,8 @@ const stamp=t=>{ const d=new Date(t); if(isNaN(d)) return '';
   const p=n=>String(n).padStart(2,'0');
   return `${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };                 // 서버의 TIER_MIN_GAMES 와 같은 값
 const ago=t=>{
-  if(!t) return {txt:'기록 없음', cls:'off'};
+  /* 기록을 켠 날 이전에 다녀간 사람은 값이 없다 — <안 온 사람>과 뜻이 다르다 */
+  if(!t) return {txt:'아직 모름', cls:'unk'};
   const m=Math.floor((Date.now()-t)/60000);
   if(m<1)    return {txt:'방금',        cls:'now'};
   if(m<60)   return {txt:`${m}분 전`,   cls:'now'};
@@ -400,7 +405,7 @@ async function drawUsers(){
         border:1px solid var(--line)">내려받기</button></div>
 
     <div class="fbar">${chip('','전체')}${chip('today','오늘')}${chip('week','7일')}
-      ${chip('old','30일+',1)}${chip('never','미접속',1)}${chip('nog','성별 없음',1)}</div>
+      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('nog','성별 없음',1)}</div>
 
     ${USEEN==='nog'&&noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
       <u onclick="fillGender()">클럽 값으로 채우기</u></div>`:''}
@@ -425,7 +430,7 @@ async function drawUsers(){
           <span class="us">#${u.id} · 티어 ${fmt(u.rating_doubles||1000)}${
             (u.tier_games||0)<TIER_MIN ? ' · 배치 전' : ` · ${u.tier_games}경기`}</span></div>
         <div class="usn"><b class="${a.cls}">${a.txt}</b><i>${
-          u.last_seen ? stamp(u.last_seen) : '가입 후 미접속'}</i></div>
+          u.last_seen ? stamp(u.last_seen) : '8/28부터 기록'}</i></div>
         <span class="go">›</span></div>`;}).join('')
       : `<div class="empty">${UQ?'찾는 회원이 없어요':'해당하는 회원이 없어요'}</div>`}
     </div>
@@ -446,7 +451,9 @@ async function openU(id){
     <div class="ur"><span>번호</span><b>#${u.id}</b></div>
     <div class="ur"><span>가입</span><b>${ymd(u.created_at)} · ${esc(PROV[u.provider]||u.provider||'')}</b></div>
     <div class="ur"><span>마지막 접속</span><b class="${a.cls}">${a.txt}${
-      u.last_seen?` · ${stamp(u.last_seen)}`:''}</b></div>
+      u.last_seen?` · ${stamp(u.last_seen)}`:''}</b></div>${
+      u.last_seen?'':`<div class="unote">접속 기록은 2026년 8월 28일부터 쌓입니다.
+        그 전에 다녀간 분도 값이 비어 있어요.</div>`}
     <div class="ur"><span>티어 레이팅</span><b>${fmt(u.rating_doubles||1000)}${
       (u.tier_games||0)<TIER_MIN ? ` · 배치까지 ${TIER_MIN-(u.tier_games||0)}경기` : ` · ${u.tier_games}경기`}</b></div>
     <div class="ur"><span>성별</span><b>${g||'없음'}${
