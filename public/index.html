@@ -526,17 +526,22 @@
   /* 탭 줄은 위아래로 움직이지 않는다 — 아래 내용을 훑는 동안에도 지금 어느 탭인지 보여야 한다.
      좌우로만 스크롤되고, 옆으로 끝까지 밀어도 브라우저 뒤로가기로 넘어가지 않게 막는다.
      .scroll 의 좌우 패딩만큼 음수 마진을 줘서 배경이 화면 끝까지 덮이게 한다. */
-  .ctabs{display:flex;gap:14px;border-bottom:1px solid var(--line);
+  /* 클럽 안쪽 탭 — 일곱 개가 나란히 선다. 이름을 짧게 줄여 한 화면에 들어오게 하고,
+     밑줄은 브랜드 코랄로. 고른 것만 굵어지고 나머지는 뒤로 물러난다. */
+  .ctabs{display:flex;gap:17px;border-bottom:1px solid var(--line);
     position:sticky;top:0;z-index:6;background:var(--cream);
     margin:0 -16px 12px;padding:0 18px;
     overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
     scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .ctabs::-webkit-scrollbar{display:none}
-  .ctabs div{flex:none;white-space:nowrap}
-  .ctabs div{padding:11px 0;font-size:14px;font-weight:400;color:var(--lgray);position:relative;cursor:pointer}
-  .ctabs div.on{color:var(--ink);font-weight:600}
-  .ctabs div.on:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2.5px;
-    background:var(--ink);border-radius:2px}
+  .ctabs div{flex:none;white-space:nowrap;padding:13px 0 12px;font-size:14.5px;font-weight:600;
+    color:#b3aea4;letter-spacing:-.035em;position:relative;cursor:pointer;transition:color .15s}
+  .ctabs div.on{color:var(--ink);font-weight:800}
+  .ctabs div.on:after{content:'';position:absolute;left:-1px;right:-1px;bottom:-1px;height:2.5px;
+    background:var(--coral);border-radius:3px}
+  /* 지금 무언가 돌고 있는 탭에만 점 하나 — 없는 데이터로 뱃지를 만들지는 않는다 */
+  .ctabs div u{position:absolute;top:9px;right:-7px;width:5px;height:5px;border-radius:50%;
+    background:var(--coral);display:block;text-decoration:none}
 
   .card.flush2{padding:2px 15px 3px}
   .cdm{flex:none;width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:50%;
@@ -2746,10 +2751,10 @@
   .schd .tb i{ font-style:normal;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums }
   .schd .tb.on{ color:var(--ink);border-bottom-color:var(--ink) }
   .schd .tb.on i{ color:var(--coral-d) }
-  .schd .mk{ margin-left:auto;margin-bottom:7px;flex:none;font-size:12px;font-weight:700;
+  .schd .schmk{ margin-left:auto;margin-bottom:7px;flex:none;font-size:12px;font-weight:700;
     border-radius:11px;padding:7px 12px;font-family:inherit;cursor:pointer;
     border:1.5px solid var(--coral);background:#fff;color:var(--coral-d) }
-  .schd .mk.guest{ border-color:#c3d2f0;color:#2b62c9 }
+  .schd .schmk.guest{ border-color:#c3d2f0;color:#2b62c9 }
   .schline{ height:1px;background:var(--line);margin:0 4px }
   .schnow{ display:flex;align-items:baseline;gap:8px;margin:10px 4px 12px;font-size:11.5px;
     font-weight:600;color:var(--lgray) }
@@ -9123,7 +9128,7 @@ function renderClub(){
           ${[['다가오는',false,nUp],['지난 모임',true,nPast]].map(([t,v,n])=>
             `<span class="tb${!!state._clubPast===v?' on':''}" onclick="clubPast(${v})">
               <b>${t}</b><i>${n}</i></span>`).join('')}
-          <button class="mk${_off?'':' guest'}"
+          <button class="schmk${_off?'':' guest'}"
             onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">${
             _off?'＋ 만들기':'⚡ 번개 열기'}</button>
         </div>
@@ -12233,7 +12238,16 @@ function drawMyClubStats(){
 }
 function openSeasonRank(){ renderClubStats(); document.getElementById('ov').classList.add('on'); }
 function clubSub(){ return state.clubSub || 'sched'; }
-function setClubSub(v){ if(v!=='me') CLUBME_WHO=null; state.clubSub=v; renderClub(); }
+function setClubSub(v){
+  if(v!=='me') CLUBME_WHO=null;
+  state.clubSub=v; renderClub();
+  /* 화면이 좁아 탭이 밀려 있으면 고른 탭을 보이는 데로 끌어온다 —
+     맨 오른쪽 탭을 눌렀는데 그 탭이 화면 밖에 남아 있으면 눌린 줄을 모른다. */
+  setTimeout(()=>{ try{
+    const el=document.querySelector('#ctabs div.on');
+    if(el && el.scrollIntoView) el.scrollIntoView({inline:'center', block:'nearest', behavior:'smooth'});
+  }catch(e){} }, 30);
+}
 function clubHeroTabs(){
   const n=state.activeClub||'';
   const d=(state.clubData||{})[n]||{};
@@ -12241,7 +12255,14 @@ function clubHeroTabs(){
   const role = d.officer ? '운영진' : '회원';
   /* <모임 기록>을 뺐다. 대진 목록이 그날 1위까지 보여주고,
      한 줄을 누르면 그날 순위가 대진 아래에 이어진다 — 같은 것을 두 번 보여주고 있었다. */
-  const tabs=[['sched','일정'],['bracket','대진'],['rec','시즌 랭킹'],['mem','멤버'],['news','소식'],['me','내 정보'],['info','클럽 정보']];
+  /* 이름을 짧게 — <내 정보>와 <클럽 정보>는 글자가 닮아 매번 다시 읽어야 했다.
+     각각 <내 기록>·<소개>로 부른다. 일곱 개가 한 화면에 들어온다. */
+  const tabs=[['sched','일정'],['bracket','대진'],['rec','랭킹'],['mem','멤버'],
+              ['news','소식'],['me','내 기록'],['info','소개']];
+  /* 오늘 대진이 돌고 있으면 그 탭에만 점을 찍는다 */
+  const liveTab=(()=>{ try{
+    return (typeof CB2!=='undefined' && CB2 && CB2.date===ymd() && (CB2.games||[]).length)
+      ? 'bracket' : ''; }catch(e){ return ''; } })();
   const cur=clubSub();
   return `<div class="chero">
       ${clubAvatar(n,52)||`<div class="cheroav">${esc(n.slice(0,1))}</div>`}
@@ -12252,8 +12273,9 @@ function clubHeroTabs(){
       </div>
       ${d.officer?`<button class="cheroop" onclick="openClubOps()">운영진 도구</button>`:''}
     </div>
-    <div class="ctabs">${tabs.map(([k,l])=>
-      `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}</div>`).join('')}</div>`;
+    <div class="ctabs" id="ctabs">${tabs.map(([k,l])=>
+      `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}${
+        liveTab===k&&cur!==k?'<u></u>':''}</div>`).join('')}</div>`;
 }
 function clubTabBracket(){
   const c=AC()||{}; const evs=clubEvents();
