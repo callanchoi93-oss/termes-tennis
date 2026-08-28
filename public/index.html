@@ -11168,8 +11168,25 @@ function xcDrawGames(id){
 
   h+=`<div class="note" style="text-align:left;margin-top:10px">스코어는 그 경기를 뛴
     <b>양쪽 클럽 회원</b>이면 누구나 넣을 수 있고, 나중에 고칠 수 있어요.</div>`;
+  /* 다시 짜기 — 명단이 바뀌었을 때만 쓸 일이 있다. 점수가 지워지는 일이라
+     임원에게만, 그것도 맨 아래 작은 글씨로 둔다. */
+  if(off) h+=`<div style="text-align:center;margin-top:14px">
+    <span onclick="xcRedraw(${id})" style="font-size:11px;font-weight:500;color:var(--lgray);
+      cursor:pointer;padding:8px 12px">대진 다시 짜기</span></div>`;
   h+=`</div>`;
   xcSheet(h);
+}
+/* 명단이 바뀌었으면 다시 짠다 — 편성은 참석자 명단에서 나오므로
+   같은 명단으로 다시 눌러도 같은 대진이 나온다. */
+async function xcRedraw(id){
+  const n=((XCG&&XCG.games)||[]).filter(xcDone).length;
+  if(!confirm(n?`이미 ${n}경기 점수가 들어가 있어요.\n다시 짜면 점수가 모두 지워집니다.\n계속할까요?`
+              :'대진을 다시 짤까요?\n참석자 명단이 바뀌었을 때만 쓰세요.')) return;
+  try{
+    const r=await api(`/exchange/${id}/draw`,{method:'POST',body:JSON.stringify({force:true})});
+    toast(`대진을 다시 짰어요 · ${(r.games||[]).length}경기`);
+    XC_LIST=null; XC_COURT=0; XC_FOCUS=null; openXcGames(id);
+  }catch(e){ toast(xcErr(e,'다시 짜지 못했어요')); }
 }
 /* 지금 할 일 카드 — 클럽 대진의 <내 차례> 카드와 같은 규칙.
    시작 전 → 시작 버튼, 진행 중 → 내 다음 경기, 다 끝남 → 마무리 인사 */
