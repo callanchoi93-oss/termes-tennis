@@ -6181,7 +6181,8 @@ app.get('/admin/purge-list', admin, (_req, res) => {
 app.get('/admin/stats', admin, (_req, res) => {
   const one = (sql) => db.prepare(sql).get().n;
   res.json({
-    users: one('SELECT COUNT(*) n FROM users'),
+    users: one('SELECT COUNT(*) n FROM users WHERE COALESCE(is_test,0)=0'),
+    testUsers: one('SELECT COUNT(*) n FROM users WHERE is_test=1'),
     clubs: one('SELECT COUNT(*) n FROM clubs'),
     posts: one('SELECT COUNT(*) n FROM posts WHERE hidden=0'),
     hidden: one('SELECT COUNT(*) n FROM posts WHERE hidden=1'),
@@ -6310,9 +6311,14 @@ app.get('/admin/users', admin, (req, res) => {
     ${OV} AS gender_club,
     CASE WHEN NULLIF(u.gender,'') IS NOT NULL THEN 'self'
          WHEN ${OV} IS NOT NULL THEN 'club' ELSE '' END AS gender_src`;
+  /* 테스트로 만든 가짜 회원은 감춘다 — 진짜 회원 사이에 섞이면 목록을 못 믿는다.
+     ?test=1 로 부르면 그것만 본다(정리할 때 쓴다). */
+  const only = String((req.query && req.query.test) || '');
+  const where = only === '1' ? 'COALESCE(u.is_test,0)=1' : 'COALESCE(u.is_test,0)=0';
   const rows = q
-    ? db.prepare(`SELECT ${cols} FROM users u WHERE u.name LIKE ? ORDER BY u.id DESC LIMIT 200`).all('%' + q + '%')
-    : db.prepare(`SELECT ${cols} FROM users u ORDER BY u.id DESC LIMIT 200`).all();
+    ? db.prepare(`SELECT ${cols} FROM users u WHERE ${where} AND u.name LIKE ?
+        ORDER BY u.id DESC LIMIT 200`).all('%' + q + '%')
+    : db.prepare(`SELECT ${cols} FROM users u WHERE ${where} ORDER BY u.id DESC LIMIT 200`).all();
   res.json(rows);
 });
 
@@ -8616,17 +8622,42 @@ app.post('/admin/exchange/:id/fill', admin, (req, res) => {
         WHERE cm.club_id=? AND cm.role IN ('member','officer','owner')
           AND (cm.status IS NULL OR cm.status='active')
           AND COALESCE(NULLIF(cm.gender_ov,''), u.gender) = ?
+          AND COALESCE(u.is_test,0) = 0
         ORDER BY u.id LIMIT ?`).all(e.club_id, g, n).map(r => r.id);
-    let ids = [...pick('남성', mix.men), ...pick('여성', mix.women)];
-    /* 성별이 맞는 사람이 모자라면 나머지는 아무나 채운다 */
-    if (ids.length < per) {
-      const more = db.prepare(`SELECT u.id FROM club_members cm JOIN users u ON u.id=cm.user_id
-        WHERE cm.club_id=? AND cm.role IN ('member','officer','owner')
-          AND (cm.status IS NULL OR cm.status='active')
-          AND u.id NOT IN (${ids.length ? ids.map(() => '?').join(',') : '0'})
-        ORDER BY u.id LIMIT ?`).all(e.club_id, ...ids, per - ids.length).map(r => r.id);
-      ids = ids.concat(more);
-    }
+    let men = pick('M', mix.men), women = pick('F', mix.women);
+    /* 클럽에 사람이 모자라면 테스트 회원을 만들어 채운다.
+       회원이 셋뿐인 클럽으로도 12명 대진을 돌려봐야 하기 때문이다.
+       is_test 로 표시해 두고 회원 목록에서는 감춘다. */
+    const MEN = ['김도윤','최우진','강태현','윤성호','백지훈','임현우','조성민','장우현',
+                 '신동엽','정민재','이준혁','박도윤'];
+    const WOMEN = ['박서연','한소민','서지우','이하늘','정혜정','문예린','오세라','김수빈',
+                   '윤가은','최지아','임소영','배유진'];
+    const mkTest = (g, want, used) => {
+      const out = [];
+      const pool = g === 'M' ? MEN : WOMEN;
+      for (let i = 0; out.length < want && i < pool.length * 2; i++) {
+        const nm = `${pool[i % pool.length]}${i >= pool.length ? i - pool.length + 2 : ''}`;
+        let u = db.prepare('SELECT id FROM users WHERE name=? AND is_test=1').get(nm);
+        if (!u) {
+          const r = db.prepare(`INSERT INTO users (name,gender,provider,rating,rating_doubles,
+              created_at,is_test,sport) VALUES (?,?,'test',1000,1000,?,1,'tennis')`)
+            .run(nm, g, now());
+          u = { id: rid(r) };
+        }
+        if (used.has(u.id)) continue;
+        /* 그 클럽 회원으로 넣어 둔다 — 대진이 등급을 읽어야 한다 */
+        const has = db.prepare('SELECT id FROM club_members WHERE club_id=? AND user_id=?')
+          .get(e.club_id, u.id);
+        if (!has) db.prepare(`INSERT INTO club_members (club_id,user_id,role,status,joined_at,gender_ov)
+          VALUES (?,?,'member','active',?,?)`).run(e.club_id, u.id, now(), g);
+        out.push(u.id); used.add(u.id);
+      }
+      return out;
+    };
+    const used = new Set([...men, ...women]);
+    if (men.length < mix.men) men = men.concat(mkTest('M', mix.men - men.length, used));
+    if (women.length < mix.women) women = women.concat(mkTest('F', mix.women - women.length, used));
+    let ids = [...men, ...women];
     ids.forEach(uid => {
       const had = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, uid);
       if (had) db.prepare("UPDATE event_attendees SET status='going' WHERE id=?").run(had.id);
@@ -8637,6 +8668,19 @@ app.post('/admin/exchange/:id/fill', admin, (req, res) => {
   });
   res.json({ ok: true, clubs: out });
 });
+/* 테스트 회원을 모두 지운다 — 교류전 테스트가 끝나면 흔적을 남기지 않는다 */
+app.post('/admin/test-users/purge', admin, (_req, res) => {
+  const ids = db.prepare('SELECT id FROM users WHERE is_test=1').all().map(r => r.id);
+  if (!ids.length) return res.json({ ok: true, n: 0 });
+  const ph = ids.map(() => '?').join(',');
+  [`DELETE FROM event_attendees WHERE user_id IN (${ph})`,
+   `DELETE FROM club_members WHERE user_id IN (${ph})`,
+   `DELETE FROM users WHERE id IN (${ph})`].forEach(sql => {
+    try { db.prepare(sql).run(...ids); } catch (e) {}
+  });
+  res.json({ ok: true, n: ids.length });
+});
+
 /* 상대 클럽을 붙인다 — 테스트할 때 다른 클럽 계정으로 로그인해 신청하기가 번거롭다.
    실제 클럽 중 하나를 골라 참가시킨다. */
 app.post('/admin/exchange/:id/opponent', admin, (req, res) => {
@@ -8945,6 +8989,7 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch (e) {}  // 회식비(전체)
 try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {}        // 마지막 접속
 try { db.exec("ALTER TABLE users ADD COLUMN last_plat TEXT"); } catch (e) {}          // 마지막에 쓴 기기
+try { db.exec("ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0"); } catch (e) {}  // 테스트용 가짜 회원
 
 db.exec(`CREATE TABLE IF NOT EXISTS exchange_games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9097,7 +9142,13 @@ app.post('/exchange/:id/join', auth, (req, res) => {
   const nM = pool.filter(p => p.g === 'M').length, nF = pool.filter(p => p.g === 'F').length;
   if (nM < mix.men || nF < mix.women)
     return res.status(400).json({ error: 'roster_short',
-      message: `남 ${mix.men}명 · 여 ${mix.women}명이 필요해요 (우리 클럽 남 ${nM} · 여 ${nF})` });
+      message: (() => {
+        const dM = Math.max(0, mix.men - nM), dF = Math.max(0, mix.women - nF);
+        const p = [];
+        if (dM) p.push(`남성 ${dM}명`);
+        if (dF) p.push(`여성 ${dF}명`);
+        return p.length ? `${p.join(' · ')}이 모자라요` : '성별 구성이 맞지 않아요';
+      })() });
 
   const seat = ent.length + 1;
   db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
@@ -9158,8 +9209,20 @@ app.post('/exchange/:id/draw', auth, (req, res) => {
       return res.status(409).json({ error: 'need_players',
         message: `${e.club_name} 인원이 ${roster.length}/${ev.per_club}명이에요` });
     const sq = xcSquad(roster, mix);
-    if (!sq) return res.status(409).json({ error: 'bad_gender',
-      message: `${e.club_name}: 남 ${mix.men}명 · 여 ${mix.women}명이 필요해요` });
+    if (!sq) {
+      /* 총 필요 인원을 말하면 <12명 다 모였는데 왜?> 가 된다.
+         모자란 쪽과 그 수만 말한다. */
+      const nM = roster.filter(r => r.gender === 'M').length;
+      const nF = roster.filter(r => r.gender === 'F').length;
+      const dM = Math.max(0, mix.men - nM), dF = Math.max(0, mix.women - nF);
+      const parts = [];
+      if (dM) parts.push(`남성 ${dM}명`);
+      if (dF) parts.push(`여성 ${dF}명`);
+      return res.status(409).json({ error: 'bad_gender',
+        message: parts.length
+          ? `${e.club_name}: ${parts.join(' · ')}이 모자라요`
+          : `${e.club_name}: 성별 구성이 맞지 않아요 (남 ${nM} · 여 ${nF})` });
+    }
     squads[e.club_id] = sq;
     db.prepare('UPDATE exchange_entries SET squad_json=? WHERE event_id=? AND club_id=?')
       .run(JSON.stringify(sq), eid, e.club_id);
