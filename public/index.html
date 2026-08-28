@@ -10961,69 +10961,255 @@ async function openXcGames(id){
   let d; try{ d=await api(`/exchange/${id}/games`); }catch(e){ return toast('불러오지 못했어요'); }
   XCG=d; xcDrawGames(id);
 }
+/* ── 교류전 대진 — 클럽 대진과 같은 화면 ──
+   예전에는 회차별로 카드를 세로로 쌓았다. 6코트 × 6회차면 카드가 36장이라
+   내 경기를 찾으려면 화면 여섯 개를 넘겨야 했고, <지금 어디까지 왔나>가 안 보였다.
+   클럽 대진과 같은 순서로 세운다 —
+   ① 진행 요약 ② 지금 할 일 카드 ③ 코트 탭 ④ 전체 표 ⑤ 코트별 경기 ⑥ 대기 명단 */
+let XC_COURT=0, XC_FOCUS=null;
+const xcDone=g=>g&&g.sa!=null&&g.sb!=null;
+/* 우리 클럽이 왼쪽 — 표에서도 카드에서도 같은 자리에 온다 */
+function xcSides(g, cid){
+  const home=g.home.club_id===cid;
+  return { us:home?g.home:g.away, them:home?g.away:g.home,
+           us_s:home?g.sa:g.sb, them_s:home?g.sb:g.sa };
+}
 function xcDrawGames(id){
   const d=XCG; if(!d) return;
   const cid=xcMyClubId(), ev=d.event, R=d.result;
   const me=String((state.serverUser||{}).id||'');
-  /* 시작 시각 — 시간 대진과 같다. 아무나 누르면 모두의 화면에서 시계가 돈다.
-     안 눌렀으면 모임 날짜의 시각을 쓴다. */
+  const G=(d.games||[]);
+  const nAll=G.length, nDone=G.filter(xcDone).length;
+  const rounds=[...new Set(G.map(g=>g.round))].sort((a,b)=>a-b);
+  const courts=[...new Set(G.map(g=>g.court))].sort((a,b)=>a-b);
+  const off=!!((AC()||{}).officer) || (typeof xcIsOfficer==='function' && xcIsOfficer());
+  if(XC_COURT!==0 && !courts.includes(XC_COURT)) XC_COURT=0;
+  if(courts.length<=1) XC_COURT=courts[0]||0;
+
+  /* 시작 시각 — 아무나 누르면 양쪽 화면에서 같은 시계가 돈다.
+     안 눌렀으면 모임 날짜에 적힌 시각을 임시로 쓴다. */
   const t0=d.started_at || (()=>{
     const D=String(ev.date||'');
     const md=D.match(/(\d{1,2})\/(\d{1,2})/), hm=D.match(/(\d{1,2}):(\d{2})/);
     if(!md || !hm) return NaN;
     return new Date(new Date().getFullYear(), +md[1]-1, +md[2], +hm[1], +hm[2]).getTime();
   })();
-  const at=r=>isNaN(t0)?'':tbHHMM(t0+(r-1)*30*60000);
-  const rounds=[...new Set(d.games.map(g=>g.round))];
-  /* 지금 몇 회차인가 — 시작을 눌렀을 때만 센다 */
+  const CYC=30*60000;                                   // 경기 25분 + 자리 바꾸기 5분
+  const at=r=>isNaN(t0)?'':tbHHMM(t0+(r-1)*CYC);
   const cur=d.started_at ? Math.min(rounds.length,
-    Math.floor((Date.now()-d.started_at)/(30*60000))+1) : 0;
+    Math.floor((Date.now()-d.started_at)/CYC)+1) : 0;
+  const running=g=>cur && g.round===cur && !xcDone(g);
 
-  let h=`<div class="sh-top"><h3>교류전 대진</h3>
+  let h=`<div class="om-detail"><div class="sh-top"><h3 class="gt4">교류전 대진</h3>
     <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${[esc((ev.date||'').split(' · ')[0]),
       esc((ev.date||'').split(' · ').slice(1).join(' · ')||ev.place||''),
       ev.courts?`코트 ${ev.courts}면`:''].filter(Boolean).join(' · ')}</div>`;
   if(R) h+=xcScoreBoard(R, cid);
 
-  /* 시작 버튼 — 누가 눌렀는지 남는다 */
-  h+= d.started_at
-    ? `<div class="xg-run"><b>${cur}회차 진행 중</b>
-        <span>${esc(d.started_name||'누군가')} 님이 ${tbHHMM(d.started_at)}에 시작했어요</span></div>`
-    : `<div class="xg-start" onclick="xcStart(${id})">지금 시작하기</div>
-       <div class="xd-fine" style="margin:7px 2px 0">아무나 눌러도 돼요 ·
-         누르면 양쪽 클럽 화면에서 회차 시각이 함께 돌아갑니다</div>`;
+  if(!nAll){
+    h+=`<div class="empty" style="padding:30px 20px"><div class="et">아직 대진이 없어요</div>
+      <div class="es">양쪽 클럽 명단이 다 차면 대진을 만들 수 있어요.</div></div></div>`;
+    return xcSheet(h);
+  }
 
-  rounds.forEach(r=>{
-    const on = cur===r;
-    h+=`<div class="xg-hd${on?' on':''}"><b>${r}회차</b>
-      <span>${at(r)?at(r)+' 시작':''}${on?' · 지금':''}</span></div>`;
-    d.games.filter(g=>g.round===r).forEach(g=>{
-      const mineHome=g.home.club_id===cid;
-      const us = mineHome?g.home:g.away, them = mineHome?g.away:g.home;
+  /* ① 진행 요약 — 클럽 대진의 요약 막대를 그대로 쓴다 */
+  h+=`<div class="rtprog lite">
+    <div class="top"><span class="n">${nDone}</span><span class="of">/ ${nAll}경기</span>
+      <span class="rt">${
+        nAll-nDone===0 ? '모든 경기 완료'
+        : cur ? `${cur}회차 진행 중`
+        : `${nAll}경기 예정`}</span></div>
+    <div class="rtbar"><i style="width:${Math.round(nDone/nAll*100)}%"></i></div>
+    ${d.started_at?`<div style="display:flex;align-items:center;gap:7px;margin-top:10px;
+        padding-top:10px;border-top:1px solid #e8e4dc">
+      <span style="width:5px;height:5px;border-radius:50%;background:var(--coral);flex:none"></span>
+      <span style="font-size:11px;color:var(--lgray);font-weight:500">오늘 경기 시작</span>
+      <span style="font-size:11.5px;font-weight:700">${esc(d.started_name||'회원')} 회원님</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--lgray);font-weight:500">${tbHHMM(d.started_at)}</span>
+    </div>`:''}
+    ${(()=>{
+      /* 끝나는 시각은 처음부터 정해져 있다 — 회차 수 × 30분, 마지막 회차는 전환 5분이 없다.
+         속도를 재서 추정하면 <오후 11시 41분> 같은 값이 나온다. */
+      if(isNaN(t0) || !rounds.length) return '';
+      const endAt=t0 + rounds.length*CYC - 5*60000;
+      const dt=new Date(endAt), ap=dt.getHours()<12?'오전':'오후', h12=dt.getHours()%12||12;
+      const hhmm=`${ap} ${h12}시${dt.getMinutes()?' '+dt.getMinutes()+'분':''}`;
+      const leftMin=Math.max(0, Math.round((endAt-Date.now())/60000));
+      const leftTxt=leftMin>=60
+        ? Math.floor(leftMin/60)+'시간'+(leftMin%60?' '+(leftMin%60)+'분':'') : leftMin+'분';
+      return `<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;
+          padding-top:9px;border-top:1px solid #eee9e0">
+        <span style="font-size:11px;color:#8c877f">모든 경기는</span>
+        <span style="font-size:15px;font-weight:800;color:var(--coral-d);letter-spacing:-.03em">${hhmm}</span>
+        <span style="font-size:11px;color:#8c877f">에 끝나요 · ${
+          d.started_at?`${Math.min(cur,rounds.length)}/${rounds.length}회차 · ${leftTxt} 남음`
+                      :`${rounds.length}회차 · ${rounds.length*30-5}분`}</span></div>`;
+    })()}
+  </div>`;
+
+  /* ② 지금 할 일 — 클럽 대진과 같은 카드(cbBigCard). 화면에 한 장뿐이다 */
+  h+=cbBigCard(xcBigCard(d, id, cid, me, cur), off);
+
+  /* ③ 코트 탭 — 6코트를 세로로 쌓으면 화면 여섯 개가 된다 */
+  if(courts.length>1){
+    h+=`<div class="rtcts" style="flex-wrap:wrap">
+      <div class="${XC_COURT===0?'on':''}" style="flex:1 0 28%"
+        onclick="XC_COURT=0;XC_FOCUS=null;xcDrawGames(${id})">
+        <span class="t">전체</span><span class="s">${nDone}/${nAll}</span></div>
+      ${courts.map(c=>{ const cg=G.filter(g=>g.court===c);
+        return `<div class="${XC_COURT===c?'on':''}" style="flex:1 0 28%"
+          onclick="XC_COURT=${c};XC_FOCUS=null;xcDrawGames(${id})">
+          <span class="t">${c}번 코트</span>
+          <span class="s">${cg.filter(xcDone).length}/${cg.length}</span></div>`; }).join('')}
+    </div>`;
+  }
+
+  /* ④ 전체 표 — 세로로 훑으면 내 경기가 어디 있는지 한눈에 보인다.
+        가로는 코트, 세로는 회차. 종이 대진표와 같은 배치다. */
+  if(XC_COURT===0 && courts.length>1){
+    const nm=t=>(t.players||[]).map(p=>{
+      const t1=esc(p.name);
+      return String(p.id)===me ? cbRing(t1, p.name, 1.8) : t1;   // 표는 글자가 작아 선도 얇게
+    }).join('·');
+    /* 코트가 넷을 넘으면 한 화면에 다 못 넣는다 — 표만 옆으로 밀어서 본다.
+       칸을 줄여 넣으면 이름이 세로로 쪼개져 오히려 못 읽는다. */
+    const wide=courts.length>3;
+    h+=`<div class="cbwide"><div style="${wide?'overflow-x:auto':''}">
+      <table style="${wide?`min-width:${26+courts.length*92}px`:''}">
+      <tr><th></th>${courts.map(c=>`<th>${c}번 코트</th>`).join('')}</tr>
+      ${rounds.map(r=>`<tr><td class="r">${r}</td>${courts.map(c=>{
+        const g=G.find(x=>x.round===r&&x.court===c);
+        if(!g) return `<td class="no">—</td>`;
+        const S=xcSides(g,cid);
+        const cls=xcDone(g)?'dn':running(g)?'on':'';
+        return `<td class="${cls}" onclick="xcGoGame(${g.id})">
+          ${nm(S.us)}
+          <em>${xcDone(g)?`${S.us_s}:${S.them_s}`:running(g)?'경기 중':'vs'}</em>
+          ${nm(S.them)}</td>`;
+      }).join('')}</tr>`).join('')}
+    </table></div>
+    <div class="lg">회색 끝남 · <b>주황 지금</b> · 검정 남음 · — 는 그 회차에 안 쓰는 코트
+      <br>칸을 누르면 <b>그 코트로 옮겨가요</b> · 거기서 점수를 넣어요
+      <br>위가 <b>${esc((R&&R.home.club_id===cid?R.home.name:R&&R.away.name)||'우리 클럽')}</b>, 아래가 상대 클럽이에요</div></div>`;
+  }
+
+  /* ⑤ 코트별 경기 — 탭으로 고른 코트만. 점수는 여기서 넣는다 */
+  courts.forEach(c=>{
+    if(courts.length>1 && (XC_COURT===0 || c!==XC_COURT)) return;
+    const cg=G.filter(g=>g.court===c).sort((a,b)=>a.round-b.round);
+    if(!cg.length) return;
+    const cDone=cg.filter(xcDone).length;
+    h+=`<div style="border:1px solid #ececea;border-radius:16px;padding:12px;margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <b style="font-size:var(--t2);font-weight:600">${c}번 코트${
+          cg.some(running)?' <span style="font-size:11px;font-weight:500;color:#cf5418">● 진행 중</span>'
+          : cDone===cg.length?' <span style="font-size:11px;font-weight:500;color:var(--lgray)">경기 끝</span>':''}</b>
+        <span class="gt1 gmute">${cDone}/${cg.length} 경기 완료</span></div>`;
+    cg.forEach(g=>{
+      const S=xcSides(g,cid);
+      const kind=xcKindName(g.kind);
+      const LB={'남복':['#eaf2ff','#2b62c9'],'여복':['#fdeef4','#c94378'],
+                '혼복':['#f0ecfd','#6a4cc4']}[kind]||['#f2f0ea','#6b6357'];
       const inMe=[...g.home.players,...g.away.players].some(p=>String(p.id)===me);
-      const has=g.sa!=null&&g.sb!=null;
-      const myS = mineHome?g.sa:g.sb, opS = mineHome?g.sb:g.sa;
-      const win = has && myS>opS, lose = has && myS<opS;
-      h+=`<div class="xg2${inMe?' me':''}${has?' done':''}" onclick="xcScore(${id},${g.id})">
-        <div class="hd"><span class="c">${g.court}코트</span>${xcKindChip(g.kind)}
-          ${inMe?'<span class="mine">내 경기</span>':''}
-          <span class="s ${win?'w':lose?'l':has?'':'no'}">${has?`${myS} : ${opS}`:'점수 넣기'}</span></div>
-        <div class="tm">${xcTeamRow(us, me, true)}${xcTeamRow(them, me, false)}</div></div>`;
+      const run=running(g), focused=XC_FOCUS===g.id;
+      const one=p=>String(p.id)===me ? cbRing(esc(p.name), p.name, 2.2) : esc(p.name);
+      const A=(S.us.players||[]).map(one).join(' · '), B=(S.them.players||[]).map(one).join(' · ');
+      const gA=xcTeamGrade(S.us.players), gB=xcTeamGrade(S.them.players);
+      const scBox=xcDone(g)
+        ? `<span onclick="xcScore(${id},${g.id})" class="cbsc done" style="cursor:pointer">${S.us_s} : ${S.them_s}</span>`
+        : `<span onclick="xcScore(${id},${g.id})" class="cbsc${run?' live':''}">－ : －</span>`;
+      h+=`<div id="xcg${g.id}" style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;
+          position:relative;overflow:hidden;
+          background:${run?'#fdf3ec':focused?'#fdf8f0':'#f8f6f1'}${
+          run?';box-shadow:inset 3px 0 0 var(--coral)'
+            : focused?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:var(--t1);font-weight:${run?600:500};color:${run?'var(--coral-d)':'#8b95a1'}">${g.round}회차</span>
+          <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;
+            background:${LB[0]};color:${LB[1]}">${esc(kind)}</span>
+          ${inMe?`<span style="font-size:10px;font-weight:700;color:var(--coral-d);background:#fff;
+            border:1px solid #f3d9c5;border-radius:5px;padding:2px 6px">내 경기</span>`:''}
+          <span style="flex:1"></span>
+          <span style="font-size:var(--t1);font-weight:500;color:${run?'var(--coral-d)':'var(--lgray)'}">${
+            xcDone(g)?'완료':run?'경기 중':at(g.round)?`${at(g.round)} 시작`:''}</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
+          <div style="flex:1;min-width:0">
+            <b style="display:block;font-size:var(--t2);font-weight:700;color:#cf5418;
+              line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${A}</b>
+            ${gA?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px">평균 ${gA}</span>`:''}
+          </div>
+          ${scBox}
+          <div style="flex:1;min-width:0;text-align:right">
+            <b style="display:block;font-size:var(--t2);font-weight:700;color:#3b2a1a;
+              line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
+            ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px">평균 ${gB}</span>`:''}
+          </div>
+        </div></div>`;
     });
+    h+=`</div>`;
   });
+
+  /* ⑥ 대기 명단 — 지금 코트에 없는 사람과 그 사람에게 남은 경기 수 */
+  { const need={};
+    G.forEach(g=>[...g.home.players,...g.away.players].forEach(p=>{
+      need[p.id]=need[p.id]||{name:p.name,total:0,done:0};
+      need[p.id].total++; if(xcDone(g)) need[p.id].done++; }));
+    const busy=new Set(G.filter(running).flatMap(g=>[...g.home.players,...g.away.players].map(p=>String(p.id))));
+    const wait=Object.entries(need).filter(([id])=>!busy.has(String(id)))
+      .map(([id,v])=>({name:v.name, left:v.total-v.done}));
+    const max=Math.max(1,...wait.map(w=>w.left));
+    if(wait.length) h+=`<div class="rtrest">
+      <div class="l">대기 중 ${wait.length}명 <span>숫자 = 남은 경기</span></div>
+      <div class="w">${wait.map(w=>`<span class="p ${w.left===0?'zero':(w.left>=max?'hot':'')}">${
+        esc(w.name)}<b>${w.left}</b></span>`).join('')}</div></div>`;
+  }
+
+  h+=`<div class="note" style="text-align:left;margin-top:10px">스코어는 그 경기를 뛴
+    <b>양쪽 클럽 회원</b>이면 누구나 넣을 수 있고, 나중에 고칠 수 있어요.</div>`;
+  h+=`</div>`;
   xcSheet(h);
 }
-/* 한 팀 — 이름 옆에 등급, 나는 금색 점으로 표시한다.
-   여섯 코트를 훑을 때 내 이름을 찾는 게 첫 일이라 그렇다. */
-function xcTeamRow(t, me, isMine){
-  const g=xcTeamGrade(t.players);
-  return `<div class="tr${isMine?' us':''}">
-    <span class="ps">${t.players.map(p=>{
-      const mine=String(p.id)===me;
-      return `<b class="${mine?'me':''}">${mine?'<i class="dot"></i>':''}${esc(p.name)}${
-        p.grade?`<em>${p.grade}</em>`:''}</b>`; }).join('<s>·</s>')}</span>
-    ${g?`<span class="avg">평균 ${g}</span>`:''}</div>`;
+/* 지금 할 일 카드 — 클럽 대진의 <내 차례> 카드와 같은 규칙.
+   시작 전 → 시작 버튼, 진행 중 → 내 다음 경기, 다 끝남 → 마무리 인사 */
+function xcBigCard(d, id, cid, me, cur){
+  const G=(d.games||[]);
+  const left=G.filter(g=>!xcDone(g)).length;
+  if(!left) return {kind:'done', lb:'오늘 다 끝났어요', big:'모든 경기가 끝났어요',
+    m:'점수가 다 들어갔어요 · 수고하셨어요'};
+  if(!d.started_at) return {kind:'go', lb:'아직 시작 전',
+    big:`${G.length}경기가 기다려요`,
+    m:'아무나 눌러도 돼요 · 누르면 양쪽 클럽 화면에서\n회차 시각이 함께 돌아갑니다',
+    btn:'지금 시작하기 ▶', act:`xcStart(${id})`};
+  const mine=G.filter(g=>[...g.home.players,...g.away.players].some(p=>String(p.id)===me));
+  const now=mine.find(g=>g.round===cur && !xcDone(g));
+  const next=mine.filter(g=>!xcDone(g) && g.round>cur).sort((a,b)=>a.round-b.round)[0];
+  const who=g=>{ const S=xcSides(g,cid);
+    const mate=(S.us.players||[]).filter(p=>String(p.id)!==me).map(p=>p.name).join(' · ');
+    const opp=(S.them.players||[]).map(p=>p.name).join(' · ');
+    return {mate, opp}; };
+  if(now){ const w=who(now);
+    return {kind:'go', lb:`${cur}회차 진행 중`,
+      big:`${now.court}번 코트\n${w.mate} 님과`,
+      m:`${xcKindName(now.kind)} · 상대 ${w.opp}\n끝나면 점수를 넣어주세요`,
+      btn:'점수 넣기 ›', act:`xcScore(${id},${now.id})`};
+  }
+  if(next){ const w=who(next);
+    return {kind:'rest', lb:`${cur}회차 진행 중`,
+      big:`${next.round}회차에 나가요\n${next.court}번 코트`,
+      m:`${w.mate} 님과 · 상대 ${w.opp}\n지금은 쉬는 차례예요`};
+  }
+  return {kind:'rest', lb:`${cur}회차 진행 중`, big:'남은 경기가 없어요',
+    m:`아직 ${left}경기가 남았어요 · 점수가 다 들어갔는지 봐주세요`};
+}
+/* 표에서 칸을 누르면 그 코트로 옮겨가 그 경기를 비춘다 */
+function xcGoGame(gid){
+  const g=(XCG&&XCG.games||[]).find(x=>x.id===gid); if(!g) return;
+  XC_COURT=g.court; XC_FOCUS=gid;
+  xcDrawGames((XCG.event||{}).id);
+  setTimeout(()=>{ const el=document.getElementById('xcg'+gid);
+    if(el) el.scrollIntoView({block:'center', behavior:'smooth'}); }, 60);
 }
 function xcTeamGrade(players){
   const V={C:1,B:2,A:3,S:4};
