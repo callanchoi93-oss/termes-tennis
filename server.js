@@ -9166,8 +9166,15 @@ function xcView(ev, uid) {
         count: r.length, ready: r.length >= (ev.per_club || 0),
         men: r.filter(p => p.gender === 'M').length,
         women: r.filter(p => p.gender === 'F').length,
-        names: r.map(p => p.name),                   // 이름만. 등급은 대진이 나오면 공개된다
-        people: r.map(p => ({ name: p.name, photos: p.photos || null })),
+        names: r.map(p => p.name),
+        /* 성별·등급까지 보낸다 — 교류전은 <남 10 · 여 2> 로 자리가 정해져 있어서
+           명단 화면이 <몇 명 왔나>가 아니라 <어느 자리가 비었나>를 답해야 한다. */
+        people: r.map(p => ({ name: p.name, photos: p.photos || null,
+          gender: p.gender || null, grade: p.grade || null, guest: p.role === 'guest' ? 1 : 0 })),
+        /* 이름 표기가 다른 같은 사람(카카오/네이버 계정) — 운영진에게만 귀띔한다.
+           로마자 이름이 섞여 있으면 자동으로는 못 걸러낸다. */
+        latin: r.filter(p => /^[A-Za-z][A-Za-z .'-]*$/.test(String(p.name || '').trim()))
+          .map(p => p.name),
       };
     }),
     my_clubs: (db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
@@ -9389,14 +9396,15 @@ function xcSquadAt(roster, mix, r) {
 
   /* ② 강+약 짝짓기 — 뒤 절반을 뒤집어(약한 순) 앞 절반에 붙인다.
      그대로 붙이면 어느 조나 두 사람의 무게 합이 같다. 여기서 약한 쪽 줄을
-     두 회차마다 한 칸씩 민다 — 여섯 회차 동안 최대 두 칸이라 등수가 크게 어긋나지 않고,
-     파트너는 계속 새로 만난다. 조끼리 생기는 약간의 무게 차이는
-     아래 xcDraw 가 <무게 비슷한 조끼리> 붙여서 상쇄한다. */
+     회차마다 <0 · −1 · +1 · −2 · +2 …> 로 좌우 번갈아 민다.
+     한 방향으로만 밀면 두 회차씩 같은 자리가 겹쳐(3·4회차가 똑같은 조가 됐다),
+     번갈아 밀면 여섯 회차가 모두 다른 짝이 된다.
+     조끼리 생기는 무게 차이는 아래 xcDraw 가 <무게 비슷한 조끼리> 붙여서 상쇄한다. */
   const pairUp = (pool, n, kind) => {
     if (!n) return;
     const S = pool.slice(0, n), Wk = pool.slice(n).reverse();
-    const shift = Math.floor(R / 2);
-    for (let i = 0; i < n; i++) out.push({ kind, p: [S[i], Wk[(i + shift) % n]] });
+    const shift = (R % 2) ? -Math.ceil(R / 2) : Math.ceil(R / 2);
+    for (let i = 0; i < n; i++) out.push({ kind, p: [S[i], Wk[((i + shift) % n + n) % n]] });
   };
   pairUp(mdPool, mix.md, '남복');
   for (let i = 0; i < mix.mx; i++)                        // 센 남자에 약한 여자
@@ -9434,11 +9442,14 @@ function xcDraw(ent, rosters, mix, courts, rounds) {
       const ia = A.map((g, i) => [g, i]).filter(([g]) => g.kind === kind);
       let ib = B.map((g, i) => [g, i]).filter(([g]) => g.kind === kind)
         .sort((x, y) => y[0].lv - x[0].lv);
-      /* 무게가 같은 구간은 회차마다 돌린다 */
+      /* 무게가 <비슷한> 구간은 회차마다 돌린다.
+         딱 같을 때만 돌리면 제일 센 사람은 여섯 회차 내내 상대 클럽 제일 센 사람만 만난다.
+         구력 합 2년(=1인 1년) 안쪽은 같은 무게로 보고 섞는다. */
+      const TOL = 24;                       // 개월
       const rot = [];
       for (let i = 0; i < ib.length;) {
         let j = i;
-        while (j < ib.length && ib[j][0].lv === ib[i][0].lv) j++;
+        while (j < ib.length && Math.abs(ib[i][0].lv - ib[j][0].lv) <= TOL) j++;
         const grp = ib.slice(i, j);
         for (let k = 0; k < grp.length; k++) rot.push(grp[(k + r) % grp.length]);
         i = j;
