@@ -2597,6 +2597,46 @@
     padding:11px 16px;font-size:12.7px;font-weight:600;cursor:pointer }
   .xd-fine{ font-size:var(--x1);font-weight:400;color:var(--gray);
     line-height:var(--xlh);margin-top:13px }
+  /* ── 교류전 대진 ──
+     처음 만나는 상대라 실력을 짐작할 수 없다 — 이름 옆에 등급, 팀에 평균을 붙인다.
+     내 이름은 금색 점으로. 여섯 코트를 훑을 때 내 경기를 찾는 게 첫 일이다. */
+  .xg-start{ background:var(--ink);color:#fff;border-radius:14px;text-align:center;
+    font-size:15px;font-weight:600;padding:16px 0;margin-top:13px;cursor:pointer }
+  .xg-run{ background:var(--coral-s);border-radius:14px;padding:13px 15px;margin-top:13px }
+  .xg-run b{ display:block;font-size:14px;font-weight:700;color:var(--coral-d) }
+  .xg-run span{ display:block;font-size:11.5px;color:#8a6a52;margin-top:4px }
+  .xg-hd{ display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:2px solid var(--ink);padding-bottom:7px;margin:22px 0 4px }
+  .xg-hd.on{ border-bottom-color:var(--coral) }
+  .xg-hd b{ font-size:11.5px;font-weight:700;color:var(--lgray);letter-spacing:.1em }
+  .xg-hd.on b{ color:var(--coral-d) }
+  .xg-hd span{ font-size:11.5px;color:var(--lgray) }
+  .xg2{ border:1px solid var(--line);border-radius:14px;padding:12px 13px;
+    margin-top:9px;cursor:pointer }
+  .xg2.me{ border-color:#f3d9c5;background:#fffaf6 }
+  .xg2 .hd{ display:flex;align-items:center;gap:7px }
+  .xg2 .hd .c{ font-size:11.5px;font-weight:700;color:var(--gray) }
+  .xg2 .hd .mine{ font-size:10px;font-weight:700;color:var(--coral-d);
+    background:#fff;border:1px solid #f3d9c5;border-radius:5px;padding:2px 6px }
+  .xg2 .hd .s{ margin-left:auto;font-size:14px;font-weight:700;letter-spacing:-.02em }
+  .xg2 .hd .s.no{ font-size:11.5px;font-weight:600;color:var(--lgray) }
+  .xg2 .hd .s.w{ color:var(--coral) }
+  .xg2 .hd .s.l{ color:var(--lgray) }
+  .xg2 .tm{ margin-top:9px }
+  .xg2 .tr{ display:flex;align-items:center;padding:5px 0 }
+  .xg2 .tr .ps{ flex:1;min-width:0;font-size:12.7px }
+  .xg2 .tr.us .ps b{ font-weight:600 }
+  .xg2 .tr .ps b{ font-weight:400 }
+  .xg2 .tr .ps b.me{ font-weight:700 }
+  .xg2 .tr .ps b em{ font-style:normal;font-size:10px;font-weight:700;color:var(--lgray);
+    margin-left:3px }
+  .xg2 .tr .ps s{ text-decoration:none;color:var(--lgray);margin:0 5px }
+  /* 내 이름 — 금색 점 하나. 색만으로는 스쳐 지나간다 */
+  .xg2 .dot{ display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--gold,#f0a93b);margin-right:5px;vertical-align:1px }
+  .xg2 .tr .avg{ flex:none;font-size:10.5px;font-weight:700;color:var(--gray);
+    background:var(--cream2);border-radius:6px;padding:3px 7px;margin-left:8px }
+  .xg2 .tr.us .avg{ background:#fff;color:var(--coral-d) }
   /* 교류전 대진표 — 종목 색은 앱이 이미 쓰는 값(남복 파랑·혼복 보라·여복 분홍) 그대로 */
   .xg-hd{ display:flex;align-items:baseline;justify-content:space-between;
     border-bottom:1px solid var(--ink);padding-bottom:6px;margin:18px 2px 2px }
@@ -3353,7 +3393,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#3fa571',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.2-0828b';
+const BUILD='v1.1.2-0828c';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10916,41 +10956,88 @@ function xcKindChip(k){ const c=XC_KIND[k]||['#f2f1ec','#6b6357'];
   return `<span class="k" style="background:${c[0]};color:${c[1]}">${k[0]}</span>`; }
 
 /* 대진표 — 확정되면 누구나 본다. 회차마다 시각이 적혀 있어 폰을 안 봐도 된다 */
+let XCG=null;                       // 지금 보고 있는 교류전 대진
 async function openXcGames(id){
   let d; try{ d=await api(`/exchange/${id}/games`); }catch(e){ return toast('불러오지 못했어요'); }
+  XCG=d; xcDrawGames(id);
+}
+function xcDrawGames(id){
+  const d=XCG; if(!d) return;
   const cid=xcMyClubId(), ev=d.event, R=d.result;
-  /* 모임 날짜는 <8/29 (토) 19:00~22:00 · 장소> 문자열이다.
-     Date.parse 에 그대로 넣으면 NaN 이 되어 회차 시각이 통째로 빈칸이 된다. */
-  const t0=(()=>{
+  const me=String((state.serverUser||{}).id||'');
+  /* 시작 시각 — 시간 대진과 같다. 아무나 누르면 모두의 화면에서 시계가 돈다.
+     안 눌렀으면 모임 날짜의 시각을 쓴다. */
+  const t0=d.started_at || (()=>{
     const D=String(ev.date||'');
     const md=D.match(/(\d{1,2})\/(\d{1,2})/), hm=D.match(/(\d{1,2}):(\d{2})/);
     if(!md || !hm) return NaN;
-    const y=new Date().getFullYear();
-    return new Date(y, +md[1]-1, +md[2], +hm[1], +hm[2]).getTime();
+    return new Date(new Date().getFullYear(), +md[1]-1, +md[2], +hm[1], +hm[2]).getTime();
   })();
   const at=r=>isNaN(t0)?'':tbHHMM(t0+(r-1)*30*60000);
   const rounds=[...new Set(d.games.map(g=>g.round))];
-  let h=`<div class="sh-top"><h3>교류전 대진</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+  /* 지금 몇 회차인가 — 시작을 눌렀을 때만 센다 */
+  const cur=d.started_at ? Math.min(rounds.length,
+    Math.floor((Date.now()-d.started_at)/(30*60000))+1) : 0;
+
+  let h=`<div class="sh-top"><h3>교류전 대진</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${[esc((ev.date||'').split(' · ')[0]),
       esc((ev.date||'').split(' · ').slice(1).join(' · ')||ev.place||''),
       ev.courts?`코트 ${ev.courts}면`:''].filter(Boolean).join(' · ')}</div>`;
   if(R) h+=xcScoreBoard(R, cid);
+
+  /* 시작 버튼 — 누가 눌렀는지 남는다 */
+  h+= d.started_at
+    ? `<div class="xg-run"><b>${cur}회차 진행 중</b>
+        <span>${esc(d.started_name||'누군가')} 님이 ${tbHHMM(d.started_at)}에 시작했어요</span></div>`
+    : `<div class="xg-start" onclick="xcStart(${id})">지금 시작하기</div>
+       <div class="xd-fine" style="margin:7px 2px 0">아무나 눌러도 돼요 ·
+         누르면 양쪽 클럽 화면에서 회차 시각이 함께 돌아갑니다</div>`;
+
   rounds.forEach(r=>{
-    h+=`<div class="xg-hd"><b>${r}회차</b><span>${at(r)?at(r)+' 시작':''}</span></div>`;
+    const on = cur===r;
+    h+=`<div class="xg-hd${on?' on':''}"><b>${r}회차</b>
+      <span>${at(r)?at(r)+' 시작':''}${on?' · 지금':''}</span></div>`;
     d.games.filter(g=>g.round===r).forEach(g=>{
       const mineHome=g.home.club_id===cid;
-      const me=(state.serverUser||{}).id;
-      const inMe=[...g.home.players,...g.away.players].some(p=>String(p.id)===String(me));
+      const us = mineHome?g.home:g.away, them = mineHome?g.away:g.home;
+      const inMe=[...g.home.players,...g.away.players].some(p=>String(p.id)===me);
       const has=g.sa!=null&&g.sb!=null;
-      h+=`<div class="xg" onclick="xcScore(${id},${g.id})">
-        <span class="c">${g.court}</span>${xcKindChip(g.kind)}
-        <span class="t"><b style="${mineHome?'color:var(--coral-d)':''}">${g.home.players.map(p=>esc(p.name)).join('·')}</b>
-          <span style="color:var(--lgray)"> vs </span>${g.away.players.map(p=>esc(p.name)).join('·')}
-          ${inMe?'<span style="color:var(--coral-d);font-weight:700"> ·내</span>':''}</span>
-        <span class="s ${has?'':'no'}">${has?`${g.sa}:${g.sb}`:'–:–'}</span></div>`;
+      const myS = mineHome?g.sa:g.sb, opS = mineHome?g.sb:g.sa;
+      const win = has && myS>opS, lose = has && myS<opS;
+      h+=`<div class="xg2${inMe?' me':''}${has?' done':''}" onclick="xcScore(${id},${g.id})">
+        <div class="hd"><span class="c">${g.court}코트</span>${xcKindChip(g.kind)}
+          ${inMe?'<span class="mine">내 경기</span>':''}
+          <span class="s ${win?'w':lose?'l':has?'':'no'}">${has?`${myS} : ${opS}`:'점수 넣기'}</span></div>
+        <div class="tm">${xcTeamRow(us, me, true)}${xcTeamRow(them, me, false)}</div></div>`;
     });
   });
   xcSheet(h);
+}
+/* 한 팀 — 이름 옆에 등급, 나는 금색 점으로 표시한다.
+   여섯 코트를 훑을 때 내 이름을 찾는 게 첫 일이라 그렇다. */
+function xcTeamRow(t, me, isMine){
+  const g=xcTeamGrade(t.players);
+  return `<div class="tr${isMine?' us':''}">
+    <span class="ps">${t.players.map(p=>{
+      const mine=String(p.id)===me;
+      return `<b class="${mine?'me':''}">${mine?'<i class="dot"></i>':''}${esc(p.name)}${
+        p.grade?`<em>${p.grade}</em>`:''}</b>`; }).join('<s>·</s>')}</span>
+    ${g?`<span class="avg">평균 ${g}</span>`:''}</div>`;
+}
+function xcTeamGrade(players){
+  const V={C:1,B:2,A:3,S:4};
+  const xs=(players||[]).map(p=>V[String(p.grade||'').toUpperCase()]).filter(Boolean);
+  if(!xs.length) return null;
+  const avg=xs.reduce((a,b)=>a+b,0)/xs.length;
+  return ['C','B','A','S'][Math.max(0,Math.min(3,Math.round(avg)-1))];
+}
+async function xcStart(id){
+  try{
+    const r=await api(`/exchange/${id}/start`,{method:'POST',body:'{}'});
+    toast(r.already?'이미 시작됐어요':'시작했어요 · 양쪽 화면에서 시계가 돌아요');
+    openXcGames(id);
+  }catch(e){ toast(xcErr(e,'시작하지 못했어요')); }
 }
 function xcScoreBoard(R, cid){
   const me=R.home.club_id===cid?R.home:R.away, op=R.home.club_id===cid?R.away:R.home;
@@ -10965,14 +11052,61 @@ function xcScoreBoard(R, cid){
       ${R.done?(R.winner?`<b>${esc(R.winner===me.club_id?me.name:op.name)}</b> 승리`:'무승부')
              :`${R.played}/${R.total}경기 · 1승 3점 · 1무 1점`}</div>`;
 }
-/* 점수 넣기 — 한 코트에 한 명만 넣으면 된다 */
+/* 점수 넣기 — 클럽 대진과 같은 스테퍼. 코트에서 숫자를 두 번 누르면 끝난다 */
+let XCS=null;
 function xcScore(eid, gid){
-  const sa=prompt('우리 점수'); if(sa===null) return;
-  const sb=prompt('상대 점수'); if(sb===null) return;
-  api(`/exchange/${eid}/score`,{method:'POST',body:JSON.stringify({game_id:gid, sa:+sa, sb:+sb})})
-    .then(()=>{ toast('넣었어요'); openXcGames(eid); })
-    .catch(e=>toast(xcErr(e,'넣지 못했어요')));
+  const g=(XCG&&XCG.games||[]).find(x=>x.id===gid); if(!g) return;
+  const cid=xcMyClubId(), mineHome=g.home.club_id===cid;
+  XCS={eid, gid, mineHome,
+    a:(mineHome?g.sa:g.sb) ?? 0, b:(mineHome?g.sb:g.sa) ?? 0};
+  xcScoreSheet();
 }
+function xcsStep(side, d){
+  if(!XCS) return;
+  XCS[side]=Math.max(0,Math.min(9,(XCS[side]||0)+d)); xcScoreSheet();
+}
+function xcsQuick(a,b){ if(!XCS) return; XCS.a=a; XCS.b=b; xcScoreSheet(); }
+function xcScoreSheet(){
+  const g=(XCG&&XCG.games||[]).find(x=>x.id===XCS.gid); if(!g) return;
+  const us=XCS.mineHome?g.home:g.away, them=XCS.mineHome?g.away:g.home;
+  const nm=t=>esc(t.players.map(p=>p.name).join(' · '));
+  const st=(side,v,col)=>`<div style="flex:1;text-align:center">
+      <div style="font-size:12px;font-weight:500;color:${col};margin-bottom:9px;line-height:1.4">${
+        side==='a'?nm(us):nm(them)}</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:11px">
+        <span onclick="xcsStep('${side}',-1)" style="width:38px;height:38px;border-radius:50%;
+          background:#f2f0ea;color:#6b6357;display:flex;align-items:center;justify-content:center;
+          font-weight:600;font-size:18px;cursor:pointer">−</span>
+        <b style="font-size:29px;min-width:40px">${v}</b>
+        <span onclick="xcsStep('${side}',1)" style="width:38px;height:38px;border-radius:50%;
+          background:var(--coral);color:#fff;display:flex;align-items:center;justify-content:center;
+          font-weight:600;font-size:18px;cursor:pointer">+</span></div></div>`;
+  document.getElementById('sheet').innerHTML=`<div class="om-detail">
+    <div class="sh-top"><h3 class="gt4">스코어 입력</h3>
+      <div class="cl" role="button" tabindex="0" onclick="xcDrawGames(${XCS.eid})">×</div></div>
+    <div class="sd">${g.round}회차 · ${g.court}코트 ${esc(xcKindName(g.kind))}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:20px">
+      ${st('a',XCS.a,'#cf5418')}<span style="font-size:18px;font-weight:600;color:var(--lgray)">:</span>${
+        st('b',XCS.b,'#3b2a1a')}</div>
+    <div style="display:flex;gap:7px;margin-top:18px;justify-content:center;flex-wrap:wrap">
+      ${[[6,0],[6,2],[6,4],[5,5],[4,6],[0,6]].map(([a,b])=>`<span onclick="xcsQuick(${a},${b})"
+        style="font-size:12px;font-weight:500;background:${XCS.a===a&&XCS.b===b?'var(--ink)':'#f7f5f0'};
+        color:${XCS.a===a&&XCS.b===b?'#fff':'#5a544b'};border-radius:20px;padding:8px 14px;
+        cursor:pointer">${a}:${b}</span>`).join('')}</div>
+    <button class="btn" style="margin-top:20px" onclick="xcScoreSave()">기록하기</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="xcDrawGames(${XCS.eid})">취소</button></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function xcScoreSave(){
+  if(!XCS) return;
+  const sa=XCS.mineHome?XCS.a:XCS.b, sb=XCS.mineHome?XCS.b:XCS.a;
+  try{
+    await api(`/exchange/${XCS.eid}/score`,{method:'POST',
+      body:JSON.stringify({game_id:XCS.gid, sa, sb})});
+    toast('기록했어요'); XC_LIST=null; openXcGames(XCS.eid);
+  }catch(e){ toast(xcErr(e,'넣지 못했어요')); }
+}
+function xcKindName(k){ return {md:'남복',wd:'여복',mx:'혼복'}[k]||k||''; }
 async function xcDrawNow(id){
   try{ track('xc:draw'); }catch(e){}
   try{ const r=await api(`/exchange/${id}/draw`,{method:'POST',body:'{}'});
