@@ -9296,8 +9296,37 @@ function omWaitPayload(uid) {
   const faces = db.prepare(`SELECT u.photos FROM om_waitlist w JOIN users u ON u.id=w.user_id
                             ORDER BY w.created_at DESC LIMIT 4`).all()
     .map(r => ({ photo: r.photos || null }));
-  return { count, mine, goal: OM_GOAL, faces };
+  /* 이번 주에 새로 신청한 사람 — <멈춰 있지 않다>는 신호다 */
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const mon = new Date(t0); mon.setDate(t0.getDate() - ((t0.getDay() + 6) % 7));
+  const week = db.prepare('SELECT COUNT(*) c FROM om_waitlist WHERE created_at>=?')
+    .get(mon.getTime()).c;
+  /* 구장 협의 현황 — 운영진이 admin 에서 적어 두는 값이다.
+     없으면 앱이 <구장과 이야기하고 있어요>로만 말하고 숫자는 감춘다. */
+  let venues = 0, first_regions = '';
+  try {
+    const v = db.prepare("SELECT value FROM app_config WHERE key='om_venues'").get();
+    const f = db.prepare("SELECT value FROM app_config WHERE key='om_first_regions'").get();
+    venues = v ? (+v.value || 0) : 0;
+    first_regions = f ? String(f.value || '') : '';
+  } catch (e) {}
+  return { count, mine, goal: OM_GOAL, faces, week, venues, first_regions };
 }
+/* 운영진이 직접 적는 값 몇 개 — 지어낸 숫자를 화면에 띄우지 않기 위해서다 */
+db.exec(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT);`);
+app.get('/admin/config', admin, (_req, res) => {
+  const rows = db.prepare('SELECT key, value FROM app_config').all();
+  const out = {}; rows.forEach(r => { out[r.key] = r.value; });
+  res.json(out);
+});
+app.post('/admin/config', admin, (req, res) => {
+  const b = req.body || {};
+  Object.keys(b).forEach(k => {
+    db.prepare('INSERT INTO app_config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      .run(String(k), String(b[k] == null ? '' : b[k]));
+  });
+  res.json({ ok: true });
+});
 
 app.get('/om/waitlist', auth, (req, res) => res.json(omWaitPayload(req.uid)));
 
