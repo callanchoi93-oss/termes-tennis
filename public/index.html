@@ -12270,6 +12270,18 @@ function xcHoles(holes, id, me, off, mineG){
     ${list.length>3?`<div style="font-size:11px;font-weight:600;color:var(--lgray);margin-top:2px">
       그 밖에 ${list.length-3}개 더</div>`:''}</div>`;
 }
+/* 명단이 바뀌었으면 다시 짠다 — 편성은 참석자 명단에서 나오므로
+   같은 명단으로 다시 눌러도 같은 대진이 나온다. */
+async function xcRedraw(id){
+  const n=((XCG&&XCG.games)||[]).filter(xcDone).length;
+  if(!confirm(n?`이미 ${n}경기 점수가 들어가 있어요.\n다시 짜면 점수가 모두 지워집니다.\n계속할까요?`
+              :'대진을 다시 짤까요?\n참석자 명단이 바뀌었을 때만 쓰세요.')) return;
+  try{
+    const r=await api(`/exchange/${id}/draw`,{method:'POST',body:JSON.stringify({force:true})});
+    toast(`대진을 다시 짰어요 · ${(r.games||[]).length}경기`);
+    XC_LIST=null; XC_COURT=0; XC_FOCUS=null; openXcGames(id);
+  }catch(e){ toast(xcErr(e,'다시 짜지 못했어요')); }
+}
 /* 지금 할 일 카드 — 시계가 못 담는 것만 맡는다.
    시작 전·전환 중에는 시계 안에 이미 안내가 있으므로 카드를 겹치지 않는다. */
 function xcBigCard(d, id, cid, me, n, mineG){
@@ -13255,6 +13267,76 @@ function clubTabGroups(list, meId, t){
   return h;
 }
 
+let MV_SORT='att', MV_Q='';
+function setMvSort(v){ MV_SORT=v; renderClub(); }
+function mvSearch(v){ MV_Q=String(v||'').trim();
+  const box=document.getElementById('mvlist'); if(box) box.innerHTML=mvRows(); }
+/* 등급 글자 하나로 색을 가른다 — C 회색 · B 남색 · A 코랄 · S 보라.
+   색만 훑어도 클럽 실력 분포가 보인다. */
+const MV_GC={C:['var(--felt)','var(--gray)'],B:['#e8f3ff','#3182f6'],
+             A:['var(--coral-s)','var(--coral-d)'],S:['#f0edff','#7b61ff']};
+const MV_CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const mvCho=s=>{ const c=String(s||'').charCodeAt(0)-0xAC00;
+  return c>=0&&c<11172 ? MV_CHO[Math.floor(c/588)] : '#'; };
+/* 마지막으로 나온 날 → 사람 말로 */
+function mvAtt(r){
+  const n=r.att4w||0;
+  if(n>0) return ['이번 달 '+n+'회',''];
+  const t=r.last_seen_at;
+  if(!t) return ['아직 안 나왔어요','cold'];
+  const w=Math.floor((Date.now()-t)/(7*864e5));
+  if(w<=1) return ['지난주 나옴','cold'];
+  if(w<=4) return [w+'주째 안 보임','cold'];
+  return ['한 달 넘게 안 보임','cold'];
+}
+function mvRows(){
+  const list=(CLUB_ROSTER||[]).filter(r=>r.user_id);
+  const meId=(state.serverUser||{}).id;
+  const q=MV_Q;
+  const shown=q ? list.filter(r=>String(r.name||'').includes(q)) : list;
+  if(!shown.length) return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">
+    ${esc(q)} 를 찾지 못했어요</div>`;
+  const yrOf=r=>{ try{ const v=JSON.parse(r.sport_started||'{}')[state.sport];
+      const m=String(v||'').match(/^(\d{4})-(\d{1,2})/);
+      if(!m) return null;
+      return (new Date().getFullYear()-+m[1])*12 + (new Date().getMonth()+1-+m[2]);
+    }catch(e){ return null; } };
+  const ORD={
+    att:(a,b)=>(b.att4w||0)-(a.att4w||0) || (b.last_seen_at||0)-(a.last_seen_at||0)
+               || String(a.name).localeCompare(String(b.name),'ko'),
+    grade:(a,b)=>{ const L='SABC';
+      const ga=memberGradeCode(a)||'C9', gb=memberGradeCode(b)||'C9';
+      return L.indexOf(ga[0])-L.indexOf(gb[0]) || ga.localeCompare(gb); },
+    name:(a,b)=>String(a.name).localeCompare(String(b.name),'ko'),
+  };
+  const sorted=shown.slice().sort(ORD[MV_SORT]||ORD.att);
+  let h='', cho='';
+  sorted.forEach(r=>{
+    if(MV_SORT==='name'){ const c=mvCho(r.name);
+      if(c!==cho){ cho=c; h+=`<div class="mvgrp"><b>${c}</b><i></i></div>`; } }
+    const ph=photoOf(r.name);
+    const code=memberGradeCode(r);
+    const gc=MV_GC[(code||'')[0]]||MV_GC.C;
+    const mo=yrOf(r);
+    const yr = mo==null ? '' : mo<12 ? `${Math.max(1,Math.round(mo))}개월차` : `${Math.round(mo/12)}년차`;
+    const role=memberLabel(r), rcls=memberLabelCls(r);
+    const mine=r.user_id===meId;
+    const fresh=r.joined_at && (Date.now()-r.joined_at) < 60*864e5;
+    const [at,acls]=mvAtt(r);
+    h+=`<div class="mvrow${mine?' me':''}" onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})">
+      <span class="av" style="${ph?`background-image:url('${ph}')`:''}">${ph?'':esc(String(r.name).slice(0,1))}</span>
+      <span class="c">
+        <span class="n"><b>${esc(r.name)}</b>
+          ${mine?'<span class="tag me2">나</span>':''}
+          ${role?`<span class="tag ${rcls}">${esc(role)}</span>`:''}
+          ${fresh&&!role?'<span class="tag fresh">새 멤버</span>':''}</span>
+        <span class="s">${code?`<span class="g" style="background:${gc[0]};color:${gc[1]}">${esc(code)}</span>`
+          :'<span class="g" style="background:var(--felt);color:var(--lgray)">미정</span>'}
+          ${yr?`<i class="dot"></i>${yr}`:''}</span></span>
+      <span class="r"><div class="att ${acls}">${at}</div></span></div>`;
+  });
+  return h;
+}
 function clubTabMembers(){
   const n=state.activeClub||'';
   if(CLUB_ROSTER===null){ loadClubRoster(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
@@ -13499,6 +13581,7 @@ function maskNum(v, name){
    순위표에서 내 줄만 찾아 읽던 걸, 나를 기준으로 다시 세운 화면.
    집계는 기록 탭과 같은 HIST_GAMES(발행된 대진 · 확정 점수)를 쓴다. */
 let CLUBME_TAB='games', CLUBME_MON=null, CLUBME_WHO=null, MI2_SORT='n';   // WHO=null 이면 나
+let RK_HALL_ALL=0, RK_THIN=0;   // 명예의 전당 더 보기 · 최소 참석 미달자 펼치기
 function setClubMeTab(t){ CLUBME_TAB=t; renderClub(); }
 function setClubMeMon(m){ CLUBME_MON = (CLUBME_MON===m ? '' : m); renderClub(); }
 let CLUBME_GAMES=null;          // null=아직 안 불러옴 · []=불러왔는데 없음
