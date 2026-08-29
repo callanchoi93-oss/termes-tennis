@@ -3058,11 +3058,13 @@
     font-variant-numeric:tabular-nums }
   .myc .st b em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);margin-left:1px }
   .myc .st span{ display:block;font-size:10px;color:var(--lgray);font-weight:600;margin-top:5px }
-  .myc .nav{ display:flex;border-top:1px solid var(--line) }
-  .myc .nav button{ flex:1;padding:13px 4px;font-size:12.5px;font-weight:700;color:var(--gray);
-    border-left:1px solid var(--line);background:none;font-family:inherit;cursor:pointer }
-  .myc .nav button:first-child{ border-left:0 }
-  .myc .nav button:active{ background:var(--felt) }
+  .myc .nav{ display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line) }
+  .myc .nav > button{ min-width:0;width:100%;padding:13px 2px;font-size:12.5px;font-weight:700;
+    color:var(--gray);border:none;border-left:1px solid var(--line);background:none;
+    font-family:inherit;cursor:pointer;border-radius:0;box-shadow:none;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;height:auto }
+  .myc .nav > button:first-child{ border-left:0 }
+  .myc .nav > button:active{ background:var(--felt) }
   .mycadd{ display:flex;align-items:center;gap:9px;width:100%;border:1px dashed #d3d8de;
     border-radius:16px;padding:13px 14px;font-size:12.5px;font-weight:600;color:var(--gray);
     background:none;font-family:inherit;cursor:pointer }
@@ -24482,27 +24484,31 @@ function omFlowBlock(){
 /* ── 티어 ──
    TIERS 표는 예전부터 있었는데 화면 어디에서도 쓰이지 않았다.
    오픈매치 성적이 무엇이 되는지 여기서 처음 설명한다. */
-function omStartTier(){
-  /* 구력으로 시작 티어를 어림한다 — 실제 티어는 오픈매치 성적으로 정해진다 */
-  let mo=null;
-  try{ mo=careerMonthsFrom(sportStartedMap()[state.sport]); }catch(e){}
-  if(mo==null) return 4;                       // 모르면 퓨처스
-  if(mo>=96) return 2;                         // 8년 이상 · 마스터스
-  if(mo>=36) return 3;                         // 3년 이상 · 아마추어
-  return 4;                                    // 퓨처스
-}
 function omTierBlock(){
-  const me=omStartTier();
+  /* 앱의 진짜 사다리를 쓴다 — 러브에서 시작해 2경기를 치면 자리가 정해진다.
+     예전에 여기 있던 <프로/오픈 · 아마추어>는 어디에도 없는 이름이었다. */
+  const T=[
+    {n:'러브',      c:'#76808c', d:'배치 전 · 모두 여기서 시작', me:1},
+    {n:'퓨처스',    c:'#f2b90d', d:'NTRP 1.0~2.0'},
+    {n:'챌린저',    c:'#2f6fed', d:'NTRP 2.5~3.5'},
+    {n:'마스터스',  c:'#e5493a', d:'NTRP 3.5~4.5 · 상위 10%'},
+    {n:'그랜드슬램',c:'#7028c4', d:'NTRP 5.0+ · 상위 1%'},
+  ];
+  const played=(state.played||0);
+  const done=played>=PLACEMENT_GAMES;
   return `<div class="omtier">
-    <div class="h"><b>여기 성적이 티어가 돼요</b><span>5단계</span></div>
+    <div class="h"><b>여기 성적이 티어가 돼요</b><span>배치 ${PLACEMENT_GAMES}경기</span></div>
     <p class="s">클럽 등급(C1~SS3)과는 따로예요. 클럽 등급은 우리 클럽 안에서만 쓰고,
       <b>티어는 전국의 오픈매치 성적</b>으로 오르내려요.</p>
-    ${TIERS.map((t,i)=>`<div class="r${i===me?' me':''}">
+    ${T.map(t=>`<div class="r${t.me&&!done?' me':''}">
       <span class="d" style="background:${t.c}"></span>
       <span class="c"><b>${t.n}</b><span>${t.d}</span></span>
-      ${i===me?'<span class="tag">여기서 시작</span>':''}</div>`).join('')}
-    <p class="f">첫 매치는 <b>${TIERS[me].n}</b>에서 시작해요 ·
-      세 판을 치면 실제 티어가 정해집니다</p></div>`;
+      ${t.me&&!done?'<span class="tag">지금 여기</span>':''}</div>`).join('')}
+    <p class="f">${done
+      ? `배치가 끝났어요 · 지금 티어는 <b>${esc(myTier().name)}</b>예요`
+      : `자기 신고가 아니라 <b>경기 결과</b>로 정해져요 ·
+         <b>${PLACEMENT_GAMES}경기</b>를 치면 퓨처스~그랜드슬램 중 한 자리를 받아요${
+         played?` (지금 ${played}/${PLACEMENT_GAMES}경기)`:''}`}</p></div>`;
 }
 /* 오픈매치가 없다고 앱을 닫게 두지 않는다 */
 function omMeanwhile(){
@@ -31141,8 +31147,13 @@ function myClubCard(nm){
 function openClubSub(sub){
   const n=state.activeClub||(state.myClubs||[])[0];
   if(!n){ go('club'); return; }
+  /* openClubPage 가 clubSub 을 'sched' 로 되돌리므로 그 뒤에 다시 정한다.
+     예전에는 먼저 정하고 불러서, 어느 버튼을 눌러도 일정 탭만 열렸다. */
+  try{ openClubPage(n); }catch(e){ go('club'); return; }
   state.clubSub=sub;
-  try{ openClubPage(n); }catch(e){ go('club'); }
+  go('club');
+  renderClub();
+  const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
 }
 /* 홈에서 모임 카드를 누르면 그 모임 화면으로 — 클럽 탭만 열어두면
    회원은 목록에서 그 모임을 다시 찾아야 한다. */
