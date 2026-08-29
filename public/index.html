@@ -2991,7 +2991,7 @@
   .mvsort button{ flex:none;border:1px solid var(--line);border-radius:20px;padding:6px 12px;
     font-size:11.5px;font-weight:700;color:var(--gray);background:var(--cream);
     font-family:inherit;cursor:pointer }
-  .mvsort button.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .mvsort button.on{ background:var(--coral);border-color:var(--coral);color:#fff }
   .mvgrp{ display:flex;align-items:center;gap:9px;margin:16px 2px 2px }
   .mvgrp b{ font-size:11px;font-weight:800;color:var(--lgray);letter-spacing:.04em }
   .mvgrp i{ flex:1;height:1px;background:var(--line) }
@@ -3100,7 +3100,7 @@
   .mi2sort .sw button{ border:1px solid var(--line);border-radius:20px;padding:5px 10px;
     font-size:10.5px;font-weight:700;color:var(--gray);background:var(--cream);
     font-family:inherit;cursor:pointer }
-  .mi2sort .sw button.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .mi2sort .sw button.on{ background:var(--coral);border-color:var(--coral);color:#fff }
   .mi2two{ display:flex;gap:8px }
   .mi2two > div{ flex:1;min-width:0;border-radius:14px;padding:13px 14px }
   .mi2two .k{ font-size:10.5px;font-weight:700 }
@@ -12523,7 +12523,7 @@ function clubHeroTabs(){
       <div style="flex:1;min-width:0">
         <div class="cheron" style="display:flex;align-items:center;gap:8px;min-width:0">
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>${clubGenderChip(c)}</div>
-        <div class="cheros">${esc(d.region||c.r||'')} · 회원 ${d.members||c.m||1}명</div>
+        <div class="cheros">${esc(d.region||c.r||'')} · 회원 ${memberCount()||d.members||c.m||1}명</div>
       </div>
       ${d.officer?`<button class="cheroop" onclick="openClubOps()">운영진 도구</button>`:''}
     </div>
@@ -13023,7 +13023,10 @@ function clubTabMembers(){
   const n=state.activeClub||'';
   if(CLUB_ROSTER===null){ loadClubRoster(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
   const list=CLUB_ROSTER||[];
-  if(!list.length) return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">멤버 정보가 아직 없어요</div>`;
+  if(!list.length) return `<div class="card" style="text-align:center;padding:26px">
+    <div style="font-size:13.5px;font-weight:700">${CLUB_ROSTER_ERR?'명단을 불러오지 못했어요':'멤버 정보가 아직 없어요'}</div>
+    ${CLUB_ROSTER_ERR?`<button class="btn ghost" style="max-width:180px;margin:12px auto 0"
+      onclick="retryClubRoster()">다시 불러오기</button>`:''}</div>`;
   const meId=(state.serverUser||{}).id;
   const t=tgData();
   const nGroup=new Set((list.map(r=>tgOf(r.user_id)).filter(Boolean))).size;
@@ -13063,7 +13066,7 @@ function clubTabMembers(){
       <div class="note" style="text-align:left;margin-top:12px">이름을 누르면 그 회원의 기록으로 가요 ·
         출석은 <b>최근 4주</b> 기준이에요.</div>`;
 }
-let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null;
+let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null, CLUB_ROSTER_ERR=false;
 /* 명단은 '멤버' 탭을 열어야 채워진다. 운영진 도구처럼 명단이 꼭 필요한 화면은
    이걸 먼저 await 해야 한다 — 안 그러면 0명으로 조를 나누고 끝난다. */
 async function ensureClubRoster(){
@@ -13078,16 +13081,22 @@ async function ensureClubRoster(){
   return CLUB_ROSTER;
 }
 function loadClubRoster(){
-  MONTHLY_FOR=null;                      // 클럽이 바뀌면 월례대회 이력도 다시 받는다
   const cid=clubId(); const key=state.activeClub;
   if(CLUB_ROSTER_FOR===key && CLUB_ROSTER!==null) return;
-  CLUB_ROSTER_FOR=key;
+  /* 클럽이 <바뀐> 때만 월례대회 이력을 다시 받는다.
+     예전에는 이 줄이 위에 있어서, 그릴 때마다 초기화 → 다시 요청 → 다시 그리기가
+     끝없이 돌았다. 그 통에 명단 요청이 밀려 <멤버 정보가 아직 없어요>가 떴다. */
+  MONTHLY_FOR=null; MONTHLY_ME=null;
+  CLUB_ROSTER_FOR=key; CLUB_ROSTER_ERR=false;
   if(TRIAL){ CLUB_ROSTER=TRIAL_ROSTER.map((p,i)=>({...p, role:i===0?'owner':i<3?'officer':'member'})); renderClub(); return; }
   if(!SERVER_OK || !cid){ CLUB_ROSTER=[]; return; }
-  api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); if(state.view==='club') renderClub(); })
-    .catch(()=>{ CLUB_ROSTER=[]; });
+  api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); CLUB_ROSTER_ERR=false;
+      if(state.view==='club') renderClub(); })
+    /* 못 받아온 것과 <정말 아무도 없는 것>은 다르다 — 다시 시도할 길을 남긴다 */
+    .catch(()=>{ CLUB_ROSTER=[]; CLUB_ROSTER_ERR=true; if(state.view==='club') renderClub(); });
   tgPull();
 }
+function retryClubRoster(){ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; CLUB_ROSTER_ERR=false; renderClub(); }
 function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
   let h='';
@@ -13920,6 +13929,15 @@ async function saveAlias(){
         : '저장하지 못했어요 · 서버를 확인해 주세요');
   }
 }
+/* 회원 수는 한 군데서만 센다 — 머리글은 32명, 소개는 3명이라 서로 다른 말을 하고 있었다.
+   실제로 받아온 명단이 있으면 그것이 가장 정확하다. */
+function memberCount(){
+  if(Array.isArray(CLUB_ROSTER) && CLUB_ROSTER.length) return CLUB_ROSTER.length;
+  const n=state.activeClub||'';
+  const cat=(state.clubs||[]).find(x=>x.n===n)||{};
+  const d=(state.clubData||{})[n]||{};
+  return cat.m || d.members || 0;
+}
 function clubTabInfo(){
   const n=state.activeClub||'';
   const d=(state.clubData||{})[n]||{};
@@ -13940,7 +13958,7 @@ function clubTabInfo(){
   let h=`<div class="ihero">
       ${clubAvatar(n,62)||`<span class="mcav" style="margin:0;width:62px;height:62px">${esc(n.slice(0,1))}</span>`}
       <span class="c"><b>${esc(n)}</b>
-        <span>${[esc(d.region||c.r||''), (c.m||d.members)?`회원 ${c.m||d.members}명`:'' ]
+        <span>${[esc(d.region||c.r||''), memberCount()?`회원 ${memberCount()}명`:'' ]
           .filter(Boolean).join(' · ')}</span></span>
       ${off?`<button class="ed" onclick="openClubLogoEdit('${esc(n)}')">로고</button>`:''}</div>
 
