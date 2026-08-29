@@ -812,6 +812,31 @@ app.post('/me/cash/withdraw', auth, limitWrite, async (req, res) => {
   res.json({ ok: true, id: rid(r), cardPart: cardDone, bankPart, tax, payout, dueAt: due, cash: bal,
              failed, message: failed > 0 ? '일부 금액은 원결제 취소 기한이 지나 출금되지 않았어요. 고객센터로 문의해 주세요.' : undefined });
 });
+/* ── 관심 신청 ──
+   아직 안 연 기능에 <열리면 알림>을 눌러둔 사람들. 어느 지역부터 열지 정하는 데 쓴다.
+   같은 사람이 여러 번 눌러도 한 줄만 남는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS interests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER, kind TEXT, region TEXT, created_at BIGINT)`);
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_interest ON interests(user_id, kind)'); } catch (e) {}
+
+app.post('/me/interest', auth, (req, res) => {
+  const kind = String((req.body || {}).kind || '').slice(0, 20);
+  if (!kind) return res.status(400).json({ error: 'kind_required' });
+  const region = String((req.body || {}).region || '').slice(0, 40);
+  try {
+    db.prepare(`INSERT INTO interests (user_id,kind,region,created_at) VALUES (?,?,?,?)
+      ON CONFLICT(user_id,kind) DO UPDATE SET region=excluded.region`)
+      .run(req.uid, kind, region, now());
+  } catch (e) {}
+  res.json({ ok: true });
+});
+/* 어느 지역에 몇 명이 기다리는가 — 여는 순서를 정할 때 본다 */
+app.get('/admin/interests', admin, (_req, res) => {
+  res.json(db.prepare(`SELECT kind, COALESCE(NULLIF(region,''),'(미상)') region, COUNT(*) n
+    FROM interests GROUP BY kind, region ORDER BY n DESC`).all());
+});
+
 app.get('/me/cash/withdrawals', auth, (req, res) => {
   res.json(db.prepare(`SELECT id,amount,card_part,bank_part,tax,payout,status,due_at,created_at,paid_at
     FROM cash_withdrawals WHERE user_id=? ORDER BY id DESC LIMIT 20`).all(req.uid));
