@@ -905,7 +905,9 @@ app.get('/clubs', (req, res) => {
       WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
         AND COALESCE(m.role,'') <> 'guest' AND `;
   let sql = `SELECT c.*,
-      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members,
+      (SELECT COUNT(*) FROM club_members m JOIN users mu ON mu.id=m.user_id
+        WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
+          AND COALESCE(mu.is_test,0)=0) members,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='F') g_f,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='M') g_m,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender, '') NOT IN ('F','M')) g_unknown,
@@ -1001,6 +1003,7 @@ app.get('/clubs/:id/members', (req, res) => {
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
     cm.resting, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+      AND COALESCE(u.is_test,0)=0
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
 
   /* 최근 4주 출석 — 명단에서 진짜 궁금한 건 등급이 아니라 <요즘 나오나>다.
@@ -1693,7 +1696,9 @@ app.get('/me/clubs', auth, (req, res) => {
       WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
         AND COALESCE(m.role,'') <> 'guest' AND `;
   res.json(db.prepare(`SELECT c.*, cm.role, cm.status,
-      (SELECT COUNT(*) FROM club_members x WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')) member_count,
+      (SELECT COUNT(*) FROM club_members x JOIN users xu ON xu.id=x.user_id
+        WHERE x.club_id=c.id AND (x.status IS NULL OR x.status='active')
+          AND COALESCE(xu.is_test,0)=0) member_count,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='F') g_f,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender)='M') g_m,
       ${GQ} COALESCE(NULLIF(m.gender_ov,''), u.gender, '') NOT IN ('F','M')) g_unknown
@@ -3618,7 +3623,8 @@ app.get('/search', (req, res) => {
   const ex = " ESCAPE '\\' ";
 
   const clubs = db.prepare(`SELECT id, name, sport, region,
-      (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id) members
+      (SELECT COUNT(*) FROM club_members m2 JOIN users u2 ON u2.id=m2.user_id
+        WHERE m2.club_id=clubs.id AND COALESCE(u2.is_test,0)=0) members
     FROM clubs WHERE name LIKE ?${ex} ${sport ? 'AND sport=?' : ''}
     ORDER BY members DESC LIMIT 20`).all(...(sport ? [q, sport] : [q]));
 
@@ -4334,6 +4340,78 @@ app.get('/clubs/:id/brackets/history', auth, (req, res) => {
              reg: data.reg || [], attendees: data.attendees || [], scores };
   });
   res.json(out.reverse());   // 오래된 것부터
+});
+
+/* ── 홈에 쓰는 내 클럽 한 줄 요약 ──
+   시즌 순위·내 전적·클럽 평균 대비는 지금까지 클럽 탭에 들어가야 계산됐다.
+   홈에서 대진 기록을 통째로 받아오면 무거우니, 서버가 세어 세 숫자만 보낸다.
+   셈법은 클럽 <시즌 랭킹>과 같다 — 승 3점·무 1점을 참석 횟수로 나눈다. */
+app.get('/clubs/:id/my-summary', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const out = { rank: null, total: 0, w: 0, l: 0, d: 0, wr: null, clubWr: null,
+                days: 0, weekMeets: 0 };
+  try {
+    /* 이 클럽에서 내가 불리는 이름 — 별명이 있으면 별명으로 대진에 적힌다 */
+    const meRow = db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) name
+      FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND cm.user_id=?`).get(cid, req.uid);
+    const myName = meRow && meRow.name;
+
+    const brs = db.prepare(`SELECT id, date, data FROM brackets
+      WHERE club_id=? AND published=1 ORDER BY id DESC LIMIT 60`).all(cid);
+    const st = {};                       // 이름 → 성적
+    const pick = n => (st[n] = st[n] || { g:0, w:0, d:0, gf:0, ga:0, days:new Set() });
+    brs.forEach(b => {
+      let data = {}; try { data = JSON.parse(b.data); } catch (e) { return; }
+      const sc = {};
+      db.prepare('SELECT court_key, a, b FROM bracket_scores WHERE bracket_id=?').all(b.id)
+        .forEach(r => { if (r.a !== null && r.b !== null) sc[r.court_key] = r; });
+      (data.reg || []).forEach(r => {
+        const s2 = sc[r.key];
+        if (!s2 || !Array.isArray(r.names) || r.names.length < 2) return;
+        const half = Math.floor(r.names.length / 2);
+        const A = r.names.slice(0, half), B = r.names.slice(half);
+        const draw = s2.a === s2.b;
+        [[A, s2.a, s2.b], [B, s2.b, s2.a]].forEach(([side, mine, opp]) => {
+          side.forEach(n => { if (!n) return;
+            const t = pick(n);
+            t.g++; t.gf += mine; t.ga += opp;
+            if (draw) t.d++; else if (mine > opp) t.w++;
+            t.days.add(b.date || String(b.id));
+          });
+        });
+      });
+    });
+
+    const list = Object.entries(st).map(([n, t]) => {
+      const dayN = t.days.size || 1;
+      return { n, ...t, dayN, avg: (t.w * 3 + t.d) / dayN,
+               gdAvg: (t.gf - t.ga) / dayN,
+               wr: t.g ? Math.round(t.w / t.g * 100) : 0 };
+    });
+    /* 랭킹과 같은 기준 — 모임이 두 번 이상 있었으면 2회부터 순위에 넣는다 */
+    const allDays = new Set(); brs.forEach(b => allDays.add(b.date || String(b.id)));
+    const MIN = allDays.size >= 2 ? 2 : 1;
+    const rank = list.filter(r => r.dayN >= MIN)
+      .sort((a, b) => b.avg - a.avg || b.gdAvg - a.gdAvg || b.g - a.g);
+    const i = rank.findIndex(r => r.n === myName);
+    const me = i >= 0 ? rank[i] : list.find(r => r.n === myName);
+    if (me) { out.w = me.w; out.l = me.g - me.w - me.d; out.d = me.d;
+              out.wr = me.wr; out.days = me.dayN; }
+    if (i >= 0) { out.rank = i + 1; out.total = rank.length; }
+    if (rank.length) out.clubWr = Math.round(
+      rank.reduce((a, r) => a + r.wr, 0) / rank.length);
+
+    /* 이번 주 모임 수 — 월요일부터 오늘까지 */
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const mon = new Date(t0); mon.setDate(t0.getDate() - ((t0.getDay() + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 7);
+    db.prepare('SELECT date, created_at FROM club_events WHERE club_id=?').all(cid)
+      .forEach(e => { const t = eventDayTs(e.date, e.created_at);
+        if (t && t >= mon.getTime() && t < sun.getTime()) out.weekMeets++; });
+  } catch (e) {}
+  res.json(out);
 });
 
 app.get('/clubs/:id/brackets/latest', (req, res) => {
@@ -5372,7 +5450,8 @@ app.get('/invites/:token', (req, res) => {                          // 로그인
   const inv = db.prepare('SELECT * FROM club_invites WHERE token=?').get(String(req.params.token));
   if (!inv || inv.expires_at < now()) return res.status(404).json({ error: 'invalid_or_expired' });
   const c = db.prepare(`SELECT id, name, region, sport, entry_fee, season_fee,
-      (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id) members
+      (SELECT COUNT(*) FROM club_members m2 JOIN users u2 ON u2.id=m2.user_id
+        WHERE m2.club_id=clubs.id AND COALESCE(u2.is_test,0)=0) members
     FROM clubs WHERE id=?`).get(inv.club_id);
   if (!c) return res.status(404).json({ error: 'invalid_or_expired' });
   res.json({ club: c });
@@ -6245,7 +6324,9 @@ app.post('/admin/push-test', admin, async (req, res) => {
 // 운영자용 클럽 목록 — 클럽장·회원까지 함께 (클럽장 변경 UI 용)
 app.get('/admin/clubs', admin, (_req, res) => {
   const clubs = db.prepare(`SELECT c.id, c.name, c.sport, c.region,
-      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')) members
+      (SELECT COUNT(*) FROM club_members m JOIN users mu ON mu.id=m.user_id
+        WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
+          AND COALESCE(mu.is_test,0)=0) members
     FROM clubs c ORDER BY c.id DESC LIMIT 200`).all();
   res.json(clubs.map(c => ({
     ...c,
@@ -8841,17 +8922,43 @@ app.post('/admin/exchange/:id/fill', admin, (req, res) => {
   });
   res.json({ ok: true, clubs: out });
 });
-/* 테스트 회원을 모두 지운다 — 교류전 테스트가 끝나면 흔적을 남기지 않는다 */
+/* 테스트 회원을 모두 지운다 — 교류전 테스트가 끝나면 흔적을 남기지 않는다.
+   예전에는 users·club_members·event_attendees 세 곳만 지워서,
+   이미 만들어진 대진·점수·기록에는 이름이 그대로 남았다. 딸린 것을 함께 지운다. */
 app.post('/admin/test-users/purge', admin, (_req, res) => {
-  const ids = db.prepare('SELECT id FROM users WHERE is_test=1').all().map(r => r.id);
+  const rows = db.prepare('SELECT id, name FROM users WHERE is_test=1').all();
+  const ids = rows.map(r => r.id);
   if (!ids.length) return res.json({ ok: true, n: 0 });
   const ph = ids.map(() => '?').join(',');
   [`DELETE FROM event_attendees WHERE user_id IN (${ph})`,
    `DELETE FROM club_members WHERE user_id IN (${ph})`,
+   `DELETE FROM monthly_results WHERE user_id IN (${ph})`,
+   `DELETE FROM grade_changes WHERE user_id IN (${ph})`,
+   `DELETE FROM interests WHERE user_id IN (${ph})`,
    `DELETE FROM users WHERE id IN (${ph})`].forEach(sql => {
     try { db.prepare(sql).run(...ids); } catch (e) {}
   });
-  res.json({ ok: true, n: ids.length });
+  /* 테스트 회원이 낀 교류전 대진은 통째로 지운다 — 반쪽 대진은 아무 쓸모가 없다 */
+  let games = 0;
+  try {
+    const set = new Set(ids.map(String));
+    db.prepare('SELECT id, home_json, away_json FROM exchange_games').all().forEach(g => {
+      const has = [g.home_json, g.away_json].some(j => {
+        try { return (JSON.parse(j || '[]') || []).some(p => set.has(String(p.id))); }
+        catch (e) { return false; }
+      });
+      if (has) { db.prepare('DELETE FROM exchange_games WHERE id=?').run(g.id); games++; }
+    });
+  } catch (e) {}
+  res.json({ ok: true, n: ids.length, games, names: rows.map(r => r.name).slice(0, 40) });
+});
+/* 지우기 전에 <누가 지워지는지> 먼저 본다 */
+app.get('/admin/test-users', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT u.id, u.name, u.gender,
+      (SELECT GROUP_CONCAT(c.name, ', ') FROM club_members m JOIN clubs c ON c.id=m.club_id
+       WHERE m.user_id=u.id) clubs
+    FROM users u WHERE u.is_test=1 ORDER BY u.id`).all();
+  res.json({ n: rows.length, rows });
 });
 
 /* 상대 클럽을 붙인다 — 테스트할 때 다른 클럽 계정으로 로그인해 신청하기가 번거롭다.
