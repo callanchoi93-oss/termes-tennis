@@ -1002,8 +1002,47 @@ app.get('/clubs/:id/members', (req, res) => {
     cm.resting, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
-  res.json(rows);
+
+  /* 최근 4주 출석 — 명단에서 진짜 궁금한 건 등급이 아니라 <요즘 나오나>다.
+     모임 날짜는 '8/28 (금) 19:00~23:00 · 용인' 꼴의 글이라 SQL 로는 못 세고,
+     eventDayTs 로 날짜를 뽑아 자바스크립트에서 센다. */
+  const att = {}, last = {};
+  try {
+    const cid = +req.params.id;
+    const t0 = now(), t28 = t0 - 28 * 864e5;
+    const ts = {};
+    db.prepare('SELECT id, date, created_at FROM club_events WHERE club_id=?').all(cid)
+      .forEach(e => { const t = eventDayTs(e.date, e.created_at); if (t) ts[e.id] = t; });
+    const ids = Object.keys(ts);
+    if (ids.length) {
+      db.prepare(`SELECT event_id, user_id FROM event_attendees
+        WHERE status='going' AND event_id IN (${ids.map(() => '?').join(',')})`).all(...ids)
+        .forEach(a => {
+          const t = ts[a.event_id];
+          if (t > t0) return;                                  // 앞으로 열릴 모임은 출석이 아니다
+          if (t >= t28) att[a.user_id] = (att[a.user_id] || 0) + 1;
+          if (!last[a.user_id] || t > last[a.user_id]) last[a.user_id] = t;
+        });
+    }
+  } catch (e) {}
+
+  res.json(rows.map(r => ({ ...r,
+    att4w: att[r.user_id] || 0,
+    last_seen_at: last[r.user_id] || null })));
 });
+
+/* 모임 글에서 날짜만 뽑는다 — '8/28 (금) 19:00~23:00 · 용인' → 그날 0시.
+   연말·연초에 해가 넘어가는 것은 만든 시각을 기준으로 보정한다. */
+function eventDayTs(dateText, createdAt) {
+  const m = String(dateText || '').match(/(\d{1,2})\/(\d{1,2})/);
+  if (!m) return null;
+  const base = new Date(createdAt || now());
+  const d = new Date(base.getFullYear(), +m[1] - 1, +m[2]);
+  const diff = (d - base) / 864e5;
+  if (diff < -200) d.setFullYear(base.getFullYear() + 1);
+  if (diff > 200) d.setFullYear(base.getFullYear() - 1);
+  return d.getTime();
+}
 
 // 회원 등급 일괄 설정 (임원진) — { grades: { "12": "A", "34": "B" } }  키는 user_id
 /* 클럽 소개 — 임원만 수정. 가입 전 미리보기에서 가장 먼저 읽는 글이다. */
@@ -1206,6 +1245,30 @@ app.get('/open-matches/:id/mvp-guests', (req, res) => {
   const holders = rows.filter(r => r.c >= min).sort((a, b) => b.c - a.c);
   res.json({ min, total: holders.length, top: holders.slice(0, 3).map(h => ({ name: h.name, count: h.c })) });
 });
+/* ── 월례대회 성적 ──
+   승강 결과(grade_changes)만 남기면 <몇 등이었나>가 사라진다.
+   그건 그날 하루치 화면에만 있었고, 다음 달이면 아무 데도 안 남았다.
+   확정할 때 조별 순위를 통째로 저장해 <내 기록>에서 되짚을 수 있게 한다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS monthly_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    club_id INTEGER, user_id INTEGER, name TEXT, held_on TEXT,
+    tier TEXT, rank INTEGER, n INTEGER, w INTEGER, l INTEGER, gd INTEGER,
+    dir TEXT, to_tier TEXT, created_at BIGINT)`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_mr_user ON monthly_results(club_id, user_id)');
+  /* 같은 대회를 두 번 확정해도 한 줄만 남는다 */
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_mr ON monthly_results(club_id, user_id, held_on)');
+} catch (e) {}
+
+/* 내 월례대회 이력 — 최근 것부터 */
+app.get('/clubs/:id/monthly/me', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(db.prepare(`SELECT held_on, tier, rank, n, w, l, gd, dir, to_tier, created_at
+    FROM monthly_results WHERE club_id=? AND user_id=?
+    ORDER BY created_at DESC LIMIT 24`).all(cid, req.uid));
+});
+
 app.post('/clubs/:id/promote', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
@@ -1222,8 +1285,35 @@ app.post('/clubs/:id/promote', auth, (req, res) => {
       title: dir === 'up' ? `${c.to}조로 승격했어요` : `${c.to}조로 조정됐어요`,
       body: '월례대회 결과가 반영됐어요' });
   });
+  /* 순위표를 함께 받으면 성적으로 남긴다 — 승강한 사람만이 아니라 <그날 뛴 전원>이 남는다 */
+  const st = (req.body || {}).standings || [];
+  const held = String((req.body || {}).held_on || '').slice(0, 20) || ymdOf(now());
+  if (Array.isArray(st) && st.length) {
+    const ins = db.prepare(`INSERT INTO monthly_results
+      (club_id,user_id,name,held_on,tier,rank,n,w,l,gd,dir,to_tier,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(club_id,user_id,held_on) DO UPDATE SET
+        tier=excluded.tier, rank=excluded.rank, n=excluded.n,
+        w=excluded.w, l=excluded.l, gd=excluded.gd,
+        dir=excluded.dir, to_tier=excluded.to_tier`);
+    const t = now();
+    st.forEach(r => {
+      if (!r || !r.user_id || !r.tier) return;
+      const mv = list.find(c => +c.user_id === +r.user_id);
+      try {
+        ins.run(cid, +r.user_id, String(r.name || ''), held, String(r.tier),
+          +r.rank || 0, +r.n || 0, +r.w || 0, +r.l || 0, +r.gd || 0,
+          mv ? String(mv.dir) : null, mv ? String(mv.to) : null, t);
+      } catch (e) {}
+    });
+  }
   res.json({ ok: true, n: list.length });
 });
+/* 날짜만 뽑는다 — 같은 날 두 번 확정해도 한 줄로 합쳐진다 */
+function ymdOf(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 app.get('/clubs/:id/promotions', auth, (req, res) => {
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
