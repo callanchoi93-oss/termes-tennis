@@ -1015,8 +1015,10 @@ app.get('/clubs/:id/members', (req, res) => {
       .forEach(e => { const t = eventDayTs(e.date, e.created_at); if (t) ts[e.id] = t; });
     const ids = Object.keys(ts);
     if (ids.length) {
+      /* id 는 Object.keys 라 문자열이다 — INTEGER 칸에 문자열을 넣으면 못 맞춘다 */
       db.prepare(`SELECT event_id, user_id FROM event_attendees
-        WHERE status='going' AND event_id IN (${ids.map(() => '?').join(',')})`).all(...ids)
+        WHERE status='going' AND event_id IN (${ids.map(() => '?').join(',')})`)
+        .all(...ids.map(Number))
         .forEach(a => {
           const t = ts[a.event_id];
           if (t > t0) return;                                  // 앞으로 열릴 모임은 출석이 아니다
