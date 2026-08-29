@@ -267,27 +267,46 @@
   .rtm .t{font-size:14.5px;font-weight:500}
   .rtm .d{font-size:11.5px;color:var(--lgray);margin-top:2px}
   .rtm.dim{opacity:.45;cursor:default}
-  .opsum{background:var(--ink);color:#fff;border-radius:16px;padding:15px 16px;margin:4px 0 12px}
-  .opsum .k{font-size:12px;opacity:.7}
-  .opsum .v{font-size:18px;font-weight:700;margin-top:3px;letter-spacing:-.02em}
-  .opnote{font-size:11.5px;color:rgba(255,255,255,.6);margin-top:3px}
-  .opq{display:flex;gap:8px;margin-bottom:16px}
-  .opq>div{flex:1;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 8px;text-align:center}
-  .opq .qn{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
-  .opq .qn span{font-size:11.5px;font-weight:500;color:var(--lgray)}
-  .opq .ql{font-size:11px;color:var(--lgray);margin-top:2px}
-  .opgl{font-size:12px;font-weight:600;color:var(--lgray);margin:4px 2px 8px}
-  .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-  .optool{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;
-    padding:13px;text-align:left;font-family:inherit;cursor:pointer;display:block}
+  /* ── 운영진 도구 ──
+     열두 칸이 다 같은 무게라 <지금 눌러야 할 것>이 안 보였다.
+     처리할 일이 있을 때만 위 카드가 살아나고, 없으면 조용히 물러난다. */
+  .opsum{border-radius:18px;padding:16px;margin:4px 0 10px;
+    background:var(--cream);border:1px solid var(--line)}
+  .opsum.hot{ background:var(--ink);border-color:var(--ink);cursor:pointer }
+  .opsum .k{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--lgray)}
+  .opsum.hot .k{color:var(--gold)}
+  .opsum .v{font-size:19px;font-weight:800;margin-top:9px;letter-spacing:-.04em;color:var(--ink)}
+  .opsum.hot .v{color:#fff}
+  .opnote{font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.6}
+  .opsum.hot .opnote{color:#b6bcc6}
+  .opsum .go{display:block;width:100%;margin-top:14px;border:none;border-radius:12px;height:44px;
+    font-size:13px;font-weight:700;background:var(--coral);color:#fff;font-family:inherit;
+    cursor:pointer}
+  /* 숫자 셋 — 상자를 씌우면 아래 타일과 무게가 같아진다. 선으로만 나눈다 */
+  .opq{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);margin-bottom:20px}
+  .opq>div{padding:14px 6px;text-align:center;border-left:1px solid var(--line)}
+  .opq>div:first-child{border-left:0}
+  .opq .qn{font-size:19px;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+  .opq .qn span{font-size:11.5px;font-weight:700;color:var(--lgray);margin-left:1px}
+  .opq .qn.off{color:var(--lgray)}
+  .opq .ql{font-size:10.5px;color:var(--lgray);font-weight:600;margin-top:5px}
+  .opgl{font-size:11px;font-weight:800;color:var(--lgray);letter-spacing:.04em;margin:0 2px 8px}
+  .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
+  .optool{position:relative;background:var(--cream);border:1px solid var(--line);
+    border-radius:16px;padding:14px;text-align:left;font-family:inherit;cursor:pointer;
+    display:block;transition:.12s}
+  .optool:active{transform:scale(.985)}
   /* 아이콘은 한 톤 회색 — 색이 여러 개면 타일마다 무게가 달라 보인다 */
-  .opic{width:32px;height:32px;border-radius:10px;background:var(--felt);color:#79828d;
-    display:flex;align-items:center;justify-content:center;margin-bottom:8px}
-  .opt{display:block;font-size:13.5px;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
-  .opd{display:block;font-size:11px;color:var(--lgray);margin-top:2px;line-height:1.35}
-  .opn{position:absolute;top:10px;right:10px;min-width:18px;height:18px;border-radius:9px;
-    background:var(--red);color:#fff;font-size:10.5px;font-weight:700;display:flex;
-    align-items:center;justify-content:center;padding:0 5px}
+  .opic{width:34px;height:34px;border-radius:12px;background:var(--felt);color:var(--gray);
+    display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+  .optool.hot{border-color:#ffd9c2}
+  .optool.hot .opic{background:var(--coral-s);color:var(--coral-d)}
+  .opt{display:block;font-size:14px;font-weight:700;letter-spacing:-.03em;color:var(--ink)}
+  .opd{display:block;font-size:11px;color:var(--lgray);font-weight:500;margin-top:3px;line-height:1.45}
+  .opn{position:absolute;top:11px;right:11px;min-width:19px;height:19px;border-radius:10px;
+    background:var(--coral);color:#fff;font-size:10.5px;font-weight:800;display:flex;
+    align-items:center;justify-content:center;padding:0 6px}
 
 
 
@@ -673,14 +692,22 @@
   /* 운영진 도구는 본문 여백을 시트가 직접 갖는다 — 아래가 텅 비어 '잘린' 것처럼 보이지 않게 */
   body.ops-open .opsbody{padding-bottom:0;display:flex;flex-direction:column}
   .ed-page{display:flex;flex-direction:column;flex:1;min-height:0}
-  .ed-page textarea{flex:1;min-height:200px;resize:none}
+  /* 글상자가 이 화면의 주인공 — 테두리는 얇게, 안쪽 여백은 넉넉히 */
+  .ed-page textarea{flex:1;min-height:190px;resize:none;border:1px solid var(--line);
+    border-radius:16px;padding:15px;font-size:14px;line-height:1.75;background:var(--cream2);
+    font-family:inherit;color:var(--ink);outline:none;transition:.15s}
+  .ed-page textarea:focus{border-color:var(--coral);background:var(--cream);
+    box-shadow:0 0 0 3px rgba(241,99,26,.10)}
+  .ed-page textarea::placeholder{color:var(--lgray);line-height:1.75}
   .ed-foot{margin-top:auto;padding-top:14px}
   /* 클럽 소개 — 딱지는 <넣을 말>이라 회색으로 낮추고, 넣은 것만 코랄로 표시한다.
      크기는 앱 눈금(글자 11 · 여백 4/6/10/17)에 맞춘다. */
   .ichips{display:flex;gap:var(--s2);flex-wrap:wrap;margin:0 0 var(--s3)}
-  .ichip{cursor:pointer;font-size:var(--t1);font-weight:500;color:var(--gray);
-    background:#fff;border:1px solid var(--line);border-radius:20px;
-    padding:var(--s1) var(--s3);line-height:1.5;transition:.12s}
+  .ichl{font-size:10.5px;font-weight:800;color:var(--lgray);letter-spacing:.04em;
+    margin:0 2px 7px}
+  .ichip{cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);
+    background:var(--cream);border:1px solid var(--line);border-radius:20px;
+    padding:7px 12px;line-height:1.4;transition:.12s}
   .ichip:active{transform:scale(.97)}
   .ichip.on{color:var(--coral-d);background:var(--coral-s);border-color:transparent;font-weight:600}
   .ichip.on::before{content:'✓ ';font-weight:700}
@@ -893,30 +920,134 @@
   .sbtn.kakao{background:#fee500;color:#3a2929}.sbtn.google{background:#fff;color:#3c4043;border:1.5px solid #d1d6db}
   .sbtn .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
   .auth-fine{font-size:11px;color:var(--lgray);text-align:center;line-height:1.5}
-  .ob{flex:1;overflow-y:auto;padding:28px 22px}
-  .ob h3{font-size:23px;font-weight:700;letter-spacing:-.045em;line-height:1.28;margin-bottom:0}
-  .ob .obs{font-size:13px;color:var(--gray);font-weight:400;line-height:1.7;margin:10px 0 0}
-  /* 온보딩 — 가운데 정렬과 아이콘 타일을 걷어내고 왼쪽 정렬 제목 + 얇은 선으로.
-     .ycar / .gnote 는 프로필 구력 시트가 함께 쓰므로 건드리지 않고 여기만 따로 둔다. */
+  .ob{flex:1;overflow-y:auto;padding:30px 22px 8px}
+  /* 시작 안내 — 지금 할 수 있는 하나만 크게 */
+  .qs-big{ display:flex;align-items:center;gap:13px;margin-top:16px;border-radius:18px;
+    padding:16px;background:var(--coral-s);cursor:pointer }
+  .qs-big .ic{ flex:none;width:42px;height:42px;border-radius:14px;background:var(--coral);
+    color:#fff;display:flex;align-items:center;justify-content:center }
+  .qs-big .c{ flex:1;min-width:0 }
+  .qs-big .c b{ display:block;font-size:15.5px;font-weight:800;letter-spacing:-.035em }
+  .qs-big .c span{ display:block;font-size:12px;color:var(--coral-d);font-weight:600;margin-top:3px }
+  .qs-big .go{ flex:none;color:var(--coral-d);font-size:18px;font-weight:800 }
+  .qs-alt{ display:flex;align-items:center;gap:13px;margin-top:8px;border:1px solid var(--line);
+    border-radius:18px;padding:15px 16px;cursor:pointer }
+  .qs-alt .ic{ flex:none;width:42px;height:42px;border-radius:14px;background:var(--felt);
+    color:var(--gray);display:flex;align-items:center;justify-content:center }
+  .qs-alt .c b{ display:block;font-size:14.5px;font-weight:700;letter-spacing:-.03em }
+  .qs-alt .c span{ display:block;font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:3px }
+  .qs-after{ margin-top:20px;padding-top:14px;border-top:1px solid var(--line) }
+  .qs-after .l{ font-size:11px;font-weight:800;color:var(--lgray);letter-spacing:.04em }
+  /* ── 시즌 랭킹 ──
+     점수는 <회당 평균>이라 한 번 나와 잘 친 사람이 세 번 나온 사람을 이긴다.
+     계산은 옳지만 화면에 <나눈다>는 말이 없으면 아무도 순위를 믿지 않는다.
+     규칙을 적고, 최소 참석을 못 채운 사람은 아래로 접는다. */
+  .rkme{ display:flex;align-items:center;gap:13px;border:1.5px solid #ffd9c2;border-radius:18px;
+    padding:14px 15px;background:var(--cream);margin-bottom:10px }
+  .rkme .rk{ flex:none;text-align:center;min-width:56px }
+  .rkme .rk b{ display:block;font-size:24px;font-weight:800;letter-spacing:-.05em;line-height:1;
+    color:var(--coral-d) }
+  .rkme .rk b em{ font-style:normal;font-size:13px;margin-left:1px }
+  .rkme .rk span{ display:block;font-size:10px;color:var(--lgray);font-weight:700;margin-top:4px;
+    white-space:nowrap }
+  .rkme .c{ flex:1;min-width:0 }
+  .rkme .c b{ font-size:15px;font-weight:800;letter-spacing:-.04em }
+  .rkme .c span{ display:block;font-size:11.5px;color:var(--gray);font-weight:600;margin-top:3px;
+    line-height:1.6 }
+  .rkme .p{ flex:none;text-align:right }
+  .rkme .p b{ font-size:22px;font-weight:800;letter-spacing:-.045em;font-variant-numeric:tabular-nums }
+  .rkme .p i{ font-style:normal;font-size:11px;color:var(--lgray);font-weight:700;margin-left:1px }
+  .rkrule{ display:block;margin:0 2px 14px;padding:11px 13px;background:var(--cream2);
+    border-radius:11px;font-size:11.5px;color:var(--gray);font-weight:600;line-height:1.75 }
+  .rkrule b{ color:var(--ink);font-weight:800 }
+  .rkbar{ flex:none;width:52px;height:5px;border-radius:3px;background:var(--felt-d);overflow:hidden }
+  .rkbar i{ display:block;height:100%;background:var(--coral) }
+  .rkthin{ display:flex;align-items:center;gap:9px;margin:20px 2px 2px;cursor:pointer }
+  .rkthin b{ font-size:11.5px;font-weight:800;color:var(--lgray) }
+  .rkthin i{ flex:1;height:1px;background:var(--line) }
+  .rkthin span{ font-size:11px;color:var(--lgray);font-weight:700 }
+  .hallmore{ display:block;width:100%;margin-top:8px;border:1px solid var(--line);
+    border-radius:12px;padding:11px;font-size:11.5px;font-weight:700;color:var(--gray);
+    background:var(--cream);font-family:inherit;cursor:pointer }
+  /* ── 온보딩 ──
+     소개 화면을 없앴다. 읽기만 하는 화면은 가입 직후에 나갈 자리를 만든다.
+     화면은 성별 → 구력 → 결과 셋. 앞 둘만 질문이고 마지막은 보상이다. */
+  .ob-kick{ font-size:11.5px;font-weight:800;letter-spacing:.06em;color:var(--coral-d);
+    margin-bottom:10px }
+  .ob h3{ font-size:25px;font-weight:800;letter-spacing:-.05em;line-height:1.3;margin:0 }
+  .ob .obs{ font-size:13px;color:var(--gray);font-weight:500;line-height:1.7;margin:11px 0 0 }
+  /* 두 칸짜리 고르기 — 두 개뿐인데 세로 목록은 아깝다 */
+  .ob-two{ display:flex;gap:9px;margin-top:26px }
+  .ob-two button{ flex:1;border:1.5px solid var(--line);border-radius:16px;padding:20px 10px;
+    text-align:center;background:var(--cream);font-family:inherit;cursor:pointer }
+  .ob-two button b{ display:block;font-size:17px;font-weight:800;letter-spacing:-.04em }
+  .ob-two button span{ display:block;font-size:11.5px;color:var(--lgray);font-weight:600;margin-top:5px }
+  .ob-two button.on{ border-color:var(--coral);background:var(--coral-s) }
+  .ob-two button.on b{ color:var(--coral-d) }
+  .ob-two button.on span{ color:var(--coral-d);opacity:.75 }
+  /* 자주 쓰는 답을 먼저 — 정확한 달을 기억하는 사람은 드물다 */
+  .ob-quick{ display:flex;flex-wrap:wrap;gap:6px;margin-top:22px }
+  .ob-quick button{ border:1px solid var(--line);border-radius:20px;padding:8px 13px;
+    font-size:12px;font-weight:700;color:var(--gray);background:var(--cream);
+    font-family:inherit;cursor:pointer }
+  .ob-quick button.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .ob-ym{ display:flex;gap:9px;margin-top:12px }
+  .ob-ym select{ flex:1;min-width:0;border:1.5px solid var(--line);border-radius:14px;
+    padding:15px 14px;font-size:15px;font-weight:700;background:var(--cream);color:var(--ink);
+    font-family:inherit;appearance:none;-webkit-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%238b95a1' stroke-width='1.8' fill='none' stroke-linecap='round'/></svg>");
+    background-repeat:no-repeat;background-position:right 14px center }
+  .ob-ym select.ph{ color:var(--lgray);font-weight:600 }
+  /* 등급 카드 — 온보딩이 주는 첫 결과물.
+     무게는 색이 아니라 크기로 준다. 검정은 앱에서 <운영진이 할 일>이라는 뜻이라 쓰지 않는다. */
+  .ob-gc{ border-radius:20px;padding:20px;margin-top:22px;background:var(--cream);
+    border:1px solid var(--line);
+    box-shadow:0 1px 2px rgba(23,28,37,.04),0 8px 24px rgba(23,28,37,.07) }
+  .ob-gc .k{ font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--coral-d) }
+  .ob-gc .g{ display:flex;align-items:baseline;gap:11px;margin-top:11px }
+  .ob-gc .g b{ font-size:44px;font-weight:800;letter-spacing:-.06em;line-height:.95 }
+  .ob-gc .g span{ font-size:12.5px;font-weight:600;color:var(--gray) }
+  .ob-gc .ld{ display:flex;gap:3px;margin-top:16px }
+  .ob-gc .ld i{ flex:1;height:6px;border-radius:3px;background:var(--felt-d) }
+  .ob-gc .ld i.on{ background:var(--coral) }
+  .ob-gc .ll{ display:flex;margin-top:7px;font-size:10px;font-weight:700;color:var(--lgray) }
+  .ob-gc .ll span{ flex:1;text-align:center }
+  .ob-gc .ll span.on{ color:var(--coral-d) }
+  .ob-gc .m{ font-size:12.5px;font-weight:500;color:var(--gray);margin-top:14px;line-height:1.7 }
+  .ob-gc .m b{ color:var(--ink);font-weight:800 }
+  /* 결과 — 질문이 아니라 보상이다 */
+  .ob-done{ text-align:center;padding-top:14px }
+  .ob-done .badge{ width:76px;height:76px;border-radius:26px;margin:0 auto;
+    background:var(--coral-s);display:flex;align-items:center;justify-content:center;
+    font-size:30px;font-weight:800;color:var(--coral-d);letter-spacing:-.05em }
+  .ob-done h3{ margin-top:18px }
+  .ob-done .obs{ max-width:290px;margin-left:auto;margin-right:auto }
+  .ob-next{ margin-top:26px }
+  .ob-nx{ display:flex;align-items:center;gap:12px;padding:14px 2px;border-top:1px solid var(--line) }
+  .ob-nx .n{ flex:none;width:24px;height:24px;border-radius:50%;background:var(--felt);
+    color:var(--gray);font-size:11px;font-weight:800;display:flex;align-items:center;
+    justify-content:center }
+  .ob-nx.now .n{ background:var(--coral);color:#fff }
+  .ob-nx .c b{ display:block;font-size:14px;font-weight:700;letter-spacing:-.03em }
+  .ob-nx .c span{ display:block;font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:3px }
+  .ob-nx.soon .c b{ color:var(--lgray) }
+  .ob-skip{ display:block;width:100%;text-align:center;font-size:12.5px;font-weight:700;
+    color:var(--lgray);margin-top:14px;background:none;border:none;font-family:inherit;cursor:pointer }
   .ob-bar{width:30px;height:5px;border-radius:3px;background:var(--coral);margin-bottom:13px}
   .ob-note{margin-top:26px;border-top:1px solid var(--line)}
   .ob-nt{padding:14px 2px;border-bottom:1px solid var(--line)}
   .ob-nt b{display:block;font-size:14px;font-weight:600;letter-spacing:-.03em}
   .ob-nt span{display:block;font-size:12.5px;color:var(--gray);font-weight:400;
-    margin-top:4px;line-height:1.6}
   .ob-ycar{display:flex;align-items:baseline;gap:9px;padding:15px 2px;margin-top:6px;
-    border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .ob-ycar .cd{font-size:19px;font-weight:700;letter-spacing:-.03em;flex:none}
   .ob-ycar .tx{font-size:12.5px;color:var(--gray);font-weight:400}
   .ob-gg{display:flex;gap:4px;flex-wrap:wrap;margin-top:14px}
   .ob-gg span{font-size:10.5px;font-weight:600;background:var(--felt);color:#57606b;
-    border-radius:6px;padding:4px 8px}
   .ob-fine{font-size:11.5px;color:var(--lgray);margin-top:11px;line-height:1.6}
   .ob-opt{padding:16px;border:1.5px solid var(--line);border-radius:14px;margin-bottom:10px;font-weight:600;font-size:14px;cursor:pointer;background:#fff;display:flex;justify-content:space-between;align-items:center}
   .ob-opt.on{border-color:var(--coral);background:var(--coral-s);color:var(--coral-d)}
   .ob-opt small{display:block;font-size:12px;color:var(--gray);font-weight:500;margin-top:3px}
   .ob-foot{padding:14px 22px 30px}
-  /* 온보딩 — 선택지는 테두리 카드보다 얇은 줄이 읽기 편하다 */
   .ob-list{margin-top:24px}
   .ob-row{display:flex;align-items:center;gap:12px;padding:16px 2px;border-top:1px solid var(--line);cursor:pointer}
   .ob-row:last-child{border-bottom:1px solid var(--line)}
@@ -3046,11 +3177,12 @@
   .ihero .ed{ flex:none;font-size:11px;font-weight:700;color:var(--coral-d);
     border:1px solid #ffd9c2;border-radius:20px;padding:6px 11px;background:var(--cream);
     font-family:inherit;cursor:pointer }
-  .ichips{ display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px }
-  .ichips span{ display:inline-flex;align-items:center;gap:6px;background:var(--cream2);
+  /* 이름을 .ichips 로 두면 소개 <편집 시트>의 딱지(.ichip)까지 뚱뚱해진다 — 갈라 둔다 */
+  .ifacts{ display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px }
+  .ifacts span{ display:inline-flex;align-items:center;gap:6px;background:var(--cream2);
     border-radius:11px;padding:9px 12px;font-size:12.5px;font-weight:700 }
-  .ichips span i{ font-style:normal;font-size:10.5px;font-weight:600;color:var(--lgray) }
-  .ichips span.ed{ cursor:pointer }
+  .ifacts span i{ font-style:normal;font-size:10.5px;font-weight:600;color:var(--lgray) }
+  .ifacts span.ed{ cursor:pointer }
   /* 회비 — 세 줄로 흩어 두면 <처음에 얼마 드나>를 머릿속에서 더해야 한다 */
   .ifee{ border:1px solid var(--line);border-radius:18px;overflow:hidden }
   .ifeeg{ display:grid;grid-template-columns:repeat(3,1fr) }
@@ -3070,12 +3202,12 @@
     background:none;border:none;font-family:inherit;cursor:pointer }
   .ibody{ font-size:13px;color:var(--ink);font-weight:500;line-height:1.75;padding:0 2px;
     white-space:pre-wrap }
-  .iempty{ border:1px dashed #dee2e6;border-radius:14px;padding:16px;background:var(--cream2);
-    font-size:12px;color:var(--gray);font-weight:500;line-height:1.7 }
-  .iempty b{ display:block;font-size:13.5px;font-weight:800;color:var(--ink);
-    letter-spacing:-.035em;margin-bottom:5px }
-  .iempty button{ margin-top:11px;font-size:12px;font-weight:700;color:#fff;
-    background:var(--coral);border:none;border-radius:10px;padding:9px 14px;
+  .iempty{ border:1px dashed #dee2e6;border-radius:16px;padding:18px;background:var(--cream2) }
+  .iempty b{ display:block;font-size:14.5px;font-weight:800;color:var(--ink);
+    letter-spacing:-.035em }
+  .iempty p{ margin:7px 0 0;font-size:12.5px;color:var(--gray);font-weight:500;line-height:1.75 }
+  .iempty button{ display:block;width:100%;margin-top:14px;font-size:13px;font-weight:700;
+    color:#fff;background:var(--coral);border:none;border-radius:12px;height:44px;
     font-family:inherit;cursor:pointer }
   /* ── 파트너 · 상대 ──
      <승률 100%> 와 <2승 0패> 는 같은 말이다. 승패 막대 하나로 합친다.
@@ -4604,75 +4736,104 @@ async function login(p){
   state._obStep=1; state._obSport=state._obSport||state.sport;
   document.getElementById('onboard').classList.add('on'); renderOnboard();
 }
+/* 온보딩 — 성별 → 구력 → 결과, 세 화면.
+   예전에는 앞에 소개 화면이 하나 더 있었다. 읽기만 하고 할 일이 없는 화면이라
+   가입 직후에 나갈 자리를 만들었다. 약속 두 가지는 마지막 결과 화면으로 옮겼다.
+   진행 막대도 실제 화면 수에 맞춘다 — 셋 중 첫 칸이 이미 차 있어 어긋나 보였다. */
+const OB_QUICK=[['올해',0],['1년 전',12],['3년 전',36],['5년 전',60],['10년 전',120]];
+function obSetQuick(mo){
+  const n=new Date(), d=new Date(n.getFullYear(), n.getMonth()-mo, 1);
+  state._obY=String(d.getFullYear()); state._obM=String(d.getMonth()+1); renderOnboard();
+}
+function obYM(){ return (state._obY && state._obM)
+  ? `${state._obY}-${String(state._obM).padStart(2,'0')}` : null; }
 function renderOnboard(){
-  /* 종목은 테니스 단일이라 1단계는 건너뛴다. 남는 건 소개 1장 + 성별 + 구력. */
-  if(state._obStep===1){ state._obStep=2; state._obSport='tennis'; state.sport='tennis'; }
-  const step=state._obStep, TOTAL=3; let b='',f='';   // 소개 1 · 성별 · 구력
-  b+=`<div class="steps">${Array.from({length:TOTAL},(_,i)=>`<i class="${step>=i+2?'on':''}"></i>`).join('')}</div>`;
+  /* 종목은 테니스 단일이라 고르는 단계가 없다 */
+  if(state._obStep<2 || state._obStep>4){ state._obStep=2; }
+  state._obSport=state._obSport||'tennis'; state.sport=state._obSport;
+  const step=state._obStep; let b='',f='';
+  b+=`<div class="steps">${[2,3,4].map(n=>`<i class="${step>=n?'on':''}"></i>`).join('')}</div>`;
   const m=spMeta(state._obSport);
 
   if(step===2){
-    /* 소개는 한 장이면 된다. 두 장으로 나눠 두면 답을 받기도 전에 화면 두 개를
-       넘기게 되고, 그 사이에서 나간다. 여기서 <두 가지만 묻는다>고 미리 말해준다. */
-    b+=`<div class="ob-bar"></div>
-      <h3>대진 걱정 없는<br>테니스</h3>
-      <div class="obs">두 가지만 여쭤보고<br>바로 시작할게요.</div>
-      <div class="ob-note">
-        <div class="ob-nt"><b>등급은 결과로 정해져요</b>
-          <span>본인이 고르는 게 아니라 실제 경기 결과로. 누구나 같은 자리에서 시작해요.</span></div>
-        <div class="ob-nt"><b>클럽에서 시작해 리그까지</b>
-          <span>동네 클럽으로 가볍게 시작하고, 지역 리그와 시즌 랭킹으로 이어져요.</span></div>
-      </div>`;
-    f=`<button class="btn" onclick="nextOb()">시작하기</button>`;
+    b+=`<div class="ob-kick">1 / 2</div>
+      <h3>먼저 성별만<br>알려주세요</h3>
+      <div class="obs">남자부·여자부를 나눠 대진을 짜기 때문이에요.<br>
+        두 가지만 여쭤보고 바로 시작합니다.</div>
+      <div class="ob-two">${GENDERS.map(([g])=>`
+        <button class="${state._obGender===g?'on':''}" onclick="pickOb('g','${g}')">
+          <b>${g}</b><span>${g==='남성'?'남자부로 배정':'여자부로 배정'}</span></button>`).join('')}</div>`;
+    f=`<button class="btn" ${state._obGender?'':'style="background:#d3d8de"'}
+        onclick="${state._obGender?'nextOb()':`toast('성별을 선택해 주세요')`}">다음</button>`;
 
   }else if(step===3){
-    b+=`<h3>성별을<br>알려주세요</h3><div class="obs">남자부·여자부를 나눠 배정하고 집계해요.</div>
-      <div class="ob-list">${GENDERS.map(([g])=>`
-        <div class="ob-row ${state._obGender===g?'on':''}" role="button" tabindex="0" onclick="pickOb('g','${g}')">
-          <span class="ob-dot"></span>
-          <div><b>${g}</b><span>${g==='남성'?'남자부로 배정돼요':'여자부로 배정돼요'}</span></div></div>`).join('')}</div>`;
-    f=`<button class="btn" ${state._obGender?'':'style="background:#cad0d6"'} onclick="${state._obGender?'nextOb()':'toast(\'성별을 선택해 주세요\')'}">다음</button>`;
-
-  }else{
-    /* 프로필의 구력 입력 시트와 같은 화면을 쓴다 —
-       같은 걸 두 벌 만들면 나중에 한쪽만 고치게 되고, 사용자도 두 번째에 다시 배운다.
-       연·월을 고르는 즉시 등급을 보여줘야 "그래서 내 등급이 뭔데?" 가 남지 않는다. */
-    const ready = !!state._obY && !!state._obM;
-    const ym = ready ? `${state._obY}-${state._obM}` : null;
-    const code = ready ? gradeStepFromMonths(careerMonthsFrom(ym)) : null;
+    const ym=obYM();
+    const code = ym ? gradeStepFromMonths(careerMonthsFrom(ym)) : null;
     const L = code ? gradeStepLabel(code) : null;
-    b+=`<h3>${esc(m.n)}를 언제<br>시작하셨어요</h3>
-      <div class="obs">구력에 맞춰 대진이 짜여요. 비슷한 실력끼리 붙도록요.</div>
-      <div class="fld" style="margin:22px 0 0">
-        <div class="ymrow">
-          <div class="fld"><select class="${state._obY?'':'ph'}" onchange="state._obY=this.value;renderOnboard()">
-            <option value="">연도</option>
-            ${YEARS.map(y=>`<option value="${y}" ${String(state._obY)===String(y)?'selected':''}>${y}년</option>`).join('')}
-          </select></div>
-          <div class="fld"><select class="${state._obM?'':'ph'}" onchange="state._obM=this.value;renderOnboard()">
-            <option value="">월</option>
-            ${Array.from({length:12},(_,i)=>i+1).map(x=>`<option value="${x}" ${String(state._obM)===String(x)?'selected':''}>${x}월</option>`).join('')}
-          </select></div>
-        </div></div>
-      ${ready?`<div class="ob-ycar">
-        <span class="cd" style="color:${L.c}">${code}</span>
-        <span class="tx">구력 ${careerTextFrom(ym)||'0개월'} · ${esc(L.desc)}</span></div>`:''}
-      <div class="ob-gg"><span>C 2년 미만</span><span>B 2~4년</span>
-        <span>A 5~9년</span><span>S 10년 이상</span></div>
-      <div class="ob-fine">클럽 대진·월례대회·오픈매치에서 비슷한 구력끼리 붙도록 쓰여요.
-        나중에 내정보에서 고칠 수 있어요.</div>`;
+    const now=new Date();
+    b+=`<div class="ob-kick">2 / 2</div>
+      <h3>${esc(m.n)}를 언제<br>시작하셨어요</h3>
+      <div class="obs">구력으로 등급을 정해요. 비슷한 실력끼리 붙도록 대진에 쓰입니다.</div>
+      <div class="ob-quick">${OB_QUICK.map(([l,mo])=>{
+        const d=new Date(now.getFullYear(), now.getMonth()-mo, 1);
+        const on = String(state._obY)===String(d.getFullYear())
+                && String(state._obM)===String(d.getMonth()+1);
+        return `<button class="${on?'on':''}" onclick="obSetQuick(${mo})">${l}</button>`;}).join('')}</div>
+      <div class="ob-ym">
+        <select class="${state._obY?'':'ph'}" onchange="state._obY=this.value;renderOnboard()">
+          <option value="">연도</option>
+          ${YEARS.map(y=>`<option value="${y}" ${String(state._obY)===String(y)?'selected':''}>${y}년</option>`).join('')}
+        </select>
+        <select class="${state._obM?'':'ph'}" onchange="state._obM=this.value;renderOnboard()">
+          <option value="">월</option>
+          ${Array.from({length:12},(_,i)=>i+1).map(x=>
+            `<option value="${x}" ${String(state._obM)===String(x)?'selected':''}>${x}월</option>`).join('')}
+        </select></div>
+      ${L?`<div class="ob-gc">
+        <div class="k">지금 등급</div>
+        <div class="g"><b style="color:${L.c}">${esc(code)}</b>
+          <span>구력 ${esc(careerTextFrom(ym)||'0개월')} · ${esc(L.desc)}</span></div>
+        <div class="ld">${['C','B','A','S'].map(t=>
+          `<i class="${'CBAS'.indexOf(t)<='CBAS'.indexOf(L.base[0])?'on':''}"></i>`).join('')}</div>
+        <div class="ll">${['C 2년 미만','B 2~4년','A 5~9년','S 10년+'].map((l,i)=>
+          `<span class="${'CBAS'[i]===L.base[0]?'on':''}">${l}</span>`).join('')}</div>
+        <div class="m">등급은 <b>경기 결과로 오르내려요</b>. 지금 값은 출발점일 뿐이에요.</div>
+      </div>`:''}`;
     /* 첫 화면에서 막지 않는다. 가입 직후엔 앱이 뭔지도 몰라, 답을 강요하면
        아무 값이나 찍거나 그냥 나간다. 건너뛰면 클럽에 들어갈 때 다시 물어본다. */
-    f=`<button class="btn" ${ready?'':'style="background:#cad0d6"'}
-         onclick="${ready?'finishOnboard()':'toast(\'시작한 연도와 월을 골라주세요\')'}">시작하기</button>
-       <div onclick="skipObExp()" role="button" tabindex="0"
-         style="text-align:center;font-size:12.5px;font-weight:600;color:var(--gray);margin-top:13px;cursor:pointer">나중에 할게요</div>`;
+    f=`<button class="btn" ${L?'':'style="background:#d3d8de"'}
+         onclick="${L?'nextOb()':`toast('시작한 연도와 월을 골라주세요')`}">다 됐어요</button>
+       <button class="ob-skip" onclick="skipObExp()">나중에 할게요</button>`;
+
+  }else{
+    const ym=obYM();
+    const code = ym ? gradeStepFromMonths(careerMonthsFrom(ym)) : null;
+    b+=`<div class="ob-done">
+        <div class="badge">${code?esc(code):'—'}</div>
+        <h3>준비됐어요</h3>
+        <div class="obs">${code
+          ? `<b style="color:var(--ink)">${esc(code)}</b>에서 시작합니다.`
+          : '등급은 나중에 정해도 돼요.'}<br>이제 클럽을 찾으면 대진에 들어갈 수 있어요.</div>
+      </div>
+      <div class="ob-next">
+        <div class="ob-nx now"><span class="n">1</span>
+          <span class="c"><b>클럽 찾기</b><span>우리 동네 클럽을 둘러보고 가입해요</span></span></div>
+        <div class="ob-nx soon"><span class="n">2</span>
+          <span class="c"><b>모임에 참석 누르기</b><span>누르면 그날 대진에 자동으로 들어가요</span></span></div>
+        <div class="ob-nx soon"><span class="n">3</span>
+          <span class="c"><b>끝나고 점수 넣기</b><span>그날 성적이 바로 기록으로 쌓여요</span></span></div>
+      </div>`;
+    /* 온보딩 끝 → 팝업 → 홈의 <시작하기> 로 같은 말을 세 번 하고 있었다.
+       여기서 갈 곳을 정하게 하고 팝업은 띄우지 않는다. */
+    f=`<button class="btn" onclick="finishOnboard('find')">우리 동네 클럽 찾기</button>
+       <button class="btn ghost" style="margin-top:9px" onclick="finishOnboard('new')">내가 클럽 만들기</button>
+       <button class="ob-skip" onclick="finishOnboard()">먼저 둘러볼게요</button>`;
   }
   document.getElementById('obBody').innerHTML=b;document.getElementById('obFoot').innerHTML=f;
 }
 function pickObSport(id){ state._obSport=id; state._obExp=null; renderOnboard(); }
 function pickOb(k,v){if(k==='g')state._obGender=v;else state._obExp=v;renderOnboard();}
-function nextOb(){ if(state._obStep<4) state._obStep++; renderOnboard(); }   // 2·3·4 세 화면
+function nextOb(){ if(state._obStep<4) state._obStep++; renderOnboard(); }   // 성별·구력·결과
 /* 로그인 직후 — 서버 프로필이 이미 완성돼 있으면 온보딩을 건너뛴다.
    처음 가입한 사람만 온보딩을 본다. */
 /* 성별은 서버에 'F'/'M' 로도, '여성'/'남성' 으로도 들어와 있다 —
@@ -4708,9 +4869,10 @@ function resumeOrOnboard(){
 }
 
 /* 구력을 건너뛴다 — 클럽에 들어갈 때 다시 물어본다 */
-function skipObExp(){ state._obY=''; state._obM=''; finishOnboard(); }
+/* 구력을 건너뛰어도 결과 화면은 보여준다 — 갈 곳을 정하지 않은 채 홈에 떨구지 않는다 */
+function skipObExp(){ state._obY=''; state._obM=''; state._obStep=4; renderOnboard(); }
 
-function finishOnboard(){
+function finishOnboard(go2){
   state.loggedIn=true; state.gender=state._obGender;
   state.sport=state._obSport; state.mainSport=state._obSport;
   /* 시작 시점(연-월)이 곧 구력이다. 구간을 따로 저장하지 않는다 —
@@ -4729,9 +4891,15 @@ function finishOnboard(){
   }
   document.getElementById('onboard').classList.remove('on');
   renderHome();renderLeague();renderClub();renderBracket();
-  go('home');
   saveMatsu();
-  setTimeout(openQuickStart,400);
+  /* 마지막 화면에서 갈 곳을 이미 골랐다 —
+     예전에는 홈으로 떨군 뒤 시작 팝업을 띄우고, 홈에도 <시작하기> 카드가 있어
+     같은 말을 세 번 했다. */
+  if(go2==='find'){ state.clubTab='find'; go('club'); return; }
+  /* 이미 같이 치는 사람들이 있는 총무에게는 <만들기>가 첫 번째 길이다.
+     초대는 링크로 오므로(?invite=…) 따로 코드를 입력받는 자리는 두지 않는다. */
+  if(go2==='new'){ go('club'); setTimeout(()=>{ state._cw=null; openCreateClub(); }, 200); return; }
+  go('home');
 }
 /* ═══════════ 서버 연결 (Railway · server.js) ═══════════
    · 같은 도메인에서 서빙되면 자동으로 API를 씀 (public/index.html)
@@ -6838,17 +7006,41 @@ async function wipeMatsu(){
   location.replace(location.pathname);
 }
 function populateAuthSaved(){ try{ const d=JSON.parse(localStorage.getItem(MATSU_SAVE)); const box=document.getElementById('authSaved'); if(box&&d&&d.state&&d.state.loggedIn&&d.state.userName){ box.innerHTML=`<div style="text-align:center;font-size:12px;color:var(--lgray);font-weight:500;margin:10px 0 6px">이어서 하기</div><button class="sbtn2" onclick="location.reload()"><span class="ic" style="background:var(--coral);color:#fff">${d.state.userName[0]}</span><span class="lbl">${d.state.userName} 님으로 계속</span></button>`; } }catch(e){} }
+/* 시작 안내 — 온보딩 마지막 화면이 그 일을 하므로 자동으로는 띄우지 않는다.
+   내정보에서 다시 볼 수 있게 남겨 두고, 세 갈래 길만 보여준다.
+   예전에는 카드 셋이 같은 무게였는데 2·3번은 클럽이 없으면 눌러도 아무 데도 안 간다. */
 function openQuickStart(){
-  const stepc=(n,ic,t,d,act)=>`<div class="card" style="display:flex;align-items:center;gap:13px;margin-bottom:9px;cursor:pointer;padding:14px 15px" onclick="${act}">
-    <div style="width:34px;height:34px;border-radius:50%;background:var(--coral);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:500;font-size:14px;flex-shrink:0">${n}</div>
-    <div style="flex:1"><div style="font-weight:500;font-size:14px">${ic} ${t}</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:2px">${d}</div></div>
-    <div style="color:var(--coral-d);font-weight:600">→</div></div>`;
-  let h=`<div class="sh-top"><h3>이렇게 시작하세요</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">3단계면 첫 경기까지 끝나요. 카드를 누르면 바로 이동해요.</div>
-    ${stepc(1,ic('home',22),'클럽 찾아 가입하기','우리 동네 클럽을 둘러보고 가입해요',"closeOv();state.clubTab='find';go('club')")}
-    ${stepc(2,li('check',22),'모임 참석 체크','이번 주 모임에 참석하면 대진에 자동 포함돼요',"closeOv();go('club')")}
-    ${stepc(3,li('trendup',22),'경기 결과 입력','결과를 입력·확정하면 레이팅이 올라요',"closeOv();go('league')")}
-    <button class="btn" style="margin-top:8px" onclick="closeOv()">둘러보기 시작</button>`;
+  const big=(t,d,act)=>`<div class="qs-big" onclick="${act}">
+    <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>
+      <path d="M20 20l-3.4-3.4"/></svg></span>
+    <span class="c"><b>${t}</b><span>${d}</span></span><span class="go">›</span></div>`;
+  const alt=(ic,t,d,act)=>`<div class="qs-alt" onclick="${act}">
+    <span class="ic">${ic}</span>
+    <span class="c"><b>${t}</b><span>${d}</span></span></div>`;
+  const IC_CODE=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/>
+    <path d="M8 11h8M8 15h5"/></svg>`;
+  const IC_NEW=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+  const reg=(()=>{ const c=(state.clubs||[])[0]; return c&&c.r ? String(c.r).split(' ').slice(0,2).join(' ') : ''; })();
+  const n=(state.clubs||[]).length;
+  let h=`<div class="sh-top"><h3>클럽부터 찾아볼까요?</h3>
+      <div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd">맞수는 클럽 단위로 굴러가요 · 클럽에 들어가야 대진·기록·랭킹이 생깁니다.</div>
+    ${big('우리 동네 클럽 찾기', [reg, n?`지금 ${n}곳`:''].filter(Boolean).join(' · ')||'둘러보고 가입 신청을 보내요',
+      "closeOv();state.clubTab='find';go('club')")}
+    ${alt(IC_CODE,'초대 링크를 받았다면','링크를 누르면 바로 들어가져요',
+      "closeOv();toast('총무님께 받은 링크를 눌러 주세요')")}
+    ${alt(IC_NEW,'내가 클럽 만들기','이미 같이 치는 사람들이 있다면',
+      "closeOv();state._cw=null;openCreateClub()")}
+    <div class="qs-after"><div class="l">클럽에 들어가면</div>
+      <div class="ob-nx soon"><span class="n">2</span>
+        <span class="c"><b>모임에 참석 누르기</b><span>그날 대진에 자동으로 들어가요</span></span></div>
+      <div class="ob-nx soon"><span class="n">3</span>
+        <span class="c"><b>끝나고 점수 넣기</b><span>성적이 바로 기록으로 쌓여요</span></span></div>
+    </div>
+    <button class="ob-skip" style="margin-top:16px" onclick="closeOv()">먼저 둘러볼게요</button>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 /* ===== 알림 ===== */
@@ -10370,7 +10562,9 @@ function openIntroEdit(){
   let h=`<div class="sh-top"><h3>클럽 소개</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="ed-page">
-      <div class="sd">어떤 클럽인지, 어떤 분을 찾는지 적어주세요.<br>가입 전에 가장 먼저 읽는 글이에요.</div>
+      <div class="sd">가입을 고민하는 사람이 <b>가장 먼저 읽는 글</b>이에요.<br>
+        분위기 · 실력대 · 게스트 규칙을 적어주세요.</div>
+      <div class="ichl">눌러서 넣기</div>
       <div id="introChips" class="ichips">${CHIPS.map(t=>
         `<span class="ichip${cur.includes(t)?' on':''}" onclick="introChip('${t}')">${t}</span>`).join('')}</div>
       <textarea id="introTa" maxlength="1000" placeholder="예) 주말 오전에 모여 즐겁게 치는 클럽입니다.
@@ -10928,18 +11122,26 @@ function openClubOps(){
 
   /* 이름만으로 무엇인지 알 수 있는 것에 설명을 붙이면 훑는 속도만 느려진다.
      정말 헷갈리는 것만 한 줄을 남긴다. */
-  const tool=(t,dsc,fn,tone,badge)=>`<button class="optool" onclick="opsPage('${t}',()=>{${fn}})">
+  const tool=(t,dsc,fn,tone,badge)=>`<button class="optool ${tone||''}" onclick="opsPage('${t}',()=>{${fn}})">
     ${badge?`<span class="opn">${badge}</span>`:''}
     <span class="opic">${opIcon(t)}</span>
     <span class="opt">${t}</span>${dsc?`<span class="opd">${dsc}</span>`:''}</button>`;
 
-  let h=`<div class="opsum"><div class="k">지금 처리할 일</div>
-      <div class="v">${pend?`가입 신청 ${pend}건`:'처리할 일이 없어요'}</div>
-      <p class="opnote">눌러서 바로 처리하세요</p></div>
-    <div class="opq">
-      <div><div class="qn">${att!=null?att:'—'}${att!=null?'<span>%</span>':''}</div><div class="ql">이번 달 참석률</div></div>
-      <div><div class="qn">${d.members||c.m||0}</div><div class="ql">회원 수</div></div>
-      <div><div class="qn">${((c.schedule&&c.schedule.attendees)||[]).length}</div><div class="ql">다음 모임 참석</div></div>
+  /* 할 일이 있을 때만 검정으로 앞에 나선다 — 늘 검정이면 <처리할 일이 없어요>도 크게 보인다 */
+  const nextN=((c.schedule&&c.schedule.attendees)||[]).length;
+  let h = pend
+    ? `<div class="opsum hot"><div class="k">지금 처리할 일</div>
+        <div class="v">가입 신청 ${pend}건이 기다려요</div>
+        <p class="opnote">승인하면 바로 명단에 들어가고, 다음 모임부터 대진에 나옵니다</p>
+        <button class="go" onclick="opsPage('가입 신청',()=>{openAdmin()})">지금 처리하기</button></div>`
+    : `<div class="opsum"><div class="k">지금 처리할 일</div>
+        <div class="v">밀린 일이 없어요</div>
+        <p class="opnote">가입 신청이 오면 여기에 뜹니다</p></div>`;
+  h+=`<div class="opq">
+      <div><div class="qn ${att!=null?'':'off'}">${att!=null?att:'—'}${att!=null?'<span>%</span>':''}</div>
+        <div class="ql">이번 달 참석률</div></div>
+      <div><div class="qn">${memberCount()||d.members||c.m||0}</div><div class="ql">회원 수</div></div>
+      <div><div class="qn ${nextN?'':'off'}">${nextN||'—'}</div><div class="ql">다음 모임 참석</div></div>
     </div>
     <div class="opgl">경기 운영</div>
     <div class="opgrid">
@@ -10950,7 +11152,7 @@ function openClubOps(){
     </div>
     <div class="opgl">회원 · 클럽</div>
     <div class="opgrid">
-      ${tool('가입 신청','승인 · 거절','openAdmin()','',pend||0)}
+      ${tool('가입 신청','승인 · 거절','openAdmin()',pend?'hot':'',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
@@ -12890,6 +13092,11 @@ function clubTabRecords(){
   }).filter(t=>t.name && t.g>0)      // 이름을 못 찾았거나 한 경기도 안 뛴 사람은 뺀다
     .sort((a,b)=> b.avg-a.avg || b.gdAvg-a.gdAvg || b.pt-a.pt || b.g-a.g);
   const days=new Set(games.map(g=>g.date).filter(Boolean));
+  /* 한 번 나와 네 판 이긴 사람이 1위가 되면 랭킹이 농담이 된다.
+     모임이 두 번 이상 있었을 때만 최소 참석을 건다 — 첫 모임에 아무도 순위에 없으면 그것도 이상하다. */
+  const RKMIN = days.size>=2 ? 2 : 1;
+  const rank = list.filter(r=>r.dayN>=RKMIN);
+  const thin = list.filter(r=>r.dayN<RKMIN);
 
   /* ── 명예의 전당 ──
      1등 하나만 남으면 대부분에게 남는 게 없다. 성격이 다른 다섯 자리를 만든다.
@@ -12914,13 +13121,35 @@ function clubTabRecords(){
         return f.length ? f.slice().sort((a,b)=>b.help-a.help)[0] : null; })(),
       f:r=>`${r.help}개`},
   ].filter(x=>x.p && x.p.name);
+  /* 내 순위를 맨 위에 — 스물두 명이면 내 줄을 찾아 스크롤해야 한다.
+     앞사람과 몇 점 차인지가 다음 모임에 나올 이유가 된다. */
+  { const i=rank.findIndex(r=>String(r.id)===String(meId));
+    if(i>=0){ const me=rank[i], up=i>0?rank[i-1]:null;
+      const gap=up?Math.round((up.avg-me.avg)*10)/10:0;
+      h+=`<div class="rkme">
+        <span class="rk"><b>${i+1}<em>위</em></b><span>${rank.length}명 중</span></span>
+        <span class="c"><b>${esc(me.name)}</b>
+          <span>${me.w}승${me.d?` ${me.d}무`:''} ${me.l}패 · ${me.dayN}회 참석 · 총 ${me.pt}점${
+            up&&gap>0?` · <b style="color:var(--coral-d)">${gap}점</b> 차로 ${i}위 추격 중`
+            :i===0?' · <b style="color:var(--coral-d)">1위예요</b>':''}</span></span>
+        <span class="p"><b>${me.avg}</b><i>점</i></span></div>`;
+    } }
+  /* 12점과 7.7점이 어떻게 나온 숫자인지 모르면 순위를 믿을 수 없다 */
+  h+=`<div class="rkrule">1승 <b>3점</b> · 1무 <b>1점</b>으로 모은 점수를
+    <b>참석 횟수로 나눈</b> 값이에요.${RKMIN>1?`<br><b>${RKMIN}회</b> 이상 나와야 순위에 들어가요.`:''}</div>`;
+
   if(HALL.length){
-    h+=`<div class="hallrow">${HALL.map(x=>`
-      <div class="hallc" onclick="openClubMember(${jsArg(x.p.id)},${jsArg(x.p.name)})">
+    /* 넉 장이 옆으로 밀려 나가면 뒤엣것은 아무도 안 본다 — 두 장만 펴 둔다 */
+    const show = RK_HALL_ALL ? HALL : HALL.slice(0,2);
+    h+=`<div class="hallrow" style="${RK_HALL_ALL?'':'overflow:visible'}">${show.map(x=>`
+      <div class="hallc" style="${RK_HALL_ALL?'':'flex:1;width:auto'}"
+        onclick="openClubMember(${jsArg(x.p.id)},${jsArg(x.p.name)})">
         <div class="hl">${x.l}</div>
         <div class="hn">${esc(x.p.name)}</div>
         <div class="hv">${x.f(x.p)}</div>
         <div class="hs">${x.s}</div></div>`).join('')}</div>`;
+    if(!RK_HALL_ALL && HALL.length>2)
+      h+=`<button class="hallmore" onclick="RK_HALL_ALL=1;renderClub()">명예의 전당 ${HALL.length-2}개 더 보기</button>`;
   }
 
   /* 26명 클럽인데 35줄이 나오는 이유를 화면에서 바로 알 수 있게 —
@@ -12934,7 +13163,8 @@ function clubTabRecords(){
 `;
   /* 표를 목록으로 — 다섯 열을 <순위 배지 · 이름과 전적 · 점수> 세 덩어리로 줄인다.
      1위는 잉크에 금색, 2·3위는 은·동 느낌의 옅은 배지. 색을 늘리지 않고 시상대를 만든다. */
-  list.forEach((r,i)=>{
+  const topAvg=Math.max(1,...rank.map(r=>r.avg));
+  rank.forEach((r,i)=>{
     const me=String(r.id)===String(meId);
     h+=`<div class="rk2${me?' mine':''}" onclick="openClubMember(${jsArg(r.id)},${jsArg(r.name)})">
       <span class="rk2-m${i<3?' m'+(i+1):''}">${i+1}</span>
@@ -12942,12 +13172,25 @@ function clubTabRecords(){
         cbOffRoster(r)?' <i class="gst">게스트</i>':''}</b>
         <span>${maskNum(`${r.w}승${r.d?` ${r.d}무`:''} ${r.l}패`,r.name)} ·
           ${r.dayN}회 참석 · 총 ${maskNum(r.pt,r.name)}점</span></span>
+      <span class="rkbar"><i style="width:${Math.round(r.avg/topAvg*100)}%"></i></span>
       <span class="rk2-p"><b>${maskNum(r.avg,r.name)}</b><i>점</i></span></div>`;
   });
+  /* 빼는 게 아니라 초대하는 문장으로 — 몇 번 더 나오면 되는지 적는다 */
+  if(thin.length){
+    h+=`<div class="rkthin" onclick="RK_THIN=RK_THIN?0:1;renderClub()">
+      <b>${RKMIN}회를 못 채운 ${thin.length}명</b><i></i>
+      <span>${RK_THIN?'접기':'펼치기'}</span></div>`;
+    if(RK_THIN) thin.forEach(r=>{
+      h+=`<div class="rk2" onclick="openClubMember(${jsArg(r.id)},${jsArg(r.name)})">
+        <span class="rk2-m">—</span>
+        <span class="rk2-w"><b>${esc(r.name)}${cbOffRoster(r)?' <i class="gst">게스트</i>':''}</b>
+          <span>${maskNum(`${r.w}승 ${r.l}패`,r.name)} · ${r.dayN}회 참석 ·
+            <b style="color:var(--coral-d)">${RKMIN-r.dayN}번 더</b> 나오면 순위에 들어와요</span></span>
+        <span class="rk2-p"><b style="color:var(--lgray)">${maskNum(r.avg,r.name)}</b><i>점</i></span></div>`;
+    });
+  }
   h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
-    승 ${PT_WIN}점 · 무 ${PT_DRAW}점 · 패 0점 ·
-    <b style="color:var(--ink);font-weight:600">참석 1회당 평균 점수</b>로 줄을 세워요<br>
-    많이 나온 것만으로 순위가 오르지 않게 총점을 참석 횟수로 나눠요 · 같으면 득실차 순<br>
+    같은 점수면 <b style="color:var(--ink);font-weight:600">득실차</b>가 앞선 사람이 위로 와요<br>
     <b style="color:var(--ink);font-weight:600">정기 모임</b>에서 점수가 확정된 경기만 집계돼요 ·
     번개는 기록에 남지만 랭킹에는 안 들어가요.</div>`;
   return h;
@@ -13025,7 +13268,8 @@ function clubTabMembers(){
   const list=CLUB_ROSTER||[];
   if(!list.length) return `<div class="card" style="text-align:center;padding:26px">
     <div style="font-size:13.5px;font-weight:700">${CLUB_ROSTER_ERR?'명단을 불러오지 못했어요':'멤버 정보가 아직 없어요'}</div>
-    ${CLUB_ROSTER_ERR?`<button class="btn ghost" style="max-width:180px;margin:12px auto 0"
+    ${CLUB_ROSTER_ERR?`<div class="gt1 gmute" style="margin-top:5px">${esc(CLUB_ROSTER_ERR)}</div>
+      <button class="btn ghost" style="max-width:180px;margin:12px auto 0"
       onclick="retryClubRoster()">다시 불러오기</button>`:''}</div>`;
   const meId=(state.serverUser||{}).id;
   const t=tgData();
@@ -13066,7 +13310,7 @@ function clubTabMembers(){
       <div class="note" style="text-align:left;margin-top:12px">이름을 누르면 그 회원의 기록으로 가요 ·
         출석은 <b>최근 4주</b> 기준이에요.</div>`;
 }
-let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null, CLUB_ROSTER_ERR=false;
+let CLUB_ROSTER=null, CLUB_ROSTER_FOR=null, CLUB_ROSTER_ERR=false, CLUB_ROSTER_RETRIED=false;
 /* 명단은 '멤버' 탭을 열어야 채워진다. 운영진 도구처럼 명단이 꼭 필요한 화면은
    이걸 먼저 await 해야 한다 — 안 그러면 0명으로 조를 나누고 끝난다. */
 async function ensureClubRoster(){
@@ -13092,11 +13336,18 @@ function loadClubRoster(){
   if(!SERVER_OK || !cid){ CLUB_ROSTER=[]; return; }
   api(`/clubs/${cid}/members`).then(r=>{ CLUB_ROSTER=cb2Roster(r); CLUB_ROSTER_ERR=false;
       if(state.view==='club') renderClub(); })
-    /* 못 받아온 것과 <정말 아무도 없는 것>은 다르다 — 다시 시도할 길을 남긴다 */
-    .catch(()=>{ CLUB_ROSTER=[]; CLUB_ROSTER_ERR=true; if(state.view==='club') renderClub(); });
+    /* 못 받아온 것과 <정말 아무도 없는 것>은 다르다.
+       한 번은 조용히 다시 시도한다 — 처음 들어올 때 토큰 갱신과 겹쳐 실패하는 일이 있다. */
+    .catch(e=>{
+      if(!CLUB_ROSTER_RETRIED){ CLUB_ROSTER_RETRIED=true;
+        setTimeout(()=>{ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; loadClubRoster(); }, 700);
+        return; }
+      CLUB_ROSTER=[]; CLUB_ROSTER_ERR=String((e&&e.message)||'').slice(0,60)||'unknown';
+      if(state.view==='club') renderClub(); });
   tgPull();
 }
-function retryClubRoster(){ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; CLUB_ROSTER_ERR=false; renderClub(); }
+function retryClubRoster(){ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; CLUB_ROSTER_ERR=false;
+  CLUB_ROSTER_RETRIED=false; renderClub(); }
 function clubTabNews(){
   const c=AC()||{}; const notices=(c.notices||[]);
   let h='';
@@ -13962,7 +14213,7 @@ function clubTabInfo(){
           .filter(Boolean).join(' · ')}</span></span>
       ${off?`<button class="ed" onclick="openClubLogoEdit('${esc(n)}')">로고</button>`:''}</div>
 
-    <div class="ichips">
+    <div class="ifacts">
       <span${tap('openClubBasicEdit(1)')}><i>모임</i> ${esc(clubDaysText(c.meet_days||c.days)||'미정')}</span>
       <span${tap('openAgeEdit()')}><i>연령</i> ${esc(ageBandText(d.age_bands||c.age_bands||c.age)||'미정')}</span>
       <span${tap('openClubBasicEdit(1)')}><i>홈구장</i> ${esc(c.court||c.home_court||'미정')}</span>
@@ -13983,8 +14234,8 @@ function clubTabInfo(){
       ? `<div class="ibody">${esc(c.intro)}</div>`
       : off
         ? `<div class="iempty"><b>어떤 클럽인지 적어주세요</b>
-            분위기 · 실력대 · 게스트 규칙을 적어두면 가입 신청이 늘어요.
-            회원이 아닌 사람에게는 이 글이 클럽의 첫인상입니다.
+            <p>분위기 · 실력대 · 게스트 규칙을 적어두면 가입 신청이 늘어요.<br>
+              회원이 아닌 사람에게는 이 글이 클럽의 첫인상입니다.</p>
             <button onclick="openIntroEditOps()">소개 쓰기</button></div>`
         : `<div class="ibody" style="color:var(--lgray)">아직 소개가 없어요.</div>`}`;
 
@@ -14014,7 +14265,7 @@ function clubFacePanel(){
   if(avg) bits.push(`<span>구력 평균 <i>${avg}년</i></span>`);
   if(!bits.length) return '';
   return `<div class="isec" style="margin-top:24px"><b>이런 분들이 있어요</b></div>
-    <div class="ichips">${bits.join('')}</div>`;
+    <div class="ifacts">${bits.join('')}</div>`;
 }
 /* 클럽 기본 정보 편집 — 지역·정기모임·홈구장 (클럽장·임원) */
 function openClubBasicEdit(fresh){
