@@ -144,8 +144,21 @@
      노치와 제목이 겹친다. min-height 로 두어야 여백이 위에 더해진다. */
   .pvbar{display:flex;align-items:center;gap:8px;min-height:52px;
          padding-top:env(safe-area-inset-top,0px)}
+  /* 뒤로가기는 손가락 끝으로 누르는 것이라 32px 로는 작다.
+     보이는 크기는 그대로 두고 누를 수 있는 넓이만 44px 로 넓힌다 —
+     아이콘을 키우면 제목과 무게가 같아진다. */
+  /* 상단 뒤로가기 — 기종에 따라 작아 보인다는 말이 있어 40px 로 키우고
+     누를 수 있는 넓이는 44px 로 넓혔다(애플·구글 권장치). */
+  .backb{width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid var(--line);
+    align-items:center;justify-content:center;cursor:pointer;font-size:19px;font-weight:700;
+    color:var(--ink);flex:none;margin-right:10px;position:relative}
+  .backb::after{content:'';position:absolute;top:50%;left:50%;width:46px;height:46px;
+    transform:translate(-50%,-50%)}
+  .backb:active{background:var(--felt)}
   .pvback{width:32px;height:32px;border:none;background:none;font-size:21px;color:var(--gray);
-          font-family:inherit;cursor:pointer;padding:0;flex:none}
+          font-family:inherit;cursor:pointer;padding:0;flex:none;position:relative}
+  .pvback::after{content:'';position:absolute;top:50%;left:50%;width:44px;height:44px;
+    transform:translate(-50%,-50%)}
   .pvttl{font-size:15.5px;font-weight:600;letter-spacing:-.02em}
   .pvhero{display:flex;align-items:center;gap:13px;padding:6px 0 14px}
   /* button 은 브라우저 기본 테두리가 붙는다 — 로고에 검은 링으로 보이므로 지운다 */
@@ -3414,6 +3427,10 @@
   .xrail .key i{ display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:4px;
     vertical-align:1px }
 
+  /* 레일 — 교류전과 클럽이 같은 부품을 쓴다 */
+  .xrail .lb u.rest{ background:var(--felt-d) }
+  /* 늦참으로 늘어난 회차 — 말없이 칸이 늘면 <내가 잘못 봤나>가 된다 */
+  .xrail .sg.add{ outline:1.5px dashed #ffd9c2;outline-offset:1px }
   /* 전환 시간 할 일 — 5분에 무엇을 하는지 적어 둔다.
      "쉬세요"만 있으면 아무도 물을 안 마시고 코트만 늦게 찬다. */
   .xtodo{ margin-top:13px;padding-top:12px;border-top:1px solid #ffe4b8 }
@@ -4031,7 +4048,7 @@
 <div class="app">
   <div class="demo-tag" id="srvTag" style="display:none"></div>
   <div class="appbar">
-    <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" style="display:none;width:38px;height:38px;border-radius:50%;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;cursor:pointer;font-size:18px;font-weight:600;color:var(--ink);flex:none;margin-right:10px">‹</div>
+    <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" class="backb" style="display:none">‹</div>
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div style="display:flex;align-items:center;gap:9px">
       <div class="bell" id="chatBtn" role="button" tabindex="0" aria-label="대화" onclick="goChat()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg><span id="chatCnt" class="tbadge" style="display:none">0</span></div>
@@ -18190,9 +18207,54 @@ function tbNow(){
   const left=playing ? playMs-into : cyc-into;   // 남은 밀리초
   return { done:false, round:idx+1, R, playing, left,
            pct: playing ? into/playMs : (into-playMs)/(TB_SWAP*60000),
+           intoCyc: into/cyc,                    // 레일 칸을 채우는 비율
+           t0: CB2.tb.startedAt, cyc,
+           finAt: CB2.tb.startedAt + R*cyc - TB_SWAP*60000,
            startAt: CB2.tb.startedAt+idx*cyc,
            endAt:   CB2.tb.startedAt+idx*cyc+playMs,
            nextAt:  CB2.tb.startedAt+(idx+1)*cyc };
+}
+/* ── 회차 레일 ──
+   교류전 시계와 같은 부품(.xrail)을 그대로 쓴다. 두 화면이 같은 규칙(25분+5분)으로
+   도는데 그림이 다르면 회원이 시계를 두 번 배운다.
+   클럽이 다른 점 셋 — 코트가 매 회차 바뀌고, 쉬는 회차가 있고, 늦참으로 회차가 는다. */
+/* 오후 9시 35분 꼴 */
+function tbAMPM(ms){ const d=new Date(ms), a=d.getHours()<12?'오전':'오후', h=d.getHours()%12||12;
+  return `${a} ${h}시${d.getMinutes()?' '+d.getMinutes()+'분':''}`; }
+/* 늦참으로 회차가 늘었으면 왜 늘었는지와 얼마나 밀리는지 적는다 */
+function tbAddNote(n){
+  const planned=CB2&&CB2.tb&&CB2.tb.rounds0;
+  if(!planned || !n || n.R<=planned) return '';
+  const more=n.R-planned;
+  return `<div style="font-size:11.5px;color:var(--coral-d);font-weight:600;margin-top:9px;
+    line-height:1.6">늦게 오신 분이 있어 <b>${more}회차가 늘었어요</b> ·
+    끝나는 시각이 <b>${tbAMPM(n.finAt)}</b>로 밀립니다</div>`;
+}
+function tbRail(n){
+  if(!n || !CB2) return '';
+  const me=String((state.serverUser||{}).id||'');
+  const gs=CB2.games||[];
+  const planned=CB2.tb.rounds0 || n.R;          // 처음 잡았던 회차 수
+  const hhmm=t=>{ const d=new Date(t);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  let hd='', bar='', lb='';
+  for(let r=1;r<=n.R;r++){
+    const past=r<n.round, now=r===n.round, added=r>planned;
+    hd+=`<div class="${now?'now':''}">${r}회차</div>`;
+    bar+=`<div class="sg${past?' past':''}${now?' now':''}${added?' add':''}">
+      <i class="f"${now?` style="width:${Math.round(n.intoCyc*100)}%"`:''}></i><i class="g"></i></div>`;
+    const rg=gs.filter(g=>g.r===r);
+    const hole=past && rg.some(g=>g.sa==null||g.sb==null);
+    const mine=rg.some(g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me));
+    lb+=`<div class="${now?'now':''}"><s>${hhmm(n.t0+(r-1)*n.cyc)}<i>시작</i></s>
+      <u class="${hole?'hole':mine?'mine':'rest'}"></u></div>`;
+  }
+  return `<div class="xrail"><div class="hd">${hd}</div>
+    <div class="bar" id="tbRail">${bar}</div>
+    <div class="lb">${lb}</div>
+    <div class="key"><span><i style="background:var(--gold)"></i>내 회차</span>
+      <span><i style="background:var(--felt-d)"></i>쉬는 회차</span>
+      <span><i style="background:var(--red)"></i>점수 비었음</span></div></div>`;
 }
 const tbMMSS=ms=>{ const t=Math.max(0,Math.ceil(ms/1000));
   return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); };
@@ -18222,8 +18284,11 @@ async function tbStart(){
   if(!CB2 || CB2.mode!=='normal') return;
   const okAt=tbStartAllowedAt();
   if(okAt && Date.now()<okAt){ toast('아직 시작 시각이 안 됐어요'); return; }
+  const R0=CB2.rounds||tbRoundsFor(CB2.mins||CB2_MINS||120);
+  /* 처음 잡은 회차 수를 따로 남긴다 — 늦참으로 회차가 늘면 레일에 표시해야 한다.
+     말없이 칸이 여섯 개가 되면 <내가 잘못 봤나>가 된다. */
   CB2.tb={ startedAt:Date.now(), by:(state.serverUser||{}).id||null, byName:state.userName||'회원',
-           mins:(CB2.mins||CB2_MINS||120), rounds:CB2.rounds||tbRoundsFor(CB2.mins||CB2_MINS||120) };
+           mins:(CB2.mins||CB2_MINS||120), rounds:R0, rounds0:R0 };
   await tbAutoStart(1);
   await cb2Save(); drawCB2View(); tbTick();
   toast('오늘 경기를 시작했어요');
@@ -18290,8 +18355,9 @@ function tbTick(){
       return;
     }
     el.textContent=tbMMSS(n.left);
-    const bar=document.getElementById('tbBar');
-    if(bar) bar.style.width=Math.round((n.playing?1-n.pct:n.pct)*100)+'%';
+    const rl=document.getElementById('tbRail');
+    if(rl){ const cur=rl.querySelector('.sg.now i.f');
+      if(cur) cur.style.width=Math.round(n.intoCyc*100)+'%'; }
   }, 1000);
 }
 /* 진행 중 초기화 — 점수가 지워지는 일이라 한 번 탭으로는 실행되지 않게 한다.
@@ -18395,11 +18461,13 @@ function tbCard(){
           ${tbMMSS(n.left)}</div>
         <div style="font-size:19px;font-weight:800;letter-spacing:-.035em;color:var(--coral-d)">
           ${hh} 종료</div></div>
-      <div style="height:4px;border-radius:3px;background:var(--felt);overflow:hidden;margin-top:11px">
-        <i id="tbBar" style="display:block;height:100%;background:var(--coral);
-          width:${Math.round((1-n.pct)*100)}%"></i></div>
-      <div style="font-size:12px;color:#57606b;font-weight:500;margin-top:9px;line-height:1.6">
-        시간이 되면 그때 점수로 끝나요</div>
+      ${tbRail(n)}
+      <div style="font-size:12px;color:#57606b;font-weight:500;margin-top:12px;padding-top:11px;
+        border-top:1px solid var(--line);line-height:1.6">${
+        n.left<=3*60000 ? '<b style="color:var(--ink);font-weight:700">3분 남았어요</b> · 지금 점수를 정리해 주세요'
+        : `시간이 되면 그때 점수로 끝나요 · 모든 경기는 <b style="color:var(--ink);font-weight:700">${
+            tbAMPM(n.finAt)}</b>에 끝납니다`}</div>
+      ${tbAddNote(n)}
       ${mine ? `<button class="btn" style="margin-top:12px;background:#191d21"
         onclick="cb2Score(${mine.gi})">${mine.c}번 코트 점수 넣기</button>` : ''}
       ${(()=>{
@@ -18480,13 +18548,26 @@ function tbCard(){
         color:var(--gold)">${tbMMSS(n.left)}</div>
       <div style="font-size:19px;font-weight:800;letter-spacing:-.035em;color:var(--gold)">
         ${tbHHMM(n.nextAt)} 시작</div></div>
-    <div style="height:4px;border-radius:3px;background:var(--felt);overflow:hidden;margin-top:11px">
-      <i id="tbBar" style="display:block;height:100%;background:var(--gold);
-        width:${Math.round(n.pct*100)}%"></i></div>
-    <div style="font-size:15px;font-weight:800;letter-spacing:-.03em;margin-top:11px">${goTo}</div>
+    ${tbRail(n)}
+    <div style="font-size:15px;font-weight:800;letter-spacing:-.03em;margin-top:12px;
+      padding-top:11px;border-top:1px solid var(--line)">${goTo}</div>
     ${who?sub(who):''}
-    <div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">
-      ${chip('화장실')}${chip('물 마시기')}${chip('스트레칭')}${chip('가볍게 랠리')}</div>
+    ${(()=>{
+      /* <쉬세요>만 있으면 아무도 물을 안 마시고 코트만 늦게 찬다.
+         5분을 셋으로 나눠 지금 할 일을 짚어 준다. 클럽은 코트가 매 회차 바뀌므로
+         이동 안내가 교류전보다 더 중요하다. */
+      const sec=Math.max(0,(TB_SWAP*60000-n.left)/1000);
+      const step=sec<120?0:sec<240?1:2;
+      const T=[
+        ['점수 넣고 물 한 잔','방금 회차 점수를 지금 넣어 주세요 · 코트 밖에서 쉬어요'],
+        me?[`${me.c}번 코트로 이동`, `${who||''} · 화장실은 지금이에요`]
+          : [`${n.round+1}회차는 쉬어요`,'코트 밖에서 쉬면서 다음 차례를 기다려요'],
+        ['짧게 랠리', me?'서브 두세 개와 랠리로 몸을 풀어요':'내 차례가 오면 몸을 풀어요'],
+      ];
+      return `<div class="xtodo"><div class="h">이 5분에 할 일</div><ol>
+        ${T.map(([t,d],i)=>`<li class="${i===step?'on':''}"><div><b>${t}</b>
+          <span>${d}</span></div></li>`).join('')}</ol></div>`;
+    })()}
     ${scoreBox}`);
 }
 function cbBigCard(c, isOfficer){
@@ -22930,6 +23011,13 @@ function cb2CanScore(gi){
   if(!me) return false;
   const inGame=[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
   const empty=(g.sa==null || g.sb==null);
+  /* 시간대진에서는 시계가 그 회차에 닿아야 열린다.
+     예전에는 회차를 안 봐서, 1회차가 안 끝났는데 5회차 점수가 들어갔다.
+     지난 회차는 계속 열어 둔다 — 늦게 넣는 건 정상이다. */
+  if(typeof tbIsOn==='function' && tbIsOn() && g.r){
+    const n=tbNow();
+    if(n && !n.done && g.r > n.round) return false;
+  }
   /* 이미 들어간 점수를 고치는 것은 운영진 몫이다 — 시즌 랭킹이 조용히 바뀌기 때문이다.
      넣은 사람만 10분 안에 되돌릴 수 있다(잘못 넣었을 때 바로잡을 길은 남긴다).
      서버도 같은 규칙이라, 화면에서 막지 않으면 눌러도 실패하는 버튼이 된다. */
@@ -30588,6 +30676,78 @@ function homeOmLive(){
   return Array.isArray(HOME_OM_ALL) && HOME_OM_ALL.length > 0;
 }
 
+/* ── 홈 · 내 클럽 카드 ──
+   시즌 순위·내 전적·클럽 평균 대비는 서버가 세어 준다(/clubs/:id/my-summary).
+   아직 안 왔거나 기록이 없으면 그 줄만 접는다 — 빈 칸 세 개를 보여주지 않는다. */
+let MYSUM={}, MYSUM_ASKED={};
+function loadMySummary(cid){
+  if(!cid || MYSUM_ASKED[cid]) return;
+  MYSUM_ASKED[cid]=1;
+  if(!SERVER_OK){ MYSUM[cid]=null; return; }
+  api(`/clubs/${cid}/my-summary`).then(r=>{ MYSUM[cid]=r||null;
+    if(state.view==='home') renderHome(); }).catch(()=>{ MYSUM[cid]=null; });
+}
+function myClubCard(nm){
+  const c=(state.clubs||[]).find(x=>x.n===nm)||{};
+  const d=(state.clubData||{})[nm]||{};
+  const cid=d.id||c.id||(nm===state.activeClub?clubId():null);
+  if(cid) loadMySummary(cid);
+  const sm=cid?MYSUM[cid]:null;
+  const av=clubAvatar(nm,48);
+  const cnt=(nm===state.activeClub?memberCount():0)||c.m||d.members||0;
+  const sub=[cnt?`회원 ${cnt}명`:'',
+    sm&&sm.weekMeets ? `이번 주 모임 ${sm.weekMeets}회` : (c.r||d.region||'')]
+    .filter(Boolean).join(' · ');
+  /* 지금 벌어지는 일 — 없으면 띠도 없다 */
+  const live=(()=>{
+    if(nm!==state.activeClub) return null;
+    try{
+      if(typeof tbIsOn==='function' && tbIsOn()){
+        const n=tbNow();
+        if(n && !n.done) return {t:`${n.round}회차 ${n.playing?'경기 중':'자리 바꾸는 중'}`,
+          d:`· ${tbMMSS(n.left)} 남음`, v:'대진 보기', act:`openClubSub('bracket')`};
+      }
+    }catch(e){}
+    const pend=((AC()||{}).pending||[]).length;
+    if(pend && d.officer) return {ink:1, t:`가입 신청 ${pend}건`, d:'· 운영진',
+      v:'처리하기', act:`openClubOps()`};
+    return null;
+  })();
+  const st=(()=>{
+    if(!sm || (!sm.rank && !sm.w && !sm.l)) return '';
+    const gap = (sm.wr!=null && sm.clubWr!=null) ? sm.wr-sm.clubWr : null;
+    return `<div class="st">
+      <div><b>${sm.rank?`${sm.rank}<em>위</em>`:'—'}</b>
+        <span>${sm.rank?`${sm.total}명 중`:'시즌 순위'}</span></div>
+      <div><b>${sm.w}<em>승</em> ${sm.l}<em>패</em></b><span>내 전적</span></div>
+      <div><b style="color:${gap==null?'var(--lgray)':gap>=0?'var(--green)':'var(--coral-d)'}">${
+        gap==null?'—':`${gap>=0?'+':'−'}${Math.abs(gap)}<em>%p</em>`}</b>
+        <span>클럽 평균 대비</span></div></div>`;
+  })();
+  return `<div class="myc">
+    <div class="top" onclick="openClubPage('${esc(nm)}')">
+      ${av||`<span class="lg">${esc(String(nm).slice(0,1))}</span>`}
+      <span class="c"><span class="n"><b>${esc(nm)}</b>
+        ${d.officer?'<span class="role">운영진</span>':''}</span>
+        <span class="s">${esc(sub)}</span></span>
+      <span class="arr">›</span></div>
+    ${live?`<div class="live${live.ink?' ink':''}" onclick="${live.act}">
+      <i></i><b>${esc(live.t)}</b><span>${esc(live.d)}</span>
+      <span class="v">${esc(live.v)} ›</span></div>`:''}
+    ${st}
+    <div class="nav">
+      <button onclick="openClubSub('bracket')">오늘 대진</button>
+      <button onclick="openClubSub('rec')">시즌 랭킹</button>
+      <button onclick="openClubSub('sched')">일정</button></div>
+  </div>`;
+}
+/* 홈에서 클럽 안쪽 탭으로 바로 — 클럽 탭 → 클럽 → 탭 세 번 누르던 길을 한 번으로 */
+function openClubSub(sub){
+  const n=state.activeClub||(state.myClubs||[])[0];
+  if(!n){ go('club'); return; }
+  state.clubSub=sub;
+  try{ openClubPage(n); }catch(e){ go('club'); }
+}
 /* 홈에서 모임 카드를 누르면 그 모임 화면으로 — 클럽 탭만 열어두면
    회원은 목록에서 그 모임을 다시 찾아야 한다. */
 function homeGoEvent(id){
@@ -30686,15 +30846,22 @@ function homeStarter(){
       }).join('')}</div>`;
   }
 
-  /* ③ 볼 것이 있는 곳으로 — 지금 이 앱에서 실제로 굴러가는 건 클럽뿐이다 */
-  { const regShort = r => { const t=String(r||'').trim().split(/\s+/);
+  /* ③ 볼 것이 있는 곳으로 — 지금 이 앱에서 실제로 굴러가는 건 클럽뿐이다.
+     이미 클럽이 있는 사람에게 <우리 동네 클럽을 찾아보세요>는 남의 말이다.
+     내 클럽을 먼저 보여주고, 클럽이 없을 때만 찾기를 권한다. */
+  if(hasClub){
+    h+=`<div class="hsect"><b>내 클럽</b><span>${mine.length}곳</span>
+      <span class="go" onclick="go('club')">클럽 탭 ›</span></div>`;
+    mine.slice(0,3).forEach(nm=>h+=myClubCard(nm));
+    h+=`<button class="mycadd" onclick="state._cw=null;openCreateClub()">
+      <b>＋</b>새 클럽 만들기</button>`;
+  } else {
+    const regShort = r => { const t=String(r||'').trim().split(/\s+/);
       if(!t[0]) return '';
       return [t[0].replace(/(특별시|광역시|특별자치시|특별자치도|자치도|도)$/,''), t[1]||'']
         .filter(Boolean).join(' '); };
-    const myReg = (()=>{ const c=(state.clubs||[]).find(x=>mine.includes(x.n));
-      return c ? regShort(c.r) : (state.region ? regShort(state.region) : ''); })();
-    const all=(state.clubs||[]).filter(c=>(c.sport||state.sport)===state.sport
-      && !mine.includes(c.n) && (c.m||0)>2);
+    const myReg = state.region ? regShort(state.region) : '';
+    const all=(state.clubs||[]).filter(c=>(c.sport||state.sport)===state.sport && (c.m||0)>2);
     /* 같은 시·도 클럽만 <내 지역>이라 부른다.
        예전에는 걸러진 게 없으면 전국 목록을 그대로 두고 제목만 <경기 용인시 클럽>이라 적어서,
        송파구 클럽이 용인시 클럽으로 소개됐다. */
@@ -30718,7 +30885,6 @@ function homeStarter(){
       });
     }
   }
-
   /* ④ 준비 중인 것은 빈 껍데기로 두지 않고 언제 열리는지 말한다 */
   h+=`<div class="hsect"><b>오픈매치</b><span>준비 중</span></div>
     <div class="hsoon">
