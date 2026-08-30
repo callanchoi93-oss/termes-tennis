@@ -3021,6 +3021,38 @@
   .sev .tag.done{ background:#e4f8f1;color:#03a273 }
   .snone{ border:1px solid var(--line);border-radius:16px;padding:20px;text-align:center;
     font-size:12.5px;color:var(--lgray);font-weight:600 }
+  /* 애플워치 단축어 연결 */
+  .wsx .hd{ display:flex;gap:12px;align-items:flex-start;margin-top:4px }
+  .wsx .hd .ic{ flex:none;width:40px;height:40px;border-radius:14px;background:var(--felt);
+    display:flex;align-items:center;justify-content:center;font-size:19px }
+  .wsx .hd b{ display:block;font-size:15px;font-weight:800;letter-spacing:-.04em }
+  .wsx .hd span{ display:block;font-size:12px;color:var(--lgray);font-weight:500;margin-top:3px;
+    line-height:1.6 }
+  .wsx .note{ margin-top:14px;background:var(--cream2);border-radius:12px;padding:12px 13px;
+    font-size:11.5px;color:var(--gray);font-weight:500;line-height:1.75 }
+  .wsx .note b{ color:var(--ink);font-weight:700 }
+  .wsx .l{ font-size:10.5px;font-weight:800;color:var(--lgray);letter-spacing:.05em;
+    margin:20px 0 8px }
+  .wsx .tok,.wsx .url{ display:flex;align-items:center;gap:9px;border:1px solid var(--line);
+    border-radius:12px;padding:11px 12px;background:var(--cream2);cursor:pointer }
+  .wsx .tok code,.wsx .url code{ flex:1;min-width:0;font-size:12px;font-weight:600;
+    font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;color:var(--ink) }
+  .wsx .tok span,.wsx .url span{ flex:none;font-size:11px;font-weight:800;color:var(--coral-d) }
+  .wsx .url{ margin-top:7px }
+  .wsx .hint{ font-size:11.5px;color:var(--lgray);font-weight:500;line-height:1.7;margin-top:7px }
+  .wsx .hint b{ color:var(--gray);font-weight:700 }
+  .wsx .steps{ margin:0;padding-left:19px;font-size:12.5px;color:var(--gray);font-weight:500;
+    line-height:1.8 }
+  .wsx .steps li{ margin-bottom:9px }
+  .wsx .steps b{ color:var(--ink);font-weight:700 }
+  .wsx .kv{ margin-top:7px;border:1px solid var(--line);border-radius:12px;overflow:hidden }
+  .wsx .kv > div{ display:flex;align-items:center;gap:10px;padding:9px 12px;
+    border-top:1px solid var(--line) }
+  .wsx .kv > div:first-child{ border-top:0 }
+  .wsx .kv b{ flex:none;width:56px;font-size:11.5px;font-weight:800;
+    font-family:ui-monospace,Menlo,monospace;color:var(--coral-d) }
+  .wsx .kv span{ font-size:11.5px;color:var(--gray);font-weight:500 }
   /* ── 홈 · 내 클럽 카드 ──
      클럽 찾기 목록 줄을 그대로 쓰고 있었다. 지역과 회원 수는 <가입을 고민할 때> 필요한 값이지
      3년째 다니는 클럽에 대고 할 말이 아니다. 내 성적과 바로가기를 카드 안에 넣는다.
@@ -18518,12 +18550,14 @@ async function tbStart(){
            mins:(CB2.mins||CB2_MINS||120), rounds:R0, rounds0:R0 };
   await tbAutoStart(1);
   await cb2Save(); drawCB2View(); tbTick();
+  try{ liveStart(); }catch(e){}      // 잠금화면 카드 세우기(네이티브 앱에서만)
   toast('오늘 경기를 시작했어요');
 }
 async function tbUndo(){
   if(!tbCanUndo()) return;
   if(!await appConfirm('시작을 되돌릴까요?\n시계가 멈추고 시작 전으로 돌아가요.')) return;
   CB2.tb=null; await cb2Save(); drawCB2View();
+  try{ liveEnd(); }catch(e){}
 }
 /* 알림 — 서버를 거치지 않고 앱 안에서 알린다.
    회차가 끝나기 3분 전, 전환이 끝나기 1분 전 두 번.
@@ -30498,6 +30532,136 @@ function askStartIfEmpty(){
     openStartSheet({first:true});
   }, 900);
 }
+/* ══════════ 라이브 액티비티 다리 ══════════
+   네이티브 셸이 아래 둘 중 하나를 제공하면 그대로 동작한다.
+     ① window.MatsuLive.start(json) / .end()
+     ② window.webkit.messageHandlers.matsuLive.postMessage({action, ...})
+   앱은 ActivityKit 으로 액티비티를 만들고, 받은 pushToken 을
+   window.matsuLiveToken(token) 으로 돌려준다. 그 토큰을 서버에 등록하면
+   이후 회차 전환은 서버 푸시가 맡는다. */
+function liveBridge(){
+  try{
+    if(window.MatsuLive) return window.MatsuLive;
+    if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.matsuLive)
+      return { start:o=>window.webkit.messageHandlers.matsuLive.postMessage({action:'start',...o}),
+               end:()=>window.webkit.messageHandlers.matsuLive.postMessage({action:'end'}) };
+  }catch(e){}
+  return null;
+}
+let LIVE_ON=false;
+/* 앱이 토큰을 돌려주면 서버에 등록한다 */
+window.matsuLiveToken = function(token){
+  if(!token) return;
+  api('/me/live-activity',{method:'POST',
+    body:JSON.stringify({token, club_id:clubId()||null})}).catch(()=>{});
+};
+/* 시작 버튼을 누른 사람의 폰에서 액티비티를 세운다.
+   초 단위는 앱이 스스로 센다 — 서버는 회차가 바뀔 때만 밀어준다. */
+function liveStart(){
+  const b=liveBridge(); if(!b || LIVE_ON) return;
+  const n=(typeof tbNow==='function') ? tbNow() : null;
+  if(!n || n.done) return;
+  const me=String((state.serverUser||{}).id||'');
+  const g=((CB2&&CB2.games)||[]).find(x=>x.r===n.round &&
+    [...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
+  const court=g?(g.playCourt||g.c||null):null;
+  LIVE_ON=true;
+  try{ b.start({
+    club: state.activeClub||'', phase: n.playing?'play':'swap',
+    round: n.round, rounds: n.R, court,
+    endsAt: Math.floor((n.playing?n.endAt:n.nextAt)/1000),
+    title: court?`${court}번 코트`:`${n.round}회차는 쉬어요`,
+    sub: `${n.round}/${n.R}회차`,
+  }); }catch(e){ LIVE_ON=false; }
+}
+function liveEnd(){
+  const b=liveBridge(); if(!b || !LIVE_ON) return;
+  LIVE_ON=false;
+  try{ b.end(); }catch(e){}
+  api('/me/live-activity',{method:'DELETE'}).catch(()=>{});
+}
+/* ══════════ 애플워치 · 단축어 연결 ══════════
+   워치에는 브라우저가 없어 웹앱을 띄울 수 없다. 애플 단축어는 워치에서 돌고
+   HTTPS 요청을 보낼 수 있어서, 그것만으로 점수를 넣게 한다.
+   코트와 회차를 손목에서 고르게 하면 폰을 꺼내는 것보다 느리다 —
+   지금 회차에 내가 뛴 경기는 하나뿐이므로 서버가 찾는다. */
+let WATCH_TOKEN=null;
+async function openWatchSetup(){
+  sheet(`<div class="sh-top"><h3>애플워치로 점수 넣기</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    ${skelCards(2)}`);
+  try{ const r=await api('/me/watch-token'); WATCH_TOKEN=r&&r.token||null; }
+  catch(e){ WATCH_TOKEN=null; }
+  drawWatchSetup();
+}
+function drawWatchSetup(){
+  const base=API_BASE||location.origin;
+  const t=WATCH_TOKEN;
+  sheet(`<div class="sh-top"><h3>애플워치로 점수 넣기</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div class="wsx">
+      <div class="hd"><span class="ic">⌚</span>
+        <div><b>손목에서 바로 넣어요</b>
+          <span>전환 5분에 가방에서 폰을 꺼낼 필요가 없어요</span></div></div>
+      <div class="note">애플워치에는 브라우저가 없어서 앱을 띄울 수 없어요.
+        대신 <b>애플 단축어</b>로 붙입니다 · 아이폰 「단축어」 앱이 필요해요</div>
+      ${t?`
+        <div class="l">1 · 내 열쇠</div>
+        <div class="tok" onclick="copyWatchToken()">
+          <code>${esc(t)}</code><span>복사</span></div>
+        <div class="hint">이 열쇠로 내 경기를 찾아요 · <b>남에게 보내지 마세요</b></div>
+
+        <div class="l">2 · 단축어 만들기</div>
+        <ol class="steps">
+          <li>아이폰 <b>단축어</b> 앱 → <b>+</b> → 「URL 콘텐츠 가져오기」 추가</li>
+          <li>URL 칸에 붙여넣기<div class="url" onclick="copyWatchUrl()">
+            <code>${esc(base)}/watch/score</code><span>복사</span></div></li>
+          <li>「방법」을 <b>POST</b>로, 「본문」을 <b>JSON</b>으로 바꾸기</li>
+          <li>JSON에 세 칸 넣기<div class="kv">
+            <div><b>token</b><span>위에서 복사한 열쇠</span></div>
+            <div><b>us</b><span>우리 팀 점수 · 「입력 요청」</span></div>
+            <div><b>them</b><span>상대 점수 · 「입력 요청」</span></div></div></li>
+          <li>단축어 이름을 <b>맞수 점수</b>로 저장</li>
+          <li>워치 앱 → 단축어 → <b>Apple Watch에 표시</b> 켜기</li>
+        </ol>
+
+        <div class="l">3 · 써 보기</div>
+        <div class="hint">워치에서 단축어를 실행하면 점수 두 개를 묻고,
+          <b>지금 회차에 내가 뛴 경기</b>를 찾아 넣습니다.
+          넣을 경기가 없으면 「지금 넣을 점수가 없어요」라고 알려줘요.</div>
+        <button class="btn ghost" style="margin-top:14px" onclick="testWatch()">지금 넣을 경기 확인</button>
+        <button class="btn ghost" style="margin-top:8px;color:var(--red)"
+          onclick="resetWatchToken()">열쇠 새로 만들기</button>
+        <div class="hint" style="margin-top:8px">워치를 잃어버렸거나 열쇠가 새어 나갔을 때 눌러요 ·
+          <b>새로 만들면 단축어의 열쇠도 바꿔야 해요</b></div>
+      `:`
+        <button class="btn" style="margin-top:16px" onclick="makeWatchToken()">시작하기</button>
+        <div class="hint" style="margin-top:10px">누르면 내 열쇠를 만들고 설정 방법을 알려드려요</div>
+      `}
+    </div>`);
+}
+async function makeWatchToken(){
+  try{ const r=await api('/me/watch-token',{method:'POST'});
+    WATCH_TOKEN=r&&r.token||null; drawWatchSetup(); }
+  catch(e){ toast('서버가 아직 예전 버전이에요 · server.js를 올려주세요'); }
+}
+async function resetWatchToken(){
+  if(!await appConfirm('열쇠를 새로 만들까요?\n지금 워치에 넣어둔 단축어는 더 이상 안 됩니다.')) return;
+  makeWatchToken();
+}
+function copyWatchToken(){ try{ navigator.clipboard.writeText(WATCH_TOKEN||''); }catch(e){}
+  toast('열쇠를 복사했어요'); }
+function copyWatchUrl(){ try{ navigator.clipboard.writeText((API_BASE||location.origin)+'/watch/score'); }catch(e){}
+  toast('주소를 복사했어요'); }
+async function testWatch(){
+  if(!WATCH_TOKEN) return;
+  try{
+    const r=await fetch(`${API_BASE||location.origin}/watch/now?token=${encodeURIComponent(WATCH_TOKEN)}`);
+    const j=await r.json();
+    toast(j&&j.ok ? `${j.round}회차 ${j.court}번 코트 · ${j.us} vs ${j.them}`
+                  : (j&&j.message)||'지금 넣을 점수가 없어요');
+  }catch(e){ toast('확인하지 못했어요'); }
+}
 function openFairplayInfo(){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>페어플레이 점수</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
@@ -30900,6 +31064,9 @@ function _renderMeCore(){
 
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openVerify()">
     <div><div style="font-size:14px;font-weight:500">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#00b884;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:500">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div><div style="color:var(--coral-d);font-weight:600;font-size:18px">→</div></div>` : ``}
+  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openWatchSetup()">
+    <div><div style="font-size:14px;font-weight:500">애플워치로 점수 넣기 ⌚</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">단축어를 한 번 깔면 손목에서 바로 넣어요</div></div><div style="color:#c9ced4;font-size:17px">›</div>
+  </div>
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
     <div><div style="font-size:14px;font-weight:500">${SP().n} 통산 기록 📈</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">종목별 누적 스탯·하이라이트</div></div><div style="color:var(--coral-d);font-weight:600;font-size:18px">→</div></div>` : ``}
   </div>
@@ -31147,11 +31314,13 @@ function myClubCard(nm){
 function openClubSub(sub){
   const n=state.activeClub||(state.myClubs||[])[0];
   if(!n){ go('club'); return; }
-  /* openClubPage 가 clubSub 을 'sched' 로 되돌리므로 그 뒤에 다시 정한다.
-     예전에는 먼저 정하고 불러서, 어느 버튼을 눌러도 일정 탭만 열렸다. */
-  try{ openClubPage(n); }catch(e){ go('club'); return; }
+  /* 순서가 중요하다.
+     ① go('club') 은 isBack 이 아니면 state.clubOpen 을 지운다 — 클럽 <목록>으로 나가버린다.
+     ② openClubPage 는 clubSub 을 'sched' 로 되돌린다.
+     그래서 화면부터 옮기고, 클럽을 열고, 마지막에 탭을 정한다. */
+  go('club', true);
+  try{ openClubPage(n); }catch(e){ renderClub(); return; }
   state.clubSub=sub;
-  go('club');
   renderClub();
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
 }
