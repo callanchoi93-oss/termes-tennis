@@ -1537,81 +1537,47 @@ app.delete('/me/live-activity', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* ── APNs ──
-   http2 는 node 기본 모듈이라 새로 깔 것이 없다.
-   인증은 p8 키로 만든 ES256 JWT — 한 시간마다 새로 만든다. */
-/* p8 키를 담는 변수 이름은 곳마다 다르다(APNS_KEY · APNS_P8 · APNS_PRIVATE_KEY).
-   이름을 바꾸게 하느니 셋 다 받는다. */
-function apnsKeyFromEnv() {
-  const raw = process.env.APNS_KEY || process.env.APNS_P8
-    || process.env.APNS_PRIVATE_KEY || process.env.APNS_AUTH_KEY || '';
-  if (!raw) return '';
-  let k = String(raw).trim();
-  /* 환경변수 칸에는 줄바꿈이 \n 글자로 들어가는 일이 흔하다 */
-  if (k.includes('\\n')) k = k.replace(/\\n/g, '\n');
-  /* 헤더 없이 본문만 붙여넣은 경우도 살린다 */
-  if (!k.includes('BEGIN')) {
-    const body = k.replace(/\s+/g, '').match(/.{1,64}/g) || [];
-    k = `-----BEGIN PRIVATE KEY-----\n${body.join('\n')}\n-----END PRIVATE KEY-----`;
-  }
-  return k;
-}
-const APNS = {
-  key: apnsKeyFromEnv(),
-  keyId: (process.env.APNS_KEY_ID || '').trim(),
-  teamId: (process.env.APNS_TEAM_ID || '').trim(),
-  /* 번들 ID 에 접미사를 붙여 적어둔 경우가 있어 걷어낸다 */
-  bundle: (process.env.APNS_BUNDLE_ID || '').trim()
-    .replace(/\.push-type\.liveactivity$/, ''),
-  host: (process.env.APNS_HOST || '').trim()
-    || ((process.env.NODE_ENV === 'production' || process.env.RAILWAY_SERVICE_NAME)
-      ? 'api.push.apple.com' : 'api.sandbox.push.apple.com'),
-};
-const apnsReady = () => !!(APNS.key && APNS.keyId && APNS.teamId && APNS.bundle);
-let _apnsJwt = null, _apnsJwtAt = 0;
-function apnsToken() {
-  if (_apnsJwt && Date.now() - _apnsJwtAt < 50 * 60000) return _apnsJwt;
-  const crypto = require('crypto');
-  const b64 = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o))
-    .toString('base64url');
-  const head = b64({ alg: 'ES256', kid: APNS.keyId });
-  const body = b64({ iss: APNS.teamId, iat: Math.floor(Date.now() / 1000) });
-  const sig = crypto.createSign('SHA256').update(`${head}.${body}`)
-    .sign({ key: APNS.key, dsaEncoding: 'ieee-p1363' })
-    .toString('base64url');
-  _apnsJwt = `${head}.${body}.${sig}`; _apnsJwtAt = Date.now();
-  return _apnsJwt;
-}
-function apnsSend(token, payload, { event = 'update', priority = 10 } = {}) {
+/* ── APNs 전송 ──
+   서버에는 이미 알림용 APNs 코드가 있다(apnsPem · APNS · apnsToken · apnsSend).
+   그것을 그대로 쓰고, 라이브 액티비티만 <토픽과 푸시 타입이 다르다>.
+   예전에 여기서 const APNS 를 한 번 더 선언해 서버가 아예 못 떴다. */
+function apnsSendLive(token, payload, hostIdx) {
   return new Promise(resolve => {
     if (!apnsReady()) return resolve({ ok: false, why: 'not_configured' });
-    let http2; try { http2 = require('http2'); } catch (e) { return resolve({ ok: false }); }
-    const client = http2.connect(`https://${APNS.host}`);
+    const host = APNS.hosts[hostIdx || 0];
+    let client;
+    try { client = http2.connect(host); } catch { return resolve({ ok: false }); }
     const body = Buffer.from(JSON.stringify(payload));
     const req = client.request({
-      ':method': 'POST', ':path': `/3/device/${token}`,
-      'authorization': `bearer ${apnsToken()}`,
-      'apns-topic': `${APNS.bundle}.push-type.liveactivity`,
+      ':method': 'POST', ':path': '/3/device/' + token,
+      authorization: 'bearer ' + apnsToken(),
+      'apns-topic': APNS.bundleId + '.push-type.liveactivity',
       'apns-push-type': 'liveactivity',
-      'apns-priority': String(priority),
-      'apns-expiration': '0',
+      'apns-priority': '10',
       'content-type': 'application/json',
       'content-length': body.length,
     });
-    let status = 0, txt = '';
-    req.on('response', h => { status = +h[':status']; });
+    let status = 0, out = '';
+    req.on('response', h => { status = +h[':status'] || 0; });
     req.setEncoding('utf8');
-    req.on('data', d => { txt += d; });
-    req.on('end', () => { client.close();
-      /* 410 은 <이 액티비티는 끝났다>는 뜻이다 — 토큰을 지운다 */
-      if (status === 410 || /BadDeviceToken|Unregistered/.test(txt))
-        try { db.prepare('DELETE FROM live_activities WHERE token=?').run(token); } catch (e) {}
-      resolve({ ok: status === 200, status, txt });
+    req.on('data', d => { out += d; });
+    req.on('error', () => { try { client.close(); } catch {} resolve({ ok: false }); });
+    req.on('end', () => {
+      try { client.close(); } catch {}
+      if (status === 200) return resolve({ ok: true });
+      let reason = ''; try { reason = (JSON.parse(out) || {}).reason || ''; } catch {}
+      /* 알림 쪽과 같은 규칙 — 환경이 안 맞으면 반대쪽 서버로 한 번 더 */
+      if (!hostIdx && (reason === 'BadDeviceToken' || reason === 'BadEnvironmentKeyInToken'))
+        return resolve(apnsSendLive(token, payload, 1));
+      /* 410 · Unregistered 는 <이 액티비티는 끝났다>는 뜻이다 — 토큰을 지운다 */
+      if (status === 410 || reason === 'Unregistered' || reason === 'BadDeviceToken')
+        try { db.prepare('DELETE FROM live_activities WHERE token=?').run(token); } catch {}
+      resolve({ ok: false, status, reason });
     });
-    req.on('error', () => { try { client.close(); } catch (e) {} resolve({ ok: false }); });
     req.end(body);
   });
 }
+
 /* 한 사람에게 지금 상태를 보낸다 */
 function liveActivityPush(uid, state, { end = false } = {}) {
   if (!apnsReady()) return;
@@ -1627,7 +1593,7 @@ function liveActivityPush(uid, state, { end = false } = {}) {
       ...(state.alert ? { alert: { title: state.title, body: state.sub || '' } } : {}),
     },
   };
-  rows.forEach(r => { apnsSend(r.token, payload, { event: end ? 'end' : 'update' }); });
+  rows.forEach(r => { apnsSendLive(r.token, payload); });
 }
 /* 대진이 바뀌었을 때 그 대진에 있는 사람 모두에게 — 회차가 넘어갈 때 부른다 */
 function liveActivityBroadcast(data, phase, extra) {
@@ -1676,10 +1642,10 @@ function liveActivityAskScore(data, g) {
 /* 무엇이 비었는지 짚어 준다 — ready:false 만 보면 넷 중 어디가 문제인지 모른다 */
 app.get('/admin/apns-status', admin, (_req, res) => {
   const miss = [];
-  if (!APNS.key) miss.push('APNS_KEY (또는 APNS_P8)');
+  if (!APNS.key) miss.push('APNS_KEY');
   if (!APNS.keyId) miss.push('APNS_KEY_ID');
   if (!APNS.teamId) miss.push('APNS_TEAM_ID');
-  if (!APNS.bundle) miss.push('APNS_BUNDLE_ID');
+  if (!APNS.bundleId) miss.push('APNS_BUNDLE_ID');
   let sign = null;
   if (apnsReady()) { try { apnsToken(); sign = 'ok'; }
     catch (e) { sign = '키를 읽지 못했어요 · ' + String(e.message || e).slice(0, 80); } }
@@ -1687,13 +1653,10 @@ app.get('/admin/apns-status', admin, (_req, res) => {
     ready: apnsReady() && sign === 'ok',
     missing: miss,
     sign,
-    host: APNS.host,
-    bundle: APNS.bundle,
-    topic: APNS.bundle ? APNS.bundle + '.push-type.liveactivity' : null,
-    key_source: process.env.APNS_KEY ? 'APNS_KEY'
-      : process.env.APNS_P8 ? 'APNS_P8'
-      : process.env.APNS_PRIVATE_KEY ? 'APNS_PRIVATE_KEY' : null,
-    tokens: db.prepare('SELECT COUNT(*) c FROM live_activities').get().c,
+    hosts: APNS.hosts,
+    bundle: APNS.bundleId,
+    topic: APNS.bundleId ? APNS.bundleId + '.push-type.liveactivity' : null,
+    live_tokens: db.prepare('SELECT COUNT(*) c FROM live_activities').get().c,
   });
 });
 
