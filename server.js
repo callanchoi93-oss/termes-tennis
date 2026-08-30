@@ -1203,6 +1203,21 @@ function cbRole(cid, uid) {
   const m = db.prepare(`SELECT role FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')`).get(cid, uid);
   return m ? (m.role || 'member') : null;
 }
+/* 대진을 짤 수 있는가 — 임원, 그리고 <자기가 연 번개>의 주최자.
+   번개는 회원 누구나 여는데 대진은 임원만 짤 수 있으면
+   연 사람이 임원을 붙잡아야 모임이 굴러간다.
+   웹(index.html cb2CanEdit)과 같은 규칙이라야 한다 —
+   한쪽만 열어두면 화면에서는 버튼이 눌리고 저장만 조용히 튕긴다.
+   모임에 붙지 않은 클럽 공용 대진은 그대로 임원만. */
+function cbCanEdit(cid, uid, eid) {
+  const role = cbRole(cid, uid);
+  if (role === 'owner' || role === 'officer') return true;
+  if (!role) return false;                       // 클럽 회원이 아니면 여기서 끝
+  if (!eid) return false;                        // 공용 대진은 임원만
+  const ev = db.prepare('SELECT tag, created_by FROM club_events WHERE id=? AND club_id=?')
+    .get(eid, cid);
+  return !!(ev && ev.tag === '번개' && String(ev.created_by) === String(uid));
+}
 app.get('/clubs/:id/bracket2', auth, (req, res) => {
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
@@ -1360,12 +1375,13 @@ function cbLog(cid, data, tag) {                               // 같은 날짜�
     .run(cid, String(data.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
       JSON.stringify(data), now(), tag || '정기'); } catch (e) {}
 }
-app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원만
+app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 — 임원 또는 번개 주최자
   const cid = +req.params.id;
-  const role = cbRole(cid, req.uid);
-  if (role !== 'owner' && role !== 'officer') return res.status(403).json({ error: 'officer_only' });
-  const data = req.body || {};
   const eid = evOf(req);
+  if (!cbCanEdit(cid, req.uid, eid))
+    return res.status(403).json({ error: 'officer_only',
+      message: '대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요' });
+  const data = req.body || {};
   if (eid) {
     db.prepare(`INSERT INTO club_brackets_ev (club_id,event_id,data,updated_at) VALUES (?,?,?,?)
       ON CONFLICT(club_id,event_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
@@ -1614,6 +1630,11 @@ function liveActivityBroadcast(data, phase, extra) {
     const next = (data.games || []).find(g => g.r === round + 1 &&
       [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid));
     const court = mine ? (mine.playCourt || mine.c || null) : null;
+    /* 카드 아래 칸에 쓸 값들 — 앱이 옵셔널로 받으므로 없으면 그냥 빠집니다 */
+    const nm = t => (t || []).map(p => (p && p.id === uid) ? '나' : ((p && p.name) || ''))
+      .filter(Boolean).join(' · ');
+    const iAmA = mine && (mine.teamA || []).some(p => p && p.id === uid);
+    const finAt = tb.startedAt + rounds * cyc - swap * 60000;
     liveActivityPush(uid, {
       phase, round, rounds, court,
       endsAt: Math.floor((phase === 'swap' ? swapEnd : playEnd) / 1000),
@@ -1621,6 +1642,10 @@ function liveActivityBroadcast(data, phase, extra) {
         ? (next ? `${next.playCourt || next.c}번 코트로` : `${round + 1}회차는 쉬어요`)
         : (court ? `${court}번 코트` : `${round}회차는 쉬어요`),
       sub: `${round}/${rounds}회차`,
+      mine:   mine ? nm(iAmA ? mine.teamA : mine.teamB) : '',
+      theirs: mine ? nm(iAmA ? mine.teamB : mine.teamA) : '',
+      next:   next ? (next.playCourt || next.c || null) : null,
+      endAll: rounds ? Math.floor(finAt / 1000) : 0,
       ...(extra || {}),
     });
   });
@@ -1631,11 +1656,18 @@ function liveActivityAskScore(data, g) {
   const court = g.playCourt || g.c || null;
   [...(g.teamA || []), ...(g.teamB || [])].forEach(p => {
     if (!p || !p.id) return;
+    /* 카드에 <누구와 뛴 경기인지>가 있어야 여러 코트가 도는 날 헷갈리지 않는다 */
+    const nm = t => (t || []).map(q => (q && q.id === p.id) ? '나' : ((q && q.name) || ''))
+      .filter(Boolean).join(' · ');
+    const iAmA = (g.teamA || []).some(q => q && q.id === p.id);
     liveActivityPush(p.id, {
       phase: 'score', round: g.r || 0, rounds: (data.tb && data.tb.rounds) || 0,
       court, endsAt: 0, alert: 1,
       title: court ? `${court}번 코트 점수를 넣어주세요` : '점수를 넣어주세요',
       sub: `${g.r || ''}회차`,
+      mine:   nm(iAmA ? g.teamA : g.teamB),
+      theirs: nm(iAmA ? g.teamB : g.teamA),
+      next: null, endAll: 0,
     });
   });
 }
