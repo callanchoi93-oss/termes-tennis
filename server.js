@@ -1540,13 +1540,32 @@ app.delete('/me/live-activity', auth, (req, res) => {
 /* ── APNs ──
    http2 는 node 기본 모듈이라 새로 깔 것이 없다.
    인증은 p8 키로 만든 ES256 JWT — 한 시간마다 새로 만든다. */
+/* p8 키를 담는 변수 이름은 곳마다 다르다(APNS_KEY · APNS_P8 · APNS_PRIVATE_KEY).
+   이름을 바꾸게 하느니 셋 다 받는다. */
+function apnsKeyFromEnv() {
+  const raw = process.env.APNS_KEY || process.env.APNS_P8
+    || process.env.APNS_PRIVATE_KEY || process.env.APNS_AUTH_KEY || '';
+  if (!raw) return '';
+  let k = String(raw).trim();
+  /* 환경변수 칸에는 줄바꿈이 \n 글자로 들어가는 일이 흔하다 */
+  if (k.includes('\\n')) k = k.replace(/\\n/g, '\n');
+  /* 헤더 없이 본문만 붙여넣은 경우도 살린다 */
+  if (!k.includes('BEGIN')) {
+    const body = k.replace(/\s+/g, '').match(/.{1,64}/g) || [];
+    k = `-----BEGIN PRIVATE KEY-----\n${body.join('\n')}\n-----END PRIVATE KEY-----`;
+  }
+  return k;
+}
 const APNS = {
-  key: process.env.APNS_P8 || '',            // -----BEGIN PRIVATE KEY----- …
-  keyId: process.env.APNS_KEY_ID || '',
-  teamId: process.env.APNS_TEAM_ID || '',
-  bundle: process.env.APNS_BUNDLE_ID || '',  // 예: com.matsu.app
-  host: (process.env.NODE_ENV === 'production' || process.env.RAILWAY_SERVICE_NAME)
-    ? 'api.push.apple.com' : 'api.sandbox.push.apple.com',
+  key: apnsKeyFromEnv(),
+  keyId: (process.env.APNS_KEY_ID || '').trim(),
+  teamId: (process.env.APNS_TEAM_ID || '').trim(),
+  /* 번들 ID 에 접미사를 붙여 적어둔 경우가 있어 걷어낸다 */
+  bundle: (process.env.APNS_BUNDLE_ID || '').trim()
+    .replace(/\.push-type\.liveactivity$/, ''),
+  host: (process.env.APNS_HOST || '').trim()
+    || ((process.env.NODE_ENV === 'production' || process.env.RAILWAY_SERVICE_NAME)
+      ? 'api.push.apple.com' : 'api.sandbox.push.apple.com'),
 };
 const apnsReady = () => !!(APNS.key && APNS.keyId && APNS.teamId && APNS.bundle);
 let _apnsJwt = null, _apnsJwtAt = 0;
@@ -1558,7 +1577,7 @@ function apnsToken() {
   const head = b64({ alg: 'ES256', kid: APNS.keyId });
   const body = b64({ iss: APNS.teamId, iat: Math.floor(Date.now() / 1000) });
   const sig = crypto.createSign('SHA256').update(`${head}.${body}`)
-    .sign({ key: APNS.key.replace(/\\n/g, '\n'), dsaEncoding: 'ieee-p1363' })
+    .sign({ key: APNS.key, dsaEncoding: 'ieee-p1363' })
     .toString('base64url');
   _apnsJwt = `${head}.${body}.${sig}`; _apnsJwtAt = Date.now();
   return _apnsJwt;
@@ -1654,10 +1673,29 @@ function liveActivityAskScore(data, g) {
     });
   });
 }
-app.get('/admin/apns-status', admin, (_req, res) => res.json({
-  ready: apnsReady(), host: APNS.host, bundle: APNS.bundle,
-  tokens: db.prepare('SELECT COUNT(*) c FROM live_activities').get().c,
-}));
+/* 무엇이 비었는지 짚어 준다 — ready:false 만 보면 넷 중 어디가 문제인지 모른다 */
+app.get('/admin/apns-status', admin, (_req, res) => {
+  const miss = [];
+  if (!APNS.key) miss.push('APNS_KEY (또는 APNS_P8)');
+  if (!APNS.keyId) miss.push('APNS_KEY_ID');
+  if (!APNS.teamId) miss.push('APNS_TEAM_ID');
+  if (!APNS.bundle) miss.push('APNS_BUNDLE_ID');
+  let sign = null;
+  if (apnsReady()) { try { apnsToken(); sign = 'ok'; }
+    catch (e) { sign = '키를 읽지 못했어요 · ' + String(e.message || e).slice(0, 80); } }
+  res.json({
+    ready: apnsReady() && sign === 'ok',
+    missing: miss,
+    sign,
+    host: APNS.host,
+    bundle: APNS.bundle,
+    topic: APNS.bundle ? APNS.bundle + '.push-type.liveactivity' : null,
+    key_source: process.env.APNS_KEY ? 'APNS_KEY'
+      : process.env.APNS_P8 ? 'APNS_P8'
+      : process.env.APNS_PRIVATE_KEY ? 'APNS_PRIVATE_KEY' : null,
+    tokens: db.prepare('SELECT COUNT(*) c FROM live_activities').get().c,
+  });
+});
 
 /* ══════════ 애플워치 · 단축어 ══════════
    워치에는 브라우저가 없어 웹앱을 띄울 수 없다. 네이티브 워치 앱은 iOS 앱부터
