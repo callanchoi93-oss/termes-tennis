@@ -1375,6 +1375,10 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
       ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
       .run(cid, JSON.stringify(data), now());
   }
+  /* 시작 버튼을 누르면 tb 가 생긴다 — 그때 잠금화면 카드를 세운다.
+     이후로는 회차가 넘어갈 때만 밀면 되고, 초 단위는 앱이 스스로 센다. */
+  try { if (data && data.tb && data.tb.startedAt) liveActivityBroadcast(data, tbPhaseOf(data)); }
+  catch (e) {}
   /* 어느 모임의 대진인지 알면 그 모임의 종류(정기/번개)를 로그에 함께 남긴다 */
   let tag = '정기';
   if (eid) {
@@ -1451,7 +1455,325 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?').run(JSON.stringify(data), now(), cid);
   cbLog(cid, data);
   try { notifyNextUp(cid, data, g); } catch (e) {}   // 알림이 실패해도 점수 저장은 끝난 일이다
+  /* 점수가 들어왔으니 그 넷의 잠금화면 카드는 다시 시계로 돌린다 */
+  try { liveActivityBroadcast(data, tbPhaseOf(data)); } catch (e) {}
   res.json({ ok: true, game: g });
+});
+
+/* 지금이 경기 중인지 전환 중인지 — 서버도 같은 셈을 한다 */
+function tbPhaseOf(data) {
+  const tb = data && data.tb; if (!tb || !tb.startedAt) return 'done';
+  const unit = (data.tbUnit || 25), swap = (data.tbSwap || 5);
+  const cyc = (unit + swap) * 60000;
+  const el = Date.now() - tb.startedAt;
+  const idx = Math.floor(el / cyc);
+  if (tb.rounds && idx >= tb.rounds) return 'done';
+  return (el - idx * cyc) < unit * 60000 ? 'play' : 'swap';
+}
+/* 회차가 넘어가는 순간을 잡아 카드를 밀어준다.
+   폰이 꺼져 있어도 시계는 흐르므로, 보내는 건 <회차가 바뀌었다>는 사실뿐이다. */
+const _tbSeen = {};
+setInterval(() => {
+  if (!apnsReady()) return;
+  try {
+    const rows = [
+      ...db.prepare('SELECT club_id, event_id, data FROM club_brackets_ev').all(),
+      ...db.prepare('SELECT club_id, NULL event_id, data FROM club_brackets').all(),
+    ];
+    rows.forEach(row => {
+      let data; try { data = JSON.parse(row.data); } catch (e) { return; }
+      const tb = data.tb; if (!tb || !tb.startedAt) return;
+      if (Date.now() - tb.startedAt > 8 * 3600e3) return;   // 지난 대진은 건드리지 않는다
+      const key = `${row.club_id}:${row.event_id || 0}`;
+      const unit = (data.tbUnit || 25), swap = (data.tbSwap || 5);
+      const cyc = (unit + swap) * 60000;
+      const idx = Math.floor((Date.now() - tb.startedAt) / cyc);
+      const phase = tbPhaseOf(data);
+      const mark = `${idx}:${phase}`;
+      if (_tbSeen[key] === mark) return;
+      _tbSeen[key] = mark;
+      liveActivityBroadcast(data, phase);
+      /* 전환이 시작됐다는 건 방금 회차가 끝났다는 뜻 — 빈 점수를 채워달라고 한다 */
+      if (phase === 'swap') (data.games || [])
+        .filter(g => g.r === idx + 1 && (g.sa == null || g.sb == null))
+        .forEach(g => liveActivityAskScore(data, g));
+    });
+  } catch (e) {}
+}, 20000);
+
+/* ══════════ 라이브 액티비티 (ActivityKit) ══════════
+   잠금화면과 다이나믹 아일랜드에 회차 시계를 띄운다.
+
+   중요한 점 하나 — 타이머는 서버가 매초 보내지 않는다.
+   ActivityKit 의 Text(timerInterval:) 이 <끝나는 시각>만 받으면 스스로 흐른다.
+   그래서 서버가 푸시를 보내는 때는 회차가 넘어갈 때뿐이다(5회차면 하루 다섯 번).
+
+   ── 앱(Swift) 쪽 계약 ──
+   ActivityAttributes.ContentState 는 아래 값을 그대로 받는다:
+     phase   "play" | "swap" | "score" | "done"
+     round   현재 회차          rounds  전체 회차
+     court   내 코트 번호(없으면 null)
+     endsAt  이 구간이 끝나는 시각(초 단위 epoch) → Text(timerInterval:)
+     title   한 줄 문구         sub     보조 문구
+   앱은 시작할 때 pushToken 을 받아 POST /me/live-activity 로 보낸다. */
+db.exec(`CREATE TABLE IF NOT EXISTS live_activities (
+  token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, club_id INTEGER,
+  created_at INTEGER, updated_at INTEGER);`);
+
+app.post('/me/live-activity', auth, (req, res) => {
+  const token = String((req.body || {}).token || '').trim();
+  const club_id = intOrNull((req.body || {}).club_id);
+  if (!token) return res.status(400).json({ error: 'token_required' });
+  db.prepare(`INSERT INTO live_activities (token,user_id,club_id,created_at,updated_at)
+    VALUES (?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET
+      user_id=excluded.user_id, club_id=excluded.club_id, updated_at=excluded.updated_at`)
+    .run(token, req.uid, club_id, now(), now());
+  res.json({ ok: true });
+});
+app.delete('/me/live-activity', auth, (req, res) => {
+  const token = String((req.body || {}).token || req.query.token || '').trim();
+  if (token) db.prepare('DELETE FROM live_activities WHERE token=?').run(token);
+  else db.prepare('DELETE FROM live_activities WHERE user_id=?').run(req.uid);
+  res.json({ ok: true });
+});
+
+/* ── APNs ──
+   http2 는 node 기본 모듈이라 새로 깔 것이 없다.
+   인증은 p8 키로 만든 ES256 JWT — 한 시간마다 새로 만든다. */
+const APNS = {
+  key: process.env.APNS_P8 || '',            // -----BEGIN PRIVATE KEY----- …
+  keyId: process.env.APNS_KEY_ID || '',
+  teamId: process.env.APNS_TEAM_ID || '',
+  bundle: process.env.APNS_BUNDLE_ID || '',  // 예: com.matsu.app
+  host: (process.env.NODE_ENV === 'production' || process.env.RAILWAY_SERVICE_NAME)
+    ? 'api.push.apple.com' : 'api.sandbox.push.apple.com',
+};
+const apnsReady = () => !!(APNS.key && APNS.keyId && APNS.teamId && APNS.bundle);
+let _apnsJwt = null, _apnsJwtAt = 0;
+function apnsToken() {
+  if (_apnsJwt && Date.now() - _apnsJwtAt < 50 * 60000) return _apnsJwt;
+  const crypto = require('crypto');
+  const b64 = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o))
+    .toString('base64url');
+  const head = b64({ alg: 'ES256', kid: APNS.keyId });
+  const body = b64({ iss: APNS.teamId, iat: Math.floor(Date.now() / 1000) });
+  const sig = crypto.createSign('SHA256').update(`${head}.${body}`)
+    .sign({ key: APNS.key.replace(/\\n/g, '\n'), dsaEncoding: 'ieee-p1363' })
+    .toString('base64url');
+  _apnsJwt = `${head}.${body}.${sig}`; _apnsJwtAt = Date.now();
+  return _apnsJwt;
+}
+function apnsSend(token, payload, { event = 'update', priority = 10 } = {}) {
+  return new Promise(resolve => {
+    if (!apnsReady()) return resolve({ ok: false, why: 'not_configured' });
+    let http2; try { http2 = require('http2'); } catch (e) { return resolve({ ok: false }); }
+    const client = http2.connect(`https://${APNS.host}`);
+    const body = Buffer.from(JSON.stringify(payload));
+    const req = client.request({
+      ':method': 'POST', ':path': `/3/device/${token}`,
+      'authorization': `bearer ${apnsToken()}`,
+      'apns-topic': `${APNS.bundle}.push-type.liveactivity`,
+      'apns-push-type': 'liveactivity',
+      'apns-priority': String(priority),
+      'apns-expiration': '0',
+      'content-type': 'application/json',
+      'content-length': body.length,
+    });
+    let status = 0, txt = '';
+    req.on('response', h => { status = +h[':status']; });
+    req.setEncoding('utf8');
+    req.on('data', d => { txt += d; });
+    req.on('end', () => { client.close();
+      /* 410 은 <이 액티비티는 끝났다>는 뜻이다 — 토큰을 지운다 */
+      if (status === 410 || /BadDeviceToken|Unregistered/.test(txt))
+        try { db.prepare('DELETE FROM live_activities WHERE token=?').run(token); } catch (e) {}
+      resolve({ ok: status === 200, status, txt });
+    });
+    req.on('error', () => { try { client.close(); } catch (e) {} resolve({ ok: false }); });
+    req.end(body);
+  });
+}
+/* 한 사람에게 지금 상태를 보낸다 */
+function liveActivityPush(uid, state, { end = false } = {}) {
+  if (!apnsReady()) return;
+  const rows = db.prepare('SELECT token FROM live_activities WHERE user_id=?').all(uid);
+  if (!rows.length) return;
+  const payload = {
+    aps: {
+      timestamp: Math.floor(Date.now() / 1000),
+      event: end ? 'end' : 'update',
+      'content-state': state,
+      ...(end ? { 'dismissal-date': Math.floor(Date.now() / 1000) + 300 } : {}),
+      /* 잠금화면이 꺼져 있어도 한 줄 알리고 싶을 때만 넣는다 */
+      ...(state.alert ? { alert: { title: state.title, body: state.sub || '' } } : {}),
+    },
+  };
+  rows.forEach(r => { apnsSend(r.token, payload, { event: end ? 'end' : 'update' }); });
+}
+/* 대진이 바뀌었을 때 그 대진에 있는 사람 모두에게 — 회차가 넘어갈 때 부른다 */
+function liveActivityBroadcast(data, phase, extra) {
+  if (!apnsReady() || !data) return;
+  const tb = data.tb; if (!tb || !tb.startedAt) return;
+  const unit = (data.tbUnit || 25), swap = (data.tbSwap || 5);
+  const cyc = (unit + swap) * 60000;
+  const idx = Math.floor((Date.now() - tb.startedAt) / cyc);
+  const round = idx + 1, rounds = tb.rounds || 0;
+  const playEnd = tb.startedAt + idx * cyc + unit * 60000;
+  const swapEnd = tb.startedAt + (idx + 1) * cyc;
+  const ids = new Set();
+  (data.games || []).forEach(g => [...(g.teamA || []), ...(g.teamB || [])]
+    .forEach(p => { if (p && p.id) ids.add(p.id); }));
+  ids.forEach(uid => {
+    const mine = (data.games || []).find(g => g.r === round &&
+      [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid));
+    const next = (data.games || []).find(g => g.r === round + 1 &&
+      [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid));
+    const court = mine ? (mine.playCourt || mine.c || null) : null;
+    liveActivityPush(uid, {
+      phase, round, rounds, court,
+      endsAt: Math.floor((phase === 'swap' ? swapEnd : playEnd) / 1000),
+      title: phase === 'swap'
+        ? (next ? `${next.playCourt || next.c}번 코트로` : `${round + 1}회차는 쉬어요`)
+        : (court ? `${court}번 코트` : `${round}회차는 쉬어요`),
+      sub: `${round}/${rounds}회차`,
+      ...(extra || {}),
+    });
+  });
+}
+/* 점수를 넣어달라고 — 그 경기 넷에게만 */
+function liveActivityAskScore(data, g) {
+  if (!apnsReady() || !g) return;
+  const court = g.playCourt || g.c || null;
+  [...(g.teamA || []), ...(g.teamB || [])].forEach(p => {
+    if (!p || !p.id) return;
+    liveActivityPush(p.id, {
+      phase: 'score', round: g.r || 0, rounds: (data.tb && data.tb.rounds) || 0,
+      court, endsAt: 0, alert: 1,
+      title: court ? `${court}번 코트 점수를 넣어주세요` : '점수를 넣어주세요',
+      sub: `${g.r || ''}회차`,
+    });
+  });
+}
+app.get('/admin/apns-status', admin, (_req, res) => res.json({
+  ready: apnsReady(), host: APNS.host, bundle: APNS.bundle,
+  tokens: db.prepare('SELECT COUNT(*) c FROM live_activities').get().c,
+}));
+
+/* ══════════ 애플워치 · 단축어 ══════════
+   워치에는 브라우저가 없어 웹앱을 띄울 수 없다. 네이티브 워치 앱은 iOS 앱부터
+   만들어야 해서 몇 달이 걸린다. 그동안 <애플 단축어>로 점수만 넣게 한다.
+   단축어는 워치에서 돌고 HTTPS 요청을 보낼 수 있다.
+
+   핵심은 <경기를 고르지 않아도 되게> 만드는 것이다.
+   손목에서 코트와 회차를 고르게 하면 폰을 꺼내는 것보다 느리다.
+   지금 회차에 내가 뛴 경기는 하나뿐이므로 서버가 찾는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS watch_tokens (
+  token TEXT PRIMARY KEY, user_id INTEGER NOT NULL,
+  created_at INTEGER, last_used INTEGER);`);
+
+app.get('/me/watch-token', auth, (req, res) => {
+  const r = db.prepare('SELECT token, created_at, last_used FROM watch_tokens WHERE user_id=?')
+    .get(req.uid);
+  res.json(r || { token: null });
+});
+app.post('/me/watch-token', auth, (req, res) => {
+  /* 한 사람에 하나 — 새로 만들면 옛 토큰은 못 쓰게 된다(워치를 잃어버렸을 때) */
+  db.prepare('DELETE FROM watch_tokens WHERE user_id=?').run(req.uid);
+  const token = rid() + rid();
+  db.prepare('INSERT INTO watch_tokens (token,user_id,created_at) VALUES (?,?,?)')
+    .run(token, req.uid, now());
+  res.json({ token });
+});
+app.delete('/me/watch-token', auth, (req, res) => {
+  db.prepare('DELETE FROM watch_tokens WHERE user_id=?').run(req.uid);
+  res.json({ ok: true });
+});
+
+/* 지금 내가 점수를 넣어야 할 경기를 찾는다.
+   ① 내가 속한 클럽들의 오늘 대진을 본다
+   ② 시계가 돌고 있으면 <지금 회차 이하>에서, 아니면 아무 회차에서
+   ③ 내가 뛰었고 점수가 빈 경기 중 가장 최근 회차 하나 */
+function watchFindGame(uid) {
+  const clubs = db.prepare(`SELECT club_id FROM club_members
+    WHERE user_id=? AND (status IS NULL OR status='active')`).all(uid).map(r => r.club_id);
+  for (const cid of clubs) {
+    const rows = [
+      ...db.prepare('SELECT data, event_id FROM club_brackets_ev WHERE club_id=? ORDER BY updated_at DESC LIMIT 3').all(cid),
+      ...db.prepare('SELECT data, NULL event_id FROM club_brackets WHERE club_id=?').all(cid),
+    ];
+    for (const row of rows) {
+      let data; try { data = JSON.parse(row.data); } catch (e) { continue; }
+      const games = data.games || [];
+      if (!games.length) continue;
+      /* 시계가 돌고 있으면 지금 몇 회차인지 계산한다 */
+      let curR = null;
+      const tb = data.tb;
+      if (tb && tb.startedAt) {
+        const unit = (data.tbUnit || 25), swap = (data.tbSwap || 5);
+        const cyc = (unit + swap) * 60000;
+        const idx = Math.floor((Date.now() - tb.startedAt) / cyc);
+        if (idx >= 0) curR = Math.min(idx + 1, tb.rounds || 99);
+      }
+      const mine = games
+        .map((g, gi) => ({ g, gi }))
+        .filter(({ g }) => (g.sa == null || g.sb == null)
+          && [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid)
+          && (curR == null || !g.r || g.r <= curR))
+        .sort((a, b) => (b.g.r || 0) - (a.g.r || 0));
+      if (mine.length) return { cid, event_id: row.event_id, data, ...mine[0], curR, count: mine.length };
+    }
+  }
+  return null;
+}
+function watchAuth(req, res) {
+  const t = String((req.body && req.body.token) || req.query.token || '').trim();
+  if (!t) { res.status(401).json({ error: 'token_required', message: '토큰이 없어요' }); return null; }
+  const row = db.prepare('SELECT user_id FROM watch_tokens WHERE token=?').get(t);
+  if (!row) { res.status(401).json({ error: 'bad_token', message: '연결이 끊겼어요 · 앱에서 다시 연결해 주세요' }); return null; }
+  db.prepare('UPDATE watch_tokens SET last_used=? WHERE token=?').run(now(), t);
+  return row.user_id;
+}
+/* 지금 넣을 경기가 무엇인지 — 단축어가 먼저 물어보고 화면에 보여준다 */
+app.get('/watch/now', (req, res) => {
+  const uid = watchAuth(req, res); if (!uid) return;
+  const f = watchFindGame(uid);
+  if (!f) return res.json({ ok: false, message: '지금 넣을 점수가 없어요' });
+  const nm = t => (t || []).map(p => p && p.name).filter(Boolean).join('·');
+  const g = f.g;
+  const me = [...(g.teamA || [])].some(p => p && p.id === uid);
+  res.json({ ok: true, round: g.r || null, court: g.playCourt || g.c || null,
+    us: nm(me ? g.teamA : g.teamB), them: nm(me ? g.teamB : g.teamA),
+    more: f.count - 1 });
+});
+/* 점수 넣기 — 단축어가 "6" 과 "3" 을 보낸다 */
+app.post('/watch/score', (req, res) => {
+  const uid = watchAuth(req, res); if (!uid) return;
+  const us = Math.max(0, Math.min(9, parseInt((req.body || {}).us, 10) || 0));
+  const them = Math.max(0, Math.min(9, parseInt((req.body || {}).them, 10) || 0));
+  if (us === 0 && them === 0)
+    return res.status(400).json({ ok: false, message: '0 : 0 은 저장할 수 없어요' });
+  const f = watchFindGame(uid);
+  if (!f) return res.status(404).json({ ok: false, message: '지금 넣을 점수가 없어요' });
+  const { cid, event_id, data, g } = f;
+  /* 나는 어느 편인가 — 워치는 <우리>와 <상대>로만 말한다 */
+  const inA = (g.teamA || []).some(p => p && p.id === uid);
+  g.sa = inA ? us : them;
+  g.sb = inA ? them : us;
+  g.by = uid; g.at = now(); g.atMs = Date.now(); g.byWatch = 1;
+  if (event_id) db.prepare('UPDATE club_brackets_ev SET data=?, updated_at=? WHERE club_id=? AND event_id=?')
+    .run(JSON.stringify(data), now(), cid, event_id);
+  else db.prepare('UPDATE club_brackets SET data=?, updated_at=? WHERE club_id=?')
+    .run(JSON.stringify(data), now(), cid);
+  try { cbLog(cid, data); } catch (e) {}
+  try { notifyNextUp(cid, data, g); } catch (e) {}
+  /* 다음에 할 일을 함께 돌려준다 — 워치 화면에 그대로 뜬다 */
+  const next = (data.games || []).filter(x => (x.sa == null || x.sb == null)
+    && [...(x.teamA || []), ...(x.teamB || [])].some(p => p && p.id === uid))
+    .sort((a, b) => (a.r || 0) - (b.r || 0))[0];
+  res.json({ ok: true, score: `${us} : ${them}`,
+    court: g.playCourt || g.c || null, round: g.r || null,
+    next: next ? { round: next.r || null, court: next.playCourt || next.c || null } : null,
+    message: `${us} : ${them} 기록했어요` });
 });
 
 /* 점수가 들어오면 그 코트의 <다음 차례> 네 명에게 알린다.
