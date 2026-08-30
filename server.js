@@ -1778,6 +1778,93 @@ app.get('/watch/now', (req, res) => {
     us: nm(me ? g.teamA : g.teamB), them: nm(me ? g.teamB : g.teamA),
     more: f.count - 1 });
 });
+/* ══════════ 워치 앱 · 지금 상태 한 벌 ══════════
+   컴플리케이션과 Smart Stack 위젯이 30초에 한 번 부르는 자리다.
+   초 단위는 워치가 스스로 센다 — endsAt 만 주면 Text(timerInterval:) 이 흐른다.
+   그래서 자주 불러도 값이 바뀌는 때는 회차가 넘어갈 때뿐이다. */
+function watchFindRunning(uid) {
+  const clubs = db.prepare(`SELECT club_id FROM club_members
+    WHERE user_id=? AND (status IS NULL OR status='active')`).all(uid).map(r => r.club_id);
+  for (const cid of clubs) {
+    const rows = [
+      ...db.prepare('SELECT data, event_id FROM club_brackets_ev WHERE club_id=? ORDER BY updated_at DESC LIMIT 3').all(cid),
+      ...db.prepare('SELECT data, NULL event_id FROM club_brackets WHERE club_id=?').all(cid),
+    ];
+    for (const row of rows) {
+      let data; try { data = JSON.parse(row.data); } catch (e) { continue; }
+      const tb = data.tb; if (!tb || !tb.startedAt) continue;
+      if (Date.now() - tb.startedAt > 8 * 3600e3) continue;   // 지난 대진은 건드리지 않는다
+      const inIt = (data.games || []).some(g =>
+        [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid));
+      if (inIt) return { cid, data };
+    }
+  }
+  return null;
+}
+app.get('/watch/state', (req, res) => {
+  const uid = watchAuth(req, res); if (!uid) return;
+  const out = { ok: true, on: false };
+
+  const f = watchFindRunning(uid);
+  if (f) {
+    const { cid, data } = f, tb = data.tb;
+    const unit = (data.tbUnit || 25), swap = (data.tbSwap || 5);
+    const cyc = (unit + swap) * 60000;
+    const rounds = tb.rounds || 0;
+    const idx = Math.floor((Date.now() - tb.startedAt) / cyc);
+    const round = idx + 1;
+    const done = rounds > 0 && idx >= rounds;
+    const into = (Date.now() - tb.startedAt) - idx * cyc;
+    const playing = into < unit * 60000;
+    const gs = data.games || [];
+    const inG = g => [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === uid);
+    const nm = t => (t || []).map(p => (p && p.id === uid) ? '나' : ((p && p.name) || ''))
+      .filter(Boolean).join(' · ');
+    const g = gs.find(x => x.r === round && inG(x));
+    const gn = gs.find(x => x.r === round + 1 && inG(x));
+    const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+    Object.assign(out, {
+      on: !done,
+      club: (club && club.name) || '',
+      phase: done ? 'done' : (playing ? 'play' : 'swap'),
+      round: Math.min(round, rounds || round), rounds,
+      court: g ? (g.playCourt || g.c || null) : null,
+      next:  gn ? (gn.playCourt || gn.c || null) : null,
+      endsAt: Math.floor((tb.startedAt + idx * cyc + (playing ? unit * 60000 : cyc)) / 1000),
+      endAll: rounds ? Math.floor((tb.startedAt + rounds * cyc - swap * 60000) / 1000) : 0,
+      mine:   g ? nm((g.teamA || []).some(p => p && p.id === uid) ? g.teamA : g.teamB) : '',
+      theirs: g ? nm((g.teamA || []).some(p => p && p.id === uid) ? g.teamB : g.teamA) : '',
+      club_id: cid,
+    });
+  }
+
+  /* 시즌 순위 — 대진이 없는 날에도 컴플리케이션에 띄울 것이 있어야 한다 */
+  try {
+    const cid = out.club_id || db.prepare(`SELECT club_id FROM club_members
+      WHERE user_id=? AND (status IS NULL OR status='active') LIMIT 1`).get(uid)?.club_id;
+    if (cid) {
+      const rows = db.prepare(`SELECT u.id FROM club_members cm JOIN users u ON u.id=cm.user_id
+        WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+        ORDER BY u.rating DESC, u.name`).all(cid);
+      const pos = rows.findIndex(r => r.id === uid);
+      if (pos >= 0) out.rank = { pos: pos + 1, of: rows.length };
+      if (!out.club) {
+        const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+        out.club = (c && c.name) || '';
+      }
+      /* 다음 모임 — 오늘 이후 가장 가까운 하나 */
+      const ev = db.prepare(`SELECT id, title, date, time, tag FROM club_events
+        WHERE club_id=? AND date >= ? ORDER BY date, time LIMIT 1`).get(cid, ymdOf(Date.now()));
+      if (ev) {
+        const cnt = db.prepare('SELECT COUNT(*) c FROM event_attendees WHERE event_id=?').get(ev.id);
+        out.event = { date: ev.date, time: ev.time || '', tag: ev.tag || '',
+                      title: ev.title || '', count: (cnt && cnt.c) || 0 };
+      }
+    }
+  } catch (e) {}
+
+  res.json(out);
+});
 /* 점수 넣기 — 단축어가 "6" 과 "3" 을 보낸다 */
 app.post('/watch/score', (req, res) => {
   const uid = watchAuth(req, res); if (!uid) return;
