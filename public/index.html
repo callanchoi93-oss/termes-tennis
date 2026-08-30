@@ -1270,7 +1270,7 @@
   h2.t{ letter-spacing:-0.03em; font-size:23px; }
   .sub{ margin-bottom:18px; }
   .ch{ font-size:14px; }
-  .note{ background:#f3f5f8; border-radius:12px; padding:10px 13px; margin-top:10px; text-align:left; }
+  .note{ background:#fff; border:1px solid #eef1f4; border-radius:12px; padding:10px 13px; margin-top:10px; text-align:left; }
   /* 시트 손잡이 */
   #ov #sheet, .sheet{ border-top-left-radius:22px; border-top-right-radius:22px; }
   .sh-top h3{ font-size:18px; letter-spacing:-0.02em; }
@@ -1418,7 +1418,7 @@
   /* — warm utility surfaces — */
   .opsbtn{ background:#e2e8ee; border-color:#d4d9de; }
   .opsbtn:active{ background:#d9dee4; }
-  .note{ background:#e2e8ee; }
+  .note{ background:#fff; border-color:#eef1f4; }
   .miniseg div{ background:#e6e9ec; color:#636e7a; }
   .miniseg div.on{ background:var(--ink); color:#fff; }
   .roletog{ background:#e6e9ec; }
@@ -18749,9 +18749,10 @@ function tbCard(){
         ${hh} · 이 회차가 끝나는 시각</div>
       ${tbRail(n)}
       <div style="font-size:12px;color:#57606b;font-weight:500;margin-top:12px;padding-top:11px;
-        border-top:1px solid var(--line);line-height:1.6">${
+        border-top:1px solid var(--line);line-height:1.65;letter-spacing:-.02em;
+        word-break:keep-all">${
         n.left<=3*60000 ? '<b style="color:var(--ink);font-weight:700">3분 남았어요</b> · 지금 점수를 정리해 주세요'
-        : `시간이 되면 그때 점수로 끝나요 · 모든 경기는 <b style="color:var(--ink);font-weight:700">${
+        : `시간이 되면 그때 점수로 끝나요<span style="color:#d7dce1;padding:0 5px">·</span>모든 경기는 <b style="color:var(--ink);font-weight:800;letter-spacing:-.03em">${
             tbAMPM(n.finAt)}</b>에 끝납니다`}</div>
       ${tbAddNote(n)}
       ${mine ? `<button class="btn" style="margin-top:12px"
@@ -19306,13 +19307,15 @@ function drawCB2View(){
             ? Math.floor(leftMin/60)+'시간'+(leftMin%60?' '+(leftMin%60)+'분':'')
             : leftMin+'분';
           /* <남은 N회차>는 지금 것을 세는지 애매하다 — 진행 위치로 적는다 */
-          return `<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;
-              padding-top:9px;border-top:1px solid #e3e7eb">
-            <span style="font-size:11px;color:#7c858f">모든 경기는</span>
-            <span style="font-size:15px;font-weight:800;color:var(--coral-d);
-              letter-spacing:-.03em">${hhmm}</span>
-            <span style="font-size:11px;color:#7c858f">에 끝나요 ·
-              ${n.round}/${R}회차 · ${leftTxt} 남음</span></div>`;
+          /* flex + gap 으로 세 조각을 늘어놓으니 조사 「에」가 시각에서 떨어져
+             <오후 7시 21분   에 끝나요> 처럼 읽혔다. 한 줄 글로 흘려야
+             조사가 앞말에 붙는다. 시각만 굵게 키워 눈에 걸리게 한다. */
+          return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #eef1f4;
+              font-size:11.5px;font-weight:500;color:#7c858f;letter-spacing:-.02em;
+              line-height:1.65;word-break:keep-all">모든 경기는 <b style="font-size:14.5px;
+              font-weight:800;color:var(--coral-d);letter-spacing:-.035em">${hhmm}</b>에 끝나요<span
+              style="color:#d7dce1;padding:0 5px">·</span>${n.round}/${R}회차<span
+              style="color:#d7dce1;padding:0 5px">·</span>${leftTxt} 남음</div>`;
         }
         const e=cbEta(CB2.games||[], done, CB2.courts);
         if(!e){
