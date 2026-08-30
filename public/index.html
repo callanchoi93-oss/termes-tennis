@@ -30612,6 +30612,26 @@ window.matsuLiveToken = function(token){
   api('/me/live-activity',{method:'POST',
     body:JSON.stringify({token, club_id:clubId()||null})}).catch(()=>{});
 };
+/* ══════════ 워치에 열쇠 넘기기 ══════════
+   회원에게 열쇠를 복사시키던 화면을 없앴다 — 손목에서 글자를 넣는 일은
+   하지 말아야 할 일에 가깝다. 대신 앱이 조용히 만들어 워치로 밀어준다.
+   네이티브 셸이 없으면(웹으로 열었으면) 아무 일도 하지 않는다. */
+let WATCH_SENT = false;
+async function watchSync(){
+  if (WATCH_SENT) return;
+  const b = liveBridge(); if (!b) return;                 // 앱이 아니면 넘어간다
+  if (!(state.serverUser && state.serverUser.id)) return; // 로그인 전이면 나중에
+  try{
+    let r = await api('/me/watch-token');
+    if (!(r && r.token)) r = await api('/me/watch-token', { method:'POST' });
+    if (!(r && r.token)) return;
+    WATCH_SENT = true;
+    window.webkit.messageHandlers.matsuLive.postMessage({ action:'watch', token:r.token });
+  }catch(e){}
+}
+/* 앱을 열 때 한 번, 그리고 로그인 직후에 한 번 */
+setTimeout(()=>{ try{ watchSync(); }catch(e){} }, 4000);
+
 /* 시작 버튼을 누른 사람의 폰에서 액티비티를 세운다.
    초 단위는 앱이 스스로 센다 — 서버는 회차가 바뀔 때만 밀어준다. */
 /* 카드에 실어 보낼 값 한 벌 — liveStart 와 liveSync 가 같이 씁니다.
@@ -30644,6 +30664,7 @@ function liveStart(){
   LIVE_ON=true;
   LIVE_MARK=`${n.round}:${n.playing?'p':'s'}`;
   try{ b.start(livePayload(n)); }catch(e){ LIVE_ON=false; LIVE_MARK=''; }
+  try{ watchSync(); }catch(e){}
 }
 /* 회차·구간이 바뀌면 카드를 다시 세운다.
    원래는 서버 푸시에만 맡겨 두었는데, APNs 가 꺼져 있거나 푸시가 늦으면
@@ -31153,9 +31174,6 @@ function _renderMeCore(){
 
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openVerify()">
     <div><div style="font-size:14px;font-weight:500">본인·실력 인증 ${(state.verified.phone||state.verified.real||state.verified.skill)?'<span style="font-size:11px;color:#00b884;background:#e6f3ec;border-radius:6px;padding:2px 7px;font-weight:500">인증됨</span>':ic('idcard',18)}</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">휴대폰·실명·실력 인증으로 신뢰 올리기</div></div><div style="color:var(--coral-d);font-weight:600;font-size:18px">→</div></div>` : ``}
-  <div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openWatchSetup()">
-    <div><div style="font-size:14px;font-weight:500">애플워치로 점수 넣기 ⌚</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">단축어를 한 번 깔면 손목에서 바로 넣어요</div></div><div style="color:#c9ced4;font-size:17px">›</div>
-  </div>
   ${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openCareerStats()">
     <div><div style="font-size:14px;font-weight:500">${SP().n} 통산 기록 📈</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:3px">종목별 누적 스탯·하이라이트</div></div><div style="color:var(--coral-d);font-weight:600;font-size:18px">→</div></div>` : ``}
   </div>
