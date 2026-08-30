@@ -30605,7 +30605,7 @@ function liveBridge(){
   }catch(e){}
   return null;
 }
-let LIVE_ON=false;
+let LIVE_ON=false, LIVE_MARK='';
 /* 앱이 토큰을 돌려주면 서버에 등록한다 */
 window.matsuLiveToken = function(token){
   if(!token) return;
@@ -30614,28 +30614,41 @@ window.matsuLiveToken = function(token){
 };
 /* 시작 버튼을 누른 사람의 폰에서 액티비티를 세운다.
    초 단위는 앱이 스스로 센다 — 서버는 회차가 바뀔 때만 밀어준다. */
-function liveStart(){
-  const b=liveBridge(); if(!b || LIVE_ON) return;
-  const n=(typeof tbNow==='function') ? tbNow() : null;
-  if(!n || n.done) return;
+/* 카드에 실어 보낼 값 한 벌 — liveStart 와 liveSync 가 같이 씁니다.
+   한쪽만 고치면 시작할 때와 회차가 바뀔 때 카드 모양이 달라집니다. */
+function livePayload(n){
   const me=String((state.serverUser||{}).id||'');
-  const g=((CB2&&CB2.games)||[]).find(x=>x.r===n.round &&
-    [...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
+  const gs=(CB2&&CB2.games)||[];
+  const inG=g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me);
+  const nm=t=>(t||[]).map(p=>String(p.id)===me?'나':(p.name||'')).filter(Boolean).join(' · ');
+  const g=gs.find(x=>x.r===n.round && inG(x));
+  const gn=gs.find(x=>x.r===n.round+1 && inG(x));
   const court=g?(g.playCourt||g.c||null):null;
-  LIVE_ON=true;
-  try{ b.start({
+  const iAmA=g && (g.teamA||[]).some(p=>String(p.id)===me);
+  return {
     club: state.activeClub||'', phase: n.playing?'play':'swap',
     round: n.round, rounds: n.R, court,
     endsAt: Math.floor((n.playing?n.endAt:n.nextAt)/1000),
     title: court?`${court}번 코트`:`${n.round}회차는 쉬어요`,
     sub: `${n.round}/${n.R}회차`,
-  }); }catch(e){ LIVE_ON=false; }
+    mine:   g ? nm(iAmA?g.teamA:g.teamB) : '',
+    theirs: g ? nm(iAmA?g.teamB:g.teamA) : '',
+    next:   gn ? (gn.playCourt||gn.c||null) : null,
+    endAll: n.finAt ? Math.floor(n.finAt/1000) : 0,
+  };
+}
+function liveStart(){
+  const b=liveBridge(); if(!b || LIVE_ON) return;
+  const n=(typeof tbNow==='function') ? tbNow() : null;
+  if(!n || n.done) return;
+  LIVE_ON=true;
+  LIVE_MARK=`${n.round}:${n.playing?'p':'s'}`;
+  try{ b.start(livePayload(n)); }catch(e){ LIVE_ON=false; LIVE_MARK=''; }
 }
 /* 회차·구간이 바뀌면 카드를 다시 세운다.
    원래는 서버 푸시에만 맡겨 두었는데, APNs 가 꺼져 있거나 푸시가 늦으면
    카드가 0:00 에서 그대로 멈춘다. 앱이 열려 있는 동안에는 이쪽이 맞춘다.
    같은 회차·구간이면 아무 일도 하지 않으므로 자주 불러도 괜찮다. */
-let LIVE_MARK='';
 function liveSync(){
   const b=liveBridge(); if(!b) return;
   const n=(typeof tbNow==='function') ? tbNow() : null;
@@ -30644,18 +30657,8 @@ function liveSync(){
   const mark=`${n.round}:${n.playing?'p':'s'}`;
   if(mark===LIVE_MARK) return;                 // 안 바뀌었으면 그냥 둔다
   LIVE_MARK=mark;
-  const me=String((state.serverUser||{}).id||'');
-  const g=((CB2&&CB2.games)||[]).find(x=>x.r===n.round &&
-    [...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
-  const court=g?(g.playCourt||g.c||null):null;
   LIVE_ON=true;
-  try{ b.start({
-    club: state.activeClub||'', phase: n.playing?'play':'swap',
-    round: n.round, rounds: n.R, court,
-    endsAt: Math.floor((n.playing?n.endAt:n.nextAt)/1000),
-    title: court?`${court}번 코트`:`${n.round}회차는 쉬어요`,
-    sub: `${n.round}/${n.R}회차`,
-  }); }catch(e){}
+  try{ b.start(livePayload(n)); }catch(e){}
 }
 /* 대진 화면을 닫아도 카드는 계속 맞춰야 한다 —
    tbTick 은 시트가 닫히면 멈추므로 여기서 따로 돈다. */
