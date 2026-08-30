@@ -3432,8 +3432,12 @@
     font-family:inherit;cursor:pointer }
   /* 이름을 .ichips 로 두면 소개 <편집 시트>의 딱지(.ichip)까지 뚱뚱해진다 — 갈라 둔다 */
   .ifacts{ display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px }
-  .ifacts span{ display:inline-flex;align-items:center;gap:6px;background:var(--cream2);
-    border-radius:11px;padding:9px 12px;font-size:12.5px;font-weight:700 }
+  /* 회색으로 칠한 딱지 셋이 나란히 서면 화면 위쪽이 통째로 회색 덩어리가 된다 —
+     바로 아래 회비 카드가 흰 종이에 테두리라 두 규칙이 부딪혔다.
+     같은 규칙으로 맞춘다: 흰 바탕에 실선 하나. 칠은 코랄에만 남긴다. */
+  .ifacts span{ display:inline-flex;align-items:center;gap:6px;background:#fff;
+    border:1px solid var(--line);border-radius:11px;padding:8px 11px;
+    font-size:12.5px;font-weight:700 }
   .ifacts span i{ font-style:normal;font-size:10.5px;font-weight:600;color:var(--lgray) }
   .ifacts span.ed{ cursor:pointer }
   /* 회비 — 세 줄로 흩어 두면 <처음에 얼마 드나>를 머릿속에서 더해야 한다 */
@@ -3445,8 +3449,10 @@
     font-variant-numeric:tabular-nums }
   .ifeeg b em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);margin-left:1px }
   .ifeeg span{ display:block;font-size:10.5px;color:var(--lgray);font-weight:600;margin-top:5px }
-  .ifeef{ display:flex;align-items:center;gap:8px;padding:12px 15px;background:var(--cream2);
-    font-size:11.5px;font-weight:600;color:var(--gray) }
+  /* 합계 줄은 회색 띠로 깔았었다 — 카드 안에 색이 하나 더 생겨 아래쪽이 무거웠다.
+     같은 흰 종이로 두고 실선 하나로 나눈다. 눈에 걸려야 하는 건 코랄 숫자다. */
+  .ifeef{ display:flex;align-items:center;gap:8px;padding:12px 15px;background:#fff;
+    border-top:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--gray) }
   .ifeef b{ margin-left:auto;font-size:13.5px;font-weight:800;color:var(--coral-d);
     font-variant-numeric:tabular-nums }
   .isec{ display:flex;align-items:baseline;gap:8px;margin:22px 2px 8px }
@@ -12382,11 +12388,10 @@ function xcDrawGames(id){
           ? `<span onclick="xcScore(${id},${g.id})" class="cbsc${run?' live':''}">－ : －</span>`
           : `<span class="cbsc lock" onclick="toast('${g.round}회차는 ${at||'아직'} 시작이에요')">${xcLock(21)}</span>`;
       h+=`<div id="xcg${g.id}" class="${open?'':'xg2 lock'}"
-          style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;
+          style="border-radius:11px;padding:8px 10px;margin-top:6px;
           position:relative;overflow:hidden;${open?`
           background:${run?'#eff4fa':focused?'#f4f7fb':'#f3f4f6'}${
-          run?';box-shadow:inset 3px 0 0 var(--coral)'
-            : focused?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}`:''}">
+          (!run&&focused)?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}`:''}">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:var(--t1);font-weight:${run?600:500};color:${run?'var(--coral-d)':'#8b95a1'}">${g.round}회차</span>
           <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;
@@ -19294,28 +19299,22 @@ function drawCB2View(){
                    예전 추정식을 그대로 쓰면 <오후 11시 41분> 같은 값이 나왔다. */
         const n=tbIsOn()?tbNow():null;
         if(n){
-          const cyc=(TB_UNIT+TB_SWAP)*60000;
-          const R=CB2.tb.rounds||tbRoundsFor(CB2.tb.mins||120);
-          /* 마지막 회차는 전환 5분이 필요 없다 */
-          const endAt=CB2.tb.startedAt + R*cyc - TB_SWAP*60000;
-          const d=new Date(endAt);
-          const ap=d.getHours()<12?'오전':'오후';
-          const h12=d.getHours()%12||12;
-          const hhmm=`${ap} ${h12}시${d.getMinutes()?' '+d.getMinutes()+'분':''}`;
-          const leftMin=Math.max(0, Math.round((endAt-Date.now())/60000));
+          /* 예전엔 여기에 <모든 경기는 오후 10시 14분에 끝나요 · 1/6회차 · 2시간 47분 남음>
+             을 한 줄로 다 적었다. 그런데 바로 아래 회차 카드가 같은 말을 또 한다 —
+             끝나는 시각도, 전체 회차도, 남은 시간도. 같은 화면에서 두 번 읽히니
+             어느 쪽을 봐야 하는지 헷갈리고, 줄이 길어 <남음>만 다음 줄에 떨어졌다.
+             여기 남길 것은 아래 카드에 없는 것 하나뿐 — 오늘이 통째로 얼마나 남았나. */
+          const leftMin=Math.max(0, Math.round((n.finAt-Date.now())/60000));
+          if(n.done || !leftMin) return `<div style="margin-top:10px;padding-top:10px;
+            border-top:1px solid #eef1f4;font-size:11.5px;font-weight:500;color:#7c858f;
+            letter-spacing:-.02em">오늘 회차가 모두 끝났어요</div>`;
           const leftTxt = leftMin>=60
             ? Math.floor(leftMin/60)+'시간'+(leftMin%60?' '+(leftMin%60)+'분':'')
             : leftMin+'분';
-          /* <남은 N회차>는 지금 것을 세는지 애매하다 — 진행 위치로 적는다 */
-          /* flex + gap 으로 세 조각을 늘어놓으니 조사 「에」가 시각에서 떨어져
-             <오후 7시 21분   에 끝나요> 처럼 읽혔다. 한 줄 글로 흘려야
-             조사가 앞말에 붙는다. 시각만 굵게 키워 눈에 걸리게 한다. */
           return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #eef1f4;
               font-size:11.5px;font-weight:500;color:#7c858f;letter-spacing:-.02em;
-              line-height:1.65;word-break:keep-all">모든 경기는 <b style="font-size:14.5px;
-              font-weight:800;color:var(--coral-d);letter-spacing:-.035em">${hhmm}</b>에 끝나요<span
-              style="color:#d7dce1;padding:0 5px">·</span>${n.round}/${R}회차<span
-              style="color:#d7dce1;padding:0 5px">·</span>${leftTxt} 남음</div>`;
+              word-break:keep-all">끝까지 <b style="color:var(--ink);font-weight:700">${
+              leftTxt}</b> 남았어요</div>`;
         }
         const e=cbEta(CB2.games||[], done, CB2.courts);
         if(!e){
@@ -19574,18 +19573,16 @@ function drawCB2View(){
           ? `<span onclick="${off?`cb2Score(${g.gi})`:''}" class="cbsc done"${off?' style="cursor:pointer"':''}
               ${g.byHelp&&g.by?`title="${esc(cbWhoName(g.by))} 님이 대신 넣었어요"`:''}>${g.sa} : ${g.sb}</span>`
           : `<span onclick="cb2Score(${g.gi})" class="cbsc">－ : －</span>`;
-        /* 진행 중·다음 차례가 작은 글자 딱지뿐이라 눈에 안 띄었다.
-           진행 중은 코랄로 칠하고 왼쪽에 굵은 띠를, 다음 차례는 테두리만 —
-           칠한 것 하나, 테두리 하나로 무엇이 지금이고 무엇이 다음인지 갈린다. */
+        /* 진행 중·다음 차례를 가르는 표시는 하나씩만 둔다. */
         const running = g.startedAt && !done(g);
-        /* 알약을 겹쳐 붙이면 시끄럽다. 진행 중은 <왼쪽 띠 + 경과 시간>,
-           다음 차례는 <테두리>만. 글자 딱지는 하나도 안 쓴다. */
+        /* 왼쪽 코랄 띠는 뺐다 — 진행 중인 줄은 이미 <N게임 · N분째>가 코랄이고
+           오른쪽에 코랄 <점수 넣기> 버튼이 있다. 띠까지 두니 한 줄에 코랄이 셋이라
+           강조가 아니라 배경처럼 보였다. 다음 차례는 테두리 하나로 남긴다. */
         const mins = running ? Math.max(0, Math.round((Date.now()-g.startedAt)/60000)) : 0;
         const focused = CB2_FOCUS===g.gi;
-        h+=`<div id="cbg${g.gi}" style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
-            background:#fff;border:1px solid ${running?'#e9edf1':'#eef1f4'}${
-            running?';box-shadow:inset 3px 0 0 var(--coral)'
-                  : (nextUp||focused)?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
+        h+=`<div id="cbg${g.gi}" style="border-radius:11px;padding:8px 10px;margin-top:6px;position:relative;overflow:hidden;
+            background:#fff;border:1px solid ${running?'#e3e7eb':'#eef1f4'}${
+            (!running&&(nextUp||focused))?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-size:var(--t1);font-weight:${running?600:500};color:${running||nextUp?'var(--coral-d)':'#8b95a1'}">${g.r}게임</span>
             <span style="font-size:11px;font-weight:500;border-radius:7px;padding:3px 8px;background:${LB[0]};color:${LB[1]}">${esc(g.label||'')}</span>
