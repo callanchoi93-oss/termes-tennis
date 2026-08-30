@@ -19158,7 +19158,13 @@ async function openClubBracketView(){
     try{ const d=await api(`/clubs/${cid}/bracket2${cbQ()}`);
       /* 점수 시트가 떠 있으면 데이터만 받아두고 화면은 그대로 둔다 —
          같은 #sheet 를 쓰기 때문에 입력 중인 시트가 사라진다. */
-      if(d&&(!CB2||d.updated_at!==CB2.updated_at)){ CB2=d; if(!SC_OPEN) drawCB2View(); }
+      if(d&&(!CB2||d.updated_at!==CB2.updated_at)){
+        /* 방금 누른 <시작>을 서버 응답이 지우는 일을 막는다.
+           저장이 늦거나 다른 기기가 옛 상태를 올리면 tb 가 빠진 채로 돌아온다.
+           그러면 화면만 시작 전으로 되돌아가고 위젯은 혼자 시간이 간다. */
+        if(CB2&&CB2.tb&&CB2.tb.startedAt&&!(d.tb&&d.tb.startedAt)) d.tb=CB2.tb;
+        CB2=d; if(!SC_OPEN) drawCB2View();
+      }
       }catch(e){} }, 12000);
 }
 let CB2_COURT=0, CB2_FOCUS=null;
@@ -30625,9 +30631,38 @@ function liveStart(){
     sub: `${n.round}/${n.R}회차`,
   }); }catch(e){ LIVE_ON=false; }
 }
+/* 회차·구간이 바뀌면 카드를 다시 세운다.
+   원래는 서버 푸시에만 맡겨 두었는데, APNs 가 꺼져 있거나 푸시가 늦으면
+   카드가 0:00 에서 그대로 멈춘다. 앱이 열려 있는 동안에는 이쪽이 맞춘다.
+   같은 회차·구간이면 아무 일도 하지 않으므로 자주 불러도 괜찮다. */
+let LIVE_MARK='';
+function liveSync(){
+  const b=liveBridge(); if(!b) return;
+  const n=(typeof tbNow==='function') ? tbNow() : null;
+  if(!n) return;
+  if(n.done){ liveEnd(); return; }
+  const mark=`${n.round}:${n.playing?'p':'s'}`;
+  if(mark===LIVE_MARK) return;                 // 안 바뀌었으면 그냥 둔다
+  LIVE_MARK=mark;
+  const me=String((state.serverUser||{}).id||'');
+  const g=((CB2&&CB2.games)||[]).find(x=>x.r===n.round &&
+    [...(x.teamA||[]),...(x.teamB||[])].some(p=>String(p.id)===me));
+  const court=g?(g.playCourt||g.c||null):null;
+  LIVE_ON=true;
+  try{ b.start({
+    club: state.activeClub||'', phase: n.playing?'play':'swap',
+    round: n.round, rounds: n.R, court,
+    endsAt: Math.floor((n.playing?n.endAt:n.nextAt)/1000),
+    title: court?`${court}번 코트`:`${n.round}회차는 쉬어요`,
+    sub: `${n.round}/${n.R}회차`,
+  }); }catch(e){}
+}
+/* 대진 화면을 닫아도 카드는 계속 맞춰야 한다 —
+   tbTick 은 시트가 닫히면 멈추므로 여기서 따로 돈다. */
+setInterval(()=>{ try{ if(LIVE_ON) liveSync(); }catch(e){} }, 10000);
 function liveEnd(){
   const b=liveBridge(); if(!b || !LIVE_ON) return;
-  LIVE_ON=false;
+  LIVE_ON=false; LIVE_MARK='';
   try{ b.end(); }catch(e){}
   api('/me/live-activity',{method:'DELETE'}).catch(()=>{});
 }
