@@ -2595,7 +2595,7 @@
   .bk-card .w b{ display:block;font-size:13.5px;font-weight:700;letter-spacing:-.02em;margin-top:4px }
   .bk-card .w b.off{ color:#cad0d6;font-weight:500;font-size:12px;margin:0 }
   /* 아직 대진이 없는 모임 안내 */
-  .bk-hint{ display:flex;align-items:center;gap:13px;background:#f7f9fc;
+  .bk-hint{ display:flex;align-items:center;gap:13px;background:#fff;
     border:1px solid #ffd9c2;border-radius:16px;padding:15px 16px;margin-bottom:13px;cursor:pointer }
   .bk-hint b{ display:block;font-size:13.5px;font-weight:700;letter-spacing:-.03em }
   .bk-hint span{ display:block;font-size:12px;color:#414a55;margin-top:4px;line-height:1.55 }
@@ -3455,7 +3455,7 @@
     background:none;border:none;font-family:inherit;cursor:pointer }
   .ibody{ font-size:13px;color:var(--ink);font-weight:500;line-height:1.75;padding:0 2px;
     white-space:pre-wrap }
-  .iempty{ border:1px dashed #dee2e6;border-radius:16px;padding:18px;background:var(--cream2) }
+  .iempty{ border:1px dashed #e3e7eb;border-radius:16px;padding:18px;background:#fff }
   .iempty b{ display:block;font-size:14.5px;font-weight:800;color:var(--ink);
     letter-spacing:-.035em }
   .iempty p{ margin:7px 0 0;font-size:12.5px;color:var(--gray);font-weight:500;line-height:1.75 }
@@ -18728,14 +18728,19 @@ function tbCard(){
         [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===String((state.serverUser||{}).id||'')));
     const endHH=new Date(n.endAt);
     const hh=String(endHH.getHours()).padStart(2,'0')+':'+String(endHH.getMinutes()).padStart(2,'0');
-    return wrap(`<div style="display:flex;align-items:center;gap:7px">
-        ${cap(`${n.round}회차 경기 중`)}${tail(`전체 ${n.R}회차`)}</div>
-      <div style="display:flex;align-items:baseline;gap:10px;margin-top:11px;flex-wrap:wrap">
-        <div id="tbClock" data-ph="p" data-rd="${n.round}" style="font-size:40px;font-weight:800;
-          letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums">
+    /* 코랄을 셋(라벨·타이머·버튼)에 두면 강조가 아니라 배경이 된다.
+       라벨은 맥락을 설명하는 말이라 회색으로 내리고, 색은 타이머와 버튼에만 남긴다. */
+    return wrap(`<div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font-size:12.5px;font-weight:700;color:var(--gray)">${n.round}회차 경기 중</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--lgray);font-weight:500">전체 ${n.R}회차</span></div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:9px;flex-wrap:wrap">
+        <div id="tbClock" data-ph="p" data-rd="${n.round}" style="font-size:44px;font-weight:800;
+          letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums;color:var(--coral)">
           ${tbMMSS(n.left)}</div>
-        <div style="font-size:19px;font-weight:800;letter-spacing:-.035em;color:var(--coral-d)">
-          ${hh} 종료</div></div>
+        <div style="font-size:15px;font-weight:800;letter-spacing:-.035em;color:var(--coral-d)">
+          남았어요</div></div>
+      <div style="font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:6px">
+        ${hh} · 이 회차가 끝나는 시각</div>
       ${tbRail(n)}
       <div style="font-size:12px;color:#57606b;font-weight:500;margin-top:12px;padding-top:11px;
         border-top:1px solid var(--line);line-height:1.6">${
@@ -18743,7 +18748,7 @@ function tbCard(){
         : `시간이 되면 그때 점수로 끝나요 · 모든 경기는 <b style="color:var(--ink);font-weight:700">${
             tbAMPM(n.finAt)}</b>에 끝납니다`}</div>
       ${tbAddNote(n)}
-      ${mine ? `<button class="btn" style="margin-top:12px;background:#191d21"
+      ${mine ? `<button class="btn" style="margin-top:12px"
         onclick="qsToggle(${mine.gi})">${mine.c}번 코트 점수 넣기</button>${qsCard(mine)}` : ''}
       ${(()=>{
         /* 지난 회차 중 아직 점수가 안 들어간 경기 — 25분이 지났으면 그 경기는 끝난 것이다.
@@ -18798,10 +18803,15 @@ function tbCard(){
   const others=off ? (CB2.games||[]).map((g,gi)=>({...g,gi}))
     .filter(g=>g.r===n.round && g.sa==null && g.sb==null && !mine.some(m=>m.gi===g.gi)) : [];
   const list=mine.concat(others);
+  /* 이 5분에 손이 가는 자리는 여기 하나뿐이다 — 카드 위쪽으로 올린다.
+     아래에 두면 스크롤 끝이라 아무도 안 누른다. */
   const scoreBox = list.length ? `
-    <div style="margin-top:13px;padding-top:13px;border-top:1px solid #e7eaed">
-      <div style="font-size:11.5px;font-weight:700;color:var(--coral-d);margin-bottom:7px">
-        ${n.round}회차 점수 ${list.length}개가 비었어요</div>
+    <div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--line)">
+      <div style="font-size:11.5px;font-weight:700;color:var(--coral-d);margin-bottom:8px">
+        지금 할 일</div>
+      <div style="background:#fff8f4;border:1px solid #f6ddcd;border-radius:14px;padding:11px 12px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">
+        ${n.round}회차 점수가 비었어요</div>
       ${list.map(g=>{
         const A=(g.teamA||[]).map(p=>esc(p.name)).join('·');
         const B=(g.teamB||[]).map(p=>esc(p.name)).join('·');
@@ -18814,38 +18824,25 @@ function tbCard(){
             text-overflow:ellipsis;white-space:nowrap">${A} vs ${B}</span>
           <span style="font-size:11.5px;font-weight:700;color:var(--coral-d);flex:none">넣기 ›</span>
         </button>`; }).join('')}
+      </div>
     </div>` : '';
-  return wrap(`<div style="display:flex;align-items:center;gap:7px">
-      <span style="font-size:13px;font-weight:600;line-height:1.45;flex:none;border-radius:20px;
-        padding:3px 11px;background:var(--gold);color:#fff">전환 시간</span>
-      ${tail(`다음 ${n.round+1}회차`)}</div>
-    <div style="display:flex;align-items:baseline;gap:9px;margin-top:11px">
-      <div id="tbClock" data-ph="s" data-rd="${n.round}" style="font-size:40px;font-weight:800;
+  /* 알약을 지우고 색으로만 구간을 말한다 — 배지 하나만 줄여도 위쪽이 조용해진다 */
+  return wrap(`<div style="display:flex;align-items:baseline;gap:7px">
+      <span style="font-size:13px;font-weight:700;color:#c98600">전환 시간</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--lgray);font-weight:500">다음 ${n.round+1}회차</span></div>
+    <div style="display:flex;align-items:baseline;gap:9px;margin-top:9px">
+      <div id="tbClock" data-ph="s" data-rd="${n.round}" style="font-size:44px;font-weight:800;
         letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums;
         color:var(--gold)">${tbMMSS(n.left)}</div>
-      <div style="font-size:19px;font-weight:800;letter-spacing:-.035em;color:var(--gold)">
-        ${tbHHMM(n.nextAt)} 시작</div></div>
-    ${tbRail(n)}
-    <div style="font-size:15px;font-weight:800;letter-spacing:-.03em;margin-top:12px;
-      padding-top:11px;border-top:1px solid var(--line)">${goTo}</div>
+      <div style="font-size:15px;font-weight:800;letter-spacing:-.035em;color:#c98600">
+        뒤에 시작</div></div>
+    <div style="font-size:11.5px;color:var(--lgray);font-weight:500;margin-top:6px">
+      ${tbHHMM(n.nextAt)} · 코트로 가는 시각</div>
+    ${scoreBox}
+    <div style="font-size:15px;font-weight:800;letter-spacing:-.03em;margin-top:14px">${goTo}</div>
     ${who?sub(who):''}
-    ${(()=>{
-      /* <쉬세요>만 있으면 아무도 물을 안 마시고 코트만 늦게 찬다.
-         5분을 셋으로 나눠 지금 할 일을 짚어 준다. 클럽은 코트가 매 회차 바뀌므로
-         이동 안내가 교류전보다 더 중요하다. */
-      const sec=Math.max(0,(TB_SWAP*60000-n.left)/1000);
-      const step=sec<120?0:sec<240?1:2;
-      const T=[
-        ['점수 넣고 물 한 잔','방금 회차 점수를 지금 넣어 주세요 · 코트 밖에서 쉬어요'],
-        me?[`${me.c}번 코트로 이동`, `${who||''} · 화장실은 지금이에요`]
-          : [`${n.round+1}회차는 쉬어요`,'코트 밖에서 쉬면서 다음 차례를 기다려요'],
-        ['짧게 랠리', me?'서브 두세 개와 랠리로 몸을 풀어요':'내 차례가 오면 몸을 풀어요'],
-      ];
-      return `<div class="xtodo"><div class="h">이 5분에 할 일</div><ol>
-        ${T.map(([t,d],i)=>`<li class="${i===step?'on':''}"><div><b>${t}</b>
-          <span>${d}</span></div></li>`).join('')}</ol></div>`;
-    })()}
-    ${scoreBox}`);
+    <div style="margin-top:12px">${tbRail(n)}</div>
+`);
 }
 function cbBigCard(c, isOfficer){
   if(!c) return '';
