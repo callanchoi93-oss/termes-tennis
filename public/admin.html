@@ -411,6 +411,16 @@ async function drawStats(){
               <span>${esc(t.extra||'')}</span></div>
               <span class="b" style="opacity:.6">${ymd(t.at)}</span></div>`).join('');
       })()}
+      ${(()=>{
+        /* 잠금화면 시계(라이브 액티비티) 토큰은 알림 토큰과 아예 다른 것이다.
+           위의 <등록된 기기>에 섞어 세면 <14대나 되는데 왜 카드가 안 뜨지>가 된다. */
+        const n=(push.live_tokens==null) ? null : push.live_tokens;
+        if(n===null) return '';
+        return `<div class="rw"><div class="nm"><b>잠금화면 시계 ${n}대</b>
+          <span>${n ? '라이브 액티비티가 붙어 있어요'
+            : '앱에서 ActivityKit 토큰이 아직 안 왔어요 · 알림 토큰과는 다른 값이에요'}</span></div>
+          ${n?'':'<span class="b">앱 확인</span>'}</div>`;
+      })()}
       ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
         <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
         <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
@@ -614,12 +624,6 @@ async function drawXcTest(){
       : '<div class="empty">교류전이 없어요 · 앱에서 먼저 하나 열어주세요</div>'}
     </div>
     <div class="card" style="margin-top:12px">
-      <div class="ct">앱 알림 · 라이브 액티비티</div>
-      <div class="xs" style="margin-top:0">잠금화면 시계와 iOS 알림을 보내는 열쇠예요 ·
-        <b>/admin/apns-status</b> 를 브라우저로 열면 열쇠가 없어 403 이 뜹니다</div>
-      <div id="apns" class="xs">불러오는 중…</div>
-    </div>
-    <div class="card" style="margin-top:12px">
       <div class="ct">오픈매치 준비 현황</div>
       <div class="xs" style="margin-top:0">앱의 <b>오픈매치</b> 화면에 그대로 나가는 값이에요 ·
         비워두면 숫자 없이 「구장과 이야기하고 있어요」로만 나갑니다</div>
@@ -637,37 +641,6 @@ async function drawXcTest(){
       <b>대진 만들기</b> → <b>점수 채우기</b><br>
       참석은 실제 회원을 먼저 쓰고, 모자라면 성비에 맞는 테스트 회원을 만들어 채웁니다</div>`);
   omCfgDraw();
-  apnsDraw();
-}
-/* APNs 상태 — 브라우저로 직접 열면 x-admin-key 를 못 보내 403 이 뜬다.
-   그래서 여기(이미 열쇠를 들고 있는 화면)에 붙인다. */
-async function apnsDraw(){
-  const box=$('apns'); if(!box) return;
-  let r; try{ r=await api('/admin/apns-status'); }
-  catch(e){ box.innerHTML='<b style="color:#f04452">불러오지 못했어요</b> · 서버가 예전 버전일 수 있어요'; return; }
-  const ok=!!r.ready;
-  const dot=(on,t)=>`<span style="display:inline-flex;align-items:center;gap:6px">
-    <i style="width:7px;height:7px;border-radius:50%;background:${on?'#00b884':'#f04452'};
-      display:inline-block"></i>${t}</span>`;
-  box.innerHTML=`
-    <div style="display:flex;align-items:center;gap:9px;margin-top:10px;padding:13px;
-      border-radius:14px;background:${ok?'#e4f8f1':'#feecee'}">
-      <b style="font-size:14px;font-weight:800;color:${ok?'#03a273':'#f04452'}">
-        ${ok?'보낼 준비가 됐어요':'아직 못 보내요'}</b>
-      <span style="margin-left:auto;font-size:11px;font-weight:700;color:#4e5968">
-        등록된 잠금화면 ${r.live_tokens||0}대</span></div>
-    ${r.missing&&r.missing.length?`<div style="margin-top:10px;font-size:12px;color:#f04452;
-      font-weight:700">빠진 값 · ${r.missing.join(' · ')}</div>`:''}
-    <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px;font-size:11.5px">
-      ${dot(r.sign==='ok', r.sign==='ok'?'p8 키로 서명 성공':'키 오류 · '+(r.sign||'확인 안 됨'))}
-      ${dot(!!r.bundle, '번들 ID · '+(r.bundle||'없음'))}
-      ${dot(!!r.topic, '토픽 · '+(r.topic||'없음'))}
-    </div>
-    <div style="margin-top:12px;padding-top:11px;border-top:1px solid #e5e8eb;
-      font-size:11px;color:#8b95a1;line-height:1.7">
-      개발 빌드와 배포 빌드 토큰이 섞여도 괜찮아요 —
-      한쪽에서 거절되면 <b>반대쪽 서버로 한 번 더</b> 보냅니다<br>
-      ${(r.hosts||[]).join(' · ')}</div>`;
 }
 /* 오픈매치 준비 현황 — 앱이 지어낸 숫자를 띄우지 않도록 운영진이 직접 적는다 */
 async function omCfgDraw(){
