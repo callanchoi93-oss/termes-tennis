@@ -233,9 +233,9 @@
   .rtprog{background:var(--ink);color:#fff;border-radius:16px;padding:16px 18px;margin:6px 0 16px}
   /* 클럽 대진은 '지금 해야 할 일' 카드를 잉크로 세운다 — 요약 막대까지 검정이면
      화면에 검은 덩어리가 둘이라 어디를 먼저 봐야 할지 알 수 없다. 그래서 요약은 종이로 내린다. */
-  .rtprog.lite{background:#f5f7f9;color:var(--ink);border:1px solid #e3e7eb}
+  .rtprog.lite{background:#fff;color:var(--ink);border:1px solid #e9edf1}
   .rtprog.lite .of,.rtprog.lite .rt{opacity:1;color:#7c858f}
-  .rtprog.lite .rtbar{background:#dee2e7}
+  .rtprog.lite .rtbar{background:#eef1f4}
   /* 막대는 화면에서 제일 오래 보는 곳이자 누르는 곳이 아니라, 브랜드 색을 놓기 좋은 자리다 */
   .rtprog.lite .rtbar i{background:var(--coral)}
   .rtprog .top{display:flex;align-items:baseline;gap:6px}
@@ -19577,7 +19577,7 @@ function drawCB2View(){
         const mins = running ? Math.max(0, Math.round((Date.now()-g.startedAt)/60000)) : 0;
         const focused = CB2_FOCUS===g.gi;
         h+=`<div id="cbg${g.gi}" style="border-radius:11px;padding:8px 10px 8px 12px;margin-top:6px;position:relative;overflow:hidden;
-            background:${running?'#eff4fa':focused?'#f4f7fb':'#f3f4f6'}${
+            background:#fff;border:1px solid ${running?'#e9edf1':'#eef1f4'}${
             running?';box-shadow:inset 3px 0 0 var(--coral)'
                   : (nextUp||focused)?';outline:1.5px solid var(--coral);outline-offset:-1.5px':''}">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -30612,6 +30612,38 @@ window.matsuLiveToken = function(token){
   api('/me/live-activity',{method:'POST',
     body:JSON.stringify({token, club_id:clubId()||null})}).catch(()=>{});
 };
+/* ══════════ 잠금화면 카드가 앱을 열었을 때 ══════════
+   MatsuLiveBridge.deepLink() 가 이 함수를 부른다.
+   지금까지는 이 함수가 없어서 앱만 열리고 아무 데도 가지 않았다 —
+   회원 눈에는 <눌러도 클럽 목록만 뜬다>로 보인다.
+     matsu://score    점수 넣는 자리로
+     matsu://bracket  오늘 대진으로 */
+window.matsuDeepLink = function(host){
+  const go = async () => {
+    try{
+      /* 대진 화면이 아직 안 떠 있으면 먼저 연다 */
+      if(!document.getElementById('cb2v')){
+        if(typeof openClubBracketView === 'function') await openClubBracketView();
+      }
+      if(host !== 'score') return;
+      /* 지금 넣어야 할 내 경기로 데려간다 */
+      const me = String((state.serverUser||{}).id||'');
+      const n  = (typeof tbNow === 'function') ? tbNow() : null;
+      const gs = (CB2 && CB2.games) || [];
+      const mine = gs
+        .map((g,gi)=>({g,gi}))
+        .filter(({g}) => (g.sa==null||g.sb==null)
+          && [...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me)
+          && (!n || !g.r || g.r <= n.round))
+        .sort((a,b)=>(b.g.r||0)-(a.g.r||0));
+      if(mine.length && typeof cb2GoGame === 'function') cb2GoGame(mine[0].gi);
+      else if(typeof toast === 'function') toast('지금 넣을 점수가 없어요');
+    }catch(e){}
+  };
+  /* 앱이 막 깨어난 참이면 화면이 아직 안 그려져 있다 */
+  setTimeout(go, 400);
+};
+
 /* ══════════ 워치에 열쇠 넘기기 ══════════
    회원에게 열쇠를 복사시키던 화면을 없앴다 — 손목에서 글자를 넣는 일은
    하지 말아야 할 일에 가깝다. 대신 앱이 조용히 만들어 워치로 밀어준다.
@@ -32300,7 +32332,11 @@ if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App){
     /* 브라우저 경유는 matsu://, 카카오톡 앱 경유는 kakao{네이티브키}:// 로 돌아온다 */
     const isKakaoScheme = CFG.kakao_native_key && u.protocol === `kakao${CFG.kakao_native_key}:`;
     if(u.protocol !== 'matsu:' && !isKakaoScheme) return;
-    try{ Capacitor.Plugins.Browser && Capacitor.Plugins.Browser.close(); }catch(e){}
+    /* 카카오 앱으로 돌아온 경우엔 인앱 브라우저가 애초에 없다 —
+       그때 close() 를 부르면 「No active window to close!」 가 토스트로 뜬다. */
+    if(!isKakaoScheme){
+      try{ Capacitor.Plugins.Browser && Capacitor.Plugins.Browser.close(); }catch(e){}
+    }
     const code = u.searchParams.get('code');
     const provider = isKakaoScheme ? 'kakao' : (u.searchParams.get('provider') || 'kakao');
     if(!code){ toast('로그인이 취소됐어요'); return; }
