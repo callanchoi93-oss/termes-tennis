@@ -18505,29 +18505,35 @@ function tbAddNote(n){
 }
 function tbRail(n){
   if(!n || !CB2) return '';
-  const me=String((state.serverUser||{}).id||'');
-  const gs=CB2.games||[];
-  const planned=CB2.tb.rounds0 || n.R;          // 처음 잡았던 회차 수
+  /* 이 자리에 필요한 것은 <몇 회차>와 <회차 시작 시각> 둘뿐이다.
+     예전에는 칸마다 라벨·막대·시각·「시작」·점 다섯 겹에 범례 세 줄까지 있었다.
+     회차 번호는 왼쪽부터 순서라 적지 않아도 알고, 지금 몇 회차인지는
+     바로 위 카드 머리줄이 이미 말한다 — 그래서 시각만 남긴다.
+     내 회차·쉬는 회차·점수 비었음은 아래 경기 목록이 이미 말하고 있다. */
   const hhmm=t=>{ const d=new Date(t);
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
-  let hd='', bar='', lb='';
+  /* 늦참으로 회차가 늘면 시각이 서로 겹친다 —
+     여덟을 넘으면 가운데는 점으로 접고 처음·지금·마지막만 남긴다. */
+  const dense = n.R > 7;
+  const cur = Math.round(n.intoCyc*100);
+  let bar='', lb='';
   for(let r=1;r<=n.R;r++){
-    const past=r<n.round, now=r===n.round, added=r>planned;
-    hd+=`<div class="${now?'now':''}">${r}회차</div>`;
-    bar+=`<div class="sg${past?' past':''}${now?' now':''}${added?' add':''}">
-      <i class="f"${now?` style="width:${Math.round(n.intoCyc*100)}%"`:''}></i><i class="g"></i></div>`;
-    const rg=gs.filter(g=>g.r===r);
-    const hole=past && rg.some(g=>g.sa==null||g.sb==null);
-    const mine=rg.some(g=>[...(g.teamA||[]),...(g.teamB||[])].some(p=>String(p.id)===me));
-    lb+=`<div class="${now?'now':''}"><s>${hhmm(n.t0+(r-1)*n.cyc)}<i>시작</i></s>
-      <u class="${hole?'hole':mine?'mine':'rest'}"></u></div>`;
+    const past=r<n.round, now=r===n.round;
+    bar+=`<div style="flex:1;height:5px;border-radius:3px;overflow:hidden;
+      background:${past?'#e3e7eb':'#eef1f4'}">${
+      now?`<i style="display:block;height:100%;width:${cur}%;border-radius:3px;
+        background:var(--coral)"></i>`:''}</div>`;
+    const show = !dense || now || r===1 || r===n.R;
+    lb+=`<div style="flex:1;text-align:center;font-size:${now?'12px':'11px'};
+      font-weight:${now?'700':'500'};letter-spacing:-.02em;
+      color:${now?'var(--coral-d)':past?'#c9ced4':'#7c858f'};
+      font-variant-numeric:tabular-nums">${
+      show ? hhmm(n.t0+(r-1)*n.cyc)
+           : '<span style="display:inline-block;width:3px;height:3px;border-radius:50%;background:#d7dce1"></span>'}</div>`;
   }
-  return `<div class="xrail"><div class="hd">${hd}</div>
-    <div class="bar" id="tbRail">${bar}</div>
-    <div class="lb">${lb}</div>
-    <div class="key"><span><i style="background:var(--gold)"></i>내 회차</span>
-      <span><i style="background:var(--felt-d)"></i>쉬는 회차</span>
-      <span><i style="background:var(--red)"></i>점수 비었음</span></div></div>`;
+  return `<div style="margin-top:12px">
+    <div id="tbRail" style="display:flex;gap:6px">${bar}</div>
+    <div style="display:flex;gap:6px;margin-top:8px">${lb}</div></div>`;
 }
 const tbMMSS=ms=>{ const t=Math.max(0,Math.ceil(ms/1000));
   return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); };
@@ -30658,8 +30664,17 @@ async function watchSync(){
     window.webkit.messageHandlers.matsuLive.postMessage({ action:'watch', token:r.token });
   }catch(e){}
 }
-/* 앱을 열 때 한 번, 그리고 로그인 직후에 한 번 */
-setTimeout(()=>{ try{ watchSync(); }catch(e){} }, 4000);
+/* 워치가 먼저 켜져 있으면 「준비하고 있어요」를 보게 된다 — 그 창을 최대한 좁힌다.
+   붙자마자 한 번, 그리고 로그인이 늦게 끝나는 경우를 위해 잠깐씩 다시 본다.
+   보내고 나면 WATCH_SENT 가 서서 더 돌지 않는다. */
+(function(){
+  let n = 0;
+  const t = setInterval(()=>{
+    try{ watchSync(); }catch(e){}
+    if (WATCH_SENT || ++n > 20) clearInterval(t);   // 1분쯤 보고 그만둔다
+  }, 3000);
+  try{ watchSync(); }catch(e){}
+})();
 
 /* 시작 버튼을 누른 사람의 폰에서 액티비티를 세운다.
    초 단위는 앱이 스스로 센다 — 서버는 회차가 바뀔 때만 밀어준다. */
