@@ -6622,6 +6622,10 @@ app.get('/admin/push-status', admin, (req, res) => {
       key_loaded: !!APNS.key,
     },
     devices: devs,
+    /* 잠금화면 시계 토큰은 알림 토큰과 다른 것이라 따로 센다 */
+    live_tokens: (() => { try {
+      return db.prepare('SELECT COUNT(*) c FROM live_activities').get().c;
+    } catch (e) { return 0; } })(),
     recent: recent.map(r => ({ user_id: r.id, name: r.name, platform: r.platform, at: r.created_at })),
   });
 });
