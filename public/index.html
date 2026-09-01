@@ -10865,7 +10865,7 @@ async function pvOpenDay(date){
   if(!PV || !PV.cid) return;
   PV.day={ date, loading:true, games:[] }; drawClubPreview();
   try{ const d=await api(`/clubs/${PV.cid}/public/day/${date}`);
-       if(PV) PV.day={ date, loading:false, games:d.games||[], mode:d.mode }; }
+       if(PV) PV.day={ date, loading:false, games:d.games||[], mode:d.mode, standings:d.standings||[] }; }
   catch(e){ if(PV) PV.day={ date, loading:false, games:[], err:true }; }
   drawClubPreview();
 }
@@ -11047,7 +11047,22 @@ function drawClubPreview(){
                    :'<span style="font-size:11.5px;color:#d5d9de">—</span>'}</div>`; }).join('')}
             </div>`).join('')}
           </div>`}
-        <div style="font-size:11.5px;color:var(--gray);margin-top:10px">회원 이름은 가입한 뒤에 보여요</div>`;
+        ${(D.standings||[]).length?`
+          <div class="ch" style="font-size:15px;margin:26px 0 10px">그날 순위</div>
+          <div style="border:1px solid #e5e8eb;border-radius:14px;padding:2px 15px">
+            ${D.standings.slice(0,10).map((t,i,arr)=>`
+              <div style="display:flex;align-items:center;gap:11px;padding:11px 0;
+                ${i<arr.length-1?'border-bottom:1px solid #f2f4f6':''}">
+                <span style="flex:none;width:16px;font-size:12.5px;font-weight:700;color:${
+                  t.pos===1?'var(--coral-d)':'var(--lgray)'}">${t.pos}</span>
+                <span style="flex:1;min-width:0;font-size:14px;font-weight:500;overflow:hidden;
+                  text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
+                <span style="flex:none;font-size:11.5px;color:var(--gray)">${t.w}승${
+                  t.d?` ${t.d}무`:''}${t.l?` ${t.l}패`:''} · ${t.diff>0?'+':''}${t.diff}</span>
+                <span style="flex:none;min-width:34px;text-align:right;font-size:14px;font-weight:700">${t.pts}점</span>
+              </div>`).join('')}
+          </div>
+          <div style="font-size:11.5px;color:var(--gray);margin-top:8px">승 3점 · 무 1점 · 동점이면 게임 차로 갈라요</div>`:''}`;
     } else {
       const days=P.days||[], rk=P.ranking||[];
       body = `${rk.length?`<div class="ch" style="font-size:15px;margin:4px 0 10px">이번 시즌 순위</div>
@@ -11126,7 +11141,6 @@ function drawClubPreview(){
     /* 밖에서 보는 사람에게는 이름이 아니라 <어떤 사람들인가>가 필요하다.
        회원이면 그 아래에 실제 명단이 이어진다. */
     const P=PV.pub||{};
-    const isMem=(state.clubStatus[n]||'none')==='member';
     const G=P.grades||{};
     const gTot=Object.values(G).reduce((a,b)=>a+b,0);
     const topG=Object.entries(G).sort((a,b)=>b[1]-a[1])[0];
@@ -11150,17 +11164,18 @@ function drawClubPreview(){
             <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
               <span style="flex:none;width:26px;font-size:12px;font-weight:700">${g}급</span>
               <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
-                <i style="display:block;height:100%;border-radius:4px;width:${Math.round(G[g]/gTot*100)}%;
+                <i style="display:block;height:100%;border-radius:4px;width:${
+                  Math.round(G[g]/Math.max(1,topG?topG[1]:1)*100)}%;
                   background:${topG&&g===topG[0]?'var(--coral)':'#c2c8ce'}"></i></span>
               <span style="flex:none;font-size:11.5px;color:var(--gray);width:30px;text-align:right">${G[g]}명</span>
             </div>`).join('')}
         </div>`:''}
       ${small?'<div style="font-size:11.5px;color:var(--gray);margin-top:10px">회원이 4명 이상이면 성비도 함께 보여요</div>':''}`;
-    body = stats + (isMem && list.length
+    body = stats + (list.length
       ? `<div class="pvcnt" style="margin-top:26px">멤버 ${list.length}명
            <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
          <div>${rows}</div>`
-      : `<div style="font-size:11.5px;color:var(--gray);margin-top:26px">회원 이름은 가입한 뒤에 보여요</div>`);
+      : `<div class="pvempty">멤버 정보가 아직 없어요</div>`);
   }
 
   document.getElementById('pvhd').innerHTML = `
