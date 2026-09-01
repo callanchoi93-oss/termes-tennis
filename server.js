@@ -1113,6 +1113,107 @@ app.patch('/clubs/:id/members/:uid/alias', auth, (req, res) => {
 // 휴회 토글 (임원)
 // 휴회·복회 신청 (회원) — 임원 승인제
 // 연명부 부속 기록 — 휴회·복회 이력 + 탈퇴 회원 (엑셀 시트용)
+/* ── 가입하지 않은 사람이 보는 클럽 페이지 ─────────────────────────────
+   밖에서 클럽을 고르는 사람에게 필요한 것만 내려준다. 이름은 여기서 가린다 —
+   앱에서 가리면 원본이 이미 브라우저까지 간 뒤라 가린 것이 아니다. */
+function maskName(n) {
+  const t = String(n || '').trim();
+  if (!t) return '';
+  return t.length <= 1 ? t : t[0] + '○'.repeat(Math.min(t.length - 1, 2));
+}
+app.get('/clubs/:id/public', (req, res) => {
+  const cid = +req.params.id;
+  const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+
+  const mem = db.prepare(`SELECT cm.grade, u.gender, u.sport_started
+    FROM club_members cm JOIN users u ON u.id=cm.user_id
+    WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+      AND COALESCE(u.is_test,0)=0`).all(cid);
+
+  /* 구력 — sport_started 는 종목별 <YYYY-MM> 이 담긴 JSON 이다 */
+  const months = [];
+  mem.forEach(m => {
+    try {
+      const st = JSON.parse(m.sport_started || '{}')[c.sport || 'tennis'];
+      if (!st) return;
+      const [y, mo] = String(st).split('-').map(Number);
+      if (!y) return;
+      const d = new Date();
+      const v = (d.getFullYear() - y) * 12 + (d.getMonth() + 1 - (mo || 1));
+      if (v >= 0 && v < 900) months.push(v);
+    } catch (e) {}
+  });
+  const avgMonths = months.length ? Math.round(months.reduce((a, b) => a + b, 0) / months.length) : null;
+
+  const grades = {};
+  mem.forEach(m => { const g = String(m.grade || '').replace(/[0-9]/g, ''); if (g) grades[g] = (grades[g] || 0) + 1; });
+  const gf = mem.filter(m => /여|f/i.test(String(m.gender || ''))).length;
+  const gm = mem.filter(m => /남|m/i.test(String(m.gender || ''))).length;
+
+  /* 지난 모임 — 로그에 날짜별로 한 벌씩 쌓여 있다 */
+  const logs = db.prepare(`SELECT date, data FROM club_bracket_logs
+    WHERE club_id=? ORDER BY date DESC LIMIT 12`).all(cid);
+  const pts = {};                                  // 시즌 순위 — 승 3 · 무 1
+  const days = logs.map(r => {
+    let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
+    const gs = (d.games || []).filter(g => g.sa != null && g.sb != null);
+    const dayPt = {};
+    gs.forEach(g => {
+      const a = g.teamA || [], b = g.teamB || [];
+      const win = g.sa > g.sb ? 3 : (g.sa === g.sb ? 1 : 0);
+      const lose = g.sb > g.sa ? 3 : (g.sa === g.sb ? 1 : 0);
+      a.forEach(p => { if (!p || !p.name) return;
+        pts[p.name] = (pts[p.name] || 0) + win; dayPt[p.name] = (dayPt[p.name] || 0) + win; });
+      b.forEach(p => { if (!p || !p.name) return;
+        pts[p.name] = (pts[p.name] || 0) + lose; dayPt[p.name] = (dayPt[p.name] || 0) + lose; });
+    });
+    const top = Object.entries(dayPt).sort((x, y) => y[1] - x[1])[0];
+    const courts = new Set((d.games || []).map(g => g.playCourt || g.c).filter(Boolean));
+    return { date: r.date, mode: d.mode || 'normal', courts: courts.size || (d.courts || 0),
+             games: (d.games || []).length, done: gs.length, top: top ? maskName(top[0]) : '' };
+  }).filter(x => x.done > 0);
+
+  const ranking = Object.entries(pts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([nm, pt], i) => ({ pos: i + 1, name: maskName(nm), pts: pt }));
+
+  /* 다가오는 모임 — 이름은 빼고 인원만 */
+  let events = [];
+  try {
+    events = db.prepare(`SELECT id, title, date, tag FROM club_events
+      WHERE club_id=? ORDER BY id DESC LIMIT 12`).all(cid)
+      .map(e => ({ ...e, count: (db.prepare('SELECT COUNT(*) c FROM event_attendees WHERE event_id=? AND status=?')
+                    .get(e.id, 'going') || {}).c || 0 }));
+  } catch (e) {}
+
+  res.json({
+    id: c.id, name: c.name, region: c.region, sport: c.sport,
+    members: mem.length, founded_year: c.founded_year || null,
+    recruiting: c.recruiting || 0, guest_min_months: c.guest_min_months || null,
+    guest_fee: c.guest_fee || null, entry_fee: c.entry_fee || null, season_fee: c.season_fee || null,
+    meet_days: c.meet_days || '', meet_time: c.meet_time || '',
+    home_court: c.home_court || '', home_courts: c.home_courts || '',
+    intro: c.intro || '', gender_pref: c.gender_pref || '', age_bands: c.age_bands || '',
+    avg_months: avgMonths, grades, g_f: gf, g_m: gm,
+    days, ranking, events,
+  });
+});
+
+/* 그날 하나 — 표로 그릴 수 있게 회차·코트별로 정리해서 준다 */
+app.get('/clubs/:id/public/day/:date', (req, res) => {
+  const cid = +req.params.id;
+  const row = db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=? AND date=?')
+    .get(cid, String(req.params.date).slice(0, 10));
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  let d = {}; try { d = JSON.parse(row.data); } catch (e) {}
+  const nm = t => (t || []).map(p => maskName(p && p.name)).filter(Boolean).join('·');
+  const games = (d.games || []).filter(g => g.sa != null && g.sb != null).map(g => ({
+    r: g.r || 1, court: g.playCourt || g.c || 1,
+    a: nm(g.teamA), b: nm(g.teamB), sa: g.sa, sb: g.sb,
+  }));
+  res.json({ date: row.date, mode: d.mode || 'normal', games });
+});
+
 app.get('/clubs/:id/roster-logs', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
