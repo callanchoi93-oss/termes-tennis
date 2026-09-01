@@ -23942,9 +23942,13 @@ function drawEventDetail(){
   const accent = isFlash ? '#3182f6' : '#f1631a';
   const accentBg = isFlash ? '#eef3fb' : '#edf2f8';
   /* 태그 딱지와 <대진 짜기> 줄은 파르스름한 배경이라 같은 화면의 회색 버튼과
-     따로 놀았다. 불참·미정 버튼과 같은 회색으로 맞춘다 — 글자색은 그대로 둬서
+     따로 놀았다. 둘 다 회색으로 맞췄더니 이번엔 넓은 줄이 배경 덩어리로 보였다.
+     그래서 무게를 갈라 준다 —
+     딱지는 클럽 소개의 다른 딱지처럼 흰 바탕에 실선 하나,
+     누르는 줄은 실선 없이 아주 연한 회색 면. 글자색은 그대로 둬서
      정기(코랄)·번개(파랑) 구분은 남는다. */
-  const neutralBg = '#f0f1f3';
+  const chipBd    = isFlash ? '#d5e3f7' : '#e5e8eb';   // 딱지 테두리
+  const rowBg     = '#f5f6f7';                          // 누르는 줄 — 불참 버튼보다 한 단계 연하게
   const st=e.my_status||null;
   const btn=(v,l)=>`<span onclick="evRsvp('${v}')" style="flex:1;text-align:center;cursor:pointer;border-radius:11px;padding:9px 0;font-size:12px;font-weight:${st===v?'700':'500'};${st===v?`background:${accent};color:#fff`:'background:#f0f1f3;color:#57606b'}">${l}</span>`;
   /* 게스트는 이름 옆에 표시한다 — 대진을 짤 때 정회원과 섞이면 누가 손님인지 알 수 없다 */
@@ -23967,7 +23971,7 @@ function drawEventDetail(){
         <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:12px;font-weight:700;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
       </div>`:''}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-      <span style="font-size:11px;font-weight:500;border-radius:8px;padding:4px 10px;background:${neutralBg};color:${accent}">${esc(e.tag||'정기')}</span>
+      <span style="font-size:11px;font-weight:500;border-radius:8px;padding:3px 9px;background:#fff;border:1px solid ${chipBd};color:${accent}">${esc(e.tag||'정기')}</span>
       <span style="font-size:14px;font-weight:400;color:#57606b">${esc(e.date||'')}</span></div>
 
     <div style="display:flex;gap:7px;margin-top:16px">${btn('going','참석')}${btn('absent','불참')}${btn('undecided','미정')}</div>
@@ -23992,8 +23996,8 @@ function drawEventDetail(){
         <div style="font-size:14px;font-weight:700;color:#79828d;letter-spacing:-.02em">끝난 모임이에요</div>
         <div style="font-size:11px;font-weight:500;color:#98a0aa;margin-top:2px">대진은 새로 짤 수 없어요 · 기록은 그대로 남아요</div></div></div>`
     :`<div style="margin-top:18px">
-      <div onclick="evToBracket('${e.id}')" style="display:flex;align-items:center;gap:12px;background:${neutralBg};border-radius:15px;padding:14px 16px;cursor:pointer">
-        <span style="width:38px;height:38px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none">🎾</span>
+      <div onclick="evToBracket('${e.id}')" style="display:flex;align-items:center;gap:12px;background:${rowBg};border-radius:15px;padding:14px 16px;cursor:pointer">
+        <span style="width:38px;height:38px;border-radius:12px;background:#fff;border:1px solid #e8ebee;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none">🎾</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:500;color:${accent}">이 모임 참석자로 대진 짜기</div>
           <div style="font-size:11px;font-weight:500;color:#79828d;margin-top:2px">참석 ${(e.attendees||[]).length}명${(e.guests||[]).length?` · 게스트 ${(e.guests||[]).length}명`:''}이 명단에 들어가요</div></div>
