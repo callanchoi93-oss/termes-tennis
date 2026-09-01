@@ -222,7 +222,10 @@
   .msrow:last-child{border-bottom:0}
   .msn{flex:none;width:66px;font-size:13.5px;font-weight:500;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis}
-  .msg{flex:none;font-size:11px;color:var(--lgray);width:42px}
+  /* 예전 이름이 .msg 였다 — 채팅 말풍선(.msg)과 이름이 겹쳐,
+     아래에 정의된 말풍선이 width 를 안 주는 탓에 여기 width:42px 가
+     그대로 먹었다. 말풍선이 42px 폭이 되어 글자가 세로로 쌓이고 잘렸다. */
+  .msgc{flex:none;font-size:11px;color:var(--lgray);width:42px}
   .msbar{flex:1;height:6px;border-radius:9px;background:var(--felt);overflow:hidden}
   .msbar i{display:block;height:100%;border-radius:9px}
   .mswr{flex:none;width:38px;text-align:right;font-size:13px;font-weight:700;
@@ -1133,7 +1136,8 @@
   .chead .bk{font-size:23px;font-weight:700;cursor:pointer;width:26px;color:var(--ink)}
   .chead .ti{font-size:18px;font-weight:600}.chead .su{font-size:12px;color:var(--gray);font-weight:500}
   .msgs{display:flex;flex-direction:column;gap:9px;padding-bottom:6px}
-  .msg{max-width:76%;padding:10px 13px;border-radius:15px;font-size:14px;line-height:1.45}
+  .msg{width:auto;max-width:76%;padding:10px 13px;border-radius:15px;font-size:14px;
+    line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
   .msg.them{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
   .msg.me{background:var(--coral);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
   .msg .who2{font-size:11px;font-weight:600;color:var(--coral-d);margin-bottom:3px}
@@ -12963,7 +12967,7 @@ function drawMyClubStats(){
   const list=(arr,label,color,empty)=>arr.length
     ? arr.slice(0,4).map(p=>`<div class="msrow">
         <span class="msn">${esc(p.n)}</span>
-        <span class="msg">${p.g}경기</span>
+        <span class="msgc">${p.g}경기</span>
         ${bar(p.wr,color)}
         <b class="mswr" style="color:${color}">${p.wr}%</b></div>`).join('')
     : `<div class="msnone">${empty}</div>`;
