@@ -944,14 +944,19 @@ app.post('/clubs', auth, (req, res) => {
   const hc = splitCourt(req.body.home_court);
   const r = db.prepare(`INSERT INTO clubs
       (name,sport,region,owner_id,created_at,avg_grade,home_court,home_courts,meet_days,
-       intro,logo,logo_ic,logo_bg,meet_time,age_bands,gender_pref)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+       intro,logo,logo_ic,logo_bg,meet_time,age_bands,gender_pref,founded_year,recruiting)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(name, sport, region || '', req.uid, now(),
          cleanGrade(req.body.avg_grade), txt(hc.venue, 40), txt(hc.courts, 20),
          txt(req.body.meet_days, 30),
          txt(req.body.intro, 40), txt(req.body.logo, 300), txt(req.body.logo_ic, 8),
          txt(req.body.logo_bg, 12), txt(req.body.meet_time, 30),
-         txt(req.body.age_bands, 40), txt(req.body.gender_pref, 10));
+         txt(req.body.age_bands, 40), txt(req.body.gender_pref, 10),
+         /* 창단연도 — 안 적으면 만든 해로 둔다. 나중에 운영진 도구에서 고칠 수 있다 */
+         (() => { const v = parseInt(req.body.founded_year, 10);
+                  const y = new Date().getFullYear();
+                  return (v >= 1900 && v <= y) ? v : y; })(),
+         req.body.recruiting ? 1 : 0);
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
     .run(rid(r), req.uid, 'owner');
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
@@ -3919,14 +3924,28 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
      그래야 모임 제목에서 코트 표기가 겹치지 않는다. */
   const _hc = has('home_court') ? splitCourt(req.body.home_court)
                                 : { venue: c.home_court, courts: c.home_courts };
+  /* 창단연도는 숫자다 — 빈 값이면 지운다. 미래나 1900년 이전은 오타로 본다. */
+  const _yr = has('founded_year')
+    ? (() => { const v = parseInt(req.body.founded_year, 10);
+               if (!v) return null;
+               const now = new Date().getFullYear();
+               return (v >= 1900 && v <= now) ? v : c.founded_year; })()
+    : c.founded_year;
+  const _rec = has('recruiting') ? (req.body.recruiting ? 1 : 0) : (c.recruiting || 0);
+  /* 게스트 구력 — 0 이나 빈 값은 <제한 없음>(null)으로 둔다 */
+  const _gm = has('guest_min_months')
+    ? (() => { const v = parseInt(req.body.guest_min_months, 10);
+               return (v > 0 && v <= 600) ? v : null; })()
+    : c.guest_min_months;
   db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, home_courts=?, meet_days=?, intro=?,
-      logo=?, logo_ic=?, logo_bg=?, meet_time=?, age_bands=?, gender_pref=? WHERE id=?`).run(
+      logo=?, logo_ic=?, logo_bg=?, meet_time=?, age_bands=?, gender_pref=?,
+      founded_year=?, recruiting=?, guest_min_months=? WHERE id=?`).run(
     has('avg_grade') ? cleanGrade(req.body.avg_grade) : c.avg_grade,
     (_hc.venue || '').slice(0, 40) || null, (_hc.courts || '').slice(0, 20) || null,
     pick('meet_days', 30), pick('intro', 40),
     pick('logo', 300), pick('logo_ic', 8), pick('logo_bg', 12),
     pick('meet_time', 30), pick('age_bands', 40), pick('gender_pref', 10),
-    c.id);
+    _yr, _rec, _gm, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
 // 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
@@ -5110,6 +5129,17 @@ try { db.exec('ALTER TABLE clubs ADD COLUMN gender_pref TEXT'); } catch (e) {}
    코트 번호는 모임마다 달라지는 값이라 구장 이름에 박혀 있으면
    모임 제목에서 <1-3번코트번 코트> 처럼 계속 겹친다. 둘을 갈라 둔다. */
 try { db.exec('ALTER TABLE clubs ADD COLUMN home_courts TEXT'); } catch (e) {}
+
+/* 창단연도 — 클럽 페이지에서 <2024년부터>로 보인다. 밖에서 클럽을 고르는 사람에게
+   <얼마나 오래된 모임인가>는 회원 수만큼 중요한 정보다. */
+try { db.exec('ALTER TABLE clubs ADD COLUMN founded_year INTEGER'); } catch (e) {}
+/* 회원 모집 중 — 클럽장이 켜고 끈다. 목록에서 이것만 모아 볼 수 있어야 하므로
+   문구가 아니라 값으로 둔다(0/1). */
+try { db.exec('ALTER TABLE clubs ADD COLUMN recruiting INTEGER DEFAULT 0'); } catch (e) {}
+/* 게스트 조건 — <받아요>만으로는 알 수 없다. 구력 몇 년부터 받는지가 실제 문턱이다.
+   null 이면 제한 없음. 가입 조건(min_career_months)과는 별개다 —
+   게스트로는 받되 정회원은 더 높게 두는 클럽이 있다. */
+try { db.exec('ALTER TABLE clubs ADD COLUMN guest_min_months INTEGER'); } catch (e) {}
 
 /* 구장 이름과 코트 번호를 가른다.
    반환: { venue, courts } — 코트 표기가 없으면 courts 는 빈 문자열. */
