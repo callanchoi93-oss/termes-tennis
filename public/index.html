@@ -10023,11 +10023,18 @@ function renderClub(){
        숨기지는 않되 아래로 갈라, 위쪽에는 실제로 굴러가는 클럽만 남긴다. */
     const SEED=2;
     const live=list.filter(c=>(c.m||0)>SEED), seed=list.filter(c=>(c.m||0)<=SEED);
+    /* 모집 중인 클럽을 위로 — 사람을 안 받는 클럽을 먼저 보여주면 헛걸음이 된다.
+       숨기지는 않는다. 같은 조건이면 원래 순서(회원 수·최근 활동)를 지킨다. */
+    const byRecruit=(a,b)=>(clubRecruiting(b)?1:0)-(clubRecruiting(a)?1:0);
+    live.sort(byRecruit); seed.sort(byRecruit);
     const clubRow=c=>`<div class="clrow" onclick="openClubPreview('${c.n}')">
       ${clubAvatar(c.n, 46, 'ls-ic')||`<div class="clav">${esc(String(c.n).slice(0,1))}</div>`}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;min-width:0">
           <span class="cln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.n)}</span>${clubGenderChip(c)}${
+          clubRecruiting(c)?`<span style="flex:none;display:inline-flex;align-items:center;gap:4px;
+            font-size:11.5px;font-weight:600;color:var(--coral-d);white-space:nowrap"><span style="width:5px;height:5px;
+            border-radius:50%;background:var(--coral)"></span>모집 중</span>`:''}${
           (c.m||0)<=SEED?'<span class="cltag">새로 생김</span>':''}</div>
         <div class="clr">${esc(c.r)} · 회원 ${c.m}명${
           (c.m||0)<=SEED ? ' · 아직 모임 기록이 없어요'
@@ -10568,11 +10575,13 @@ const CW_DAYS=['월','화','수','목','금','토','일'];
 const CW_AGES=['10대','20대','30대','40대','50대 이상'];
 function cw(){ return state._cw || (state._cw={step:1,name:'',intro:'',logoMode:'sym',
   logoBg:CLUB_LOGO_BGS[0],logoIc:SP().ic,logoImg:null,sido:'',sigungu:'',
-  times:[],days:[],court:'',ages:[],gender:'남녀 모두',grade:'B2'}); }
+  times:[],days:[],court:'',ages:[],gender:'남녀 모두',grade:'B2',
+  founded:'',recruit:true}); }
 function cwStash(){
   const g=id=>{const e=document.getElementById(id);return e?e.value:null;};
-  const c=cw(), n=g('cwName'), i=g('cwIntro'), ct=g('cwCourt');
+  const c=cw(), n=g('cwName'), i=g('cwIntro'), ct=g('cwCourt'), y=g('cwYear');
   if(n!=null) c.name=n; if(i!=null) c.intro=i; if(ct!=null) c.court=ct;
+  if(y!=null) c.founded=String(y).replace(/[^0-9]/g,'').slice(0,4);
 }
 function cwSet(k,v){ cwStash(); const c=cw();
   if(k==='sido'&&c.sido!==v) c.sigungu='';
@@ -10664,7 +10673,19 @@ function openCreateClub(){
       <div class="fld"><label>주 사용 ${SP().place} <span style="color:var(--coral-d)">*</span></label>
         <input id="cwCourt" maxlength="30" placeholder="예) ${clubEg().p}" value="${esc(c.court)}" oninput="cwLive()">
         <div class="xf-h" style="margin-top:6px">구장 이름만 적어 주세요 ·
-          코트 번호는 모임을 만들 때 따로 고릅니다</div></div>`;
+          코트 번호는 모임을 만들 때 따로 고릅니다</div></div>
+      <div class="fld" style="margin-top:14px"><label>창단연도</label>
+        <input id="cwYear" inputmode="numeric" maxlength="4" placeholder="예) ${new Date().getFullYear()}"
+          value="${esc(String(c.founded||''))}" oninput="cwLive()">
+        <div class="xf-h" style="margin-top:6px">클럽 페이지에 <b>${
+          esc(String(c.founded||new Date().getFullYear()))}년부터</b>로 보여요 ·
+          비워두면 올해로 저장돼요</div></div>
+      <label>회원 모집</label>
+      <div class="cw-chips">
+        <span class="cw-c ${c.recruit?'on':''}" onclick="cwSet('recruit',true)">모집 중</span>
+        <span class="cw-c ${!c.recruit?'on':''}" onclick="cwSet('recruit',false)">안 받는 중</span></div>
+      <div class="xf-h" style="margin-top:6px">모집 중으로 두면 클럽 목록에서 위로 올라가요 ·
+        나중에 언제든 바꿀 수 있어요</div>`;
   } else if(st===4){
     body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 멤버 정보</h3>
       <div class="sd">어떤 분들이 모이는지 알려주세요 · 정확하지 않아도 괜찮아요</div>
@@ -10716,13 +10737,17 @@ async function createClub(){
   const n=(c.name||'').trim(), r=[c.sido,c.sigungu].filter(Boolean).join(' ').trim(), court=(c.court||'').trim();
   if(!n){toast('클럽 이름을 입력해 주세요'); c.step=1; openCreateClub(); return;}
   if(!c.sido||!court){toast('활동 지역과 코트를 입력해 주세요'); c.step=3; openCreateClub(); return;}
+  { const y=parseInt(c.founded,10)||0, nowY=new Date().getFullYear();
+    if(c.founded && (y<1900||y>nowY)){
+      toast(`창단연도를 1900~${nowY} 사이로 적어주세요`); c.step=3; openCreateClub(); return; } }
   if(state.myClubs.includes(n)||state.clubs.some(x=>x.n===n&&(!x.sport||x.sport===state.sport))){
     toast('이 종목에 이미 있는 클럽 이름이에요'); c.step=1; openCreateClub(); return;}
   const days=[c.days.join('·'), c.times[0]?c.times[0].split('(')[0]:''].filter(Boolean).join(' ');
   const extra={ avg_grade:c.grade, home_court:court, meet_days:days, intro:(c.intro||'').trim(),
     logo:c.logoMode==='img'?c.logoImg:null, logo_ic:c.logoMode==='sym'?c.logoIc:null,
     logo_bg:c.logoMode==='sym'?c.logoBg:null, meet_time:c.times.join(','),
-    age_bands:c.ages.join(','), gender_pref:c.gender };
+    age_bands:c.ages.join(','), gender_pref:c.gender,
+    founded_year: parseInt(c.founded,10)||null, recruiting: c.recruit?1:0 };
   // 서버 연결 상태면 서버에 먼저 만든다 — 안 그러면 피드·공지·회비·대진이 전부 데모로 떨어진다
   if(SERVER_OK){
     const sc = await createClubServer(n, r, state.sport, extra);
@@ -11165,12 +11190,15 @@ const CF_TIME=['오전','낮','저녁','심야'];
 const CF_GEND=['남녀모두','남자','여자'];
 const CF_GRADE=[['C','입문'],['B','중급'],['A','상급'],['S','최상급'],['SS','선수급']];
 const CF_AGE=['10대','20대','30대','40대','50대 이상'];
-function cf(){ state._cf=state._cf||{days:[],time:[],gender:[],grade:[],age:[],guest:false}; return state._cf; }
-function cfCount(){ const F=cf(); return F.days.length+F.time.length+F.gender.length+F.grade.length+F.age.length+(F.guest?1:0); }
+/* recruit: 모집 중인 클럽만 보기. 다른 조건과 달리 목록 순서까지 바꾼다 —
+   지금 사람을 받는 클럽을 위로 올려야 찾는 사람이 헛걸음하지 않는다. */
+function cf(){ state._cf=state._cf||{days:[],time:[],gender:[],grade:[],age:[],guest:false,recruit:false}; return state._cf; }
+function cfCount(){ const F=cf(); return F.days.length+F.time.length+F.gender.length+F.grade.length+F.age.length+(F.guest?1:0)+(F.recruit?1:0); }
 function cfTog(k,v){ const F=cf(); const a=F[k];
   const i=a.indexOf(v); i<0?a.push(v):a.splice(i,1); drawClubFilter(); }
 function cfTogGuest(){ const F=cf(); F.guest=!F.guest; drawClubFilter(); }
-function cfReset(){ state._cf={days:[],time:[],gender:[],grade:[],age:[],guest:false};
+function cfTogRecruit(){ const F=cf(); F.recruit=!F.recruit; drawClubFilter(); }
+function cfReset(){ state._cf={days:[],time:[],gender:[],grade:[],age:[],guest:false,recruit:false};
   if(document.getElementById('cfSheet')) drawClubFilter(); else renderClub(); }
 function cfApply(){ closeOv(); renderClub(); const n=cfCount(); if(n) toast(`조건 ${n}개로 걸렀어요`); }
 /* ═══ 성별 구성 배지 ═══
@@ -11205,8 +11233,17 @@ function clubGenderChip(c, size){
   return `<span style="flex:none;font-size:${size||11.5}px;font-weight:600;letter-spacing:-.01em;
     color:${t.c};white-space:nowrap">${t.l}</span>`;
 }
+function clubRecruiting(c){ return !!(c && (c.recruiting===1 || c.recruiting===true)); }
+/* 게스트 조건 — <받아요>는 정보가 없다. 구력 몇 년부터인지가 실제 문턱이다. */
+function guestMinText(mo){
+  const m=+mo||0; if(!m) return '누구나';
+  if(m%12===0) return `구력 ${m/12}년 이상`;
+  if(m<12) return `구력 ${m}개월 이상`;
+  return `구력 ${Math.floor(m/12)}년 ${m%12}개월 이상`;
+}
 function cfMatch(c){
   const F=cf();
+  if(F.recruit && !clubRecruiting(c)) return false;
   const has=(txt,arr)=>!arr.length || arr.some(v=>String(txt||'').includes(v));
   if(F.days.length && !has(c.meet_days||c.days, F.days)) return false;
   if(F.time.length && !has(c.meet_time||c.time, F.time)) return false;
@@ -11276,6 +11313,7 @@ function drawClubFilter(){
       ${grp('클럽 평균 등급','grade',CF_GRADE)}
       ${grp('나이대','age',CF_AGE)}
       <div class="cfg"><div class="cft">그 외</div><div class="cfw">
+        <button class="cfc ${F.recruit?'on':''}" onclick="cfTogRecruit()">회원 모집 중</button>
         <button class="cfc ${F.guest?'on':''}" onclick="cfTogGuest()">게스트 가능</button></div></div>
     </div>
     <div class="rgfoot">
@@ -14677,6 +14715,12 @@ function openClubBasicEdit(fresh){
   /* 성별 구성은 만들 때만 정할 수 있었다. 여성 클럽이 나중에 그렇게 밝히려 해도
      바꿀 곳이 없어서 배지가 영영 안 붙었다. */
   CBE.gender = CBE.gender!=null?CBE.gender  : (c.gender_pref||c.gender||'남녀 모두');
+  /* 창단연도는 만들 때 안 적었으면 비어 있다 — 여기서 채워 넣을 수 있어야 한다.
+     모집 여부는 값(0/1)으로 둔다. 문구로 두면 목록에서 걸러낼 수가 없다. */
+  CBE.founded = CBE.founded!=null?CBE.founded : (c.founded_year||'');
+  CBE.recruit = CBE.recruit!=null?CBE.recruit : clubRecruiting(c);
+  /* 게스트 구력 — 개월 수로 담는다. 0 은 제한 없음 */
+  CBE.gmin    = CBE.gmin!=null?CBE.gmin       : (+c.guest_min_months||0);
   const DAY=['월','화','수','목','금','토','일'];
   const TM=['오전','낮','저녁','밤'];
   const picked=new Set(String(CBE.days).split(/[\s·,]+/).filter(Boolean));
@@ -14697,13 +14741,27 @@ function openClubBasicEdit(fresh){
     <div class="cw-chips">${['남녀 모두','여자','남자'].map(x=>
       `<span class="cw-c ${CBE.gender===x?'on':''}" onclick="cbeSet('gender',${jsArg(x)})">${x}</span>`).join('')}</div>
     <div class="hint" style="margin-top:8px">여자·남자를 고르면 클럽 목록에 <b>여성 클럽</b>·<b>남성 클럽</b>으로 표시돼요.</div>
+    <div class="fld" style="margin-top:14px"><label>창단연도</label>
+      <input id="cbeYear" inputmode="numeric" maxlength="4" placeholder="예) 2024" value="${esc(String(CBE.founded||''))}"></div>
+    <div class="hint">클럽 페이지에 <b>${esc(String(CBE.founded||'2024'))}년부터</b>로 보여요. 모르면 비워두세요.</div>
+    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">회원 모집</label>
+    <div class="cw-chips">
+      <span class="cw-c ${CBE.recruit?'on':''}" onclick="cbeSet('recruit',true)">모집 중</span>
+      <span class="cw-c ${!CBE.recruit?'on':''}" onclick="cbeSet('recruit',false)">안 받는 중</span></div>
+    <div class="hint" style="margin-top:8px">모집 중으로 두면 클럽 목록에서 위로 올라가고, <b>회원 모집 중</b> 표시가 붙어요.</div>
+    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">게스트 조건</label>
+    <div class="cw-chips">${[[0,'제한 없음'],[6,'6개월 이상'],[12,'1년 이상'],[24,'2년 이상'],[36,'3년 이상'],[60,'5년 이상']]
+      .map(([v,l])=>`<span class="cw-c ${CBE.gmin===v?'on':''}" onclick="cbeSet('gmin',${v})">${l}</span>`).join('')}</div>
+    <div class="hint" style="margin-top:8px">클럽 페이지 게스트 칸에 <b>${
+      CBE.gmin?guestMinText(CBE.gmin):'누구나'}</b>로 보여요. 가입 조건과는 따로 정해요.</div>
     <button class="btn" style="margin-top:16px" onclick="saveClubBasic()">저장</button>`;
   document.getElementById('ov').classList.add('on');
 }
 let CBE=null;
 function cbeStash(){ const g=id=>{const e=document.getElementById(id);return e?e.value:null;};
-  const r=g('cbeRegion'), ct=g('cbeCourt');
-  if(r!=null) CBE.region=r; if(ct!=null) CBE.court=ct; }
+  const r=g('cbeRegion'), ct=g('cbeCourt'), y=g('cbeYear');
+  if(r!=null) CBE.region=r; if(ct!=null) CBE.court=ct;
+  if(y!=null) CBE.founded=String(y).replace(/[^0-9]/g,'').slice(0,4); }
 function cbeSet(k,v){ cbeStash(); CBE[k]=v; openClubBasicEdit(); }
 function cbeDay(x){
   cbeStash();
@@ -14720,16 +14778,25 @@ async function saveClubBasic(){
   const mtime=CBE.time||'';
   const gender=CBE.gender||'남녀 모두';
   const days=[CBE.days||'', mtime].filter(Boolean).join(' ');
-  const c=AC(); if(c){ c.court=court; c.meet_days=days; c.region=region; c.gender_pref=gender; }
+  const yr=parseInt(CBE.founded,10)||0;
+  const nowY=new Date().getFullYear();
+  if(CBE.founded && (yr<1900||yr>nowY)){ toast(`창단연도를 1900~${nowY} 사이로 적어주세요`); return; }
+  const recruit=!!CBE.recruit;
+  const gmin=+CBE.gmin||0;
+  const c=AC(); if(c){ c.court=court; c.meet_days=days; c.region=region; c.gender_pref=gender;
+    c.founded_year=yr||null; c.recruiting=recruit?1:0; c.guest_min_months=gmin||null; }
   /* 목록 캐시에도 즉시 반영 — 저장하고 돌아왔을 때 배지가 바로 보여야 한다 */
-  { const cc=(state.clubs||[]).find(x=>x.n===n); if(cc) cc.gender_pref=gender; }
+  { const cc=(state.clubs||[]).find(x=>x.n===n);
+    if(cc){ cc.gender_pref=gender; cc.founded_year=yr||null; cc.recruiting=recruit?1:0;
+            cc.guest_min_months=gmin||null; } }
   const d=(state.clubData||{})[n]; if(d) d.region=region;
   const cat=(state.clubs||[]).find(x=>x.n===n); if(cat){ cat.r=region||cat.r; cat.court=court; cat.days=days; }
   try{ saveMatsu(); }catch(e){}
   CBE=null; closeOv(); renderClub();
   if(SERVER_OK && cid){
     try{ await api(`/clubs/${cid}/profile`,{method:'PATCH',
-      body: JSON.stringify({ home_court:court, meet_days:days, meet_time:mtime, gender_pref:gender })});
+      body: JSON.stringify({ home_court:court, meet_days:days, meet_time:mtime, gender_pref:gender,
+        founded_year: yr||null, recruiting: recruit?1:0, guest_min_months: gmin||null })});
       toast('클럽 정보를 저장했어요');
     }catch(e){ toast(String(e.message).includes('officer_only')?'운영진만 바꿀 수 있어요':'저장에 실패했어요 · 기기에는 저장됐어요'); }
   } else toast('클럽 정보를 저장했어요');
