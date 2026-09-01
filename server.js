@@ -1116,11 +1116,10 @@ app.patch('/clubs/:id/members/:uid/alias', auth, (req, res) => {
 /* ── 가입하지 않은 사람이 보는 클럽 페이지 ─────────────────────────────
    밖에서 클럽을 고르는 사람에게 필요한 것만 내려준다. 이름은 여기서 가린다 —
    앱에서 가리면 원본이 이미 브라우저까지 간 뒤라 가린 것이 아니다. */
-function maskName(n) {
-  const t = String(n || '').trim();
-  if (!t) return '';
-  return t.length <= 1 ? t : t[0] + '○'.repeat(Math.min(t.length - 1, 2));
-}
+/* 이름은 그대로 내보낸다 — /clubs/:id/members 로 명단이 이미 열려 있어서
+   대진표만 가리면 가린 것이 아니라 <굴러가는 클럽인지> 알아보기만 어려워진다.
+   가려야 할 때가 오면 이 함수 하나만 바꾸면 전부 따라온다. */
+function maskName(n) { return String(n || '').trim(); }
 app.get('/clubs/:id/public', (req, res) => {
   const cid = +req.params.id;
   const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
@@ -1207,11 +1206,29 @@ app.get('/clubs/:id/public/day/:date', (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   let d = {}; try { d = JSON.parse(row.data); } catch (e) {}
   const nm = t => (t || []).map(p => maskName(p && p.name)).filter(Boolean).join('·');
-  const games = (d.games || []).filter(g => g.sa != null && g.sb != null).map(g => ({
+  const done = (d.games || []).filter(g => g.sa != null && g.sb != null);
+  const games = done.map(g => ({
     r: g.r || 1, court: g.playCourt || g.c || 1,
     a: nm(g.teamA), b: nm(g.teamB), sa: g.sa, sb: g.sb,
   }));
-  res.json({ date: row.date, mode: d.mode || 'normal', games });
+  /* 그날 순위 — 시즌과 같은 셈법(승 3 · 무 1)에, 가른 게임 차를 더해 동점을 푼다 */
+  const tally = {};
+  const put = (p, pt, gf, ga) => {
+    if (!p || !p.name) return;
+    const t = tally[p.name] || (tally[p.name] = { name: maskName(p.name), pts: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 });
+    t.pts += pt; t.gf += gf; t.ga += ga;
+    if (pt === 3) t.w++; else if (pt === 1) t.d++; else t.l++;
+  };
+  done.forEach(g => {
+    const pa = g.sa > g.sb ? 3 : (g.sa === g.sb ? 1 : 0);
+    const pb = g.sb > g.sa ? 3 : (g.sa === g.sb ? 1 : 0);
+    (g.teamA || []).forEach(p => put(p, pa, g.sa, g.sb));
+    (g.teamB || []).forEach(p => put(p, pb, g.sb, g.sa));
+  });
+  const standings = Object.values(tally)
+    .sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
+    .map((t, i) => ({ pos: i + 1, ...t, diff: t.gf - t.ga }));
+  res.json({ date: row.date, mode: d.mode || 'normal', games, standings });
 });
 
 app.get('/clubs/:id/roster-logs', auth, (req, res) => {
