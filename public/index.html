@@ -11141,8 +11141,14 @@ function drawClubPreview(){
     /* 밖에서 보는 사람에게는 이름이 아니라 <어떤 사람들인가>가 필요하다.
        회원이면 그 아래에 실제 명단이 이어진다. */
     const P=PV.pub||{};
-    const G=P.grades||{};
-    const gTot=Object.values(G).reduce((a,b)=>a+b,0);
+    /* 등급 분포는 서버의 club_members.grade 만 세면 안 된다 —
+       그 값은 운영진이 손으로 정한 사람에게만 있어서, 31명 클럽이 4명으로 나왔다.
+       바로 아래 명단이 쓰는 것과 같은 셈(등급이 비면 구력으로 계산)으로 센다. */
+    const G={}; let gUnknown=0;
+    (list||[]).forEach(r=>{ const code=memberGradeCode(r);
+      const base=code?gradeStepBase(code):'';
+      if(base) G[base]=(G[base]||0)+1; else gUnknown++; });
+    const gTot=Object.values(G).reduce((a,b)=>a+b,0)+gUnknown;
     const topG=Object.entries(G).sort((a,b)=>b[1]-a[1])[0];
     const small=(P.members||list.length||0)<4;      // 사람이 적으면 개인이 특정된다
     const stat=(k,v,sub)=>`<div style="border:1px solid #e5e8eb;border-radius:14px;padding:13px 14px">
@@ -11156,18 +11162,21 @@ function drawClubPreview(){
         ${P.avg_months!=null?stat('평균 구력',
             guestMinText(P.avg_months).replace('구력 ','').replace(' 이상',''),''):''}
         ${topG?stat('주로 있는 등급', `${esc(topG[0])}급`, `${gTot}명 중 ${topG[1]}명`):''}
+        ${!topG&&gUnknown?stat('등급', '아직 없어요', `${gUnknown}명 미정`):''}
         ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?stat('나이대', esc(t), ''):''; })()}
       </div>
       ${gTot?`<div class="ch" style="font-size:15px;margin:26px 0 10px">등급 분포</div>
         <div style="border:1px solid #e5e8eb;border-radius:14px;padding:14px 15px">
-          ${['SS','S','A','B','C','D'].filter(g=>G[g]).map(g=>`
+          ${['SS','S','A','B','C','D'].filter(g=>G[g]).concat(gUnknown?['미정']:[]).map(g=>`
             <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
-              <span style="flex:none;width:26px;font-size:12px;font-weight:700">${g}급</span>
+              <span style="flex:none;width:30px;font-size:12px;font-weight:700;color:${
+                g==='미정'?'var(--lgray)':'inherit'}">${g==='미정'?'미정':g+'급'}</span>
               <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
                 <i style="display:block;height:100%;border-radius:4px;width:${
-                  Math.round(G[g]/Math.max(1,topG?topG[1]:1)*100)}%;
+                  Math.round((g==='미정'?gUnknown:G[g])/Math.max(1,topG?topG[1]:1)*100)}%;
                   background:${topG&&g===topG[0]?'var(--coral)':'#c2c8ce'}"></i></span>
-              <span style="flex:none;font-size:11.5px;color:var(--gray);width:30px;text-align:right">${G[g]}명</span>
+              <span style="flex:none;font-size:11.5px;color:var(--gray);width:30px;text-align:right">${
+                g==='미정'?gUnknown:G[g]}명</span>
             </div>`).join('')}
         </div>`:''}
       ${small?'<div style="font-size:11.5px;color:var(--gray);margin-top:10px">회원이 4명 이상이면 성비도 함께 보여요</div>':''}`;
