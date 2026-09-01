@@ -16327,9 +16327,44 @@ function cb2CanEdit(){
 /* 클럽 이름 변경·삭제는 클럽장만 — 임원과 구분해야 한다 */
 function cb2Owner(){ if(TRIAL) return true; const c=(SRV_MYCLUBS||[]).find(x=>x.name===state.activeClub); return !!(c&&c.role==='owner'); }
 
+/* clubId() 는 <이름 → 서버 번호> 표 하나만 본다. 그 표가 아직 안 채워졌거나
+   이름이 미세하게 다르면 번호를 못 찾고, 그러면 서버에 물어보지도 못한 채
+   <서버 연결이 필요해요>가 떴다. 실제로는 연결에 아무 문제가 없는데도.
+   그래서 찾는 곳을 넓힌다 — 표, 내 클럽 목록(공백 무시), 그래도 없으면
+   서버에서 목록을 다시 받아 한 번 더 본다. */
+async function resolveClubId(){
+  const direct = clubId();
+  if(direct) return direct;
+  const nm = String(state.activeClub||'').trim();
+  const eq = a => String(a||'').trim() === nm;
+  let hit = (SRV_MYCLUBS||[]).find(c=>eq(c.name));
+  if(hit && hit.id){ CLUB_IDS[state.activeClub]=hit.id; saveClubIds(); return hit.id; }
+  if(SERVER_OK && authToken()){
+    try{ await loadClubIds(); }catch(e){}
+    const again = clubId();
+    if(again) return again;
+    hit = (SRV_MYCLUBS||[]).find(c=>eq(c.name));
+    if(hit && hit.id){ CLUB_IDS[state.activeClub]=hit.id; saveClubIds(); return hit.id; }
+  }
+  return null;
+}
+/* 서버에 없는 클럽 — 기기에만 남은 옛 데이터다. 서버를 부를 것이 없으니
+   여기서 정리하고 끝낸다. 예전에는 이 경우가 <서버 연결이 필요해요>로 보였다. */
+function forgetLocalClub(nm){
+  state.myClubs=(state.myClubs||[]).filter(n=>n!==nm);
+  if(state.clubData) delete state.clubData[nm];
+  state.clubs=(state.clubs||[]).filter(c=>c.n!==nm);
+  SRV_MYCLUBS=(SRV_MYCLUBS||[]).filter(c=>c.name!==nm);
+  delete CLUB_IDS[nm]; saveClubIds();
+  state.activeClub=state.myClubs[0]||''; state.clubOpen=null;
+  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; MB_CACHE=[];
+  try{ saveMatsu(); }catch(e){}
+}
+
 async function renameClub(){
-  const cid=clubId(); const cur=state.activeClub||'';
-  if(!cid){ toast('서버 연결이 필요해요'); return; }
+  const cur=state.activeClub||'';
+  const cid=await resolveClubId();
+  if(!cid){ toast(SERVER_OK?'이 클럽은 서버에 없어요 · 앱을 껐다 켜 주세요':'서버에 연결되면 바꿀 수 있어요'); return; }
   const v=await appPrompt('클럽 이름을 새로 정해주세요\n같은 종목에 같은 이름은 쓸 수 없어요', cur, '다음', 20);
   if(v===null) return;
   const name=v.trim().slice(0,20);
@@ -16376,8 +16411,15 @@ function renameClubLocal(before, after){
 }
 
 async function deleteClub(){
-  const cid=clubId(); const nm=state.activeClub||'';
-  if(!cid){ toast('서버 연결이 필요해요'); return; }
+  const nm=state.activeClub||'';
+  const cid=await resolveClubId();
+  /* 서버에 없는 클럽이면 지울 것도 서버에 없다 — 기기에서만 치우고 끝낸다 */
+  if(!cid){
+    if(!SERVER_OK){ toast('서버에 연결되면 지울 수 있어요'); return; }
+    if(!await appConfirm(`${nm} 클럽은 서버에 없어요.\n이 기기 목록에서만 치울까요?`,'치우기')) return;
+    forgetLocalClub(nm); closeOv(); toast(`${nm}을(를) 목록에서 치웠어요`);
+    go('club'); renderClub(); return;
+  }
   if(!await appConfirm(`${nm} 클럽을 지울까요?\n\n일정·대진·소식·기록이 모두 사라지고 되돌릴 수 없어요.\n나 말고 회원이 한 명이라도 있으면 지워지지 않아요.`,'지우기')) return;
   try{
     await api(`/clubs/${cid}`,{method:'DELETE'});
