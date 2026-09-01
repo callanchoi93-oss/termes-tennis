@@ -2131,7 +2131,96 @@ app.post('/clubs/:id/transfer-owner', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-// 내가 속한 클럽 목록 (역할·상태 포함)
+/* ── 클럽 이름 변경 · 클럽 삭제 (클럽장 전용) ──────────────────────────
+   앱에는 두 화면이 다 있는데 서버에 길이 없어 404 가 났다.
+   이름 규칙은 POST /clubs 와 같은 것을 쓴다 — 만들 때는 막고 바꿀 때는
+   통과하면, 금지한 이름이 이름 변경으로 우회된다.                      */
+function clubOwnerGuard(cid, uid) {
+  return !!db.prepare("SELECT 1 FROM club_members WHERE club_id=? AND user_id=? AND role='owner'").get(cid, uid);
+}
+app.patch('/clubs/:id/name', auth, (req, res) => {
+  const cid = +req.params.id;
+  const club = db.prepare('SELECT name,sport FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'no_club' });
+  if (!clubOwnerGuard(cid, req.uid)) return res.status(403).json({ error: 'owner_only' });
+
+  const name = cleanName(req.body && req.body.name, '').slice(0, 24);
+  if (!name) return res.status(400).json({ error: 'name_required', message: '클럽 이름을 입력해 주세요' });
+  if (name.length < 2)
+    return res.status(400).json({ error: 'name_short', message: '클럽 이름은 2자 이상이어야 해요' });
+  if (/^[ㄱ-ㅎㅏ-ㅣ]+$/.test(name))
+    return res.status(400).json({ error: 'name_jamo', message: '자음·모음만으로는 만들 수 없어요' });
+  if (/^(.)\1*$/.test(name))
+    return res.status(400).json({ error: 'name_repeat', message: '같은 글자만 반복할 수 없어요' });
+  if (!/[가-힣a-zA-Z0-9]/.test(name))
+    return res.status(400).json({ error: 'name_invalid', message: '클럽 이름을 다시 확인해 주세요' });
+  const bad = findContact(name);
+  if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+
+  if (name === club.name) return res.json({ ok: true, name });
+  /* 같은 종목 안에서만 겹치면 안 된다 — 자기 자신은 검사에서 뺀다 */
+  const dup = db.prepare('SELECT 1 FROM clubs WHERE name=? AND sport=? AND id<>?').get(name, club.sport, cid);
+  if (dup) return res.status(409).json({ error: 'name_taken', message: '이미 있는 클럽 이름이에요' });
+
+  db.prepare('UPDATE clubs SET name=? WHERE id=?').run(name, cid);
+  /* 앱은 클럽을 이름으로 찾는 곳이 많다 — 회원들이 옛 이름을 계속 들고 있지
+     않도록 알림을 보내 다시 받아 가게 한다 */
+  db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND COALESCE(status,'active')='active'")
+    .all(cid)
+    .forEach(m => { if (m.user_id !== req.uid) sendPush(m.user_id,
+      { icon: '✏️', title: '클럽 이름이 바뀌었어요', body: `${club.name} → ${name}` }); });
+  res.json({ ok: true, name });
+});
+
+app.delete('/clubs/:id', auth, (req, res) => {
+  const cid = +req.params.id;
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'no_club' });
+  if (!clubOwnerGuard(cid, req.uid)) return res.status(403).json({ error: 'owner_only' });
+
+  /* 나 말고 정회원이 남아 있으면 지우지 않는다 — 남의 기록까지 사라지기 때문이다.
+     가입 신청(pending)만 남은 건 회원이 아니므로 막지 않고 같이 정리한다. */
+  const others = db.prepare(`SELECT COUNT(*) n FROM club_members
+      WHERE club_id=? AND user_id<>? AND COALESCE(status,'active')='active'`).get(cid, req.uid).n;
+  if (others > 0)
+    return res.status(409).json({ error: 'members_left', count: others,
+      message: '아직 회원이 남아 있어요' });
+
+  /* 딸린 자료를 손으로 지운다. 표가 없거나 열 이름이 다른 경우가 있어
+     한 줄씩 감싼다 — 하나 실패했다고 삭제 전체가 멈추면 반쪽만 지워진다. */
+  const wipe = (sql, ...args) => { try { db.prepare(sql).run(...args); } catch (e) {} };
+  const ids = (sql, ...args) => { try { return db.prepare(sql).all(...args).map(r => r.id); } catch (e) { return []; } };
+
+  const evIds   = ids('SELECT id FROM club_events WHERE club_id=?', cid);
+  const postIds = ids('SELECT id FROM club_posts  WHERE club_id=?', cid);
+  const noticeIds = ids('SELECT id FROM notices   WHERE club_id=?', cid);
+  const brIds   = ids('SELECT id FROM brackets    WHERE club_id=?', cid);
+  const each = (list, sql) => list.forEach(v => wipe(sql, v));
+
+  each(evIds, 'DELETE FROM event_attendees WHERE event_id=?');
+  each(evIds, 'DELETE FROM event_guests    WHERE event_id=?');
+  each(evIds, 'DELETE FROM event_comments  WHERE event_id=?');
+  each(evIds, 'DELETE FROM event_reactions WHERE event_id=?');
+  each(evIds, 'DELETE FROM exchange_games  WHERE event_id=?');
+  each(postIds, 'DELETE FROM feed_comments WHERE post_id=?');
+  each(postIds, 'DELETE FROM feed_likes    WHERE post_id=?');
+  each(postIds, 'DELETE FROM post_likes    WHERE post_id=?');
+  each(noticeIds, 'DELETE FROM notice_votes WHERE notice_id=?');
+  each(brIds, 'DELETE FROM bracket_scores  WHERE bracket_id=?');
+  each(brIds, 'DELETE FROM bracket_timers  WHERE bracket_id=?');
+
+  [ 'brackets', 'club_accounts', 'club_bracket_logs', 'club_brackets', 'club_brackets_ev',
+    'club_chat', 'club_chat_reads', 'club_court_slots', 'club_events', 'club_expenses',
+    'club_invites', 'club_league', 'club_logos', 'club_members', 'club_peer_reviews',
+    'club_posts', 'club_team_matches', 'club_tiers', 'deposits', 'dues', 'exchange_entries',
+    'grade_changes', 'guest_links', 'live_activities', 'member_exits', 'monthly_results',
+    'notices', 'rest_requests',
+  ].forEach(t => wipe(`DELETE FROM ${t} WHERE club_id=?`, cid));
+
+  db.prepare('DELETE FROM clubs WHERE id=?').run(cid);
+  console.log(`[clubs] 삭제 id=${cid} name=${club.name} by uid=${req.uid}`);
+  res.json({ ok: true });
+});
 app.get('/me/clubs', auth, (req, res) => {
   /* 내 클럽 목록에서도 성별 배지가 나와야 해서 같은 숫자를 함께 내려준다 */
   const GQ = `(SELECT COUNT(*) FROM club_members m JOIN users u ON u.id=m.user_id
