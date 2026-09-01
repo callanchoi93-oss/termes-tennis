@@ -11072,19 +11072,33 @@ function drawClubPreview(){
         ${days.length?'<div style="font-size:11.5px;color:var(--gray);margin-top:10px">누르면 그날 대진과 점수를 볼 수 있어요</div>':''}`;
     }
   } else if(PV.tab==='sched'){
-    const list=(events||[]).slice(0,10);
-    body = list.length
-      ? `<div style="margin-top:4px">${list.map(e=>`
-          <div style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #eff0f2">
-            <div style="flex:1;min-width:0">
-              <b style="font-size:14.5px;font-weight:500">${esc(e.title||'모임')}</b>
-              <div style="font-size:12.5px;color:var(--gray);margin-top:4px">${esc(e.date||'일정 미정')}</div>
-              <div style="font-size:12.5px;color:var(--lgray);margin-top:2px">${esc(e.place||c.court||'장소 미정')}</div>
-            </div>
-            <span style="flex:none;align-self:center;font-size:11px;font-weight:600;border-radius:7px;
-              padding:5px 10px;background:${e.tag==='번개'?'#eef0fb':'#e4f8f1'};
-              color:${e.tag==='번개'?'#4437a8':'#03a273'}">${esc(e.tag||'정기')}</span>
-          </div>`).join('')}</div>`
+    /* 모임 날짜는 <8/28 (금) 19:00~23:00 · 용인> 꼴의 글이다 —
+       앞의 M/D 와 요일만 뽑아 날짜 칸으로 세운다. */
+    const parse=t=>{ const m=String(t||'').match(/(\d{1,2})\/(\d{1,2})/); if(!m) return null;
+      const now=new Date(); const d=new Date(now.getFullYear(), +m[1]-1, +m[2]);
+      const diff=(d-now)/864e5;
+      if(diff<-200) d.setFullYear(now.getFullYear()+1);
+      if(diff>200)  d.setFullYear(now.getFullYear()-1);
+      return d; };
+    const cnt={}; (PV.pub&&PV.pub.events||[]).forEach(e=>{ cnt[e.id]=e.count; });
+    const rows=(events||[]).map(e=>{ const d=parse(e.date);
+      return { e, d, past: d ? d < new Date(new Date().toDateString()) : false }; })
+      .filter(x=>x.d);
+    const card=({e,d,past})=>`<div class="pvday" style="cursor:default${past?';opacity:.72':''}">
+      <span class="dt"><b>${d.getDate()}</b><span>${['일','월','화','수','목','금','토'][d.getDay()]}</span></span>
+      <span class="ti"><b>${esc(e.title||'모임')}</b>
+        <span>${esc(String(e.date||'').replace(/^\d{1,2}\/\d{1,2}\s*\([^)]*\)\s*/,''))||esc(e.place||c.court||'')}</span>
+        <span style="display:inline-block;font-size:11.5px;font-weight:600;color:#4e5968;
+          background:#f2f4f6;border-radius:7px;padding:3px 9px;margin-top:7px">${
+          cnt[e.id]!=null ? `${cnt[e.id]}명 참석${past?'':' 예정'}` : (past?'끝난 모임':'아직 모으는 중')}</span></span>
+    </div>`;
+    const up=rows.filter(x=>!x.past).reverse(), old=rows.filter(x=>x.past);
+    body = rows.length
+      ? `<div class="ch" style="font-size:15px;margin:4px 0 10px">다가오는 모임</div>
+         ${up.length?up.slice(0,6).map(card).join(''):'<div class="pvempty">예정된 모임이 없어요</div>'}
+         <div style="font-size:11.5px;color:var(--gray);margin-top:10px">참석자 이름은 회원에게만 보여요</div>
+         ${old.length?`<div class="ch" style="font-size:15px;margin:26px 0 10px">지난 모임</div>
+           ${old.slice(0,6).map(card).join('')}`:''}`
       : `<div class="pvempty">아직 등록된 모임이 없어요</div>`;
   } else {
     /* 클럽에서는 개인리그 티어가 아니라 클럽 등급(C1~SS3 15단계)을 쓴다.
@@ -11109,11 +11123,44 @@ function drawClubPreview(){
         ${role?`<span class="pvrole ${memberLabelCls(r)}">${esc(role)}</span>`:''}
       </div>`;
     }).join('');
-    body = list.length
-      ? `<div class="pvcnt">멤버 ${list.length}명
+    /* 밖에서 보는 사람에게는 이름이 아니라 <어떤 사람들인가>가 필요하다.
+       회원이면 그 아래에 실제 명단이 이어진다. */
+    const P=PV.pub||{};
+    const isMem=(state.clubStatus[n]||'none')==='member';
+    const G=P.grades||{};
+    const gTot=Object.values(G).reduce((a,b)=>a+b,0);
+    const topG=Object.entries(G).sort((a,b)=>b[1]-a[1])[0];
+    const small=(P.members||list.length||0)<4;      // 사람이 적으면 개인이 특정된다
+    const stat=(k,v,sub)=>`<div style="border:1px solid #e5e8eb;border-radius:14px;padding:13px 14px">
+      <div style="font-size:11.5px;color:var(--gray)">${k}</div>
+      <div style="font-size:19px;font-weight:700;letter-spacing:-.04em;margin-top:3px">${v}</div>
+      ${sub?`<div style="font-size:11.5px;color:var(--gray);margin-top:1px">${sub}</div>`:''}</div>`;
+    const stats = `<div class="ch" style="font-size:15px;margin:4px 0 10px">이런 분들이 있어요</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+        ${stat('회원', `${P.members||list.length||0}명`,
+               small?'':(P.g_f===0?'모두 남성':P.g_m===0?'모두 여성':`남 ${P.g_m} · 여 ${P.g_f}`))}
+        ${P.avg_months!=null?stat('평균 구력',
+            guestMinText(P.avg_months).replace('구력 ','').replace(' 이상',''),''):''}
+        ${topG?stat('주로 있는 등급', `${esc(topG[0])}급`, `${gTot}명 중 ${topG[1]}명`):''}
+        ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?stat('나이대', esc(t), ''):''; })()}
+      </div>
+      ${gTot?`<div class="ch" style="font-size:15px;margin:26px 0 10px">등급 분포</div>
+        <div style="border:1px solid #e5e8eb;border-radius:14px;padding:14px 15px">
+          ${['SS','S','A','B','C','D'].filter(g=>G[g]).map(g=>`
+            <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+              <span style="flex:none;width:26px;font-size:12px;font-weight:700">${g}급</span>
+              <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
+                <i style="display:block;height:100%;border-radius:4px;width:${Math.round(G[g]/gTot*100)}%;
+                  background:${topG&&g===topG[0]?'var(--coral)':'#c2c8ce'}"></i></span>
+              <span style="flex:none;font-size:11.5px;color:var(--gray);width:30px;text-align:right">${G[g]}명</span>
+            </div>`).join('')}
+        </div>`:''}
+      ${small?'<div style="font-size:11.5px;color:var(--gray);margin-top:10px">회원이 4명 이상이면 성비도 함께 보여요</div>':''}`;
+    body = stats + (isMem && list.length
+      ? `<div class="pvcnt" style="margin-top:26px">멤버 ${list.length}명
            <span style="font-size:11.5px;color:var(--lgray);font-weight:400;margin-left:6px">등급 · 구력</span></div>
          <div>${rows}</div>`
-      : `<div class="pvempty">멤버 정보가 아직 없어요</div>`;
+      : `<div style="font-size:11.5px;color:var(--gray);margin-top:26px">회원 이름은 가입한 뒤에 보여요</div>`);
   }
 
   document.getElementById('pvhd').innerHTML = `
