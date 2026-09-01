@@ -812,6 +812,20 @@
   .pvtabs div.on:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2.5px;
     background:var(--ink);border-radius:2px}
   .pvempty{text-align:center;color:var(--lgray);font-size:13px;padding:28px 0}
+  /* 지난 모임 한 줄 — 누르는 것이라 버튼으로 만든다 */
+  .pvday{display:flex;align-items:center;gap:13px;width:100%;text-align:left;font-family:inherit;
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 15px;
+    margin-bottom:8px;cursor:pointer}
+  .pvday:active{background:#f7f8f9}
+  .pvday .dt{flex:none;width:34px;text-align:center}
+  .pvday .dt b{display:block;font-size:19px;font-weight:700;letter-spacing:-.045em;color:var(--ink)}
+  .pvday .dt span{font-size:11px;color:var(--gray)}
+  .pvday .ti{flex:1;min-width:0}
+  .pvday .ti b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+  .pvday .ti span{display:block;font-size:12px;color:var(--gray);margin-top:2px}
+  .pvday .go{flex:none;text-align:right}
+  .pvday .go span{display:block;font-size:11px;font-weight:600;color:var(--coral-d)}
+  .pvday .go b{font-size:14px;font-weight:700;color:var(--ink)}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top, 0px)) 20px 8px;flex-shrink:0}
   /* 상태바 가림막 — 페이지가 스크롤돼도 시계·배터리 아래로 내용이 비치지 않게 한다.
      .appbar 의 padding-top 만으로는 스크롤한 뒤를 막지 못한다. */
@@ -10835,9 +10849,37 @@ async function openClubPreview(n, idHint){
     try{ roster=cb2Roster(await api(`/clubs/${cid}/members`)); }catch(e){}
     try{ events=(await api(`/clubs/${cid}/events`))||[]; }catch(e){}
   }
-  PV={ n, c, cid, roster, events, tab:'info' };
+  PV={ n, c, cid, roster, events, tab:'info', pub:null, day:null };
   closeOv();                       // 열려 있던 바텀시트가 있으면 닫는다
   drawClubPreview();
+  /* 밖에서 보는 사람에게 필요한 값(창단연도·구력·등급 분포·지난 대진·순위)은
+     서버가 한 번에 내려준다. 이름은 서버에서 이미 가려서 온다 —
+     여기서 가리면 원본이 이미 브라우저까지 온 뒤라 가린 것이 아니다. */
+  if(SERVER_OK && cid){
+    try{ const pub=await api(`/clubs/${cid}/public`);
+         if(PV && PV.cid===cid){ PV.pub=pub; drawClubPreview(); } }catch(e){}
+  }
+}
+/* 그날 대진 — 누른 날 것만 받아 온다 */
+async function pvOpenDay(date){
+  if(!PV || !PV.cid) return;
+  PV.day={ date, loading:true, games:[] }; drawClubPreview();
+  try{ const d=await api(`/clubs/${PV.cid}/public/day/${date}`);
+       if(PV) PV.day={ date, loading:false, games:d.games||[], mode:d.mode }; }
+  catch(e){ if(PV) PV.day={ date, loading:false, games:[], err:true }; }
+  drawClubPreview();
+}
+function pvCloseDay(){ if(PV){ PV.day=null; drawClubPreview(); } }
+/* 지난 모임 목록에 쓰는 날짜 — <9월 1일 화>, 목록에서는 <화>만 */
+function dayShort(ymd){
+  const d=new Date(String(ymd||'').slice(0,10)+'T00:00:00');
+  return isNaN(d) ? '' : ['일','월','화','수','목','금','토'][d.getDay()];
+}
+function dayLabel(ymd){
+  const t=String(ymd||'').slice(0,10);
+  const d=new Date(t+'T00:00:00');
+  if(isNaN(d)) return t;
+  return `${d.getMonth()+1}월 ${d.getDate()}일 ${dayShort(t)}`;
 }
 function pvTab(t){ if(!PV) return; PV.tab=t; drawClubPreview(); }
 /* 이 클럽의 임원인지 — 소개·로고는 임원만 고칠 수 있다 */
@@ -10915,22 +10957,54 @@ function drawClubPreview(){
   if(!PV) return;
   const { n, c, roster, events } = PV;
   const st=state.clubStatus[n]||'none';
-  const tabs=[['info','정보'],['sched','일정'],['mem','멤버']];
+  const tabs=[['info','소개'],['rec','기록'],['sched','일정'],['mem','멤버']];
   const kv=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:12px 0;
     border-bottom:1px solid #eff0f2;font-size:14px">
     <span style="color:var(--gray)">${k}</span><b style="font-weight:500;text-align:right">${v}</b></div>`;
+  /* 라벨과 값이 양끝에서 마주 보면 관공서 서식처럼 읽힌다.
+     왼쪽에 작은 라벨, 오른쪽에 값과 부연을 두 줄로 두면 훑기 쉽다. */
+  const kv2=(k,v,sub)=>`<div style="display:flex;align-items:baseline;gap:12px;padding:13px 0;
+    border-bottom:1px solid #eff0f2">
+    <span style="flex:none;width:74px;font-size:12.5px;color:var(--gray)">${k}</span>
+    <span style="flex:1"><b style="font-size:14px;font-weight:600">${v}</b>${
+      sub?`<small style="display:block;font-size:12px;font-weight:400;color:var(--gray);margin-top:2px">${sub}</small>`:''}</span></div>`;
+  const manWon=v=>{ const m=v/10000; const t=(m%1===0?m:m.toFixed(1));
+    return `${t}<em style="font-style:normal;font-size:11.5px;font-weight:600;color:var(--gray)">만</em>`; };
 
   let body='';
   if(PV.tab==='info'){
+    const P=PV.pub||{};
+    /* 예전에는 <실력 B2> 였다 — 클럽 전체 수준인지 대표값인지 알 수 없어
+       밖에서 보는 사람에게 뜻이 닿지 않았다. 구력은 오해가 없다. */
+    const careerLine = P.avg_months!=null ? guestMinText(P.avg_months).replace('구력 ','').replace(' 이상','') : '';
+    const entry=c.entry!=null?c.entry:P.entry_fee, season=c.season!=null?c.season:P.season_fee;
+    const gfee=c.guestFee!=null?c.guestFee:P.guest_fee;
+    const first=(entry||0)+(season||0);
     body = `<div style="margin-top:4px">
-      ${kv('지역', esc(c.r))}
-      ${kv('정기 모임', esc(c.meet_days||c.days||'미정'))}
-      ${kv('실력', esc(c.avg_grade||c.level||'모든 레벨'))}
-      ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?kv('연령대', esc(t)):''; })()}
-      ${kv('홈구장', esc(c.court||c.home_court||'미정'))}
-      ${kv('입회비', c.entry?`${c.entry.toLocaleString()}원`:'없음')}
-      ${kv('월 회비', c.season?`${c.season.toLocaleString()}원`:'없음')}
-      ${kv('게스트비', c.guestFee?`${c.guestFee.toLocaleString()}원`:(c.guestFee===0?'무료':'없음'))}
+      ${kv2('모이는 날', esc(clubDaysText(c.meet_days||c.days)||'미정'),
+            esc(P.meet_time||c.meet_time||''))}
+      ${kv2('홈구장', esc(c.court||c.home_court||'미정'), esc(c.r||P.region||''))}
+      ${careerLine?kv2('평균 구력', esc(careerLine),
+            (P.members?`회원 ${P.members}명`:'')):''}
+      ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?kv2('나이대', esc(t),''):''; })()}
+      ${kv2('게스트', P.guest_min_months?esc(guestMinText(P.guest_min_months)):'누구나',
+            gfee?`1회 ${gfee.toLocaleString()}원`:(gfee===0?'무료':''))}
+    </div>
+    <div style="margin-top:22px">
+      <div class="ch" style="font-size:15px;margin:0 0 10px">회비</div>
+      <div style="border:1px solid #e5e8eb;border-radius:16px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr)">
+          ${[[entry,'입회비 · 한 번'],[season,'월 회비'],[gfee,'게스트 1회']].map(([v,l],i)=>`
+            <div style="padding:15px 6px;text-align:center;${i?'border-left:1px solid #e5e8eb':''}">
+              <b style="display:block;font-size:17px;font-weight:700;letter-spacing:-.04em">${
+                v?manWon(v):'<span style="font-size:14px;color:var(--gray)">없음</span>'}</b>
+              <span style="display:block;font-size:10.5px;font-weight:500;color:var(--gray);margin-top:5px">${l}</span>
+            </div>`).join('')}
+        </div>
+        ${first?`<div style="display:flex;align-items:center;padding:12px 15px;border-top:1px solid #e5e8eb;
+          font-size:11.5px;font-weight:500;color:#4e5968">처음 들어오면 첫 달에<b style="margin-left:auto;
+          font-size:13.5px;font-weight:700;color:var(--coral-d)">${first.toLocaleString()}원</b></div>`:''}
+      </div>
     </div>
     <div style="margin-top:18px">
       <div style="display:flex;align-items:center;gap:8px">
@@ -10944,6 +11018,59 @@ function drawClubPreview(){
             : '아직 소개가 없어요.'}</p>`}
     </div>
 `;
+  } else if(PV.tab==='rec'){
+    const P=PV.pub||{};
+    if(PV.day){
+      const D=PV.day;
+      const rounds=[...new Set((D.games||[]).map(g=>g.r))].sort((a,b)=>a-b);
+      const courts=[...new Set((D.games||[]).map(g=>g.court))].sort((a,b)=>a-b);
+      body = `<button class="pvedit" style="margin:4px 0 14px" onclick="pvCloseDay()">‹ 지난 모임</button>
+        <div style="font-size:17px;font-weight:700;letter-spacing:-.04em">${esc(dayLabel(D.date))}</div>
+        <div style="font-size:12.5px;color:var(--gray);margin-top:4px">${
+          esc(CB2_MODE_NAME[D.mode]||'시간 대진')} · ${courts.length}코트 · ${(D.games||[]).length}게임</div>
+        ${D.loading?'<div class="pvempty">불러오는 중이에요</div>'
+         :!(D.games||[]).length?'<div class="pvempty">그날 점수가 남아 있지 않아요</div>'
+         :`<div style="border:1px solid #e5e8eb;border-radius:14px;overflow:hidden;margin-top:14px">
+            <div style="display:grid;grid-template-columns:26px repeat(${courts.length},1fr);
+              background:#f7f8f9;border-bottom:1px solid #f2f4f6">
+              <span></span>${courts.map(ct=>`<span style="font-size:11.5px;font-weight:600;color:#4e5968;
+                text-align:center;padding:9px 0">${ct}번 코트</span>`).join('')}</div>
+            ${rounds.map((r,i)=>`<div style="display:grid;grid-template-columns:26px repeat(${courts.length},1fr);
+              ${i<rounds.length-1?'border-bottom:1px solid #f2f4f6':''}">
+              <span style="display:flex;align-items:center;justify-content:center;font-size:11.5px;
+                color:var(--lgray)">${r}</span>
+              ${courts.map(ct=>{ const g=(D.games||[]).find(x=>x.r===r&&x.court===ct);
+                return `<div style="text-align:center;padding:11px 4px;border-left:1px solid #f2f4f6">${
+                  g?`<div style="font-size:11.5px;color:var(--gray)">${esc(g.a)}</div>
+                     <div style="font-size:13px;font-weight:700;margin:3px 0">${g.sa} : ${g.sb}</div>
+                     <div style="font-size:11.5px;color:var(--gray)">${esc(g.b)}</div>`
+                   :'<span style="font-size:11.5px;color:#d5d9de">—</span>'}</div>`; }).join('')}
+            </div>`).join('')}
+          </div>`}
+        <div style="font-size:11.5px;color:var(--gray);margin-top:10px">회원 이름은 가입한 뒤에 보여요</div>`;
+    } else {
+      const days=P.days||[], rk=P.ranking||[];
+      body = `${rk.length?`<div class="ch" style="font-size:15px;margin:4px 0 10px">이번 시즌 순위</div>
+        <div style="border:1px solid #e5e8eb;border-radius:14px;padding:2px 15px">
+          ${rk.map((r,i)=>`<div style="display:flex;align-items:center;gap:11px;padding:11px 0;
+            ${i<rk.length-1?'border-bottom:1px solid #f2f4f6':''}">
+            <span style="flex:none;width:16px;font-size:12.5px;font-weight:700;color:${
+              r.pos===1?'var(--coral-d)':'var(--lgray)'}">${r.pos}</span>
+            <span style="flex:1;font-size:14px;font-weight:500">${esc(r.name)}</span>
+            <span style="flex:none;font-size:14px;font-weight:700">${r.pts}점</span></div>`).join('')}
+        </div>
+        <div style="font-size:11.5px;color:var(--gray);margin-top:8px">승 3점 · 무 1점 · 패 0점</div>`:''}
+        <div class="ch" style="font-size:15px;margin:${rk.length?'26px':'4px'} 0 10px">지난 모임</div>
+        ${days.length?days.map(d=>`
+          <button class="pvday" onclick="pvOpenDay('${esc(d.date)}')">
+            <span class="dt"><b>${(d.date||'').slice(8,10).replace(/^0/,'')}</b><span>${dayShort(d.date)}</span></span>
+            <span class="ti"><b>${esc(CB2_MODE_NAME[d.mode]||'시간 대진')}</b>
+              <span>${d.courts}코트 · ${d.games}게임</span></span>
+            ${d.top?`<span class="go"><span>그날 1위</span><b>${esc(d.top)}</b></span>`:''}
+          </button>`).join('')
+        :`<div class="pvempty">아직 대진 기록이 없어요</div>`}
+        ${days.length?'<div style="font-size:11.5px;color:var(--gray);margin-top:10px">누르면 그날 대진과 점수를 볼 수 있어요</div>':''}`;
+    }
   } else if(PV.tab==='sched'){
     const list=(events||[]).slice(0,10);
     body = list.length
@@ -11005,9 +11132,16 @@ function drawClubPreview(){
           ${clubGenderChip(Object.assign({}, c, {genders:(()=>{ const g={};
             (roster||[]).forEach(m=>{ if(m.gender) g[m.name]=isFem(m.gender)?'F':'M'; }); return g; })()}), 11)}</div>
         <div style="font-size:12.5px;color:var(--lgray);margin-top:2px">
-          ${esc(c.r)} · 회원 ${(roster&&roster.length)||c.m}명</div>
+          ${esc(c.r)} · 회원 ${(roster&&roster.length)||(PV.pub&&PV.pub.members)||c.m}명${
+          (()=>{ const y=(PV.pub&&PV.pub.founded_year)||c.founded_year;
+                 return y?` · ${y}년부터`:''; })()}</div>
       </div>
     </div>
+    ${clubRecruiting(PV.pub||c)?`<div style="display:flex;align-items:baseline;gap:8px;
+      padding:2px 0 2px;font-size:13px">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none;
+        transform:translateY(-1px)"></span>
+      <b style="font-weight:600">회원 모집 중</b></div>`:''}
     <div class="pvtabs">${tabs.map(([k,l])=>
       `<div class="${PV.tab===k?'on':''}" onclick="pvTab('${k}')">${l}</div>`).join('')}</div>`;
 
