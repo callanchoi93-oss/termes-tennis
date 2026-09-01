@@ -1712,7 +1712,11 @@ app.get('/me/watch-token', auth, (req, res) => {
 app.post('/me/watch-token', auth, (req, res) => {
   /* 한 사람에 하나 — 새로 만들면 옛 토큰은 못 쓰게 된다(워치를 잃어버렸을 때) */
   db.prepare('DELETE FROM watch_tokens WHERE user_id=?').run(req.uid);
-  const token = rid() + rid();
+  /* 예전에는 rid() 로 만들었는데, rid 는 <방금 INSERT 한 행의 id를 꺼내는> 함수라
+     인자 없이 부르면 값이 나오지 않았다. 그래서 이 요청이 실패했고,
+     앱은 실패를 조용히 삼켜 워치가 영영 <준비하고 있어요>에 머물렀다.
+     열쇠는 남이 찍어 맞힐 수 없어야 하므로 난수로 만든다. */
+  const token = crypto.randomBytes(24).toString('base64url');
   db.prepare('INSERT INTO watch_tokens (token,user_id,created_at) VALUES (?,?,?)')
     .run(token, req.uid, now());
   res.json({ token });
