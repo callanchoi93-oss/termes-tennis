@@ -14621,6 +14621,21 @@ function clubTabInfo(){
 /* 명단에 이미 있는 값으로 <어떤 사람들이 모여 있나>를 만든다 —
    가입을 고민하는 사람은 소개글보다 이걸 먼저 궁금해한다. */
 function clubFacePanel(){
+  /* 이 칸은 명단으로 계산한다. 그런데 명단은 <멤버> 탭을 열어야 채워져서,
+     소개 탭으로 바로 들어오면 칸이 통째로 사라졌다 — 멤버 탭을 다녀오면
+     그제야 나타나니 <뜰 때가 있고 안 뜰 때가 있는> 것처럼 보였다.
+     여기서도 직접 불러온다. 한 번만 부르고, 받아온 뒤 다시 그린다. */
+  if(CLUB_ROSTER===null){
+    if(!clubFacePanel._loading){
+      clubFacePanel._loading=true;
+      setTimeout(async()=>{
+        try{ await ensureClubRoster(); }catch(e){}
+        clubFacePanel._loading=false;
+        if(state.view==='club') renderClub();
+      },0);
+    }
+    return '';
+  }
   const list=(CLUB_ROSTER||[]).filter(r=>r.user_id && r.role!=='guest');
   if(list.length<4) return '';
   const G={}, S={M:0,F:0}; let yrs=[], known=0;
@@ -14720,7 +14735,22 @@ const LEAGUE_CLUB_ON = false;
 function setClubTab(t){state.clubTab=t;renderClub();}
 function setRegion(r){state.region=r;renderClub();}
 function searchClub(v){state._q=v;renderClub();const el=document.getElementById('cq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
-function switchClub(nm){state.activeClub=nm;state._draft='';state._photo=false;renderClub();}
+/* 클럽을 바꿀 때는 activeClub 만 옮기면 안 된다 — renderClub 맨 위에서
+   clubOpen 이 열쇠가 되어 activeClub 을 도로 끌어당긴다. 그래서 눌러도
+   화면이 그대로였다. 열려 있는 클럽 자체를 옮겨야 한다.
+   서버 데이터(SRV_*)도 이전 클럽 것이라 새로 받아 와야 명단·일정이 맞는다. */
+function switchClub(nm){
+  if(!nm || nm===state.activeClub) return;
+  state.activeClub=nm;
+  if(state.clubOpen) state.clubOpen=nm;
+  state._draft=''; state._photo=false;
+  CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; MB_CACHE=[];
+  window.FEED_LOADED=false; CB2_LIST=null; CLUBME_GAMES=null; CLUBME_MON=null; CLUBME_WHO=null;
+  renderClub();
+  if(SERVER_OK && clubId()){
+    (async()=>{ try{ await loadClubServer(); await loadRoster(); renderClub(); }catch(e){} })();
+  }
+}
 function setAttend(v){ setRsvp(v===true?'going':'absent'); }
 /* 모임 만들기 시트는 한 벌만 둔다 — 예전에는 여기와 renderNewEvent 두 곳이 따로 있어
    한쪽만 고치면 회원이 보는 화면은 그대로였다. */
