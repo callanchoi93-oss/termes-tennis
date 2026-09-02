@@ -4536,7 +4536,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.3-0831a';
+const BUILD='v1.1.4-0902a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -13847,9 +13847,12 @@ function rankTrendSvg(series){
    구력은 <아직 성적이 없을 때> 쓰는 임시 잣대다. 경기가 쌓이면 그 자리를
    성적에 넘긴다. 그래야 실력이 준 분은 내려오고, 구력을 낮게 적은 사람은 올라간다.
    0경기: 구력 70 · 성적 0 · 조 30      (성적이 없으니 구력이 거의 전부)
-   30경기 이상: 구력 20 · 성적 60 · 조 20 (성적이 가장 정확한 자료다) */
+   16경기 이상: 구력 20 · 성적 60 · 조 20 (성적이 가장 정확한 자료다)
+   기준을 30경기로 뒀더니 너무 높았다 — 월 4~6회 모이는 클럽은 반년이 걸리고,
+   그 사이 대진은 계속 구력대로 짜인다. 실제 클럽에서 16경기면 판단이 선다. */
+const BAL_FULL = 16;                            // 성적이 온전히 반영되는 경기 수
 function balWeights(games){
-  const t = Math.max(0, Math.min(1, (games||0)/30));
+  const t = Math.max(0, Math.min(1, (games||0)/BAL_FULL));
   const grade = Math.round(70 - 50*t);          // 70 → 20
   const form  = Math.round(60*t);               //  0 → 60
   const tier  = 100 - grade - form;             // 30 → 20
@@ -13875,8 +13878,8 @@ function balForm(){
   BAL_CACHE = st; BAL_FOR = key;
   return st;
 }
-/* 경기가 쌓일수록 성적을 믿는다 — 0~3경기는 거의 안 보고, 30경기면 거의 다 본다 */
-function balTrust(n){ return Math.max(0, Math.min(1, (n||0)/30)); }
+/* 경기가 쌓일수록 성적을 믿는다 — 몇 판 안 되면 거의 안 보고, BAL_FULL 경기면 거의 다 본다 */
+function balTrust(n){ return Math.max(0, Math.min(1, (n||0)/BAL_FULL)); }
 /* 등급 안에서의 자리 — 0(아래) ~ 1(위). 성적이 없으면 구력 개월로 가른다. */
 /* 이 클럽이 월례대회 조를 쓰는가 — 아무도 조가 없으면 안 쓰는 클럽이다.
    그때는 조 항목을 빼고 그 몫을 성적에 얹는다. 다 같이 0점을 주면
@@ -14003,7 +14006,7 @@ function balPanelHTML(){
        성적·조의 한가운데 값을 빼고 남는 자리로 견준다. */
     /* 대진에 실제로 쓰는 값(cbLv)을 그대로 등급 칸으로 되돌린다.
        예전에는 여기서 <한 칸 위까지>로 잘랐는데, 대진은 그 제한 없이 짜이므로
-       화면과 실제가 어긋났다. 30경기를 친 사람은 두 칸 위도 될 수 있다. */
+       화면과 실제가 어긋났다. 경기가 쌓인 사람은 두 칸 위도 될 수 있다. */
     const lv = cbLv({user_id: meRow.user_id, id: meRow.user_id,
                      grade: s.code, glabel: s.code});   // 1(C) ~ 5(SS)
     let idx = Math.round(lv) - 1;                        // 0(C) ~ 4(SS)
@@ -14066,7 +14069,7 @@ function balPanelHTML(){
     <div class="hint" style="margin-top:9px">등급은 구력으로만 정해져요 · ${esc(gi.label)}이면 ${s.base}등급</div>
     <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:18px">
       <div style="font-size:13.5px;font-weight:600">대진에서 내 자리</div>
-      <div class="hint" style="margin-top:4px">${s.games>=30
+      <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
         ? '경기가 쌓여 <b>성적이 자리를 정해요</b> · 구력 등급을 넘어설 수도 있어요'
         : '구력으로 자리를 잡고, 칠수록 성적과 조가 자리를 옮겨요'}</div>
       <div style="display:flex;gap:3px;margin-top:12px">${steps}</div>
@@ -14089,10 +14092,10 @@ function balPanelHTML(){
 
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">100점을 이렇게 나눠요</div>
-    <div class="hint" style="margin-top:4px">${s.games>=30
-      ? '경기가 30판을 넘어 <b>성적이 가장 크게</b> 반영돼요'
+    <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
+      ? '경기가 ${BAL_FULL}판을 넘어 <b>성적이 가장 크게</b> 반영돼요'
       : s.games>0
-        ? `지금 <b>${s.games}경기</b> · 칠수록 구력 자리를 성적이 가져가요 (30경기에 성적 60)`
+        ? `지금 <b>${s.games}경기</b> · 칠수록 구력 자리를 성적이 가져가요 (${BAL_FULL}경기에 성적 60)`
         : '아직 경기가 없어 <b>구력</b>으로만 봐요 · 치면 성적이 자리를 넘겨받아요'}</div>
     <div style="display:flex;align-items:center;gap:20px;margin-top:16px">
       <div style="flex:none;width:96px;height:96px;border-radius:50%;
@@ -14121,11 +14124,11 @@ function balPanelHTML(){
     <div class="ch" style="font-size:15px;margin:0">칠수록 성적이 자리를 가져가요</div>
     <div class="hint" style="margin-top:4px">구력은 성적이 없을 때 쓰는 임시 잣대예요</div>
     <div style="margin-top:16px">
-      ${[0,10,20,30].map(n=>{
-        const W=balWeights(n), now = n===30 ? s.games>=30 : (s.games>=n && s.games<n+10);
+      ${[0, Math.round(BAL_FULL/3), Math.round(BAL_FULL*2/3), BAL_FULL].map(n=>{
+        const W=balWeights(n), now = n===BAL_FULL ? s.games>=BAL_FULL : (s.games>=n && s.games<n+Math.round(BAL_FULL/3));
         return `<div style="display:flex;align-items:center;gap:10px;${n?'margin-top:10px':''}">
           <span style="flex:none;width:62px;font-size:11.5px;color:${now?'var(--ink)':'var(--gray)'};
-            font-weight:${now?'700':'400'}">${n===30?'30경기~':n+'경기'}</span>
+            font-weight:${now?'700':'400'}">${n===BAL_FULL?BAL_FULL+'경기~':n+'경기'}</span>
           <span style="flex:1;display:flex;height:10px;border-radius:5px;overflow:hidden">
             <i style="flex:${W.grade};background:${gi.c}"></i>
             ${W.form?`<i style="flex:${W.form};background:var(--coral)"></i>`:''}
@@ -14147,8 +14150,8 @@ function balPanelHTML(){
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">등급표</div>
     <div class="hint" style="margin-top:4px">등급은 구력으로만 정해져요 ·
-      오른쪽은 ${s.games>=30?'지금':`지금(${s.games}경기)`} 기준
-      <b>시작점 ~ 갈 수 있는 끝</b>이에요${s.games>=30
+      오른쪽은 ${s.games>=BAL_FULL?'지금':`지금(${s.games}경기)`} 기준
+      <b>시작점 ~ 갈 수 있는 끝</b>이에요${s.games>=BAL_FULL
         ? '<br>경기가 쌓이면 등급이 붙잡는 힘이 약해져 서로 겹쳐요'
         : ''}</div>
     ${GRADE_INFO.map((g,i)=>{
@@ -14167,10 +14170,10 @@ function balPanelHTML(){
 
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">어디까지 올라갈 수 있을까요</div>
-    <div class="hint" style="margin-top:4px">${s.games>=30
+    <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
       ? `지금은 <b>${lo}점에서 ${hi}점</b> 사이 · 성적이 거의 다 정해요`
       : `지금 ${s.games?`${s.games}경기라 `:''}<b>${lo}점에서 ${hi}점</b> 사이 ·
-         30경기가 되면 <b>${(()=>{const W=balWeights(30);
+         ${BAL_FULL}경기가 되면 <b>${(()=>{const W=balWeights(BAL_FULL);
            const g=Math.round(gRank*W.grade); return `${g}~${g+W.form+W.tier}점`;})()}</b>까지 넓어져요`}</div>
     <div style="position:relative;height:10px;border-radius:5px;background:#f2f4f6;margin-top:20px;overflow:hidden">
       <span style="position:absolute;left:${lo}%;right:${100-hi}%;top:0;bottom:0;background:${gi.bg}"></span>
@@ -14188,7 +14191,7 @@ function balPanelHTML(){
       ${[
         { l:'성적', c:'var(--coral)', now:pF, max:formMax,
           sub: s.games ? `${s.games}경기 · 승률 ${wr}%${
-                 s.trust<1?` · 30경기가 되면 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}`
+                 s.trust<1?` · ${BAL_FULL}경기가 되면 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}`
                        : '아직 경기가 없어요 · 치면 올라가요' },
         ...(useT?[{ l:'조', c:'#c2c8ce', now:pT, max:s.W.tier,
           sub: (tg?`${tg}조예요`:'아직 조가 없어요 · 배정받으면 올라가요')
@@ -14211,7 +14214,7 @@ function balPanelHTML(){
         </div>`).join('')}
     </div>
     <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;
-      margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">${s.games>=30
+      margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">${s.games>=BAL_FULL
       ? `경기가 쌓여 <b>성적이 자리를 정해요</b> · 구력보다 요즘 실력이 크게 반영돼요`
       : `칠수록 등급 몫이 줄고 성적 몫이 커져요 ·
          <b>구력이 짧아도 잘 치면 위로</b> 올라갈 수 있어요`}<br>
@@ -21217,7 +21220,10 @@ function cbLv(p){
     const SPAN = 2;                                  // 최대 두 칸까지 움직인다
     let formLv = base, tierLv = base;
     if(f.g > 0){
-      const wr = f.w/f.g;
+      /* 무승부는 반 승으로 센다 — 시즌 순위가 무를 1점(승 3점)으로 세는데
+         여기서 패로 취급하면, 4무 4패인 사람이 승률 0%가 되어 실제보다 훨씬 아래로 간다. */
+      const dr = Math.max(0, f.g - f.w - (f.l||0));
+      const wr = (f.w + dr*0.5) / f.g;
       formLv = base + (wr - 0.5) * 2 * SPAN;         // 0%→−2칸 · 50%→그대로 · 100%→+2칸
     }
     if(uses){
