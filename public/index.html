@@ -13453,8 +13453,8 @@ function clubHeroTabs(){
      각각 <내 기록>·<소개>로 부른다. 일곱 개가 한 화면에 들어온다. */
   /* 탭 이름은 붙여 쓴다 — 여덟 개가 한 줄에 들어와야 한다.
      띄어 쓰면 그만큼 폭을 먹어 마지막 탭이 밀려난다. */
-  const tabs=[['sched','일정'],['bracket','대진'],['rec','랭킹'],['mem','멤버'],
-              ['news','소식'],['me','내기록'],['bal','대진기준'],['info','클럽소개']];
+  const tabs=[['sched','일정'],['bracket','대진'],['bal','대진기준'],['rec','랭킹'],
+              ['mem','멤버'],['news','소식'],['me','내기록'],['info','클럽소개']];
   /* 오늘 대진이 돌고 있으면 그 탭에만 점을 찍는다 */
   const liveTab=(()=>{ try{
     return (typeof CB2!=='undefined' && CB2 && CB2.date===ymd() && (CB2.games||[]).length)
@@ -13861,8 +13861,62 @@ function balPanelHTML(){
   const pos = v => Math.max(0, Math.min(100, v));
   const EX=[['김서준',78],['이하윤',72],['박도윤',64],['정시우',58],['강하은',50],['한지안',44]];
   const shade=['#191f28','#3d434b','#6b737c','#8b95a1','#b7bec6','#d5d9de'];
+  /* 우리 클럽 성적으로만 본 실력이 몇 등급쯤인지 — 등급을 바꾸는 게 아니라
+     같은 자를 빌려 말하는 것이다. 그래서 <A등급>이 아니라 <A 수준>이라 쓴다. */
+  const clubLevel = (()=>{
+    if(!s.games) return null;
+    /* 값(0~100)을 등급 칸으로 되돌린다 — 성적과 조를 뺀 자리에서 견준다 */
+    const per = BAL_W.grade/(GRADE_INFO.length-1);
+    const idx = Math.max(0, Math.min(GRADE_INFO.length-1, Math.round(val/per)));
+    return (GRADE_INFO[GRADE_INFO.length-1-idx]||{}).g || null;
+  })();
+  const rankOfG = g => { const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-1-i; };
+  const gap = clubLevel ? rankOfG(clubLevel)-rankOfG(s.base) : 0;
+  const ci = clubLevel ? gradeInfo(clubLevel) : gi;
+  const same = !clubLevel || gap===0;
   return `
   <div class="card" style="margin-top:12px">
+    <div class="ch" style="font-size:15px;margin:0">내 자리</div>
+    <div class="hint" style="margin-top:4px">두 가지를 함께 봐요</div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <div style="flex:1;border:1px solid var(--line);border-radius:14px;padding:15px 13px">
+        <div style="font-size:11.5px;color:var(--gray)">구력 등급</div>
+        <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
+          <b style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:${gi.c}">${s.base}</b>
+          <span style="font-size:12px;color:var(--gray)">${esc(yrs)}</span></div>
+        <div style="font-size:11px;color:var(--lgray);margin-top:7px;line-height:1.55">모두에게 보이는<br>공식 등급이에요</div>
+      </div>
+      <div style="flex:1;border:1px solid ${same?'var(--line)':'#f6c9ab'};border-radius:14px;
+        padding:15px 13px;background:${same?'#fff':'#fffaf7'}">
+        <div style="font-size:11.5px;color:${same?'var(--gray)':'#c9754a'}">우리 클럽에서는</div>
+        <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
+          <b style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:${
+            clubLevel?(same?'#4e5968':'var(--coral-d)'):'var(--lgray)'}">${clubLevel||'—'}</b>
+          <span style="font-size:12px;color:${same?'var(--gray)':'#c9754a'}">${clubLevel?'수준':''}</span></div>
+        <div style="font-size:11px;color:${same?'var(--lgray)':'#c9a08a'};margin-top:7px;line-height:1.55">이 클럽 성적으로만<br>본 실력이에요</div>
+      </div>
+    </div>
+    <div style="background:#f7f8f9;border-radius:12px;padding:13px 14px;margin-top:12px;
+      font-size:12.5px;color:#4e5968;line-height:1.75">${
+      !s.games ? `아직 경기가 없어요<br><span style="color:var(--gray)">몇 판 치면 자리가 잡혀요</span>`
+      : gap>0 ? `구력보다 <b>${gap}칸 위</b>로 치고 계세요<br><span style="color:var(--gray)">대진에서는 이 자리로 짝을 맞춰요</span>`
+      : gap<0 ? `구력보다 <b>${-gap}칸 아래</b>로 나오고 있어요<br><span style="color:var(--gray)">대진에서는 이 자리로 짝을 맞춰요</span>`
+      : `구력만큼 나오고 있어요<br><span style="color:var(--gray)">${
+          s.trust<1?`아직 ${s.games}경기라 더 치면 자리가 또렷해져요`:'대진에서는 이 자리로 짝을 맞춰요'}</span>`}</div>
+    <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:16px">
+      <div style="font-size:13px;font-weight:600">이 둘은 왜 다른가요</div>
+      ${[[gi.c,'구력 등급','얼마나 오래 쳤는지예요 · 시간이 지나야 올라가요'],
+         ['#f1631a','우리 클럽에서는','이 클럽에서 얼마나 잘 쳤는지예요 · 다음 모임에 바뀔 수 있어요'],
+         ['#c2c8ce','다른 클럽에 가면','구력 등급만 따라가요']].map(([c,t,d])=>`
+        <div style="display:flex;gap:11px;margin-top:11px">
+          <span style="flex:none;width:4px;height:4px;border-radius:50%;background:${c};margin-top:7px"></span>
+          <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.65"><b>${t}</b>${
+            t==='다른 클럽에 가면'?' ':'은 '}${d}</span></div>`).join('')}
+    </div>
+    <div class="hint" style="margin-top:16px">이 값은 대진에만 써요 · 멤버 목록과 순위에는 나오지 않아요</div>
+  </div>
+
+  <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">왜 ${s.base}등급인가요</div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
       <span style="font-size:13px;color:var(--gray)">구력 ${esc(yrs)}</span>
@@ -13940,7 +13994,7 @@ function balPanelHTML(){
         <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">지금 <b>${pF}점</b>${
           s.games?` · ${s.games}경기 승률 ${wr}%`:' · 아직 경기 없음'}<br>
           <span style="color:var(--gray)">승률 100%면 ${BAL_W.form}점 · 0%면 0점${
-            s.trust<1?` · 30경기가 되면 성적이 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}</span></span>
+            s.trust<1?`<br>30경기가 되면 성적이 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}</span></span>
       </div>
       <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
         <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:var(--gray)">조</b>
