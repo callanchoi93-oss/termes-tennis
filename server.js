@@ -978,8 +978,13 @@ function careerMonths(uid, sport) {
 
 app.post('/clubs/:id/join', auth, (req, res) => {
   const cid = +req.params.id;
-  const club = db.prepare('SELECT name,owner_id,sport,min_career_months,max_career_months FROM clubs WHERE id=?').get(cid);
+  const club = db.prepare(`SELECT name,owner_id,sport,min_career_months,max_career_months,
+    join_open,join_reopen FROM clubs WHERE id=?`).get(cid);
   if (!club) return res.status(404).json({ error: 'no_club' });
+  /* 가입 신청을 닫아둔 클럽 — 앱에서도 버튼을 감추지만, 링크로 바로 들어오는 길이 있다 */
+  if (club.join_open === 0)
+    return res.status(403).json({ error: 'join_closed', reopen: club.join_reopen || '',
+      message: '지금은 회원을 받지 않아요' });
   // 구력 조건 검사 — 테린이 클럽은 max, 상급 클럽은 min 을 쓴다
   if (club.min_career_months != null || club.max_career_months != null) {
     const mo = careerMonths(req.uid, club.sport);
@@ -1214,6 +1219,8 @@ app.get('/clubs/:id/public', (req, res) => {
     id: c.id, name: c.name, region: c.region, sport: c.sport,
     members: mem.length, founded_year: c.founded_year || null,
     recruiting: c.recruiting || 0, guest_min_months: c.guest_min_months || null,
+    guest_visits: c.guest_visits || null, guest_cap: c.guest_cap || null,
+    join_open: c.join_open == null ? 1 : c.join_open, join_reopen: c.join_reopen || '',
     guest_fee: c.guest_fee || null, entry_fee: c.entry_fee || null, season_fee: c.season_fee || null,
     meet_days: c.meet_days || '', meet_time: c.meet_time || '',
     home_court: c.home_court || '', home_courts: c.home_courts || '',
@@ -4076,19 +4083,34 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
     : c.founded_year;
   const _rec = has('recruiting') ? (req.body.recruiting ? 1 : 0) : (c.recruiting || 0);
   /* 게스트 구력 — 0 이나 빈 값은 <제한 없음>(null)으로 둔다 */
+  const num = (k, cur) => { if (!has(k)) return cur;
+    const v = parseInt(req.body[k], 10); return (v >= 0 && v <= 9999999) ? v : cur; };
+  const _entry  = num('entry_fee',  c.entry_fee);
+  const _season = num('season_fee', c.season_fee);
+  const _gfee   = num('guest_fee',  c.guest_fee);
+  const _gcap   = num('guest_cap',  c.guest_cap);
+  const _gvis   = has('guest_visits')
+    ? (() => { const v = parseInt(req.body.guest_visits, 10);
+               return (v > 0 && v <= 50) ? v : null; })()
+    : c.guest_visits;
+  const _jopen  = has('join_open') ? (req.body.join_open ? 1 : 0)
+                                   : (c.join_open == null ? 1 : c.join_open);
+  const _jre    = has('join_reopen') ? String(req.body.join_reopen || '').slice(0, 30) : c.join_reopen;
   const _gm = has('guest_min_months')
     ? (() => { const v = parseInt(req.body.guest_min_months, 10);
                return (v > 0 && v <= 600) ? v : null; })()
     : c.guest_min_months;
   db.prepare(`UPDATE clubs SET avg_grade=?, home_court=?, home_courts=?, meet_days=?, intro=?,
       logo=?, logo_ic=?, logo_bg=?, meet_time=?, age_bands=?, gender_pref=?,
-      founded_year=?, recruiting=?, guest_min_months=? WHERE id=?`).run(
+      founded_year=?, recruiting=?, guest_min_months=?, guest_visits=?,
+      entry_fee=?, season_fee=?, guest_fee=?, guest_cap=?,
+      join_open=?, join_reopen=? WHERE id=?`).run(
     has('avg_grade') ? cleanGrade(req.body.avg_grade) : c.avg_grade,
     (_hc.venue || '').slice(0, 40) || null, (_hc.courts || '').slice(0, 20) || null,
     pick('meet_days', 30), pick('intro', 40),
     pick('logo', 300), pick('logo_ic', 8), pick('logo_bg', 12),
     pick('meet_time', 30), pick('age_bands', 40), pick('gender_pref', 10),
-    _yr, _rec, _gm, c.id);
+    _yr, _rec, _gm, _gvis, _entry, _season, _gfee, _gcap, _jopen, _jre, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
 // 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
@@ -5283,6 +5305,15 @@ try { db.exec('ALTER TABLE clubs ADD COLUMN recruiting INTEGER DEFAULT 0'); } ca
    null 이면 제한 없음. 가입 조건(min_career_months)과는 별개다 —
    게스트로는 받되 정회원은 더 높게 두는 클럽이 있다. */
 try { db.exec('ALTER TABLE clubs ADD COLUMN guest_min_months INTEGER'); } catch (e) {}
+/* 가입 전 게스트로 몇 번 나와야 하는지 — 구력과는 다른 문턱이다.
+   <구력 2년 이상 · 게스트 참여 4회>처럼 둘을 함께 건다. */
+try { db.exec('ALTER TABLE clubs ADD COLUMN guest_visits INTEGER'); } catch (e) {}
+/* 가입 신청 받기 — 회원이 차면 잠시 닫는다. 기본은 열려 있다.
+   <모집 중>과는 다르다: 모집 중은 목록에서 눈에 띄게, 이건 실제로 받을지. */
+try { db.exec('ALTER TABLE clubs ADD COLUMN join_open INTEGER DEFAULT 1'); } catch (e) {}
+try { db.exec("UPDATE clubs SET join_open=1 WHERE join_open IS NULL"); } catch (e) {}
+/* 다시 받는 시점 — 닫아둘 때만 쓴다. <3월에>처럼 짧은 글 */
+try { db.exec('ALTER TABLE clubs ADD COLUMN join_reopen TEXT'); } catch (e) {}
 
 /* 구장 이름과 코트 번호를 가른다.
    반환: { venue, courts } — 코트 표기가 없으면 courts 는 빈 문자열. */
