@@ -2331,6 +2331,26 @@
   /* 요일 칩은 여러 개를 촘촘히 늘어놓지만, 둘 중 하나를 고르는 값은
      같은 크기로 두면 <누르는 곳>으로 안 보인다. 손가락에 맞게 키운다. */
   .cw-c.big{ font-size:13.5px;font-weight:600;padding:11px 20px;min-width:104px;text-align:center }
+  /* ── 클럽 기본 정보 — 소개 · 회비 · 가입 세 묶음 ── */
+  .cbesec{ font-size:11.5px;font-weight:600;color:var(--gray);letter-spacing:.02em;
+    margin:24px 0 0;padding-bottom:9px;border-bottom:1px solid #eef1f4 }
+  .cbenum{ display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #f4f5f7 }
+  .cbenum>span{ min-width:0 }
+  .cbenum b{ font-size:14px;font-weight:600;color:var(--ink) }
+  .cbenum small{ display:block;font-size:11.5px;color:var(--gray);margin-top:2px }
+  .cbenum button{ flex:none;width:30px;height:30px;border:0;border-radius:9px;background:#f2f4f6;
+    color:#4e5968;font-size:16px;line-height:1;cursor:pointer;font-family:inherit }
+  .cbenum button:active{ background:#e8ebee }
+  .cbenum .v{ flex:none;min-width:80px;text-align:center;font-size:14px;font-weight:700 }
+  /* 켜고 끄는 값은 칩 두 개보다 스위치가 낫다 — 지금 상태가 한눈에 보인다 */
+  .cbetog{ display:flex;align-items:center;gap:14px;border:1px solid var(--line);
+    border-radius:15px;padding:15px 16px;margin-top:14px;cursor:pointer }
+  .cbesw{ flex:none;width:48px;height:28px;border-radius:999px;background:#dce0e4;
+    position:relative;transition:background .16s }
+  .cbesw i{ position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+    background:#fff;transition:transform .16s;box-shadow:0 1px 3px rgba(0,0,0,.18) }
+  .cbesw.on{ background:var(--coral) }
+  .cbesw.on i{ transform:translateX(20px) }
   .cw-seg{ flex:1;text-align:center;font-size:13px;font-weight:600;padding:11px 0;border-radius:12px;
            border:1.5px solid var(--line);color:#4a5159;cursor:pointer }
   .cw-seg.on{ border-color:var(--coral);background:var(--coral-s);color:var(--coral-d) }
@@ -8307,7 +8327,10 @@ function spendCash(cost, label){ return true; }   // M캐쉬 폐지 — 전 기�
 /* 캐시 패키지 — 대화는 무료라 여기에 포함되지 않는다 (참가비·코트 예약용) */
 const CASH_PKGS=[{n:1100,won:229000,dc:41,tag:'최대'},{n:600,won:129000,dc:40},{n:200,won:49900,dc:30,tag:'인기'},{n:90,won:24900,dc:22},{n:45,won:13900,dc:13},{n:25,won:8900}];
 // ── 회비·게스트비 설정 (클럽장) ──
-function openFeeEdit(){
+/* 회비 관리 도구는 클럽 기본 정보로 합쳤다 — 같은 값을 두 곳에서 고치면
+   어느 쪽이 최신인지 알 수 없다. 옛 호출은 그대로 새 시트로 보낸다. */
+function openFeeEdit(){ openClubBasicEdit(1); }
+function openFeeEditLegacy(){
   const c=AC(); if(!c){toast('클럽 정보를 찾을 수 없어요');return;}
   const row=(label,key,unit,step)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-top:1px solid #eceef0">
     <div><div style="font-weight:500;font-size:14px">${label}</div><div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:1px">${unit}</div></div>
@@ -8374,7 +8397,7 @@ async function setCareerPolicy(key){
     else toast('저장에 실패했어요 · 잠시 후 다시 시도해 주세요');
   }
 }
-function feeAdj(key,d){ const c=AC(); if(!c)return; c[key]=Math.max(0,(c[key]||0)+d); pushFees(); openFeeEdit(); }
+function feeAdj(key,d){ const c=AC(); if(!c)return; c[key]=Math.max(0,(c[key]||0)+d); pushFees(); openFeeEditLegacy(); }
 let FEE_PUSH_T=null;
 function pushFees(){
   // 서버에 회비 설정 저장 (연타 대비 0.8초 디바운스)
@@ -10987,7 +11010,8 @@ function drawClubPreview(){
       ${careerLine?kv2('평균 구력', esc(careerLine),
             (P.members?`회원 ${P.members}명`:'')):''}
       ${(()=>{ const t=ageBandText(c.age_bands||c.age); return t?kv2('나이대', esc(t),''):''; })()}
-      ${kv2('게스트', P.guest_min_months?esc(guestMinText(P.guest_min_months)):'누구나',
+      ${kv2('게스트', esc(guestCondText(P.guest_min_months||c.guest_min_months,
+                                        P.guest_visits||c.guest_visits)),
             gfee?`1회 ${gfee.toLocaleString()}원`:(gfee===0?'무료':''))}
     </div>
     <div style="margin-top:22px">
@@ -11174,11 +11198,11 @@ function drawClubPreview(){
           ${['SS','S','A','B','C','D'].filter(g=>G[g]).concat(gUnknown?['미정']:[]).map(g=>`
             <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
               <span style="flex:none;width:30px;font-size:12px;font-weight:700;color:${
-                g==='미정'?'var(--lgray)':'inherit'}">${g==='미정'?'미정':g+'급'}</span>
+                g==='미정'?'var(--lgray)':gradeInfo(g).c}">${g==='미정'?'미정':g+'급'}</span>
               <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
                 <i style="display:block;height:100%;border-radius:4px;width:${
                   Math.round((g==='미정'?gUnknown:G[g])/Math.max(1,topG?topG[1]:1)*100)}%;
-                  background:${topG&&g===topG[0]?'var(--coral)':'#c2c8ce'}"></i></span>
+                  background:${g==='미정'?'#d5d9de':gradeInfo(g).c}"></i></span>
               <span style="flex:none;font-size:11.5px;color:var(--gray);width:30px;text-align:right">${
                 g==='미정'?gUnknown:G[g]}명</span>
             </div>`).join('')}
@@ -11212,11 +11236,19 @@ function drawClubPreview(){
                  return y?` · ${y}년부터`:''; })()}</div>
       </div>
     </div>
-    ${clubRecruiting(PV.pub||c)?`<div style="display:flex;align-items:baseline;gap:8px;
-      padding:2px 0 2px;font-size:13px">
-      <span style="width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none;
-        transform:translateY(-1px)"></span>
-      <b style="font-weight:600">회원 모집 중</b></div>`:''}
+    ${(()=>{ const P=PV.pub||c;
+      const open = P.join_open===0 ? false : true;
+      if(!open) return `<div style="display:flex;align-items:baseline;gap:8px;padding:2px 0;font-size:13px">
+        <span style="width:6px;height:6px;border-radius:50%;background:#c2c8ce;flex:none;
+          transform:translateY(-1px)"></span>
+        <b style="font-weight:600;color:#4e5968">지금은 회원을 받지 않아요</b>${
+        P.join_reopen?`<span style="color:var(--gray)">${esc(P.join_reopen)}</span>`:''}</div>`;
+      if(clubRecruiting(P)) return `<div style="display:flex;align-items:baseline;gap:8px;
+        padding:2px 0;font-size:13px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none;
+          transform:translateY(-1px)"></span>
+        <b style="font-weight:600">회원 모집 중</b></div>`;
+      return ''; })()}
     <div class="pvtabs">${tabs.map(([k,l])=>
       `<div class="${PV.tab===k?'on':''}" onclick="pvTab('${k}')">${l}</div>`).join('')}</div>`;
 
@@ -11229,6 +11261,13 @@ function drawClubPreview(){
     foot=`<div class="card" style="margin:0;background:#fff6e3;border:none">
       <div style="font-size:14px;font-weight:500;color:#a56a00">가입 승인 대기 중</div>
       <div style="font-size:12px;color:#a56a00;font-weight:500;margin-top:4px">임원진이 확인 후 정회원 또는 게스트로 승인해요.</div></div>`;
+  }else if((PV.pub||PV.c||{}).join_open===0){
+    /* 닫아둔 클럽 — 버튼을 아예 없애면 화면 아래가 비어 <여긴 뭘 하지>가 된다.
+       색 없는 면으로 남기고, 실제로 갈 수 있는 길(게스트)을 아래에 적는다. */
+    const P=PV.pub||PV.c||{};
+    foot=`<button class="btn" disabled style="background:#f2f4f6;color:#4e5968;cursor:default">지금은 회원을 받지 않아요</button>
+      <div style="text-align:center;font-size:11.5px;color:var(--gray);margin-top:9px">${
+        P.join_reopen?`${esc(P.join_reopen)} 다시 받을 예정이에요 · `:''}게스트로는 지금도 올 수 있어요</div>`;
   }else{
     foot=`<button class="btn" onclick="closeClubPreview();openClubDetail('${esc(n)}')">가입 신청하기</button>`;
   }
@@ -11259,7 +11298,13 @@ function openClubDetail(n){
   }else if(st==='pending'||st==='memberPending'||st==='guestPending'){
     h+=`<div class="card" style="margin-top:14px;background:#fff6e3;border:none"><div style="font-size:14px;font-weight:500;color:#a56a00">가입 승인 대기 중</div><div style="font-size:12px;color:#a56a00;font-weight:500;margin-top:4px">임원진이 확인 후 정회원 또는 게스트로 승인해요.</div></div>`;
   }else{
-    h+=`<button class="btn" style="margin-top:14px" onclick="applyJoinSrv('${n}')">가입 신청하기</button>`;
+    { const cc=clubMerge((state.clubs||[]).find(x=>x.n===n)||{}, AC()||{});
+      h += cc.join_open===0
+        ? `<div class="card" style="margin-top:14px;background:#f7f8f9;border-color:#e5e8eb">
+             <div style="font-size:14px;font-weight:600">지금은 회원을 받지 않아요</div>
+             <div style="font-size:12px;color:var(--gray);margin-top:4px">${
+               cc.join_reopen?`${esc(cc.join_reopen)} 다시 받을 예정이에요 · `:''}게스트로는 지금도 올 수 있어요</div></div>`
+        : `<button class="btn" style="margin-top:14px" onclick="applyJoinSrv('${n}')">가입 신청하기</button>`; }
   }
   document.getElementById('sheet').innerHTML=h;document.getElementById('ov').classList.add('on');
 }
@@ -11269,7 +11314,15 @@ async function applyJoinSrv(n){
       const r=await api(`/clubs/${CLUB_IDS[n]}/join`,{method:'POST'});
       state.clubStatus[n]=r.status==='pending'?'pending':'member';
       toast(r.status==='pending'?'가입 신청을 보냈어요 · 임원진 승인을 기다려요':'가입되었어요');
-    }catch(e){ toast('신청하지 못했어요'); }
+    }catch(e){
+      const m=String(e.message||'');
+      /* 서버가 왜 막았는지 알려준다 — <신청하지 못했어요>만 뜨면 고칠 방법이 없다 */
+      toast(m.includes('join_closed')      ? '지금은 회원을 받지 않는 클럽이에요'
+          : m.includes('career_required')  ? '프로필에 구력을 먼저 적어주세요'
+          : m.includes('career_too_short') ? '이 클럽이 정한 구력에 아직 못 미쳐요'
+          : m.includes('career_too_long')  ? '이 클럽은 구력이 짧은 분들 위주로 모아요'
+          : '신청하지 못했어요');
+    }
   } else { state.clubStatus[n]='pending'; toast('가입 신청 완료 · 임원진 승인 대기 중 (데모)'); }
   openClubDetail(n);
 }
@@ -11442,6 +11495,16 @@ function clubGenderChip(c, size){
   return `<span style="flex:none;font-size:${size||11.5}px;font-weight:600;letter-spacing:-.01em;
     color:${t.c};white-space:nowrap">${t.l}</span>`;
 }
+/* Object.assign 은 값이 undefined 인 키도 그대로 덮어쓴다 —
+   기기에 있는 클럽 객체에 recruiting 같은 키만 있고 값이 비면,
+   목록에서 받아온 제대로 된 값이 지워져 칩이 기본값으로 돌아갔다.
+   빈 값은 건너뛰고 합친다. */
+function clubMerge(base, over){
+  const o={...(base||{})};
+  Object.keys(over||{}).forEach(k=>{ const v=over[k];
+    if(v!==undefined && v!==null && v!=='') o[k]=v; });
+  return o;
+}
 function clubRecruiting(c){ return !!(c && (c.recruiting===1 || c.recruiting===true)); }
 /* 게스트 구력 문턱 — 클럽 만들기와 운영진 도구가 같은 목록을 써야 어긋나지 않는다.
    3년·5년을 원하는 클럽이 실제로 있어 위쪽을 넉넉히 둔다. */
@@ -11594,8 +11657,8 @@ async function leaveLeague(){
 function openIntroEditOps(){
   const n=state.activeClub||''; const cid=clubId();
   const cat=(state.clubs||[]).find(x=>x.n===n)||{};
-  PV = PV || { n, c:Object.assign({}, cat, AC()||{}), cid, roster:[], events:[], tab:'info' };
-  PV.n=n; PV.cid=cid; PV.c=Object.assign({}, cat, AC()||{});
+  PV = PV || { n, c:clubMerge(cat, AC()||{}), cid, roster:[], events:[], tab:'info' };
+  PV.n=n; PV.cid=cid; PV.c=clubMerge(cat, AC()||{});
   openIntroEdit();
 }
 /* 운영진 도구에서 여는 화면들은 전부 전체 페이지로 띄운다.
@@ -11669,7 +11732,6 @@ function openClubOps(){
       ${tool('모임 만들기','날짜·코트 정하고 참석 받기','openEventCreate()')}
       ${tool('대진 짜기','참석자로 자동 편성','openClubBracketBuild()')}
       ${tool('출석 · 노쇼','당일 체크 · 노쇼 기록','openClubBracketView()')}
-      ${tool('회비 관리','입회비 · 월 회비 · 게스트비','openFeeEdit()')}
     </div>
     <div class="opgl">회원 · 클럽</div>
     <div class="opgrid">
@@ -11677,7 +11739,7 @@ function openClubOps(){
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
-      ${tool('클럽 기본 정보','지역 · 모임 · 홈구장 · 창단연도','openClubBasicEdit(1)')}
+      ${tool('클럽 기본 정보','모임 · 회비 · 게스트 · 가입 신청','openClubBasicEdit(1)')}
       ${tool('회원 모집','모집 여부 · 게스트 조건','openRecruitOps()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
       ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
@@ -14831,7 +14893,7 @@ function clubTabInfo(){
   const d=(state.clubData||{})[n]||{};
   /* AC() 는 clubData(회비·명단)라 정기모임·홈구장이 없다. 카탈로그(state.clubs)와 합쳐서 본다. */
   const cat=(state.clubs||[]).find(x=>x.n===n)||{};
-  const c=Object.assign({}, cat, AC()||{});
+  const c=clubMerge(cat, AC()||{});
   const off=!!d.officer;
   const won=v=>v?v.toLocaleString():null;
   /* 만 단위로 줄여 세 칸에 나란히 세운다 — 100,000 은 칸을 넘고 서로 비교도 안 된다 */
@@ -14856,7 +14918,7 @@ function clubTabInfo(){
       <span${tap('openClubBasicEdit(1)')}><i>홈구장</i> ${esc(c.court||c.home_court||'미정')}</span>
     </div>
 
-    <div class="ifee"${off?' onclick="openFeeEdit()" style="cursor:pointer"':''}>
+    <div class="ifee"${off?' onclick="openClubBasicEdit(1)" style="cursor:pointer"':''}>
       <div class="ifeeg">
         <div><b>${man(c.entry)||'없음'}</b><span>입회비 · 한 번</span></div>
         <div><b>${man(c.season)||'없음'}</b><span>월 회비</span></div>
@@ -14919,13 +14981,30 @@ function clubFacePanel(){
   return `<div class="isec" style="margin-top:24px"><b>이런 분들이 있어요</b></div>
     <div class="ifacts">${bits.join('')}</div>`;
 }
-/* 클럽 기본 정보 편집 — 지역·정기모임·홈구장 (클럽장·임원) */
+/* ± 로 고치는 줄 — 회비와 정원은 글자를 치는 것이 아니라 숫자를 올리고 내리는 것이다 */
+function cbeMoney(label, sub, key, step, unit){
+  const v = +(CBE[key]||0);
+  return `<div class="cbenum">
+    <span style="flex:1"><b>${label}</b><small>${sub}</small></span>
+    <button onclick="cbeAdj('${key}',${-step})" aria-label="줄이기">−</button>
+    <b class="v">${v.toLocaleString()}${unit}</b>
+    <button onclick="cbeAdj('${key}',${step})" aria-label="늘리기">+</button></div>`;
+}
+function cbeAdj(key, d){ cbeStash(); CBE[key]=Math.max(0,(+CBE[key]||0)+d); openClubBasicEdit(); }
+/* 게스트 칸에 보일 한 줄 — 두 조건을 합쳐 적는다 */
+function guestCondText(gmin, gvis){
+  const a = gmin ? guestMinText(gmin) : '';
+  const b = (+gvis||0) ? `게스트 참여 ${+gvis}회` : '';
+  if(a && b) return `${a} · ${b}`;
+  return a || b || '누구나';
+}
+/* 클럽 기본 정보 편집 — 소개 · 회비 · 가입 (클럽장·임원) */
 function openClubBasicEdit(fresh){
   const n=state.activeClub||''; const d=(state.clubData||{})[n]||{};
   if(fresh) CBE=null;                       // 정보 탭에서 새로 열면 항상 현재 값으로 시작
   if(!d.officer){ toast('클럽 정보는 운영진만 바꿀 수 있어요'); return; }
   const cat=(state.clubs||[]).find(x=>x.n===n)||{};
-  const c=Object.assign({}, cat, AC()||{});
+  const c=clubMerge(cat, AC()||{});
   CBE = CBE || {};
   CBE.region = CBE.region!=null?CBE.region : (d.region||c.r||'');
   CBE.days   = CBE.days!=null?CBE.days     : (c.meet_days||c.days||'');
@@ -14940,6 +15019,16 @@ function openClubBasicEdit(fresh){
   CBE.recruit = CBE.recruit!=null?CBE.recruit : clubRecruiting(c);
   /* 게스트 구력 — 개월 수로 담는다. 0 은 제한 없음 */
   CBE.gmin    = CBE.gmin!=null?CBE.gmin       : (+c.guest_min_months||0);
+  /* 회비 관리 도구를 여기로 합쳤다 — 같은 클럽 설정을 두 화면에서 고치면
+     어느 쪽이 최신인지 알 수 없고, 한쪽만 고쳤다가 되돌아가는 일이 생긴다. */
+  CBE.entry   = CBE.entry!=null?CBE.entry     : (+(c.entry||c.entry_fee)||0);
+  CBE.season  = CBE.season!=null?CBE.season   : (+(c.season||c.season_fee)||0);
+  CBE.gfee    = CBE.gfee!=null?CBE.gfee       : (+(c.guestFee||c.guest_fee)||0);
+  CBE.gcap    = CBE.gcap!=null?CBE.gcap       : (+(c.guestReq||c.guest_cap)||0);
+  CBE.gvis    = CBE.gvis!=null?CBE.gvis       : (+c.guest_visits||0);
+  /* 가입 신청 받기 — 없으면 열린 것으로 본다. 새 클럽이 닫힌 채 시작하면 안 된다. */
+  CBE.jopen   = CBE.jopen!=null?CBE.jopen     : (c.join_open===0?false:true);
+  CBE.jre     = CBE.jre!=null?CBE.jre         : (c.join_reopen||'');
   const DAY=['월','화','수','목','금','토','일'];
   const TM=['오전','낮','저녁','밤'];
   const picked=new Set(String(CBE.days).split(/[\s·,]+/).filter(Boolean));
@@ -14963,23 +15052,54 @@ function openClubBasicEdit(fresh){
     <div class="fld" style="margin-top:14px"><label>창단연도</label>
       <input id="cbeYear" inputmode="numeric" maxlength="4" placeholder="예) 2024" value="${esc(String(CBE.founded||''))}"></div>
     <div class="hint">클럽 페이지에 <b>${esc(String(CBE.founded||'2024'))}년부터</b>로 보여요. 모르면 비워두세요.</div>
-    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">회원 모집</label>
-    <div class="cw-chips">
-      <span class="cw-c big ${CBE.recruit?'on':''}" onclick="cbeSet('recruit',true)">모집 중</span>
-      <span class="cw-c big ${!CBE.recruit?'on':''}" onclick="cbeSet('recruit',false)">안 받는 중</span></div>
     <div class="hint" style="margin-top:8px">모집 중으로 두면 클럽 목록에서 위로 올라가고, <b>회원 모집 중</b> 표시가 붙어요.</div>
-    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">게스트 조건</label>
+
+    <div class="cbesec">회비</div>
+    ${cbeMoney('입회비','처음 들어올 때 한 번','entry',10000,'원')}
+    ${cbeMoney('월 회비','매달 내는 운영비','season',10000,'원')}
+    ${cbeMoney('게스트비','게스트 방문 1회','gfee',5000,'원')}
+    ${cbeMoney('게스트 정원','모임 하나에 최대','gcap',1,'명')}
+    <div class="hint" style="margin-top:10px">처음 들어오면 첫 달에
+      <b>${((+CBE.entry||0)+(+CBE.season||0)).toLocaleString()}원</b>으로 클럽 페이지에 보여요.</div>
+
+    <div class="cbesec">가입 · 게스트</div>
+    <div class="cbetog" onclick="cbeSet('jopen',${CBE.jopen?'false':'true'})">
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600">가입 신청 받기</div>
+        <div style="font-size:11.5px;color:var(--gray);margin-top:4px">${
+          CBE.jopen?'지금은 누구나 신청할 수 있어요':'클럽 페이지 버튼이 안내 문구로 바뀌어요'}</div>
+      </div>
+      <span class="cbesw ${CBE.jopen?'on':''}"><i></i></span></div>
+    ${!CBE.jopen?`
+      <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">다시 받는 시점</label>
+      <div class="cw-chips">${['미정','다음 달','다음 시즌'].map(x=>
+        `<span class="cw-c ${CBE.jre===x?'on':''}" onclick="cbeSet('jre',${jsArg(CBE.jre===x?'':x)})">${x}</span>`).join('')}</div>
+      <div class="fld" style="margin-top:10px"><label>직접 적기</label>
+        <input id="cbeJre" maxlength="20" placeholder="예) 3월에 다시 받아요" value="${esc(CBE.jre||'')}"></div>`:''}
+    <div class="cbetog" onclick="cbeSet('recruit',${CBE.recruit?'false':'true'})" style="margin-top:10px">
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600">회원 모집 중</div>
+        <div style="font-size:11.5px;color:var(--gray);margin-top:4px">${
+          CBE.recruit?'클럽 목록 위쪽에 노출돼요':'목록에서 표시가 붙지 않아요'}</div>
+      </div>
+      <span class="cbesw ${CBE.recruit?'on':''}"><i></i></span></div>
+
+    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:18px 0 8px">게스트 구력 조건</label>
     <div class="cw-chips">${GUEST_MINS.map(([v,l])=>
-      `<span class="cw-c big ${CBE.gmin===v?'on':''}" onclick="cbeSet('gmin',${v})">${l}</span>`).join('')}</div>
-    <div class="hint" style="margin-top:8px">클럽 페이지 게스트 칸에 <b>${
-      CBE.gmin?guestMinText(CBE.gmin):'누구나'}</b>로 보여요. 가입 조건과는 따로 정해요.</div>
+      `<span class="cw-c ${CBE.gmin===v?'on':''}" onclick="cbeSet('gmin',${v})">${l}</span>`).join('')}</div>
+    <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:16px 0 8px">가입 전 게스트 참여</label>
+    <div class="cw-chips">${[[0,'없어도 돼요'],[1,'1회'],[2,'2회'],[3,'3회'],[4,'4회'],[5,'5회']].map(([v,l])=>
+      `<span class="cw-c ${(+CBE.gvis||0)===v?'on':''}" onclick="cbeSet('gvis',${v})">${l}</span>`).join('')}</div>
+    <div class="hint" style="margin-top:10px">클럽 페이지 게스트 칸에
+      <b>${esc(guestCondText(CBE.gmin, CBE.gvis))}</b>로 보여요. 가입 구력 조건과는 따로 정해요.</div>
     <button class="btn" style="margin-top:16px" onclick="saveClubBasic()">저장</button>`;
   document.getElementById('ov').classList.add('on');
 }
 let CBE=null;
 function cbeStash(){ const g=id=>{const e=document.getElementById(id);return e?e.value:null;};
-  const r=g('cbeRegion'), ct=g('cbeCourt'), y=g('cbeYear');
+  const r=g('cbeRegion'), ct=g('cbeCourt'), y=g('cbeYear'), jr=g('cbeJre');
   if(r!=null) CBE.region=r; if(ct!=null) CBE.court=ct;
+  if(jr!=null) CBE.jre=jr;
   if(y!=null) CBE.founded=String(y).replace(/[^0-9]/g,'').slice(0,4); }
 function cbeSet(k,v){ cbeStash(); CBE[k]=v; openClubBasicEdit(); }
 function cbeDay(x){
@@ -15001,13 +15121,22 @@ async function saveClubBasic(){
   const nowY=new Date().getFullYear();
   if(CBE.founded && (yr<1900||yr>nowY)){ toast(`창단연도를 1900~${nowY} 사이로 적어주세요`); return; }
   const recruit=!!CBE.recruit;
-  const gmin=+CBE.gmin||0;
+  const gmin=+CBE.gmin||0, gvis=+CBE.gvis||0;
+  const entry=+CBE.entry||0, season=+CBE.season||0, gfee=+CBE.gfee||0, gcap=+CBE.gcap||0;
+  const jopen=CBE.jopen!==false, jre=jopen?'':String(CBE.jre||'').trim().slice(0,20);
+  /* 앱 안에서 회비는 entry/season/guestFee/guestReq 라는 짧은 이름으로 돌아다닌다 —
+     서버 이름과 다르므로 양쪽 다 채워 둔다. */
   const c=AC(); if(c){ c.court=court; c.meet_days=days; c.region=region; c.gender_pref=gender;
-    c.founded_year=yr||null; c.recruiting=recruit?1:0; c.guest_min_months=gmin||null; }
+    c.founded_year=yr||null; c.recruiting=recruit?1:0; c.guest_min_months=gmin||null;
+    c.guest_visits=gvis||null; c.join_open=jopen?1:0; c.join_reopen=jre;
+    c.entry=entry; c.season=season; c.guestFee=gfee; c.guestReq=gcap;
+    c.entry_fee=entry; c.season_fee=season; c.guest_fee=gfee; c.guest_cap=gcap; }
   /* 목록 캐시에도 즉시 반영 — 저장하고 돌아왔을 때 배지가 바로 보여야 한다 */
   { const cc=(state.clubs||[]).find(x=>x.n===n);
     if(cc){ cc.gender_pref=gender; cc.founded_year=yr||null; cc.recruiting=recruit?1:0;
-            cc.guest_min_months=gmin||null; } }
+            cc.guest_min_months=gmin||null; cc.guest_visits=gvis||null;
+            cc.join_open=jopen?1:0; cc.join_reopen=jre;
+            cc.entry_fee=entry; cc.season_fee=season; cc.guest_fee=gfee; cc.guest_cap=gcap; } }
   const d=(state.clubData||{})[n]; if(d) d.region=region;
   const cat=(state.clubs||[]).find(x=>x.n===n); if(cat){ cat.r=region||cat.r; cat.court=court; cat.days=days; }
   try{ saveMatsu(); }catch(e){}
@@ -15015,7 +15144,9 @@ async function saveClubBasic(){
   if(SERVER_OK && cid){
     try{ await api(`/clubs/${cid}/profile`,{method:'PATCH',
       body: JSON.stringify({ home_court:court, meet_days:days, meet_time:mtime, gender_pref:gender,
-        founded_year: yr||null, recruiting: recruit?1:0, guest_min_months: gmin||null })});
+        founded_year: yr||null, recruiting: recruit?1:0, guest_min_months: gmin||null,
+        guest_visits: gvis||null, join_open: jopen?1:0, join_reopen: jre,
+        entry_fee: entry, season_fee: season, guest_fee: gfee, guest_cap: gcap })});
       toast('클럽 정보를 저장했어요');
     }catch(e){ toast(String(e.message).includes('officer_only')?'운영진만 바꿀 수 있어요':'저장에 실패했어요 · 기기에는 저장됐어요'); }
   } else toast('클럽 정보를 저장했어요');
