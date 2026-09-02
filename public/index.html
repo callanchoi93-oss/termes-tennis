@@ -52,10 +52,15 @@
     --brand:#f1631a;--violet:#7b61ff;--violet-d:#5b3fd6;--violet-s:#f0edff;--violet-t:rgba(123,97,255,.14);
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  /* html·body 도 실제 보이는 높이로 잡는다 — 100% 만 두면 주소창이 접힐 때
+     안쪽 앱 껍데기가 화면보다 커져 바닥 탭바가 가려진다. */
+  html,body{height:100%;height:100dvh;overscroll-behavior-y:none}
   body{background:#eaebed;font-size:14px;font-family:'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;display:flex;justify-content:center;color:var(--ink);letter-spacing:-0.012em;line-height:1.55;word-break:keep-all}
-  .app{width:100%;max-width:440px;min-height:100vh;background:var(--cream);position:relative;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 60px rgba(0,0,0,.18)}
-  @media(min-width:480px){.app{margin:24px 0;min-height:auto;height:calc(100vh - 48px);border-radius:34px}}
+  /* 100vh 는 아이폰 사파리에서 <주소창을 포함한> 높이다.
+     그래서 껍데기가 화면보다 커지고, 바닥에 붙인 탭바가 주소창 뒤로 밀려 안 보였다.
+     dvh(실제 보이는 높이)를 쓰되, 옛 브라우저를 위해 vh 를 먼저 둔다. */
+  .app{width:100%;max-width:440px;min-height:100vh;min-height:100dvh;background:var(--cream);position:relative;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 60px rgba(0,0,0,.18)}
+  @media(min-width:480px){.app{margin:24px 0;min-height:auto;height:calc(100vh - 48px);height:calc(100dvh - 48px);border-radius:34px}}
   .demo-tag.live{background:#d8f0e2;color:#1f5c40}
   .demo-tag{background:var(--felt);color:var(--gray);text-align:center;font-size:11px;font-weight:600;padding:4px;flex-shrink:0}
 
