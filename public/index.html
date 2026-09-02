@@ -14093,7 +14093,7 @@ function balPanelHTML(){
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">100점을 이렇게 나눠요</div>
     <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
-      ? '경기가 ${BAL_FULL}판을 넘어 <b>성적이 가장 크게</b> 반영돼요'
+      ? `${BAL_FULL}경기를 넘겨 <b>성적이 가장 크게</b> 반영돼요`
       : s.games>0
         ? `지금 <b>${s.games}경기</b> · 칠수록 구력 자리를 성적이 가져가요 (${BAL_FULL}경기에 성적 60)`
         : '아직 경기가 없어 <b>구력</b>으로만 봐요 · 치면 성적이 자리를 넘겨받아요'}</div>
@@ -14111,9 +14111,14 @@ function balPanelHTML(){
           .map(([c,l,sub,v])=>`
           <div style="display:flex;align-items:center;gap:9px;margin-top:9px">
             <span style="width:8px;height:8px;border-radius:2px;background:${c};flex:none"></span>
-            <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;
-              white-space:nowrap">${l} <span style="color:var(--gray)">${esc(sub)}</span></span>
-            <b style="font-size:12.5px;font-weight:600">${v}</b></div>`).join('')}
+            <span style="flex:1;min-width:0">
+              <b style="display:block;font-size:12.5px;font-weight:600">${l}
+                <span style="color:var(--gray);font-weight:400">${esc(sub)}</span></b>
+              <span style="display:block;font-size:11px;color:var(--lgray);margin-top:2px">${
+                Math.round(v/Math.max(1,val)*100)}% 차지</span></span>
+            <b style="font-size:14px;font-weight:700;letter-spacing:-.02em;color:${
+              v>0?'var(--ink)':'var(--lgray)'}">${v}<span style="font-size:10.5px;
+              color:var(--lgray);font-weight:500;margin-left:1px">점</span></b></div>`).join('')}
       </div>
     </div>
     <div class="hint" style="margin-top:16px">세 가지를 합쳐 한 사람의 값을 냅니다 ·
@@ -14142,9 +14147,9 @@ function balPanelHTML(){
           border-radius:2px;background:${c};display:block"></i>${t}</span>`).join('')}
     </div>
     <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;margin-top:16px;
-      font-size:12px;color:#4e5968;line-height:1.7">구력이 길어도 요즘 잘 안 되면 자리가 내려가고,
-      구력이 짧아도 잘 치면 올라가요<br>
-      <span style="color:var(--gray)">화면에 보이는 구력 등급은 그대로예요 · 대진에만 써요</span></div>
+      font-size:12px;color:#4e5968;line-height:1.7">코트에서 중요한 건
+      <b>오늘 얼마나 치느냐</b>예요 · 구력은 그 전까지 쓰는 임시 잣대고요<br>
+      <span style="color:var(--gray)">등급 표시는 바뀌지 않아요 · 이 값은 짝을 맞출 때만 써요</span></div>
   </div>
 
   <div class="card" style="margin-top:10px">
@@ -14181,11 +14186,14 @@ function balPanelHTML(){
       <span style="position:absolute;left:${pos(val)}%;top:0;bottom:0;width:2px;background:var(--coral)"></span>
     </div>
     <div style="position:relative;height:20px;margin-top:9px;font-size:11px">
-      <span style="position:absolute;left:0;color:var(--lgray)">0</span>
-      <span style="position:absolute;left:${lo}%;transform:translateX(-50%);color:var(--gray);white-space:nowrap">최소 <b style="color:#4e5968">${lo}</b></span>
-      <span style="position:absolute;left:${pos(val)}%;transform:translateX(-50%);white-space:nowrap;color:var(--coral-d)">지금 <b>${val}</b></span>
-      <span style="position:absolute;left:${hi}%;transform:translateX(-50%);color:${gi.c};white-space:nowrap">최대 <b>${hi}</b></span>
-      <span style="position:absolute;right:0;color:var(--lgray)">100</span>
+      ${lo>=12?`<span style="position:absolute;left:0;color:var(--lgray)">0</span>`:''}
+      <span style="position:absolute;left:${Math.max(7,Math.min(93,lo))}%;transform:translateX(-50%);
+        color:var(--gray);white-space:nowrap">최소 <b style="color:#4e5968">${lo}</b></span>
+      <span style="position:absolute;left:${Math.max(7,Math.min(93,pos(val)))}%;transform:translateX(-50%);
+        white-space:nowrap;color:var(--coral-d)">지금 <b>${val}</b></span>
+      <span style="position:absolute;left:${Math.max(7,Math.min(93,hi))}%;transform:translateX(-50%);
+        color:${gi.c};white-space:nowrap">최대 <b>${hi}</b></span>
+      ${hi<=88?`<span style="position:absolute;right:0;color:var(--lgray)">100</span>`:''}
     </div>
     <div style="border-top:1px solid #f4f5f7;margin-top:16px;padding-top:6px">
       ${[
