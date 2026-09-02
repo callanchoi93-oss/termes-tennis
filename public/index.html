@@ -13987,9 +13987,12 @@ function balPanelHTML(){
     {n:'박도윤', g:'A', yr:'5년',    w:17, l:11, tg:'B', v:56},
     {n:'강하은', g:'B', yr:'2년',    w:11, l:17, tg:'B', v:39},
     {n:'한지안', g:'C', yr:'10개월', w:13, l:15, tg:'C', v:26}];
+  /* 팀 아래에는 <구력 평균>이 아니라 <실력>을 적는다 —
+     구력을 적으면 강약을 묶어 균형을 맞춘 경기가 한쪽만 높게 보여
+     대진이 안 맞았다는 오해가 된다. 대진표도 같은 방식으로 적는다. */
   const EXT=[
-    {a:'김서준 · 강하은', ay:'7년', apt:120, b:'박도윤 · 정시우', by:'4년 6개월', bpt:118},
-    {a:'이하윤 · 한지안', ay:'3년 11개월', apt:98, b:'정시우 · 강하은', by:'3년', bpt:101}];
+    {a:'김서준 · 강하은', ay:'실력 B2', apt:120, b:'박도윤 · 정시우', by:'실력 B2', bpt:118},
+    {a:'이하윤 · 한지안', ay:'실력 B1', apt:98, b:'정시우 · 강하은', by:'실력 B1', bpt:101}];
   /* 우리 클럽 성적으로만 본 실력이 몇 등급쯤인지 — 등급을 바꾸는 게 아니라
      같은 자를 빌려 말하는 것이다. 그래서 <A등급>이 아니라 <A 수준>이라 쓴다. */
   const clubLevel = (()=>{
@@ -14115,6 +14118,33 @@ function balPanelHTML(){
   </div>
 
   <div class="card" style="margin-top:10px">
+    <div class="ch" style="font-size:15px;margin:0">칠수록 성적이 자리를 가져가요</div>
+    <div class="hint" style="margin-top:4px">구력은 성적이 없을 때 쓰는 임시 잣대예요</div>
+    <div style="margin-top:16px">
+      ${[0,10,20,30].map(n=>{
+        const W=balWeights(n), now = n===30 ? s.games>=30 : (s.games>=n && s.games<n+10);
+        return `<div style="display:flex;align-items:center;gap:10px;${n?'margin-top:10px':''}">
+          <span style="flex:none;width:62px;font-size:11.5px;color:${now?'var(--ink)':'var(--gray)'};
+            font-weight:${now?'700':'400'}">${n===30?'30경기~':n+'경기'}</span>
+          <span style="flex:1;display:flex;height:10px;border-radius:5px;overflow:hidden">
+            <i style="flex:${W.grade};background:${gi.c}"></i>
+            ${W.form?`<i style="flex:${W.form};background:var(--coral)"></i>`:''}
+            <i style="flex:${W.tier};background:#dce0e4"></i></span>
+          ${now?`<span style="flex:none;font-size:11px;font-weight:700;color:var(--coral-d)">지금</span>`:''}
+        </div>`; }).join('')}
+    </div>
+    <div style="display:flex;gap:14px;margin-top:14px;font-size:11px;color:var(--gray)">
+      ${[[gi.c,'등급'],['var(--coral)','클럽 성적'],['#dce0e4','월례대회 조']].map(([c,t])=>
+        `<span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;
+          border-radius:2px;background:${c};display:block"></i>${t}</span>`).join('')}
+    </div>
+    <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;margin-top:16px;
+      font-size:12px;color:#4e5968;line-height:1.7">구력이 길어도 요즘 잘 안 되면 자리가 내려가고,
+      구력이 짧아도 잘 치면 올라가요<br>
+      <span style="color:var(--gray)">화면에 보이는 구력 등급은 그대로예요 · 대진에만 써요</span></div>
+  </div>
+
+  <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">등급표</div>
     <div class="hint" style="margin-top:4px">등급은 구력으로만 정해져요 ·
       오른쪽은 ${s.games>=30?'지금':`지금(${s.games}경기)`} 기준
@@ -14216,7 +14246,7 @@ function balPanelHTML(){
         ${i?'border-top:1px solid #f4f5f7;margin-top:14px;padding-top:14px':''}">
         <span style="flex:1;min-width:0">
           <b style="display:block;font-size:12.5px;font-weight:600">${r.a}</b>
-          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.ay}</span></span>
+          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">${r.ay}</span></span>
         <span style="flex:none;text-align:center;min-width:74px">
           <b style="display:block;font-size:13px;font-weight:700;color:var(--coral-d)">${r.apt}
             <span style="color:#c2c8ce;font-weight:500"> : </span>${r.bpt}</b>
@@ -14224,11 +14254,11 @@ function balPanelHTML(){
             Math.abs(r.apt-r.bpt)<=3?'거의 같아요':`${Math.abs(r.apt-r.bpt)}점 차`}</span></span>
         <span style="flex:1;min-width:0;text-align:right">
           <b style="display:block;font-size:12.5px;font-weight:600">${r.b}</b>
-          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.by}</span></span>
+          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">${r.by}</span></span>
       </div>`).join('')}
     </div>
-    <div class="hint" style="margin-top:12px">구력은 달라도 <b>양쪽 합이 가장 가까워지도록</b> 묶어요 ·
-      다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
+    <div class="hint" style="margin-top:12px">구력이 달라도 <b>실력이 비슷해지도록</b> 묶어요 ·
+      대진표에도 구력이 아니라 <b>실력</b>으로 적혀요</div>
   </div>`;
 }
 /* ── 누구와 자주 묶였나 ────────────────────────────────────────────
@@ -20896,8 +20926,10 @@ function drawCB2View(){
       if(saved && !/[0-9]/.test(saved)) return String(saved).toUpperCase()+'2';
       return saved;
     };
-    const gA=esc(cbAvgGrade((g.teamA||[]).map(gradeOf)));
-    const gB=esc(cbAvgGrade((g.teamB||[]).map(gradeOf)));
+    /* 구력 평균이 아니라 대진에 쓰는 값의 평균을 적는다 —
+       강약을 묶어 균형을 맞춘 경기가 한쪽만 높게 보이면 오해가 된다. */
+    const gA=esc(cbTeamLv(g.teamA)||cbAvgGrade((g.teamA||[]).map(gradeOf)));
+    const gB=esc(cbTeamLv(g.teamB)||cbAvgGrade((g.teamB||[]).map(gradeOf)));
         const cA=CB2.mode==='cheongbaek'?'#3182f6':'#d9500a', cB=CB2.mode==='cheongbaek'?'#f04452':'#191f28';
         /* 스코어는 두 팀 사이에 둔다 — 누구 대 누구의 몇 점인지 한 줄에서 읽힌다.
            아직 안 끝난 경기는 실선 테두리의 빈 칸으로 두어 '여기 눌러 입력'이 보이게. */
@@ -20946,12 +20978,12 @@ function drawCB2View(){
           <div style="display:flex;align-items:flex-start;gap:7px;margin-top:5px">
             <div style="flex:1;min-width:0">
               <b style="display:block;font-size:var(--t2);font-weight:700;color:${cA};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${A}</b>
-              ${gA?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">평균 ${gA}</span>`:''}
+              ${gA?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">실력 ${gA}</span>`:''}
             </div>
             ${scBox}
             <div style="flex:1;min-width:0;text-align:right">
               <b style="display:block;font-size:var(--t2);font-weight:700;color:${cB};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
-              ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">평균 ${gB}</span>`:''}
+              ${gB?`<span style="display:block;font-size:var(--t0);font-weight:600;color:var(--lgray);margin-top:2px;letter-spacing:.02em">실력 ${gB}</span>`:''}
             </div>
           </div></div>`;
       });
@@ -21201,6 +21233,21 @@ function cbLv(p){
   }catch(e){ return base; }
 }
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
+/* 팀 실력 표시 — 구력 평균이 아니라 <대진에 실제로 쓰는 값>의 평균이다.
+   구력 평균으로 적으면, 강한 분과 약한 분을 묶어 균형을 맞춘 경기가
+   한쪽만 높게 보여 <대진이 안 맞았다>는 오해를 만든다.
+   cbLv(1~5)를 등급 사다리(C1~SS3) 자리로 되돌려 적는다. */
+function cbTeamLv(team){
+  const arr=(team||[]).filter(Boolean);
+  if(!arr.length) return '';
+  let sum=0, n=0;
+  arr.forEach(p=>{ const v=cbLv(p); if(isFinite(v)){ sum+=v; n++; } });
+  if(!n) return '';
+  const lv=sum/n;                                  // 1(C) ~ 5(SS)
+  /* 사다리 한 칸은 등급 하나(3칸)다 — 1.0→C2, 2.0→B2 처럼 가운데로 맞춘다 */
+  const idx=Math.round((lv-1)*3 + 1);
+  return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, idx))] || '';
+}
 function cbAvgGrade(list){
   const idx=(list||[]).map(c=>GRADE_LADDER.indexOf(String(c||'').toUpperCase()))
     .filter(i=>i>=0);
