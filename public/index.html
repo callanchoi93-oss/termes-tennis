@@ -996,8 +996,11 @@
   .rkme .p{ flex:none;text-align:right }
   .rkme .p b{ font-size:24px;font-weight:700;letter-spacing:-.045em;font-variant-numeric:tabular-nums }
   .rkme .p i{ font-style:normal;font-size:14px;color:var(--lgray);font-weight:400;margin-left:1px }
+  /* keep-all 로 낱말 안에서 안 자르고, text-wrap:pretty 로 마지막 줄에
+     한 마디만 남는 것(<값이에요.>)을 막는다 */
   .rkrule{ display:block;margin:0 2px 14px;padding:11px 13px;background:var(--cream2);
-    border-radius:11px;font-size:14px;color:var(--gray);font-weight:400;line-height:1.75 }
+    border-radius:11px;font-size:14px;color:var(--gray);font-weight:400;line-height:1.75;
+    word-break:keep-all;text-wrap:pretty }
   .rkrule b{ color:var(--ink);font-weight:700 }
   .rkbar{ flex:none;width:52px;height:5px;border-radius:3px;background:var(--felt-d);overflow:hidden }
   .rkbar i{ display:block;height:100%;background:var(--coral) }
@@ -1482,7 +1485,7 @@
   .tierband .tb-body{ max-height:0; opacity:0; overflow:hidden; transition:max-height .26s ease, opacity .2s ease, margin .26s ease;
     font-size:14px; font-weight:400; line-height:1.55; }
   .tierband.open .tb-body{ max-height:160px; opacity:1; margin-top:11px; }
-  .tierband .tb-tag{ display:inline-block; background:rgba(255,255,255,.22); border-radius:7px; padding:3px 9px; font-size:14px; font-weight:400; margin-top:8px; }
+  .tierband .tb-tag{ display:inline-block; background:rgba(255,255,255,.22); border-radius:7px; padding:3px 9px; font-size:13px; font-weight:400; margin-top:8px; white-space:nowrap; }
 
   /* ── 타이포 스케일 (√φ = 1.272 · 본문 13px) ────────────────
      8 / 10 / 13 / 16.5 / 21 / 27 · 행간은 황금비 1.618 → 1.272 로 조여간다 */
@@ -2085,7 +2088,7 @@
   .nd-s{ font-size:14px; font-weight:400; color:var(--gray); margin-top:3px; line-height:1.5; }
   .nd-dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--coral); margin-right:7px; vertical-align:2px; }
   .nd-empty{ padding:26px 18px 30px; text-align:center; font-size:14px; color:var(--lgray); font-weight:400; }
-  .wait-chip{ background:#ffffff; border:1px solid var(--line2); border-radius:7px; padding:4px 10px; font-size:14px; color:var(--gray); font-weight:700; }
+  .wait-chip{ background:#ffffff; border:1px solid var(--line2); border-radius:7px; padding:4px 10px; font-size:13px; white-space:nowrap; color:var(--gray); font-weight:700; }
   /* ── 한울 · TERMES 스타일 ── */
   .hn-head{ display:flex; align-items:flex-end; justify-content:space-between; margin:18px 4px 14px; }
   .hn-eye{ font-size:14px; font-weight:400; letter-spacing:.18em; color:var(--coral-d); margin-bottom:4px; }
@@ -3056,10 +3059,14 @@
     border-radius:10px;padding:8px 12px;align-self:center;cursor:pointer }
   .hstart .hsrow.done .go{ background:none;color:#03a273;padding:8px 2px }
 
+  /* 시즌 랭킹 머리와 같은 구조다 — 가운데 설명이 길면 제목과 링크가 눌려 갈라진다.
+     제목과 링크는 줄을 안 바꾸고, 밀리는 쪽은 가운데 설명이어야 한다. */
   .hsect{ display:flex;align-items:baseline;gap:8px;margin:24px 4px 10px }
-  .hsect b{ font-size:16px;font-weight:700;letter-spacing:-.04em }
-  .hsect span{ font-size:14px;color:var(--lgray);font-weight:400 }
-  .hsect .go{ margin-left:auto;font-size:14px;font-weight:700;color:var(--coral-d);cursor:pointer }
+  .hsect b{ font-size:16px;font-weight:700;letter-spacing:-.04em;flex:none;white-space:nowrap }
+  .hsect span{ font-size:14px;color:var(--lgray);font-weight:400;
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .hsect .go{ margin-left:auto;font-size:14px;font-weight:700;color:var(--coral-d);
+    cursor:pointer;flex:none;white-space:nowrap;padding-left:4px }
 
   /* ── 일정 탭 달력 ──
      예전에는 달력이 화면 3분의 2를 먹는데 담긴 정보가 프레첼 아이콘 하나뿐이었다.
@@ -3178,7 +3185,7 @@
   .myc .c .n{ display:flex;align-items:center;gap:7px;min-width:0 }
   .myc .c .n b{ font-size:16px;font-weight:700;letter-spacing:-.04em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap }
-  .myc .c .n .role{ flex:none;font-size:14px;font-weight:700;color:var(--gray);
+  .myc .c .n .role{ flex:none;font-size:13px;white-space:nowrap;font-weight:700;color:var(--gray);
     background:var(--felt);border-radius:6px;padding:2px 6px }
   .myc .c .s{ font-size:14px;color:var(--lgray);font-weight:400;margin-top:3px }
   .myc .arr{ flex:none;color:#d3d8de;font-size:20px }
@@ -3307,7 +3314,7 @@
   .clseed span{ font-size:14px;font-weight:700;color:var(--lgray) }
   .clseed i{ flex:1;height:1px;background:var(--line) }
   .clquiet{ opacity:.62 }
-  .cltag{ font-size:14px;font-weight:400;border-radius:5px;padding:2px 7px;
+  .cltag{ font-size:13px;white-space:nowrap;font-weight:400;border-radius:5px;padding:2px 7px;
     background:var(--felt);color:var(--gray);flex:none }
   /* ── 클럽 탭 · 교류전 카드 ──
      한 줄에 <10/12> 와 <대진 완성> 이 나란히 있으면 서로 다른 말을 한다.
@@ -3435,7 +3442,7 @@
   .tgcard .body .tgmem:first-child{ border-top:0 }
   .tgmem .nm{ font-size:15px;font-weight:700;letter-spacing:-.035em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap }
-  .tgmem .me2{ font-size:14px;font-weight:700;color:var(--coral-d);background:var(--coral-s);
+  .tgmem .me2{ font-size:13px;white-space:nowrap;font-weight:700;color:var(--coral-d);background:var(--coral-s);
     border-radius:5px;padding:2px 5px;flex:none }
   .tgmem .g{ flex:none;font-size:14px;font-weight:700;border-radius:5px;padding:2px 6px }
   .tgmem .rt{ margin-left:auto;flex:none }
@@ -3532,10 +3539,12 @@
   /* 회색으로 칠한 딱지 셋이 나란히 서면 화면 위쪽이 통째로 회색 덩어리가 된다 —
      바로 아래 회비 카드가 흰 종이에 테두리라 두 규칙이 부딪혔다.
      같은 규칙으로 맞춘다: 흰 바탕에 실선 하나. 칠은 코랄에만 남긴다. */
-  .ifacts span{ display:inline-flex;align-items:center;gap:6px;background:#fff;
-    border:1px solid var(--line);border-radius:11px;padding:8px 11px;
-    font-size:14px;font-weight:700 }
-  .ifacts span i{ font-style:normal;font-size:14px;font-weight:400;color:var(--lgray) }
+  /* 딱지는 본문 눈금을 그대로 따라갈 필요가 없다. 본문보다 한 칸 작게 두어야
+     <읽는 글>과 <붙어 있는 표시>가 구분되고, 세 개가 한 줄에 들어간다. */
+  .ifacts span{ display:inline-flex;align-items:center;gap:5px;background:#fff;
+    border:1px solid var(--line);border-radius:11px;padding:7px 10px;
+    font-size:13px;font-weight:700;white-space:nowrap }
+  .ifacts span i{ font-style:normal;font-size:13px;font-weight:400;color:var(--lgray) }
   .ifacts span.ed{ cursor:pointer }
   /* 회비 — 세 줄로 흩어 두면 <처음에 얼마 드나>를 머릿속에서 더해야 한다 */
   .ifee{ border:1px solid var(--line);border-radius:18px;overflow:hidden }
@@ -14254,7 +14263,7 @@ function balPartnerHTML(uid, title){
           ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
           <span style="flex:none;width:52px;font-size:16px;font-weight:400;overflow:hidden;
             text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
-          <span style="flex:none;font-size:14px;color:${c.c};background:${c.bg};
+          <span style="flex:none;font-size:13px;white-space:nowrap;color:${c.c};background:${c.bg};
             border-radius:6px;padding:3px 7px">${b}등급</span>
           <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
             <i style="display:block;height:100%;border-radius:4px;width:${Math.round(m.n/max*100)}%;
@@ -14508,11 +14517,16 @@ function clubTabRecords(){
   /* 26명 클럽인데 35줄이 나오는 이유를 화면에서 바로 알 수 있게 —
      명단에 없는 사람(게스트·나간 회원)이 몇 명 섞였는지 적는다. */
   const offN=list.filter(r=>cbOffRoster(r)).length;
-  h+=`<div style="display:flex;align-items:baseline;gap:8px;padding:4px 2px 12px">
-    <span class="gt3">시즌 랭킹</span>
-    <span class="gt1 gmute">${list.length}명 · 모임 ${days.size}회 · ${games.length}경기${
-      offN?` · 게스트 ${offN}명 포함`:''}</span>
-    <span class="gt1" style="margin-left:auto;color:var(--coral-d);font-weight:700;cursor:pointer" onclick="openPastMeetings()">지난 모임 ›</span></div>
+  /* 제목·설명·링크를 한 줄에 나란히 두었더니 가운데 설명이 길어지면서
+     양옆을 눌러 <시즌 / 랭킹>, <지난 / 모임 ›> 으로 갈라졌다.
+     제목과 링크는 줄을 안 바꾸게 못 박고, 설명은 아래 줄로 내린다. */
+  h+=`<div style="padding:4px 2px 12px">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span class="gt3" style="white-space:nowrap">시즌 랭킹</span>
+      <span class="gt1" style="margin-left:auto;white-space:nowrap;color:var(--coral-d);font-weight:700;cursor:pointer" onclick="openPastMeetings()">지난 모임 ›</span>
+    </div>
+    <div class="gt1 gmute" style="margin-top:6px;line-height:1.6;word-break:keep-all;text-wrap:pretty">${list.length}명 · 모임 ${days.size}회 · ${games.length}경기${
+      offN?` · 게스트 ${offN}명 포함`:''}</div></div>
 `;
   /* 표를 목록으로 — 다섯 열을 <순위 배지 · 이름과 전적 · 점수> 세 덩어리로 줄인다.
      1위는 잉크에 금색, 2·3위는 은·동 느낌의 옅은 배지. 색을 늘리지 않고 시상대를 만든다. */
@@ -14542,9 +14556,11 @@ function clubTabRecords(){
         <span class="rk2-p"><b style="color:var(--lgray)">${maskNum(r.avg,r.name)}</b><i>점</i></span></div>`;
     });
   }
-  h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7">
+  /* 한 문장이 두 줄로 갈리면서 가운뎃점이 줄 끝에 매달렸다.
+     문장을 줄로 나누고, 셋 다 각각 한 덩어리로 읽히게 한다. */
+  h+=`<div class="gt1 gmute" style="padding:14px 2px;line-height:1.7;word-break:keep-all;text-wrap:pretty">
     같은 점수면 <b style="color:var(--ink);font-weight:400">득실차</b>가 앞선 사람이 위로 와요<br>
-    <b style="color:var(--ink);font-weight:400">정기 모임</b>에서 점수가 확정된 경기만 집계돼요 ·
+    <b style="color:var(--ink);font-weight:400">정기 모임</b>에서 점수가 확정된 경기만 집계돼요<br>
     번개는 기록에 남지만 랭킹에는 안 들어가요.</div>`;
   return h;
 }
@@ -32675,7 +32691,7 @@ function paintFairplay(){
   }
   if(ln) ln.textContent = MY_FP.reviews
     ? `후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`
-    : '아직 후기가 없어요 · 80점에서 시작';
+    : '아직 후기가 없어요 · 80점에서 시작';
 }
 function _renderMeCore(){
   ensureRecs();
@@ -32743,7 +32759,7 @@ function _renderMeCore(){
     <div class="card" style="flex:1;margin:0;cursor:pointer;display:flex;flex-direction:column" onclick="openFairplayInfo()">
       <div style="font-size:14px;color:var(--gray);font-weight:400">매너</div>
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:20px;color:#03a273">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
-      <div id="myFpLine" style="font-size:14px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div>
+      <div id="myFpLine" style="font-size:14px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div>
       <div style="margin-top:auto;padding-top:12px;border-top:1px solid #ebedf0">
         <div style="font-size:14px;color:var(--gray);font-weight:400">캐시</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
@@ -32786,12 +32802,14 @@ function _renderMeCore(){
       </div>
       <!-- 링크 안에서 줄이 갈리면 꺾쇠(›)만 다음 줄로 떨어진다.
            칸이 모자라면 링크 하나가 통째로 내려가야 한다: nowrap + wrap -->
-      <div style="margin-top:auto;padding-top:12px;display:flex;gap:11px;font-size:14px;
+      <!-- 왼쪽 카드의 아래 묶음(캐시 · 금액)처럼 머리선을 두어 아래줄이 같은 자리에서
+           시작하게 한다. 나란히 서는 두 카드인데 한쪽만 선이 없으면 떠 보인다. -->
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid #ebedf0;
+        display:flex;gap:14px;font-size:14px;
         flex-wrap:wrap;row-gap:6px;white-space:nowrap;
         font-weight:400;color:var(--coral-d)">
         <span onclick="event.stopPropagation();openPyramid()">티어 안내 ›</span>
-        <span onclick="event.stopPropagation();openGradeGuide()">내 등급 ›</span>
-        <span onclick="event.stopPropagation();openRatingTrend()">추이 ›</span></div>
+        <span onclick="event.stopPropagation();openGradeGuide()">내 등급 ›</span></div>
     </div>
     </div>
     </div></div>
