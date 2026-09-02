@@ -4450,7 +4450,9 @@ function spMeta(id){ return SPORTS.find(s=>s.id===id)||SPORTS[0]; }
 function obSportExp(){ return SPORT_EXP[state._obSport]||EXP; }
 function obExpTitle(){ const m=spMeta(state._obSport); return m.cat==='racket'?`${m.n} 구력이 어느 정도예요?`:m.cat==='team'?`${m.n} 경력이 어느 정도예요?`:`${m.n}, 어느 정도 하세요?`; }
 const state={
-  view:'league', loggedIn:false, provider:null, gender:null, exp:null, card:false,
+  /* 첫 화면은 홈이다 — 예전 기본값이 'league' 라, 저장된 상태가 없는 첫 로그인에서
+     감춰둔 리그 화면이 그대로 열렸다. */
+  view:'home', loggedIn:false, provider:null, gender:null, exp:null, card:false,
   _obStep:1, _obGender:null, _obExp:null, _obY:'', _obM:'', _pendPay:null, rating:1000, played:0, ratingHist:[1000], streak:3, season:{no:3,name:'2026 여름 시즌',end:'2026-08-31',start:'2026-06-01'}, seasonTrophies:[], invited:2, cheer:{clap:24,fire:18,muscle:9}, a11y:{big:false,contrast:false}, cash:0, free:{bracket:3, dm:2}, sport:'tennis', premium:false, leagueGender:'남자부', soccerMode:'futsal', photos:null, anonNick:null, verified:{phone:false,real:false,skill:false}, mmr:1180, mmrWins:0, plUnlocked:false, reports:[], leagueTab:'solo', leagueOpen:true, leagueNotified:false, regionMembers:32, regionTarget:50,
   clubDivView:'2부',
   clubStandings:[
@@ -11025,9 +11027,16 @@ function drawClubPreview(){
               <span style="display:block;font-size:10.5px;font-weight:500;color:var(--gray);margin-top:5px">${l}</span>
             </div>`).join('')}
         </div>
-        ${first?`<div style="display:flex;align-items:center;padding:12px 15px;border-top:1px solid #e5e8eb;
-          font-size:11.5px;font-weight:500;color:#4e5968">처음 들어오면 첫 달에<b style="margin-left:auto;
-          font-size:13.5px;font-weight:700;color:var(--coral-d)">${first.toLocaleString()}원</b></div>`:''}
+        ${(()=>{ const gv=+(P.guest_visits||c.guest_visits)||0, gpre=gv*(gfee||0);
+          const line=(l,v,strong)=>`<div style="display:flex;align-items:center;padding:12px 15px;
+            border-top:1px solid #e5e8eb;font-size:11.5px;font-weight:500;color:#4e5968">${l}<b
+            style="margin-left:auto;font-size:13.5px;font-weight:700;color:${strong?'var(--coral-d)':'var(--ink)'}"
+            >${v.toLocaleString()}원</b></div>`;
+          /* 게스트를 몇 번 나와야 가입할 수 있는 클럽이면, 그 값도 처음 드는 돈이다.
+             입회비만 적어두면 실제보다 싸 보인다. */
+          return (first?line('처음 들어오면 첫 달에', first, !gpre):'')
+               + (gpre?line(`가입 전 게스트 ${gv}회`, gpre, false)
+                     + line('다 합치면', first+gpre, true):''); })()}
       </div>
     </div>
     <div style="margin-top:18px">
@@ -15059,8 +15068,14 @@ function openClubBasicEdit(fresh){
     ${cbeMoney('월 회비','매달 내는 운영비','season',10000,'원')}
     ${cbeMoney('게스트비','게스트 방문 1회','gfee',5000,'원')}
     ${cbeMoney('게스트 정원','모임 하나에 최대','gcap',1,'명')}
-    <div class="hint" style="margin-top:10px">처음 들어오면 첫 달에
-      <b>${((+CBE.entry||0)+(+CBE.season||0)).toLocaleString()}원</b>으로 클럽 페이지에 보여요.</div>
+    <div class="hint" style="margin-top:10px">${(()=>{
+      const first=(+CBE.entry||0)+(+CBE.season||0);
+      const gpre=(+CBE.gvis||0)*(+CBE.gfee||0);
+      return gpre
+        ? `처음 들어오면 첫 달에 <b>${first.toLocaleString()}원</b>,
+           가입 전 게스트 ${+CBE.gvis}회에 <b>${gpre.toLocaleString()}원</b> —
+           다 합쳐 <b>${(first+gpre).toLocaleString()}원</b>으로 보여요.`
+        : `처음 들어오면 첫 달에 <b>${first.toLocaleString()}원</b>으로 클럽 페이지에 보여요.`; })()}</div>
 
     <div class="cbesec">가입 · 게스트</div>
     <div class="cbetog" onclick="cbeSet('jopen',${CBE.jopen?'false':'true'})">
