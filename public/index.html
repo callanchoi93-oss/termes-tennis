@@ -2328,6 +2328,9 @@
   .cw-c{ font-size:12px;font-weight:500;padding:7px 12px;border-radius:999px;background:#edeff1;
          color:#4a5159;cursor:pointer }
   .cw-c.on{ background:var(--coral);color:#fff;font-weight:600 }
+  /* 요일 칩은 여러 개를 촘촘히 늘어놓지만, 둘 중 하나를 고르는 값은
+     같은 크기로 두면 <누르는 곳>으로 안 보인다. 손가락에 맞게 키운다. */
+  .cw-c.big{ font-size:13.5px;font-weight:600;padding:11px 20px;min-width:104px;text-align:center }
   .cw-seg{ flex:1;text-align:center;font-size:13px;font-weight:600;padding:11px 0;border-radius:12px;
            border:1.5px solid var(--line);color:#4a5159;cursor:pointer }
   .cw-seg.on{ border-color:var(--coral);background:var(--coral-s);color:var(--coral-d) }
@@ -10590,7 +10593,7 @@ const CW_AGES=['10대','20대','30대','40대','50대 이상'];
 function cw(){ return state._cw || (state._cw={step:1,name:'',intro:'',logoMode:'sym',
   logoBg:CLUB_LOGO_BGS[0],logoIc:SP().ic,logoImg:null,sido:'',sigungu:'',
   times:[],days:[],court:'',ages:[],gender:'남녀 모두',grade:'B2',
-  founded:'',recruit:true}); }
+  founded:''}); }
 function cwStash(){
   const g=id=>{const e=document.getElementById(id);return e?e.value:null;};
   const c=cw(), n=g('cwName'), i=g('cwIntro'), ct=g('cwCourt'), y=g('cwYear');
@@ -10694,12 +10697,9 @@ function openCreateClub(){
         <div class="xf-h" style="margin-top:6px">클럽 페이지에 <b>${
           esc(String(c.founded||new Date().getFullYear()))}년부터</b>로 보여요 ·
           비워두면 올해로 저장돼요</div></div>
-      <label>회원 모집</label>
-      <div class="cw-chips">
-        <span class="cw-c ${c.recruit?'on':''}" onclick="cwSet('recruit',true)">모집 중</span>
-        <span class="cw-c ${!c.recruit?'on':''}" onclick="cwSet('recruit',false)">안 받는 중</span></div>
-      <div class="xf-h" style="margin-top:6px">모집 중으로 두면 클럽 목록에서 위로 올라가요 ·
-        나중에 언제든 바꿀 수 있어요</div>`;
+      <div class="xf-h" style="margin-top:6px">회원 모집과 게스트 조건은 계속 바뀌는 값이라
+        여기서 정하지 않아요 — 만든 뒤 <b>운영진 도구 · 회원 모집</b>에서 관리해요.
+        새로 만든 클럽은 <b>모집 중</b>으로 시작합니다</div>`;
   } else if(st===4){
     body=`<h3 style="font-size:17px;letter-spacing:-.03em">클럽 멤버 정보</h3>
       <div class="sd">어떤 분들이 모이는지 알려주세요 · 정확하지 않아도 괜찮아요</div>
@@ -10761,7 +10761,7 @@ async function createClub(){
     logo:c.logoMode==='img'?c.logoImg:null, logo_ic:c.logoMode==='sym'?c.logoIc:null,
     logo_bg:c.logoMode==='sym'?c.logoBg:null, meet_time:c.times.join(','),
     age_bands:c.ages.join(','), gender_pref:c.gender,
-    founded_year: parseInt(c.founded,10)||null, recruiting: c.recruit?1:0 };
+    founded_year: parseInt(c.founded,10)||null };
   // 서버 연결 상태면 서버에 먼저 만든다 — 안 그러면 피드·공지·회비·대진이 전부 데모로 떨어진다
   if(SERVER_OK){
     const sc = await createClubServer(n, r, state.sport, extra);
@@ -11071,10 +11071,14 @@ function drawClubPreview(){
             ${i<rk.length-1?'border-bottom:1px solid #f2f4f6':''}">
             <span style="flex:none;width:16px;font-size:12.5px;font-weight:700;color:${
               r.pos===1?'var(--coral-d)':'var(--lgray)'}">${r.pos}</span>
-            <span style="flex:1;font-size:14px;font-weight:500">${esc(r.name)}</span>
-            <span style="flex:none;font-size:14px;font-weight:700">${r.pts}점</span></div>`).join('')}
+            <span style="flex:1;min-width:0;font-size:14px;font-weight:500;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
+            <span style="flex:none;font-size:11.5px;color:var(--gray)">${r.days}회 · ${r.games}경기</span>
+            <span style="flex:none;min-width:40px;text-align:right;font-size:14px;font-weight:700">${
+              r.avg!=null?r.avg:r.pts}<em style="font-style:normal;font-size:11px;color:var(--gray)">점</em></span></div>`).join('')}
         </div>
-        <div style="font-size:11.5px;color:var(--gray);margin-top:8px">승 3점 · 무 1점 · 패 0점</div>`:''}
+        <div style="font-size:11.5px;color:var(--gray);margin-top:8px">승 3점 · 무 1점으로 모은 점수를
+          참석 횟수로 나눈 값이에요 · 게스트는 빼고 셉니다</div>`:''}
         <div class="ch" style="font-size:15px;margin:${rk.length?'26px':'4px'} 0 10px">지난 모임</div>
         ${days.length?days.map(d=>`
           <button class="pvday" onclick="pvOpenDay('${esc(d.date)}')">
@@ -11439,6 +11443,10 @@ function clubGenderChip(c, size){
     color:${t.c};white-space:nowrap">${t.l}</span>`;
 }
 function clubRecruiting(c){ return !!(c && (c.recruiting===1 || c.recruiting===true)); }
+/* 게스트 구력 문턱 — 클럽 만들기와 운영진 도구가 같은 목록을 써야 어긋나지 않는다.
+   3년·5년을 원하는 클럽이 실제로 있어 위쪽을 넉넉히 둔다. */
+const GUEST_MINS=[[0,'제한 없음'],[6,'6개월 이상'],[12,'1년 이상'],[24,'2년 이상'],
+                  [36,'3년 이상'],[60,'5년 이상'],[84,'7년 이상'],[120,'10년 이상']];
 /* 게스트 조건 — <받아요>는 정보가 없다. 구력 몇 년부터인지가 실제 문턱이다. */
 function guestMinText(mo){
   const m=+mo||0; if(!m) return '누구나';
@@ -11669,6 +11677,8 @@ function openClubOps(){
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
+      ${tool('클럽 기본 정보','지역 · 모임 · 홈구장 · 창단연도','openClubBasicEdit(1)')}
+      ${tool('회원 모집','모집 여부 · 게스트 조건','openRecruitOps()')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
       ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
     </div>
@@ -13647,8 +13657,12 @@ function clubTabRecords(){
   /* ── 명예의 전당 ──
      1등 하나만 남으면 대부분에게 남는 게 없다. 성격이 다른 다섯 자리를 만든다.
      경기 수 조건은 두세 판 뛰고 100% 찍은 사람이 자리를 채가는 걸 막는다. */
+  /* 게스트를 빼는 이유 — 한 번 와서 네 판 다 이기면 승률 100% 로 1위가 된다.
+     클럽 기록은 클럽 회원의 기록이다. 게스트 id 는 'g' 로 시작한다.
+     참석 횟수 조건도 순위와 같은 값을 쓴다 — 한 번 나온 사람은 전당에도 안 넣는다. */
+  const hallPool = list.filter(r=>!/^g/i.test(String(r.id)) && r.dayN>=RKMIN);
   const best=(key,asc,min)=>{
-    const f=list.filter(r=>r.g>=(min||0)); if(!f.length) return null;
+    const f=hallPool.filter(r=>r.g>=(min||0)); if(!f.length) return null;
     return f.slice().sort((a,b)=>asc?a[key]-b[key]:b[key]-a[key])[0];
   };
   /* 상 이름은 테니스 말로. '다이아손·철벽'은 어디서 온 말인지 알기 어렵고
@@ -13663,7 +13677,7 @@ function clubTabRecords(){
     {l:'매주와요', s:'최다 참여',   p:best('dayN',false), f:r=>`${r.dayN}회`},
     /* 잘 친 사람만 칭찬하면 코트 밖에서 도운 사람은 남는 게 없다.
        남의 점수를 대신 넣어준 횟수 — 한 번이라도 있으면 자리를 만든다. */
-    {l:'기록요정', s:'점수 넣어준 수', p:(()=>{ const f=list.filter(r=>r.help>0);
+    {l:'기록요정', s:'점수 넣어준 수', p:(()=>{ const f=hallPool.filter(r=>r.help>0);
         return f.length ? f.slice().sort((a,b)=>b.help-a.help)[0] : null; })(),
       f:r=>`${r.help}개`},
   ].filter(x=>x.p && x.p.name);
@@ -14951,12 +14965,12 @@ function openClubBasicEdit(fresh){
     <div class="hint">클럽 페이지에 <b>${esc(String(CBE.founded||'2024'))}년부터</b>로 보여요. 모르면 비워두세요.</div>
     <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">회원 모집</label>
     <div class="cw-chips">
-      <span class="cw-c ${CBE.recruit?'on':''}" onclick="cbeSet('recruit',true)">모집 중</span>
-      <span class="cw-c ${!CBE.recruit?'on':''}" onclick="cbeSet('recruit',false)">안 받는 중</span></div>
+      <span class="cw-c big ${CBE.recruit?'on':''}" onclick="cbeSet('recruit',true)">모집 중</span>
+      <span class="cw-c big ${!CBE.recruit?'on':''}" onclick="cbeSet('recruit',false)">안 받는 중</span></div>
     <div class="hint" style="margin-top:8px">모집 중으로 두면 클럽 목록에서 위로 올라가고, <b>회원 모집 중</b> 표시가 붙어요.</div>
     <label style="display:block;font-size:12px;font-weight:500;color:var(--gray);margin:14px 0 8px">게스트 조건</label>
-    <div class="cw-chips">${[[0,'제한 없음'],[6,'6개월 이상'],[12,'1년 이상'],[24,'2년 이상'],[36,'3년 이상'],[60,'5년 이상']]
-      .map(([v,l])=>`<span class="cw-c ${CBE.gmin===v?'on':''}" onclick="cbeSet('gmin',${v})">${l}</span>`).join('')}</div>
+    <div class="cw-chips">${GUEST_MINS.map(([v,l])=>
+      `<span class="cw-c big ${CBE.gmin===v?'on':''}" onclick="cbeSet('gmin',${v})">${l}</span>`).join('')}</div>
     <div class="hint" style="margin-top:8px">클럽 페이지 게스트 칸에 <b>${
       CBE.gmin?guestMinText(CBE.gmin):'누구나'}</b>로 보여요. 가입 조건과는 따로 정해요.</div>
     <button class="btn" style="margin-top:16px" onclick="saveClubBasic()">저장</button>`;
