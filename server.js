@@ -997,8 +997,13 @@ app.post('/clubs/:id/join', auth, (req, res) => {
   const ex = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
   if (ex) return res.json({ ok: true, status: ex.status });          // 이미 신청/가입됨
   /* 신청 시각을 남겨야 신청자 화면에서 '언제 신청했는지'를 보여줄 수 있다 */
-  db.prepare(`INSERT INTO club_members (club_id,user_id,role,status,joined_at) VALUES (?,?, 'member','pending',?)`)
-    .run(cid, req.uid, now());
+  /* 이름으로 짠 대진에 있던 사람이면, 어떤 이름이었는지 함께 받아 둔다 —
+     승인할 때 클럽장이 확인하고 그때 이어붙인다. */
+  const claim = String((req.body && req.body.claim_name) || '').trim().slice(0, 20);
+  const claimGid = String((req.body && req.body.claim_gid) || '').trim().slice(0, 24);
+  db.prepare(`INSERT INTO club_members (club_id,user_id,role,status,joined_at,claim_name,claim_gid)
+    VALUES (?,?, 'member','pending',?,?,?)`)
+    .run(cid, req.uid, now(), claim || null, claimGid || null);
   const me = getUser(req.uid);
   // 클럽장·임원에게 알림
   db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(cid)
@@ -1127,6 +1132,93 @@ app.patch('/clubs/:id/members/:uid/alias', auth, (req, res) => {
    대진표만 가리면 가린 것이 아니라 <굴러가는 클럽인지> 알아보기만 어려워진다.
    가려야 할 때가 오면 이 함수 하나만 바꾸면 전부 따라온다. */
 function maskName(n) { return String(n || '').trim(); }
+/* ── 이름으로 짠 대진과 나중에 들어온 회원 잇기 ────────────────────────
+   회원이 앱에 없어도 이름만 적어 대진을 짤 수 있다. 그렇게 남은 이름은
+   임시 id(g…) 를 달고 기록에 남는데, 그 사람이 나중에 가입하면 남남이 된다.
+   가입 신청 때 본인이 이름을 고르고, 클럽장이 승인하면 그때 이어붙인다.
+   같은 이름이 두 사람일 수 있으니 자동으로 잇지 않는다. */
+/* 이름이 아니라 그때 그 사람(게스트 id)으로 잇는다 —
+   같은 클럽에 동명이인 게스트가 둘일 수 있어서, 이름으로 묶으면 남의 기록을 가져간다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS club_name_links (
+    club_id INTEGER, gid TEXT, name TEXT, user_id INTEGER, created_at BIGINT,
+    PRIMARY KEY (club_id, gid))`);
+} catch (e) {}
+try { db.exec('ALTER TABLE club_members ADD COLUMN claim_name TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE club_members ADD COLUMN claim_gid TEXT'); } catch (e) {}
+
+/* 아직 주인이 없는 이름들 — 초대받은 사람에게 후보로 보여준다 */
+app.get('/clubs/:id/unlinked-names', (req, res) => {
+  const cid = +req.params.id;
+  const taken = new Set(db.prepare('SELECT gid FROM club_name_links WHERE club_id=?')
+    .all(cid).map(r => String(r.gid)));
+  const logs = db.prepare(`SELECT date, data FROM club_bracket_logs
+    WHERE club_id=? ORDER BY date DESC LIMIT 12`).all(cid);
+  const map = {};
+  logs.forEach(r => {
+    let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
+    (d.games || []).forEach(g => {
+      const done = g.sa != null && g.sb != null;
+      const put = (p, win) => {
+        /* 임시 id(g…) 로 남은 사람만 후보다 — 이미 회원인 사람은 이을 것이 없다 */
+        if (!p || !p.name || !/^g/i.test(String(p.id || ''))) return;
+        const gid = String(p.id);
+        if (taken.has(gid)) return;
+        const t = map[gid] || (map[gid] = { gid, name: p.name, games: 0, w: 0, l: 0,
+          days: new Set(), months: (p.months != null ? p.months : null), grade: p.grade || '' });
+        if (t.months == null && p.months != null) t.months = p.months;
+        if (!t.grade && p.grade) t.grade = p.grade;
+        t.days.add(r.date);
+        if (done) { t.games++; if (win > 0) t.w++; else if (win < 0) t.l++; }
+      };
+      const diff = done ? g.sa - g.sb : 0;
+      (g.teamA || []).forEach(p => put(p, diff));
+      (g.teamB || []).forEach(p => put(p, -diff));
+    });
+  });
+  const out = Object.values(map)
+    .map(t => ({ gid: t.gid, name: t.name, games: t.games, w: t.w, l: t.l,
+                 months: t.months, grade: t.grade,
+                 days: t.days.size, last: [...t.days].sort().pop() || '' }))
+    .sort((a, b) => b.games - a.games).slice(0, 30);
+  /* 같은 이름이 둘 이상이면 앱이 알아서 고르면 안 된다 — 표시를 달아 보낸다 */
+  const dupe = {}; out.forEach(t => { dupe[t.name] = (dupe[t.name] || 0) + 1; });
+  res.json(out.map(t => ({ ...t, dupe: dupe[t.name] > 1 })));
+});
+
+/* 승인하면서 잇는다 — 지난 기록의 임시 id 를 그 회원 id 로 바꿔 준다.
+   이렇게 해두면 순위·전당·개인 기록이 모두 저절로 따라온다. */
+function linkClubName(cid, gid, uid) {
+  if (!cid || !gid || !uid) return 0;
+  const dup = db.prepare('SELECT user_id FROM club_name_links WHERE club_id=? AND gid=?').get(cid, String(gid));
+  if (dup) return 0;                                  // 이미 다른 사람이 가져갔다
+  let nm = '';
+  db.prepare('SELECT data FROM club_bracket_logs WHERE club_id=?').all(cid).forEach(r => {
+    if (nm) return;
+    let d; try { d = JSON.parse(r.data); } catch (e) { return; }
+    (d.games || []).forEach(g => [g.teamA, g.teamB].forEach(t => (t || []).forEach(p => {
+      if (!nm && p && String(p.id) === String(gid)) nm = p.name || ''; })));
+  });
+  db.prepare('INSERT INTO club_name_links (club_id,gid,name,user_id,created_at) VALUES (?,?,?,?,?)')
+    .run(cid, String(gid), nm, uid, now());
+  let changed = 0;
+  db.prepare('SELECT date, data FROM club_bracket_logs WHERE club_id=?').all(cid).forEach(r => {
+    let d; try { d = JSON.parse(r.data); } catch (e) { return; }
+    let hit = false;
+    (d.games || []).forEach(g => {
+      [g.teamA, g.teamB].forEach(t => (t || []).forEach(p => {
+        if (p && String(p.id) === String(gid)) { p.id = uid; hit = true; }
+      }));
+    });
+    if (hit) {
+      db.prepare('UPDATE club_bracket_logs SET data=? WHERE club_id=? AND date=?')
+        .run(JSON.stringify(d), cid, r.date);
+      changed++;
+    }
+  });
+  return changed;
+}
+
 app.get('/clubs/:id/public', (req, res) => {
   const cid = +req.params.id;
   const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
@@ -2250,9 +2342,18 @@ app.delete('/clubs/:id/join', auth, (req, res) => {
 app.get('/clubs/:id/join-requests', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
-  res.json(db.prepare(`SELECT u.id user_id, u.name, u.gender, u.region, u.rating
+  /* claim_name — 이름으로 짠 대진에서 본인이 고른 이름. 승인 화면에서 보여준다 */
+  const rows = db.prepare(`SELECT u.id user_id, u.name, u.gender, u.region, u.rating,
+      cm.claim_name, cm.claim_gid, u.sport_started
     FROM club_members cm JOIN users u ON u.id=cm.user_id
-    WHERE cm.club_id=? AND cm.status='pending' ORDER BY cm.id`).all(cid));
+    WHERE cm.club_id=? AND cm.status='pending' ORDER BY cm.id`).all(cid);
+  /* 그 이름으로 남은 경기가 몇 판인지도 함께 — 클럽장이 맞는지 판단할 근거가 된다 */
+  const logs = db.prepare('SELECT data FROM club_bracket_logs WHERE club_id=?').all(cid);
+  const cnt = {};
+  logs.forEach(r => { let d; try { d = JSON.parse(r.data); } catch (e) { return; }
+    (d.games || []).forEach(g => [g.teamA, g.teamB].forEach(t => (t || []).forEach(p => {
+      if (p && /^g/i.test(String(p.id || ''))) cnt[String(p.id)] = (cnt[String(p.id)] || 0) + 1; }))); });
+  res.json(rows.map(r => ({ ...r, claim_games: r.claim_gid ? (cnt[String(r.claim_gid)] || 0) : 0 })));
 });
 // 승인 / 거절 (임원진)
 app.post('/clubs/:id/members/:uid/approve', auth, (req, res) => {
@@ -2265,8 +2366,16 @@ app.post('/clubs/:id/members/:uid/approve', auth, (req, res) => {
        제한이 남아 있으면 이미 26명인 클럽이 회원을 한 명도 더 못 받는다
        (실제로 정회원 승인이 member_limit 으로 계속 막혔다). */
     const role = (req.body && req.body.role) === 'guest' ? 'guest' : 'member';
+    const pend = db.prepare('SELECT claim_name, claim_gid FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid) || {};
     db.prepare("UPDATE club_members SET status='active', role=?, joined_at=COALESCE(joined_at,?) WHERE club_id=? AND user_id=? AND status='pending'").run(role, now(), cid, uid);
+    /* 이름으로 짠 대진에 있던 사람이면 그때 기록을 이어붙인다.
+       link=false 로 보내면 잇지 않는다 — 동명이인일 때 클럽장이 고를 수 있어야 한다. */
+    let linked = 0;
+    const wantLink = !(req.body && req.body.link === false);
+    if (wantLink && pend.claim_gid) linked = linkClubName(cid, pend.claim_gid, uid);
     sendPush(uid, { icon: '🎉', title: '가입 승인', body: role==='guest' ? `${club.name} 게스트로 함께하게 됐어요` : `${club.name} 정회원이 됐어요` });
+    if (linked) sendPush(uid, { icon: '📘', title: '지난 기록이 이어졌어요',
+      body: `${pend.claim_name} 이름으로 남아 있던 경기가 내 기록이 됐어요` });
   } else {
     db.prepare("DELETE FROM club_members WHERE club_id=? AND user_id=? AND status='pending'").run(cid, uid);
     sendPush(uid, { icon: '🔔', title: '가입 신청 결과', body: `${club.name} 가입이 승인되지 않았어요` });
