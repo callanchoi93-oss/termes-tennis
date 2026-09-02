@@ -9913,6 +9913,9 @@ function renderClub(){
     /* 짝 맞춤 규칙 — 대진 탭은 오늘 대진을 보는 곳이라 규칙이 섞이면 둘 다 흐려진다 */
     if(CS==='bal'){     h+=clubTabBalance(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='info'){    h+=clubTabInfo();    document.getElementById('s-club').innerHTML=h; return; }
+    /* 첫 대진을 발행하기 전까지는 길잡이를 일정 탭 맨 위에 둔다 —
+       예전에는 일정을 만들면 사라져서 2단계에서 다시 막혔다. */
+    h+=startGuideHTML();
     // ── 이하 '일정' 탭 ──
     /* '이번 주 모임' 카드는 아래 '이번 주 일정'과 같은 내용이라 뺐다 */
 
@@ -9979,41 +9982,12 @@ function renderClub(){
               <b style="display:block;font-size:14px;color:var(--gray)">아직 지난 모임이 없어요</b>
               <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.6">
                 모임이 끝나면 여기에 쌓여요 · 그날 참석자와 대진을 볼 수 있어요</div></div>`
-          : (off ? (()=>{
-            /* 클럽만 만들고 나가는 사람이 있었다. 글로만 <모임을 열면 …할 수 있어요>라고
-               적으면 몇 단계인지, 얼마나 걸리는지 알 수 없어 시작을 못 한다.
-               세 단계를 눈으로 보여주고 지금 어디인지 표시한다. */
-            const STEP=[['모임 만들기','날짜 · 시간 · 코트'],
-                        ['참석자 넣기','회원이 없어도 이름으로 넣을 수 있어요'],
-                        ['대진 짜기','4명부터 · 코트별 회차까지 자동으로']];
-            return `<div class="card" style="padding:0;overflow:hidden">
-              <div style="padding:22px 17px 17px">
-                <div style="font-size:11.5px;font-weight:600;color:var(--coral-d)">클럽을 만들었어요 · 다음은</div>
-                <div style="font-size:18px;font-weight:700;letter-spacing:-.04em;margin-top:7px">첫 모임을 만들어 주세요</div>
-                <div class="hint" style="margin-top:6px">언제 어디서 치는지만 적으면 돼요 · 1분이면 끝나요</div>
-              </div>
-              <div style="padding:0 17px">
-                ${STEP.map(([t,d],i)=>`<div style="display:flex;align-items:center;gap:13px;
-                  padding:14px 0;border-top:1px solid #f2f4f6">
-                  <span style="flex:none;width:22px;height:22px;border-radius:50%;
-                    background:${i?'#f2f4f6':'var(--coral)'};color:${i?'var(--lgray)':'#fff'};
-                    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</span>
-                  <span style="flex:1;min-width:0">
-                    <b style="display:block;font-size:13.5px;font-weight:600;color:${i?'var(--gray)':'var(--ink)'}">${t}</b>
-                    <span style="display:block;font-size:12px;color:${i?'var(--lgray)':'var(--gray)'};margin-top:3px">${d}</span></span>
-                  ${i?'':`<span style="flex:none;font-size:11px;font-weight:600;color:var(--coral-d);
-                    background:var(--coral-s);border-radius:7px;padding:5px 9px">지금 할 일</span>`}
-                </div>`).join('')}
-              </div>
-              <div style="padding:17px">
-                <button class="btn" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">첫 모임 만들기</button>
-                <div class="hint" style="text-align:center;margin-top:11px">모임을 만들면 회원들이 참석을 누를 수 있어요</div>
-              </div></div>`; })()
           : `<div class="card" style="text-align:center;padding:22px 18px;background:#f5f7f9;border-color:#e7eaed">
               <div style="font-size:29px">📅</div>
               <b style="display:block;margin-top:6px;font-size:14px">다가오는 모임이 아직 없어요</b>
               <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">
-                임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.</div></div>`); }
+                ${off?'＋만들기로 이번 주 모임을 열어보세요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
+              ${off?`<button class="btn" style="max-width:220px;margin:13px auto 0" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">＋ 첫 모임 만들기</button>`:''}</div>`; }
       else {
         /* D안 — 다음 한 장만 진하게, 나머지는 같은 크림색.
            예전엔 카드마다 색이 달랐는데 그 색에 뜻이 없어서
@@ -11951,32 +11925,72 @@ async function openClubInvite(){
   const url=location.origin+(r.url||('/?invite='+r.token));
   window._clubInvUrl=url; window._clubInvName=n;
   const c=AC()||{}, d=(state.clubData||{})[n]||{};
-  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(31,39,50,.18)';
+  /* 글자마다 흰 테두리를 여덟 겹 두르면 획이 서로 먹어 깨져 보인다.
+     패턴 위에 흐린 막을 한 장 깔고, 글자에는 옅은 그림자만 준다. */
+  const OL='text-shadow:0 1px 3px rgba(255,255,255,.9)';
+  const SCRIM='position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,252,246,.55),rgba(255,252,246,.88))';
   const won=v=>v?Number(v).toLocaleString()+'원':'없음';
   const kv=(k,v,col)=>`<div><b style="display:block;font-size:12px;color:var(--gray);font-weight:500;margin-bottom:4px">${k}</b>
     <div style="font-size:14px;font-weight:500${col?';color:'+col:''}">${v}</div></div>`;
+  /* 봉투 — 위쪽 V 는 뚜껑, 그 꼭짓점에 흰 원 배지로 로고를 얹는다.
+     예전에는 프레첼 패턴 위에 글자를 얹고 흰 테두리를 여덟 겹 둘러
+     글자가 뭉개졌다. 형태로 <초대장>임을 말하는 편이 낫다. */
+  const won2=v=>{ const n=+v||0; if(!n) return '없음';
+    return (n>=10000 ? (Math.round(n/1000)/10)+'만' : n.toLocaleString()+'원'); };
+  const fEntry = d.entry_fee!=null?d.entry_fee:(c.entry||c.entry_fee||0);
+  const fSeason= d.season_fee!=null?d.season_fee:(c.season||c.season_fee||0);
+  const fGuest = d.guest_fee!=null?d.guest_fee:(c.guestFee||c.guest_fee||0);
+  const first  = (+fEntry||0)+(+fSeason||0);
+  const row=(k,v)=>`<div style="display:flex;align-items:baseline;gap:12px;padding:13px 0;
+    border-bottom:1px solid #f4f5f7">
+    <span style="flex:none;width:66px;font-size:12px;color:var(--gray)">${k}</span>
+    <span style="flex:1;font-size:13.5px;font-weight:600">${v}</span></div>`;
+  const cell=(v,l,last)=>`<div style="flex:1;text-align:center;padding:15px 0;
+    ${last?'':'border-right:1px solid #f2f4f6'}">
+    <div style="font-size:17px;font-weight:700;letter-spacing:-.03em">${v}</div>
+    <div style="font-size:11px;color:var(--gray);margin-top:5px">${l}</div></div>`;
   sheet.innerHTML=`<div class="om-detail">
     <div class="sh-top"><h3>클럽 초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div style="border-radius:22px;overflow:hidden;border:1px solid #dce2e8;background:#fff">
-      <div style="position:relative;height:210px">
-        ${OM_PAT}
-        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
-          justify-content:center;gap:10px;padding:0 20px;text-align:center">
-          <span style="font-size:12px;font-weight:500;color:#d9500a;letter-spacing:.03em;${OL}">클럽 초대장</span>
-          <span style="font-size:29px;font-weight:700;letter-spacing:-.02em;color:#181a1c;line-height:1.25;${OL}">${esc(n)}</span>
-          <span style="font-size:12px;font-weight:500;color:#6b5138;${OL}">함께 칠 사람을 찾고 있어요</span>
+      <div style="position:relative;background:#fdf6ea;padding:0 22px 24px">
+        <svg viewBox="0 0 340 96" style="display:block;width:100%;height:96px" aria-hidden="true">
+          <path d="M0 0 L340 0 L340 4 L170 88 L0 4 Z" fill="#f6e3c6"/>
+          <path d="M0 4 L170 88 L340 4" fill="none" stroke="#e8d0aa" stroke-width="1.5"/></svg>
+        <div style="position:relative;margin-top:-36px;text-align:center">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:74px;height:74px;
+            border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(160,110,50,.20)">
+            <img src="${PZ_ORIG}" alt="맞수" style="width:52px;height:52px;display:block"></span>
+        </div>
+        <div style="position:relative;text-align:center;margin-top:14px">
+          <div style="font-size:11px;font-weight:600;color:#c9754a;letter-spacing:3px">INVITATION</div>
+          <div style="font-size:24px;font-weight:700;color:var(--ink);margin-top:9px;letter-spacing:-.04em">${esc(n)}</div>
+          <div style="font-size:12.5px;color:#8a7359;margin-top:8px;line-height:1.6">${
+            esc(meName()||'')} 님이 초대했어요<br>함께 칠 사람을 찾고 있어요</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;padding:20px 22px 6px">
-        ${kv('지역', esc(c.r||d.region||'지역 미지정'))}
-        ${kv('회원', (d.members||c.m||0)+'명')}
-        ${kv('정기 모임', esc(d.meet_days||c.meet_days||'미정'))}
-        ${kv('홈구장', esc(d.home_court||c.court||'미정'))}
-        ${kv('입회비', won(d.entry_fee!=null?d.entry_fee:c.entry))}
-        ${kv('월 회비', won(d.season_fee!=null?d.season_fee:c.season))}
+      <div style="height:1px;background:#eed9b8"></div>
+      <div style="padding:20px 22px 0">
+        ${row('지역', esc(c.r||d.region||'지역 미지정'))}
+        ${row('모이는 날', esc(d.meet_days||c.meet_days||'미정'))}
+        ${row('홈구장', esc(d.home_court||c.court||'미정'))}
+        <div style="display:flex;align-items:baseline;gap:12px;padding:13px 0">
+          <span style="flex:none;width:66px;font-size:12px;color:var(--gray)">회원</span>
+          <span style="flex:1;font-size:13.5px;font-weight:600">${(d.members||c.m||0)}명</span></div>
       </div>
-      <div style="height:8px;background:#f1f2f4;margin-top:14px"></div>
-      <div style="padding:16px 18px 18px">
+      ${(fEntry||fSeason||fGuest)?`<div style="padding:8px 22px 0">
+        <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden">
+          <div style="display:flex">
+            ${cell(won2(fEntry),'입회비 · 한 번')}
+            ${cell(won2(fSeason),'월 회비')}
+            ${cell(won2(fGuest),'게스트 1회', true)}
+          </div>
+          ${first?`<div style="display:flex;align-items:center;padding:13px 15px;
+            border-top:1px solid var(--line);background:#fcfcfd">
+            <span style="flex:1;font-size:11.5px;color:#4e5968">처음 들어오면 첫 달에</span>
+            <span style="font-size:13.5px;font-weight:700;color:var(--coral-d)">${first.toLocaleString()}원</span>
+          </div>`:''}
+        </div></div>`:''}
+      <div style="padding:18px 22px 20px">
         <button class="btn" onclick="shareClubInvite()">초대장 링크 공유하기</button>
         <button class="btn ghost" style="margin-top:8px" onclick="copyClubInvite()">링크 복사</button>
         <div class="note" style="text-align:center;margin-top:10px">링크를 받은 분에게 이 초대장이 먼저 보이고,
@@ -14267,6 +14281,68 @@ function balPartnerHTML(uid, title){
         <span style="color:var(--gray)">성적이 반영되면 다음부터는 균형이 맞춰져요</span>`
       : `파트너와 상대가 비슷했어요 · 승률을 실력으로 볼 수 있어요`}</div>
   </div>`;
+}
+/* ── 시작 길잡이 ─────────────────────────────────────────────────
+   클럽만 만들고 나가는 사람, 일정만 만들고 나가는 사람이 있었다.
+   글로만 설명하면 몇 단계인지 몰라 시작을 못 한다.
+   세 단계를 눈으로 보여주고, 첫 대진을 낼 때까지 계속 붙여 둔다. */
+function startGuideHTML(){
+  const d=(state.clubData||{})[state.activeClub||'']||{};
+  if(!d.officer) return '';
+  if((CB2_LIST||[]).length) return '';              // 대진을 한 번이라도 냈으면 끝
+  const evs=clubEvents();
+  const hasEv=evs.length>0;
+  /* 참석자가 있으면 2단계도 끝난 것으로 본다 */
+  const att=(()=>{ try{
+    const ev=cbNearestEvent(evs); if(!ev) return 0;
+    const r=(SRV_EVENTS||[]).find(x=>String(x.id)===String(ev.id));
+    return (r&&r.going_count)||((r&&r.going||[]).length)||0; }catch(e){ return 0; } })();
+  const now = !hasEv ? 0 : (att>0 ? 2 : 1);         // 지금 할 일의 자리
+  const STEP=[['모임 만들기','날짜 · 시간 · 코트'],
+              ['참석자 넣기','회원이 없어도 이름으로 넣을 수 있어요'],
+              ['대진 짜기','4명부터 · 코트별 회차까지 자동으로']];
+  const HEAD=[['클럽을 만들었어요 · 다음은','첫 모임을 만들어 주세요',
+               '언제 어디서 치는지만 적으면 돼요 · 1분이면 끝나요'],
+              ['모임을 만들었어요 · 다음은','누가 나오는지 넣어 주세요',
+               '회원이 앱에 없어도 이름으로 넣을 수 있어요'],
+              ['참석자가 모였어요 · 다음은','대진을 짜 주세요',
+               '코트별 회차와 시간까지 한 번에 나와요']][now];
+  const act = now===0
+    ? (SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()')
+    : 'openClubBracketBuild()';
+  const label = now===0 ? '첫 모임 만들기' : now===1 ? '참석자 넣기' : '대진 짜기';
+  return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+    <div style="padding:20px 17px 15px">
+      <div style="font-size:11.5px;font-weight:600;color:var(--coral-d)">${HEAD[0]}</div>
+      <div style="font-size:18px;font-weight:700;letter-spacing:-.04em;margin-top:7px">${HEAD[1]}</div>
+      <div class="hint" style="margin-top:6px">${HEAD[2]}</div>
+    </div>
+    <div style="padding:0 17px">
+      ${STEP.map(([t,dd],i)=>{
+        const done=i<now, on=i===now;
+        return `<div style="display:flex;align-items:center;gap:13px;padding:14px 0;
+          border-top:1px solid #f2f4f6">
+          <span style="flex:none;width:22px;height:22px;border-radius:50%;
+            background:${on?'var(--coral)':done?'#e8f5ee':'#f2f4f6'};
+            color:${on?'#fff':done?'#2c7a53':'var(--lgray)'};
+            display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${
+            done?'✓':i+1}</span>
+          <span style="flex:1;min-width:0">
+            <b style="display:block;font-size:13.5px;font-weight:600;color:${
+              on?'var(--ink)':'var(--gray)'}">${t}</b>
+            <span style="display:block;font-size:12px;color:${
+              on?'var(--gray)':'var(--lgray)'};margin-top:3px">${dd}</span></span>
+          ${on?`<span style="flex:none;font-size:11px;font-weight:600;color:var(--coral-d);
+            background:var(--coral-s);border-radius:7px;padding:5px 9px">지금 할 일</span>`:''}
+        </div>`; }).join('')}
+    </div>
+    <div style="padding:17px">
+      <button class="btn" onclick="${act}">${label}</button>
+      <div class="hint" style="text-align:center;margin-top:11px">${
+        now===0 ? '모임을 만들면 회원들이 참석을 누를 수 있어요'
+        : now===1 ? '참석 버튼을 누른 회원은 자동으로 들어와요'
+        : '대진을 내면 이 안내는 사라져요'}</div>
+    </div></div>`;
 }
 function clubTabBalance(){
   if(CLUB_ROSTER===null){ if(typeof loadClubRoster==='function') loadClubRoster();
@@ -23907,7 +23983,9 @@ async function cb2ShareImage(){
     const BLOCK = RHEAD + maxG*ROW;          // 머리 + 최대 경기 수
     const PITCH = BLOCK + RGAP;              // 다음 라운드까지
     /* 라운드 수를 반씩 나눈다 — 높이가 같으니 개수만 맞추면 된다 */
-    const COLS = rounds.length>=4 ? 2 : 1;
+    /* 라운드 수만 보고 나누면, 한 코트 4게임짜리가 두 칸으로 쪼개져
+       좌우가 텅 비고 이름이 작아진다. 전체 경기 수도 함께 본다. */
+    const COLS = (rounds.length>=4 && games.length>=8) ? 2 : 1;
     const cut = COLS===2 ? Math.ceil(rounds.length/2) : rounds.length;
     const colRounds = COLS===2 ? [rounds.slice(0,cut), rounds.slice(cut)] : [rounds];
     const bodyH = Math.max(...colRounds.map(c=>c.length))*PITCH - RGAP;
@@ -23972,7 +24050,7 @@ async function cb2ShareImage(){
     const TAGW=64, VSW=48, CTW=30;
     const AVAIL = (CW - CTW - TAGW - VSW) / 2;
     const teamStr = t => (t||[]).map(p=>String(p.name||'')).join(' · ');
-    let NF=T.name;
+    let NF = COLS===1 ? Math.round(T.name*1.25) : T.name;   // 한 칸이면 크게
     for(; NF>=17; NF-=1){
       M(400,NF);
       if(games.every(g=> x.measureText(teamStr(g.teamA)).width<=AVAIL
@@ -23994,6 +24072,9 @@ async function cb2ShareImage(){
       F(600,T.rdsub); x.fillStyle=SOFT;
       x.fillText(gs.length>1?`${gs.length}코트 동시`:`${gs[0]?gs[0].c:1}코트`, ox+20+tw+12, y+29);
       y += RHEAD;
+      /* 회차 머리 아래 얇은 선 — 여백만으로는 어디까지가 한 회차인지 흐리다 */
+      x.strokeStyle=HAIR; x.lineWidth=1.5;
+      x.beginPath(); x.moveTo(ox, y-16); x.lineTo(ox+cw, y-16); x.stroke();
 
       const tagX = ox+CTW;
       const BX = tagX+TAGW + Math.max(0, (cw-CTW-TAGW-(half*2+VSW))/2);
@@ -24035,8 +24116,8 @@ async function cb2ShareImage(){
           MONO(700, Math.round(NF*0.9)); x.fillStyle=INK;
           x.fillText(`${g.sa}:${g.sb}`, BX+half+VSW/2, mid);
         } else {
-          F(600, T.vs); x.fillStyle=SOFT;
-          x.fillText('vs', BX+half+VSW/2, mid);
+          MONO(600, Math.round(NF*0.8)); x.fillStyle='#dde3ea';
+          x.fillText('–  –', BX+half+VSW/2, mid);       // 점수가 들어올 자리
         }
         x.textAlign='left';
 
@@ -24059,6 +24140,9 @@ async function cb2ShareImage(){
     x.strokeStyle=RULE; x.lineWidth=2;
     x.beginPath(); x.moveTo(PAD, H-FOOT+22); x.lineTo(W-PAD, H-FOOT+22); x.stroke();
     M(700,T.foot); x.fillStyle=CORAL; x.fillText('맞수', PAD, H-30);
+    { const lw=x.measureText('맞수').width;
+      F(500,T.foot-2); x.fillStyle=SOFT;
+      x.fillText('점수는 각자 앱에서 넣어요', PAD+lw+14, H-30); }
     F(500,T.foot); x.fillStyle=SOFT; x.textAlign='right';
     x.fillText('matsu.app', W-PAD, H-30);
     x.textAlign='left';
@@ -24100,7 +24184,8 @@ function cb2ShareText(){
     '· 내 경기 점수를 직접 넣을 수 있어요',
     '· 다음 모임엔 참석만 누르면 대진에 들어가요',
     '· 오늘 친 기록이 내 시즌 기록으로 쌓여요',
-    'https://matsu.up.railway.app'].join('\n');
+    '아이폰 https://apps.apple.com/kr/app/id6793127517',
+    '안드로이드 https://matsu.up.railway.app'].join('\n');
   return head+'\n'+lines.join('\n')+'\n'+tail;
 }
 function cb2Share(){
@@ -25599,11 +25684,17 @@ function isIOSWeb(){
       (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);   // 아이패드
   }catch(e){ return false; }
 }
+/* 초대장을 받은 사람이 어디서 열지 알 수 없다 — 카톡 안, PC, 안드로이드 모두 가능하다.
+   아이폰이면 App Store 버튼을, 그 밖에서는 링크 한 줄을 남긴다. */
+function iosAppUrl(){ return (CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517'; }
 function storeCta(){
-  if(!isIOSWeb()) return '';
-  const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
-  return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
+  const u=iosAppUrl();
+  if(isIOSWeb()) return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
     style="display:block;margin-top:8px;text-align:center;text-decoration:none">App Store에서 앱으로 받기</a>`;
+  if(nativeNow()) return '';
+  return `<div class="note" style="text-align:center;margin-top:10px">아이폰이라면
+    <a href="${u}" target="_blank" rel="noopener"
+      style="color:var(--coral-d);font-weight:700;text-decoration:underline">App Store에서 앱으로</a> 받을 수 있어요</div>`;
 }
 function acceptInviteCard(token){
   glClose();
@@ -28028,11 +28119,15 @@ function openOmInvite(id){
   const region=[m.sido,m.sigungu,m.dong].filter(Boolean).join(' ')||'지역 미지정';
   const price=(m.price||0)?m.price.toLocaleString()+'원':'무료';
   const mgr=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
-  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(31,39,50,.18)';
+  /* 글자마다 흰 테두리를 여덟 겹 두르면 획이 서로 먹어 깨져 보인다.
+     패턴 위에 흐린 막을 한 장 깔고, 글자에는 옅은 그림자만 준다. */
+  const OL='text-shadow:0 1px 3px rgba(255,255,255,.9)';
+  const SCRIM='position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,252,246,.55),rgba(255,252,246,.88))';
   const h=`<div class="sh-top"><h3>오픈매치 초대장</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
   <div style="border-radius:22px;overflow:hidden;border:1px solid #dce2e8;background:#fff">
     <div style="position:relative;height:210px">
       ${OM_PAT}
+      <div style="${SCRIM}"></div>
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 20px;text-align:center">
         <span style="font-size:12px;font-weight:500;color:#d9500a;letter-spacing:.03em;${OL}">오픈매치 초대장</span>
         <span style="font-size:29px;font-weight:700;letter-spacing:-.02em;color:#181a1c;line-height:1.25;${OL}">${esc(m.loc||'오픈매치')}</span>
@@ -28062,11 +28157,15 @@ function showOmInviteLanding(id){
   const region=[m.sido,m.sigungu,m.dong].filter(Boolean).join(' ')||'지역 미지정';
   const price=(m.price||0)?m.price.toLocaleString()+'원':'무료';
   const mgr=(m.manager&&m.manager.name)||(m.host&&m.host.name)||'';
-  const OL='text-shadow:-2px -2px 0 #fff,2px -2px 0 #fff,-2px 2px 0 #fff,2px 2px 0 #fff,0 -2.5px 0 #fff,0 2.5px 0 #fff,-2.5px 0 0 #fff,2.5px 0 0 #fff,0 4px 10px rgba(31,39,50,.18)';
+  /* 글자마다 흰 테두리를 여덟 겹 두르면 획이 서로 먹어 깨져 보인다.
+     패턴 위에 흐린 막을 한 장 깔고, 글자에는 옅은 그림자만 준다. */
+  const OL='text-shadow:0 1px 3px rgba(255,255,255,.9)';
+  const SCRIM='position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,252,246,.55),rgba(255,252,246,.88))';
   document.getElementById('sheet').innerHTML=`<div class="om-detail">
   <div style="border-radius:22px;overflow:hidden;border:1px solid #dce2e8;background:#fff;margin-top:6px">
     <div style="position:relative;height:220px">
       ${OM_PAT}
+      <div style="${SCRIM}"></div>
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 20px;text-align:center">
         <span style="font-size:12px;font-weight:500;color:#d9500a;letter-spacing:.03em;${OL}">오픈매치 초대장</span>
         <span style="font-size:29px;font-weight:700;letter-spacing:-.02em;color:#181a1c;line-height:1.25;${OL}">${esc(m.loc||'오픈매치')}</span>
