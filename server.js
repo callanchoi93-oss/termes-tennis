@@ -4811,11 +4811,11 @@ app.get('/pay/checkout', (req, res) => {
   body{margin:0;background:#f7f5f0;font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;color:#1c1b18}
   .wrap{max-width:520px;margin:0 auto;padding:18px 14px 120px}
   .top{display:flex;align-items:baseline;gap:8px;padding:6px 4px 14px}
-  .top b{font-size:17px;letter-spacing:-.02em}
+  .top b{font-size:18px;letter-spacing:-.02em}
   .top span{margin-left:auto;font-size:12px;color:#7d7870}
   .amt{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px}
   .amt .k{font-size:12px;color:#7d7870}
-  .amt .v{font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:3px}
+  .amt .v{font-size:23px;font-weight:700;letter-spacing:-.03em;margin-top:3px}
   .box{background:#fff;border-radius:16px;overflow:hidden;margin-bottom:12px}
   .bar{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:#f7f5f0}
   .btn{display:block;width:100%;max-width:492px;margin:0 auto;border:0;border-radius:14px;padding:16px;
@@ -6006,8 +6006,8 @@ app.get('/clubs/:id/rankings', auth, (req, res) => {
 //  이용약관 · 개인정보처리방침 — 앱스토어 심사와 카카오 검수 요구사항
 // ══════════════════════════════════════════════════════════════
 const LEGAL_CSS = `<style>body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:680px;margin:0 auto;padding:34px 22px 80px;color:#1b1813;background:#f5f2e9;line-height:1.75}
-h1{font-size:22px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:13.5px;color:#4a4237}ul{padding-left:18px}
-.sub{font-size:12px;color:#8a7f70}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:12.5px;color:#8a7f70;margin-top:30px}</style>`;
+h1{font-size:23px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:14px;color:#4a4237}ul{padding-left:18px}
+.sub{font-size:12px;color:#8a7f70}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:13px;color:#8a7f70;margin-top:30px}</style>`;
 
 // 법률 문서에 들어갈 운영자 정보. Railway Variables 에서 채운다.
 const OP_NAME  = process.env.OP_NAME  || '';          // 예: 최민혁
