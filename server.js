@@ -956,7 +956,9 @@ app.post('/clubs', auth, (req, res) => {
          (() => { const v = parseInt(req.body.founded_year, 10);
                   const y = new Date().getFullYear();
                   return (v >= 1900 && v <= y) ? v : y; })(),
-         req.body.recruiting ? 1 : 0);
+         /* 새 클럽은 모집 중으로 시작한다 — 막 만든 클럽은 사람을 찾고 있다.
+            끄는 건 운영진 도구에서 한 번이면 된다. */
+         (req.body.recruiting === 0 || req.body.recruiting === false) ? 0 : 1);
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
     .run(rid(r), req.uid, 'owner');
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
@@ -1153,7 +1155,12 @@ app.get('/clubs/:id/public', (req, res) => {
   /* 지난 모임 — 로그에 날짜별로 한 벌씩 쌓여 있다 */
   const logs = db.prepare(`SELECT date, data FROM club_bracket_logs
     WHERE club_id=? ORDER BY date DESC LIMIT 12`).all(cid);
-  const pts = {};                                  // 시즌 순위 — 승 3 · 무 1
+  /* 시즌 순위 — 앱과 같은 셈법을 쓴다. 총점으로 줄을 세우면 많이 나온 사람이
+     이기는 게 당연해져서, 많이 나온 것 자체가 실력처럼 보인다.
+     승 3 · 무 1 로 모은 점수를 참석 횟수로 나눈다. 게스트는 빼고 센다. */
+  const pts = {};
+  const dayCnt = {};
+  const gameCnt = {};
   const days = logs.map(r => {
     let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
     const gs = (d.games || []).filter(g => g.sa != null && g.sb != null);
@@ -1162,10 +1169,16 @@ app.get('/clubs/:id/public', (req, res) => {
       const a = g.teamA || [], b = g.teamB || [];
       const win = g.sa > g.sb ? 3 : (g.sa === g.sb ? 1 : 0);
       const lose = g.sb > g.sa ? 3 : (g.sa === g.sb ? 1 : 0);
-      a.forEach(p => { if (!p || !p.name) return;
-        pts[p.name] = (pts[p.name] || 0) + win; dayPt[p.name] = (dayPt[p.name] || 0) + win; });
-      b.forEach(p => { if (!p || !p.name) return;
-        pts[p.name] = (pts[p.name] || 0) + lose; dayPt[p.name] = (dayPt[p.name] || 0) + lose; });
+      const put = (p, pt) => {
+        if (!p || !p.name) return;
+        dayPt[p.name] = (dayPt[p.name] || 0) + pt;
+        if (/^g/i.test(String(p.id || ''))) return;   // 게스트는 클럽 기록에 넣지 않는다
+        pts[p.name] = (pts[p.name] || 0) + pt;
+        gameCnt[p.name] = (gameCnt[p.name] || 0) + 1;
+        (dayCnt[p.name] = dayCnt[p.name] || new Set()).add(r.date);
+      };
+      a.forEach(p => put(p, win));
+      b.forEach(p => put(p, lose));
     });
     const top = Object.entries(dayPt).sort((x, y) => y[1] - x[1])[0];
     const courts = new Set((d.games || []).map(g => g.playCourt || g.c).filter(Boolean));
@@ -1173,8 +1186,20 @@ app.get('/clubs/:id/public', (req, res) => {
              games: (d.games || []).length, done: gs.length, top: top ? maskName(top[0]) : '' };
   }).filter(x => x.done > 0);
 
-  const ranking = Object.entries(pts).sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([nm, pt], i) => ({ pos: i + 1, name: maskName(nm), pts: pt }));
+  /* 모임이 두 번 이상 있었으면 두 번 이상 나온 사람만 줄에 세운다 —
+     한 번 와서 네 판 이긴 사람이 1위가 되면 순위가 농담이 된다. */
+  const dayTotal = new Set(logs.map(r => r.date)).size;
+  const minDays = dayTotal >= 2 ? 2 : 1;
+  const ranking = Object.keys(pts)
+    .map(nm => {
+      const dn = (dayCnt[nm] || new Set()).size || 1;
+      return { name: maskName(nm), pts: pts[nm], days: dn,
+               games: gameCnt[nm] || 0, avg: Math.round(pts[nm] / dn * 10) / 10 };
+    })
+    .filter(r => r.days >= minDays)
+    .sort((a, b) => b.avg - a.avg || b.pts - a.pts || b.games - a.games)
+    .slice(0, 5)
+    .map((r, i) => ({ pos: i + 1, ...r }));
 
   /* 다가오는 모임 — 이름은 빼고 인원만 */
   let events = [];
