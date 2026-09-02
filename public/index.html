@@ -13843,7 +13843,19 @@ function rankTrendSvg(series){
    같은 등급 안에서 누구를 먼저 붙일지만 클럽 성적으로 가른다.
    구력을 실제보다 낮게 적는 사람이 있어서, 구력만 보면 그 사람이 늘
    강한 짝을 얻는다. 몇 경기면 성적이 그걸 드러낸다.                     */
-const BAL_W = { grade:55, form:30, tier:15 };   // 100점을 나누는 무게
+/* 100점을 나누는 무게 — 고정이 아니다.
+   구력은 <아직 성적이 없을 때> 쓰는 임시 잣대다. 경기가 쌓이면 그 자리를
+   성적에 넘긴다. 그래야 실력이 준 분은 내려오고, 구력을 낮게 적은 사람은 올라간다.
+   0경기: 구력 70 · 성적 0 · 조 30      (성적이 없으니 구력이 거의 전부)
+   30경기 이상: 구력 20 · 성적 60 · 조 20 (성적이 가장 정확한 자료다) */
+function balWeights(games){
+  const t = Math.max(0, Math.min(1, (games||0)/30));
+  const grade = Math.round(70 - 50*t);          // 70 → 20
+  const form  = Math.round(60*t);               //  0 → 60
+  const tier  = 100 - grade - form;             // 30 → 20
+  return { grade, form, tier };
+}
+const BAL_W = balWeights(0);                    // 옛 코드가 참조하는 기본값
 let BAL_CACHE = null, BAL_FOR = '';
 
 /* 클럽 안 전적 — CLUBME_GAMES 는 이 클럽의 모든 경기다 */
@@ -13888,15 +13900,16 @@ function balSeat(p){
      무게는 성적:조 = 30:15 로 총점과 같은 비율을 쓴다. */
   const tg = tgOf(p.user_id||p.id);
   const uses = balUsesTier();
+  const W = balWeights(f.g);                            // 경기 수에 따라 달라지는 비율
   let tSeat = null;
   if(uses){
     /* 조를 쓰는 클럽인데 내 조가 없으면 아직 배정을 못 받은 것이다 — 맨 아래로 본다 */
     const i = tg ? TG_NAMES.indexOf(tg) : -1;
     tSeat = i<0 ? 0 : (TG_NAMES.length<2 ? 1 : 1 - i/(TG_NAMES.length-1));
-    const w = BAL_W.tier/(BAL_W.form+BAL_W.tier);        // 조가 갖는 몫
+    const w = W.tier/Math.max(1, W.form+W.tier);        // 조가 갖는 몫
     seat = seat*(1-w) + tSeat*w;
   }
-  return { base, seat, code, start, tg, tSeat, uses,
+  return { base, seat, code, start, tg, tSeat, uses, W,
            games:f.g||0, w:f.w||0, l:f.l||0, trust:t, wr };
 }
 /* 한 사람의 최종 값 — 등급이 큰 칸을 정하고, 성적이 칸 안 자리를 정한다 */
@@ -13907,7 +13920,7 @@ function balValue(p){
   const s = balSeat(p);
   const gi = GRADE_INFO.findIndex(x=>x.g===s.base);
   const gRank = gi<0 ? 0 : (GRADE_INFO.length-1-gi)/(GRADE_INFO.length-1);  // C=0 … SS=1
-  return Math.round(gRank*BAL_W.grade + s.seat*(BAL_W.form + BAL_W.tier));
+  return Math.round(gRank*s.W.grade + s.seat*(s.W.form + s.W.tier));
 }
 /* ── 짝은 이렇게 맞춰요 — 회원이 보는 설명 ────────────────────────────
    대진표만 보면 <왜 이 사람이랑 붙지>가 남는다. 규칙을 숨기면 의심이 된다.
@@ -13921,12 +13934,15 @@ function balPanelHTML(){
   const mo=careerMonthsOf(meRow)||0;
   const yrs = mo>=12 ? `${Math.floor(mo/12)}년${mo%12?` ${mo%12}개월`:''}` : `${mo}개월`;
   /* 등급 안에서 지금 어느 칸인지 — 성적이 반영된 자리 */
+  /* 예전에는 B3·B2·B1 로 적었는데, 이제 성적이 등급 밖으로도 데려가므로
+     <아래·가운데·위>라는 뜻 그대로 적는다. 등급 안에 갇힌 것처럼 보이면 안 된다. */
   const seatStep = s.seat>=0.67 ? 1 : s.seat>=0.34 ? 2 : 3;
+  const SEATN=['','위쪽','가운데','아래쪽'];
   const steps=[3,2,1].map(n=>{
     const on = n===seatStep;
     return `<span style="flex:1;text-align:center;font-size:${on?'12.5px':'12px'};
       font-weight:${on?'600':'500'};color:${on?'#fff':gi.c+'99'};padding:9px 0;
-      background:${on?gi.c:gi.bg};border-radius:${n===3?'9px 3px 3px 9px':n===1?'3px 9px 9px 3px':'3px'}">${s.base}${n}</span>`;
+      background:${on?gi.c:gi.bg};border-radius:${n===3?'9px 3px 3px 9px':n===1?'3px 9px 9px 3px':'3px'}">${SEATN[n]}</span>`;
   }).join('');
   const tg=tgOf(me);
   /* 무를 빼고 적으면 9승 6패인데 16경기가 되어 숫자가 안 맞는다 */
@@ -13935,11 +13951,11 @@ function balPanelHTML(){
   /* 100점 구성 — 도넛 하나로 */
   const gIdx=GRADE_INFO.findIndex(x=>x.g===s.base);
   const gRank=gIdx<0?0:(GRADE_INFO.length-1-gIdx)/(GRADE_INFO.length-1);
-  const pG=Math.round(gRank*BAL_W.grade);
+  const pG=Math.round(gRank*s.W.grade);
   /* 자리 하나에 성적과 조가 함께 들어 있다 — 화면에는 각각 얼마인지 나눠 보여준다 */
   const useT = s.uses;                                   // 조를 쓰는 클럽인가
-  const formMax = useT ? BAL_W.form : BAL_W.form + BAL_W.tier;
-  const pT = useT ? Math.round((s.tSeat!=null? s.tSeat : 0)*BAL_W.tier) : 0;
+  const formMax = useT ? s.W.form : s.W.form + s.W.tier;
+  const pT = useT ? Math.round((s.tSeat!=null? s.tSeat : 0)*s.W.tier) : 0;
   const pF = Math.max(0, val-pG-pT);
   const a1=(pG/Math.max(1,val))*100, a2=a1+(pF/Math.max(1,val))*100;
   const donut = useT
@@ -13947,30 +13963,33 @@ function balPanelHTML(){
     : `conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% 100%)`;
   /* 등급표와 내 범위 — 왜 이 점수인지, 어디까지 오르내리는지 */
   const gPt = g => { const i=GRADE_INFO.findIndex(x=>x.g===g);
-    return Math.round((i<0?0:(GRADE_INFO.length-1-i)/(GRADE_INFO.length-1))*BAL_W.grade); };
+    return Math.round((i<0?0:(GRADE_INFO.length-1-i)/(GRADE_INFO.length-1))*s.W.grade); };
   const myG = gPt(s.base);
-  const lo = myG, hi = myG + BAL_W.form + BAL_W.tier;
+  const lo = myG, hi = myG + s.W.form + s.W.tier;
   const wr = s.games ? Math.round(s.w/s.games*100) : 0;
   const tgList=TG_NAMES;
   /* 조가 없으면 0점 — 조를 쓰는 클럽에서 배정을 못 받은 상태다.
      조를 아예 안 쓰는 클럽이면 이 줄 자체가 화면에 안 나온다. */
   const tgPt = t => { const i=t?tgList.indexOf(t):-1;
     return i<0 ? 0
-               : Math.round((tgList.length<2?1:1-i/(tgList.length-1))*BAL_W.tier); };
+               : Math.round((tgList.length<2?1:1-i/(tgList.length-1))*s.W.tier); };
   const nextG = GRADE_INFO[Math.max(0, GRADE_INFO.findIndex(x=>x.g===s.base)-1)];
   const pos = v => Math.max(0, Math.min(100, v));
   /* 예시는 고정값이다 — 실제 회원 이름을 쓰면 자기 점수가 공개된 것처럼 보인다.
      숫자가 어디서 나왔는지 보이도록 구력·전적·조를 함께 적는다. */
+  /* 예시 점수는 지금 셈법으로 실제 계산한 값이다 — 화면이 말하는 규칙과
+     예시가 어긋나면 안 된다. 합이 딱 떨어지지는 않으므로, 두 팀 합을 그대로 적고
+     <가장 가깝게 묶는다>고 말한다. 실제 대진도 그렇게 짜인다. */
   const EX=[
-    {n:'김서준', g:'S', yr:'12년',   w:18, l:6,  wr:75, tg:'A', v:78},
-    {n:'이하윤', g:'A', yr:'7년',    w:20, l:8,  wr:71, tg:'A', v:72},
-    {n:'박도윤', g:'A', yr:'5년',    w:14, l:14, wr:50, tg:'B', v:64},
-    {n:'정시우', g:'B', yr:'4년',    w:16, l:8,  wr:67, tg:'A', v:58},
-    {n:'강하은', g:'B', yr:'2년',    w:9,  l:15, wr:38, tg:'B', v:50},
-    {n:'한지안', g:'C', yr:'10개월', w:11, l:9,  wr:55, tg:'C', v:44}];
+    {n:'김서준', g:'S', yr:'12년',   w:22, l:6,  tg:'A', v:81},
+    {n:'이하윤', g:'A', yr:'7년',    w:20, l:8,  tg:'A', v:72},
+    {n:'정시우', g:'B', yr:'4년',    w:18, l:10, tg:'A', v:62},
+    {n:'박도윤', g:'A', yr:'5년',    w:17, l:11, tg:'B', v:56},
+    {n:'강하은', g:'B', yr:'2년',    w:11, l:17, tg:'B', v:39},
+    {n:'한지안', g:'C', yr:'10개월', w:13, l:15, tg:'C', v:26}];
   const EXT=[
-    {a:'김서준 · 한지안', ay:'6년 5개월', b:'박도윤 · 정시우', by:'4년 6개월', pt:122},
-    {a:'이하윤 · 강하은', ay:'4년 6개월', b:'김서준 · 정시우', by:'8년',      pt:122}];
+    {a:'김서준 · 강하은', ay:'7년', apt:120, b:'박도윤 · 정시우', by:'4년 6개월', bpt:118},
+    {a:'이하윤 · 한지안', ay:'3년 11개월', apt:98, b:'정시우 · 강하은', by:'3년', bpt:101}];
   /* 우리 클럽 성적으로만 본 실력이 몇 등급쯤인지 — 등급을 바꾸는 게 아니라
      같은 자를 빌려 말하는 것이다. 그래서 <A등급>이 아니라 <A 수준>이라 쓴다. */
   const clubLevel = (()=>{
@@ -13979,13 +13998,12 @@ function balPanelHTML(){
        45점을 등급 자로만 나누면 안 된다 — 그 안에 성적과 조가 이미 들어 있어서,
        조가 A조이기만 해도 두 칸씩 올라가 B등급이 S 수준으로 나왔다.
        성적·조의 한가운데 값을 빼고 남는 자리로 견준다. */
-    const per = BAL_W.grade/(GRADE_INFO.length-1);
-    const mid = (BAL_W.form + BAL_W.tier)/2;
-    let idx = Math.round((val-mid)/per);
-    /* 위아래 한 칸으로 묶는다 — 성적 30 + 조 15 는 등급 두 칸을 훌쩍 넘는 폭이라,
-       그대로 두면 B등급이 S 수준으로 나온다. 성적이 좋아도 <한 칸 위>까지다. */
-    const my = GRADE_INFO.length-1-GRADE_INFO.findIndex(x=>x.g===s.base);
-    idx = Math.max(my-1, Math.min(my+1, idx));
+    /* 대진에 실제로 쓰는 값(cbLv)을 그대로 등급 칸으로 되돌린다.
+       예전에는 여기서 <한 칸 위까지>로 잘랐는데, 대진은 그 제한 없이 짜이므로
+       화면과 실제가 어긋났다. 30경기를 친 사람은 두 칸 위도 될 수 있다. */
+    const lv = cbLv({user_id: meRow.user_id, id: meRow.user_id,
+                     grade: s.code, glabel: s.code});   // 1(C) ~ 5(SS)
+    let idx = Math.round(lv) - 1;                        // 0(C) ~ 4(SS)
     idx = Math.max(0, Math.min(GRADE_INFO.length-1, idx));
     return (GRADE_INFO[GRADE_INFO.length-1-idx]||{}).g || null;
   })();
@@ -14044,9 +14062,10 @@ function balPanelHTML(){
         border-radius:8px;padding:6px 12px">${s.base}등급</span></div>
     <div class="hint" style="margin-top:9px">등급은 구력으로만 정해져요 · ${esc(gi.label)}이면 ${s.base}등급</div>
     <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:18px">
-      <div style="font-size:13.5px;font-weight:600">${s.base}등급 안에서 내 자리</div>
-      <div class="hint" style="margin-top:4px">구력으로 자리를 잡고,
-        클럽 성적과 월례대회 조로 옮겨요</div>
+      <div style="font-size:13.5px;font-weight:600">대진에서 내 자리</div>
+      <div class="hint" style="margin-top:4px">${s.games>=30
+        ? '경기가 쌓여 <b>성적이 자리를 정해요</b> · 구력 등급을 넘어설 수도 있어요'
+        : '구력으로 자리를 잡고, 칠수록 성적과 조가 자리를 옮겨요'}</div>
       <div style="display:flex;gap:3px;margin-top:12px">${steps}</div>
       <div style="margin-top:12px">
         ${[['구력', `${esc(yrs)} · ${s.base}${(String(s.code).match(/[0-9]/)||['2'])[0]}에서 시작`],
@@ -14058,14 +14077,20 @@ function balPanelHTML(){
             <span style="flex:1;font-size:12.5px;color:#4e5968">${d}</span></div>`).join('')}
       </div>
       <div class="hint" style="margin-top:10px">${s.games || s.tg
-        ? `세 가지를 합쳐 ${s.base}등급 안에서 ${
-            s.seat>=0.67?'위쪽':s.seat>=0.34?'가운데':'아래쪽'}이에요`
+        ? `세 가지를 합쳐 클럽에서 ${
+            s.seat>=0.67?'위쪽':s.seat>=0.34?'가운데':'아래쪽'} 자리예요${
+            s.games<30?` · 지금은 구력이 ${s.W.grade}%를 차지해요`:''}`
         : '몇 경기 치면 자리가 잡혀요'}</div>
     </div>
   </div>
 
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">100점을 이렇게 나눠요</div>
+    <div class="hint" style="margin-top:4px">${s.games>=30
+      ? '경기가 30판을 넘어 <b>성적이 가장 크게</b> 반영돼요'
+      : s.games>0
+        ? `지금 <b>${s.games}경기</b> · 칠수록 구력 자리를 성적이 가져가요 (30경기에 성적 60)`
+        : '아직 경기가 없어 <b>구력</b>으로만 봐요 · 치면 성적이 자리를 넘겨받아요'}</div>
     <div style="display:flex;align-items:center;gap:20px;margin-top:16px">
       <div style="flex:none;width:96px;height:96px;border-radius:50%;
         background:${donut};
@@ -14085,12 +14110,17 @@ function balPanelHTML(){
             <b style="font-size:12.5px;font-weight:600">${v}</b></div>`).join('')}
       </div>
     </div>
-    <div class="hint" style="margin-top:16px">세 가지를 합쳐 한 사람의 값을 냅니다 · 이 값으로 짝을 맞춰요</div>
+    <div class="hint" style="margin-top:16px">세 가지를 합쳐 한 사람의 값을 냅니다 ·
+      시간 대진 · 한울 · 월례대회가 모두 이 값으로 짝을 맞춰요</div>
   </div>
 
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">등급표</div>
-    <div class="hint" style="margin-top:4px">구력으로 정해져요 · 오른쪽은 그 등급이면 나오는 점수예요</div>
+    <div class="hint" style="margin-top:4px">등급은 구력으로만 정해져요 ·
+      오른쪽은 ${s.games>=30?'지금':`지금(${s.games}경기)`} 기준
+      <b>시작점 ~ 갈 수 있는 끝</b>이에요${s.games>=30
+        ? '<br>경기가 쌓이면 등급이 붙잡는 힘이 약해져 서로 겹쳐요'
+        : ''}</div>
     ${GRADE_INFO.map((g,i)=>{
       const me = g.g===s.base, p=gPt(g.g);
       return `<div style="display:flex;align-items:center;gap:10px;padding:12px 0;
@@ -14101,13 +14131,17 @@ function balPanelHTML(){
         <span style="flex:1;font-size:12.5px;color:${me?'var(--ink)':'#4e5968'};font-weight:${me?'600':'400'}">${
           esc(g.label)}${me?` <span style="font-size:11px;font-weight:500;color:${g.c}">· 내 등급</span>`:''}</span>
         <span style="flex:none;font-size:12.5px;font-weight:${me?'600':'400'};color:${me?'var(--ink)':'var(--gray)'}">${
-          p}<span style="color:#c2c8ce"> ~ </span>${p+BAL_W.form+BAL_W.tier}</span></div>`;
+          p}<span style="color:#c2c8ce"> ~ </span>${p+s.W.form+s.W.tier}</span></div>`;
     }).join('')}
   </div>
 
   <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">어디까지 올라갈 수 있을까요</div>
-    <div class="hint" style="margin-top:4px">${s.base}등급이면 <b>${lo}점에서 ${hi}점</b> 사이에 있어요</div>
+    <div class="hint" style="margin-top:4px">${s.games>=30
+      ? `지금은 <b>${lo}점에서 ${hi}점</b> 사이 · 성적이 거의 다 정해요`
+      : `지금 ${s.games?`${s.games}경기라 `:''}<b>${lo}점에서 ${hi}점</b> 사이 ·
+         30경기가 되면 <b>${(()=>{const W=balWeights(30);
+           const g=Math.round(gRank*W.grade); return `${g}~${g+W.form+W.tier}점`;})()}</b>까지 넓어져요`}</div>
     <div style="position:relative;height:10px;border-radius:5px;background:#f2f4f6;margin-top:20px;overflow:hidden">
       <span style="position:absolute;left:${lo}%;right:${100-hi}%;top:0;bottom:0;background:${gi.bg}"></span>
       <span style="position:absolute;left:${lo}%;top:0;bottom:0;width:${Math.max(0,val-lo)}%;background:${gi.c}"></span>
@@ -14126,10 +14160,10 @@ function balPanelHTML(){
           sub: s.games ? `${s.games}경기 · 승률 ${wr}%${
                  s.trust<1?` · 30경기가 되면 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}`
                        : '아직 경기가 없어요 · 치면 올라가요' },
-        ...(useT?[{ l:'조', c:'#c2c8ce', now:pT, max:BAL_W.tier,
+        ...(useT?[{ l:'조', c:'#c2c8ce', now:pT, max:s.W.tier,
           sub: (tg?`${tg}조예요`:'아직 조가 없어요 · 배정받으면 올라가요')
                + ' · ' + tgList.map(t=>`${t}조 ${tgPt(t)}`).join(' · ') }]:[]),
-        { l:'등급', c:gi.c, now:myG, max:BAL_W.grade,
+        { l:'등급', c:gi.c, now:myG, max:s.W.grade,
           sub: `${s.base}등급 · 구력으로만 정해져요${nextG && nextG.g!==s.base
                  ? ` · ${nextG.g}등급은 ${esc(nextG.label)}에 ${gPt(nextG.g)}점` : ''}` }
       ].map((r,i)=>`
@@ -14146,10 +14180,12 @@ function balPanelHTML(){
           <div style="font-size:11.5px;color:var(--gray);margin-top:8px;line-height:1.6">${r.sub}</div>
         </div>`).join('')}
     </div>
-    ${nextG && nextG.g!==s.base ? `<div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;
-      margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">
-      구력이 쌓여 ${nextG.g}등급이 되면 범위가 <b>${gPt(nextG.g)} ~ ${gPt(nextG.g)+BAL_W.form+BAL_W.tier}점</b>으로 올라가요<br>
-      SS등급에 승률 100%, ${tgList[0]}조면 <b>100점</b>이 최대예요</div>`:''}
+    <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;
+      margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">${s.games>=30
+      ? `경기가 쌓여 <b>성적이 자리를 정해요</b> · 구력보다 요즘 실력이 크게 반영돼요`
+      : `칠수록 등급 몫이 줄고 성적 몫이 커져요 ·
+         <b>구력이 짧아도 잘 치면 위로</b> 올라갈 수 있어요`}<br>
+      <span style="color:var(--gray)">화면에 보이는 구력 등급은 그대로예요 · 이 값은 대진에만 써요</span></div>
   </div>
 
   <div class="card" style="margin-top:10px">
@@ -14181,15 +14217,17 @@ function balPanelHTML(){
         <span style="flex:1;min-width:0">
           <b style="display:block;font-size:12.5px;font-weight:600">${r.a}</b>
           <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.ay}</span></span>
-        <span style="flex:none;text-align:center">
-          <b style="display:block;font-size:13px;font-weight:700;color:var(--coral-d)">${r.pt}점</b>
-          <span style="display:block;font-size:10.5px;color:#c2c8ce;margin-top:3px">vs</span></span>
+        <span style="flex:none;text-align:center;min-width:74px">
+          <b style="display:block;font-size:13px;font-weight:700;color:var(--coral-d)">${r.apt}
+            <span style="color:#c2c8ce;font-weight:500"> : </span>${r.bpt}</b>
+          <span style="display:block;font-size:10.5px;color:#c2c8ce;margin-top:3px">${
+            Math.abs(r.apt-r.bpt)<=3?'거의 같아요':`${Math.abs(r.apt-r.bpt)}점 차`}</span></span>
         <span style="flex:1;min-width:0;text-align:right">
           <b style="display:block;font-size:12.5px;font-weight:600">${r.b}</b>
           <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.by}</span></span>
       </div>`).join('')}
     </div>
-    <div class="hint" style="margin-top:12px">구력은 달라도 <b>양쪽 합이 같아지도록</b> 묶어요 ·
+    <div class="hint" style="margin-top:12px">구력은 달라도 <b>양쪽 합이 가장 가까워지도록</b> 묶어요 ·
       다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
   </div>`;
 }
@@ -14289,14 +14327,36 @@ function balPartnerHTML(uid, title){
 function startGuideHTML(){
   const d=(state.clubData||{})[state.activeClub||'']||{};
   if(!d.officer) return '';
+  /* 길잡이는 <아직 한 번도 못 해본 클럽>에게만 필요하다.
+     운영 중인 클럽에 뜨면 안 되므로, 판단이 설 때까지는 아무것도 띄우지 않는다. */
+  if(CB2_LIST===null){ if(SERVER_OK && clubId()) loadBracketList(); return ''; }
   if((CB2_LIST||[]).length) return '';              // 대진을 한 번이라도 냈으면 끝
+  /* 대진 목록은 <모임에 붙은 대진>만 본다 — 모임이 지워진 옛 대진은 빠진다.
+     그래서 지난 기록(경기 로그)과 지난 모임도 함께 본다.
+     한 번이라도 굴러간 클럽이면 길잡이는 필요 없다. */
+  if((CLUBME_GAMES||[]).length) return '';
   const evs=clubEvents();
   const hasEv=evs.length>0;
-  /* 참석자가 있으면 2단계도 끝난 것으로 본다 */
+  { /* 지난 모임이 하나라도 있으면 이미 굴러본 클럽이다 */
+    const past=(SRV_EVENTS||[]).filter(e=>{ try{
+      const d=evParseDate(e.date); if(d.m==null||!d.day) return false;
+      const t=new Date(); const ev=new Date(t.getFullYear(), d.m, d.day);
+      return ev < new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    }catch(x){ return false; } }).length;
+    if(past>0) return '';
+    if((SRV_EVENTS||[]).length>=3) return '';        // 일정이 여럿이면 운영 중인 클럽이다
+    const mem=(CLUB_ROSTER||[]).filter(r=>r.user_id && r.role!=='guest').length;
+    if(mem>=6) return '';                            // 회원이 여섯이면 안내가 필요 없다
+  }
+  /* 참석자 수는 서버가 count·attendees 로 준다.
+     예전에 없는 이름(going_count)을 보고 있어서 늘 0이었고,
+     참석을 다 받아도 2단계에 머물렀다. */
   const att=(()=>{ try{
-    const ev=cbNearestEvent(evs); if(!ev) return 0;
-    const r=(SRV_EVENTS||[]).find(x=>String(x.id)===String(ev.id));
-    return (r&&r.going_count)||((r&&r.going||[]).length)||0; }catch(e){ return 0; } })();
+    let n=0;
+    (SRV_EVENTS||[]).forEach(r=>{ n=Math.max(n, +r.count||0, (r.attendees||[]).length); });
+    if(!n) (evs||[]).forEach(e=>{ n=Math.max(n, +e.count||0, (e.attendees||[]).length,
+      (e.going||[]).length); });
+    return n; }catch(e){ return 0; } })();
   const now = !hasEv ? 0 : (att>0 ? 2 : 1);         // 지금 할 일의 자리
   const STEP=[['모임 만들기','날짜 · 시간 · 코트'],
               ['참석자 넣기','회원이 없어도 이름으로 넣을 수 있어요'],
@@ -18731,9 +18791,10 @@ function hnPlanBySex(mem, opts){
   if(!F.length || !M.length) return null;                            // 한쪽 성별뿐이면 기존 방식으로
   const t=hnSexTarget(F.length, M.length);
   if(!t) return null;
-  const GV={SS:5,S:4,A:3,B:2,C:1};
-  const lv=p=>{ if(p&&p.rating!=null) return (p.rating-1000)/100+3;
-    return GV[String((p&&p.grade)||'B').toUpperCase().replace(/\d/g,'')]||2; };
+  /* 실력 잣대는 cbLv 한 곳에서 정한다 — 여기서 따로 세면 남녀가 섞인 조만
+     클럽 성적과 월례대회 조가 빠져, 같은 클럽인데 편성 기준이 둘이 된다.
+     실제로 성비 편성이 도는 조에서는 성적이 하나도 반영되지 않고 있었다. */
+  const lv=p=>cbLv(p);
   const pattern=[];
   for(let i=0;i<t.x;i++) pattern.push(2);
   for(let i=0;i<t.y;i++) pattern.push(4);
@@ -21091,7 +21152,11 @@ const GRADE_LADDER=['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3',
    만나도 <한 단계 차이>로만 계산돼, 네 칸 벌어진 경기가 그냥 통과했다.
    글자는 1칸, 번호는 3분의 1칸 — C1=1.00 · B1=2.00 · A1=3.00 으로
    옛 GV(C=1·B=2·A=3)와 범위가 같다. 그래서 가중치는 그대로 둔다. */
-function cbLv(p){
+/* 대진에 쓰는 실력 잣대 — 시간 대진·한울·월례대회가 모두 이 값 하나로 짝을 맞춘다.
+   여기만 고치면 모든 방식에 함께 반영된다.
+   등급(구력)이 큰 칸을 정하고, 클럽 성적과 월례대회 조가 그 칸 안의 자리를 정한다.
+   <대진 기준> 탭이 보여주는 셈과 같아야 한다 — 화면과 실제가 다르면 안 된다. */
+function cbLvBase(p){
   const code=String((p&&(p.glabel||p.grade))||'').toUpperCase();
   const i=GRADE_LADDER.indexOf(code);
   if(i>=0) return 1 + i/3;
@@ -21100,6 +21165,40 @@ function cbLv(p){
   if(p && p.rating!=null && p.rating!==1000) return (p.rating-1000)/100 + 3;
   const GV={SS:5,S:4,A:3,B:2,C:1};                 // 번호가 없으면 글자만이라도
   return GV[code.replace(/[0-9]/g,'')] || 2;
+}
+/* 코트에서 중요한 것은 <오늘 이 사람이 얼마나 치는가>다.
+   구력이 길어도 실력이 준 분이 있고, 구력을 낮게 적는 사람도 있다.
+   그래서 경기가 쌓이면 구력의 몫을 성적에 넘긴다.
+   등급 표시는 그대로 두고(구력 등급), 대진에 쓰는 이 값만 움직인다. */
+function cbLv(p){
+  const base = cbLvBase(p);                         // 구력으로 정해진 자리(1~5)
+  const uid = p && (p.user_id!=null ? p.user_id : p.id);
+  if(uid==null || /^g/i.test(String(uid))) return base;   // 게스트는 성적이 없다
+  try{
+    const f = balForm()[String(uid)] || {g:0,w:0};
+    const W = balWeights(f.g);
+    const uses = balUsesTier();
+    /* 성적·조는 <구력 자리를 기준으로 얼마나 위아래인가>로 본다.
+       사다리 한가운데(3)를 기준으로 잡으면 안 된다 — 승률 50%인 B등급이
+       계속 위로 끌려 올라가, 평범하게 친 사람이 A 수준으로 나온다.
+       승률 50% · 가운데 조 = 구력 그대로, 그 위아래로만 움직인다. */
+    const SPAN = 2;                                  // 최대 두 칸까지 움직인다
+    let formLv = base, tierLv = base;
+    if(f.g > 0){
+      const wr = f.w/f.g;
+      formLv = base + (wr - 0.5) * 2 * SPAN;         // 0%→−2칸 · 50%→그대로 · 100%→+2칸
+    }
+    if(uses){
+      const tg = tgOf(uid);
+      const i = tg ? TG_NAMES.indexOf(tg) : -1;
+      const seat = i<0 ? 0 : (TG_NAMES.length<2 ? 1 : 1 - i/(TG_NAMES.length-1));
+      tierLv = base + (seat - 0.5) * 2 * SPAN;       // C조→−2칸 · B조→그대로 · A조→+2칸
+    }
+    const wG = W.grade, wF = (f.g>0 ? W.form : 0), wT = (uses ? W.tier : 0);
+    const sum = wG + wF + wT;
+    if(!sum) return base;
+    return (base*wG + formLv*wF + tierLv*wT) / sum;
+  }catch(e){ return base; }
 }
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
 function cbAvgGrade(list){
