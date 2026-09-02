@@ -11619,6 +11619,24 @@ function clubGenderChip(c, size){
    기기에 있는 클럽 객체에 recruiting 같은 키만 있고 값이 비면,
    목록에서 받아온 제대로 된 값이 지워져 칩이 기본값으로 돌아갔다.
    빈 값은 건너뛰고 합친다. */
+const CLUB_SET_KEYS = ['founded_year','recruiting','guest_min_months','guest_visits',
+  'join_open','join_reopen','entry_fee','season_fee','guest_fee','guest_cap'];
+/* 클럽 설정은 목록(/clubs)을 새로 받을 때 통째로 덮인다.
+   서버가 아직 옛 코드면 그 값이 아예 오지 않아, 저장했는데 되돌아간 것처럼 보인다.
+   기기에도 따로 남겨 두고, 서버 값이 비면 이걸 쓴다. */
+function clubSetLocal(cid, obj){
+  if(!cid) return;
+  try{
+    const all = JSON.parse(localStorage.getItem('matsu_clubset')||'{}');
+    all[String(cid)] = Object.assign(all[String(cid)]||{}, obj||{});
+    localStorage.setItem('matsu_clubset', JSON.stringify(all));
+  }catch(e){}
+}
+function clubSetGet(cid){
+  if(!cid) return {};
+  try{ return (JSON.parse(localStorage.getItem('matsu_clubset')||'{}'))[String(cid)] || {}; }
+  catch(e){ return {}; }
+}
 function clubMerge(base, over){
   const o={...(base||{})};
   Object.keys(over||{}).forEach(k=>{ const v=over[k];
@@ -11778,7 +11796,7 @@ function openIntroEditOps(){
   const n=state.activeClub||''; const cid=clubId();
   const cat=(state.clubs||[]).find(x=>x.n===n)||{};
   PV = PV || { n, c:clubMerge(cat, AC()||{}), cid, roster:[], events:[], tab:'info' };
-  PV.n=n; PV.cid=cid; PV.c=clubMerge(cat, AC()||{});
+  PV.n=n; PV.cid=cid; PV.c=clubMerge(clubMerge(cat, clubSetGet(cid)), AC()||{});
   openIntroEdit();
 }
 /* 운영진 도구에서 여는 화면들은 전부 전체 페이지로 띄운다.
@@ -13800,25 +13818,35 @@ function balSeat(p){
   const code = memberGradeCode(p) || 'C2';
   const base = gradeStepBase(code);
   const step = +(String(code).match(/[0-9]/)||[2])[0];   // 1 이 위, 3 이 아래
-  let seat = (3 - step) / 2;                             // B1→1, B2→0.5, B3→0
+  const start = (3 - step) / 2;                          // B1→1, B2→0.5, B3→0
+  let seat = start;
   const f = balForm()[String(p.user_id||p.id)] || {g:0,w:0};
   const t = balTrust(f.g);
-  if(t > 0){
-    const wr = f.g ? f.w / f.g : 0.5;
-    seat = seat*(1-t) + wr*t;                            // 이긴 만큼 위로
+  const wr = f.g ? f.w / f.g : 0.5;
+  if(t > 0) seat = seat*(1-t) + wr*t;                    // 이긴 만큼 위로
+  /* 월례대회 조도 이 자리에 넣는다 — 세 가지를 본다고 해놓고 자리에는 둘만 쓰면
+     <조는 어디 갔지>가 된다. 조는 한 달에 한 번 바뀌고 성적은 매 모임 쌓이므로
+     무게는 성적:조 = 30:15 로 총점과 같은 비율을 쓴다. */
+  const tg = tgOf(p.user_id||p.id);
+  let tSeat = null;
+  if(tg){
+    const i = TG_NAMES.indexOf(tg);
+    tSeat = TG_NAMES.length<2 ? 0.5 : 1 - i/(TG_NAMES.length-1);
+    const w = BAL_W.tier/(BAL_W.form+BAL_W.tier);        // 조가 갖는 몫
+    seat = seat*(1-w) + tSeat*w;
   }
-  return { base, seat, code, games:f.g||0, w:f.w||0, l:f.l||0, trust:t };
+  return { base, seat, code, start, tg, tSeat,
+           games:f.g||0, w:f.w||0, l:f.l||0, trust:t, wr };
 }
 /* 한 사람의 최종 값 — 등급이 큰 칸을 정하고, 성적이 칸 안 자리를 정한다 */
+/* 총점 — 등급이 큰 칸을 정하고, 성적과 조가 그 안의 자리를 정한다.
+   조는 자리(seat)에 이미 섞여 있으므로 여기서 또 더하지 않는다.
+   성적과 조가 함께 갖는 몫(30+15)을 자리 하나에 실어 준다. */
 function balValue(p){
   const s = balSeat(p);
   const gi = GRADE_INFO.findIndex(x=>x.g===s.base);
   const gRank = gi<0 ? 0 : (GRADE_INFO.length-1-gi)/(GRADE_INFO.length-1);  // C=0 … SS=1
-  const tg = tgOf(p.user_id||p.id);
-  const tgList = TG_NAMES.filter(g=>true);
-  const ti = tg ? tgList.indexOf(tg) : -1;
-  const tRank = ti<0 ? 0.5 : (tgList.length<2 ? 0.5 : 1 - ti/(tgList.length-1));
-  return Math.round(gRank*BAL_W.grade + s.seat*BAL_W.form + tRank*BAL_W.tier);
+  return Math.round(gRank*BAL_W.grade + s.seat*(BAL_W.form + BAL_W.tier));
 }
 /* ── 짝은 이렇게 맞춰요 — 회원이 보는 설명 ────────────────────────────
    대진표만 보면 <왜 이 사람이랑 붙지>가 남는다. 규칙을 숨기면 의심이 된다.
@@ -13840,12 +13868,17 @@ function balPanelHTML(){
       background:${on?gi.c:gi.bg};border-radius:${n===3?'9px 3px 3px 9px':n===1?'3px 9px 9px 3px':'3px'}">${s.base}${n}</span>`;
   }).join('');
   const tg=tgOf(me);
-  const wl = s.games ? `${s.w}승 ${s.l}패` : '아직 경기 없음';
+  /* 무를 빼고 적으면 9승 6패인데 16경기가 되어 숫자가 안 맞는다 */
+  const dr = Math.max(0, s.games - s.w - s.l);
+  const wl = s.games ? `${s.w}승${dr?` ${dr}무`:''} ${s.l}패` : '아직 경기 없음';
   /* 100점 구성 — 도넛 하나로 */
   const gIdx=GRADE_INFO.findIndex(x=>x.g===s.base);
   const gRank=gIdx<0?0:(GRADE_INFO.length-1-gIdx)/(GRADE_INFO.length-1);
-  const pG=Math.round(gRank*BAL_W.grade), pF=Math.round(s.seat*BAL_W.form);
-  const pT=Math.max(0, val-pG-pF);
+  const pG=Math.round(gRank*BAL_W.grade);
+  /* 자리 하나에 성적과 조가 함께 들어 있다 — 화면에는 각각 얼마인지 나눠 보여준다 */
+  const wT=BAL_W.tier/(BAL_W.form+BAL_W.tier);
+  const pT=Math.round((s.tSeat!=null? s.tSeat : 0.5)*BAL_W.tier);
+  const pF=Math.max(0, val-pG-pT);
   const a1=(pG/Math.max(1,val))*100, a2=a1+(pF/Math.max(1,val))*100;
   /* 등급표와 내 범위 — 왜 이 점수인지, 어디까지 오르내리는지 */
   const gPt = g => { const i=GRADE_INFO.findIndex(x=>x.g===g);
@@ -13865,9 +13898,18 @@ function balPanelHTML(){
      같은 자를 빌려 말하는 것이다. 그래서 <A등급>이 아니라 <A 수준>이라 쓴다. */
   const clubLevel = (()=>{
     if(!s.games) return null;
-    /* 값(0~100)을 등급 칸으로 되돌린다 — 성적과 조를 뺀 자리에서 견준다 */
+    /* 값(0~100)을 등급 칸으로 되돌린다.
+       45점을 등급 자로만 나누면 안 된다 — 그 안에 성적과 조가 이미 들어 있어서,
+       조가 A조이기만 해도 두 칸씩 올라가 B등급이 S 수준으로 나왔다.
+       성적·조의 한가운데 값을 빼고 남는 자리로 견준다. */
     const per = BAL_W.grade/(GRADE_INFO.length-1);
-    const idx = Math.max(0, Math.min(GRADE_INFO.length-1, Math.round(val/per)));
+    const mid = (BAL_W.form + BAL_W.tier)/2;
+    let idx = Math.round((val-mid)/per);
+    /* 위아래 한 칸으로 묶는다 — 성적 30 + 조 15 는 등급 두 칸을 훌쩍 넘는 폭이라,
+       그대로 두면 B등급이 S 수준으로 나온다. 성적이 좋아도 <한 칸 위>까지다. */
+    const my = GRADE_INFO.length-1-GRADE_INFO.findIndex(x=>x.g===s.base);
+    idx = Math.max(my-1, Math.min(my+1, idx));
+    idx = Math.max(0, Math.min(GRADE_INFO.length-1, idx));
     return (GRADE_INFO[GRADE_INFO.length-1-idx]||{}).g || null;
   })();
   const rankOfG = g => { const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-1-i; };
@@ -13876,8 +13918,8 @@ function balPanelHTML(){
   const same = !clubLevel || gap===0;
   return `
   <div class="card" style="margin-top:12px">
-    <div class="ch" style="font-size:15px;margin:0">내 자리</div>
-    <div class="hint" style="margin-top:4px">두 가지를 함께 봐요</div>
+    <div class="ch" style="font-size:15px;margin:0">나는 어느 정도일까요</div>
+    <div class="hint" style="margin-top:4px">구력과 클럽 성적, 두 가지로 봐요</div>
     <div style="display:flex;gap:10px;margin-top:16px">
       <div style="flex:1;border:1px solid var(--line);border-radius:14px;padding:15px 13px">
         <div style="font-size:11.5px;color:var(--gray)">구력 등급</div>
@@ -13888,12 +13930,12 @@ function balPanelHTML(){
       </div>
       <div style="flex:1;border:1px solid ${same?'var(--line)':'#f6c9ab'};border-radius:14px;
         padding:15px 13px;background:${same?'#fff':'#fffaf7'}">
-        <div style="font-size:11.5px;color:${same?'var(--gray)':'#c9754a'}">우리 클럽에서는</div>
+        <div style="font-size:11.5px;color:${same?'var(--gray)':'#c9754a'}">대진 등급</div>
         <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
           <b style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:${
             clubLevel?(same?'#4e5968':'var(--coral-d)'):'var(--lgray)'}">${clubLevel||'—'}</b>
           <span style="font-size:12px;color:${same?'var(--gray)':'#c9754a'}">${clubLevel?'수준':''}</span></div>
-        <div style="font-size:11px;color:${same?'var(--lgray)':'#c9a08a'};margin-top:7px;line-height:1.55">이 클럽 성적으로만<br>본 실력이에요</div>
+        <div style="font-size:11px;color:${same?'var(--lgray)':'#c9a08a'};margin-top:7px;line-height:1.55">이 클럽 안에서만<br>짝을 맞출 때 써요</div>
       </div>
     </div>
     <div style="background:#f7f8f9;border-radius:12px;padding:13px 14px;margin-top:12px;
@@ -13905,13 +13947,13 @@ function balPanelHTML(){
           s.trust<1?`아직 ${s.games}경기라 더 치면 자리가 또렷해져요`:'대진에서는 이 자리로 짝을 맞춰요'}</span>`}</div>
     <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:16px">
       <div style="font-size:13px;font-weight:600">이 둘은 왜 다른가요</div>
-      ${[[gi.c,'구력 등급','얼마나 오래 쳤는지예요 · 시간이 지나야 올라가요'],
-         ['#f1631a','우리 클럽에서는','이 클럽에서 얼마나 잘 쳤는지예요 · 다음 모임에 바뀔 수 있어요'],
-         ['#c2c8ce','다른 클럽에 가면','구력 등급만 따라가요']].map(([c,t,d])=>`
-        <div style="display:flex;gap:11px;margin-top:11px">
-          <span style="flex:none;width:4px;height:4px;border-radius:50%;background:${c};margin-top:7px"></span>
-          <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.65"><b>${t}</b>${
-            t==='다른 클럽에 가면'?' ':'은 '}${d}</span></div>`).join('')}
+      ${[['구력 등급','얼마나 오래 쳤는지예요<br>시간이 지나야 올라가요'],
+         ['대진 등급','이 클럽에서 얼마나 잘 쳤는지예요<br>다음 모임에 바뀔 수 있어요'],
+         ['클럽을 옮기면','구력 등급만 따라가요']].map(([t,d],i)=>`
+        <div style="display:flex;align-items:baseline;gap:12px;padding:12px 0;
+          ${i<2?'border-bottom:1px solid #f4f5f7':''}">
+          <b style="flex:none;width:96px;font-size:12.5px;font-weight:600">${t}</b>
+          <span style="flex:1;font-size:12.5px;color:var(--gray);line-height:1.65">${d}</span></div>`).join('')}
     </div>
     <div class="hint" style="margin-top:16px">이 값은 대진에만 써요 · 멤버 목록과 순위에는 나오지 않아요</div>
   </div>
@@ -13925,11 +13967,23 @@ function balPanelHTML(){
         border-radius:8px;padding:6px 12px">${s.base}등급</span></div>
     <div class="hint" style="margin-top:9px">등급은 구력으로만 정해져요 · ${esc(gi.label)}이면 ${s.base}등급</div>
     <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:18px">
-      <div style="font-size:13.5px;font-weight:600">실구력으로 보면</div>
+      <div style="font-size:13.5px;font-weight:600">${s.base}등급 안에서 내 자리</div>
+      <div class="hint" style="margin-top:4px">구력으로 자리를 잡고,
+        클럽 성적과 월례대회 조로 옮겨요</div>
       <div style="display:flex;gap:3px;margin-top:12px">${steps}</div>
-      <div class="hint" style="margin-top:10px">클럽에서 <b>${wl}</b>${
-        s.games? ` · ${s.base}등급 안에서 ${s.seat>=0.67?'위쪽':s.seat>=0.34?'가운데':'아래쪽'}이에요`
-               : ' · 몇 경기 치면 자리가 잡혀요'}</div>
+      <div style="margin-top:12px">
+        ${[['구력', `${esc(yrs)} · ${s.base}${(String(s.code).match(/[0-9]/)||['2'])[0]}에서 시작`],
+           ['성적', s.games?`${wl} · ${s.games}경기`:'아직 경기 없음'],
+           ['조', s.tg?`${s.tg}조`:'조가 없어요']].map(([t,d],i)=>`
+          <div style="display:flex;align-items:baseline;gap:12px;padding:9px 0;
+            ${i<2?'border-bottom:1px solid #f4f5f7':''}">
+            <b style="flex:none;width:46px;font-size:12px;font-weight:600;color:var(--gray)">${t}</b>
+            <span style="flex:1;font-size:12.5px;color:#4e5968">${d}</span></div>`).join('')}
+      </div>
+      <div class="hint" style="margin-top:10px">${s.games || s.tg
+        ? `세 가지를 합쳐 ${s.base}등급 안에서 ${
+            s.seat>=0.67?'위쪽':s.seat>=0.34?'가운데':'아래쪽'}이에요`
+        : '몇 경기 치면 자리가 잡혀요'}</div>
     </div>
   </div>
 
@@ -15501,7 +15555,8 @@ function openClubBasicEdit(fresh){
   const n=state.activeClub||''; const d=(state.clubData||{})[n]||{};
   if(fresh) CBE=null;                       // 정보 탭에서 새로 열면 항상 현재 값으로 시작
   if(!d.officer){ toast('클럽 정보는 운영진만 바꿀 수 있어요'); return; }
-  const cat=(state.clubs||[]).find(x=>x.n===n)||{};
+  /* 기기에 남긴 값도 함께 본다 — 서버 목록에 없으면 이게 마지막 근거다 */
+  const cat=clubMerge((state.clubs||[]).find(x=>x.n===n)||{}, clubSetGet(clubId()));
   const c=clubMerge(cat, AC()||{});
   CBE = CBE || {};
   CBE.region = CBE.region!=null?CBE.region : (d.region||c.r||'');
@@ -15641,17 +15696,31 @@ async function saveClubBasic(){
             cc.guest_min_months=gmin||null; cc.guest_visits=gvis||null;
             cc.join_open=jopen?1:0; cc.join_reopen=jre;
             cc.entry_fee=entry; cc.season_fee=season; cc.guest_fee=gfee; cc.guest_cap=gcap; } }
+  /* 기기에도 남긴다 — 서버 목록을 새로 받아도 이 값들은 살아 있어야 한다 */
+  clubSetLocal(cid, { founded_year: yr||null, recruiting: recruit?1:0,
+    guest_min_months: gmin||null, guest_visits: gvis||null,
+    join_open: jopen?1:0, join_reopen: jre,
+    entry_fee: entry, season_fee: season, guest_fee: gfee, guest_cap: gcap });
   const d=(state.clubData||{})[n]; if(d) d.region=region;
   const cat=(state.clubs||[]).find(x=>x.n===n); if(cat){ cat.r=region||cat.r; cat.court=court; cat.days=days; }
   try{ saveMatsu(); }catch(e){}
   CBE=null; closeOv(); renderClub();
   if(SERVER_OK && cid){
-    try{ await api(`/clubs/${cid}/profile`,{method:'PATCH',
+    try{ const saved = await api(`/clubs/${cid}/profile`,{method:'PATCH',
       body: JSON.stringify({ home_court:court, meet_days:days, meet_time:mtime, gender_pref:gender,
         founded_year: yr||null, recruiting: recruit?1:0, guest_min_months: gmin||null,
         guest_visits: gvis||null, join_open: jopen?1:0, join_reopen: jre,
         entry_fee: entry, season_fee: season, guest_fee: gfee, guest_cap: gcap })});
-      toast('클럽 정보를 저장했어요');
+      /* 서버가 돌려준 값으로 캐시를 맞춘다 — 옛 서버라 값이 안 오면 그 사실을 알려준다.
+         예전에는 저장한 뒤 목록을 새로 받으면 이 값들이 통째로 덮여 되돌아간 것처럼 보였다. */
+      if(saved && typeof saved==='object'){
+        const miss=CLUB_SET_KEYS.filter(k=>saved[k]===undefined);
+        const cc2=(state.clubs||[]).find(x=>x.n===n), ac2=AC();
+        CLUB_SET_KEYS.forEach(k=>{ if(saved[k]===undefined) return;
+          if(cc2) cc2[k]=saved[k]; if(ac2) ac2[k]=saved[k]; });
+        toast(miss.length>=4 ? '서버가 아직 예전 버전이에요 · 기기에만 저장됐어요'
+                             : '클럽 정보를 저장했어요');
+      } else toast('클럽 정보를 저장했어요');
     }catch(e){ toast(String(e.message).includes('officer_only')?'운영진만 바꿀 수 있어요':'저장에 실패했어요 · 기기에는 저장됐어요'); }
   } else toast('클럽 정보를 저장했어요');
 }
