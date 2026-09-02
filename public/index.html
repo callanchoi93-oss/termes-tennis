@@ -2331,6 +2331,10 @@
   /* 요일 칩은 여러 개를 촘촘히 늘어놓지만, 둘 중 하나를 고르는 값은
      같은 크기로 두면 <누르는 곳>으로 안 보인다. 손가락에 맞게 키운다. */
   .cw-c.big{ font-size:13.5px;font-weight:600;padding:11px 20px;min-width:104px;text-align:center }
+  /* 성별 두 칸 — 검정은 이 앱에서 <끝난 것>을 뜻해서, 고르는 값에는 코랄을 쓴다 */
+  .cb2sex{ flex:1;text-align:center;font-size:13px;font-weight:600;color:#4a5159;
+    background:#f2f4f6;border-radius:10px;padding:11px 0;cursor:pointer;transition:.14s }
+  .cb2sex.on{ background:var(--coral);color:#fff }
   /* ── 클럽 기본 정보 — 소개 · 회비 · 가입 세 묶음 ── */
   /* ── 이름만 적어 대진 짜기 ── */
   .qbwrap{ display:flex;flex-wrap:wrap;gap:7px;margin-top:12px }
@@ -9975,11 +9979,41 @@ function renderClub(){
               <b style="display:block;font-size:14px;color:var(--gray)">아직 지난 모임이 없어요</b>
               <div style="font-size:12px;color:var(--lgray);font-weight:500;margin-top:5px;line-height:1.6">
                 모임이 끝나면 여기에 쌓여요 · 그날 참석자와 대진을 볼 수 있어요</div></div>`
+          : (off ? (()=>{
+            /* 클럽만 만들고 나가는 사람이 있었다. 글로만 <모임을 열면 …할 수 있어요>라고
+               적으면 몇 단계인지, 얼마나 걸리는지 알 수 없어 시작을 못 한다.
+               세 단계를 눈으로 보여주고 지금 어디인지 표시한다. */
+            const STEP=[['모임 만들기','날짜 · 시간 · 코트'],
+                        ['참석자 넣기','회원이 없어도 이름으로 넣을 수 있어요'],
+                        ['대진 짜기','4명부터 · 코트별 회차까지 자동으로']];
+            return `<div class="card" style="padding:0;overflow:hidden">
+              <div style="padding:22px 17px 17px">
+                <div style="font-size:11.5px;font-weight:600;color:var(--coral-d)">클럽을 만들었어요 · 다음은</div>
+                <div style="font-size:18px;font-weight:700;letter-spacing:-.04em;margin-top:7px">첫 모임을 만들어 주세요</div>
+                <div class="hint" style="margin-top:6px">언제 어디서 치는지만 적으면 돼요 · 1분이면 끝나요</div>
+              </div>
+              <div style="padding:0 17px">
+                ${STEP.map(([t,d],i)=>`<div style="display:flex;align-items:center;gap:13px;
+                  padding:14px 0;border-top:1px solid #f2f4f6">
+                  <span style="flex:none;width:22px;height:22px;border-radius:50%;
+                    background:${i?'#f2f4f6':'var(--coral)'};color:${i?'var(--lgray)':'#fff'};
+                    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</span>
+                  <span style="flex:1;min-width:0">
+                    <b style="display:block;font-size:13.5px;font-weight:600;color:${i?'var(--gray)':'var(--ink)'}">${t}</b>
+                    <span style="display:block;font-size:12px;color:${i?'var(--lgray)':'var(--gray)'};margin-top:3px">${d}</span></span>
+                  ${i?'':`<span style="flex:none;font-size:11px;font-weight:600;color:var(--coral-d);
+                    background:var(--coral-s);border-radius:7px;padding:5px 9px">지금 할 일</span>`}
+                </div>`).join('')}
+              </div>
+              <div style="padding:17px">
+                <button class="btn" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">첫 모임 만들기</button>
+                <div class="hint" style="text-align:center;margin-top:11px">모임을 만들면 회원들이 참석을 누를 수 있어요</div>
+              </div></div>`; })()
           : `<div class="card" style="text-align:center;padding:22px 18px;background:#f5f7f9;border-color:#e7eaed">
-          <div style="font-size:29px">📅</div>
-          <b style="display:block;margin-top:6px;font-size:14px">다가오는 모임이 아직 없어요</b>
-          <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">${off?'＋만들기로 모임을 열면 회원들이 참석을 체크하고,<br>참석자로 바로 대진을 편성할 수 있어요.':'임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.'}</div>
-          ${off?`<button class="btn" style="max-width:220px;margin:13px auto 0" onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">＋ 첫 모임 만들기</button>`:''}</div>`; }
+              <div style="font-size:29px">📅</div>
+              <b style="display:block;margin-top:6px;font-size:14px">다가오는 모임이 아직 없어요</b>
+              <div style="font-size:12px;color:var(--gray);font-weight:500;margin-top:4px;line-height:1.6">
+                임원진이 모임을 올리면 여기서 참석을 체크해요.<br>참석하면 그날 대진 명단에 자동 포함돼요.</div></div>`); }
       else {
         /* D안 — 다음 한 장만 진하게, 나머지는 같은 크림색.
            예전엔 카드마다 색이 달랐는데 그 색에 뜻이 없어서
@@ -11603,6 +11637,10 @@ function clubGenderTag(c){
 
   /* ② 명단으로 아직 판정이 안 될 때(회원이 적거나 성별 미입력)는
      클럽이 스스로 밝힌 값을 쓴다. 여성 2명뿐인 여성 클럽도 그렇게 보여야 한다. */
+  /* 회원이 너무 적으면 달지 않는다 — 혼자 만든 클럽에 <남성 클럽>이 붙으면
+     밖에서 보는 사람에게 사실과 다른 말을 하는 셈이다. */
+  const total=(+c.m||0)||(+c.members||0)||(f+m+unk);
+  if(total<4) return null;
   const pref=String(c.gender_pref||c.gender||'').trim();
   if(pref && !/남녀|전체|무관|모두/.test(pref)){
     if(/^여/.test(pref)) return F;
@@ -13510,7 +13548,7 @@ function clubTabBracket(){
       <p style="font-size:12.5px;color:var(--lgray);margin-top:6px;line-height:1.6">
         운영진이 모임 참석자로 대진을 짜면 여기에 보여요.</p>
       ${d0().officer?`<button class="btn" style="max-width:200px;margin:14px auto 0" onclick="openClubBracketBuild()">대진 짜기</button>`:''}
-    </div>` + qbCardHTML();
+    </div>`;
   }
   /* 서버는 <active> 를 보낸다(모든 경기에 점수가 들어오면 false).
      앱은 없는 필드 <finished> 를 보고 있어서 !undefined → 언제나 참,
@@ -13519,7 +13557,7 @@ function clubTabBracket(){
   const isDone=b=>(b.active===false) || (b.finished===true)
     || ((b.games||0)>0 && (b.done||0)>=(b.games||0));
   const live=list.filter(b=>!isDone(b)), done=list.filter(isDone);
-  const QBTOP = qbCardHTML();
+  const QBTOP = '';
   const row=b=>{
     const tot=b.games||0, fin=b.done||0;
     const pct=tot?Math.round(fin/tot*100):0;
@@ -13608,7 +13646,7 @@ function clubTabBracket(){
         done.forEach(b=>{ const mo=bkMonthOf(b.date);
           if(mo && mo!==mon){ mon=mo; out+=`<div class="xc-mo">${mo}월</div>`; }
           out+=pastRow(b); });
-        return out; })()}`:''}${(CB2_LIST||[]).length?qbNextHTML():''}`;
+        return out; })()}`:''}${qbNextHTML()}`;
 }
 /* 삭제는 메뉴 안으로 — 진행 중인 대진 카드 옆에 휴지통이 늘 떠 있으면
    경기 도는 중에 잘못 눌러 그날 기록이 통째로 날아간다. */
@@ -14117,7 +14155,7 @@ function balPanelHTML(){
               <span style="font-size:10.5px;color:${g.c};background:${g.bg};border-radius:5px;
                 padding:2px 6px">${x.g} ${esc(g.desc.split(' · ')[0])}</span></span>
             <span style="display:block;font-size:11.5px;color:var(--gray);margin-top:4px">구력 ${
-              x.yr} · ${x.w}승 ${x.l}패 ${x.wr}% · ${x.tg}조</span></span>
+              x.yr} · ${x.w}승 ${x.l}패 · ${x.tg}조</span></span>
           <b style="flex:none;font-size:15px;font-weight:700;letter-spacing:-.03em">${x.v}<em
             style="font-style:normal;font-size:11px;color:var(--lgray);margin-left:2px">점</em></b>
         </div>`; }).join('')}
@@ -20925,11 +20963,15 @@ async function openClubBracketBuild(){
       try{ roster=cb2Roster(await api(`/clubs/${cid}/members`)); }catch(e){}
     }
   }
+  /* 참석이 0명이어도 되돌려 보내지 않는다 — 첫 모임에는 회원이 아직 앱에 없다.
+     그 화면에서 이름으로 넣을 수 있으므로, 여기서 막으면 길이 끊긴다. */
   if(CB2_EVENT && !roster.length){
     const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(CB2_EVENT));
-    toast(`${ev?ev.title:'이 모임'}에 아직 참석자가 없어요 · 참석을 받은 뒤 짜주세요`);
-    return;
+    toast(`${ev?ev.title:'이 모임'}에 참석자가 없어요 · 이름으로 넣어도 돼요`);
   }
+  /* 여성 클럽이면 이름으로 넣을 때 여성이 기본이다 — 매번 바꾸게 하면 안 된다 */
+  { const t=clubGenderTag(clubMerge((state.clubs||[]).find(x=>x.n===state.activeClub)||{}, AC()||{}));
+    CB2_GSEX = (t && t.l==='여성 클럽') ? '여성' : '남성'; CB2_GTMP={}; }
   if(!CB2_SEL.size) roster.forEach(p=>CB2_SEL.add(String(p.user_id)));   // 기본 전원 선택
   window._cb2Roster=roster;
   drawCB2Build(); cbLoadBanner();
@@ -22213,15 +22255,25 @@ function drawCB2Build(){
     <div style="display:flex;gap:12px;margin:2px 0 6px;font-size:11px;font-weight:500">
       <span style="color:#3182f6">● 남성</span><span style="color:#e0618c">● 여성</span>
       <span style="color:var(--lgray)">선택하면 진하게 · G = 게스트</span></div>
-    <div style="margin:6px 0 2px">${all.map(chip).join('')||'<span class="note">이번 모임 참석자가 없어요 · 출석 체크를 먼저 받아주세요</span>'}</div>
+    ${all.length ? `<div style="margin:6px 0 2px">${all.map(chip).join('')}</div>`
+      : `<div style="background:#f7f8f9;border-radius:12px;padding:15px;margin:6px 0 2px;text-align:center">
+          <div style="font-size:13px;font-weight:600">참석을 누른 사람이 없어요</div>
+          <div style="font-size:11.5px;color:var(--gray);margin-top:5px;line-height:1.6">
+            회원이 앱에서 참석을 누르면 여기에 자동으로 들어와요<br>지금은 이름으로 넣어도 돼요</div></div>`}
 
-    <div class="ch" style="font-size:14px;margin-top:12px">게스트 추가 <span style="font-size:11px;color:var(--lgray);font-weight:600">· 구력을 넣으면 등급·순번이 자동으로 정해져요</span></div>
-    <div style="display:flex;gap:7px;margin-top:6px">
-      <input id="cb2Gname" class="sel-in" placeholder="이름" style="flex:1.4;min-width:0">
-      <select id="cb2Ggender" style="flex:1"><option value="남성">남</option><option value="여성">여</option></select>
-      <input id="cb2Gyears" class="sel-in" type="number" inputmode="numeric" min="0" max="60" placeholder="년" style="flex:.8;min-width:0">
-      <input id="cb2Gmonths" class="sel-in" type="number" inputmode="numeric" min="0" max="11" placeholder="개월" style="flex:.8;min-width:0">
-      <button class="btn sm" style="width:auto;padding:0 16px" onclick="cb2AddGuest()">추가</button></div>
+    <div class="ch" style="font-size:14px;margin-top:12px">${all.length?'게스트 추가':'이름으로 넣기'}</div>
+    <div class="fld" style="margin-top:6px"><input id="cb2Gname" class="sel-in" placeholder="이름"
+      style="width:100%" value="${esc(CB2_GTMP.cb2Gname||'')}"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();cb2AddGuest()}"></div>
+    <div style="display:flex;gap:7px;margin-top:7px">
+      <div style="flex:1;display:flex;gap:5px">${['남성','여성'].map(g=>
+        `<span onclick="cb2GSex('${g}')" class="cb2sex${CB2_GSEX===g?' on':''}">${g[0]}</span>`).join('')}</div>
+      <input id="cb2Gyears" class="sel-in" type="number" inputmode="numeric" min="0" max="60"
+        placeholder="년" style="flex:1;min-width:0;text-align:center" value="${esc(CB2_GTMP.cb2Gyears||'')}">
+      <input id="cb2Gmonths" class="sel-in" type="number" inputmode="numeric" min="0" max="11"
+        placeholder="개월" style="flex:1;min-width:0;text-align:center" value="${esc(CB2_GTMP.cb2Gmonths||'')}">
+      <button class="btn sm" style="width:auto;padding:0 16px;flex:none" onclick="cb2AddGuest()">추가</button></div>
+    <div class="note" style="text-align:left;margin-top:7px">구력으로 등급이 정해져요 · 성별은 성비를 맞출 때 써요</div>
 
     ${(()=>{ const M=lateMaxNow(), addOk=lateCanAdd();
       const sexWhy=lateSexWhy();
@@ -22497,7 +22549,12 @@ function cb2LateTog(id){ id=String(id); CB2_LATE.has(id)?CB2_LATE.delete(id):CB2
 /* 앱에 들어온 회원이 넷이 안 되면 참석 체크로는 대진을 짤 수 없다 —
    그때만 이 입구를 앞에 내보인다. 회원이 다 들어온 클럽에 이 카드가 보이면
    손으로 이름을 적으라는 뜻이 되어 오히려 퇴보다. */
-function qbShow(){
+/* 이름만 적어 대진을 짜는 별도 입구는 닫았다.
+   길이 둘이면 하나는 반드시 어긋난다 — 그 시트에서 만든 대진이 모임과 이어지지 않아
+   처음부터 다시 해야 했다. 지금은 <모임 상세 → 대진 짜기> 하나로 들어가고,
+   참석자가 없으면 그 화면 안에서 이름으로 넣는다. */
+function qbShow(){ return false; }
+function qbShowLegacy(){
   const d=(state.clubData||{})[state.activeClub||'']||{};
   if(!d.officer) return false;
   const n=(CLUB_ROSTER||[]).filter(r=>r.user_id && r.role!=='guest').length;
@@ -22505,26 +22562,46 @@ function qbShow(){
 }
 /* 대진을 짜둔 뒤에 보여준다 — 지금 이사님이 손으로 하고 계신 일이
    회원이 들어오면 사라진다는 것을 말한다. 기능 자랑이 아니라 일이 줄어드는 이야기다. */
+/* 이름으로 넣은 사람이 있는 대진인가 — 그 대진에만 안내를 붙인다.
+   회원이 참석을 눌러 짠 대진에는 이미 다 아는 이야기다. */
+function qbHasNamed(){
+  try{ return (CB2 && (CB2.games||[]).some(g=>[...(g.teamA||[]),...(g.teamB||[])]
+    .some(p=>p && /^g/i.test(String(p.id||''))))) || false; }catch(e){ return false; }
+}
 function qbNextHTML(){
-  if(!qbShow()) return '';
-  const gn = new Set();
-  (CB2_LIST||[]).forEach(()=>{});
+  const d0x=(state.clubData||{})[state.activeClub||'']||{};
+  if(!d0x.officer || !qbHasNamed()) return '';
+  const gn=new Set();
   try{ (CB2&&CB2.games||[]).forEach(g=>[...(g.teamA||[]),...(g.teamB||[])]
     .forEach(p=>{ if(p&&/^g/i.test(String(p.id||''))) gn.add(p.name); })); }catch(e){}
-  return `<div class="qbnext">
-    <div class="t">회원분들이 들어오면</div>
-    <div class="s">지금은 이사님이 다 하고 계신 일들이에요</div>
-    <div class="li"><span class="d"></span><span>
-      <b>참석 버튼만 누르면 대진에 들어가요</b>
-      <em>이름을 하나씩 적어 넣지 않아도 돼요</em></span></div>
-    <div class="li"><span class="d"></span><span>
-      <b>점수는 그 경기 뛴 사람이 넣어요</b>
-      <em>코트마다 불러주는 점수를 받아적지 않아도 돼요 · 틀리면 이사님이 고칠 수 있어요</em></span></div>
-    <div class="li"><span class="d"></span><span>
-      <b>오늘 순위와 시즌 기록이 저절로 쌓여요</b>
-      <em>엑셀에 옮겨적지 않아도 돼요</em></span></div>
-    ${gn.size?`<div class="foot">오늘 이름으로 적은 <b>${gn.size}분</b>은 가입하면 오늘 기록이 그대로 이어져요</div>`:''}
-    <button class="btn" style="margin-top:12px" onclick="openClubInvite()">회원 초대하기</button>
+  const KOR=['','한','두','세','네','다섯','여섯','일곱','여덟','아홉','열'];
+  const cnt = gn.size<=10 ? `${KOR[gn.size]} 분` : `${gn.size}명`;
+  /* 기능을 나열하지 않는다 — 방금 손으로 하신 일이 없어진다고 말한다.
+     이름을 여섯 번 적은 직후라 첫 줄이 가장 와닿는다. */
+  const ROW=[['이름을 하나씩 적는 일','회원이 참석만 누르면 대진 명단에 들어가요'],
+             ['코트마다 점수 받아적는 일','그 경기 뛴 사람이 직접 넣어요 · 틀리면 고쳐주시면 돼요'],
+             ['엑셀에 옮겨적는 일','그날 순위와 시즌 기록이 저절로 쌓여요']];
+  return `<div class="card" style="margin-top:10px;padding:0;overflow:hidden">
+    <div style="padding:20px 17px 15px">
+      <div class="ch" style="font-size:15px;margin:0">회원분들이 들어오면</div>
+      <div class="hint" style="margin-top:5px">지금 이사님이 손으로 하고 계신 일이<br>세 가지가 없어져요</div>
+    </div>
+    <div style="padding:0 17px">
+      ${ROW.map(([t,d],i)=>`<div style="display:flex;align-items:baseline;gap:14px;padding:15px 0;
+        border-top:1px solid #f2f4f6">
+        <span style="flex:none;width:14px;font-size:11px;font-weight:600;color:var(--lgray)">0${i+1}</span>
+        <span style="flex:1;min-width:0">
+          <b style="display:block;font-size:13.5px;font-weight:600">${t}</b>
+          <span style="display:block;font-size:12px;color:var(--gray);margin-top:4px;line-height:1.6">${d}</span>
+        </span></div>`).join('')}
+    </div>
+    ${gn.size?`<div style="background:var(--coral-s);padding:14px 17px;font-size:12px;
+      color:var(--coral-d);line-height:1.65">오늘 이름으로 넣은 <b>${cnt}</b>은
+      가입하면 오늘 기록이 그대로 이어져요</div>`:''}
+    <div style="display:flex;gap:8px;padding:16px 17px 17px">
+      <button class="btn ghost sm" style="flex:1;width:auto" onclick="cb2Share()">대진표 공유</button>
+      <button class="btn sm" style="flex:1.3;width:auto" onclick="openClubInvite()">회원 초대하기</button>
+    </div>
   </div>`;
 }
 function qbCardHTML(){
@@ -22640,10 +22717,19 @@ async function qbGo(){
   QB=null;
   drawCB2Build();
 }
+/* 성별은 드롭다운 대신 두 칸 — 값이 둘뿐이라 한 번에 고르는 편이 빠르다 */
+let CB2_GSEX='남성', CB2_GTMP={};
+function cb2GSex(g){ cb2GStash(); CB2_GSEX=g; drawCB2Build();
+  setTimeout(()=>{ const el=document.getElementById('cb2Gname'); if(el) el.focus(); },50); }
+function cb2GStash(){
+  const g=id=>{ const e=document.getElementById(id); return e?e.value:null; };
+  ['cb2Gname','cb2Gyears','cb2Gmonths'].forEach(k=>{ const v=g(k); if(v!=null) CB2_GTMP[k]=v; });
+}
 function cb2AddGuest(){
+  cb2GStash();
   const name=((document.getElementById('cb2Gname')||{}).value||'').trim();
   if(!name){ toast('게스트 이름을 입력해 주세요'); return; }
-  const gender=((document.getElementById('cb2Ggender')||{}).value)||'남성';
+  const gender=CB2_GSEX||'남성';
   const rawY=(document.getElementById('cb2Gyears')||{}).value;
   const rawM=(document.getElementById('cb2Gmonths')||{}).value;
   if((rawY===''||rawY==null) && (rawM===''||rawM==null)){
@@ -22656,6 +22742,7 @@ function cb2AddGuest(){
   CB2_GUESTS.push({gid, name, gender, grade, months:total, _byCareer:true,
     rating: ({SS:1350,S:1250,A:1150,B:1050,C:950})[grade] || 1000});
   CB2_SEL.add(gid);
+  CB2_GTMP={};                                     // 넣었으면 칸을 비운다
   const gi=gradeInfo(grade);
   toast(`${name} 추가 · 구력 ${yrs}년${mos?' '+mos+'개월':''} → ${grade}등급 (${gi.desc})`);
   drawCB2Build();
