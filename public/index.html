@@ -13847,6 +13847,18 @@ function balPanelHTML(){
   const pG=Math.round(gRank*BAL_W.grade), pF=Math.round(s.seat*BAL_W.form);
   const pT=Math.max(0, val-pG-pF);
   const a1=(pG/Math.max(1,val))*100, a2=a1+(pF/Math.max(1,val))*100;
+  /* 등급표와 내 범위 — 왜 이 점수인지, 어디까지 오르내리는지 */
+  const gPt = g => { const i=GRADE_INFO.findIndex(x=>x.g===g);
+    return Math.round((i<0?0:(GRADE_INFO.length-1-i)/(GRADE_INFO.length-1))*BAL_W.grade); };
+  const myG = gPt(s.base);
+  const lo = myG, hi = myG + BAL_W.form + BAL_W.tier;
+  const wr = s.games ? Math.round(s.w/s.games*100) : 0;
+  const tgList=TG_NAMES;
+  const tgPt = t => { const i=t?tgList.indexOf(t):-1;
+    return i<0 ? Math.round(BAL_W.tier/2)
+               : Math.round((tgList.length<2?0.5:1-i/(tgList.length-1))*BAL_W.tier); };
+  const nextG = GRADE_INFO[Math.max(0, GRADE_INFO.findIndex(x=>x.g===s.base)-1)];
+  const pos = v => Math.max(0, Math.min(100, v));
   const EX=[['김서준',78],['이하윤',72],['박도윤',64],['정시우',58],['강하은',50],['한지안',44]];
   const shade=['#191f28','#3d434b','#6b737c','#8b95a1','#b7bec6','#d5d9de'];
   return `
@@ -13891,6 +13903,66 @@ function balPanelHTML(){
   </div>
 
   <div class="card" style="margin-top:10px">
+    <div class="ch" style="font-size:15px;margin:0">등급표</div>
+    <div class="hint" style="margin-top:4px">구력으로 정해져요 · 오른쪽은 그 등급이면 나오는 점수예요</div>
+    ${GRADE_INFO.map((g,i)=>{
+      const me = g.g===s.base, p=gPt(g.g);
+      return `<div style="display:flex;align-items:center;gap:10px;padding:12px 0;
+        ${i<GRADE_INFO.length-1?'border-bottom:1px solid #f4f5f7':''};
+        ${me?'background:#fafbfc;margin:0 -16px;padding-left:16px;padding-right:16px':''}">
+        <span style="flex:none;width:42px;text-align:center;font-size:12px;font-weight:600;
+          color:${g.c};background:${g.bg};border-radius:8px;padding:6px 0">${g.g}</span>
+        <span style="flex:1;font-size:12.5px;color:${me?'var(--ink)':'#4e5968'};font-weight:${me?'600':'400'}">${
+          esc(g.label)}${me?` <span style="font-size:11px;font-weight:500;color:${g.c}">· 내 등급</span>`:''}</span>
+        <span style="flex:none;font-size:12.5px;font-weight:${me?'600':'400'};color:${me?'var(--ink)':'var(--gray)'}">${
+          p}<span style="color:#c2c8ce"> ~ </span>${p+BAL_W.form+BAL_W.tier}</span></div>`;
+    }).join('')}
+  </div>
+
+  <div class="card" style="margin-top:10px">
+    <div class="ch" style="font-size:15px;margin:0">어디까지 올라갈까요</div>
+    <div class="hint" style="margin-top:4px">${s.base}등급이면 <b>${lo}점에서 ${hi}점</b> 사이에 있어요</div>
+    <div style="position:relative;height:10px;border-radius:5px;background:#f2f4f6;margin-top:20px;overflow:hidden">
+      <span style="position:absolute;left:${lo}%;right:${100-hi}%;top:0;bottom:0;background:${gi.bg}"></span>
+      <span style="position:absolute;left:${lo}%;top:0;bottom:0;width:${Math.max(0,val-lo)}%;background:${gi.c}"></span>
+      <span style="position:absolute;left:${pos(val)}%;top:0;bottom:0;width:2px;background:var(--ink)"></span>
+    </div>
+    <div style="position:relative;height:20px;margin-top:9px;font-size:11px">
+      <span style="position:absolute;left:0;color:var(--lgray)">0</span>
+      <span style="position:absolute;left:${lo}%;transform:translateX(-50%);color:var(--gray);white-space:nowrap">최소 <b style="color:#4e5968">${lo}</b></span>
+      <span style="position:absolute;left:${pos(val)}%;transform:translateX(-50%);white-space:nowrap">지금 <b>${val}</b></span>
+      <span style="position:absolute;left:${hi}%;transform:translateX(-50%);color:${gi.c};white-space:nowrap">최대 <b>${hi}</b></span>
+      <span style="position:absolute;right:0;color:var(--lgray)">100</span>
+    </div>
+    <div style="border-top:1px solid #f4f5f7;margin-top:16px;padding-top:16px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:var(--coral-d)">성적</b>
+        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">지금 <b>${pF}점</b>${
+          s.games?` · ${s.games}경기 승률 ${wr}%`:' · 아직 경기 없음'}<br>
+          <span style="color:var(--gray)">승률 100%면 ${BAL_W.form}점 · 0%면 0점${
+            s.trust<1?` · 30경기가 되면 성적이 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}</span></span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
+        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:var(--gray)">조</b>
+        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">${
+          tg?`${tg}조라 <b>${tgPt(tg)}점</b>`:`조가 없어 <b>${tgPt(null)}점</b>`}<br>
+          <span style="color:var(--gray)">${tgList.map(t=>`${t}조 ${tgPt(t)}점`).join(' · ')}</span></span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
+        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:${gi.c}">등급</b>
+        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">${s.base}등급이라 <b>${myG}점</b> · 안 변해요<br>
+          <span style="color:var(--gray)">${nextG && nextG.g!==s.base
+            ? `${nextG.g}등급은 구력 ${esc(nextG.label)} · ${gPt(nextG.g)}점`
+            : '가장 위 등급이에요'}</span></span>
+      </div>
+    </div>
+    ${nextG && nextG.g!==s.base ? `<div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;
+      margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">
+      구력이 쌓여 ${nextG.g}등급이 되면 범위가 <b>${gPt(nextG.g)} ~ ${gPt(nextG.g)+BAL_W.form+BAL_W.tier}점</b>으로 올라가요<br>
+      SS등급에 승률 100%, ${tgList[0]}조면 <b>100점</b>이 최대예요</div>`:''}
+  </div>
+
+  <div class="card" style="margin-top:10px">
     <div class="ch" style="font-size:15px;margin:0">여섯 명이면 이렇게</div>
     <div class="hint" style="margin-top:4px">값이 높은 사람과 낮은 사람을 한 팀으로 묶어요 · 아래는 예시예요</div>
     <div style="display:flex;justify-content:space-between;gap:5px;margin-top:16px">
@@ -13913,13 +13985,102 @@ function balPanelHTML(){
     <div class="hint" style="margin-top:12px">양쪽 합이 같아지도록 묶어요 · 다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
   </div>`;
 }
+/* ── 누구와 자주 묶였나 ────────────────────────────────────────────
+   승률 75% 가 실력인지 파트너 덕인지는 이것 없이는 알 수 없다.
+   강한 파트너와 계속 묶이면 이기는 게 당연하다 — 그건 그 사람 탓이 아니라
+   짝을 맞추던 방식이 만든 숫자다. 탓하는 화면이 아니라 읽는 화면이다. */
+function balPartner(uid){
+  const me=String(uid||''); if(!me) return null;
+  const mate={}, foe={};
+  let g=0,w=0,d=0,l=0;
+  (CLUBME_GAMES||[]).forEach(x=>{
+    if(x.sa==null||x.sb==null) return;
+    const A=(x.teamA||[]), B=(x.teamB||[]);
+    const inA=A.some(p=>String(p.id)===me), inB=B.some(p=>String(p.id)===me);
+    if(!inA && !inB) return;
+    const mine=inA?A:B, them=inA?B:A;
+    const diff=inA ? x.sa-x.sb : x.sb-x.sa;
+    g++; if(diff>0) w++; else if(diff<0) l++; else d++;
+    mine.forEach(p=>{ if(String(p.id)===me||!p.id) return;
+      const t=mate[String(p.id)]||(mate[String(p.id)]={id:p.id,name:p.name,n:0,w:0});
+      t.n++; if(diff>0) t.w++; });
+    them.forEach(p=>{ if(!p.id) return;
+      const t=foe[String(p.id)]||(foe[String(p.id)]={id:p.id,name:p.name,n:0});
+      t.n++; });
+  });
+  if(!g) return null;
+  /* 등급 순위를 숫자로 — 평균을 내려면 순서가 있어야 한다 */
+  const rankOf=id=>{ const r=(CLUB_ROSTER||[]).find(x=>String(x.user_id)===String(id));
+    if(!r) return null;
+    const b=gradeStepBase(memberGradeCode(r)||'C2');
+    const i=GRADE_INFO.findIndex(x=>x.g===b);
+    return i<0?null:GRADE_INFO.length-1-i; };           // C=0 … SS=4
+  const avg=obj=>{ let sum=0,n=0;
+    Object.values(obj).forEach(t=>{ const r=rankOf(t.id); if(r!=null){ sum+=r*t.n; n+=t.n; } });
+    return n? sum/n : null; };
+  const gName=v=>{ if(v==null) return '—';
+    const i=Math.round(v); return (GRADE_INFO[GRADE_INFO.length-1-i]||{}).g||'—'; };
+  return { g,w,d,l, wr:Math.round(w/g*100),
+    mates:Object.values(mate).sort((a,b)=>b.n-a.n),
+    mateAvg:avg(mate), foeAvg:avg(foe),
+    myRank:rankOf(me), gName };
+}
+function balPartnerHTML(uid, title){
+  const P=balPartner(uid); if(!P || P.g<3) return '';
+  const gi=g=>GRADE_INFO.find(x=>x.g===g)||GRADE_INFO[GRADE_INFO.length-1];
+  const max=Math.max(1, ...P.mates.map(m=>m.n));
+  const diff = (P.mateAvg!=null && P.foeAvg!=null) ? P.mateAvg-P.foeAvg : 0;
+  const rel = v => { if(v==null||P.myRank==null) return '';
+    const d=Math.round(v)-P.myRank;
+    return d>0?`나보다 ${d}칸 위`:d<0?`나보다 ${-d}칸 아래`:'나와 같아요'; };
+  return `<div class="card" style="margin-top:10px">
+    <div class="ch" style="font-size:15px;margin:0">${title||'누구와 자주 묶였나요'}</div>
+    <div class="hint" style="margin-top:4px">승률이 실력인지 파트너 덕인지 여기서 갈려요</div>
+    <div style="margin-top:16px">
+      ${P.mates.slice(0,6).map((m,i,arr)=>{
+        const r=(CLUB_ROSTER||[]).find(x=>String(x.user_id)===String(m.id));
+        const b=r?gradeStepBase(memberGradeCode(r)||'C2'):'C';
+        const c=gi(b);
+        const shade=P.myRank!=null && (GRADE_INFO.length-1-GRADE_INFO.findIndex(x=>x.g===b))>P.myRank
+          ? 'var(--ink)' : '#c2c8ce';
+        return `<div style="display:flex;align-items:center;gap:9px;padding:10px 0;
+          ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
+          <span style="flex:none;width:52px;font-size:12.5px;font-weight:600;overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
+          <span style="flex:none;font-size:11px;color:${c.c};background:${c.bg};
+            border-radius:6px;padding:3px 7px">${b}등급</span>
+          <span style="flex:1;height:7px;border-radius:4px;background:#f2f4f6;overflow:hidden">
+            <i style="display:block;height:100%;border-radius:4px;width:${Math.round(m.n/max*100)}%;
+              background:${shade}"></i></span>
+          <span style="flex:none;width:38px;text-align:right;font-size:11.5px;color:#4e5968">${m.n}번</span>
+        </div>`; }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 13px">
+        <div style="font-size:11.5px;color:var(--gray)">파트너 평균</div>
+        <div style="font-size:16px;font-weight:700;margin-top:3px;letter-spacing:-.03em">${P.gName(P.mateAvg)}등급</div>
+        <div style="font-size:11px;color:var(--lgray);margin-top:2px">${rel(P.mateAvg)}</div></div>
+      <div style="flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 13px">
+        <div style="font-size:11.5px;color:var(--gray)">상대 평균</div>
+        <div style="font-size:16px;font-weight:700;margin-top:3px;letter-spacing:-.03em">${P.gName(P.foeAvg)}등급</div>
+        <div style="font-size:11px;color:var(--lgray);margin-top:2px">${rel(P.foeAvg)}</div></div>
+    </div>
+    <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;margin-top:14px;
+      font-size:12px;color:#4e5968;line-height:1.7">${
+      diff>=0.5 ? `파트너가 상대보다 강했어요 · 승률이 높은 이유가 실력만은 아닐 수 있어요<br>
+        <span style="color:var(--gray)">성적이 반영되면 다음부터는 비슷한 파트너와 묶여요</span>`
+      : diff<=-0.5 ? `상대가 파트너보다 강했어요 · 어려운 대진이 많았어요<br>
+        <span style="color:var(--gray)">성적이 반영되면 다음부터는 균형이 맞춰져요</span>`
+      : `파트너와 상대가 비슷했어요 · 승률을 실력으로 볼 수 있어요`}</div>
+  </div>`;
+}
 function clubTabBalance(){
   if(CLUB_ROSTER===null){ if(typeof loadClubRoster==='function') loadClubRoster();
     return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
   if(CLUBME_GAMES===null){ if(SERVER_OK && clubId()) loadClubMeGames(); else CLUBME_GAMES=[];
     return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
   const h=balPanelHTML();
-  return h || `<div class="card" style="text-align:center;padding:34px 22px">
+  return (h ? h + balPartnerHTML((state.serverUser||{}).id) : '') || `<div class="card" style="text-align:center;padding:34px 22px">
     <div class="gt3">클럽에 들어오면 보여요</div>
     <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
       내 등급과 클럽 성적으로<br>짝이 어떻게 맞춰지는지 알려드려요.</p></div>`;
@@ -15094,6 +15255,10 @@ function clubTabMe(){
       <span class="mi-arr${open?' open':''}">›</span></div>`;
     if(open) h+=`<div style="padding-top:10px">${M.days.map(dayCard).join('')}</div>`;
   });
+  /* 누구와 자주 묶였는지 — 승률만 보면 파트너 덕인지 알 수 없다.
+     내 화면에서는 내 것을, 멤버를 눌러 들어왔으면 그 사람 것을 본다. */
+  h += balPartnerHTML(uid, isMe ? '누구와 자주 묶였나요'
+    : `${esc((CLUBME_WHO||{}).name||'')} 님은 누구와 자주 묶였나요`);
   return h;
 }
 /* 멤버를 누르면 그 사람 기준으로 같은 화면을 연다 */
