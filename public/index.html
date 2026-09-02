@@ -13814,6 +13814,13 @@ function balForm(){
 /* 경기가 쌓일수록 성적을 믿는다 — 0~3경기는 거의 안 보고, 30경기면 거의 다 본다 */
 function balTrust(n){ return Math.max(0, Math.min(1, (n||0)/30)); }
 /* 등급 안에서의 자리 — 0(아래) ~ 1(위). 성적이 없으면 구력 개월로 가른다. */
+/* 이 클럽이 월례대회 조를 쓰는가 — 아무도 조가 없으면 안 쓰는 클럽이다.
+   그때는 조 항목을 빼고 그 몫을 성적에 얹는다. 다 같이 0점을 주면
+   총점 상한만 85로 내려가고 아무것도 가려내지 못한다. */
+function balUsesTier(){
+  const t=(typeof tgData==='function') ? tgData() : null;
+  return !!(t && t.groups && Object.keys(t.groups).length);
+}
 function balSeat(p){
   const code = memberGradeCode(p) || 'C2';
   const base = gradeStepBase(code);
@@ -13828,14 +13835,16 @@ function balSeat(p){
      <조는 어디 갔지>가 된다. 조는 한 달에 한 번 바뀌고 성적은 매 모임 쌓이므로
      무게는 성적:조 = 30:15 로 총점과 같은 비율을 쓴다. */
   const tg = tgOf(p.user_id||p.id);
+  const uses = balUsesTier();
   let tSeat = null;
-  if(tg){
-    const i = TG_NAMES.indexOf(tg);
-    tSeat = TG_NAMES.length<2 ? 0.5 : 1 - i/(TG_NAMES.length-1);
+  if(uses){
+    /* 조를 쓰는 클럽인데 내 조가 없으면 아직 배정을 못 받은 것이다 — 맨 아래로 본다 */
+    const i = tg ? TG_NAMES.indexOf(tg) : -1;
+    tSeat = i<0 ? 0 : (TG_NAMES.length<2 ? 1 : 1 - i/(TG_NAMES.length-1));
     const w = BAL_W.tier/(BAL_W.form+BAL_W.tier);        // 조가 갖는 몫
     seat = seat*(1-w) + tSeat*w;
   }
-  return { base, seat, code, start, tg, tSeat,
+  return { base, seat, code, start, tg, tSeat, uses,
            games:f.g||0, w:f.w||0, l:f.l||0, trust:t, wr };
 }
 /* 한 사람의 최종 값 — 등급이 큰 칸을 정하고, 성적이 칸 안 자리를 정한다 */
@@ -13876,10 +13885,14 @@ function balPanelHTML(){
   const gRank=gIdx<0?0:(GRADE_INFO.length-1-gIdx)/(GRADE_INFO.length-1);
   const pG=Math.round(gRank*BAL_W.grade);
   /* 자리 하나에 성적과 조가 함께 들어 있다 — 화면에는 각각 얼마인지 나눠 보여준다 */
-  const wT=BAL_W.tier/(BAL_W.form+BAL_W.tier);
-  const pT=Math.round((s.tSeat!=null? s.tSeat : 0.5)*BAL_W.tier);
-  const pF=Math.max(0, val-pG-pT);
+  const useT = s.uses;                                   // 조를 쓰는 클럽인가
+  const formMax = useT ? BAL_W.form : BAL_W.form + BAL_W.tier;
+  const pT = useT ? Math.round((s.tSeat!=null? s.tSeat : 0)*BAL_W.tier) : 0;
+  const pF = Math.max(0, val-pG-pT);
   const a1=(pG/Math.max(1,val))*100, a2=a1+(pF/Math.max(1,val))*100;
+  const donut = useT
+    ? `conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% ${a2}%, #dce0e4 ${a2}% 100%)`
+    : `conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% 100%)`;
   /* 등급표와 내 범위 — 왜 이 점수인지, 어디까지 오르내리는지 */
   const gPt = g => { const i=GRADE_INFO.findIndex(x=>x.g===g);
     return Math.round((i<0?0:(GRADE_INFO.length-1-i)/(GRADE_INFO.length-1))*BAL_W.grade); };
@@ -13887,13 +13900,25 @@ function balPanelHTML(){
   const lo = myG, hi = myG + BAL_W.form + BAL_W.tier;
   const wr = s.games ? Math.round(s.w/s.games*100) : 0;
   const tgList=TG_NAMES;
+  /* 조가 없으면 0점 — 조를 쓰는 클럽에서 배정을 못 받은 상태다.
+     조를 아예 안 쓰는 클럽이면 이 줄 자체가 화면에 안 나온다. */
   const tgPt = t => { const i=t?tgList.indexOf(t):-1;
-    return i<0 ? Math.round(BAL_W.tier/2)
-               : Math.round((tgList.length<2?0.5:1-i/(tgList.length-1))*BAL_W.tier); };
+    return i<0 ? 0
+               : Math.round((tgList.length<2?1:1-i/(tgList.length-1))*BAL_W.tier); };
   const nextG = GRADE_INFO[Math.max(0, GRADE_INFO.findIndex(x=>x.g===s.base)-1)];
   const pos = v => Math.max(0, Math.min(100, v));
-  const EX=[['김서준',78],['이하윤',72],['박도윤',64],['정시우',58],['강하은',50],['한지안',44]];
-  const shade=['#191f28','#3d434b','#6b737c','#8b95a1','#b7bec6','#d5d9de'];
+  /* 예시는 고정값이다 — 실제 회원 이름을 쓰면 자기 점수가 공개된 것처럼 보인다.
+     숫자가 어디서 나왔는지 보이도록 구력·전적·조를 함께 적는다. */
+  const EX=[
+    {n:'김서준', g:'S', yr:'12년',   w:18, l:6,  wr:75, tg:'A', v:78},
+    {n:'이하윤', g:'A', yr:'7년',    w:20, l:8,  wr:71, tg:'A', v:72},
+    {n:'박도윤', g:'A', yr:'5년',    w:14, l:14, wr:50, tg:'B', v:64},
+    {n:'정시우', g:'B', yr:'4년',    w:16, l:8,  wr:67, tg:'A', v:58},
+    {n:'강하은', g:'B', yr:'2년',    w:9,  l:15, wr:38, tg:'B', v:50},
+    {n:'한지안', g:'C', yr:'10개월', w:11, l:9,  wr:55, tg:'C', v:44}];
+  const EXT=[
+    {a:'김서준 · 한지안', ay:'6년 5개월', b:'박도윤 · 정시우', by:'4년 6개월', pt:122},
+    {a:'이하윤 · 강하은', ay:'4년 6개월', b:'김서준 · 정시우', by:'8년',      pt:122}];
   /* 우리 클럽 성적으로만 본 실력이 몇 등급쯤인지 — 등급을 바꾸는 게 아니라
      같은 자를 빌려 말하는 것이다. 그래서 <A등급>이 아니라 <A 수준>이라 쓴다. */
   const clubLevel = (()=>{
@@ -13947,12 +13972,12 @@ function balPanelHTML(){
           s.trust<1?`아직 ${s.games}경기라 더 치면 자리가 또렷해져요`:'대진에서는 이 자리로 짝을 맞춰요'}</span>`}</div>
     <div style="border-top:1px solid #f4f5f7;margin-top:18px;padding-top:16px">
       <div style="font-size:13px;font-weight:600">이 둘은 왜 다른가요</div>
-      ${[['구력 등급','얼마나 오래 쳤는지예요<br>시간이 지나야 올라가요'],
-         ['대진 등급','이 클럽에서 얼마나 잘 쳤는지예요<br>다음 모임에 바뀔 수 있어요'],
-         ['클럽을 옮기면','구력 등급만 따라가요']].map(([t,d],i)=>`
-        <div style="display:flex;align-items:baseline;gap:12px;padding:12px 0;
+      ${[[gi.c,'구력 등급','얼마나 오래 쳤는지예요<br>시간이 지나야 올라가요'],
+         ['var(--coral-d)','대진 등급','이 클럽에서 얼마나 잘 쳤는지예요<br>다음 모임에 바뀔 수 있어요'],
+         ['var(--lgray)','클럽을 옮기면','구력 등급만 따라가요']].map(([c,t,d],i)=>`
+        <div style="display:flex;align-items:baseline;gap:12px;padding:13px 0;
           ${i<2?'border-bottom:1px solid #f4f5f7':''}">
-          <b style="flex:none;width:96px;font-size:12.5px;font-weight:600">${t}</b>
+          <b style="flex:none;width:76px;font-size:12.5px;font-weight:600;color:${c}">${t}</b>
           <span style="flex:1;font-size:12.5px;color:var(--gray);line-height:1.65">${d}</span></div>`).join('')}
     </div>
     <div class="hint" style="margin-top:16px">이 값은 대진에만 써요 · 멤버 목록과 순위에는 나오지 않아요</div>
@@ -13991,15 +14016,16 @@ function balPanelHTML(){
     <div class="ch" style="font-size:15px;margin:0">100점을 이렇게 나눠요</div>
     <div style="display:flex;align-items:center;gap:20px;margin-top:16px">
       <div style="flex:none;width:96px;height:96px;border-radius:50%;
-        background:conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% ${a2}%, #dce0e4 ${a2}% 100%);
+        background:${donut};
         display:flex;align-items:center;justify-content:center">
         <span style="width:60px;height:60px;border-radius:50%;background:#fff;display:flex;
           flex-direction:column;align-items:center;justify-content:center">
           <b style="font-size:19px;font-weight:700;letter-spacing:-.04em">${val}</b>
           <span style="font-size:10px;color:var(--lgray)">점</span></span></div>
       <div style="flex:1;min-width:0">
-        ${[[gi.c,'등급',s.base+'등급',pG],[ '#f1631a','클럽 성적',wl,pF],
-           ['#dce0e4','월례대회 조',tg?tg+'조':'없음',pT]].map(([c,l,sub,v])=>`
+        ${[[gi.c,'등급',s.base+'등급',pG],['#f1631a','클럽 성적',wl,pF]]
+          .concat(useT?[['#dce0e4','월례대회 조',tg?tg+'조':'아직 없어요',pT]]:[])
+          .map(([c,l,sub,v])=>`
           <div style="display:flex;align-items:center;gap:9px;margin-top:9px">
             <span style="width:8px;height:8px;border-radius:2px;background:${c};flex:none"></span>
             <span style="flex:1;font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;
@@ -14028,41 +14054,45 @@ function balPanelHTML(){
   </div>
 
   <div class="card" style="margin-top:10px">
-    <div class="ch" style="font-size:15px;margin:0">어디까지 올라갈까요</div>
+    <div class="ch" style="font-size:15px;margin:0">어디까지 올라갈 수 있을까요</div>
     <div class="hint" style="margin-top:4px">${s.base}등급이면 <b>${lo}점에서 ${hi}점</b> 사이에 있어요</div>
     <div style="position:relative;height:10px;border-radius:5px;background:#f2f4f6;margin-top:20px;overflow:hidden">
       <span style="position:absolute;left:${lo}%;right:${100-hi}%;top:0;bottom:0;background:${gi.bg}"></span>
       <span style="position:absolute;left:${lo}%;top:0;bottom:0;width:${Math.max(0,val-lo)}%;background:${gi.c}"></span>
-      <span style="position:absolute;left:${pos(val)}%;top:0;bottom:0;width:2px;background:var(--ink)"></span>
+      <span style="position:absolute;left:${pos(val)}%;top:0;bottom:0;width:2px;background:var(--coral)"></span>
     </div>
     <div style="position:relative;height:20px;margin-top:9px;font-size:11px">
       <span style="position:absolute;left:0;color:var(--lgray)">0</span>
       <span style="position:absolute;left:${lo}%;transform:translateX(-50%);color:var(--gray);white-space:nowrap">최소 <b style="color:#4e5968">${lo}</b></span>
-      <span style="position:absolute;left:${pos(val)}%;transform:translateX(-50%);white-space:nowrap">지금 <b>${val}</b></span>
+      <span style="position:absolute;left:${pos(val)}%;transform:translateX(-50%);white-space:nowrap;color:var(--coral-d)">지금 <b>${val}</b></span>
       <span style="position:absolute;left:${hi}%;transform:translateX(-50%);color:${gi.c};white-space:nowrap">최대 <b>${hi}</b></span>
       <span style="position:absolute;right:0;color:var(--lgray)">100</span>
     </div>
-    <div style="border-top:1px solid #f4f5f7;margin-top:16px;padding-top:16px">
-      <div style="display:flex;align-items:baseline;gap:12px">
-        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:var(--coral-d)">성적</b>
-        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">지금 <b>${pF}점</b>${
-          s.games?` · ${s.games}경기 승률 ${wr}%`:' · 아직 경기 없음'}<br>
-          <span style="color:var(--gray)">승률 100%면 ${BAL_W.form}점 · 0%면 0점${
-            s.trust<1?`<br>30경기가 되면 성적이 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}</span></span>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
-        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:var(--gray)">조</b>
-        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">${
-          tg?`${tg}조라 <b>${tgPt(tg)}점</b>`:`조가 없어 <b>${tgPt(null)}점</b>`}<br>
-          <span style="color:var(--gray)">${tgList.map(t=>`${t}조 ${tgPt(t)}점`).join(' · ')}</span></span>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
-        <b style="flex:none;width:60px;font-size:12.5px;font-weight:600;color:${gi.c}">등급</b>
-        <span style="flex:1;font-size:12.5px;color:#4e5968;line-height:1.6">${s.base}등급이라 <b>${myG}점</b> · 안 변해요<br>
-          <span style="color:var(--gray)">${nextG && nextG.g!==s.base
-            ? `${nextG.g}등급은 구력 ${esc(nextG.label)} · ${gPt(nextG.g)}점`
-            : '가장 위 등급이에요'}</span></span>
-      </div>
+    <div style="border-top:1px solid #f4f5f7;margin-top:16px;padding-top:6px">
+      ${[
+        { l:'성적', c:'var(--coral)', now:pF, max:formMax,
+          sub: s.games ? `${s.games}경기 · 승률 ${wr}%${
+                 s.trust<1?` · 30경기가 되면 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}`
+                       : '아직 경기가 없어요 · 치면 올라가요' },
+        ...(useT?[{ l:'조', c:'#c2c8ce', now:pT, max:BAL_W.tier,
+          sub: (tg?`${tg}조예요`:'아직 조가 없어요 · 배정받으면 올라가요')
+               + ' · ' + tgList.map(t=>`${t}조 ${tgPt(t)}`).join(' · ') }]:[]),
+        { l:'등급', c:gi.c, now:myG, max:BAL_W.grade,
+          sub: `${s.base}등급 · 구력으로만 정해져요${nextG && nextG.g!==s.base
+                 ? ` · ${nextG.g}등급은 ${esc(nextG.label)}에 ${gPt(nextG.g)}점` : ''}` }
+      ].map((r,i)=>`
+        <div style="padding:14px 0;${i<2?'border-bottom:1px solid #f4f5f7':''}">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <b style="flex:1;font-size:13px;font-weight:600">${r.l}</b>
+            <b style="font-size:15px;font-weight:700;letter-spacing:-.03em;color:${
+              r.now>=r.max?r.c:'var(--ink)'}">${r.now}</b>
+            <span style="font-size:11.5px;color:var(--lgray)">/ ${r.max}</span>
+          </div>
+          <div style="height:6px;border-radius:3px;background:#f2f4f6;margin-top:8px;overflow:hidden">
+            <i style="display:block;height:100%;border-radius:3px;
+              width:${Math.round(r.now/r.max*100)}%;background:${r.c}"></i></div>
+          <div style="font-size:11.5px;color:var(--gray);margin-top:8px;line-height:1.6">${r.sub}</div>
+        </div>`).join('')}
     </div>
     ${nextG && nextG.g!==s.base ? `<div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;
       margin-top:16px;font-size:12px;color:#4e5968;line-height:1.7">
@@ -14071,26 +14101,44 @@ function balPanelHTML(){
   </div>
 
   <div class="card" style="margin-top:10px">
-    <div class="ch" style="font-size:15px;margin:0">여섯 명이면 이렇게</div>
-    <div class="hint" style="margin-top:4px">값이 높은 사람과 낮은 사람을 한 팀으로 묶어요 · 아래는 예시예요</div>
-    <div style="display:flex;justify-content:space-between;gap:5px;margin-top:16px">
-      ${EX.map(([n,v],i)=>`<span style="flex:1;text-align:center">
-        <span style="display:block;width:40px;height:40px;border-radius:50%;background:${shade[i]};
-          color:#fff;margin:0 auto;font-size:12.5px;line-height:40px">${n[0]}</span>
-        <span style="display:block;font-size:11px;color:var(--gray);margin-top:6px">${n}</span>
-        <b style="display:block;font-size:11.5px;font-weight:600;margin-top:1px">${v}</b></span>`).join('')}
+    <div class="ch" style="font-size:15px;margin:0">예시로 보면</div>
+    <div class="hint" style="margin-top:4px">값이 높은 사람과 낮은 사람을 한 팀으로 묶어요</div>
+    <div style="margin-top:14px">
+      ${EX.map((x,i)=>{
+        const g=gradeInfo(x.g);
+        return `<div style="display:flex;align-items:center;gap:11px;padding:12px 0;
+          ${i<EX.length-1?'border-bottom:1px solid #f4f5f7':''}">
+          <span style="flex:none;width:36px;height:36px;border-radius:50%;background:${g.bg};
+            color:${g.c};display:flex;align-items:center;justify-content:center;
+            font-size:12.5px;font-weight:600">${x.n[0]}</span>
+          <span style="flex:1;min-width:0">
+            <span style="display:flex;align-items:center;gap:6px">
+              <b style="font-size:13px;font-weight:600">${x.n}</b>
+              <span style="font-size:10.5px;color:${g.c};background:${g.bg};border-radius:5px;
+                padding:2px 6px">${x.g} ${esc(g.desc.split(' · ')[0])}</span></span>
+            <span style="display:block;font-size:11.5px;color:var(--gray);margin-top:4px">구력 ${
+              x.yr} · ${x.w}승 ${x.l}패 ${x.wr}% · ${x.tg}조</span></span>
+          <b style="flex:none;font-size:15px;font-weight:700;letter-spacing:-.03em">${x.v}<em
+            style="font-style:normal;font-size:11px;color:var(--lgray);margin-left:2px">점</em></b>
+        </div>`; }).join('')}
     </div>
-    <div style="text-align:center;font-size:15px;color:#d5d9de;margin:12px 0 10px">↓</div>
-    <div style="border:1px solid var(--line);border-radius:13px;padding:14px 15px">
-      ${[['김서준 · 한지안','박도윤 · 정시우'],['이하윤 · 강하은','김서준 · 정시우']].map((r,i)=>`
-        <div style="display:flex;align-items:center;gap:9px;${i?'border-top:1px solid #f4f5f7;margin-top:12px;padding-top:12px':''}">
-          <span style="flex:1;font-size:12.5px;font-weight:600">${r[0]}</span>
-          <b style="font-size:12.5px;font-weight:600;color:var(--coral-d)">122</b>
-          <span style="font-size:11px;color:var(--lgray)">vs</span>
-          <b style="font-size:12.5px;font-weight:600;color:var(--coral-d)">122</b>
-          <span style="flex:1;text-align:right;font-size:12.5px;font-weight:600">${r[1]}</span></div>`).join('')}
+    <div style="text-align:center;font-size:14px;color:#d5d9de;margin:12px 0">↓</div>
+    <div style="border:1px solid var(--line);border-radius:13px;padding:15px 16px">
+      ${EXT.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;
+        ${i?'border-top:1px solid #f4f5f7;margin-top:14px;padding-top:14px':''}">
+        <span style="flex:1;min-width:0">
+          <b style="display:block;font-size:12.5px;font-weight:600">${r.a}</b>
+          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.ay}</span></span>
+        <span style="flex:none;text-align:center">
+          <b style="display:block;font-size:13px;font-weight:700;color:var(--coral-d)">${r.pt}점</b>
+          <span style="display:block;font-size:10.5px;color:#c2c8ce;margin-top:3px">vs</span></span>
+        <span style="flex:1;min-width:0;text-align:right">
+          <b style="display:block;font-size:12.5px;font-weight:600">${r.b}</b>
+          <span style="display:block;font-size:11px;color:var(--lgray);margin-top:3px">평균 구력 ${r.by}</span></span>
+      </div>`).join('')}
     </div>
-    <div class="hint" style="margin-top:12px">양쪽 합이 같아지도록 묶어요 · 다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
+    <div class="hint" style="margin-top:12px">구력은 달라도 <b>양쪽 합이 같아지도록</b> 묶어요 ·
+      다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
   </div>`;
 }
 /* ── 누구와 자주 묶였나 ────────────────────────────────────────────
