@@ -9906,6 +9906,8 @@ function renderClub(){
     if(CS==='log'){     state.clubSub='bracket';
       h+=clubTabBracket(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='me'){      h+=clubTabMe();      document.getElementById('s-club').innerHTML=h; return; }
+    /* 짝 맞춤 규칙 — 대진 탭은 오늘 대진을 보는 곳이라 규칙이 섞이면 둘 다 흐려진다 */
+    if(CS==='bal'){     h+=clubTabBalance(); document.getElementById('s-club').innerHTML=h; return; }
     if(CS==='info'){    h+=clubTabInfo();    document.getElementById('s-club').innerHTML=h; return; }
     // ── 이하 '일정' 탭 ──
     /* '이번 주 모임' 카드는 아래 '이번 주 일정'과 같은 내용이라 뺐다 */
@@ -13449,8 +13451,10 @@ function clubHeroTabs(){
      한 줄을 누르면 그날 순위가 대진 아래에 이어진다 — 같은 것을 두 번 보여주고 있었다. */
   /* 이름을 짧게 — <내 정보>와 <클럽 정보>는 글자가 닮아 매번 다시 읽어야 했다.
      각각 <내 기록>·<소개>로 부른다. 일곱 개가 한 화면에 들어온다. */
+  /* 탭 이름은 붙여 쓴다 — 여덟 개가 한 줄에 들어와야 한다.
+     띄어 쓰면 그만큼 폭을 먹어 마지막 탭이 밀려난다. */
   const tabs=[['sched','일정'],['bracket','대진'],['rec','랭킹'],['mem','멤버'],
-              ['news','소식'],['me','내 기록'],['info','소개']];
+              ['news','소식'],['me','내기록'],['bal','대진기준'],['info','클럽소개']];
   /* 오늘 대진이 돌고 있으면 그 탭에만 점을 찍는다 */
   const liveTab=(()=>{ try{
     return (typeof CB2!=='undefined' && CB2 && CB2.date===ymd() && (CB2.games||[]).length)
@@ -13586,7 +13590,7 @@ function clubTabBracket(){
         done.forEach(b=>{ const mo=bkMonthOf(b.date);
           if(mo && mo!==mon){ mon=mo; out+=`<div class="xc-mo">${mo}월</div>`; }
           out+=pastRow(b); });
-        return out; })()}`:''}${(CB2_LIST||[]).length?qbNextHTML():''}${balPanelHTML()}`;
+        return out; })()}`:''}${(CB2_LIST||[]).length?qbNextHTML():''}`;
 }
 /* 삭제는 메뉴 안으로 — 진행 중인 대진 카드 옆에 휴지통이 늘 떠 있으면
    경기 도는 중에 잘못 눌러 그날 기록이 통째로 날아간다. */
@@ -13908,6 +13912,17 @@ function balPanelHTML(){
     </div>
     <div class="hint" style="margin-top:12px">양쪽 합이 같아지도록 묶어요 · 다음 회차엔 짝을 바꿔 같은 조합이 반복되지 않게 해요</div>
   </div>`;
+}
+function clubTabBalance(){
+  if(CLUB_ROSTER===null){ if(typeof loadClubRoster==='function') loadClubRoster();
+    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+  if(CLUBME_GAMES===null){ if(SERVER_OK && clubId()) loadClubMeGames(); else CLUBME_GAMES=[];
+    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+  const h=balPanelHTML();
+  return h || `<div class="card" style="text-align:center;padding:34px 22px">
+    <div class="gt3">클럽에 들어오면 보여요</div>
+    <p class="gt1 gmute" style="margin-top:7px;line-height:1.7">
+      내 등급과 클럽 성적으로<br>짝이 어떻게 맞춰지는지 알려드려요.</p></div>`;
 }
 function clubTabRecords(){
   /* 게스트 판단에 전체 명단이 필요하다 — 없으면 딱지를 아예 안 붙이므로 먼저 받아 둔다 */
@@ -22187,18 +22202,25 @@ function qbCardHTML(){
     const key='qbmoved_'+(clubId()||state.activeClub||'');
     if(n<4) return '';
     try{ if(localStorage.getItem(key)) return ''; }catch(e){ return ''; }
-    return `<div class="card" style="display:flex;align-items:flex-start;gap:12px;margin-top:10px">
-      <span style="width:34px;height:34px;border-radius:11px;background:#f2f4f6;
-        display:flex;align-items:center;justify-content:center;font-size:16px;flex:none">👥</span>
-      <span style="flex:1;min-width:0">
-        <b style="display:block;font-size:14px;font-weight:600">회원이 넷 이상이 됐어요</b>
-        <span style="display:block;font-size:12.5px;color:var(--gray);margin-top:4px;line-height:1.6">
-          이제 참석 체크만으로 대진이 짜여요. 앱에 없는 분은
-          <b style="color:var(--ink)">대진 짜기 → 게스트 추가</b>로 이름과 구력을 넣으면 돼요 ·
-          그분이 나중에 가입하면 기록이 이어져요</span>
-        <span onclick="try{localStorage.setItem('${key}','1')}catch(e){};renderClub()"
-          style="display:inline-block;font-size:12px;font-weight:600;color:var(--coral-d);
-          margin-top:9px;cursor:pointer">알겠어요</span></span></div>`;
+    /* 이모지 대신 선 아이콘 — 앱의 다른 아이콘과 결이 맞고, 기기마다 모양이 달라지지 않는다 */
+    return `<div class="card" style="margin-top:10px;padding:18px 17px">
+      <div style="display:flex;align-items:center;gap:11px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b95a1" stroke-width="1.6"
+          stroke-linecap="round" stroke-linejoin="round" style="flex:none" aria-hidden="true">
+          <circle cx="9" cy="10" r="3"/><circle cx="16" cy="8" r="2.6"/>
+          <path d="M4 20v-2.4A2.6 2.6 0 0 1 6.6 15h4.8a2.6 2.6 0 0 1 2.6 2.6V20"/>
+          <path d="M16.5 13H18a2.5 2.5 0 0 1 2.5 2.5V18"/></svg>
+        <b style="flex:1;font-size:14.5px;font-weight:600;letter-spacing:-.03em">회원이 넷 이상이 됐어요</b>
+      </div>
+      <div style="font-size:12.5px;color:var(--gray);margin-top:11px;line-height:1.7">
+        이제 참석 체크만으로 대진이 짜여요</div>
+      <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;margin-top:11px;
+        font-size:12px;color:#4e5968;line-height:1.7">앱에 없는 분은
+        <b style="font-weight:600;color:var(--ink)">대진 짜기 → 게스트 추가</b>로 이름과 구력을 넣으면 돼요<br>
+        그분이 나중에 가입하면 기록이 이어져요</div>
+      <span onclick="try{localStorage.setItem('${key}','1')}catch(e){};renderClub()"
+        style="display:inline-block;font-size:12.5px;font-weight:600;color:var(--coral-d);
+        margin-top:13px;cursor:pointer">알겠어요</span></div>`;
   }
   return `<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;margin-top:10px"
       onclick="qbOpen()">
