@@ -14217,7 +14217,6 @@ const MSK_MINGAMES = Math.round(BAL_FULL/2);   // 8경기
 const MSK_SURE     = BAL_FULL;                 // 이만큼이면 표본이 넉넉하다
 let MSK_SORT = 'gap';                   // gap · level · name
 let MSK_WHO  = null;                    // 상세를 보고 있는 회원
-let MSK_MORE = false;                   // 목록을 다 폈는가
 
 /* 실제 수준을 등급 사다리 한 칸으로.
    0~100 총점을 그대로 나누면 안 된다 — 그 값에는 등급 몫이 이미 섞여 있어서
@@ -14265,7 +14264,7 @@ function mskAll(){
 function openMemberSkill(){
   const cid=clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
-  MSK_WHO=null; MSK_MORE=false; MSK_SORT='gap';
+  MSK_WHO=null; MSK_SORT='gap';
   /* 명단도 경기 기록도 여기서 처음 필요할 수 있다.
      예전에는 없으면 토스트만 띄우고 빠져나와서, 화면이 흰 채로 남았다.
      둘 다 요청해 두고 <불러오는 중> 화면을 세운 뒤, 도착하면 스스로 다시 그린다. */
@@ -14286,110 +14285,138 @@ function mskWait(){
   }, 400);
 }
 
+function mskWhy(r){
+  /* 왜 이 값이 나왔는지 세 가지를 그대로 적는다.
+     <승률 75%인데 왜 안 오르지>는 나머지 둘을 안 보여줘서 생긴 물음이었다. */
+  const g   = balWeights(r.games);
+  const uses= balUsesTier();
+  const tg  = tgOf(r.uid);
+  return { w:g, uses, tg,
+           tgTxt: !uses ? '안 씀' : (tg ? `${tg}조` : '미배정') };
+}
+
 function renderMemberSkill(){
   const sheet=document.getElementById('sheet'); if(!sheet) return;
   const head=`<div class="sh-top"><h3>회원 실력</h3>
     <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   if(CLUB_ROSTER===null || CLUBME_GAMES===null){
-    sheet.innerHTML = head + `<div class="card" style="text-align:center;padding:34px 22px;
+    sheet.innerHTML = head + `<div style="text-align:center;padding:34px 22px;
       color:var(--lgray);font-weight:400">회원 명단과 경기 기록을 불러오는 중이에요</div>`;
     mskWait(); return;
   }
   if(!(CLUB_ROSTER||[]).length){
-    sheet.innerHTML = head + `<div class="card" style="text-align:center;padding:34px 22px;
+    sheet.innerHTML = head + `<div style="text-align:center;padding:34px 22px;
       color:var(--lgray);font-weight:400">아직 회원이 없어요</div>`;
     return;
   }
   if(MSK_WHO) return renderMskDetail();
-  const rows = mskAll();
+
+  const rows  = mskAll();
   const ready = rows.filter(x=>x.ready);
   const wait  = rows.filter(x=>!x.ready).sort((a,b)=>b.games-a.games);
-  const off   = ready.filter(x=>Math.abs(x.steps)>=2);   // 머리글에 쓸 <어긋난 사람> 수
+  const off   = ready.filter(x=>Math.abs(x.steps)>=2);
+  const uses  = balUsesTier();
 
-  /* 예전에는 목록에도 off 만 넣었다. 그래서 클럽에 한 명만 걸리면 그 한 명만 뜨고,
-     운영진 입장에서는 <왜 내 것만 보이지>가 된다. 이 화면은 명단 전체를 보는 곳이다.
-     어긋난 사람은 정렬로 위에 오게 하고, 목록에는 판단 가능한 전원을 담는다. */
   let list = ready.slice();
-  if(MSK_SORT==='level') list = ready.slice().sort((a,b)=>
+  if(MSK_SORT==='level') list.sort((a,b)=>
     GRADE_LADDER.indexOf(b.act)-GRADE_LADDER.indexOf(a.act));
-  else if(MSK_SORT==='name') list = ready.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  else if(MSK_SORT==='name') list.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
   else list.sort((a,b)=>Math.abs(b.steps)-Math.abs(a.steps));
-
   const SORTL={gap:'차이 큰 순', level:'실력 순', name:'이름 순'};
 
+  /* 카드로 감싸지 않는다. 명단은 끝까지 훑는 화면이라, 상자가 있으면
+     스크롤할 때마다 테두리가 끊겨 어디까지 봤는지 놓친다. */
   let h = head;
-  h+=`<div class="card" style="margin-top:2px">
+  h+=`<div style="padding:2px 2px 0">
     <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${
       off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
-    <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:6px">${
-      MSK_MINGAMES}경기를 넘긴 ${ready.length}명 기준 · 전체 ${rows.length}명</div>
+    <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:6px"
+      >${MSK_MINGAMES}경기를 넘긴 ${ready.length}명 · 전체 ${rows.length}명</div>
+  </div>`;
 
-    <div style="margin:18px 0 0;padding-top:15px;border-top:1px solid var(--line);
-      display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--lgray)"
-      onclick="mskCycleSort()"><span>${SORTL[MSK_SORT]}</span><span>⌄</span></div>`;
+  /* ── 기준표 ── 세 가지를 어떤 비율로 섞는지 먼저 밝힌다 */
+  h+=`<div style="margin-top:16px;padding:14px 0 0;border-top:1px solid var(--line)">
+    <div style="font-size:14px;font-weight:700;letter-spacing:-.03em">무엇으로 정해지나요</div>
+    <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.6;
+      word-break:keep-all;text-wrap:pretty">경기가 쌓일수록 구력의 몫이 성적으로 넘어가요.
+      ${uses?'월례조를 쓰는 클럽이라 조도 함께 봅니다.':'이 클럽은 월례조를 안 써서 구력과 성적만 봅니다.'}</div>
+    <div style="margin-top:12px">
+      ${[0, Math.round(BAL_FULL/2), BAL_FULL].map(n=>{
+        const W=balWeights(n);
+        return `<div style="display:flex;align-items:center;gap:9px;margin-top:7px">
+          <span style="flex:none;width:62px;font-size:13px;color:var(--gray);font-weight:400;
+            white-space:nowrap">${n===BAL_FULL?n+'경기~':n+'경기'}</span>
+          <span style="flex:1;display:flex;height:9px;border-radius:5px;overflow:hidden">
+            <i style="flex:${W.grade};background:#8b95a1"></i>
+            <i style="flex:${W.form};background:var(--coral)"></i>
+            ${uses?`<i style="flex:${W.tier};background:#dce0e4"></i>`:''}</span>
+          <span style="flex:none;font-size:13px;color:var(--lgray);font-weight:400;white-space:nowrap"
+            >구력 ${W.grade} · 성적 ${W.form}${uses?` · 조 ${W.tier}`:''}</span>
+        </div>`; }).join('')}
+    </div>
+  </div>`;
 
-  if(!list.length){
-    h+=`<div style="padding:22px 0 6px;font-size:14px;color:var(--lgray);font-weight:400
-      ">아직 보여드릴 회원이 없어요</div>`;
-  }
-  const SHOW = MSK_MORE ? list.length : 10;
-  list.slice(0,SHOW).forEach((x,i)=>{
+  h+=`<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--lgray)"
+    onclick="mskCycleSort()"><span>${SORTL[MSK_SORT]}</span><span>⌄</span></div>`;
+
+  if(!list.length)
+    h+=`<div style="padding:22px 0;font-size:14px;color:var(--lgray);font-weight:400"
+      >${MSK_MINGAMES}경기를 넘긴 회원이 아직 없어요</div>`;
+
+  list.forEach((x,i)=>{
+    const W=mskWhy(x);
     h+=`<div onclick="MSK_WHO='${esc(x.uid)}';renderMemberSkill()"
-      style="display:flex;align-items:baseline;padding:15px 0;cursor:pointer;${
-      i?'border-top:1px solid var(--line)':''}">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:16px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
-          text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
-        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:4px"
-          >${x.games}경기 · 승률 ${x.wr}%${
-          x.games<MSK_SURE?' · 표본 적음':''}</div>
-      </div>
-      <div style="text-align:right;margin-left:12px;white-space:nowrap">
-        <div style="font-size:16px">
+      style="padding:15px 0;cursor:pointer;border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:baseline">
+        <div style="flex:1;min-width:0;font-size:16px;font-weight:700;letter-spacing:-.03em;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
+        <div style="margin-left:12px;white-space:nowrap;font-size:16px">
           <span style="color:${mskColor(x.reg)}">${esc(x.reg)}</span>
           <span style="color:var(--lgray);margin:0 6px">→</span>
           <span style="color:${mskColor(x.act)};font-weight:700">${esc(x.act)}</span>
         </div>
-        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
-          >${mskGapText(x.steps)}</div>
-      </div></div>`;
+      </div>
+      <div style="display:flex;align-items:baseline;margin-top:5px;font-size:13px;
+        color:var(--lgray);font-weight:400">
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          >구력 ${esc(x.reg)} · 성적 ${x.games}경기 ${x.wr}%${
+          uses?` · 월례조 ${W.tgTxt}`:''}</div>
+        <div style="margin-left:10px;white-space:nowrap">${mskGapText(x.steps)}</div>
+      </div>
+      ${x.games<MSK_SURE?`<div style="font-size:13px;color:var(--lgray);font-weight:400;
+        margin-top:3px">표본 적음 · ${MSK_SURE}경기가 되면 성적이 온전히 반영돼요</div>`:''}
+      ${(uses && !W.tg)?`<div style="font-size:13px;color:var(--coral-d);font-weight:400;
+        margin-top:3px">월례조 미배정 · 조 몫 ${W.w.tier}%를 맨 아래로 계산했어요</div>`:''}
+    </div>`;
   });
-  if(list.length>SHOW)
-    h+=`<div onclick="MSK_MORE=true;renderMemberSkill()"
-      style="padding:15px 0 0;border-top:1px solid var(--line);text-align:center;
-      cursor:pointer;font-size:14px;color:var(--gray);font-weight:400"
-      >${list.length-SHOW}명 더 보기</div>`;
-  h+=`</div>`;
 
   if(wait.length){
-    h+=`<div class="card" style="margin-top:10px">
-      <div style="font-size:14px;font-weight:700;letter-spacing:-.03em">아직 판단 보류
+    h+=`<div style="margin-top:26px;padding-top:15px;border-top:1px solid var(--line)">
+      <div style="font-size:16px;font-weight:700;letter-spacing:-.03em">아직 판단 보류
         <span style="color:var(--lgray);font-weight:400">${wait.length}명</span></div>
-      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.6"
-        >${MSK_MINGAMES}경기는 뛰어야 실제 수준을 말할 수 있어요</div>`;
-    wait.slice(0,3).forEach(x=>{
-      h+=`<div style="display:flex;align-items:baseline;padding:13px 0;margin-top:0;
+      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
+        >${MSK_MINGAMES}경기는 뛰어야 실제 수준을 말할 수 있어요</div></div>`;
+    wait.forEach(x=>{
+      h+=`<div style="display:flex;align-items:baseline;padding:13px 0;
         border-top:1px solid var(--line)">
         <span style="flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;
           white-space:nowrap">${esc(x.name)}</span>
         <span style="font-size:15px;color:${mskColor(x.reg)};margin-right:11px">${esc(x.reg)}</span>
-        <span style="font-size:13px;color:var(--lgray);font-weight:400">${x.games}경기</span></div>`;
+        <span style="font-size:13px;color:var(--lgray);font-weight:400;white-space:nowrap"
+          >${x.games}경기</span></div>`;
     });
-    if(wait.length>3) h+=`<div style="padding:13px 0 0;border-top:1px solid var(--line);
-      text-align:center;font-size:14px;color:var(--gray);font-weight:400"
-      >${wait.length-3}명 더 있어요</div>`;
-    h+=`</div>`;
   }
 
-  h+=`<div class="note" style="text-align:left;margin-top:12px;line-height:1.65">
-    실제 수준은 참고용이에요. 등록 구력은 자동으로 바뀌지 않습니다.
-    이 화면은 <b>운영진에게만</b> 보입니다.</div>`;
+  h+=`<div style="margin-top:24px;padding-top:15px;border-top:1px solid var(--line);
+    font-size:13px;color:var(--lgray);font-weight:400;line-height:1.65;
+    word-break:keep-all;text-wrap:pretty">실제 수준은 참고용이에요. 등록 구력은 자동으로
+    바뀌지 않습니다. 이 화면은 <b style="font-weight:700">운영진에게만</b> 보입니다.</div>`;
 
-  document.getElementById('sheet').innerHTML=h;
+  sheet.innerHTML=h;
 }
 function mskCycleSort(){
   MSK_SORT = MSK_SORT==='gap' ? 'level' : MSK_SORT==='level' ? 'name' : 'gap';
-  MSK_MORE = false;
   renderMemberSkill();
 }
 
@@ -14418,7 +14445,7 @@ function renderMskDetail(){
   let h=`<div class="sh-top"><h3>${esc(me.name)}</h3>
     <div class="cl" role="button" tabindex="0" onclick="MSK_WHO=null;renderMemberSkill()">‹</div></div>`;
 
-  h+=`<div class="card" style="margin-top:2px">
+  h+=`<div style="padding:2px 2px 0">
     <div style="font-size:13px;color:var(--lgray);font-weight:400">등록 구력 → 실제 수준</div>
     <div style="display:flex;align-items:baseline;margin-top:8px">
       <span style="font-size:24px;letter-spacing:-.03em;color:${mskColor(me.reg)}">${esc(me.reg)}</span>
@@ -14434,7 +14461,7 @@ function renderMskDetail(){
   </div>`;
 
   if(mates.length){
-    h+=`<div class="card" style="margin-top:10px">
+    h+=`<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
       <div style="font-size:16px;font-weight:700;letter-spacing:-.03em">자주 묶인 사람</div>
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
         >승률이 실력인지 파트너 덕인지 갈려요</div>`;
@@ -14457,7 +14484,7 @@ function renderMskDetail(){
   }
 
   if(near.length){
-    h+=`<div class="card" style="margin-top:10px">
+    h+=`<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
       <div style="font-size:16px;font-weight:700;letter-spacing:-.03em"
         >비슷한 수준인데 아직 안 묶인 사람</div>
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
@@ -14486,7 +14513,7 @@ function balPartnerHTML(uid, title){
   const rel = v => { if(v==null||P.myRank==null) return '';
     const d=Math.round(v)-P.myRank;
     return d>0?`나보다 ${d}칸 위`:d<0?`나보다 ${-d}칸 아래`:'나와 같아요'; };
-  return `<div class="card" style="margin-top:10px">
+  return `<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
     <div class="ch" style="font-size:20px;margin:0">${title||'누구와 자주 묶였나요'}</div>
     <div class="hint" style="margin-top:4px">승률이 실력인지 파트너 덕인지 갈려요</div>
     <div style="margin-top:16px">
