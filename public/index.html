@@ -14058,9 +14058,6 @@ function balPanelHTML(){
     idx = Math.max(0, Math.min(GRADE_INFO.length-1, idx));
     return (GRADE_INFO[GRADE_INFO.length-1-idx]||{}).g || null;
   })();
-  const rankOfG = g => { const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-1-i; };
-  const gap = clubLevel ? rankOfG(clubLevel)-rankOfG(s.base) : 0;
-  const same = !clubLevel || gap===0;
   /* ── 대진 기준 · 재구성 ────────────────────────────────────────
      예전에는 카드가 다섯 장이었다. 그런데 2·3·4번이 같은 세 값(등급·성적·조)을
      지금 비율로 한 번, 경기 수에 따른 변화로 한 번, 내가 채운 만큼으로 또 한 번
@@ -14070,44 +14067,72 @@ function balPanelHTML(){
      이 화면에만 토스 눈금(TDS)을 먼저 적용한다.
        읽는 글 17 · 목록과 딱지 15 이하 · 제목 22 / 26
      나머지 화면은 아직 12~30 눈금이다. 여기서 판단해 보고 넓힌다. */
-  /* 세 몫의 색은 고정한다.
-     예전에는 <구력>에 그 사람 등급색을 썼는데, A등급 회원은 등급색도 코랄이라
-     구력과 성적이 같은 색으로 나왔다. 세 조각을 가르는 게 색인데 둘이 같으면 못 읽는다.
-     토스·당근이 쓰는 톤 — 채도를 낮춘 인디고 · 브랜드 코랄 · 민트. */
-  const W3 = { grade:'#6b7bf0', form:'var(--coral)', tier:'#35c4a8' };
-  const tsBody = 'font-size:17px;line-height:1.65';
+  /* 색은 코랄 하나. 나머지 둘은 회색 두 단계로 물러난다.
+     인디고·민트를 넣었더니 한 카드에 채도 높은 색이 셋이 됐고, 민트는 앱 어디에도
+     없는 색이라 이 카드만 낯설어졌다. 맞수는 코랄 하나로 강조하는 앱이다.
+     코랄이 곧 <성적>이라는 뜻을 갖고, 셋 중 무엇이 큰지가 색으로 바로 읽힌다.
+     구력에 그 사람 등급색을 쓰던 것도 이걸로 없어진다 — A등급 회원은 등급색도
+     코랄이라 구력과 성적이 같은 색으로 나왔었다. */
+  const W3 = { grade:'#c4cad2', form:'var(--coral)', tier:'#e6e9ed' };
+  /* 글자 단계 — 등급 30 · 수준 20 · 본문 15 · 라벨 13.
+     카드에서 가장 큰 것은 등급 글자 하나뿐이다. 도넛 가운데 점수는 24 로
+     한 단계 아래에 둔다 — 큰 것이 둘이면 시선이 갈린다. */
+  const tsBody = 'font-size:15px;line-height:1.7';
   const tsSub  = 'font-size:15px;line-height:1.6';
   const tsCap  = 'font-size:13px';
   return `
   <div class="card" style="margin-top:12px">
 
     <div style="${tsCap};color:var(--lgray)">대진에서 내 자리</div>
-    <div style="display:flex;align-items:baseline;gap:8px;margin-top:7px;flex-wrap:wrap">
-      <span style="font-size:22px;font-weight:700;letter-spacing:-.03em;white-space:nowrap">${
+    <!-- <1칸 위> 딱지는 뺐다. <A 수준>과 <구력 B>가 나란히 있으면 같은 말이고,
+         칸이 무엇인지 이 화면 어디에도 설명이 없었다. 코랄도 한 번 줄어든다.
+         한 줄에 크기가 셋이던 것을 둘(제목 · 곁말)로 줄인다. -->
+    <!-- 등급 글자만 30px. 카드에서 가장 큰 글자가 되어 제일 먼저 읽힌다.
+         굵기는 올리지 않는다 — Pretendard 가 CDN 으로 안 불려와 기기 기본 폰트로
+         떨어지므로, 800 을 줘도 기기마다 다르게 나온다. 크기로 세우는 편이 확실하다. -->
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:5px;flex-wrap:wrap">
+      <span style="font-weight:700;letter-spacing:-.05em;white-space:nowrap">${
         clubLevel
-          ? `<span style="color:${gradeInfo(clubLevel).c}">${clubLevel}</span> 수준`
-          : `<span style="color:${gi.c}">${s.base}</span>등급`}</span>
-      <span style="${tsSub};color:var(--gray);white-space:nowrap">구력은 ${s.base}</span>
-      ${!same?`<span style="margin-left:auto;${tsCap};font-weight:700;white-space:nowrap;
-        padding:3px 9px;border-radius:7px;background:var(--coral-s);color:var(--coral-d)"
-        >${Math.abs(gap)}칸 ${gap>0?'위':'아래'}</span>`:''}
+          ? `<span style="font-size:30px;color:${gradeInfo(clubLevel).c}">${clubLevel}</span
+             ><span style="font-size:20px"> 수준</span>`
+          : `<span style="font-size:30px;color:${gi.c}">${s.base}</span
+             ><span style="font-size:20px">등급</span>`}</span>
+      <span style="${tsSub};color:var(--gray);white-space:nowrap">구력 ${s.base} 등급</span>
     </div>
 
-    <!-- 점수(59점)는 뺐다 — 바로 아래 <구력 5 · 성적 34 · 조 20>이 같은 값이고,
-         59와 62의 차이는 경기 두 판이면 뒤집힌다. 숫자를 세우면 그 차이를
-         의미 있는 것으로 읽게 된다. 남기는 그림은 이 띠 하나다. -->
-    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;
-      background:var(--felt);margin-top:20px">
-      <i style="display:block;flex:${Math.max(0,pG)};background:${W3.grade}"></i>
-      <i style="display:block;flex:${Math.max(0,pF)};background:${W3.form}"></i>
-      ${useT?`<i style="display:block;flex:${Math.max(0,pT)};background:${W3.tier}"></i>`:''}
-    </div>
-    <div style="margin-top:9px;${tsCap};color:var(--gray)">
-      ${[[W3.grade,'구력',pG],[W3.form,'성적',pF],...(useT?[[W3.tier,'조',pT]]:[])].map(
-        ([c,t,v])=>`<span style="display:inline-flex;align-items:center;margin-right:14px;
-          white-space:nowrap"><i style="width:8px;height:8px;border-radius:2px;background:${c};
-          display:block;margin-right:5px"></i>${t} ${v}</span>`).join('')}
-    </div>
+    <!-- 링은 <100 중 몇을 채웠나>만 그린다.
+         조각 셋으로 쪼개면 구력 몫이 사라진다 — 구력 5점은 둘레의 5%인데
+         조각 사이 여백이 그보다 커서 점 하나만 남는다. 게다가 경기가 쌓일수록
+         구력 몫은 더 줄어드니 시간이 갈수록 심해진다.
+         쏠린 값을 파이로 쪼개면 작은 쪽은 늘 안 보인다. 세부는 옆 목록이 말한다. -->
+    ${(()=>{
+      const R=30, C=2*Math.PI*R, GAP=10;
+      const fill = Math.max(0, Math.min(100, val))/100 * C;
+      const rows = [[W3.form,'성적',pF],...(useT?[[W3.tier,'조',pT]]:[]),[W3.grade,'구력',pG]]
+        .filter(r=>r[2]>0).sort((a,b)=>b[2]-a[2]);
+      return `<div style="display:flex;align-items:center;margin-top:16px">
+        <svg width="86" height="86" viewBox="0 0 86 86" style="flex:none" aria-hidden="true">
+          <g transform="rotate(-90 43 43)" fill="none" stroke-width="12" stroke-linecap="round">
+            <circle cx="43" cy="43" r="${R}" stroke="var(--felt)"/>
+            ${fill>GAP?`<circle cx="43" cy="43" r="${R}" stroke="${W3.form}"
+              stroke-dasharray="${(fill-GAP).toFixed(1)} ${C.toFixed(1)}"
+              stroke-dashoffset="${(-GAP/2).toFixed(1)}"/>`:''}
+          </g>
+          <text x="43" y="43" text-anchor="middle" font-size="24" font-weight="700"
+            fill="var(--ink)" letter-spacing="-1">${val}</text>
+          <text x="43" y="58" text-anchor="middle" font-size="13"
+            fill="var(--lgray)">/ 100</text>
+        </svg>
+        <div style="flex:1;margin-left:18px;min-width:0">
+          ${rows.map(([c,t,v])=>`<div style="display:flex;align-items:center;padding:5px 0;
+            ${tsSub};font-weight:400">
+            <i style="flex:none;width:8px;height:8px;border-radius:50%;background:${c};
+              display:block;margin-right:9px"></i>
+            <span style="flex:1;color:var(--gray)">${t}</span>
+            <span>${v}</span></div>`).join('')}
+        </div>
+      </div>`;
+    })()}
 
     <!-- 범위 띠(최소 5 ~ 최대 85)는 뺐다. <어디까지 갈 수 있나>는 궁금한 이야기지만
          오늘 할 일을 바꾸지 않는다. 남은 그림은 위 구성 띠 하나뿐이다. -->
@@ -14118,47 +14143,28 @@ function balPanelHTML(){
         ? `${BAL_FULL}경기를 넘겨 이제 <b style="color:var(--ink)">성적이 자리를 정합니다</b>.`
         : `<b style="color:var(--ink)">구력이 짧아도 잘 치면</b> 위로 올라갈 수 있어요.`}</p>
 
-    <!-- 막대 넷(0·5·11·16경기)을 도넛 하나로 바꿨다. 여기서 알아야 할 것은
-         <지금 무엇을 제일 많이 보나> 하나뿐이고, 중간 두 줄은 같은 사실을 두 번 더
-         반복할 뿐이었다. 그림이 지금 상태만 그리므로 제목도 변화를 묻지 않는다.
-         조각 사이를 띄우고 끝을 둥글게 — 통짜 링은 경계가 색으로만 갈린다. -->
+    <!-- 점수 도넛이 카드 본문으로 올라갔으므로, 여기서는 <그 점수가 어떤 비율로
+         계산됐나>만 남긴다. 도넛을 또 그리면 같은 모양이 한 화면에 둘이 된다.
+         비율은 합이 100 인 값이라 띠 하나로 충분하다. -->
     <details style="margin-top:16px;padding-top:15px;border-top:1px solid var(--line)">
       <summary style="${tsSub};color:var(--gray);cursor:pointer;list-style:none;
         display:flex;align-items:center;justify-content:space-between">
-        <span>지금 무엇으로 정해지나요</span><span style="font-size:15px">⌄</span></summary>
+        <span>점수가 어떻게 나왔나요</span><span style="font-size:15px">⌄</span></summary>
 
       ${(()=>{
         const W=balWeights(s.games);
-        const segs=[[W.form,W3.form,'성적'],[W.grade,W3.grade,'구력'],
-                    ...(useT?[[W.tier,W3.tier,'조']]:[])];
-        /* 도넛은 원 하나에 여러 겹을 얹어 그린다. r·둘레·틈을 한 곳에서 정한다 */
-        const R=31, C=2*Math.PI*R, GAP=13;
-        const tot=segs.reduce((a,b)=>a+b[0],0)||1;
-        let at=0;
-        const rings=segs.map(([v,c])=>{
-          const L=v/tot*C, o=at; at+=L;
-          return L<=GAP ? '' : `<circle cx="45" cy="45" r="${R}" stroke="${c}"
-            stroke-dasharray="${(L-GAP).toFixed(1)} ${C.toFixed(1)}"
-            stroke-dashoffset="${(-(o+GAP/2)).toFixed(1)}"/>`;
-        }).join('');
-        const top=segs.slice().sort((a,b)=>b[0]-a[0])[0];
-        return `<div style="display:flex;align-items:center;margin-top:16px">
-          <svg width="90" height="90" viewBox="0 0 90 90" style="flex:none" aria-hidden="true">
-            <g transform="rotate(-90 45 45)" fill="none" stroke-width="13"
-              stroke-linecap="round">${rings}</g>
-            <text x="45" y="43" text-anchor="middle" font-size="20" font-weight="700"
-              fill="${top[1]}" letter-spacing="-1">${top[0]}</text>
-            <text x="45" y="57" text-anchor="middle" font-size="12"
-              fill="var(--lgray)">${top[2]}</text>
-          </svg>
-          <div style="flex:1;margin-left:18px;min-width:0">
-            ${segs.map(([v,c,t])=>`<div style="display:flex;align-items:center;
-              padding:5px 0;${tsSub};font-weight:400">
-              <i style="flex:none;width:8px;height:8px;border-radius:50%;background:${c};
-                display:block;margin-right:8px"></i>
-              <span style="flex:1;color:var(--gray)">${t}</span>
-              <span style="font-weight:700">${v}</span></div>`).join('')}
-          </div>
+        const segs=[[W.form,W3.form,'성적'],...(useT?[[W.tier,W3.tier,'조']]:[]),
+                    [W.grade,W3.grade,'구력']];
+        return `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;
+          background:var(--felt);margin-top:16px">
+          ${segs.map(([v,c])=>`<i style="display:block;flex:${Math.max(0,v)};
+            background:${c}"></i>`).join('')}
+        </div>
+        <div style="margin-top:9px;${tsCap};color:var(--gray);font-weight:400">
+          ${segs.map(([v,c,t])=>`<span style="display:inline-flex;align-items:center;
+            margin-right:14px;white-space:nowrap"><i style="width:8px;height:8px;
+            border-radius:2px;background:${c};display:block;margin-right:5px"></i>${t} ${v}%</span>`)
+            .join('')}
         </div>`;
       })()}
 
@@ -14552,9 +14558,11 @@ function balPartnerHTML(uid, title){
           ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
           <span style="flex:none;width:58px;font-size:16px;font-weight:400;overflow:hidden;
             text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
+          <!-- 게이지를 코랄로 두면 같은 길이 막대 셋이 연달아 주황 벽이 된다.
+               이 카드에서 코랄은 <성적> 하나만 뜻해야 하므로 회색으로 내린다. -->
           <span style="flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden">
             <i style="display:block;height:100%;border-radius:4px;width:${Math.round(m.n/max*100)}%;
-              background:var(--coral)"></i></span>
+              background:#c4cad2"></i></span>
           <span style="flex:none;width:36px;text-align:right;font-size:14px;font-weight:400;
             color:var(--gray)">${m.n}번</span>
         </div>`; }).join('')}
