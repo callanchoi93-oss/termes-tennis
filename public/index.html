@@ -4599,7 +4599,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.4-0902a';
+const BUILD='v1.1.5-0903a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -24057,7 +24057,12 @@ async function openTgSettings(){
   const used=TG_NAMES.filter(g=>cnt[g]);
   const total=Object.keys(t.groups||{}).length;
   const rosterN=(CLUB_ROSTER||[]).filter(r=>r.user_id).length;
-  const unass=(CLUB_ROSTER||[]).filter(r=>r.user_id && !t.groups[String(r.user_id)]).length;
+  /* 조가 하나도 없으면 전원이 <조 없는 회원>으로 잡힌다. 아직 안 쓰는 상태인데
+     경고가 떠서, 되돌리기를 눌러도 초기화가 안 된 것처럼 보였다.
+     이 경고는 <일부만 빠졌을 때> 쓸모가 있다 — 아무도 안 나뉜 상태에서는 숨긴다. */
+  const nGrouped=Object.keys(t.groups||{}).length;
+  const unass=!nGrouped ? 0
+    : (CLUB_ROSTER||[]).filter(r=>r.user_id && !t.groups[String(r.user_id)]).length;
 
   const step=(label,key)=>`<div class="tgrow">
     <span class="l">${label}</span>
@@ -24098,6 +24103,12 @@ async function openTgSettings(){
       <div class="gt1 gmute" style="margin-top:5px;line-height:1.7">
         대회가 끝나면 조 안에서 순위를 매기고,<br>위·아래 조와 이만큼 자리를 바꿔요.</div>
       <div style="margin-top:12px">${step('승격','promote')}${step('강등','relegate')}</div>
+      <!-- 조가 없을 때도 대진은 돌아간다. 그 사실을 말해주지 않으면
+           <조를 안 나눠서 대진이 안 되나> 하고 불필요하게 나누게 된다. -->
+      ${!nGrouped?`<div style="background:var(--felt);border-radius:12px;padding:12px 13px;margin-top:12px">
+        <div class="gt1" style="color:var(--gray);font-weight:400;line-height:1.6">아직 조가 없어요.
+          지금은 <b style="color:var(--ink);font-weight:700">구력과 성적</b>으로만 대진이 짜여요 ·
+          모두 같은 조건이에요</div></div>`:''}
       ${used.length>1?`<div style="background:var(--coral-s);border-radius:12px;padding:12px 13px;margin-top:12px">
         <div class="gt1" style="color:var(--coral-d);font-weight:400">${total}명 · ${used.length}개 조 기준</div>
         <div class="gt1" style="color:#8a5230;margin-top:4px">
@@ -24115,16 +24126,19 @@ async function openTgSettings(){
         <div style="width:19px;height:19px;border-radius:50%;background:#fff;position:absolute;top:3px;
           left:${t.skipFirst?'20px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div>
     <!-- 되돌리기는 맨 아래에, 조용하게 둔다. 자주 쓸 것이 아니라
-         <잘못 눌렀을 때 빠져나갈 길>이므로 눈에 먼저 띄면 안 된다. -->
+         <잘못 눌렀을 때 빠져나갈 길>이므로 눈에 먼저 띄면 안 된다.
+         이미 안 쓰는 상태면 되돌릴 것이 없으므로 줄 자체를 감춘다. -->
+    ${(nGrouped||t.seeded)?`
     <div style="padding:16px 2px 4px;border-top:1px solid var(--line);margin-top:4px">
       <div onclick="tgResetAll()" style="display:flex;align-items:center;gap:10px;
         cursor:pointer;padding:4px 0">
         <span class="gt2" style="flex:1;font-weight:400;color:var(--coral-d)"
-          >월례대회 안 쓰기</span>
+          >월례대회 초기화</span>
         <span style="color:#bec5cc;font-size:20px">›</span></div>
-      <div class="gt1 gmute" style="margin-top:4px;line-height:1.6">조와 승강 기록을 지우고
-        처음 상태로 되돌려요. 대진 기준에서도 조 항목이 사라져요.</div>
-    </div>`;
+      <div class="gt1 gmute" style="margin-top:4px;line-height:1.6">조와 승강 기록을 지워요.
+        모두 조가 없어지니 대진은 구력과 성적으로만 짜여요.
+        다시 나누면 언제든 쓸 수 있어요.</div>
+    </div>`:''}`;
   document.getElementById('ov').classList.add('on');
 }
 async function tgReseed(){
@@ -24138,15 +24152,16 @@ async function tgReseed(){
   const t=tgData(); const cnt={}; Object.values(t.groups||{}).forEach(g=>cnt[g]=(cnt[g]||0)+1);
   toast(done?`${Object.keys(cnt).length}개 조로 나눴어요 · ${done}명`:'조를 나누지 못했어요');
 }
-/* 월례대회를 아예 안 쓰는 상태로 되돌린다.
-   지금까지는 <등급으로 다시 나누기>만 있어서, 한 번 나누고 나면
-   조를 없앨 방법이 없었다. 시험 삼아 눌러본 클럽이 계속 조를 달고 다닌다.
-   조를 비우면 balUsesTier() 가 false 가 되어, 대진 기준에서도 조 항목이 사라진다. */
+/* 월례대회를 초기 상태로 되돌린다 — <안 쓴다>가 아니라 <아직 안 치렀다>이다.
+   지금까지는 <등급으로 다시 나누기>만 있어서, 한 번 나누고 나면 조를 없앨 방법이 없었다.
+   모두 조가 없으면 balUsesTier() 가 false 가 되어 조 항목이 계산에서 통째로 빠지고,
+   대진은 구력과 성적으로만 짜인다 — 아무도 조로 유불리를 안 받는 상태다.
+   위험한 것은 <일부만 조가 있는> 상태다. 그때는 조 없는 사람이 최하위로 계산돼 깎인다. */
 async function tgResetAll(){
   const t=tgData(); if(!t){ toast('클럽 정보를 불러오지 못했어요'); return; }
   const n=Object.keys(t.groups||{}).length;
-  if(!n && !t.seeded){ toast('아직 월례대회를 안 쓰고 있어요'); return; }
-  if(!await appConfirm(`월례대회를 처음 상태로 되돌릴까요?\n조 ${n}명분과 승강 기록이 사라져요.`)) return;
+  if(!n && !t.seeded){ toast('이미 초기 상태예요'); return; }
+  if(!await appConfirm(`월례대회를 초기화할까요?\n조 ${n}명분과 승강 기록이 사라져요.\n대진은 구력과 성적으로만 짜입니다.`)) return;
   t.groups={}; t.seeded=false;
   try{ saveMatsu(); }catch(e){}
   /* body 는 문자열이어야 한다 — api() 가 fetch 에 그대로 넘긴다.
@@ -24161,7 +24176,7 @@ async function tgResetAll(){
         promote:t.promote, relegate:t.relegate, skipFirst:t.skipFirst })});
   }catch(e){ ok=false; }
   await openTgSettings();
-  toast(ok ? '월례대회를 처음 상태로 되돌렸어요'
+  toast(ok ? '월례대회를 초기화했어요'
            : '기기에서는 지웠는데 서버 저장에 실패했어요 · 다시 시도해 주세요');
 }
 async function tgFillNow(){
