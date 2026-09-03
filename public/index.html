@@ -4816,6 +4816,11 @@ const UI_ICONS={
    전달받은 아이콘 시트(24 그리드 · 1.5 스트로크 · 둥근 끝단)와 같은 결로 그린다.
    이모지는 기기·OS마다 모양과 크기가 달라 화면 톤이 흔들린다. 선 아이콘은 그렇지 않다. */
 const LINE_ICONS = {
+  /* li() 는 이 사전만 읽는다 — UI_ICONS 에만 있는 이름을 주면 빈 네모가 나온다.
+     운영진 도구 타일에 필요한 셋을 같은 결(24 그리드 · 1.5 스트로크)로 채운다. */
+  card:'<rect x="3" y="5.5" width="18" height="13" rx="2.6"/><path d="M3 10h18"/><path d="M6.8 14.6h4"/>',
+  flag:'<path d="M6 21V4.4"/><path d="M6 5.2h9.6l-1.6 3.2 1.6 3.2H6"/>',
+  pencil:'<path d="M4 20h4l10.3-10.3a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14.6 6.4l3 3"/>',
   photo:   '<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M3.5 17.5l4.7-4.2a2 2 0 0 1 2.7 0l5.3 4.7M14.5 13.2l1.6-1.4a2 2 0 0 1 2.7 0l1.7 1.5"/>',
   calplus: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18M12 13.5v5M9.5 16h5"/>',
   calchk:  '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3.2v3.6M16 3.2v3.6M3.5 10h17"/><path d="M9.6 14.6l1.9 1.9 3.4-3.6"/>',
@@ -11954,8 +11959,7 @@ function openClubOps(){
       ${tool('회원 실력','등록 구력과 실제가 다른 회원','openMemberSkill()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
-      ${tool('클럽 기본 정보','모임 · 회비 · 게스트 · 가입 신청','openClubBasicEdit(1)')}
-      ${tool('회원 모집','모집 여부 · 게스트 조건','openRecruitOps()')}
+      ${tool('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날','openClubBasicEdit(1)')}
       ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
       ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
     </div>
@@ -12095,10 +12099,9 @@ function opIcon(t){
     case '클럽 소개':   return S('book');
     /* 아래 둘은 switch 에 없어서 default 의 별표로 떨어졌고,
        화면에서 별표 두 개가 나란히 붙었다 */
-    case '클럽 기본 정보': return S('idcard');
-    case '회원 모집':   return S('search');
+    case '클럽 기본 정보': return S('card');
     case '회원 실력':   return S('target');
-    case '클럽 이름 변경': return S('note');
+    case '클럽 이름 변경': return S('pencil');
     case '클럽 삭제':   return S('shield');
     default:            return S('star');
   }
@@ -14256,19 +14259,41 @@ function mskAll(){
 function openMemberSkill(){
   const cid=clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
-  if(!(CLUB_ROSTER||[]).length){ toast('회원 명단을 불러오는 중이에요'); return; }
-  /* 실제 수준은 클럽 경기 기록에서 나온다 — 아직 없으면 받아온 뒤 다시 그린다 */
-  if(CLUBME_GAMES===null){
-    loadClubMeGames();
-    document.getElementById('sheet').innerHTML =
-      `<div class="note" style="padding:40px 20px;text-align:center">경기 기록을 불러오는 중이에요…</div>`;
-    setTimeout(()=>{ if(document.body.classList.contains('ops-open')) renderMemberSkill(); }, 700);
-    return;
-  }
-  MSK_WHO=null; renderMemberSkill();
+  MSK_WHO=null;
+  /* 명단도 경기 기록도 여기서 처음 필요할 수 있다.
+     예전에는 없으면 토스트만 띄우고 빠져나와서, 화면이 흰 채로 남았다.
+     둘 다 요청해 두고 <불러오는 중> 화면을 세운 뒤, 도착하면 스스로 다시 그린다. */
+  if(CLUB_ROSTER===null && typeof loadClubRoster==='function') loadClubRoster();
+  if(CLUBME_GAMES===null) loadClubMeGames();
+  renderMemberSkill();
+}
+/* 둘 다 도착할 때까지 기다린다. 최대 8초 — 그 뒤에는 있는 것만으로 그린다. */
+function mskWait(){
+  if(window._mskT) return;
+  const t0=Date.now();
+  window._mskT=setInterval(()=>{
+    const done = CLUB_ROSTER!==null && CLUBME_GAMES!==null;
+    if(done || Date.now()-t0>8000){
+      clearInterval(window._mskT); window._mskT=0;
+      if(document.body.classList.contains('ops-open')) renderMemberSkill();
+    }
+  }, 400);
 }
 
 function renderMemberSkill(){
+  const sheet=document.getElementById('sheet'); if(!sheet) return;
+  const head=`<div class="sh-top"><h3>회원 실력</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+  if(CLUB_ROSTER===null || CLUBME_GAMES===null){
+    sheet.innerHTML = head + `<div class="card" style="text-align:center;padding:34px 22px;
+      color:var(--lgray);font-weight:400">회원 명단과 경기 기록을 불러오는 중이에요</div>`;
+    mskWait(); return;
+  }
+  if(!(CLUB_ROSTER||[]).length){
+    sheet.innerHTML = head + `<div class="card" style="text-align:center;padding:34px 22px;
+      color:var(--lgray);font-weight:400">아직 회원이 없어요</div>`;
+    return;
+  }
   if(MSK_WHO) return renderMskDetail();
   const rows = mskAll();
   const ready = rows.filter(x=>x.ready);
@@ -14283,9 +14308,7 @@ function renderMemberSkill(){
 
   const SORTL={gap:'차이 큰 순', level:'실력 순', name:'이름 순'};
 
-  let h=`<div class="sh-top"><h3>회원 실력</h3>
-    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
-
+  let h = head;
   h+=`<div class="card" style="margin-top:2px">
     <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${
       off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
