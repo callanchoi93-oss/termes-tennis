@@ -14110,7 +14110,7 @@ function balPanelHTML(){
     ${(()=>{
       const R=30, C=2*Math.PI*R, GAP=10;
       const fill = Math.max(0, Math.min(100, val))/100 * C;
-      const rows = [[W3.form,'성적',pF],...(useT?[[W3.tier,'조',pT]]:[]),[W3.grade,'구력',pG]]
+      const rows = [[W3.form,'성적',pF],...(useT?[[W3.tier,'월례대회',pT]]:[]),[W3.grade,'구력',pG]]
         .filter(r=>r[2]>0).sort((a,b)=>b[2]-a[2]);
       return `<div style="display:flex;align-items:center;margin-top:16px">
         <svg width="86" height="86" viewBox="0 0 86 86" style="flex:none" aria-hidden="true">
@@ -14155,7 +14155,7 @@ function balPanelHTML(){
 
       ${(()=>{
         const W=balWeights(s.games);
-        const segs=[[W.form,W3.form,'성적'],...(useT?[[W.tier,W3.tier,'조']]:[]),
+        const segs=[[W.form,W3.form,'성적'],...(useT?[[W.tier,W3.tier,'월례대회']]:[]),
                     [W.grade,W3.grade,'구력']];
         return `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;
           background:var(--felt);margin-top:16px">
@@ -14175,8 +14175,8 @@ function balPanelHTML(){
         <b style="color:var(--ink)">프로필의 ${s.base}등급은 그대로입니다.</b></p>
 
       ${useT?`<p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all">
-        ${s.tg?`<b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.`
-              :`아직 <b style="color:var(--ink)">조 배정 전</b>이에요.`}
+        ${s.tg?`월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.`
+              :`아직 <b style="color:var(--ink)">월례대회 조 배정 전</b>이에요.`}
         위 조일수록 많이 받습니다.</p>`:''}
     </details>
   </div>`;
@@ -14402,8 +14402,8 @@ function renderMemberSkill(){
       <span>무엇으로 정해지나요</span><span style="font-size:15px">⌄</span></summary>
     <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:12px;
       line-height:1.6;word-break:keep-all;text-wrap:pretty">경기가 쌓일수록 구력의 몫이
-      성적으로 넘어가요. ${uses?'월례조를 쓰는 클럽이라 조도 함께 봅니다.'
-                              :'이 클럽은 월례조를 안 써서 구력과 성적만 봅니다.'}</div>
+      성적으로 넘어가요. ${uses?'월례대회를 쓰는 클럽이라 조도 함께 봅니다.'
+                              :'이 클럽은 월례대회를 안 써서 구력과 성적만 봅니다.'}</div>
     <div style="margin-top:12px">
       ${[0, MSK_MINGAMES, BAL_FULL].map(n=>{
         const W=balWeights(n);
@@ -14418,7 +14418,7 @@ function renderMemberSkill(){
             white-space:nowrap">${W.grade}·${W.form}${uses?'·'+W.tier:''}</span>
         </div>`; }).join('')}
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:10px"
-        >구력 · 성적${uses?' · 월례조':''} 순서예요</div>
+        >구력 · 성적${uses?' · 월례대회':''} 순서예요</div>
     </div>
   </details>`;
 
@@ -14470,7 +14470,7 @@ function renderMskDetail(){
     <div class="cl" role="button" tabindex="0" onclick="MSK_WHO=null;renderMemberSkill()">‹</div></div>`;
 
   /* 목록과 같은 방식으로 — 실제 수준이 크고, 등록은 곁말이다.
-     여기서만 세 기준(구력·성적·월례조)을 펼친다. 목록에서는 훑는 데 방해가 됐다. */
+     여기서만 세 기준(구력·성적·월례대회)을 펼친다. 목록에서는 훑는 데 방해가 됐다. */
   const W = mskWhy(me);
   h+=`<div style="padding:2px 2px 0">
     <div style="font-size:13px;color:var(--lgray);font-weight:400">실제 수준</div>
@@ -14489,7 +14489,7 @@ function renderMskDetail(){
         <span style="flex:none;width:66px;color:var(--lgray)">성적</span>
         <span style="color:var(--gray)">${me.games}경기 · ${me.w}승 ${me.l}패 · ${me.wr}%</span></div>
       ${W.uses?`<div style="display:flex;padding:7px 0;font-size:14px;font-weight:400">
-        <span style="flex:none;width:66px;color:var(--lgray)">월례조</span>
+        <span style="flex:none;width:66px;color:var(--lgray)">월례대회</span>
         <span style="color:${W.tg?'var(--gray)':'var(--coral-d)'}">${W.tgTxt}${
           W.tg?'':` · 조 몫 ${W.w.tier}%를 맨 아래로 계산했어요`}</span></div>`:''}
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:8px"
