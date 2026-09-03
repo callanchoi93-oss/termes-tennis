@@ -5670,7 +5670,7 @@ function applyAuthUI(){
     if(SERVER_OK && !ready && CFG.name_login){
       // 카카오 키 전까지의 임시 입구 — 이름 + 간편 비밀번호
       fb.innerHTML = `
-        <input id="nlName" placeholder="이름 (실명 또는 닉네임)" maxlength="12" autocomplete="username" onkeydown="if(event.key==='Enter')nameLoginSrv()"
+        <input id="nlName" placeholder="이름 (실명 또는 닉네임)" maxlength="12" autocomplete="username" onkeydown="if(enterKey(event))nameLoginSrv()"
           style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-family:inherit;font-size:15px;background:#fff;margin-bottom:8px;text-align:center;font-weight:400">
         <label style="display:flex;align-items:flex-start;gap:8px;margin:2px 2px 10px;cursor:pointer">
           <input type="checkbox" id="nlAgree" style="margin-top:2px;accent-color:var(--coral)">
@@ -5699,6 +5699,15 @@ const ratingText = () => isPlaced() ? String(state.rating) : '—';
 const ratingSub  = () => isPlaced() ? '' : `배치 ${state.played||0}/${PLACEMENT_GAMES}`;
 
 /* 공용 헬퍼 */
+/* 한글 입력 중 Enter 는 <글자 완성>이지 <보내기>가 아니다.
+   조합 중에 눌린 Enter 를 전송으로 받으면 <민지야> <ㅈㄴ 웹앱> <앱> <사이즈> 처럼
+   낱말이 토막나서 나간다. isComposing 과 keyCode 229 를 둘 다 본다 —
+   기기·브라우저에 따라 한쪽만 올라오는 경우가 있다. */
+function enterKey(e){
+  if(!e || e.key!=='Enter') return false;
+  if(e.isComposing || e.keyCode===229 || e.which===229) return false;
+  return true;
+}
 function esc(t){ return String(t==null?'':t)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -14213,8 +14222,10 @@ function balPartner(uid){
       const t=mate[String(p.id)]||(mate[String(p.id)]={id:p.id,name:p.name,n:0,w:0});
       t.n++; if(diff>0) t.w++; });
     them.forEach(p=>{ if(!p.id) return;
-      const t=foe[String(p.id)]||(foe[String(p.id)]={id:p.id,name:p.name,n:0});
-      t.n++; });
+      /* 맞붙을 때의 승수도 센다 — 예전에는 횟수만 셌다.
+         <이 사람에게 이기나>는 화면에서 물어보는 질문인데 값이 없었다. */
+      const t=foe[String(p.id)]||(foe[String(p.id)]={id:p.id,name:p.name,n:0,w:0});
+      t.n++; if(diff>0) t.w++; });
   });
   if(!g) return null;
   /* 등급 순위를 숫자로 — 평균을 내려면 순서가 있어야 한다 */
@@ -14230,6 +14241,7 @@ function balPartner(uid){
     const i=Math.round(v); return (GRADE_INFO[GRADE_INFO.length-1-i]||{}).g||'—'; };
   return { g,w,d,l, wr:Math.round(w/g*100),
     mates:Object.values(mate).sort((a,b)=>b.n-a.n),
+    foes:Object.values(foe).sort((a,b)=>b.n-a.n),
     mateAvg:avg(mate), foeAvg:avg(foe),
     myRank:rankOf(me), gName };
 }
@@ -14558,38 +14570,58 @@ function renderMskDetail(){
 
 function balPartnerHTML(uid, title){
   const P=balPartner(uid); if(!P || P.g<3) return '';
-  const max=Math.max(1, ...P.mates.map(m=>m.n));
-  const diff = (P.mateAvg!=null && P.foeAvg!=null) ? P.mateAvg-P.foeAvg : 0;
+  /* 막대는 <승률>이다. 예전에는 횟수를 그려서 2번·2번·2번이 같은 길이로 늘어섰고,
+     눈이 갈 곳은 있는데 읽을 것이 없었다. 횟수는 옆에 숫자로 적는다.
+     같은 편과 상대는 색이 아니라 묶음 제목이 가른다 — 색은 등급에만 쓴다. */
+  const row=(m,i,arr)=>{
+    const wr = m.n ? Math.round((m.w||0)/m.n*100) : 0;
+    return `<div style="display:flex;align-items:center;gap:11px;padding:11px 0;
+      ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
+      <span style="flex:none;width:58px;font-size:15px;font-weight:400;overflow:hidden;
+        text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
+      <span style="flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden">
+        <i style="display:block;height:100%;border-radius:4px;width:${wr}%;
+          background:#8b95a1"></i></span>
+      <span style="flex:none;width:56px;text-align:right;font-size:13px;font-weight:400;
+        color:var(--lgray);white-space:nowrap">${m.n}번
+        <b style="color:var(--ink);font-weight:700">${m.w||0}승</b></span>
+    </div>`; };
+  const sec=t=>`<div style="font-size:13px;font-weight:700;color:var(--lgray);
+    letter-spacing:.02em;padding:14px 0 2px">${t}</div>`;
+
+  /* 평균 두 값이 이 카드의 답이다. 예전에는 <비슷했어요>라는 문장으로만 말했는데,
+     문장은 얼마나 비슷한지 말하지 않는다. 숫자 둘을 나란히 두면 바로 보인다.
+     등급 색은 글자에만 — 막대까지 칠하면 A(코랄)·C(초록)가 막대 색과 부딪힌다. */
+  const avgCell=(label,v)=>{
+    const g = v==null ? null : P.gName(v);
+    const c = g ? gradeInfo(g).c : 'var(--lgray)';
+    const rel = (v==null||P.myRank==null) ? ''
+      : (()=>{ const d=Math.round(v)-P.myRank;
+          return d>0?`나보다 ${d}칸 위`:d<0?`나보다 ${-d}칸 아래`:'나와 같아요'; })();
+    return `<div style="flex:1;min-width:0">
+      <div style="font-size:13px;color:var(--lgray);font-weight:400">${label}</div>
+      <div style="font-size:20px;font-weight:700;letter-spacing:-.04em;margin-top:3px">${
+        g ? `<span style="color:${c}">${g}</span
+            ><span style="font-size:13px;font-weight:400;color:var(--lgray)"> 등급</span>`
+          : `<span style="color:var(--lgray)">—</span>`}</div>
+      ${rel?`<div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:2px"
+        >${rel}</div>`:''}</div>`; };
+
   return `<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
-    <div class="ch" style="font-size:20px;margin:0">${title||'누구와 자주 묶였나요'}</div>
-    <div class="hint" style="margin-top:4px">승률이 실력인지 파트너 덕인지 갈려요</div>
-    <div style="margin-top:16px">
-      ${P.mates.slice(0,6).map((m,i,arr)=>{
-        /* 등급 배지는 뺐다 — 여섯 줄 중 다섯 줄이 같은 B등급이라
-           반복되는 순간 정보가 아니라 무늬가 된다.
-           게이지는 브랜드 코랄로. 이 목록에서 눈이 따라가야 할 것은 <횟수>다. */
-        return `<div style="display:flex;align-items:center;gap:11px;padding:11px 0;
-          ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
-          <span style="flex:none;width:58px;font-size:16px;font-weight:400;overflow:hidden;
-            text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
-          <!-- 게이지를 코랄로 두면 같은 길이 막대 셋이 연달아 주황 벽이 된다.
-               이 카드에서 코랄은 <성적> 하나만 뜻해야 하므로 회색으로 내린다. -->
-          <span style="flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden">
-            <i style="display:block;height:100%;border-radius:4px;width:${Math.round(m.n/max*100)}%;
-              background:#c4cad2"></i></span>
-          <span style="flex:none;width:36px;text-align:right;font-size:14px;font-weight:400;
-            color:var(--gray)">${m.n}번</span>
-        </div>`; }).join('')}
+    <div class="ch" style="font-size:20px;margin:0">${title||'누구와 뛰었나요'}</div>
+    <div class="hint" style="margin-top:4px">같은 편일 때와 맞붙을 때를 나눠서 봐요</div>
+
+    ${P.mates.length?sec(`같은 편 · ${P.mates.length}명`)+
+      P.mates.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
+    ${(P.foes||[]).length?sec(`맞붙은 상대 · ${P.foes.length}명`)+
+      P.foes.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
+
+    <div style="display:flex;gap:14px;margin-top:16px;padding-top:15px;
+      border-top:1px solid var(--line)">
+      ${avgCell('같은 편 평균', P.mateAvg)}
+      <div style="flex:none;width:1px;background:var(--line)"></div>
+      ${avgCell('상대 평균', P.foeAvg)}
     </div>
-    <!-- <파트너 평균 B등급 / 상대 평균 B등급> 카드 둘은 뺐다.
-         바로 아래 문장이 <파트너와 상대가 비슷했어요>라고 같은 말을 한 번 더 한다. -->
-    <div style="background:#f7f8f9;border-radius:11px;padding:13px 14px;margin-top:14px;
-      font-size:16px;color:#4e5968;line-height:1.75">${
-      diff>=0.5 ? `파트너가 상대보다 강했어요.<br>승률이 높은 이유가 실력만은 아닐 수 있어요.<br>
-        <span style="color:var(--gray)">성적이 반영되면 다음부터는 비슷한 파트너와 묶여요.</span>`
-      : diff<=-0.5 ? `상대가 파트너보다 강했어요.<br>어려운 대진이 많았어요.<br>
-        <span style="color:var(--gray)">성적이 반영되면 다음부터는 균형이 맞춰져요.</span>`
-      : `파트너와 상대가 비슷했어요.<br>승률을 실력으로 볼 수 있어요.`}</div>
   </div>`;
 }
 /* ── 시작 길잡이 ─────────────────────────────────────────────────
@@ -16828,7 +16860,7 @@ async function openFeedPost(id){
       <b style="color:var(--ink);font-size:13px">${esc(c.name)}</b>${memberTag(c.name)}<span>· ${timeAgo(c.created_at)}</span></div>
     <div style="font-size:15px;font-weight:400;line-height:1.55;margin-top:3px">${esc(c.body)}</div></div>`; });
   h+=`<div style="display:flex;gap:8px;margin-top:12px">
-    <input id="fcIn" placeholder="댓글 달기" maxlength="300" style="flex:1;border:1.5px solid var(--line);border-radius:13px;padding:12px 13px;font-family:inherit;font-size:15px" onkeydown="if(event.key==='Enter')sendFeedCmt(${p.id})">
+    <input id="fcIn" placeholder="댓글 달기" maxlength="300" style="flex:1;border:1.5px solid var(--line);border-radius:13px;padding:12px 13px;font-family:inherit;font-size:15px" onkeydown="if(enterKey(event))sendFeedCmt(${p.id})">
     <button class="btn sm" style="width:auto;padding:0 16px" onclick="sendFeedCmt(${p.id})">등록</button></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
@@ -22802,7 +22834,7 @@ function drawCB2Build(){
     <div class="ch" style="font-size:15px;margin-top:12px">${all.length?'게스트 추가':'이름으로 넣기'}</div>
     <div class="fld" style="margin-top:6px"><input id="cb2Gname" class="sel-in" placeholder="이름"
       style="width:100%" value="${esc(CB2_GTMP.cb2Gname||'')}"
-      onkeydown="if(event.key==='Enter'){event.preventDefault();cb2AddGuest()}"></div>
+      onkeydown="if(enterKey(event)){event.preventDefault();cb2AddGuest()}"></div>
     <div style="display:flex;gap:7px;margin-top:7px">
       <div style="flex:1;display:flex;gap:5px">${['남성','여성'].map(g=>
         `<span onclick="cb2GSex('${g}')" class="cb2sex${CB2_GSEX===g?' on':''}">${g[0]}</span>`).join('')}</div>
@@ -23197,7 +23229,7 @@ function qbDraw(){
     <div class="sd">회원이 앱에 없어도 지금 짤 수 있어요 · 나중에 가입하면 오늘 기록이 이어져요</div>
     <div class="fld"><label>오늘 나오는 사람</label>
       <input id="qbName" maxlength="12" placeholder="이름 적고 엔터"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();qbAdd()}"></div>
+        onkeydown="if(enterKey(event)){event.preventDefault();qbAdd()}"></div>
     <div class="hint" style="margin-top:6px">구력을 적으면 실력에 맞게 짜여요 · 안 적어도 돼요</div>
     ${N.length?`<div class="qbwrap">${N.map((p,i)=>`
       <span class="qbchip">
@@ -25917,7 +25949,7 @@ function drawEventDetail(){
     <div style="display:flex;gap:7px;align-items:center">
       <input id="evCmt" placeholder="${rp?'답글 남기기':'댓글 남기기'}" maxlength="300"
         style="flex:1;min-width:0;height:38px;box-sizing:border-box;font-weight:400;font-size:14px;padding:0 13px;border:1.5px solid #d7dce1;border-radius:11px;font-family:inherit;background:#fff"
-        onkeydown="if(event.key==='Enter')evAddComment()">
+        onkeydown="if(enterKey(event))evAddComment()">
       <button class="btn sm" style="width:auto;height:38px;padding:0 18px;font-weight:400;font-size:14px;background:${accent};flex:none;border-radius:11px" onclick="evAddComment()">등록</button></div>
   </div></div>`;
   const pg=document.getElementById('evPage');
@@ -32195,8 +32227,14 @@ async function loadRoomMsgs(){
 }
 function roomBubbles(msgs){
   let h='';
-  msgs.forEach(m=>{
-    if(m.me) h+=`<div class="msg me">${esc(m.t)}</div>${m.read?`<div class="msg-meta">읽음</div>`:''}`;
+  /* <읽음>은 내가 보낸 것 중 마지막 하나에만 붙인다.
+     읽은 메시지마다 붙이면 말풍선 열 개에 <읽음>이 열 번 나와, 대화가 아니라
+     영수증처럼 보인다. 앞의 것이 읽혔다는 사실은 뒤엣것이 읽혔으면 자동으로 안다. */
+  let lastRead=-1;
+  msgs.forEach((m,i)=>{ if(m.me && m.read) lastRead=i; });
+  msgs.forEach((m,i)=>{
+    if(m.me) h+=`<div class="msg me">${esc(m.t)}</div>${
+      i===lastRead?`<div class="msg-meta">읽음</div>`:''}`;
     else h+=`<div class="msg them">${esc(m.t)}</div>`;
   });
   if(!msgs.length) h=`<div class="note" style="text-align:left;margin:8px 4px">아직 대화가 없어요. 첫 메시지를 보내보세요.</div>`;
@@ -32220,7 +32258,7 @@ function renderRoom(){
   }
   let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">1:1 대화</div></div><span onclick="openReport('${String(name).replace(/'/g,'')}')" style="font-size:13px;color:var(--lgray);font-weight:400;cursor:pointer">⚠ 신고</span></div>`;
   h+=`<div class="msgs" id="msgsBox"></div>
-      <div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." maxlength="500" onkeydown="if(event.key==='Enter')sendChat()"><button onclick="sendChat()">전송</button></div>`;
+      <div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." maxlength="500" onkeydown="if(enterKey(event))sendChat()"><button onclick="sendChat()">전송</button></div>`;
   document.getElementById('s-chat').innerHTML=h;
   paintMsgs();
   const inp=document.getElementById('chatIn'); if(inp) inp.focus();
@@ -34107,7 +34145,7 @@ async function openPostSrv(p){
     <div style="font-size:12px;font-weight:400;color:var(--lgray)">${esc(c.anon_nick||'익명')} · ${timeAgo(c.created_at)}</div>
     <div style="font-size:15px;font-weight:400;line-height:1.55;margin-top:3px">${esc(c.body)}</div></div>`; });
   h+=`<div style="display:flex;gap:8px;margin-top:12px">
-    <input id="cmtIn" placeholder="익명 댓글 달기" maxlength="300" style="flex:1;border:1.5px solid var(--line);border-radius:13px;padding:12px 13px;font-family:inherit;font-size:15px" onkeydown="if(event.key==='Enter')sendPostCmt(${p.id})">
+    <input id="cmtIn" placeholder="익명 댓글 달기" maxlength="300" style="flex:1;border:1.5px solid var(--line);border-radius:13px;padding:12px 13px;font-family:inherit;font-size:15px" onkeydown="if(enterKey(event))sendPostCmt(${p.id})">
     <button class="btn sm" style="width:auto;padding:0 16px" onclick="sendPostCmt(${p.id})">등록</button></div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
