@@ -14380,7 +14380,23 @@ function renderMemberSkill(){
     h+=`<div style="padding:22px 0;font-size:14px;color:var(--lgray);font-weight:400"
       >${MSK_MINGAMES}경기를 넘긴 회원이 아직 없어요</div>`;
 
-  list.forEach(x=>{
+  /* 위·아래·맞음으로 나눠 그린다.
+     C안은 화살표도 <한 등급 위> 글자도 없어서, 방향을 알려줄 것이 묶음뿐이다.
+     나누지 않으면 A2·A1·C1·A1·C3 이 뒤섞여 훑어도 안 갈린다.
+     단, 이름순·실력순으로 바꾸면 묶음이 뜻을 잃으므로 그때는 한 줄로 편다. */
+  const grouped = MSK_SORT==='gap';
+  const secHd = t=>`<div style="font-size:13px;font-weight:700;color:var(--lgray);
+    letter-spacing:.02em;padding:16px 0 2px">${t}</div>`;
+  const buckets = grouped
+    ? [['등록보다 위', list.filter(x=>x.steps>0)],
+       ['등록보다 아래', list.filter(x=>x.steps<0)],
+       ['등록과 맞음', list.filter(x=>x.steps===0)]]
+    : [['', list]];
+
+  buckets.forEach(([label, arr])=>{
+    if(!arr.length) return;
+    if(label) h+=secHd(`${label} <span style="color:var(--ink)">${arr.length}</span>`);
+    arr.forEach(x=>{
     const same = x.reg===x.act;
     h+=`<div onclick="MSK_WHO='${esc(x.uid)}';renderMemberSkill()"
       style="display:flex;align-items:center;gap:12px;padding:14px 0;cursor:pointer;
@@ -14399,6 +14415,7 @@ function renderMemberSkill(){
           >${same?'등록과 같음':`등록 ${esc(x.reg)}`}</div>
       </div>
     </div>`;
+    });
   });
 
   if(wait.length){
