@@ -1002,6 +1002,11 @@
     border-radius:11px;font-size:14px;color:var(--gray);font-weight:400;line-height:1.75;
     word-break:keep-all;text-wrap:pretty }
   .rkrule b{ color:var(--ink);font-weight:700 }
+  /* details 기본 삼각형을 끈다 — 직접 그린 ⌄ 와 겹쳐 화살표가 둘로 보인다 */
+  summary::-webkit-details-marker{ display:none }
+  summary::marker{ content:'' }
+  details[open] > summary span:last-child{ transform:rotate(180deg) }
+  details > summary span:last-child{ display:inline-block;transition:transform .15s }
   .rkbar{ flex:none;width:52px;height:5px;border-radius:3px;background:var(--felt-d);overflow:hidden }
   .rkbar i{ display:block;height:100%;background:var(--coral) }
   .rkthin{ display:flex;align-items:center;gap:9px;margin:20px 2px 2px;cursor:pointer }
@@ -3356,7 +3361,8 @@
     padding:15px;background:#fbfbfc;cursor:pointer }
   .xc-new .tx{ flex:1;min-width:0 }
   .xc-new .tx b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em }
-  .xc-new .tx p{ margin:3px 0 0;font-size:14px;color:var(--gray);font-weight:400;line-height:1.55 }
+  .xc-new .tx p{ margin:3px 0 0;font-size:14px;color:var(--gray);font-weight:400;line-height:1.55;
+    word-break:keep-all;text-wrap:pretty }
   .xc-new .go{ flex:none;color:var(--lgray);font-size:20px }
   /* ── 내 클럽 카드 ──
      원 아바타 두 개는 예뻤지만 아무 말도 하지 않는다. 오늘 모임과 참여 인원을 담는다. */
@@ -3374,7 +3380,10 @@
   .mcbig .c b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.04em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .mcbig .c .s{ display:block;font-size:14px;color:var(--lgray);font-weight:400;margin-top:2px }
+  /* 알약은 한 줄을 넘기면 안 된다 — 넘치면 줄바꿈이 아니라 말줄임으로 잘린다.
+     내용이 길어져도 카드 모양이 무너지지 않는다. */
   .mcbig .c .t{ display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:14px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:8px;padding:4px 9px }
   .mcbig .c .t i{ width:5px;height:5px;border-radius:50%;background:var(--coral);flex:none }
   .mcbig .go{ flex:none;color:var(--lgray);font-size:20px }
@@ -10189,7 +10198,7 @@ function renderClub(){
           (c.m||0)<=SEED?'<span class="cltag">새로 생김</span>':''}</div>
         <div class="clr">${esc(c.r)} · 회원 ${c.m}명${
           (c.m||0)<=SEED ? ' · 아직 모임 기록이 없어요'
-          : c.meet_days ? ` · ${esc(c.meet_days)}` : ''}</div>
+          : c.meet_days ? ` · ${esc(clubDaysText(c.meet_days))}` : ''}</div>
       </div>
       <span class="clgo">›</span></div>`;
     h+=live.map(clubRow).join('');
@@ -12186,8 +12195,10 @@ function xcSection(){
   if(XC_LIST.length>2) h+=`<div class="xc-more" onclick="openXcAll()">교류전 ${XC_LIST.length}개 모두 보기 ›</div>`;
   if(xcIsOfficer()){
     h+=`<div class="xc-new" onclick="openXcNew()">
+      <!-- 두 문장을 <·> 로 이어 붙였더니 한 줄을 넘겨 <드려요>만 다음 줄로 떨어졌다.
+           코트를 올린다는 것과 대진을 앱이 짠다는 것 중, 여기서 눌러야 할 이유는 앞쪽이다. -->
       <div class="tx"><b>다른 클럽과 붙어보세요</b>
-        <p>코트를 잡아 올리면 상대 클럽이 자리를 채워요 · 대진은 앱이 짜 드려요</p></div>
+        <p>코트를 올리면 상대 클럽이 자리를 채워요</p></div>
       <span class="go">›</span></div>`;
   }
   return `<div class="xc-wrap">${h}</div>`;
@@ -13401,7 +13412,7 @@ function mcNextEvent(n){
     /* 제목에 이미 [08/14] 가 박혀 있는 모임이 있다 — 날짜를 두 번 쓰지 않는다 */
     const title=String(up.e.title||'모임').replace(/^\s*\[?\d{1,2}[\/.]\d{1,2}\]?\s*/,'') || '모임';
     const when = today ? `오늘${up.t?' '+up.t:''}`
-      : `${up.d.getMonth()+1}/${up.d.getDate()} (${W[up.d.getDay()]})${up.t?' '+up.t:''}`;
+      : `${up.d.getMonth()+1}/${up.d.getDate()} ${W[up.d.getDay()]}${up.t?' '+up.t:''}`;
     /* 참석 인원은 서버가 센 값(count)을 쓴다 — attendees 배열에는
        기기에 저장된 옛 모임의 불참·미정까지 섞여 들어오는 경우가 있다. */
     const cnt = up.e.count != null ? up.e.count
@@ -13434,7 +13445,9 @@ function myClubsBlock(){
       ${av||`<span class="lg">${esc(n.slice(0,1))}</span>`}
       <span class="c"><b>${esc(n)}</b>
         <span class="s">${[c.r||c.region||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
-        ${ev?`<span class="t"><i></i>${esc(ev.when)} ${esc(ev.title)}${
+        <!-- 알약에는 <언제 · 몇 명>만 남긴다. 모임 제목까지 넣으면 한 줄을 넘겨
+             줄바꿈이 생기고, 제목은 눌러 들어가면 바로 나온다. -->
+        ${ev?`<span class="t"><i></i>${esc(ev.when)}${
           ev.cnt?` · ${ev.cnt}명`:''}</span>`:''}</span>
       <span class="go">›</span></button>`;
   }).join('')
@@ -14002,35 +14015,19 @@ function balPanelHTML(){
   /* 예전에는 B3·B2·B1 로 적었는데, 이제 성적이 등급 밖으로도 데려가므로
      <아래·가운데·위>라는 뜻 그대로 적는다. 등급 안에 갇힌 것처럼 보이면 안 된다. */
   const tg=tgOf(me);
-  /* 무를 빼고 적으면 9승 6패인데 16경기가 되어 숫자가 안 맞는다 */
-  const dr = Math.max(0, s.games - s.w - s.l);
-  const wl = s.games ? `${s.w}승${dr?` ${dr}무`:''} ${s.l}패` : '아직 경기 없음';
   /* 100점 구성 — 도넛 하나로 */
   const gIdx=GRADE_INFO.findIndex(x=>x.g===s.base);
   const gRank=gIdx<0?0:(GRADE_INFO.length-1-gIdx)/(GRADE_INFO.length-1);
   const pG=Math.round(gRank*s.W.grade);
   /* 자리 하나에 성적과 조가 함께 들어 있다 — 화면에는 각각 얼마인지 나눠 보여준다 */
   const useT = s.uses;                                   // 조를 쓰는 클럽인가
-  const formMax = useT ? s.W.form : s.W.form + s.W.tier;
   const pT = useT ? Math.round((s.tSeat!=null? s.tSeat : 0)*s.W.tier) : 0;
   const pF = Math.max(0, val-pG-pT);
-  const a1=(pG/Math.max(1,val))*100, a2=a1+(pF/Math.max(1,val))*100;
-  const donut = useT
-    ? `conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% ${a2}%, #dce0e4 ${a2}% 100%)`
-    : `conic-gradient(${gi.c} 0 ${a1}%, var(--coral) ${a1}% 100%)`;
   /* 등급표와 내 범위 — 왜 이 점수인지, 어디까지 오르내리는지 */
   const gPt = g => { const i=GRADE_INFO.findIndex(x=>x.g===g);
     return Math.round((i<0?0:(GRADE_INFO.length-1-i)/(GRADE_INFO.length-1))*s.W.grade); };
   const myG = gPt(s.base);
   const lo = myG, hi = myG + s.W.form + s.W.tier;
-  const wr = s.games ? Math.round(s.w/s.games*100) : 0;
-  const tgList=TG_NAMES;
-  /* 조가 없으면 0점 — 조를 쓰는 클럽에서 배정을 못 받은 상태다.
-     조를 아예 안 쓰는 클럽이면 이 줄 자체가 화면에 안 나온다. */
-  const tgPt = t => { const i=t?tgList.indexOf(t):-1;
-    return i<0 ? 0
-               : Math.round((tgList.length<2?1:1-i/(tgList.length-1))*s.W.tier); };
-  const nextG = GRADE_INFO[Math.max(0, GRADE_INFO.findIndex(x=>x.g===s.base)-1)];
   const pos = v => Math.max(0, Math.min(100, v));
   /* 예시는 고정값이다 — 실제 회원 이름을 쓰면 자기 점수가 공개된 것처럼 보인다.
      숫자가 어디서 나왔는지 보이도록 구력·전적·조를 함께 적는다. */
@@ -14056,149 +14053,104 @@ function balPanelHTML(){
   })();
   const rankOfG = g => { const i=GRADE_INFO.findIndex(x=>x.g===g); return i<0?0:GRADE_INFO.length-1-i; };
   const gap = clubLevel ? rankOfG(clubLevel)-rankOfG(s.base) : 0;
-  const ci = clubLevel ? gradeInfo(clubLevel) : gi;
   const same = !clubLevel || gap===0;
+  /* ── 대진 기준 · 재구성 ────────────────────────────────────────
+     예전에는 카드가 다섯 장이었다. 그런데 2·3·4번이 같은 세 값(등급·성적·조)을
+     지금 비율로 한 번, 경기 수에 따른 변화로 한 번, 내가 채운 만큼으로 또 한 번
+     그리고 있었다. 읽는 사람은 매번 새 정보인 줄 알고 다시 해석한다.
+     한 가지 사실은 한 번만 그린다 — 그러면 카드 수는 저절로 줄어든다.
+
+     이 화면에만 토스 눈금(TDS)을 먼저 적용한다.
+       읽는 글 17 · 목록과 딱지 15 이하 · 제목 22 / 26
+     나머지 화면은 아직 12~30 눈금이다. 여기서 판단해 보고 넓힌다. */
+  const tsBody = 'font-size:17px;line-height:1.65';
+  const tsSub  = 'font-size:15px;line-height:1.6';
+  const tsCap  = 'font-size:13px';
   return `
   <div class="card" style="margin-top:12px">
-    <div class="ch" style="font-size:20px;margin:0">나는 어느 정도일까요</div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <div style="flex:1;border:1px solid var(--line);border-radius:14px;padding:15px 13px">
-        <div style="font-size:14px;color:var(--gray)">구력</div>
-        <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
-          <b style="font-size:24px;font-weight:700;letter-spacing:-.04em;color:${gi.c}">${s.base}</b>
-          <span style="font-size:16px;color:var(--gray)">${esc(yrs)}</span></div>
 
-      </div>
-      <div style="flex:1;border:1px solid ${same?'var(--line)':'#f6c9ab'};border-radius:14px;
-        padding:15px 13px;background:${same?'#fff':'#fffaf7'}">
-        <div style="font-size:14px;color:${same?'var(--gray)':'#c9754a'}">대진</div>
-        <div style="display:flex;align-items:baseline;gap:7px;margin-top:7px">
-          <b style="font-size:24px;font-weight:700;letter-spacing:-.04em;color:${
-            clubLevel?(same?'#4e5968':'var(--coral-d)'):'var(--lgray)'}">${clubLevel||'—'}</b>
-          <span style="font-size:16px;color:${same?'var(--gray)':'#c9754a'}">${clubLevel?'수준':''}</span></div>
-
-      </div>
+    <div style="${tsCap};color:var(--lgray)">대진에서 내 자리</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:7px;flex-wrap:wrap">
+      <span style="font-size:22px;font-weight:700;letter-spacing:-.03em;white-space:nowrap">${
+        clubLevel ? `${clubLevel} 수준` : `${s.base}등급`}</span>
+      <span style="${tsSub};color:var(--gray);white-space:nowrap">구력은 ${s.base}</span>
+      ${!same?`<span style="margin-left:auto;${tsCap};font-weight:700;white-space:nowrap;
+        padding:3px 9px;border-radius:7px;background:var(--coral-s);color:var(--coral-d)"
+        >${Math.abs(gap)}칸 ${gap>0?'위':'아래'}</span>`:''}
     </div>
-    <div style="background:#f7f8f9;border-radius:12px;padding:14px;margin-top:12px;
-      font-size:16px;color:var(--ink);line-height:1.6">${
-      !s.games ? `아직 경기가 없어요`
-      : gap>0 ? `구력보다 <b style="color:var(--coral-d)">${gap}칸 위</b>로 치고 계세요`
-      : gap<0 ? `구력보다 <b style="color:var(--coral-d)">${-gap}칸 아래</b>로 나오고 있어요`
-      : `구력만큼 나오고 있어요`}</div>
-    <div class="hint" style="margin-top:16px;line-height:1.75">구력 ${esc(yrs)}이라 <b>${s.base}등급</b>이에요.<br>
-      대진 등급은 <b>치는 대로 바뀌어요</b>.</div>
-  </div>
 
-  <div class="card" style="margin-top:10px">
-    <div class="ch" style="font-size:20px;margin:0">100점을 이렇게 나눠요</div>
-    <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
-      ? `${BAL_FULL}경기를 넘겨 <b>성적이 가장 크게</b> 반영돼요`
-      : s.games>0
-        ? `지금 <b>${s.games}경기</b> · 칠수록 구력 자리를 성적이 가져가요 (${BAL_FULL}경기에 성적 60)`
-        : '아직 경기가 없어 <b>구력</b>으로만 봐요 · 치면 성적이 자리를 넘겨받아요'}</div>
-    <div style="display:flex;align-items:center;gap:20px;margin-top:16px">
-      <div style="flex:none;width:96px;height:96px;border-radius:50%;
-        background:${donut};
-        display:flex;align-items:center;justify-content:center">
-        <span style="width:60px;height:60px;border-radius:50%;background:#fff;display:flex;
-          flex-direction:column;align-items:center;justify-content:center">
-          <b style="font-size:20px;font-weight:700;letter-spacing:-.04em">${val}</b>
-          <span style="font-size:14px;color:var(--lgray)">점</span></span></div>
-      <div style="flex:1;min-width:0">
-        ${[[gi.c,'등급',s.base+'등급',pG],['#f1631a','클럽 성적',wl,pF]]
-          .concat(useT?[['#dce0e4','월례대회 조',tg?tg+'조':'아직 없어요',pT]]:[])
-          .map(([c,l,sub,v])=>`
-          <div style="display:flex;align-items:center;gap:9px;margin-top:9px">
-            <span style="width:8px;height:8px;border-radius:2px;background:${c};flex:none"></span>
-            <span style="flex:1;min-width:0">
-              <b style="display:block;font-size:16px;font-weight:400">${l}
-                <span style="color:var(--gray);font-weight:400">${esc(sub)}</span></b>
-              <span style="display:block;font-size:14px;color:var(--lgray);margin-top:2px">${
-                Math.round(v/Math.max(1,val)*100)}% 차지</span></span>
-            <b style="font-size:16px;font-weight:700;letter-spacing:-.02em;color:${
-              v>0?'var(--ink)':'var(--lgray)'}">${v}<span style="font-size:14px;
-              color:var(--lgray);font-weight:400;margin-left:1px">점</span></b></div>`).join('')}
+    <div style="display:flex;align-items:baseline;gap:7px;margin-top:20px">
+      <b style="font-size:30px;font-weight:700;letter-spacing:-.04em;line-height:1">${val}</b>
+      <span style="${tsSub};color:var(--gray)">점${s.games?` · ${s.games}경기 기준`:''}</span>
+    </div>
+
+    <!-- 구성 띠 — <이 점수가 무엇으로 만들어졌나> -->
+    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;
+      background:var(--felt);margin-top:13px">
+      <i style="display:block;flex:${Math.max(0,pG)};background:${gi.c}"></i>
+      <i style="display:block;flex:${Math.max(0,pF)};background:var(--coral)"></i>
+      ${useT?`<i style="display:block;flex:${Math.max(0,pT)};background:#dce0e4"></i>`:''}
+    </div>
+    <div style="margin-top:9px;${tsCap};color:var(--gray)">
+      ${[[gi.c,'등급',pG],['var(--coral)','성적',pF],...(useT?[['#dce0e4','조',pT]]:[])].map(
+        ([c,t,v])=>`<span style="display:inline-flex;align-items:center;margin-right:14px;
+          white-space:nowrap"><i style="width:8px;height:8px;border-radius:2px;background:${c};
+          display:block;margin-right:5px"></i>${t} ${v}</span>`).join('')}
+    </div>
+
+    <!-- 범위 띠 — <그 점수가 어디쯤인가>. 구성 바로 아래 붙여야 질문이 이어진다 -->
+    <div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)">
+      <div style="position:relative;height:6px;border-radius:3px;background:var(--felt)">
+        <span style="position:absolute;top:0;bottom:0;border-radius:3px;background:var(--coral-s);
+          left:${pos(lo)}%;right:${100-pos(hi)}%"></span>
+        <span style="position:absolute;top:-4px;width:2px;height:14px;background:var(--coral-d);
+          left:${pos(val)}%"></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:9px;${tsCap};color:var(--gray)">
+        <span>최소 ${lo}</span>
+        <span style="color:var(--coral-d);font-weight:700">지금 ${val}</span>
+        <span>최대 ${hi}</span>
       </div>
     </div>
-    <div class="hint" style="margin-top:16px">모든 대진이 이 값으로 짝을 맞춰요.</div>
-  </div>
 
-  <div class="card" style="margin-top:10px">
-    <div class="ch" style="font-size:20px;margin:0">칠수록 성적이 자리를 가져가요</div>
-    <div style="margin-top:16px">
-      ${[0, Math.round(BAL_FULL/3), Math.round(BAL_FULL*2/3), BAL_FULL].map(n=>{
-        const W=balWeights(n), now = n===BAL_FULL ? s.games>=BAL_FULL : (s.games>=n && s.games<n+Math.round(BAL_FULL/3));
-        return `<div style="display:flex;align-items:center;gap:10px;${n?'margin-top:10px':''}">
-          <span style="flex:none;width:62px;font-size:14px;color:${now?'var(--ink)':'var(--gray)'};
-            font-weight:${now?'700':'400'}">${n===BAL_FULL?BAL_FULL+'경기~':n+'경기'}</span>
-          <span style="flex:1;display:flex;height:10px;border-radius:5px;overflow:hidden">
-            <i style="flex:${W.grade};background:${gi.c}"></i>
-            ${W.form?`<i style="flex:${W.form};background:var(--coral)"></i>`:''}
-            <i style="flex:${W.tier};background:#dce0e4"></i></span>
-          ${now?`<span style="flex:none;font-size:14px;font-weight:400;color:var(--coral-d)">지금</span>`:''}
-        </div>`; }).join('')}
-    </div>
-    <div style="display:flex;gap:14px;margin-top:14px;font-size:14px;color:var(--gray)">
-      ${[[gi.c,'등급'],['var(--coral)','클럽 성적'],['#dce0e4','월례대회 조']].map(([c,t])=>
-        `<span style="display:flex;align-items:center;gap:5px"><i style="width:8px;height:8px;
-          border-radius:2px;background:${c};display:block"></i>${t}</span>`).join('')}
-    </div>
-    <div style="background:#f7f8f9;border-radius:11px;padding:14px;margin-top:16px;
-      font-size:16px;color:#4e5968;line-height:1.7">구력은 성적이 없을 때 쓰는 임시 잣대예요.<br>
-      <span style="color:var(--gray)">화면에 보이는 등급은 바뀌지 않아요.</span></div>
-  </div>
+    <p style="${tsBody};color:var(--gray);margin:18px 0 0;word-break:keep-all;text-wrap:pretty">
+      구력 ${esc(yrs)}이라 <b style="color:var(--ink)">${s.base}등급</b>에서 시작했어요.
+      ${s.games>=BAL_FULL
+        ? `${BAL_FULL}경기를 넘겨 이제 <b style="color:var(--ink)">성적이 자리를 정합니다</b>.`
+        : `<b style="color:var(--ink)">구력이 짧아도 잘 치면</b> 위로 올라갈 수 있어요.`}</p>
 
-  <div class="card" style="margin-top:10px">
-    <div class="ch" style="font-size:20px;margin:0">어디까지 올라갈 수 있을까요</div>
-    <div class="hint" style="margin-top:4px">${s.games>=BAL_FULL
-      ? `지금은 <b>${lo}점에서 ${hi}점</b> 사이 · 성적이 거의 다 정해요`
-      : `지금 ${s.games?`${s.games}경기라 `:''}<b>${lo}점에서 ${hi}점</b> 사이 ·
-         ${BAL_FULL}경기가 되면 <b>${(()=>{const W=balWeights(BAL_FULL);
-           const g=Math.round(gRank*W.grade); return `${g}~${g+W.form+W.tier}점`;})()}</b>까지 넓어져요`}</div>
-    <div style="position:relative;height:10px;border-radius:5px;background:#f2f4f6;margin-top:20px;overflow:hidden">
-      <span style="position:absolute;left:${lo}%;right:${100-hi}%;top:0;bottom:0;background:${gi.bg}"></span>
-      <span style="position:absolute;left:${lo}%;top:0;bottom:0;width:${Math.max(0,val-lo)}%;background:${gi.c}"></span>
-      <span style="position:absolute;left:${pos(val)}%;top:0;bottom:0;width:2px;background:var(--coral)"></span>
-    </div>
-    <div style="position:relative;height:20px;margin-top:9px;font-size:14px">
-      ${lo>=12?`<span style="position:absolute;left:0;color:var(--lgray)">0</span>`:''}
-      <span style="position:absolute;left:${Math.max(7,Math.min(93,lo))}%;transform:translateX(-50%);
-        color:var(--gray);white-space:nowrap">최소 <b style="color:#4e5968">${lo}</b></span>
-      <span style="position:absolute;left:${Math.max(7,Math.min(93,pos(val)))}%;transform:translateX(-50%);
-        white-space:nowrap;color:var(--coral-d)">지금 <b>${val}</b></span>
-      <span style="position:absolute;left:${Math.max(7,Math.min(93,hi))}%;transform:translateX(-50%);
-        color:${gi.c};white-space:nowrap">최대 <b>${hi}</b></span>
-      ${hi<=88?`<span style="position:absolute;right:0;color:var(--lgray)">100</span>`:''}
-    </div>
-    <div style="border-top:1px solid #f4f5f7;margin-top:16px;padding-top:6px">
-      ${[
-        { l:'성적', c:'var(--coral)', now:pF, max:formMax,
-          sub: s.games ? `${s.games}경기 · 승률 ${wr}%${
-                 s.trust<1?` · ${BAL_FULL}경기가 되면 온전히 반영돼요 (지금 ${Math.round(s.trust*100)}%)`:''}`
-                       : '아직 경기가 없어요 · 치면 올라가요' },
-        ...(useT?[{ l:'조', c:'#c2c8ce', now:pT, max:s.W.tier,
-          sub: (tg?`${tg}조예요`:'아직 조가 없어요 · 배정받으면 올라가요')
-               + ' · ' + tgList.map(t=>`${t}조 ${tgPt(t)}`).join(' · ') }]:[]),
-        { l:'등급', c:gi.c, now:myG, max:s.W.grade,
-          sub: `${s.base}등급 · 구력으로만 정해져요${nextG && nextG.g!==s.base
-                 ? ` · ${nextG.g}등급은 ${esc(nextG.label)}에 ${gPt(nextG.g)}점` : ''}` }
-      ].map((r,i)=>`
-        <div style="padding:14px 0;${i<2?'border-bottom:1px solid #f4f5f7':''}">
-          <div style="display:flex;align-items:baseline;gap:8px">
-            <b style="flex:1;font-size:16px;font-weight:400">${r.l}</b>
-            <b style="font-size:20px;font-weight:700;letter-spacing:-.03em;color:${
-              r.now>=r.max?r.c:'var(--ink)'}">${r.now}</b>
-            <span style="font-size:14px;color:var(--lgray)">/ ${r.max}</span>
-          </div>
-          <div style="height:6px;border-radius:3px;background:#f2f4f6;margin-top:8px;overflow:hidden">
-            <i style="display:block;height:100%;border-radius:3px;
-              width:${Math.round(r.now/r.max*100)}%;background:${r.c}"></i></div>
-          <div style="font-size:14px;color:var(--gray);margin-top:8px;line-height:1.6">${r.sub}</div>
-        </div>`).join('')}
-    </div>
-    <div class="hint" style="margin-top:14px">${s.games>=BAL_FULL
-      ? `경기가 쌓여 <b>성적이 자리를 정해요</b>.`
-      : `<b>구력이 짧아도 잘 치면</b> 위로 올라갈 수 있어요.`}</div>
+    <!-- <왜 내 등급이 안 바뀌지>의 답이 이 안에 있다. 접되 제목이 그 질문이어야 한다 -->
+    <details style="margin-top:16px;padding-top:15px;border-top:1px solid var(--line)">
+      <summary style="${tsSub};color:var(--gray);cursor:pointer;list-style:none;
+        display:flex;align-items:center;justify-content:space-between">
+        <span>경기가 쌓이면 무엇이 달라지나요</span><span style="font-size:15px">⌄</span></summary>
+
+      <div style="margin-top:16px">
+        ${[0, Math.round(BAL_FULL/3), Math.round(BAL_FULL*2/3), BAL_FULL].map(n=>{
+          const W=balWeights(n), now = n===BAL_FULL ? s.games>=BAL_FULL
+                                                    : (s.games>=n && s.games<n+Math.round(BAL_FULL/3));
+          return `<div style="display:flex;align-items:center;gap:10px;${n?'margin-top:10px':''}">
+            <span style="flex:none;width:66px;${tsCap};white-space:nowrap;
+              color:${now?'var(--ink)':'var(--gray)'};font-weight:${now?'700':'400'}"
+              >${n===BAL_FULL?BAL_FULL+'경기~':n+'경기'}</span>
+            <span style="flex:1;display:flex;height:10px;border-radius:5px;overflow:hidden">
+              <i style="flex:${W.grade};background:${gi.c}"></i>
+              ${W.form?`<i style="flex:${W.form};background:var(--coral)"></i>`:''}
+              <i style="flex:${W.tier};background:#dce0e4"></i></span>
+            ${now?`<span style="flex:none;${tsCap};color:var(--coral-d);font-weight:700"
+              >지금</span>`:''}
+          </div>`; }).join('')}
+      </div>
+
+      <p style="${tsBody};color:var(--gray);margin:16px 0 0;word-break:keep-all;text-wrap:pretty">
+        구력은 성적이 없을 때 쓰는 임시 잣대예요.
+        경기가 쌓일수록 성적이 자리를 가져갑니다.
+        <b style="color:var(--ink)">화면에 보이는 등급(${s.base})은 바뀌지 않아요.</b></p>
+
+      ${useT?`<p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all">
+        지금 <b style="color:var(--ink)">${s.tg?esc(s.tg)+'조':'조 배정 전'}</b>이라
+        조 몫으로 ${pT}점을 받았어요. 위 조일수록 높습니다.</p>`:''}
+    </details>
   </div>`;
 }
 /* ── 누구와 자주 묶였나 ────────────────────────────────────────────
@@ -15759,8 +15711,17 @@ function openClubBasicEdit(fresh){
   const c=clubMerge(cat, AC()||{});
   CBE = CBE || {};
   CBE.region = CBE.region!=null?CBE.region : (d.region||c.r||'');
-  CBE.days   = CBE.days!=null?CBE.days     : (c.meet_days||c.days||'');
-  CBE.time   = CBE.time!=null?CBE.time     : (c.meet_time||'');
+  /* meet_days 는 <토 낮 오전>처럼 요일과 시간대가 합쳐진 값이다.
+     예전에는 이걸 통째로 요일 칸에 넣고, 저장할 때 시간대를 뒤에 또 붙였다.
+     그래서 저장을 세 번 하면 <토 낮 오전 오전 오전>이 됐다.
+     읽을 때 시간대를 떼어내고, 뗀 것을 시간대 칸의 기본값으로 쓴다. */
+  const TIME_BANDS = ['오전','낮','저녁','밤','심야'];
+  const rawDays = String(c.meet_days||c.days||'');
+  const dayToks = rawDays.split(/[\s·,]+/).filter(Boolean);
+  const foundBand = dayToks.find(x=>TIME_BANDS.includes(x)) || '';
+  CBE.days   = CBE.days!=null?CBE.days
+             : dayToks.filter(x=>!TIME_BANDS.includes(x)).join(' ');
+  CBE.time   = CBE.time!=null?CBE.time     : (c.meet_time||foundBand||'');
   CBE.court  = CBE.court!=null?CBE.court   : (c.court||c.home_court||'');
   /* 성별 구성은 만들 때만 정할 수 있었다. 여성 클럽이 나중에 그렇게 밝히려 해도
      바꿀 곳이 없어서 배지가 영영 안 붙었다. */
@@ -15874,7 +15835,12 @@ async function saveClubBasic(){
   const region=(CBE.region||'').trim(), court=(CBE.court||'').trim();
   const mtime=CBE.time||'';
   const gender=CBE.gender||'남녀 모두';
-  const days=[CBE.days||'', mtime].filter(Boolean).join(' ');
+  /* 요일 칸에 시간대가 섞여 들어와도 여기서 한 번 걸러낸다.
+     이미 <오전>이 쌓인 채 저장돼 있는 클럽도 이 저장 한 번으로 정리된다. */
+  const BANDS=['오전','낮','저녁','밤','심야'];
+  const dayOnly=String(CBE.days||'').split(/[\s·,]+/).filter(Boolean)
+    .filter(x=>!BANDS.includes(x)).join(' ');
+  const days=[dayOnly, mtime].filter(Boolean).join(' ');
   const yr=parseInt(CBE.founded,10)||0;
   const nowY=new Date().getFullYear();
   if(CBE.founded && (yr<1900||yr>nowY)){ toast(`창단연도를 1900~${nowY} 사이로 적어주세요`); return; }
