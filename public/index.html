@@ -11951,6 +11951,7 @@ function openClubOps(){
     <div class="opgrid">
       ${tool('가입 신청','승인 · 거절','openAdmin()',pend?'hot':'',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
+      ${tool('회원 실력','등록 구력과 실제가 다른 회원','openMemberSkill()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 기본 정보','모임 · 회비 · 게스트 · 가입 신청','openClubBasicEdit(1)')}
@@ -12096,6 +12097,7 @@ function opIcon(t){
        화면에서 별표 두 개가 나란히 붙었다 */
     case '클럽 기본 정보': return S('idcard');
     case '회원 모집':   return S('search');
+    case '회원 실력':   return S('target');
     case '클럽 이름 변경': return S('note');
     case '클럽 삭제':   return S('shield');
     default:            return S('star');
@@ -14193,6 +14195,249 @@ function balPartner(uid){
     mateAvg:avg(mate), foeAvg:avg(foe),
     myRank:rankOf(me), gName };
 }
+/* ── 회원 실력 · 운영진 전용 ──────────────────────────────────────
+   회원 화면에서는 <내 값만 보여준다>는 원칙을 그대로 지킨다.
+   이 화면은 운영진 도구 안에서만 열리고, 회원에게는 입구가 없다.
+
+   순위표를 만들지 않았다. 누가 잘하는지는 시즌 랭킹에 이미 있다.
+   운영진에게 없던 정보는 <등록 구력과 실제가 어긋난 사람이 누구인가>다.
+   대진이 안 맞는 원인이 대개 거기 있다. 그래서 기본 정렬이 차이 큰 순이다.
+
+   점수(59점 같은 숫자)는 일부러 안 보여준다. 숫자가 보이면 62와 59의 차이를
+   의미 있는 것으로 읽게 되는데, 그 정도 차이는 경기 두어 판이면 뒤집힌다.
+   등급 사다리(GRADE_LADDER) 위 칸으로만 말한다. */
+const MSK_MINGAMES = BAL_FULL;          // 이만큼 뛰어야 실제 수준을 말한다
+let MSK_SORT = 'gap';                   // gap · level · name
+let MSK_WHO  = null;                    // 상세를 보고 있는 회원
+
+/* 실제 수준을 등급 사다리 한 칸으로.
+   0~100 총점을 그대로 나누면 안 된다 — 그 값에는 등급 몫이 이미 섞여 있어서
+   50점이 A2 로 나온다. 대진 편성이 쓰는 cbLv(1~5)를 그대로 되돌린다.
+   그래야 여기서 본 <A2>와 대진표에 찍히는 <실력 A2>가 같은 값이 된다.
+   cbLvBase 의 1 + i/3 을 뒤집는 것이라 i = (lv-1)*3 이다. */
+function mskLadder(r){
+  const lv = cbLv({ user_id:r.user_id, id:r.user_id,
+                    grade:memberGradeCode(r), glabel:memberGradeCode(r) });
+  const i  = Math.round((lv-1)*3);
+  return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, i))];
+}
+function mskColor(code){
+  return gradeInfo(gradeStepBase(String(code||'C2'))).c;
+}
+const MSK_NUM = ['','한','두','세','네','다섯','여섯','일곱','여덟','아홉','열'];
+function mskGapText(steps){
+  const a = Math.abs(steps);
+  if(!a) return '등록과 같아요';
+  /* 사다리 한 칸이 아니라 등급 단위로 말한다 — 한 등급이 세 칸이라
+     <일곱 단계 위>라고 하면 얼마나 차이 나는지 감이 안 온다. */
+  const g = Math.round(a/3);
+  const t = g>=1 ? `${MSK_NUM[Math.min(10,g)]||g} 등급` : '반 등급';
+  return `${t} ${steps>0?'위':'아래'}`;
+}
+
+/* 한 회원의 등록·실제를 한 줄로 정리한다 */
+function mskRow(r){
+  const uid  = String(r.user_id||r.id||'');
+  const s    = balSeat(r);
+  const reg  = String(memberGradeCode(r) || 'C2');
+  const act  = mskLadder(r);
+  const ri   = GRADE_LADDER.indexOf(reg.toUpperCase());
+  const ai   = GRADE_LADDER.indexOf(act);
+  return { uid, name: r.name || r.nickname || '회원',
+           reg, act, games: s.games, w: s.w, l: s.l,
+           wr: s.games ? Math.round(s.w/s.games*100) : 0,
+           steps: (ri<0||ai<0) ? 0 : ai-ri,
+           ready: s.games >= MSK_MINGAMES };
+}
+function mskAll(){
+  return (CLUB_ROSTER||[]).map(mskRow).filter(x=>x.uid);
+}
+
+function openMemberSkill(){
+  const cid=clubId();
+  if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
+  if(!(CLUB_ROSTER||[]).length){ toast('회원 명단을 불러오는 중이에요'); return; }
+  /* 실제 수준은 클럽 경기 기록에서 나온다 — 아직 없으면 받아온 뒤 다시 그린다 */
+  if(CLUBME_GAMES===null){
+    loadClubMeGames();
+    document.getElementById('sheet').innerHTML =
+      `<div class="note" style="padding:40px 20px;text-align:center">경기 기록을 불러오는 중이에요…</div>`;
+    setTimeout(()=>{ if(document.body.classList.contains('ops-open')) renderMemberSkill(); }, 700);
+    return;
+  }
+  MSK_WHO=null; renderMemberSkill();
+}
+
+function renderMemberSkill(){
+  if(MSK_WHO) return renderMskDetail();
+  const rows = mskAll();
+  const ready = rows.filter(x=>x.ready);
+  const wait  = rows.filter(x=>!x.ready).sort((a,b)=>b.games-a.games);
+  const off   = ready.filter(x=>Math.abs(x.steps)>=2);   // 한 등급에 못 미치는 차이는 넘긴다
+
+  let list = off.slice();
+  if(MSK_SORT==='level') list = ready.slice().sort((a,b)=>
+    GRADE_LADDER.indexOf(b.act)-GRADE_LADDER.indexOf(a.act));
+  else if(MSK_SORT==='name') list = ready.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  else list.sort((a,b)=>Math.abs(b.steps)-Math.abs(a.steps));
+
+  const SORTL={gap:'차이 큰 순', level:'실력 순', name:'이름 순'};
+
+  let h=`<div class="sh-top"><h3>회원 실력</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+
+  h+=`<div class="card" style="margin-top:2px">
+    <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${
+      off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
+    <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:6px">${
+      MSK_MINGAMES}경기를 넘긴 ${ready.length}명 기준</div>
+
+    <div style="margin:18px 0 0;padding-top:15px;border-top:1px solid var(--line);
+      display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--lgray)"
+      onclick="mskCycleSort()"><span>${SORTL[MSK_SORT]}</span><span>⌄</span></div>`;
+
+  if(!list.length){
+    h+=`<div style="padding:22px 0 6px;font-size:14px;color:var(--lgray);font-weight:400
+      ">아직 보여드릴 회원이 없어요</div>`;
+  }
+  list.slice(0,8).forEach((x,i)=>{
+    h+=`<div onclick="MSK_WHO='${esc(x.uid)}';renderMemberSkill()"
+      style="display:flex;align-items:baseline;padding:15px 0;cursor:pointer;${
+      i?'border-top:1px solid var(--line)':''}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
+          text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
+        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:4px"
+          >${x.games}경기 · 승률 ${x.wr}%</div>
+      </div>
+      <div style="text-align:right;margin-left:12px;white-space:nowrap">
+        <div style="font-size:16px">
+          <span style="color:${mskColor(x.reg)}">${esc(x.reg)}</span>
+          <span style="color:var(--lgray);margin:0 6px">→</span>
+          <span style="color:${mskColor(x.act)};font-weight:700">${esc(x.act)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
+          >${mskGapText(x.steps)}</div>
+      </div></div>`;
+  });
+  h+=`</div>`;
+
+  if(wait.length){
+    h+=`<div class="card" style="margin-top:10px">
+      <div style="font-size:14px;font-weight:700;letter-spacing:-.03em">아직 판단 보류
+        <span style="color:var(--lgray);font-weight:400">${wait.length}명</span></div>
+      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.6"
+        >${MSK_MINGAMES}경기를 넘겨야 성적이 자리를 정해요</div>`;
+    wait.slice(0,3).forEach(x=>{
+      h+=`<div style="display:flex;align-items:baseline;padding:13px 0;margin-top:0;
+        border-top:1px solid var(--line)">
+        <span style="flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap">${esc(x.name)}</span>
+        <span style="font-size:15px;color:${mskColor(x.reg)};margin-right:11px">${esc(x.reg)}</span>
+        <span style="font-size:13px;color:var(--lgray);font-weight:400">${x.games}경기</span></div>`;
+    });
+    if(wait.length>3) h+=`<div style="padding:13px 0 0;border-top:1px solid var(--line);
+      text-align:center;font-size:14px;color:var(--gray);font-weight:400"
+      >${wait.length-3}명 더 있어요</div>`;
+    h+=`</div>`;
+  }
+
+  h+=`<div class="note" style="text-align:left;margin-top:12px;line-height:1.65">
+    실제 수준은 참고용이에요. 등록 구력은 자동으로 바뀌지 않습니다.
+    이 화면은 <b>운영진에게만</b> 보입니다.</div>`;
+
+  document.getElementById('sheet').innerHTML=h;
+}
+function mskCycleSort(){
+  MSK_SORT = MSK_SORT==='gap' ? 'level' : MSK_SORT==='level' ? 'name' : 'gap';
+  renderMemberSkill();
+}
+
+/* ── 회원 한 명 ─────────────────────────────────────────────
+   <비슷한 수준인 사람>만 나열하면 첫 화면 정렬을 바꾼 것과 다를 게 없다.
+   운영진에게 필요한 것은 <비슷한 수준인데 아직 안 붙어본 사람>이다.
+   승률이 실력인지 특정 조합 덕인지, 그 사람들과 붙여봐야 갈린다. */
+function renderMskDetail(){
+  const rows=mskAll();
+  const me = rows.find(x=>x.uid===String(MSK_WHO));
+  if(!me){ MSK_WHO=null; return renderMemberSkill(); }
+
+  const P = balPartner(me.uid);
+  const mates = P ? (P.mates||[]).slice(0,3) : [];
+  const mateN = {}; if(P) (P.mates||[]).forEach(m=>{ mateN[String(m.id)]=m.n; });
+
+  const myIdx = GRADE_LADDER.indexOf(me.act);
+  const near = rows.filter(x=>x.uid!==me.uid && x.ready)
+    .map(x=>({...x, together: mateN[x.uid]||0,
+              d: Math.abs(GRADE_LADDER.indexOf(x.act)-myIdx)}))
+    .filter(x=>x.d<=2 && x.together<=2)
+    .sort((a,b)=>a.together-b.together || a.d-b.d)
+    .slice(0,3);
+
+  const top = mates[0];
+  let h=`<div class="sh-top"><h3>${esc(me.name)}</h3>
+    <div class="cl" role="button" tabindex="0" onclick="MSK_WHO=null;renderMemberSkill()">‹</div></div>`;
+
+  h+=`<div class="card" style="margin-top:2px">
+    <div style="font-size:13px;color:var(--lgray);font-weight:400">등록 구력 → 실제 수준</div>
+    <div style="display:flex;align-items:baseline;margin-top:8px">
+      <span style="font-size:24px;letter-spacing:-.03em;color:${mskColor(me.reg)}">${esc(me.reg)}</span>
+      <span style="font-size:20px;color:var(--lgray);margin:0 10px">→</span>
+      <span style="font-size:24px;font-weight:700;letter-spacing:-.03em;color:${mskColor(me.act)}"
+        >${esc(me.act)}</span>
+      <span style="margin-left:auto;font-size:14px;color:var(--gray);font-weight:400"
+        >${mskGapText(me.steps)}</span>
+    </div>
+    <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:14px;
+      padding-top:14px;border-top:1px solid var(--line)"
+      >${me.games}경기 · ${me.w}승 ${me.l}패 · 승률 ${me.wr}%</div>
+  </div>`;
+
+  if(mates.length){
+    h+=`<div class="card" style="margin-top:10px">
+      <div style="font-size:16px;font-weight:700;letter-spacing:-.03em">자주 묶인 사람</div>
+      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
+        >승률이 실력인지 파트너 덕인지 갈려요</div>`;
+    mates.forEach(m=>{
+      const r=rows.find(x=>x.uid===String(m.id));
+      h+=`<div style="display:flex;align-items:baseline;padding:14px 0;border-top:1px solid var(--line)">
+        <span style="flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap">${esc(m.name||'회원')}</span>
+        ${r?`<span style="font-size:15px;color:${mskColor(r.act)};margin-right:12px"
+          >${esc(r.act)}</span>`:''}
+        <span style="font-size:13px;color:var(--lgray);font-weight:400"
+          >${m.n}번 · ${m.w}승</span></div>`;
+    });
+    if(top && me.games)
+      h+=`<div style="padding:13px 0 0;border-top:1px solid var(--line);font-size:13px;
+        color:var(--lgray);font-weight:400;line-height:1.6;word-break:keep-all;text-wrap:pretty"
+        >${me.games}경기 중 ${top.n}번을 ${esc(top.name||'이 회원')} 님과 묶였어요.
+        승률 ${me.wr}%는 이 조합이 만든 값일 수 있습니다.</div>`;
+    h+=`</div>`;
+  }
+
+  if(near.length){
+    h+=`<div class="card" style="margin-top:10px">
+      <div style="font-size:16px;font-weight:700;letter-spacing:-.03em"
+        >비슷한 수준인데 아직 안 묶인 사람</div>
+      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px"
+        >실제 수준이 가깝고 · 함께 뛴 적이 2번 이하</div>`;
+    near.forEach(x=>{
+      h+=`<div style="display:flex;align-items:baseline;padding:14px 0;border-top:1px solid var(--line)">
+        <span style="flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap">${esc(x.name)}</span>
+        <span style="font-size:15px;color:${mskColor(x.act)};margin-right:12px">${esc(x.act)}</span>
+        <span style="font-size:13px;color:var(--lgray);font-weight:400"
+          >함께 ${x.together}번</span></div>`;
+    });
+    h+=`<div style="padding:13px 0 0;border-top:1px solid var(--line);font-size:13px;
+      color:var(--lgray);font-weight:400;line-height:1.6;word-break:keep-all;text-wrap:pretty"
+      >다음 대진에서 이분들과 붙이면 실력을 더 정확히 볼 수 있어요.</div></div>`;
+  }
+
+  document.getElementById('sheet').innerHTML=h;
+}
+
 function balPartnerHTML(uid, title){
   const P=balPartner(uid); if(!P || P.g<3) return '';
   const gi=g=>GRADE_INFO.find(x=>x.g===g)||GRADE_INFO[GRADE_INFO.length-1];
