@@ -1719,13 +1719,16 @@
   /* ── 리포트 코멘트 ──
      첫 줄은 검은 카드로 크게 뽑고 나머지는 점 목록. 층이 나뉘어 겹칠 여지가 없다.
      위 컨테이너가 flex 라 폭을 못 박으면 글자까지 눌린다 — width 를 반드시 준다. */
-  .rp-head{ width:100%;box-sizing:border-box;background:var(--ink);border-radius:16px;
-    padding:17px 18px;margin-bottom:13px }
-  .rp-head .k{ font-size:14px;font-weight:400;color:#f4a062;letter-spacing:.12em }
-  .rp-head b{ display:block;font-size:20px;font-weight:700;color:#fff;
+  .rp-head{ /* 검정 카드를 흰 바탕으로. 클럽 탭 안에서 이 한 장만 재질이 달라 떠 보였다.
+       라벨을 코랄로 남겨 <이 카드가 특별하다>는 신호는 지킨다 */
+    width:100%;box-sizing:border-box;background:#fff;border:1px solid var(--line);
+    border-radius:16px;padding:17px 18px;margin-bottom:13px }
+  .rp-head .k{ /* 자간을 벌리면 한글은 오히려 읽기 어려워진다 — 벌림을 뺀다 */
+    font-size:13px;font-weight:700;color:var(--coral-d) }
+  .rp-head b{ display:block;font-size:20px;font-weight:700;color:var(--ink);
     letter-spacing:-.045em;margin-top:9px;line-height:1.4;word-break:keep-all }
-  .rp-head span{ display:block;font-size:16px;color:rgba(255,255,255,.7);
-    margin-top:8px;line-height:1.6;word-break:keep-all }
+  .rp-head span{ display:block;font-size:15px;color:var(--gray);
+    margin-top:8px;line-height:1.6;word-break:keep-all;text-wrap:pretty }
   .rp-list{ width:100%;box-sizing:border-box;margin-bottom:14px }
   .rp-i{ display:flex;padding:13px 2px;border-bottom:1px solid #eff0f2 }
   .rp-i:last-child{ border-bottom:0 }
@@ -15367,36 +15370,86 @@ function rpFindings(my){
 /* 시즌 곡선 — 경기별 득실을 쌓아 한 줄로 긋는다.
    선이 0 위면 그때까지 벌었고 아래면 잃은 것이다. 끝점이 위에 적힌 득실 숫자와 같다.
    승패 막대를 스무 개 늘어놓는 것보다 <요즘 올라오는 중인가>가 훨씬 잘 읽힌다. */
+/* 무엇을 그릴지 고른다. 셋 다 경기 기록(ms·os)만으로 만들 수 있어서
+   새로 받아올 데이터가 없다. 기준선(0 또는 50%)이 뜻을 갖는 값만 골랐다. */
+let MI_METRIC = 'gd';
+const MI_METRICS = [
+  { k:'gd',  t:'누적 득실', unit:'',  base:0,
+    note:'점선이 0 · 위면 벌고 아래면 잃은 것' },
+  { k:'wr',  t:'승률',     unit:'%', base:50,
+    note:'점선이 50% · 경기가 쌓이며 오르내린 모양' },
+  { k:'sc',  t:'경기당 득점', unit:'', base:null,
+    note:'점선이 평균 · 한 경기에서 낸 점수' },
+];
+function miCycleMetric(){
+  const i=MI_METRICS.findIndex(m=>m.k===MI_METRIC);
+  MI_METRIC = MI_METRICS[(i+1)%MI_METRICS.length].k;
+  try{ renderClub(); }catch(e){}
+}
 function miTrend(rows){
   const R=(rows||[]).filter(r=>r.ms!=null&&r.os!=null);
   if(R.length<4) return '';                       // 네 판은 돼야 선이라 부를 수 있다
-  const W=330,H=58,pad=4;
-  let acc=0; const pts=[{i:0,v:0}];
-  R.forEach((r,i)=>{ acc+=r.ms-r.os; pts.push({i:i+1,v:acc}); });
-  const vs=pts.map(p=>p.v), lo=Math.min(...vs,0), hi=Math.max(...vs,0);
-  const x=i=>pad+i/(pts.length-1)*(W-pad*2);
+  /* 선이 굵어져 끝이 위아래로 더 나온다 — 여백을 4 에서 7 로 넓혀 안 잘리게 한다 */
+  const W=330,H=58,pad=7;
+  const M = MI_METRICS.find(m=>m.k===MI_METRIC) || MI_METRICS[0];
+
+  /* 값 만들기. 득실만 <0경기 시점 0> 을 앞에 붙인다 —
+     승률과 득점은 경기를 뛰기 전에는 값이 없다. */
+  let pts=[];
+  if(M.k==='wr'){
+    let w=0,d=0;
+    R.forEach((r,i)=>{ if(r.ms>r.os) w++; else if(r.ms===r.os) d++;
+      pts.push({i, v:Math.round((w+d*0.5)/(i+1)*100)}); });
+  } else if(M.k==='sc'){
+    R.forEach((r,i)=>pts.push({i, v:r.ms}));
+  } else {
+    let acc=0; pts=[{i:0,v:0}];
+    R.forEach((r,i)=>{ acc+=r.ms-r.os; pts.push({i:i+1,v:acc}); });
+  }
+  /* 기준선 — 득실은 0, 승률은 50%, 득점은 평균 */
+  const baseV = M.base!=null ? M.base
+    : Math.round(pts.reduce((a,b)=>a+b.v,0)/pts.length);
+  const vs=pts.map(p=>p.v), lo=Math.min(...vs,baseV), hi=Math.max(...vs,baseV);
+  const x=i=>pad+i/((pts.length-1)||1)*(W-pad*2);
   const y=v=>H-pad-(v-lo)/((hi-lo)||1)*(H-pad*2);
-  const line=pts.map((p,i)=>`${i?'L':'M'}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
-  const area=`${line} L${x(pts.length-1).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  /* 꺾인 직선을 부드러운 곡선으로 — 이웃한 점으로 조절점을 잡는다(Catmull-Rom).
+     경기별 점을 그대로 이으면 톱니처럼 보여서 <올라오는 중인가>가 안 읽힌다. */
+  const P=pts.map(p=>[x(p.i), y(p.v)]);
+  let line=`M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for(let i=0;i<P.length-1;i++){
+    const p0=P[i-1]||P[i], p1=P[i], p2=P[i+1], p3=P[i+2]||P[i+1];
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    line+=` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${
+      p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
   const last=pts[pts.length-1], best=pts.reduce((a,b)=>b.v>a.v?b:a);
-  const gid='mit'+Math.random().toString(36).slice(2,7);
-  return `<div class="mi-trend"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
-      role="img" aria-label="시즌 누적 득실 곡선">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f1631a" stop-opacity=".16"/>
-      <stop offset="1" stop-color="#f1631a" stop-opacity="0"/></linearGradient></defs>
-    <line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}"
-      stroke="#d2d7dc" stroke-width="1" stroke-dasharray="2 3"/>
-    <path d="${area}" fill="url(#${gid})"/>
-    <path d="${line}" fill="none" stroke="#f1631a" stroke-width="2"
-      stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="${x(best.i).toFixed(1)}" cy="${y(best.v).toFixed(1)}" r="2.6" fill="#fff"
-      stroke="#ffb020" stroke-width="1.6"/>
-    <circle cx="${x(last.i).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="3.6" fill="#d9500a"/>
+  const sign=v=>M.k==='gd' ? (v>0?'+':v<0?'−':'')+Math.abs(v) : v+M.unit;
+  /* 무엇을 그릴지 고르는 알약을 그래프 위에 둔다.
+     누르면 값이 바뀌고, 오른쪽에 그 값의 현재치를 붙인다. */
+  return `<div style="display:flex;align-items:center;gap:8px;margin:2px 2px 9px">
+    <span onclick="miCycleMetric()" style="cursor:pointer;font-size:13px;font-weight:700;
+      background:var(--felt);border-radius:999px;padding:6px 12px;white-space:nowrap"
+      >${M.t}<span style="color:var(--lgray);margin-left:5px">⌄</span></span>
+    <span style="margin-left:auto;font-size:13px;color:var(--lgray);font-weight:400"
+      >지금</span>
+    <span style="font-size:13px;font-weight:700;color:var(--coral-d);background:var(--coral-s);
+      border-radius:999px;padding:5px 10px;white-space:nowrap">${sign(last.v)}</span>
+  </div>
+  <div class="mi-trend"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+      role="img" aria-label="${esc(M.t)} 곡선">
+    <!-- 기준선은 남긴다. 득실은 0, 승률은 50%, 득점은 평균 — 위인지 아래인지가
+         이 그래프의 뜻이다. 그러데이션과 최고점 표시는 뺐다.
+         vector-effect 로 굵기를 고정한다. preserveAspectRatio="none" 이라
+         가로로만 늘어나서, 이게 없으면 선이 세로로만 두꺼워져 찌그러진다. -->
+    <line x1="0" y1="${y(baseV).toFixed(1)}" x2="${W}" y2="${y(baseV).toFixed(1)}"
+      stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3"
+      vector-effect="non-scaling-stroke"/>
+    <path d="${line}" fill="none" stroke="#f1631a" stroke-width="4"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
   </svg></div>
-  <div class="mi-trendl"><span>누적 득실 · 점선이 0</span>
-    <span>최고 <b>${best.v>0?'+':''}${best.v}</b> · 지금 <b>${
-      last.v>0?'+':last.v<0?'−':''}${Math.abs(last.v)}</b></span></div>`;
+  <div class="mi-trendl"><span>${M.note}</span>
+    <span>최고 <b>${sign(best.v)}</b></span></div>`;
 }
 
 function clubTabMe(){
