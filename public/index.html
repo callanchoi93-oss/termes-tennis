@@ -14198,7 +14198,7 @@ function balPanelHTML(){
       ${useT?`<p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all">
         ${s.tg?`월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.`
               :`아직 <b style="color:var(--ink)">월례대회 조 배정 전</b>이에요.`}
-        위 조일수록 많이 받습니다.</p>`:''}
+        조가 높을수록 점수를 많이 받습니다.</p>`:''}
     </details>
   </div>`;
 }
@@ -24149,12 +24149,20 @@ async function tgResetAll(){
   if(!await appConfirm(`월례대회를 처음 상태로 되돌릴까요?\n조 ${n}명분과 승강 기록이 사라져요.`)) return;
   t.groups={}; t.seeded=false;
   try{ saveMatsu(); }catch(e){}
+  /* body 는 문자열이어야 한다 — api() 가 fetch 에 그대로 넘긴다.
+     객체를 주면 [object Object] 로 나가 서버가 groups 를 못 읽고,
+     저장이 안 된 채 tgPull() 이 옛 조를 다시 끌어와 되돌리기가 무효가 된다.
+     승강 인원과 첫 대회 제외 설정은 그대로 보내야 같이 날아가지 않는다. */
+  let ok=true;
   try{
     const cid=clubId();
-    if(SERVER_OK && cid) await api(`/clubs/${cid}/tiers`, {method:'PUT', body:{groups:{}, seeded:false}});
-  }catch(e){}
+    if(SERVER_OK && cid) await api(`/clubs/${cid}/tiers`, {method:'PUT',
+      body: JSON.stringify({ groups:{}, seeded:false,
+        promote:t.promote, relegate:t.relegate, skipFirst:t.skipFirst })});
+  }catch(e){ ok=false; }
   await openTgSettings();
-  toast('월례대회를 처음 상태로 되돌렸어요');
+  toast(ok ? '월례대회를 처음 상태로 되돌렸어요'
+           : '기기에서는 지웠는데 서버 저장에 실패했어요 · 다시 시도해 주세요');
 }
 async function tgFillNow(){
   const n=tgFillUnassigned();
