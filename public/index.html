@@ -6174,6 +6174,7 @@ async function adoptServerClubs(){
     }
     // 데모용 approveMember 를 쓰면 가짜 신청자·환영 토스트·화면 이동까지 딸려온다.
     // 서버 채택은 조용히, 실데이터 자리만 만든다.
+    if(c.id!=null) state.clubStatus[String(c.id)]='member';
     state.clubStatus[c.name]='member';
     if(!state.clubData[c.name]){
       state.clubData[c.name]={region:c.region||'', members:c.member_count||1, officer:false,
@@ -6194,7 +6195,9 @@ async function adoptServerClubs(){
   syncActiveClub();                    // 종목 필터 재적용 — 다른 종목 클럽이 새 종목에 새지 않게
   syncActiveClub();                                      // 현재 종목의 클럽만 활성으로
   // 신청 대기 중인 클럽 표시
-  mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id; state.clubStatus[c.name]='pending'; });
+  /* id 로도 함께 적어 둔다 — 동명 클럽이 있으면 이름만으로는 구분이 안 된다 */
+  mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id;
+    state.clubStatus[String(c.id)]='pending'; state.clubStatus[c.name]='pending'; });
 }
 
 /* 서버 → 앱 */
@@ -11129,7 +11132,7 @@ async function saveIntro(){
 function drawClubPreview(){
   if(!PV) return;
   const { n, c, roster, events } = PV;
-  const st=state.clubStatus[n]||'none';
+  const st=clubStatusOf(n, (c&&(c.id!=null?c.id:c.club_id)));
   const tabs=[['info','소개'],['rec','기록'],['sched','일정'],['mem','멤버']];
   const kv=(k,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:12px 0;
     border-bottom:1px solid #eff0f2;font-size:15px">
@@ -11439,9 +11442,28 @@ function closeClubPreview(){
   document.getElementById('clubpv').style.display='none';
   PV=null;
 }
+/* 가입 상태를 <클럽 이름>으로 저장하다 보니, 이름이 같은 클럽이 둘이면
+   한쪽 신청이 다른 쪽 화면에도 <승인 대기 중>으로 나타났다.
+   이름은 사람이 붙이는 것이라 겹치지만 id 는 안 겹친다 — id 를 먼저 본다.
+   옛 기기에 이름으로 저장된 값이 남아 있으므로, id 로 못 찾으면 이름으로도 한 번 본다. */
+function clubStatusOf(n, id){
+  const cid = id!=null ? String(id) : (CLUB_IDS[n]!=null ? String(CLUB_IDS[n]) : null);
+  if(cid && state.clubStatus[cid]!=null) return state.clubStatus[cid];
+  /* 이름으로 남은 옛 값은 <그 이름의 클럽이 하나뿐일 때>만 믿는다 */
+  if(cid){
+    const same=(state.clubs||[]).filter(x=>x.n===n).length;
+    if(same>1) return 'none';
+  }
+  return state.clubStatus[n] || 'none';
+}
+function clubStatusSet(n, id, v){
+  const cid = id!=null ? String(id) : (CLUB_IDS[n]!=null ? String(CLUB_IDS[n]) : null);
+  if(cid) state.clubStatus[cid]=v;
+  state.clubStatus[n]=v;                 // 옛 화면이 아직 이름으로 읽는다
+}
 function openClubDetail(n){
   const c=state.clubs.find(x=>x.n===n);if(!c)return;
-  const st=state.clubStatus[n]||'none';
+  const st=clubStatusOf(n, (c.id!=null?c.id:null));
   let h=`<div class="sh-top"><h3>${n}</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">${c.r} · 회원 ${c.m}명</div>
     <div style="font-size:13px;font-weight:400;color:var(--coral-d);margin:4px 0 6px">회비 안내</div>
@@ -11534,7 +11556,7 @@ async function applyJoinSrv2(n, claim){
       const pick=(window.CLAIMS||[]).find(x=>x.gid===claim);
       const r=await api(`/clubs/${CLUB_IDS[n]}/join`,{method:'POST',
         body: JSON.stringify({ claim_gid: claim||'', claim_name: pick?pick.name:'' })});
-      state.clubStatus[n]=r.status==='pending'?'pending':'member';
+      clubStatusSet(n, CLUB_IDS[n], r.status==='pending'?'pending':'member');
       toast(r.status==='pending'?'가입 신청을 보냈어요 · 임원진 승인을 기다려요':'가입되었어요');
     }catch(e){
       const m=String(e.message||'');
@@ -14131,8 +14153,10 @@ function balPanelHTML(){
     ${(()=>{
       const R=30, C=2*Math.PI*R, GAP=10;
       const fill = Math.max(0, Math.min(100, val))/100 * C;
-      const rows = [[W3.form,'성적',pF],...(useT?[[W3.tier,'월례대회',pT]]:[]),[W3.grade,'구력',pG]]
-        .filter(r=>r[2]>0).sort((a,b)=>b[2]-a[2]);
+      /* 월례대회는 0 이어도 줄을 남긴다 — 세 가지로 정해진다고 해놓고
+         한 줄이 사라지면 <조는 어디 갔지>가 된다. 0 이 곧 <아직 안 치렀다>는 뜻이다. */
+      const rows = [[W3.form,'성적',pF],[W3.tier,'월례대회',pT],[W3.grade,'구력',pG]]
+        .filter(r=>r[2]>0 || r[1]==='월례대회').sort((a,b)=>b[2]-a[2]);
       return `<div style="display:flex;align-items:center;margin-top:16px">
         <svg width="86" height="86" viewBox="0 0 86 86" style="flex:none" aria-hidden="true">
           <g transform="rotate(-90 43 43)" fill="none" stroke-width="12" stroke-linecap="round">
@@ -14176,7 +14200,13 @@ function balPanelHTML(){
 
       ${(()=>{
         const W=balWeights(s.games);
-        const segs=[[W.form,W3.form,'성적'],...(useT?[[W.tier,W3.tier,'월례대회']]:[]),
+        /* 조를 안 쓰는 클럽은 조 몫이 사라지는 게 아니라 성적으로 넘어간다
+           (balValue 가 seat*(form+tier) 로 계산한다).
+           그런데 표에 <조 20%> 를 그대로 두면 조가 20% 를 먹는 것처럼 보인다.
+           안 쓸 때는 성적에 합쳐 적고, 조는 0% 로 남겨 <아직 안 쓴다>를 알린다. */
+        const wForm = useT ? W.form : W.form + W.tier;
+        const wTier = useT ? W.tier : 0;
+        const segs=[[wForm,W3.form,'성적'],[wTier,W3.tier,'월례대회'],
                     [W.grade,W3.grade,'구력']];
         return `<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;
           background:var(--felt);margin-top:16px">
@@ -14195,10 +14225,15 @@ function balPanelHTML(){
         처음엔 구력만 봅니다. 경기가 쌓이면 성적 쪽으로 옮겨가요.
         <b style="color:var(--ink)">프로필의 ${s.base}등급은 그대로입니다.</b></p>
 
-      ${useT?`<p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all">
-        ${s.tg?`월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.`
-              :`아직 <b style="color:var(--ink)">월례대회 조 배정 전</b>이에요.`}
-        조가 높을수록 점수를 많이 받습니다.</p>`:''}
+      <p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all;text-wrap:pretty">
+        ${!useT
+          ? `아직 <b style="color:var(--ink)">월례대회를 안 치렀어요</b> · 0점.
+             그만큼은 성적 쪽으로 넘어가서, 지금은 구력과 성적으로만 정해집니다.`
+          : s.tg
+            ? `월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.
+               조가 높을수록 점수를 많이 받습니다.`
+            : `아직 <b style="color:var(--ink)">월례대회 조 배정 전</b>이라 0점.
+               조가 높을수록 점수를 많이 받습니다.`}</p>
     </details>
   </div>`;
 }
