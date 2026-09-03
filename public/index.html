@@ -14209,9 +14209,15 @@ function balPartner(uid){
    점수(59점 같은 숫자)는 일부러 안 보여준다. 숫자가 보이면 62와 59의 차이를
    의미 있는 것으로 읽게 되는데, 그 정도 차이는 경기 두어 판이면 뒤집힌다.
    등급 사다리(GRADE_LADDER) 위 칸으로만 말한다. */
-const MSK_MINGAMES = BAL_FULL;          // 이만큼 뛰어야 실제 수준을 말한다
+/* 문턱을 BAL_FULL(16)로 두었더니 31명 클럽에서 3명만 통과했다.
+   대부분 12경기쯤인데 그 정도면 balTrust 가 0.75 — 충분히 말할 수 있는 표본이다.
+   절반(8경기)으로 낮추고, 16경기에 못 미치면 <표본 적음>이라고 밝혀 둔다.
+   숨기는 것보다 근거를 함께 보여주는 편이 운영진 판단에 낫다. */
+const MSK_MINGAMES = Math.round(BAL_FULL/2);   // 8경기
+const MSK_SURE     = BAL_FULL;                 // 이만큼이면 표본이 넉넉하다
 let MSK_SORT = 'gap';                   // gap · level · name
 let MSK_WHO  = null;                    // 상세를 보고 있는 회원
+let MSK_MORE = false;                   // 목록을 다 폈는가
 
 /* 실제 수준을 등급 사다리 한 칸으로.
    0~100 총점을 그대로 나누면 안 된다 — 그 값에는 등급 몫이 이미 섞여 있어서
@@ -14259,7 +14265,7 @@ function mskAll(){
 function openMemberSkill(){
   const cid=clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
-  MSK_WHO=null;
+  MSK_WHO=null; MSK_MORE=false; MSK_SORT='gap';
   /* 명단도 경기 기록도 여기서 처음 필요할 수 있다.
      예전에는 없으면 토스트만 띄우고 빠져나와서, 화면이 흰 채로 남았다.
      둘 다 요청해 두고 <불러오는 중> 화면을 세운 뒤, 도착하면 스스로 다시 그린다. */
@@ -14298,9 +14304,12 @@ function renderMemberSkill(){
   const rows = mskAll();
   const ready = rows.filter(x=>x.ready);
   const wait  = rows.filter(x=>!x.ready).sort((a,b)=>b.games-a.games);
-  const off   = ready.filter(x=>Math.abs(x.steps)>=2);   // 한 등급에 못 미치는 차이는 넘긴다
+  const off   = ready.filter(x=>Math.abs(x.steps)>=2);   // 머리글에 쓸 <어긋난 사람> 수
 
-  let list = off.slice();
+  /* 예전에는 목록에도 off 만 넣었다. 그래서 클럽에 한 명만 걸리면 그 한 명만 뜨고,
+     운영진 입장에서는 <왜 내 것만 보이지>가 된다. 이 화면은 명단 전체를 보는 곳이다.
+     어긋난 사람은 정렬로 위에 오게 하고, 목록에는 판단 가능한 전원을 담는다. */
+  let list = ready.slice();
   if(MSK_SORT==='level') list = ready.slice().sort((a,b)=>
     GRADE_LADDER.indexOf(b.act)-GRADE_LADDER.indexOf(a.act));
   else if(MSK_SORT==='name') list = ready.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));
@@ -14313,7 +14322,7 @@ function renderMemberSkill(){
     <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${
       off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
     <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:6px">${
-      MSK_MINGAMES}경기를 넘긴 ${ready.length}명 기준</div>
+      MSK_MINGAMES}경기를 넘긴 ${ready.length}명 기준 · 전체 ${rows.length}명</div>
 
     <div style="margin:18px 0 0;padding-top:15px;border-top:1px solid var(--line);
       display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--lgray)"
@@ -14323,7 +14332,8 @@ function renderMemberSkill(){
     h+=`<div style="padding:22px 0 6px;font-size:14px;color:var(--lgray);font-weight:400
       ">아직 보여드릴 회원이 없어요</div>`;
   }
-  list.slice(0,8).forEach((x,i)=>{
+  const SHOW = MSK_MORE ? list.length : 10;
+  list.slice(0,SHOW).forEach((x,i)=>{
     h+=`<div onclick="MSK_WHO='${esc(x.uid)}';renderMemberSkill()"
       style="display:flex;align-items:baseline;padding:15px 0;cursor:pointer;${
       i?'border-top:1px solid var(--line)':''}">
@@ -14331,7 +14341,8 @@ function renderMemberSkill(){
         <div style="font-size:16px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
           text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
         <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:4px"
-          >${x.games}경기 · 승률 ${x.wr}%</div>
+          >${x.games}경기 · 승률 ${x.wr}%${
+          x.games<MSK_SURE?' · 표본 적음':''}</div>
       </div>
       <div style="text-align:right;margin-left:12px;white-space:nowrap">
         <div style="font-size:16px">
@@ -14343,6 +14354,11 @@ function renderMemberSkill(){
           >${mskGapText(x.steps)}</div>
       </div></div>`;
   });
+  if(list.length>SHOW)
+    h+=`<div onclick="MSK_MORE=true;renderMemberSkill()"
+      style="padding:15px 0 0;border-top:1px solid var(--line);text-align:center;
+      cursor:pointer;font-size:14px;color:var(--gray);font-weight:400"
+      >${list.length-SHOW}명 더 보기</div>`;
   h+=`</div>`;
 
   if(wait.length){
@@ -14350,7 +14366,7 @@ function renderMemberSkill(){
       <div style="font-size:14px;font-weight:700;letter-spacing:-.03em">아직 판단 보류
         <span style="color:var(--lgray);font-weight:400">${wait.length}명</span></div>
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.6"
-        >${MSK_MINGAMES}경기를 넘겨야 성적이 자리를 정해요</div>`;
+        >${MSK_MINGAMES}경기는 뛰어야 실제 수준을 말할 수 있어요</div>`;
     wait.slice(0,3).forEach(x=>{
       h+=`<div style="display:flex;align-items:baseline;padding:13px 0;margin-top:0;
         border-top:1px solid var(--line)">
@@ -14373,6 +14389,7 @@ function renderMemberSkill(){
 }
 function mskCycleSort(){
   MSK_SORT = MSK_SORT==='gap' ? 'level' : MSK_SORT==='level' ? 'name' : 'gap';
+  MSK_MORE = false;
   renderMemberSkill();
 }
 
@@ -26613,11 +26630,9 @@ function schedCal(){
     SCHED_SEL = `${y}-${mo}-${isThisMon?today.getDate():1}`;
 
   let cells=''; for(let i=0;i<first;i++) cells+='<div class="scd out"></div>';
-  let went=0;
   for(let d=1;d<=days;d++){
     const k=`${y}-${mo}-${d}`;
     const ev=(map[k]||[]).filter(e=>e.joined || e.kind==='xc');
-    if(ev.some(e=>e.past && e.joined)) went++;
     const isT = isThisMon && today.getDate()===d;
     /* 점은 뜻을 갖는다 — 초록 다녀옴 · 코랄 예정 · 보라 교류전.
        프레첼 로고를 도트로 쓰면 <뭔가 있다> 말고는 아무 뜻이 없다. */
@@ -26639,9 +26654,10 @@ function schedCal(){
       <div class="dow"><span class="sun">일</span><span>월</span><span>화</span><span>수</span>
         <span>목</span><span>금</span><span class="sat">토</span></div>
       <div class="sgrid">${cells}</div>
+      <!-- 범례만 남긴다. <이번 달 N번 나왔어요>는 화면 제목 아래 .sub 에 이미 있어서
+           한 화면에 같은 문장이 두 번 나왔다. -->
       <div class="slg"><span><i class="club"></i>예정</span><span><i class="done"></i>다녀옴</span>
-        <span><i class="xc"></i>교류전</span>
-        <span class="r">이번 달 <b>${went}번</b> 나왔어요</span></div>
+        <span><i class="xc"></i>교류전</span></div>
     </div>
     <div class="sdhd"><b>${mo+1}월 ${selD}일 ${selWd}</b>
       <span>${selEv.length?`${selEv.length}건`:'일정 없음'}</span></div>
@@ -32923,9 +32939,11 @@ function paintFairplay(){
     el.textContent=sc+'점';
     el.style.color = sc>=85?'#03a273' : sc>=70?'#a5750d' : '#d9500a';
   }
+  /* 점수가 도착하면 이 함수가 같은 자리를 다시 쓴다 — 여기도 비워야
+     한쪽만 고쳤을 때 문장이 되살아나지 않는다. */
   if(ln) ln.textContent = MY_FP.reviews
     ? `후기 ${MY_FP.reviews}건 반영 · 탭해서 산정 방식 보기`
-    : '아직 후기가 없어요 · 80점에서 시작';
+    : '';
 }
 function _renderMeCore(){
   ensureRecs();
@@ -32993,7 +33011,11 @@ function _renderMeCore(){
     <div class="card" style="flex:1;margin:0;cursor:pointer;display:flex;flex-direction:column" onclick="openFairplayInfo()">
       <div style="font-size:14px;color:var(--gray);font-weight:400">매너</div>
       <div style="display:flex;align-items:center;gap:7px;margin-top:9px">${im('smile',20)}<b id="myFpScore" style="font-size:20px;color:#03a273">${(MY_FP&&MY_FP.score!=null)?MY_FP.score+'점':'—'}</b></div>
-      <div id="myFpLine" style="font-size:14px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영`:'아직 후기가 없어요 · 80점에서 시작'):'불러오는 중…'}</div>
+      <!-- 후기가 없을 때 <아직 후기가 없어요 · 80점에서 시작>을 적어 두었는데,
+           점수 바로 아래에서 두 줄을 차지하면서 매너 카드가 캐시 칸을 밀어냈다.
+           80점이 시작값이라는 것은 매너 안내에서 한 번 읽으면 되는 이야기다.
+           후기가 실제로 반영됐을 때만 몇 건인지 적는다. -->
+      <div id="myFpLine" style="font-size:14px;color:var(--lgray);font-weight:400;margin-top:5px;line-height:1.4">${(MY_FP&&MY_FP.score!=null)?(MY_FP.reviews?`후기 ${MY_FP.reviews}건 반영`:''):'불러오는 중…'}</div>
       <div style="margin-top:auto;padding-top:12px;border-top:1px solid #ebedf0">
         <div style="font-size:14px;color:var(--gray);font-weight:400">캐시</div>
         <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
