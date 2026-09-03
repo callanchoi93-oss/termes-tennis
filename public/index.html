@@ -31654,18 +31654,25 @@ function wxLine(){
   if(!state.wx) return '';
   const k=state.wx.k||'sun', t=state.wx.t;
   if(k==='rain'||k==='snow') return '실내 코트 추천';
-  if(t>=33) return '수분 자주 챙기세요';
-  if(t>=29) return '더워요 · 물 챙기세요';
+  /* 이 줄은 <9월 3일 · 29° 구름 조금 · ○○○> 네 토막이 한 줄에 들어가고,
+     오른쪽 <프로필 수정> 버튼까지 자리를 먹어서 늘 끝이 잘렸다.
+     코멘트를 짧게 줄여 넉 자 안팎으로 맞춘다. */
+  if(t>=33) return '수분 챙기세요';
+  if(t>=29) return '물 챙기세요';
   if(t<=0)  return '많이 추워요';
-  if(t<=5)  return '몸 잘 풀고 나오세요';
+  if(t<=5)  return '몸 풀고 나오세요';
   return {sun:'치기 좋아요',partly:'치기 좋아요',cloud:'선선해요'}[k]||'';
+}
+/* 날씨 이름도 줄인다 — <구름 조금>은 넉 자라 한 줄을 넘기는 주범이었다 */
+function wxShortName(k){
+  return {sun:'맑음',partly:'구름',cloud:'흐림',rain:'비',snow:'눈'}[k]||'';
 }
 function weatherText(){
   const outdoor=['tennis','soccer','baseball','running'].includes(SP().id); if(!outdoor) return '';
   loadWeather();
   /* 못 받아왔으면 아무 말도 하지 않는다 — 틀린 날씨보다 없는 게 낫다 */
   if(!state.wx || state.wx.t==null) return '';
-  const nm={sun:'맑음',partly:'구름 조금',cloud:'흐림',rain:'비',snow:'눈'}[state.wx.k]||'';
+  const nm=wxShortName(state.wx.k);
   return `${state.wx.t}°${nm?' '+nm:''}`;
 }
 function weatherChip(kind,temp,desc){
