@@ -203,13 +203,13 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0812d';
+const SRV_BUILD = 'sH-0904a';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
 /* 앱 안에 든 화면 버전. 이 값과 앱의 BUILD 가 다르면 <새 버전이 나왔어요> 배너가 뜬다.
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
-const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.2';
+const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.6';
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -10187,6 +10187,14 @@ app.post('/om/waitlist', auth, (req, res) => {
   db.prepare(`INSERT INTO om_waitlist (user_id,region,sport,created_at) VALUES (?,?,?,?)
               ON CONFLICT(user_id) DO UPDATE SET region=excluded.region, sport=excluded.sport`)
     .run(req.uid, String(region || '전국'), String(sport || 'tennis'), now());
+  res.json(omWaitPayload(req.uid));
+});
+
+/* 알림 끄기 — 화면 곁말은 <언제든 끌 수 있어요>라고 말하는데 끄는 길이 없었다.
+   켤 수만 있고 못 끄는 알림은 다음에 켜기를 망설이게 만든다.
+   자기 자신만 지운다. 다시 켜면 POST 가 그대로 새로 넣는다. */
+app.delete('/om/waitlist', auth, (req, res) => {
+  db.prepare('DELETE FROM om_waitlist WHERE user_id=?').run(req.uid);
   res.json(omWaitPayload(req.uid));
 });
 
