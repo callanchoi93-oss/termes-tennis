@@ -579,18 +579,19 @@
   /* 탭 줄은 위아래로 움직이지 않는다 — 아래 내용을 훑는 동안에도 지금 어느 탭인지 보여야 한다.
      좌우로만 스크롤되고, 옆으로 끝까지 밀어도 브라우저 뒤로가기로 넘어가지 않게 막는다.
      .scroll 의 좌우 패딩만큼 음수 마진을 줘서 배경이 화면 끝까지 덮이게 한다. */
-  /* 클럽 안쪽 탭 — 일곱 개가 나란히 선다. 이름을 짧게 줄여 한 화면에 들어오게 하고,
-     밑줄은 브랜드 코랄로. 고른 것만 굵어지고 나머지는 뒤로 물러난다. */
-  .ctabs{display:flex;gap:17px;border-bottom:1px solid var(--line);
+  /* 클럽 안쪽 탭 — 여덟 개가 한 줄에 그대로 선다.
+     예전에는 폭이 모자라 overflow-x:auto 로 흘려보냈다. 그런데 탭줄이 좌우로 밀리면
+     들어올 때마다 <일정>이 왼쪽으로 반쯤 잘려 있어서, 지금 어디쯤인지 매번 다시 찾아야 했다.
+     탭은 지도다 — 지도가 움직이면 안 된다. 이름을 두 글자로 줄이고(대진기준→기준,
+     클럽소개→소개) 남는 폭을 space-between 이 간격으로 나눠 갖게 해서 스크롤을 없앤다.
+     간격이 고정값이 아니라 남는 만큼이므로 좁은 기기에서도 넘치지 않는다. */
+  .ctabs{display:flex;justify-content:space-between;gap:0;border-bottom:1px solid var(--line);
     position:sticky;top:0;z-index:6;background:var(--cream);
-    margin:0 -16px 12px;padding:0 18px;
-    overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
-    scrollbar-width:none;-webkit-overflow-scrolling:touch}
-  .ctabs::-webkit-scrollbar{display:none}
-  .ctabs div{flex:none;white-space:nowrap;padding:13px 0 12px;font-size:16px;font-weight:700;
-    color:#a3abb4;letter-spacing:-.035em;position:relative;cursor:pointer;transition:color .15s}
+    margin:0 -16px 12px;padding:0 16px;overflow:hidden}
+  .ctabs div{flex:0 0 auto;white-space:nowrap;padding:13px 0 12px;font-size:15px;font-weight:700;
+    color:#a3abb4;letter-spacing:-.045em;position:relative;cursor:pointer;transition:color .15s}
   .ctabs div.on{color:var(--ink);font-weight:700}
-  .ctabs div.on:after{content:'';position:absolute;left:-1px;right:-1px;bottom:-1px;height:2.5px;
+  .ctabs div.on:after{content:'';position:absolute;left:-3px;right:-3px;bottom:-1px;height:2.5px;
     background:var(--coral);border-radius:3px}
   /* 지금 무언가 돌고 있는 탭에만 점 하나 — 없는 데이터로 뱃지를 만들지는 않는다 */
   .ctabs div u{position:absolute;top:9px;right:-7px;width:5px;height:5px;border-radius:50%;
@@ -1231,7 +1232,9 @@
   :root{--sh:0 2px 12px rgba(23,28,37,.06);--sh2:0 16px 44px rgba(21,26,33,.18)}
   .demo-tag{background:#e0e5ea;color:#9a7b5e;font-weight:400;letter-spacing:.3px;padding:5px;font-size:14px}
   .scroll{padding-left:18px;padding-right:18px}
-  .ctabs{margin-left:-18px;margin-right:-18px;padding-left:20px;padding-right:20px}
+  /* 탭은 스크롤 영역 좌우 여백(18px)만큼 밖으로 나갔다가 안쪽 여백으로 되돌린다.
+     안쪽을 20px 로 두면 좁은 기기에서 여덟 칸이 밀리므로 16px 로 맞춘다. */
+  .ctabs{margin-left:-18px;margin-right:-18px;padding-left:16px;padding-right:16px}
   h2.t{letter-spacing:-.4px;font-size:24px}
   p.sub{margin-bottom:18px}
   .ch{letter-spacing:-.2px}
@@ -3398,10 +3401,22 @@
   .mcbig .c .s{ display:block;font-size:14px;color:var(--lgray);font-weight:400;margin-top:2px }
   /* 알약은 한 줄을 넘기면 안 된다 — 넘치면 줄바꿈이 아니라 말줄임으로 잘린다.
      내용이 길어져도 카드 모양이 무너지지 않는다. */
-  .mcbig .c .t{ display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:13px;
-    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:7px;padding:3px 8px }
-  .mcbig .c .t i{ width:5px;height:5px;border-radius:50%;background:var(--coral);flex:none }
+  /* 살구색 면 + 코랄 글씨 + 700 을 한꺼번에 쓰던 것을 걷어낸다.
+     강조가 셋이라 배지가 클럽 이름(같은 700)보다 세게 읽혔다 — 카드에서 제일 먼저
+     읽혀야 하는 건 이름이다. 면을 없애고 코랄은 점 하나에만 남긴다.
+     시간은 잉크색, 인원은 회색으로 무게를 갈라 한 덩어리로 안 뭉치게 한다. */
+  .mcbig .c .t{ display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:13.5px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .mcbig .c .t i{ width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none;
+    box-shadow:0 0 0 3.5px rgba(241,99,26,.15) }
+  .mcbig .c .t b{ font-weight:700;color:var(--ink);letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums }
+  .mcbig .c .t em{ font-style:normal;color:#d1d6db;font-size:11px }
+  .mcbig .c .t span{ color:var(--lgray);font-weight:400;font-variant-numeric:tabular-nums }
+  /* 오늘이 아니면 코랄을 뺀다 — 코랄은 <지금 할 일>이라는 뜻이라,
+     클럽이 서넛으로 늘었을 때 살구색 조각이 세로로 쌓이면 그 뜻이 흐려진다. */
+  .mcbig .c .t.later i{ background:#c4cbd3;box-shadow:none }
+  .mcbig .c .t.later b{ color:var(--gray) }
   .mcbig .go{ flex:none;color:var(--lgray);font-size:20px }
   .mcadd{ display:flex;align-items:center;gap:9px;width:100%;border:1px dashed #d2d7dc;
     border-radius:16px;padding:13px 14px;font-size:14px;font-weight:700;color:var(--gray);
@@ -3594,8 +3609,13 @@
     white-space:pre-wrap }
   .iempty{ border:1px dashed #e3e7eb;border-radius:16px;padding:18px;background:#fff }
   .iempty b{ display:block;font-size:16px;font-weight:700;color:var(--ink);
-    letter-spacing:-.035em }
-  .iempty p{ margin:7px 0 0;font-size:14px;color:var(--gray);font-weight:400;line-height:1.75 }
+    letter-spacing:-.035em;word-break:keep-all;text-wrap:pretty }
+  /* 문장을 <br> 로 끊어 두면 폰 폭에서 그 앞 줄이 이미 넘쳐 있어 줄이 네 개가 된다.
+     낱말 단위로만 끊고(keep-all), 끝줄에 두어 글자만 남지 않게(pretty) 브라우저에 맡긴다.
+     문장 자체도 한 줄에 들어오는 길이로 줄였다 — 빈 화면에서 읽히는 건 첫 줄뿐이다. */
+  .iempty p{ margin:7px 0 0;font-size:14px;color:var(--gray);font-weight:400;line-height:1.7;
+    word-break:keep-all;text-wrap:pretty }
+  .iempty p + p{ margin-top:3px;color:var(--lgray) }
   .iempty button{ display:block;width:100%;margin-top:14px;font-size:14px;font-weight:700;
     color:#fff;background:var(--coral);border:none;border-radius:12px;height:44px;
     font-family:inherit;cursor:pointer }
@@ -13499,8 +13519,8 @@ function myClubsBlock(){
         <span class="s">${[c.r||c.region||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
         <!-- 알약에는 <언제 · 몇 명>만 남긴다. 모임 제목까지 넣으면 한 줄을 넘겨
              줄바꿈이 생기고, 제목은 눌러 들어가면 바로 나온다. -->
-        ${ev?`<span class="t"><i></i>${esc(ev.when)}${
-          ev.cnt?` · ${ev.cnt}명`:''}</span>`:''}</span>
+        ${ev?`<span class="t${/^오늘/.test(ev.when)?'':' later'}"><i></i><b>${esc(ev.when)}</b>${
+          ev.cnt?`<em>·</em><span>${ev.cnt}명</span>`:''}</span>`:''}</span>
       <span class="go">›</span></button>`;
   }).join('')
   + `<button class="mcadd" onclick="state._cw=null;openCreateClub()">
@@ -13648,10 +13668,11 @@ function clubHeroTabs(){
      한 줄을 누르면 그날 순위가 대진 아래에 이어진다 — 같은 것을 두 번 보여주고 있었다. */
   /* 이름을 짧게 — <내 정보>와 <클럽 정보>는 글자가 닮아 매번 다시 읽어야 했다.
      각각 <내 기록>·<소개>로 부른다. 일곱 개가 한 화면에 들어온다. */
-  /* 탭 이름은 붙여 쓴다 — 여덟 개가 한 줄에 들어와야 한다.
-     띄어 쓰면 그만큼 폭을 먹어 마지막 탭이 밀려난다. */
-  const tabs=[['sched','일정'],['bracket','대진'],['bal','대진기준'],['rec','랭킹'],
-              ['mem','멤버'],['news','소식'],['me','내기록'],['info','클럽소개']];
+  /* 탭 이름은 짧게 — 여덟 개가 스크롤 없이 한 줄에 들어와야 한다.
+     <대진기준>은 바로 옆 <대진>이 문맥을 이미 주므로 <기준>으로 충분하고,
+     <클럽소개>도 클럽 화면 안이라 <소개>면 뜻이 그대로다. */
+  const tabs=[['sched','일정'],['bracket','대진'],['bal','기준'],['rec','랭킹'],
+              ['mem','멤버'],['news','소식'],['me','내기록'],['info','소개']];
   /* 오늘 대진이 돌고 있으면 그 탭에만 점을 찍는다 */
   const liveTab=(()=>{ try{
     return (typeof CB2!=='undefined' && CB2 && CB2.date===ymd() && (CB2.games||[]).length)
@@ -13943,27 +13964,41 @@ function monthRankSeries(games, meId){
   });
   return out.slice(-6);        // 최근 여섯 달
 }
-/* 꺾은선 하나 — 1위가 위로 가야 읽힌다 */
+/* 순위 곡선 — 경기당 득점 그래프(miTrend)와 같은 문법을 쓴다.
+   예전에는 점·숫자·면을 다 그렸는데, 같은 화면에서 위쪽 곡선은 선 하나로만 말하고
+   여기만 장식이 붙어 두 그래프가 서로 다른 언어를 썼다. 하나로 맞춘다.
+
+   다른 점은 세로 방향뿐이다 — 순위는 1위가 가장 좋으므로 값이 작을수록 위로 간다.
+   점선은 평균 순위다. 선이 점선 위에 있으면 그달은 평소보다 잘한 것이다. */
 function rankTrendSvg(series){
   if(series.length<2) return '';
-  const W=320, H=132, P=26;
-  const xs=series.map((_,i)=>P+i*(W-P*2)/(series.length-1));
+  const W=330, H=58, pad=7;
   const rs=series.map(s=>s.rank);
-  const lo=Math.min(...rs), hi=Math.max(...rs);
-  const ys=series.map(s=>26+((s.rank-lo)/((hi-lo)||1))*(H-62));
-  const line=xs.map((x,i)=>`${x.toFixed(0)},${ys[i].toFixed(0)}`).join(' ');
-  const area=`${xs[0].toFixed(0)},${H-22} ${line} ${xs[xs.length-1].toFixed(0)},${H-22}`;
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-    <polygon points="${area}" fill="var(--coral)" fill-opacity=".10"/>
-    <polyline points="${line}" fill="none" stroke="var(--coral)" stroke-width="2.4"
-      stroke-linejoin="round" stroke-linecap="round"/>
-    ${xs.map((x,i)=>`<circle cx="${x.toFixed(0)}" cy="${ys[i].toFixed(0)}" r="4.4"
-      fill="#fff" stroke="var(--coral)" stroke-width="2.4"/>`).join('')}
-    ${xs.map((x,i)=>`<text x="${x.toFixed(0)}" y="${(ys[i]-11).toFixed(0)}" text-anchor="middle"
-      font-size="11" font-weight="700" fill="var(--ink)">${series[i].rank}위</text>`).join('')}
-    ${xs.map((x,i)=>`<text x="${x.toFixed(0)}" y="${H-5}" text-anchor="middle"
-      font-size="9.5" fill="var(--lgray)">${series[i].m}월</text>`).join('')}
-  </svg>`;
+  const avg=rs.reduce((a,b)=>a+b,0)/rs.length;
+  const lo=Math.min(...rs,avg), hi=Math.max(...rs,avg);
+  const x=i=>pad+i/((series.length-1)||1)*(W-pad*2);
+  /* 뒤집는다 — rank 가 작을수록(1위) y 가 작아져 위로 붙는다 */
+  const y=v=>pad+(v-lo)/((hi-lo)||1)*(H-pad*2);
+  const P=series.map((s,i)=>[x(i), y(s.rank)]);
+  let line=`M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for(let i=0;i<P.length-1;i++){
+    const p0=P[i-1]||P[i], p1=P[i], p2=P[i+1], p3=P[i+2]||P[i+1];
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    line+=` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${
+      p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const best=Math.min(...rs);
+  return `<div class="mi-trend"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+      role="img" aria-label="순위 추이 곡선">
+    <line x1="0" y1="${y(avg).toFixed(1)}" x2="${W}" y2="${y(avg).toFixed(1)}"
+      stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3"
+      vector-effect="non-scaling-stroke"/>
+    <path d="${line}" fill="none" stroke="#f1631a" stroke-width="4"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg></div>
+  <div class="mi-trendl"><span>점선이 평균 · 위가 높은 순위</span>
+    <span>최고 <b>${best}위</b></span></div>`;
 }
 /* ── 대진 짝 맞춤에 쓰는 값 ────────────────────────────────────────────
    등급은 구력으로만 정해진다 — 여기서 바꾸지 않는다.
@@ -14244,7 +14279,7 @@ function balPanelHTML(){
 function balPartner(uid){
   const me=String(uid||''); if(!me) return null;
   const mate={}, foe={};
-  let g=0,w=0,d=0,l=0;
+  let g=0,w=0,d=0,l=0,gf=0,ga=0;
   (CLUBME_GAMES||[]).forEach(x=>{
     if(x.sa==null||x.sb==null) return;
     const A=(x.teamA||[]), B=(x.teamB||[]);
@@ -14252,6 +14287,10 @@ function balPartner(uid){
     if(!inA && !inB) return;
     const mine=inA?A:B, them=inA?B:A;
     const diff=inA ? x.sa-x.sb : x.sb-x.sa;
+    /* 득실도 센다 — 6:4 로 이긴 것과 6:0 으로 이긴 것이 승률에서는 똑같이 1승이다.
+       승률 하나로는 그 둘을 못 가르고, 득실은 표본이 적을 때 승률보다 먼저 안정된다. */
+    gf += inA ? x.sa : x.sb;
+    ga += inA ? x.sb : x.sa;
     g++; if(diff>0) w++; else if(diff<0) l++; else d++;
     mine.forEach(p=>{ if(String(p.id)===me||!p.id) return;
       const t=mate[String(p.id)]||(mate[String(p.id)]={id:p.id,name:p.name,n:0,w:0});
@@ -14274,7 +14313,10 @@ function balPartner(uid){
     return n? sum/n : null; };
   const gName=v=>{ if(v==null) return '—';
     const i=Math.round(v); return (GRADE_INFO[GRADE_INFO.length-1-i]||{}).g||'—'; };
-  return { g,w,d,l, wr:Math.round(w/g*100),
+  return { g,w,d,l,gf,ga, wr:Math.round(w/g*100),
+    gdAvg:(gf-ga)/g,
+    /* 파트너 쏠림 — 한 사람과 절반을 뛰었으면 그건 내 성적이 아니라 그 팀의 성적이다 */
+    topMate:Object.values(mate).reduce((a,t)=>Math.max(a,t.n),0)/g,
     mates:Object.values(mate).sort((a,b)=>b.n-a.n),
     foes:Object.values(foe).sort((a,b)=>b.n-a.n),
     mateAvg:avg(mate), foeAvg:avg(foe),
@@ -14620,20 +14662,79 @@ function renderMskDetail(){
   mskBackBtn(true);
 }
 
+/* ── 이 점수를 믿어도 되나요 ──────────────────────────────────────
+   예전 제목은 <누구와 뛰었나요>였고, 파트너·상대 목록과 평균 등급 두 칸이 있었다.
+   그런데 위 카드의 성적 점수는 balSeat() 에서 순수 승률(w/g)로만 나온다 —
+   상대가 누구였는지는 한 톨도 안 들어간다.
+   승률은 <상대가 나와 비슷했다>는 전제 위에서만 실력을 뜻하는데,
+   그 전제가 참인지 재는 값이 바로 이 카드에 있었다(상대 평균 등급).
+   그걸 맨 아래에 <나와 같아요>라고만 적어 두니 아무 결론도 내리지 않았다.
+   그래서 이 카드를 위 점수의 검산으로 바꾼다 — 네 줄을 재고 판정 한 줄을 낸다.
+   목록은 지우지 않고 아래로 접는다 — 읽는 재미는 거기 있다.
+
+   <같은 편 평균 등급>은 뺐다. 파트너가 잘하든 못하든 내 점수에는 영향이 없는데
+   <상대 평균>과 같은 크기로 나란히 있어 둘 다 값인 것처럼 보였다. */
 function balPartnerHTML(uid, title){
   const P=balPartner(uid); if(!P || P.g<3) return '';
-  /* 막대는 <승률>이다. 예전에는 횟수를 그려서 2번·2번·2번이 같은 길이로 늘어섰고,
-     눈이 갈 곳은 있는데 읽을 것이 없었다. 횟수는 옆에 숫자로 적는다.
-     같은 편과 상대는 색이 아니라 묶음 제목이 가른다 — 색은 등급에만 쓴다. */
+
+  /* 곁말에 <이 점수가 곧 승률>이라는 사실을 적는다 — 그래야 아래 네 줄이
+     무엇을 검산하는지가 설명 없이 읽힌다. 명단이 아직이면 승률만 말한다. */
+  const sub=(()=>{ try{
+    const meRow=(CLUB_ROSTER||[]).find(r=>String(r.user_id)===String(uid));
+    if(!meRow) return `승률 ${P.wr}%로 낸 값이에요`;
+    const s=balSeat(meRow), val=balValue(meRow);
+    const gi=GRADE_INFO.findIndex(x=>x.g===s.base);
+    const gRank=gi<0?0:(GRADE_INFO.length-1-gi)/(GRADE_INFO.length-1);
+    const pG=Math.round(gRank*s.W.grade);
+    const pT=s.uses?Math.round((s.tSeat!=null?s.tSeat:0)*s.W.tier):0;
+    const pF=Math.max(0, val-pG-pT);
+    return `성적 ${pF}점은 승률 ${P.wr}%를 그대로 옮긴 값이에요`;
+  }catch(e){ return `승률 ${P.wr}%로 낸 값이에요`; } })();
+
+  /* 네 줄의 판정 — 통과는 초록, 걸리는 것은 호박색. 새 색은 안 쓴다. */
+  const okG = P.g >= BAL_FULL;
+  const dF  = (P.foeAvg==null||P.myRank==null) ? null : Math.round(P.foeAvg)-P.myRank;
+  const okF = dF!=null && dF>=0;
+  const top = Math.round(P.topMate*100);
+  const okM = top <= 35;
+  const gd  = P.gdAvg;
+
+  const chip=(ok,t)=>`<span style="flex:none;font-size:13px;font-weight:700;padding:3px 8px;
+    border-radius:7px;white-space:nowrap;${ok?'background:#eef7f3;color:#0f9d76'
+      :'background:#fdf3e7;color:#b8770d'}">${t}</span>`;
+  const line=(lb,val,tail,ck,last)=>`<div style="display:flex;align-items:center;gap:9px;
+    padding:11px 0;${last?'':'border-bottom:1px solid #f4f5f7'}">
+    <span style="flex:none;width:56px;font-size:14px;color:var(--gray);font-weight:400">${lb}</span>
+    <span style="flex:1;min-width:0;font-size:14px;font-weight:700;letter-spacing:-.02em;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${val}<span
+      style="font-weight:400;color:var(--lgray)"> · ${tail}</span></span>${ck}</div>`;
+
+  /* 무엇이 걸렸는지와 <그래서 뭘 하면 되는지>를 한 줄로 붙인다.
+     경기가 적은 회원에게 세 줄이 다 경고로 뜨면 나무라는 화면이 된다. */
+  const bad=[]; if(!okG) bad.push('경기 수'); if(!okF) bad.push('상대 수준');
+  if(!okM) bad.push('파트너 쏠림');
+  const verdict = bad.length===0
+    ? { c:1, t:'위 점수를 그대로 믿어도 됩니다', s:'세 가지 다 통과했어요' }
+    : { c:0, t:`${bad.join(' · ')}을 더 봐야 해요`,
+        s: !okG ? '다른 날 더 뛰면 정확해져요'
+         : !okF ? '나보다 위인 상대와도 붙어 보세요'
+         : '다른 파트너와도 뛰어 보세요' };
+
+  /* 목록 — 세 번 미만 뛴 사람은 막대를 안 그린다.
+     한두 판은 승률이 0% 아니면 100% 라 막대 길이에 뜻이 없는데,
+     그게 여러 줄 늘어서면 옆의 진짜 승률까지 못 믿게 된다. 이름과 횟수만 남긴다. */
   const row=(m,i,arr)=>{
     const wr = m.n ? Math.round((m.w||0)/m.n*100) : 0;
-    return `<div style="display:flex;align-items:center;gap:11px;padding:11px 0;
-      ${i<arr.length-1?'border-bottom:1px solid #f4f5f7':''}">
+    const bd = i<arr.length-1?'border-bottom:1px solid #f4f5f7':'';
+    const bar = m.n>=3
+      ? `<span style="flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden"
+          ><i style="display:block;height:100%;border-radius:4px;width:${wr}%;
+            background:#8b95a1"></i></span>`
+      : `<span style="flex:1"></span>`;
+    return `<div style="display:flex;align-items:center;gap:11px;padding:11px 0;${bd}">
       <span style="flex:none;width:58px;font-size:15px;font-weight:400;overflow:hidden;
         text-overflow:ellipsis;white-space:nowrap">${esc(m.name||'')}</span>
-      <span style="flex:1;height:7px;border-radius:4px;background:var(--felt);overflow:hidden">
-        <i style="display:block;height:100%;border-radius:4px;width:${wr}%;
-          background:#8b95a1"></i></span>
+      ${bar}
       <span style="flex:none;width:56px;text-align:right;font-size:13px;font-weight:400;
         color:var(--lgray);white-space:nowrap">${m.n}번
         <b style="color:var(--ink);font-weight:700">${m.w||0}승</b></span>
@@ -14641,39 +14742,47 @@ function balPartnerHTML(uid, title){
   const sec=t=>`<div style="font-size:13px;font-weight:700;color:var(--lgray);
     letter-spacing:.02em;padding:14px 0 2px">${t}</div>`;
 
-  /* 평균 두 값이 이 카드의 답이다. 예전에는 <비슷했어요>라는 문장으로만 말했는데,
-     문장은 얼마나 비슷한지 말하지 않는다. 숫자 둘을 나란히 두면 바로 보인다.
-     등급 색은 글자에만 — 막대까지 칠하면 A(코랄)·C(초록)가 막대 색과 부딪힌다. */
-  const avgCell=(label,v)=>{
-    const g = v==null ? null : P.gName(v);
-    const c = g ? gradeInfo(g).c : 'var(--lgray)';
-    const rel = (v==null||P.myRank==null) ? ''
-      : (()=>{ const d=Math.round(v)-P.myRank;
-          return d>0?`나보다 ${d}칸 위`:d<0?`나보다 ${-d}칸 아래`:'나와 같아요'; })();
-    return `<div style="flex:1;min-width:0">
-      <div style="font-size:13px;color:var(--lgray);font-weight:400">${label}</div>
-      <div style="font-size:20px;font-weight:700;letter-spacing:-.04em;margin-top:3px">${
-        g ? `<span style="color:${c}">${g}</span
-            ><span style="font-size:13px;font-weight:400;color:var(--lgray)"> 등급</span>`
-          : `<span style="color:var(--lgray)">—</span>`}</div>
-      ${rel?`<div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:2px"
-        >${rel}</div>`:''}</div>`; };
-
   return `<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
-    <div class="ch" style="font-size:20px;margin:0">${title||'누구와 뛰었나요'}</div>
-    <div class="hint" style="margin-top:4px">같은 편일 때와 맞붙을 때를 나눠서 봐요</div>
+    <div class="ch" style="font-size:20px;margin:0">${title||'이 점수를 믿어도 되나요'}</div>
+    <div class="hint" style="margin-top:4px">${sub}</div>
 
-    ${P.mates.length?sec(`같은 편 · ${P.mates.length}명`)+
-      P.mates.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
-    ${(P.foes||[]).length?sec(`맞붙은 상대 · ${P.foes.length}명`)+
-      P.foes.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
-
-    <div style="display:flex;gap:14px;margin-top:16px;padding-top:15px;
-      border-top:1px solid var(--line)">
-      ${avgCell('같은 편 평균', P.mateAvg)}
-      <div style="flex:none;width:1px;background:var(--line)"></div>
-      ${avgCell('상대 평균', P.foeAvg)}
+    <div style="margin-top:12px">
+      ${line('표본', `${P.g}경기`, `기준 ${BAL_FULL}경기`,
+        chip(okG, okG?'넉넉해요':'부족해요'))}
+      ${dF==null ? '' : line('상대 수준',
+        `평균 ${P.gName(P.foeAvg)}등급`,
+        dF===0?'나와 같음':dF>0?`나보다 ${dF}칸 위`:`나보다 ${-dF}칸 아래`,
+        chip(okF, dF===0?'보정 없음':dF>0?'낮게 나와요':'높게 나와요'))}
+      ${line('파트너', `${P.mates.length}명과`, `최다 ${top}%`,
+        chip(okM, okM?'쏠림 없음':'쏠림 있음'))}
+      ${line('득실차', `${gd>=0?'+':'−'}${Math.abs(gd).toFixed(1)}점`,
+        gd>=0?'이길 때 넉넉해요':'질 때 크게 져요',
+        chip(gd>=0, gd>=0?'좋아요':'아쉬워요'), true)}
     </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-top:13px;border-radius:13px;
+      padding:12px 13px;${verdict.c
+        ? 'background:var(--coral-s);border:1px solid #ffe0cc'
+        : 'background:#f7f8f9;border:1px solid var(--line)'}">
+      <span style="flex:none;width:7px;height:7px;border-radius:50%;
+        background:${verdict.c?'var(--coral)':'#b0b8c1'}"></span>
+      <span style="flex:1;min-width:0;font-size:14px;font-weight:700;letter-spacing:-.02em;
+        line-height:1.5;word-break:keep-all;text-wrap:pretty;
+        color:${verdict.c?'#7a3204':'var(--gray)'}">${verdict.t}<br>
+        <span style="font-weight:400;color:${verdict.c?'#a4643a':'var(--lgray)'}"
+          >${verdict.s}</span></span>
+    </div>
+
+    <details style="margin-top:13px;padding-top:12px;border-top:1px solid #eef0f2">
+      <summary style="font-size:15px;color:var(--gray);cursor:pointer;list-style:none;
+        display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>누구와 뛰었나요 · 같은 편 ${P.mates.length}명 · 상대 ${(P.foes||[]).length}명</span>
+        <span style="color:var(--lgray);flex:none">⌄</span></summary>
+      ${P.mates.length?sec(`같은 편 · ${P.mates.length}명`)+
+        P.mates.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
+      ${(P.foes||[]).length?sec(`맞붙은 상대 · ${(P.foes||[]).length}명`)+
+        P.foes.slice(0,5).map((m,i,a)=>row(m,i,a)).join(''):''}
+    </details>
   </div>`;
 }
 /* ── 시작 길잡이 ─────────────────────────────────────────────────
@@ -16120,8 +16229,8 @@ function clubTabInfo(){
       ? `<div class="ibody">${esc(c.intro)}</div>`
       : off
         ? `<div class="iempty"><b>어떤 클럽인지 적어주세요</b>
-            <p>분위기 · 실력대 · 게스트 규칙을 적어두면 가입 신청이 늘어요.<br>
-              회원이 아닌 사람에게는 이 글이 클럽의 첫인상입니다.</p>
+            <p>분위기 · 실력대 · 게스트 규칙이면 충분해요</p>
+            <p>비회원에겐 이 글이 클럽의 첫인상이에요</p>
             <button onclick="openIntroEditOps()">소개 쓰기</button></div>`
         : `<div class="ibody" style="color:var(--lgray)">아직 소개가 없어요.</div>`}`;
 
@@ -25966,8 +26075,12 @@ function drawEventDetail(){
   /* 게스트는 이름 옆에 표시한다 — 대진을 짤 때 정회원과 섞이면 누가 손님인지 알 수 없다 */
   const isGuest=n=>!!(EVD.guestMap||{})[n];
   const gtag=`<span style="font-size:14px;font-weight:700;color:#79828d;opacity:.75;margin-left:1px">G</span>`;
-  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:6px;background:#f2f3f5;border-radius:22px;padding:5px 12px 5px 5px;cursor:pointer">
-      ${evAvatar(n,ph,26)}<span style="font-size:14px;font-weight:400;color:#2e343a">${esc(n)}</span>${isGuest(n)?gtag:''}</span>`;
+  /* 캡슐이 inline-flex 라 이름 글자 수만큼만 폭을 먹었다 — 줄마다 오른쪽 끝이
+     들쭉날쭉했고, 남는 여백 탓에 20명이 모여도 화면이 한산해 보였다.
+     그리드 칸을 꽉 채우게 바꾼다. 남는 폭이 캡슐 크기로 들어가서
+     높이도 36 → 46px 이 되고, 손가락 권장(44px)을 넘긴다. */
+  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:flex;align-items:center;gap:6px;background:#f4f5f7;border-radius:14px;padding:8px 8px 8px 7px;cursor:pointer;min-width:0">
+      ${evAvatar(n,ph,28)}<span style="font-size:14px;font-weight:500;color:#2e343a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>${isGuest(n)?gtag:''}</span>`;
   const nameTag=n=>esc(n)+(isGuest(n)?' G':'');
 
   let h=`<div class="evtop">
@@ -25994,7 +26107,9 @@ function drawEventDetail(){
       <span style="font-size:15px;font-weight:400;color:${accent}">${(e.attendees||[]).length}명</span>
       ${(()=>{ const gm=(e.attendees||[]).filter(isGuest).length + (e.guests||[]).length;
         return gm?`<span style="font-size:14px;font-weight:400;color:#79828d">· 게스트 ${gm}명 포함</span>`:''; })()}</div>
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="font-size:14px;color:#98a0aa;font-weight:400">아직 참석자가 없어요</span>'}</div>
+    <!-- 열 수를 못 박지 않는다 — 폭이 좁은 폰은 3열, 넓은 기기·태블릿은 4열로
+         알아서 늘어난다. 어느 쪽이든 오른쪽 끝은 항상 자로 자른 듯 맞는다. -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:7px;margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="grid-column:1/-1;font-size:14px;color:#98a0aa;font-weight:400">아직 참석자가 없어요</span>'}</div>
     ${(e.guests||[]).length?`<div style="font-size:14px;font-weight:400;color:#79828d;margin-top:2px">게스트 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
     ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:14px;font-weight:400;color:#98a0aa;margin-top:10px;line-height:1.7">
       ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(nameTag).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(nameTag).join(' · ')}`:''}</div>`:''}
