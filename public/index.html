@@ -18559,7 +18559,13 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
              코트에서 기억에 남는 건 <누구랑 붙었나>지 <누구랑 한 팀이었나>가 아니다.
              파트너 우선은 유지하되(120 > 60) 격차를 6배에서 2배로 좁힌다. */
           +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*60
-          +Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]))*4
+          /* 실력 균형. 계수 4 하나로만 재면 <상대 중복 한 번(60)>보다 훨씬 싸서,
+             알고리즘이 중복을 피하려고 A1 팀 대 C3 팀 같은 경기를 기꺼이 만들었다.
+             실측에서 21경기 중 약 1경기가 등급 문자 하나(C↔B) 넘게 벌어졌다.
+             작은 차이는 그대로 두되(어차피 피할 수 없고 재미도 있다)
+             크게 벌어지는 것만 급히 비싸지게 한다 — 한 팀 합 1.4(약 2칸) 부터. */
+          +(()=>{ const gap=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
+             return gap*4 + Math.max(0, gap-1.4)*120; })()
           +Math.abs((hnF(mem[a])?1:0)+(hnF(mem[b])?1:0)-(hnF(mem[c])?1:0)-(hnF(mem[d])?1:0))*6
           +(lvl?0:(bothSex?Math.abs(nf-2)*8:0))
           /* 여성이 1명·3명인 조합은 혼복이 될 수 없다 — 한 사람이 이성 셋과 뛴다.
@@ -18608,7 +18614,10 @@ function hnEval(out, mem, past, style){
       else mix++;
     }
     if(bothSex) mix+=Math.abs(nf-2)*0.45;
-    gap+=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
+    /* hnPlanOnce 와 같은 기울기를 써야 한다 — 여기만 완만하면
+       hnPolish 가 <균형을 버리고 중복을 줄인> 편성으로 되돌린다. */
+    { const gp=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
+      gap+=gp + Math.max(0, gp-1.4)*30; }
     if(lvl){
       spread+=Math.max(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]))
              -Math.min(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]));
@@ -20199,6 +20208,13 @@ function cbAt(g){ return (g && g.playCourt) ? g.playCourt : (g && g.c); }
    못 옮기는 상황에서는 버튼 자체를 보여주지 않는다. */
 function cb2FreeCourts(gi){
   if(!CB2 || !(CB2.games||[]).length) return [];
+  /* 한울·월례대회는 <조 = 코트 고정>이 방식의 핵심이다(hnSplit 주석 참고).
+     그 코트에 붙은 사람들끼리만 4게임을 도는데, 빈 코트로 옮기라고 권하면
+       · 수기 기록표의 코트 칸과 화면이 어긋나고
+       · 다음 회차에 그 코트 주인이 와서 자리가 겹치고
+       · 조 편성이 지켜온 성비·실력 균형이 코트 단위로 흐트러진다.
+     예전에는 tbMode()(시간 대진)만 막아서 한울에도 <거기서 시작>이 떴다. */
+  if(CB2.mode==='hanul' || CB2.mode==='monthly') return [];
   const gs=CB2.games.map((g,i)=>({...g,gi:i}));
   const g=gs[gi]; if(!g || g.startedAt || g.sa!=null) return [];
   const done=x=>x.sa!=null&&x.sb!=null;
@@ -20221,6 +20237,10 @@ function cb2FreeCourts(gi){
 }
 async function cb2MoveCourt(gi, court){
   const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
+  /* 화면에서 권하지 않더라도 동작 자체를 막아둔다 — 표 안 칸을 누르는 등
+     다른 경로로 들어올 수 있고, 고정 코트 방식에서 한 번 옮기면 수기표와 어긋난다. */
+  if(CB2.mode==='hanul' || CB2.mode==='monthly'){
+    toast('이 방식은 조가 코트에 고정돼요 · 코트를 옮기지 않아요'); return; }
   const from=g.c;
   if(TRIAL){
     const done=x=>x.sa!=null&&x.sb!=null;
