@@ -4678,7 +4678,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.5-0903a';
+const BUILD='v1.1.6-0904a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -6216,8 +6216,11 @@ async function loadClubIds(){
   const all  = api('/clubs').then(r=>{ (r||[]).forEach(c=>{ CLUB_IDS[c.name]=c.id; }); saveClubIds(); }).catch(()=>{});
   const mine = adoptServerClubs().then(()=>{
     saveClubIds();
-    /* 내 클럽이 도착하면 그 자리에서 다시 그린다 — 목록을 기다리지 않는다 */
+    /* 내 클럽이 도착하면 그 자리에서 다시 그린다 — 목록을 기다리지 않는다.
+       홈도 함께 다시 그린다. 예전에는 클럽 화면만 갱신해서, 응답이 8초를 넘기면
+       홈이 <클럽 없음> 상태로 굳은 채 남았다(홈의 깨우기 타이머는 한 번만 돈다). */
     try{ if(state.view==='club') renderClub(); }catch(e){}
+    try{ homeRepaint(); }catch(e){}
     try{ loadMyNext(); }catch(e){}          // 클럽을 알게 된 순간 오늘 대진도 바로 받는다
   }).catch(()=>{});
   await Promise.all([all, mine]);
@@ -6230,6 +6233,11 @@ async function loadClubIds(){
    받기 전에는 state.myClubs 가 비어 있는데, 그걸 <소속 클럽 없음> 으로 읽으면
    찰나에 '아직 소속된 클럽이 없어요 + 클럽 만들기'가 떴다가 사라진다. */
 let MYCLUBS_READY = false;
+/* <아직 모른다>·<지금은 알 수 없다>·<진짜 없다> 는 서로 다른 상태다.
+   예전에는 요청이 실패해도 READY 만 세우고 목록은 비워 뒀다. 그러면 홈이 그걸
+   <클럽 없음>으로 읽어, 클럽에 가입해 있는 회원에게 <클럽 찾거나 만들기>가 떴다.
+   로그아웃 후 다시 로그인하면 나았던 건 그때 요청이 성공했기 때문이다. */
+let MYCLUBS_FAILED = false;
 async function adoptServerClubs(){
   let mine=[];
   /* 실패해도 반드시 표시를 남긴다.
@@ -6238,8 +6246,19 @@ async function adoptServerClubs(){
      <다가오는 모임이 없어요>도 <시작하기>도 끝내 안 떴다.
      사내망·인앱 브라우저처럼 요청이 막히는 환경에서 이게 그대로 재현된다.
      못 받은 것은 <아직 모른다>가 아니라 <지금은 알 수 없다>로 처리해야 화면이 나온다. */
-  try{ mine = await api('/me/clubs'); }
-  catch(e){ MYCLUBS_READY = true; return; }
+  try{ mine = await api('/me/clubs'); MYCLUBS_FAILED = false; }
+  catch(e){
+    /* 못 받았다는 사실만 남긴다. 목록을 비운 채 READY 를 세우면
+       <클럽이 없다>고 단정하게 된다 — 그게 이번 버그였다.
+       한 번은 조용히 다시 시도한다(네트워크가 잠깐 끊긴 경우가 대부분이다). */
+    MYCLUBS_FAILED = true; MYCLUBS_READY = true;
+    if(!adoptServerClubs._retried){
+      adoptServerClubs._retried = 1;
+      setTimeout(()=>{ adoptServerClubs._retried = 0;
+        adoptServerClubs().then(()=>{ try{ homeRepaint(); }catch(e){} }).catch(()=>{}); }, 2500);
+    }
+    return;
+  }
   MYCLUBS_READY = true;                       // 응답을 받았다 — 이제 없으면 진짜 없는 것이다
   const active = mine.filter(c=>!c.status || c.status==='active');
   if(!active.length) return;
@@ -6809,6 +6828,14 @@ async function setMemberRole(uid, role){
 let SRV_EVENT = null;       // 최신 일정 {id,title,date,count,attendees,joined}
 let SRV_EVENTS = null;      // null = 아직 안 불러옴 · [] = 불러왔는데 없음
 /* 홈 뼈대의 마감 시계 — 이 시간이 지나면 <아직 모른다>를 포기하고 화면을 낸다 */
+/* 홈이 떠 있으면 다시 그린다. 뒤늦게 도착한 값(내 클럽·일정)을 화면에 반영하는 통로. */
+function homeRepaint(){ if(state.view==='home') try{ renderHome(); }catch(e){} }
+async function homeRetryClubs(btn){
+  if(btn){ btn.disabled=true; btn.textContent='불러오는 중…'; }
+  try{ await adoptServerClubs(); }catch(e){}
+  homeRepaint();
+  if(MYCLUBS_FAILED) toast('아직 불러오지 못했어요 · 잠시 뒤 다시 시도해주세요');
+}
 const HOME_SKEL_MS = 8000;
 const HOME_T0 = Date.now();
 let SRV_MYSTATUS = null;    // {role,status}
@@ -18765,7 +18792,12 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
              작은 차이는 그대로 두되(어차피 피할 수 없고 재미도 있다)
              크게 벌어지는 것만 급히 비싸지게 한다 — 한 팀 합 1.4(약 2칸) 부터. */
           +(()=>{ const gap=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
-             return gap*4 + Math.max(0, gap-1.4)*120; })()
+             /* 면제 게임(그 성별 두 사람이 유일하게 같은 편이 되는 한 판)은
+                여복 대 남복이라 실력 합이 벌어지기 마련이다. 여기서 가산 벌점까지 물리면
+                −40 보너스를 덮어써서 그 한 판이 안 뽑힌다 —
+                실측에서 여2·남6 한 코트일 때 47%가 다시 <끝까지 맞은편>이 됐다.
+                기본 계수(×4)는 그대로 두되 가산분만 면제한다. */
+             return gap*4 + (frees ? 0 : Math.max(0, gap-1.4)*120); })()
           +Math.abs((hnF(mem[a])?1:0)+(hnF(mem[b])?1:0)-(hnF(mem[c])?1:0)-(hnF(mem[d])?1:0))*6
           +(lvl?0:(bothSex?Math.abs(nf-2)*8:0))
           /* 여성이 1명·3명인 조합은 혼복이 될 수 없다 — 한 사람이 이성 셋과 뛴다.
@@ -18809,15 +18841,17 @@ function hnEval(out, mem, past, style){
     pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
     [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
     const nf=four.filter(i=>hnF(mem[i])).length;
+    let freedHere=false;
     if(nf===2 && !(hnF(mem[a])!==hnF(mem[b]) && hnF(mem[c])!==hnF(mem[d]))){
-      if(lockedPair && freed===0){ freed++; mix-=0.3; }  // 그 조의 첫 한 게임은 오히려 반긴다
+      if(lockedPair && freed===0){ freed++; freedHere=true; }   // 첫 한 게임은 벌하지 않는다
       else mix++;
     }
     if(bothSex) mix+=Math.abs(nf-2)*0.45;
     /* hnPlanOnce 와 같은 기울기를 써야 한다 — 여기만 완만하면
-       hnPolish 가 <균형을 버리고 중복을 줄인> 편성으로 되돌린다. */
+       hnPolish 가 <균형을 버리고 중복을 줄인> 편성으로 되돌린다.
+       면제 게임은 hnPlanOnce 와 똑같이 가산분을 빼준다(freedHere). */
     { const gp=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
-      gap+=gp + Math.max(0, gp-1.4)*30; }
+      gap+=gp + (freedHere ? 0 : Math.max(0, gp-1.4)*30); }
     if(lvl){
       spread+=Math.max(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]))
              -Math.min(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d]));
@@ -18837,6 +18871,11 @@ function hnEval(out, mem, past, style){
      조가 작으면 상대 중복 자체는 피할 수 없으므로(4게임 × 상대 2자리 = 8자리를 6명이 채운다)
      막아야 하는 건 중복이 아니라 <한 사람에게 몰리는 것>이다.
      그래서 무료 구간을 2회에서 1회로 줄이고 계수를 올린다. */
+  /* 있는 것에 상을 주는 방식(mix-=0.3)은 약했다 — hnPolish 가 다른 이득을 좇아
+     그 한 게임을 갈아엎었고, 실측에서 150번 중 81번이 되돌아갔다.
+     없을 때 벌하는 쪽으로 바꾼다. 목표가 <최소 한 번>이므로 이 편이 곧바로 겨눈다. */
+  if(lockedPair && freed===0) mix += 1.6;
+
   return {score:maxP*4000+dupP*600+Math.max(0,maxO-1)*700+dupO*80+mix*130+gap*4+spread*30+mixCnt*100+b2b*3+pastN*20, maxP, dupP};
 }
 /* 국소 탐색 — 두 게임이 선수를 한 명씩 맞바꾼다(각자 경기 수는 그대로) */
@@ -21632,12 +21671,18 @@ function drawCB2View(){
           return msg ? `<div style="margin-top:9px;padding-top:9px;
             border-top:1px solid #e3e7eb;font-size:12px;color:#7c858f">${msg}</div>` : '';
         }
-        return `<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;
-            padding-top:9px;border-top:1px solid #e3e7eb">
-          <span style="font-size:12px;color:#7c858f">이 속도면</span>
-          <span style="font-size:16px;font-weight:700;color:var(--coral-d);letter-spacing:-.03em">${e.end}</span>
-          <span style="font-size:12px;color:#7c858f">쯤 끝나요 · 남은 ${e.leftN}경기 ${cbEtaText(e)}${
-            e.stallMin>=5?` · 멈춰 있는 ${e.stallMin}분 포함`:''}</span></div>`;
+        /* 예전에는 세 칸을 flex 로 나란히 뒀다. 칸마다 따로 줄바꿈이 일어나
+           <이 / 속도면>, <오후 10시 / 10분> 처럼 어절이 쪼개졌다.
+           한 문장은 한 덩어리로 두고, 시각만 크게 키워 문장 안에 박는다.
+           딸린 숫자(남은 경기·시간)는 아래 줄로 내려 문장과 겹치지 않게 한다. */
+        return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e3e7eb">
+          <div style="font-size:13.5px;color:#7c858f;line-height:1.55;
+            word-break:keep-all;text-wrap:pretty">이 속도면 <b style="font-size:18px;
+            font-weight:700;color:var(--coral-d);letter-spacing:-.03em;white-space:nowrap"
+            >${e.end}</b>쯤 끝나요</div>
+          <div style="font-size:12.5px;color:#a3abb4;margin-top:5px;
+            word-break:keep-all">남은 ${e.leftN}경기 · ${cbEtaText(e)}${
+            e.stallMin>=5?` · 멈춰 있는 ${e.stallMin}분 포함`:''}</div></div>`;
       })()}
     </div>`;
 
@@ -34422,6 +34467,10 @@ function homeStarter(){
       if(state.view==='home') try{ renderHome(); }catch(e){} },
       Math.max(400, HOME_SKEL_MS - (Date.now()-HOME_T0) + 50));
   }
+  /* 클럽을 <모르는> 상태와 <없는> 상태를 가른다.
+     못 불러왔거나 아직 응답 전인데 시간만 지난 경우, 없다고 단정하면
+     가입해 있는 회원에게 <클럽 찾거나 만들기>가 뜬다. */
+  const clubUnknown = SERVER_OK && !hasClub && (MYCLUBS_FAILED || !MYCLUBS_READY);
   const done=[hasProfile, hasClub, joined];
   const step=done.findIndex(x=>!x);            // -1 이면 다 끝남
   let h='';
@@ -34462,8 +34511,17 @@ function homeStarter(){
     }
   }
 
+  /* 클럽을 못 불러왔을 때는 할 일 목록 대신 사실을 말하고 다시 시도할 길을 준다 */
+  if(clubUnknown && !loading){
+    h+=`<div class="hstoday quiet">
+      <span class="k soon">불러오지 못함</span>
+      <b>클럽 정보를 못 불러왔어요</b>
+      <span class="m">잠깐 연결이 끊겼을 수 있어요 · 가입한 클럽은 그대로 있습니다</span>
+      <button class="go" onclick="event.stopPropagation();homeRetryClubs(this)">다시 시도</button></div>`;
+  }
+
   /* ② 시작하기 — 빈 화면을 <할 일>로 바꾼다 */
-  if(step>=0 && !loading){
+  if(step>=0 && !loading && !clubUnknown){
     const STEPS=[
       ['구력과 성별 알려주기','대진이 실력을 섞어 짜는 데 쓰여요 · 1분이면 끝나요','입력하기',"openEditProfile()"],
       ['클럽 찾거나 만들기','맞수는 클럽 단위로 굴러가요 · 초대 링크를 받았다면 그걸 눌러도 돼요','클럽 찾기',"go('club')"],
@@ -35485,15 +35543,74 @@ window.addEventListener('unhandledrejection', e=>{
 });
 history.replaceState({matsu:1},'');
 history.pushState({matsu:1},'');
-window.addEventListener('popstate', ()=>{
+/* 뒤로 가기 한 걸음 — 시트가 열려 있으면 시트, 알림창이 열려 있으면 알림창,
+   그다음이 화면 이력이다. 안드로이드 뒤로가기 버튼과 화면 쓸기가 같은 길을 쓴다. */
+function navBackStep(){
   const ov=document.getElementById('ov');
   const nd=document.getElementById('notifDrop');
-  if(ov && ov.classList.contains('on')){ closeOv(); }
-  else if(nd){ closeNotifDrop(); }
-  else if(NAV_HIST.length){ goBack(); }
-  else if(state.view!=='home'){ go('home', true); }
+  if(ov && ov.classList.contains('on')){ closeOv(); return true; }
+  if(nd){ closeNotifDrop(); return true; }
+  if(NAV_HIST.length){ goBack(); return true; }
+  if(state.view!=='home'){ go('home', true); return true; }
+  return false;
+}
+window.addEventListener('popstate', ()=>{
+  navBackStep();
   history.pushState({matsu:1},'');                      // 항상 한 칸 유지
 });
+
+/* ── 왼쪽 가장자리에서 쓸어 뒤로 가기 ─────────────────────────────
+   iOS 는 사파리에서만 이 동작을 해주고, 앱으로 감싸면(WebView) 사라진다.
+   안드로이드는 아예 없다. 그래서 직접 만든다.
+
+   가장자리 24px 안에서 시작한 가로 쓸기만 받는다. 화면 한가운데서 옆으로 미는 것은
+   탭줄·달력 넘기기 같은 원래 동작이므로 건드리면 안 된다.
+   세로가 먼저 크게 움직이면 스크롤로 보고 즉시 손을 뗀다. */
+(function(){
+  const EDGE = 24;        // 여기서 시작해야 뒤로가기로 친다
+  const NEED = 70;        // 이만큼 끌어야 넘어간다
+  let x0=0, y0=0, on=false, dx=0, decided=false;
+  const veil = ()=>{ let v=document.getElementById('swBack');
+    if(!v){ v=document.createElement('div'); v.id='swBack';
+      v.style.cssText='position:fixed;left:0;top:0;bottom:0;width:0;z-index:98;'
+        +'pointer-events:none;background:linear-gradient(90deg,rgba(23,28,37,.10),rgba(23,28,37,0));'
+        +'opacity:0;transition:opacity .12s';
+      document.body.appendChild(v); }
+    return v; };
+  addEventListener('touchstart', ev=>{
+    if(ev.touches.length!==1) return;
+    const t=ev.touches[0];
+    if(t.clientX > EDGE) return;
+    x0=t.clientX; y0=t.clientY; on=true; dx=0; decided=false;
+  }, {passive:true});
+  addEventListener('touchmove', ev=>{
+    if(!on) return;
+    const t=ev.touches[0];
+    dx=t.clientX-x0; const dy=Math.abs(t.clientY-y0);
+    if(!decided){
+      if(dy>10 && dy>Math.abs(dx)){ on=false; return; }   // 세로가 먼저면 스크롤이다
+      if(Math.abs(dx)<8) return;
+      decided=true;
+    }
+    if(dx<=0){ return; }
+    const v=veil(); v.style.width=Math.min(dx,140)+'px';
+    v.style.opacity=String(Math.min(1, dx/NEED));
+  }, {passive:true});
+  const end=()=>{
+    if(!on){ return; }
+    on=false;
+    const v=document.getElementById('swBack');
+    if(v){ v.style.opacity='0'; v.style.width='0'; }
+    if(dx>=NEED){
+      /* history 를 건드리지 않고 같은 한 걸음을 직접 부른다 —
+         popstate 로 흘리면 한 칸이 어긋나 두 번 뒤로 가는 일이 생긴다. */
+      try{ navBackStep(); }catch(e){}
+    }
+    dx=0;
+  };
+  addEventListener('touchend', end, {passive:true});
+  addEventListener('touchcancel', end, {passive:true});
+})();
 
 window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
