@@ -12083,6 +12083,7 @@ function openClubOps(){
       ${tool('가입 신청','승인 · 거절','openAdmin()',pend?'hot':'',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
       ${tool('회원 실력','등록 구력과 실제가 다른 회원','openMemberSkill()')}
+      ${tool('요즘 오르는 회원','최근 8경기가 그 전보다 나아진 분','openMskTrend()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날','openClubBasicEdit(1)')}
@@ -14174,6 +14175,37 @@ function balForm(){
     });
     R = R2;
   }
+
+  /* ── 상승세 ────────────────────────────────────────────────────
+     <요즘 늘고 있나>는 등급 숫자만 봐서는 알 수 없다. 등급은 최근 가중을 넣었어도
+     전체를 뭉뚱그린 값이라, 이번 달에 부쩍 는 분과 예전부터 잘하던 분이 같아 보인다.
+     그래서 최근 8경기의 <기대 대비 실적>과 그 이전의 값을 따로 재서 차이를 낸다.
+     기대값을 쓰므로 <약한 상대를 만나서 요즘 이긴다>는 상승세로 안 잡힌다. */
+  {
+    const RECENT = 8;
+    const seq = {};                 // 사람별 경기 기록 (시간순)
+    GS.forEach(g=>{
+      const A=(g.teamA||[]).filter(Boolean), Bt=(g.teamB||[]).filter(Boolean);
+      if(A.length<2 || Bt.length<2) return;
+      const rv = p => R[String(p.id)] != null ? R[String(p.id)] : B(p.id);
+      const ra=(rv(A[0])+rv(A[1]))/2, rb=(rv(Bt[0])+rv(Bt[1]))/2;
+      const eA = 1/(1+Math.exp(-(ra-rb)*SLOPE));
+      const sA = g.sa>g.sb ? 1 : g.sa<g.sb ? 0 : 0.5;
+      const push=(p,sc,ex)=>{ (seq[String(p.id)] = seq[String(p.id)] || []).push({sc,ex}); };
+      A.forEach(p=>push(p, sA, eA));
+      Bt.forEach(p=>push(p, 1-sA, 1-eA));
+    });
+    Object.keys(st).forEach(id=>{
+      const q = seq[id] || [];
+      st[id].trend = null; st[id].recentN = 0;
+      if(q.length < RECENT + 4) return;          // 앞뒤로 견줄 만큼은 있어야 한다
+      const cut = q.length - RECENT;
+      const mean = arr => arr.reduce((a,x)=>a+(x.sc-x.ex),0)/arr.length;
+      st[id].trend   = mean(q.slice(cut)) - mean(q.slice(0,cut));
+      st[id].recentN = RECENT;
+      st[id].recentAdj = mean(q.slice(cut));
+    });
+  }
   BAL_CACHE = st; BAL_FOR = key;
   return st;
 }
@@ -14503,16 +14535,43 @@ function mskRow(r){
   const act  = mskLadder(r);
   const ri   = GRADE_LADDER.indexOf(reg.toUpperCase());
   const ai   = GRADE_LADDER.indexOf(act);
+  /* 승률만으로는 <약한 상대를 만나서 이겼나>를 못 가른다.
+     기대 대비 실적(awr)과 최근 8경기 상승세를 같이 실어 보낸다. */
+  const f = balForm()[uid] || {};
+  const edge = f.awr!=null ? Math.round((f.awr-0.5)*200) : null;   // 기대보다 ±%
   return { uid, name: r.name || r.nickname || '회원',
            reg, act, games: s.games, w: s.w, l: s.l,
            wr: s.games ? Math.round(s.w/s.games*100) : 0,
+           edge, trend: (f.trend!=null ? Math.round(f.trend*200) : null),
            steps: (ri<0||ai<0) ? 0 : ai-ri,
            ready: s.games >= MSK_MINGAMES };
 }
 function mskAll(){
   return (CLUB_ROSTER||[]).map(mskRow).filter(x=>x.uid);
 }
+/* 상승세 딱지 — 최근 8경기가 그 이전보다 <기대 대비> 얼마나 나아졌나.
+   기대값으로 재므로 <요즘 약한 상대를 만나서 이긴다>는 상승세로 안 잡힌다.
+   ±8% 안쪽은 그날 컨디션 범위라 아무 표시도 안 한다 — 표시가 없는 게 기본이다. */
+function mskTrendChip(t){
+  if(t==null || Math.abs(t)<8) return '';
+  const up = t>0;
+  return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;
+    font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:7px;
+    background:${up?'#eef7f3':'#f2f4f6'};color:${up?'#0f9d76':'#8b95a1'}"
+    >${up?'▲':'▼'} 최근 ${up?'+':''}${t}%</span>`;
+}
 
+/* 요즘 오르는 회원 — 같은 화면을 <상승세 순>으로 연다.
+   따로 화면을 만들지 않는다. 회원 실력과 같은 값을 보는데 정렬만 다른 것이라,
+   두 화면으로 갈라 두면 같은 표를 두 벌 관리하게 된다. */
+function openMskTrend(){
+  const cid=clubId();
+  if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
+  MSK_WHO=null; MSK_SORT='trend';
+  if(CLUB_ROSTER===null && typeof loadClubRoster==='function') loadClubRoster();
+  if(CLUBME_GAMES===null) loadClubMeGames();
+  renderMemberSkill();
+}
 function openMemberSkill(){
   const cid=clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
@@ -14573,8 +14632,10 @@ function renderMemberSkill(){
   if(MSK_SORT==='level') list.sort((a,b)=>
     GRADE_LADDER.indexOf(b.act)-GRADE_LADDER.indexOf(a.act));
   else if(MSK_SORT==='name') list.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  else if(MSK_SORT==='trend') list.sort((a,b)=>
+    (b.trend==null?-999:b.trend)-(a.trend==null?-999:a.trend));
   else list.sort((a,b)=>Math.abs(b.steps)-Math.abs(a.steps));
-  const SORTL={gap:'차이 큰 순', level:'실력 순', name:'이름 순'};
+  const SORTL={gap:'차이 큰 순', level:'실력 순', name:'이름 순', trend:'상승세 순'};
 
   /* 실제 수준을 앞세우고 등록은 곁말로 둔다.
      <한 등급 위> 같은 글자는 안 쓴다 — A2 와 등록 B2 를 나란히 두면
@@ -14583,9 +14644,14 @@ function renderMemberSkill(){
   let h = head;
   h+=`<div style="padding:2px 2px 0">
     <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${
-      off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
+      MSK_SORT==='trend'
+        ? (()=>{ const n=ready.filter(x=>x.trend!=null&&x.trend>=8).length;
+                 return n ? `${n}명이 오르는 중이에요` : '눈에 띄게 오르는 회원은 없어요'; })()
+        : off.length ? `${off.length}명이 등록과 달라요` : '등록과 크게 다른 회원은 없어요'}</div>
     <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:6px"
-      >${MSK_MINGAMES}경기를 넘긴 ${ready.length}명 · 전체 ${rows.length}명</div>
+      >${MSK_SORT==='trend'
+        ? '최근 8경기를 그 이전과 견줘요 · 상대의 강함을 감안한 값이에요'
+        : `${MSK_MINGAMES}경기를 넘긴 ${ready.length}명 · 전체 ${rows.length}명`}</div>
   </div>`;
 
   h+=`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
@@ -14600,10 +14666,15 @@ function renderMemberSkill(){
      C안은 화살표도 <한 등급 위> 글자도 없어서, 방향을 알려줄 것이 묶음뿐이다.
      나누지 않으면 A2·A1·C1·A1·C3 이 뒤섞여 훑어도 안 갈린다.
      단, 이름순·실력순으로 바꾸면 묶음이 뜻을 잃으므로 그때는 한 줄로 편다. */
-  const grouped = MSK_SORT==='gap';
+  const grouped = MSK_SORT==='gap' || MSK_SORT==='trend';
   const secHd = t=>`<div style="font-size:13px;font-weight:700;color:var(--lgray);
     letter-spacing:.02em;padding:16px 0 2px">${t}</div>`;
-  const buckets = grouped
+  const buckets = MSK_SORT==='trend'
+    ? [['요즘 오르는 중', list.filter(x=>x.trend!=null && x.trend>=8)],
+       ['그대로', list.filter(x=>x.trend!=null && Math.abs(x.trend)<8)],
+       ['요즘 주춤', list.filter(x=>x.trend!=null && x.trend<=-8)],
+       ['아직 견줄 경기가 적음', list.filter(x=>x.trend==null)]]
+    : grouped
     ? [['등록보다 위', list.filter(x=>x.steps>0)],
        ['등록보다 아래', list.filter(x=>x.steps<0)],
        ['등록과 맞음', list.filter(x=>x.steps===0)]]
@@ -14622,7 +14693,10 @@ function renderMemberSkill(){
           text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
         <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:4px;
           overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          >${x.games}경기 · ${x.wr}%${x.games<MSK_SURE?' · 표본 적음':''}</div>
+          >${x.games}경기 · 승률 ${x.wr}%${
+            x.edge!=null?` · 기대보다 ${x.edge>=0?'+':''}${x.edge}%`:''}${
+            x.games<MSK_SURE?' · 표본 적음':''}</div>
+        ${mskTrendChip(x.trend)}
       </div>
       <div style="flex:none;text-align:right;white-space:nowrap">
         <div style="font-size:20px;font-weight:700;letter-spacing:-.04em;line-height:1.15;
@@ -14688,7 +14762,10 @@ function renderMemberSkill(){
   mskBackBtn(false);
 }
 function mskCycleSort(){
-  MSK_SORT = MSK_SORT==='gap' ? 'level' : MSK_SORT==='level' ? 'name' : 'gap';
+  MSK_SORT = MSK_SORT==='gap'   ? 'trend'
+           : MSK_SORT==='trend' ? 'level'
+           : MSK_SORT==='level' ? 'name'
+           : 'gap';
   renderMemberSkill();
 }
 
@@ -15144,7 +15221,7 @@ function clubTabRecords(){
      참가 조건(N회 이상)은 셈이 아니라 자격이므로 아래 줄로 갈라 둔다. */
   h+=`<div class="rkrule">
     <div class="rkf">
-      <span class="b"><b>승 3점</b><span>무 1점</span></span>
+      <span class="b"><b>승점</b><span>승 3점 · 무 1점</span></span>
       <span class="op">÷</span>
       <span class="b"><b>참석 횟수</b><span>나온 날</span></span>
       <span class="op">=</span>
@@ -26576,17 +26653,11 @@ function drawEventDetail(){
   /* 게스트는 이름 옆에 표시한다 — 대진을 짤 때 정회원과 섞이면 누가 손님인지 알 수 없다 */
   const isGuest=n=>!!(EVD.guestMap||{})[n];
   const gtag=`<span style="font-size:14px;font-weight:700;color:#79828d;opacity:.75;margin-left:1px">G</span>`;
-  /* 캡슐이 inline-flex 라 이름 글자 수만큼만 폭을 먹었다 — 줄마다 오른쪽 끝이
-     들쭉날쭉했고, 남는 여백 탓에 20명이 모여도 화면이 한산해 보였다.
-     그리드 칸을 꽉 채우게 바꾼다. 남는 폭이 캡슐 크기로 들어가서
-     높이도 36 → 44px 이 되고, 손가락 권장(44px)을 채운다.
-
-     열 수는 못 박는다. auto-fill 은 <칸이 104px 이상>이 되도록 화면이 열 수를 정하는데,
-     360px 폰에서는 2열, 375px 부터는 3열이 되어 기기마다 화면이 달랐다.
-     그리고 칸 폭은 고정인데 내용이 왼쪽에 붙어 있어서
-     남는 자리가 전부 이름 뒤에 몰려 보였다 — 가운데로 모아 양쪽으로 나눈다. */
-  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#f4f5f7;border-radius:14px;padding:8px 7px;cursor:pointer;min-width:0">
-      ${evAvatar(n,ph,28)}<span style="font-size:14px;font-weight:500;color:#2e343a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>${isGuest(n)?gtag:''}</span>`;
+  /* 배경이 칸 폭만큼 늘어나면 이름 뒤로 빈 면이 남는다.
+     캡슐은 <프로필 + 이름>에만 깔리는 게 맞다 — 글자 수만큼만 넓어지게 되돌린다.
+     대신 줄 끝이 들쭉날쭉해 보이지 않게 가운데로 모으고 간격을 고르게 준다. */
+  const person=(n,ph)=>`<span onclick="openMemberCard('${esc(n)}')" style="display:inline-flex;align-items:center;gap:7px;background:#f4f5f7;border-radius:999px;padding:6px 14px 6px 6px;cursor:pointer;max-width:100%">
+      ${evAvatar(n,ph,30)}<span style="font-size:14.5px;font-weight:500;color:#2e343a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>${isGuest(n)?gtag:''}</span>`;
   const nameTag=n=>esc(n)+(isGuest(n)?' G':'');
 
   let h=`<div class="evtop">
@@ -26613,8 +26684,9 @@ function drawEventDetail(){
       <span style="font-size:15px;font-weight:400;color:${accent}">${(e.attendees||[]).length}명</span>
       ${(()=>{ const gm=(e.attendees||[]).filter(isGuest).length + (e.guests||[]).length;
         return gm?`<span style="font-size:14px;font-weight:400;color:#79828d">· 게스트 ${gm}명 포함</span>`:''; })()}</div>
-    <!-- 3열로 못 박는다. auto-fill 은 폭에 따라 2~3열로 갈렸다(360px 폰은 2열). -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="grid-column:1/-1;font-size:14px;color:#98a0aa;font-weight:400">아직 참석자가 없어요</span>'}</div>
+    <!-- 칸에 가둬 두면 배경이 늘어난다. 자유롭게 흘리되 가운데 정렬로 모아
+         줄 끝의 들쭉날쭉함을 양쪽으로 나눈다. -->
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px 7px;margin-top:12px">${(e.attendees||[]).map(n=>person(n,(EVD.photoMap||{})[n])).join('')||'<span style="grid-column:1/-1;font-size:14px;color:#98a0aa;font-weight:400">아직 참석자가 없어요</span>'}</div>
     ${(e.guests||[]).length?`<div style="font-size:14px;font-weight:400;color:#79828d;margin-top:2px">게스트 · ${(e.guests||[]).map(g=>esc(g.name)).join(' · ')}</div>`:''}
     ${((e.absent||[]).length||(e.undecided||[]).length)?`<div style="font-size:14px;font-weight:400;color:#98a0aa;margin-top:10px;line-height:1.7">
       ${(e.absent||[]).length?`불참 ${(e.absent||[]).map(nameTag).join(' · ')}`:''}${((e.absent||[]).length&&(e.undecided||[]).length)?'<br>':''}${(e.undecided||[]).length?`미정 ${(e.undecided||[]).map(nameTag).join(' · ')}`:''}</div>`:''}
@@ -29751,12 +29823,10 @@ async function renderMatch(){
         ${omTierChip()}
       </div>
       ${omFilterBar()}
-      <div id="omList">${(SERVER_OK && (!window.OM_LOADED || Date.now()-(window.OM_TS||0)>30e3)) ? skelCards(3) : matchCards(OM_LIST)}</div>
-      <div class="ommgr" onclick="openManagerGuide()">
-        <div class="ommgr-h"><span class="ommgr-k">매니저</span><span class="ommgr-a">›</span></div>
-        <div class="ommgr-t">매니저로 매치를 열어보세요</div>
-        <div class="ommgr-s">코트를 잡고 진행하면 수고비를 드려요</div>
-      </div>`;
+      <div id="omList">${(SERVER_OK && (!window.OM_LOADED || Date.now()-(window.OM_TS||0)>30e3)) ? skelCards(3) : matchCards(OM_LIST)}</div>`;
+      /* <매니저로 매치를 열어보세요> 카드를 뺐다 — 아직 오픈매치가 열리지도 않았는데
+         코트를 잡고 진행해 달라고 권하면 눌러도 할 수 있는 일이 없다.
+         첫 코트가 열린 뒤에 다시 넣는다. */
   el.innerHTML=h;
   if(TRIAL){ const box=document.getElementById('omList'); if(box) box.innerHTML=matchCards(OM_LIST); return; }
   try{
