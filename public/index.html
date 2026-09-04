@@ -14092,14 +14092,16 @@ function balPanelHTML(){
        45점을 등급 자로만 나누면 안 된다 — 그 안에 성적과 조가 이미 들어 있어서,
        조가 A조이기만 해도 두 칸씩 올라가 B등급이 S 수준으로 나왔다.
        성적·조의 한가운데 값을 빼고 남는 자리로 견준다. */
-    /* 대진에 실제로 쓰는 값(cbLv)을 그대로 등급 칸으로 되돌린다.
-       예전에는 여기서 <한 칸 위까지>로 잘랐는데, 대진은 그 제한 없이 짜이므로
-       화면과 실제가 어긋났다. 경기가 쌓인 사람은 두 칸 위도 될 수 있다. */
+    /* 대진에 실제로 쓰는 값(cbLv)을 등급 칸으로 되돌린다.
+       예전에는 Math.round(lv) 로 큰 등급(C·B·A·S·SS) 다섯 개 중 하나로 반올림했다.
+       그런데 회원 실력과 대진표는 15칸 사다리(C1~SS3)로 적는다.
+       lv 2.67 이면 사다리로는 B3 인데 큰 등급으로는 2.5 를 넘어 A 가 되어,
+       같은 사람이 화면마다 다른 이름을 갖게 됐다.
+       세 화면이 한 이름을 쓰도록 여기도 사다리 칸으로 되돌린다. */
     const lv = cbLv({user_id: meRow.user_id, id: meRow.user_id,
                      grade: s.code, glabel: s.code});   // 1(C) ~ 5(SS)
-    let idx = Math.round(lv) - 1;                        // 0(C) ~ 4(SS)
-    idx = Math.max(0, Math.min(GRADE_INFO.length-1, idx));
-    return (GRADE_INFO[GRADE_INFO.length-1-idx]||{}).g || null;
+    const i = Math.round((lv-1)*3);                      // 0(C1) ~ 14(SS3)
+    return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, i))] || null;
   })();
   /* ── 대진 기준 · 재구성 ────────────────────────────────────────
      예전에는 카드가 다섯 장이었다. 그런데 2·3·4번이 같은 세 값(등급·성적·조)을
@@ -14107,9 +14109,9 @@ function balPanelHTML(){
      그리고 있었다. 읽는 사람은 매번 새 정보인 줄 알고 다시 해석한다.
      한 가지 사실은 한 번만 그린다 — 그러면 카드 수는 저절로 줄어든다.
 
-     이 화면에만 토스 눈금(TDS)을 먼저 적용한다.
-       읽는 글 17 · 목록과 딱지 15 이하 · 제목 22 / 26
-     나머지 화면은 아직 12~30 눈금이다. 여기서 판단해 보고 넓힌다. */
+     등급 이름은 15칸 사다리(C1~SS3)로 적는다 — 회원 실력·대진표와 같은 잣대다.
+     큰 등급(C·B·A)만 쓰면 lv 2.67 이 여기서는 A, 다른 화면에서는 B3 이 되어
+     같은 사람이 화면마다 다른 이름을 갖는다. */
   /* 색은 코랄 하나. 나머지 둘은 회색 두 단계로 물러난다.
      인디고·민트를 넣었더니 한 카드에 채도 높은 색이 셋이 됐고, 민트는 앱 어디에도
      없는 색이라 이 카드만 낯설어졌다. 맞수는 코랄 하나로 강조하는 앱이다.
@@ -14134,15 +14136,13 @@ function balPanelHTML(){
          굵기는 올리지 않는다 — Pretendard 가 CDN 으로 안 불려와 기기 기본 폰트로
          떨어지므로, 800 을 줘도 기기마다 다르게 나온다. 크기로 세우는 편이 확실하다. -->
     <div style="display:flex;align-items:baseline;gap:7px;margin-top:5px;flex-wrap:wrap">
-      <span style="font-weight:700;letter-spacing:-.05em;white-space:nowrap">${
-        clubLevel
-          ? `<span style="font-size:30px;font-weight:800;letter-spacing:-.06em;color:${
-               gradeInfo(clubLevel).c}">${clubLevel}</span
-             ><span style="font-size:20px"> 수준</span>`
-          : `<span style="font-size:30px;font-weight:800;letter-spacing:-.06em;color:${
-               gi.c}">${s.base}</span
-             ><span style="font-size:20px">등급</span>`}</span>
-      <span style="${tsSub};color:var(--gray);white-space:nowrap">구력 ${s.base} 등급</span>
+      <!-- <B3 수준> 은 어색하다. 왼쪽 라벨 <대진에서 내 자리>가 이미 설명하므로
+           <수준>을 뺀다. 두 글자가 되면서 자간을 한 단계 더 좁힌다.
+           색은 세부 등급의 앞글자에서 뽑는다 — B3 이면 B 의 파랑. -->
+      <span style="font-size:30px;font-weight:800;letter-spacing:-.07em;white-space:nowrap;
+        color:${gradeInfo(gradeStepBase(clubLevel||s.code)).c}"
+        >${clubLevel || s.code}</span>
+      <span style="${tsSub};color:var(--gray);white-space:nowrap">구력 ${esc(s.code)}</span>
     </div>
 
     <!-- 링은 <100 중 몇을 채웠나>만 그린다.
@@ -14185,7 +14185,7 @@ function balPanelHTML(){
          오늘 할 일을 바꾸지 않는다. 남은 그림은 위 구성 띠 하나뿐이다. -->
 
     <p style="${tsBody};color:var(--gray);margin:18px 0 0;word-break:keep-all;text-wrap:pretty">
-      구력 ${esc(yrs)}이라 <b style="color:var(--ink)">${s.base}등급</b>에서 시작했어요.
+      구력 ${esc(yrs)}이라 <b style="color:var(--ink)">${esc(s.code)}</b>에서 시작했어요.
       ${s.games>=BAL_FULL
         ? `${BAL_FULL}경기를 넘겨 이제 <b style="color:var(--ink)">성적이 자리를 정합니다</b>.`
         : `<b style="color:var(--ink)">구력이 짧아도 잘 치면</b> 위로 올라갈 수 있어요.`}</p>
@@ -14223,7 +14223,7 @@ function balPanelHTML(){
 
       <p style="${tsBody};color:var(--gray);margin:16px 0 0;word-break:keep-all;text-wrap:pretty">
         처음엔 구력만 봅니다. 경기가 쌓이면 성적 쪽으로 옮겨가요.
-        <b style="color:var(--ink)">프로필의 ${s.base}등급은 그대로입니다.</b></p>
+        <b style="color:var(--ink)">프로필의 ${esc(s.code)} 등급은 그대로입니다.</b></p>
 
       <p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all;text-wrap:pretty">
         ${!useT
