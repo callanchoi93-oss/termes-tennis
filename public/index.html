@@ -14030,17 +14030,31 @@ let BAL_CACHE = null, BAL_FOR = '';
 
 /* 클럽 안 전적 — CLUBME_GAMES 는 이 클럽의 모든 경기다 */
 function balForm(){
-  const key = (clubId()||state.activeClub||'') + '|' + ((CLUBME_GAMES||[]).length);
+  /* 캐시 키가 <경기 수>뿐이었다. 그런데 실등급은 구력 + 성적 + 월례조로 계속 움직이고,
+     성적은 경기가 늘 때가 아니라 <점수가 들어올 때> 바뀐다.
+     점수를 나중에 채워 넣으면 경기 수는 그대로라 캐시가 살아 있고,
+     그날 저녁 대진은 오전의 낡은 실력값으로 짜인다.
+     점수 합까지 키에 넣어 점수가 하나만 바뀌어도 다시 센다. */
+  let sig=0, done=0;
+  (CLUBME_GAMES||[]).forEach(g=>{ if(g.sa==null||g.sb==null) return;
+    done++; sig=(sig*31 + (g.sa|0)*7 + (g.sb|0)) % 2147483647; });
+  const key = (clubId()||state.activeClub||'') + '|' + ((CLUBME_GAMES||[]).length)
+            + '|' + done + '|' + sig;
   if(BAL_CACHE && BAL_FOR===key) return BAL_CACHE;
   const st = {};
   (CLUBME_GAMES||[]).forEach(g=>{
     if(g.sa==null || g.sb==null) return;
     const diff = g.sa - g.sb;
-    const put=(p, d)=>{ if(!p||!p.id) return;
-      const t = st[String(p.id)] || (st[String(p.id)] = {g:0,w:0,l:0,gf:0,ga:0});
-      t.g++; if(d>0) t.w++; else if(d<0) t.l++; };
-    (g.teamA||[]).forEach(p=>put(p, diff));
-    (g.teamB||[]).forEach(p=>put(p, -diff));
+    /* 서로 다른 상대를 몇 명이나 만났는지도 센다.
+       승률은 <상대가 골고루였을 때만> 실력을 뜻한다. 같은 사람하고만 붙어서 진 승률로
+       등급을 두 칸씩 끌어내리면, 그 낮아진 등급이 다시 같은 조로 보내는 고리가 생긴다. */
+    const put=(p, d, opp)=>{ if(!p||!p.id) return;
+      const t = st[String(p.id)] || (st[String(p.id)] = {g:0,w:0,l:0,gf:0,ga:0,foe:new Set()});
+      if(!t.foe) t.foe=new Set();
+      t.g++; if(d>0) t.w++; else if(d<0) t.l++;
+      (opp||[]).forEach(o=>{ if(o&&o.id) t.foe.add(String(o.id)); }); };
+    (g.teamA||[]).forEach(p=>put(p, diff, g.teamB));
+    (g.teamB||[]).forEach(p=>put(p, -diff, g.teamA));
   });
   BAL_CACHE = st; BAL_FOR = key;
   return st;
@@ -18292,10 +18306,42 @@ function hnBalanceLate(parts){
   }
   return parts;
 }
+/* ── 지난 세션에 자주 만난 사람을 다른 조로 흩는다 ──────────────────
+   조 안에서 짝을 아무리 잘 돌려도, 조 편성이 매번 같으면 만나는 얼굴이 안 바뀐다.
+   조 편성은 실력 스네이크로만 정해져서 참석자가 비슷하면 결과도 거의 같았다 —
+   특정 두 사람이 전체의 71% 세션에서 같은 조가 되는 경우가 나왔다(무작위면 29%).
+
+   그래서 조를 나눈 뒤 한 패스를 더 돈다. 같은 성별 · 실력이 비슷한 두 사람을
+   조끼리 맞바꿔, 조 안에 쌓인 <지난 만남 횟수>의 합을 줄인다.
+   성별 구성과 실력 균형은 맞바꾸는 조건 자체로 지켜진다. */
+function hnMetKey(a,b){ const x=String(a.id), y=String(b.id); return x<y?x+'|'+y:y+'|'+x; }
+function hnScatter(parts, met){
+  if(!met || !Object.keys(met).length) return parts;
+  const cost=g=>{ let s=0;
+    for(let i=0;i<g.length;i++) for(let j=i+1;j<g.length;j++) s+=met[hnMetKey(g[i],g[j])]||0;
+    return s; };
+  for(let pass=0; pass<6; pass++){
+    let moved=false;
+    for(let a=0;a<parts.length;a++) for(let b=a+1;b<parts.length;b++){
+      for(let i=0;i<parts[a].length;i++) for(let j=0;j<parts[b].length;j++){
+        const p=parts[a][i], q=parts[b][j];
+        if(hnF(p)!==hnF(q)) continue;                    // 조별 성비를 흩뜨리지 않는다
+        if(Math.abs(hnG(p)-hnG(q))>0.7) continue;        // 실력이 크게 다르면 안 바꾼다
+        const before=cost(parts[a])+cost(parts[b]);
+        parts[a][i]=q; parts[b][j]=p;
+        if(cost(parts[a])+cost(parts[b]) < before-1e-9) moved=true;
+        else { parts[a][i]=p; parts[b][j]=q; }
+      }
+    }
+    if(!moved) break;
+  }
+  return parts;
+}
 function hnSplit(ps, courts, opts){
   const n=ps.length;
   const G=Math.max(1, Math.min(courts, Math.floor(n/4)));
   const O=opts||{};
+  const scat=parts=>hnScatter(parts, O.met);
   if(O.separate){
     const women=ps.filter(hnF), men=ps.filter(p=>!hnF(p));
     if(women.length>=4 && men.length>=4 && G>=2){
@@ -18304,49 +18350,73 @@ function hnSplit(ps, courts, opts){
       while(wc>1 && women.length/wc<4) wc--;
       let mc=G-wc;
       while(mc>1 && men.length/mc<4) mc--;
-      const out=hnBalanceLate(hnSnake(women,wc).concat(hnSnake(men,mc)).filter(g=>g.length>=4));
+      const out=scat(hnBalanceLate(hnSnake(women,wc).concat(hnSnake(men,mc)).filter(g=>g.length>=4)));
       out.separated=true; out.womenCourts=wc; out.menCourts=mc;
       return out;                                   // 여자 코트가 1코트부터
     }
     const why = G<2 ? '코트가 2개 이상이어야 해요'
       : women.length<4 ? `여성이 4명부터예요 (지금 ${women.length}명)`
       : `남성이 4명부터예요 (지금 ${men.length}명)`;
-    const mixed=hnBalanceLate(hnSplitMixed(ps, G)); mixed.separated=false; mixed.why=why;
+    const mixed=scat(hnBalanceLate(hnSplitMixed(ps, G))); mixed.separated=false; mixed.why=why;
     return mixed;
   }
-  return hnBalanceLate(hnSplitMixed(ps, G));
+  return scat(hnBalanceLate(hnSplitMixed(ps, G)));
+}
+/* ── 조마다 성별을 몇 명씩 넣을지 ────────────────────────────────────
+   규칙 하나 — <각 성별은 0명이거나 3명 이상>.
+
+   왜냐하면 혼복은 <팀마다 그 성별 한 명>이라, 조에 어떤 성별이 딱 2명이면
+   그 두 사람은 같은 편이 될 수 있는 조합이 아예 없다. 그날 네 게임 내내 서로의 상대다.
+   실제 대진표에서 여성 2명 코트 세 곳 모두 <같은 편 0회 / 맞은편 4회>가 나왔다.
+   여성 5명·남성 2명인 조에서는 같은 일이 남성 두 명에게 그대로 일어난다.
+   그래서 규칙을 성별에 대칭으로 둔다 — 여성에게만 적용하면 문제가 남성으로 옮겨갈 뿐이다.
+
+   3명이면 매 경기 셋 중 둘이 나와 상대가 돌고, 4명 이상이면 같은 성별끼리의
+   복식이 편성에 들어와 같은 편으로도 뛴다.
+
+   조 수와 인원이 작으므로 가능한 배분을 세어 가장 좋은 것을 고른다.
+   1~2명이 되는 가지는 아예 뻗지 않아 후보 수가 몇십 개로 떨어진다. */
+function hnFemAlloc(sizes, W){
+  const G=sizes.length, n=sizes.reduce((a,b)=>a+b,0);
+  const bad=v=>v>=1&&v<=2;
+  const gen=strict=>{
+    const out=[];
+    const rec=(g,left,acc)=>{
+      if(out.length>4000) return;                       // 안전장치
+      if(g===G){ if(left===0) out.push(acc.slice()); return; }
+      const hi=Math.min(sizes[g],left);
+      for(let v=0;v<=hi;v++){
+        if(strict && (bad(v)||bad(sizes[g]-v))) continue;
+        acc.push(v); rec(g+1,left-v,acc); acc.pop();
+      }
+    };
+    rec(0,W,[]); return out;
+  };
+  let cand=gen(true);
+  if(!cand.length) cand=gen(false);                     // 인원상 불가능하면 규칙을 푼다
+  if(!cand.length) return null;
+  const score=fq=>{
+    let s=0;
+    fq.forEach((f,i)=>{
+      const m=sizes[i]-f;
+      if(bad(f)) s+=1000;                               // 그 성별이 매 경기 서로 상대가 된다
+      if(bad(m)) s+=1000;
+      if(f>=3&&m>=3) s-=40;                             // 혼복이 제대로 도는 조는 좋다
+      s+=Math.abs(f - sizes[i]*W/n)*3;                   // 전체 성비에서 너무 벗어나지 않게
+    });
+    return s;
+  };
+  let best=null, bs=Infinity;
+  cand.forEach(fq=>{ const v=score(fq); if(v<bs){ bs=v; best=fq; } });
+  return best;
 }
 function hnSplitMixed(ps, G){
   const n=ps.length;
   const sizes=Array.from({length:G},(_,i)=>Math.floor(n/G)+(i<n%G?1:0));   // 큰 조가 앞 코트
   const women=ps.filter(hnF), men=ps.filter(p=>!hnF(p));                    // 들어올 때 이미 실력순
   const W=women.length;
-  /* 한 조에 여성이 몰리면 그 코트만 여복이 되고 옆 코트는 남복만 돈다 */
-  const fq=Array.from({length:G},(_,g)=>Math.floor(W/G)+(g<W%G?1:0));
-  for(let g=0;g<G;g++){
-    while(fq[g]>sizes[g]){ const t=fq.findIndex((v,i)=>v<sizes[i]); if(t<0) break; fq[g]--; fq[t]++; }
-  }
-  /* 혼복은 <양 팀에 여성 한 명씩>이라 한 조에 여성이 2명 단위로 있어야 성립한다.
-     여성이 홀수로 남으면(1명·3명) 그 조에서는 여성 한 명이 남자 셋과 뛰는 경기가 계속 나온다.
-     그래서 짝수로 떨어지게 몰아준다 — 3명이면 2·1 로 갈지 말고 한 조에 3명(혹은 2명)을 둔다. */
-  for(let pass=0; pass<G*2; pass++){
-    const odd=fq.findIndex(v=>v%2===1 && v>0);
-    if(odd<0) break;
-    /* 홀수인 조에서 한 명을 빼거나 더해 짝수로 만든다.
-       ① 다른 홀수 조로 옮겨 양쪽을 한 번에 짝수로  ② 안 되면 여성이 많은 조로 넘긴다 */
-    const other=fq.findIndex((v,i)=>i!==odd && v%2===1 && v>0);
-    if(other>=0 && fq[other]+1<=sizes[other]){ fq[other]++; fq[odd]--; continue; }
-    if(other>=0 && fq[odd]+1<=sizes[odd]){ fq[odd]++; fq[other]--; continue; }
-    const rich=fq.findIndex((v,i)=>i!==odd && v>=2);
-    if(rich>=0 && fq[rich]+fq[odd]<=sizes[rich]){ fq[rich]+=fq[odd]; fq[odd]=0; continue; }
-    break;                                               // 더 손볼 수 없으면 그대로 둔다
-  }
-  /* 여성 혼자인 조는 끝까지 피한다 */
-  for(let g=0;g<G;g++){
-    if(fq[g]!==1||W<2) continue;
-    const rich=fq.findIndex((v,i)=>i!==g&&v>=2);
-    if(rich>=0 && fq[rich]+1<=sizes[rich]){ fq[rich]++; fq[g]--; }
-  }
+  const fq=hnFemAlloc(sizes, W)
+    || Array.from({length:G},(_,g)=>Math.floor(W/G)+(g<W%G?1:0));
   const groups=Array.from({length:G},()=>[]);
   const snake=(list, cap)=>{ let g=0, dir=1;
     list.forEach(p=>{ let guard=0;
@@ -18365,6 +18435,19 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
   const played=Array(m).fill(0), last=Array(m).fill(-9);
   const pu={}, ou={}, out=[];
   const nF=mem.filter(hnF).length, bothSex=nF>=2 && m-nF>=2;
+  /* ── 소수 성별이 딱 2명인 조 ────────────────────────────────────
+     혼복은 <팀마다 그 성별 한 명>이므로, 어떤 성별이 조에 정확히 2명이면
+     그 둘이 같은 편이 되는 조합은 <여복 대 남복> 하나뿐이다. 그런데 그건
+     아래에서 160점을 물어 절대 안 뽑힌다. 결과가 <그날 네 게임 내내 서로의 상대>다.
+     실제 대진표에서 여성 2명 코트 세 곳 모두 같은 편 0회 / 맞은편 4회가 나왔다.
+
+     hnFemAlloc 이 <0명이거나 3명 이상>으로 배분해 이 상황을 대부분 없애지만,
+     그날 그 성별이 두 명뿐이면 산수로 불가능해 규칙이 풀린다. 그 경우의 안전망이다.
+     네 게임 중 딱 한 번만 벌점을 면제한다 — 한 번이면 서로를 상대가 아닌 사람으로
+     만나기에 충분하고, 두 번부터는 다시 혼복이 기본이 된다.
+     성별에 대칭으로 둔다. 남성이 2명인 조에서도 같은 일이 남성 두 분에게 일어난다. */
+  const lockedPair = (nF===2 && m-nF>=2) || (m-nF===2 && nF>=2);
+  let pairFreed = 0;
   const lvl=(style==='level');          // 일반·월례: 등급이 붙어 있는 4명을 고른다
   const pastCost=(a,b)=>{ if(!past) return 0; const k=[mem[a].id,mem[b].id].sort().join('-'); return past[k]||0; };
   for(let k=0;k<N;k++){
@@ -18389,12 +18472,26 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
         // 여2·남2면 팀마다 남녀 1명(혼복)이 기본. 파트너가 겹칠 바엔 남복:여복도 허용
         const mixed=(hnF(mem[a])!==hnF(mem[b])) && (hnF(mem[c])!==hnF(mem[d]));
         const nf=four.filter(i=>hnF(mem[i])).length;
+        /* 이 게임이 <잠긴 두 사람을 같은 편으로 묶는> 게임인가.
+           소수 성별 2명이 모두 나왔고, 그 둘이 한 팀인 경우다. */
+        const frees = lockedPair && !mixed &&
+          (nf===2 || nf===four.length-2) && pairFreed===0;
         const cost=(pu[hnK(a,b)]||0)*120+(pu[hnK(c,d)]||0)*120
           /* 여2·남2인데 여성 둘이 한 팀에 몰리면 여복 대 남복이 된다 —
-             한울처럼 조가 작을 때는 그럴 바엔 파트너가 겹치는 편이 낫다. */
-          +(nf===2 && !mixed ? 160 : 0)
+             한울처럼 조가 작을 때는 그럴 바엔 파트너가 겹치는 편이 낫다.
+             다만 그 성별이 조에 딱 2명이면 이 벌점이 <영원히 상대>를 뜻하므로,
+             그 조의 첫 한 게임에 한해 면제한다(위 lockedPair 주석).
+             면제(0점)만 주면 혼복과 점수가 비겨 다른 항목이 결정하게 되고,
+             실측에서 절반쯤만 나왔다. 한 번은 적극적으로 고르도록 −40 을 준다.
+             파트너 중복(120)보다 작으므로 파트너 겹침을 사서까지 고르지는 않는다. */
+          +(nf===2 && !mixed ? (frees ? -40 : 160) : 0)
           +(pastCost(a,b)+pastCost(c,d))*20
-          +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*20
+          /* 상대 중복 계수가 20 이었다 — 파트너(120)의 6분의 1.
+             그래서 알고리즘은 파트너 중복 0 을 지키려고 상대 중복을 얼마든지 내줬고,
+             한 사람을 하루 네 번 만나는 대진이 나왔다.
+             코트에서 기억에 남는 건 <누구랑 붙었나>지 <누구랑 한 팀이었나>가 아니다.
+             파트너 우선은 유지하되(120 > 60) 격차를 6배에서 2배로 좁힌다. */
+          +((ou[hnK(a,c)]||0)+(ou[hnK(a,d)]||0)+(ou[hnK(b,c)]||0)+(ou[hnK(b,d)]||0))*60
           +Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]))*4
           +Math.abs((hnF(mem[a])?1:0)+(hnF(mem[b])?1:0)-(hnF(mem[c])?1:0)-(hnF(mem[d])?1:0))*6
           +(lvl?0:(bothSex?Math.abs(nf-2)*8:0))
@@ -18409,10 +18506,12 @@ function hnPlanOnce(mem, GPP, lateSet, lateAfter, rnd, past, style, games){
                 -Math.min(hnG(mem[a]),hnG(mem[b]),hnG(mem[c]),hnG(mem[d])))*30:0)
           +four.reduce((s,i)=>s+(last[i]===k-1?3:0),0)
           +rnd()*0.5;
-        if(!best||cost<best.cost) best={cost,sp,four};
+        if(!best||cost<best.cost) best={cost,sp,four,frees};
       });
     });
     if(!best) break;
+    /* 면제 한 장을 쓴 게임이 실제로 뽑혔으면 그 조에서는 더 안 준다 */
+    if(best.frees) pairFreed++;
     const [[a,b],[c,d]]=best.sp;
     pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
     [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
@@ -18428,12 +18527,19 @@ function hnEval(out, mem, past, style){
   const pu={}, ou={}; let mix=0, gap=0, b2b=0, spread=0, mixCnt=0;
   const lvl=(style==='level');
   const nFa=mem.filter(hnF).length, bothSex=nFa>=2 && mem.length-nFa>=2 && !lvl;
+  /* hnPlanOnce 와 같은 예외를 둔다. 여기서만 벌점을 매기면
+     hnPolish 가 <면제로 넣은 그 한 게임>을 다시 혼복으로 되돌린다. */
+  const lockedPair = (nFa===2 && mem.length-nFa>=2) || (mem.length-nFa===2 && nFa>=2);
+  let freed=0;
   out.forEach(([t1,t2],k)=>{
     const [a,b]=t1,[c,d]=t2, four=[a,b,c,d];
     pu[hnK(a,b)]=(pu[hnK(a,b)]||0)+1; pu[hnK(c,d)]=(pu[hnK(c,d)]||0)+1;
     [a,b].forEach(x=>[c,d].forEach(y=>ou[hnK(x,y)]=(ou[hnK(x,y)]||0)+1));
     const nf=four.filter(i=>hnF(mem[i])).length;
-    if(nf===2 && !(hnF(mem[a])!==hnF(mem[b]) && hnF(mem[c])!==hnF(mem[d]))) mix++;
+    if(nf===2 && !(hnF(mem[a])!==hnF(mem[b]) && hnF(mem[c])!==hnF(mem[d]))){
+      if(lockedPair && freed===0){ freed++; mix-=0.3; }  // 그 조의 첫 한 게임은 오히려 반긴다
+      else mix++;
+    }
     if(bothSex) mix+=Math.abs(nf-2)*0.45;
     gap+=Math.abs(hnG(mem[a])+hnG(mem[b])-hnG(mem[c])-hnG(mem[d]));
     if(lvl){
@@ -18449,7 +18555,13 @@ function hnEval(out, mem, past, style){
   let pastN=0;
   if(past) out.forEach(([t1,t2])=>[t1,t2].forEach(t=>{
     const kk=[mem[t[0]].id,mem[t[1]].id].sort().join('-'); pastN+=past[kk]||0; }));
-  return {score:maxP*4000+dupP*600+Math.max(0,maxO-2)*260+dupO*30+mix*130+gap*4+spread*30+mixCnt*100+b2b*3+pastN*20, maxP, dupP};
+  /* 예전 점수식은 상대 중복을 <2회까지 벌점 0> 으로 두었다.
+     파트너를 두 번 만나면 4600점인데 상대를 두 번 만나면 30점 —
+     알고리즘 입장에서 <파트너 2회>가 <상대 4회>보다 세 배 나빴다.
+     조가 작으면 상대 중복 자체는 피할 수 없으므로(4게임 × 상대 2자리 = 8자리를 6명이 채운다)
+     막아야 하는 건 중복이 아니라 <한 사람에게 몰리는 것>이다.
+     그래서 무료 구간을 2회에서 1회로 줄이고 계수를 올린다. */
+  return {score:maxP*4000+dupP*600+Math.max(0,maxO-1)*700+dupO*80+mix*130+gap*4+spread*30+mixCnt*100+b2b*3+pastN*20, maxP, dupP};
 }
 /* 국소 탐색 — 두 게임이 선수를 한 명씩 맞바꾼다(각자 경기 수는 그대로) */
 function hnPolish(out, mem, lateSet, lateAfter, past, t0, budget, style){
@@ -19357,7 +19469,20 @@ function hnPlanBySex(mem, opts){
       const fs=pick(F,nf), ms=pick(M,4-nf);
       if(fs.length<nf || ms.length<4-nf){ ok=false; break; }
       let t1,t2;
-      if(nf===2){ t1=[fs[0],ms[0]]; t2=[fs[1],ms[1]]; }   // 혼복은 팀마다 여성 1명
+      if(nf===2){
+        /* 혼복은 팀마다 여성 1명이라 두 여성이 갈리는 건 정해져 있다.
+           남는 자유는 <남성을 어느 쪽에 붙일까> 하나뿐인데, 예전에는
+           fs[0]-ms[0] 으로 고정이라 그 한 칸조차 안 쓰고 있었다.
+           실력 균형과 지금까지의 만남 이력을 보고 고른다. */
+        const cand=[[[fs[0],ms[0]],[fs[1],ms[1]]], [[fs[0],ms[1]],[fs[1],ms[0]]]];
+        const cst=([[a,b],[c,d]])=>
+            (pair[pk(a.id,b.id)]||0)*12 + (pair[pk(c.id,d.id)]||0)*12
+          + ((opp[pk(a.id,c.id)]||0)+(opp[pk(a.id,d.id)]||0)
+            +(opp[pk(b.id,c.id)]||0)+(opp[pk(b.id,d.id)]||0))*10
+          + Math.abs(lv(a)+lv(b)-lv(c)-lv(d));
+        const P = cst(cand[0])<=cst(cand[1]) ? cand[0] : cand[1];
+        t1=P[0]; t2=P[1];
+      }
       else {
         const four=fs.concat(ms);
         /* 실력이 팽팽하게 갈라지는 조합을 고른다 */
@@ -19367,8 +19492,14 @@ function hnPlanBySex(mem, opts){
           if(d<bs){ bs=d; pickSp=sp; } });
         t1=[four[pickSp[0]],four[pickSp[1]]]; t2=[four[pickSp[2]],four[pickSp[3]]];
       }
-      [t1,t2].forEach(([a,b])=>{ const k=pk(a.id,b.id); cost+=(pair[k]||0)*12; pair[k]=(pair[k]||0)+1; });
-      t1.forEach(a=>t2.forEach(b=>{ const k=pk(a.id,b.id); cost+=(opp[k]||0)*3; opp[k]=(opp[k]||0)+1; }));
+      /* 상대 중복 계수가 3 이었다 — 파트너(12)의 4분의 1.
+         그래서 같은 사람을 하루 세 번·네 번 만나는 편성이 <최소 비용>으로 뽑혔다.
+         두 번째까지는 조가 작으면 어차피 피할 수 없으니 완만하게 두고,
+         세 번째부터 급격히 비싸지게 한다(볼록). 파트너도 마찬가지로 두 번째를 세게 막는다. */
+      [t1,t2].forEach(([a,b])=>{ const k=pk(a.id,b.id); const c=pair[k]||0;
+        cost += c*12 + (c>=1?40:0); pair[k]=c+1; });
+      t1.forEach(a=>t2.forEach(b=>{ const k=pk(a.id,b.id); const c=opp[k]||0;
+        cost += c*10 + (c>=2?120:0); opp[k]=c+1; }));
       cost += Math.abs(lv(t1[0])+lv(t1[1])-lv(t2[0])-lv(t2[1]));
       [...t1,...t2].forEach(p=>need[p.id]--);
       games.push([t1,t2]);
@@ -20327,6 +20458,11 @@ function cbHomeStrip(c){
 async function cb2Save(){
   try{ track('draw:publish'); }catch(e){}
   CB2.updated_at=Date.now();
+  /* 방금 발행한 대진도 <지난 만남>이 된다. PAST_MET 은 한 번 읽으면
+     페이지를 새로 열 때까지 그대로라, 이걸 버리지 않으면 오늘 짠 대진이
+     다음 대진 편성에 반영되지 않는다 — 같은 조가 또 나온다.
+     앱을 켜둔 채 두 판을 연달아 짜는 날에 실제로 그렇게 된다. */
+  PAST_PAIRS=null; PAST_MET=null;
   if(typeof TRIAL!=='undefined' && TRIAL) return;
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(CB2)}); }
   catch(e){ toast('저장하지 못했어요'); }
@@ -21725,7 +21861,11 @@ function cbLv(p){
        사다리 한가운데(3)를 기준으로 잡으면 안 된다 — 승률 50%인 B등급이
        계속 위로 끌려 올라가, 평범하게 친 사람이 A 수준으로 나온다.
        승률 50% · 가운데 조 = 구력 그대로, 그 위아래로만 움직인다. */
-    const SPAN = 2;                                  // 최대 두 칸까지 움직인다
+    /* 상대가 좁으면 승률을 절반만 믿는다.
+       같은 사람 두세 명하고만 붙어서 나온 0% 와, 열 명을 두루 만나 나온 0% 는
+       같은 숫자가 아니다. 앞의 경우까지 두 칸을 내리면 그 사람은 계속
+       같은 조에 갇히고, 갇힌 채로 다시 진다. */
+    const SPAN = ((f.foe && f.foe.size) || 0) >= 6 ? 2 : 1;
     let formLv = base, tierLv = base;
     if(f.g > 0){
       /* 무승부는 반 승으로 센다 — 시즌 순위가 무를 1점(승 3점)으로 세는데
@@ -21743,7 +21883,10 @@ function cbLv(p){
     const wG = W.grade, wF = (f.g>0 ? W.form : 0), wT = (uses ? W.tier : 0);
     const sum = wG + wF + wT;
     if(!sum) return base;
-    return (base*wG + formLv*wF + tierLv*wT) / sum;
+    /* 사다리는 1(C) ~ 5(SS) 다. 그런데 상한·하한이 없어서 승률 6% 인 분이
+       −0.32 로 계산되고 있었다. 이 값은 팀 실력 합을 맞추는 계산에 그대로 들어가므로
+       음수 한 명이 그 조 전체의 균형을 왜곡한다. 사다리 안으로 자른다. */
+    return Math.max(1, Math.min(5, (base*wG + formLv*wF + tierLv*wT) / sum));
   }catch(e){ return base; }
 }
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
@@ -23536,15 +23679,30 @@ function cb2Tog(id){ id=String(id);
   drawCB2Build();
 }
 let PAST_PAIRS=null;
-async function loadPastPairs(){                      // 지난 대진에서 파트너 횟수 집계
+/* 파트너뿐 아니라 <맞붙은 상대>도 센다.
+   예전에는 같은 팀 두 사람만 기록했다. 그래서 시스템은 누가 누구를 몇 번
+   상대로 만났는지를 전혀 몰랐고, 조를 나눌 때도 그 값을 볼 수 없었다.
+   회원이 실제로 기억하는 건 <오늘 또 저 사람이랑 붙었네>인데 그걸 안 보고 있었다.
+   PAST_MET 은 파트너와 상대를 합친 <만난 횟수>다 — 조 편성이 이 값을 흩는다. */
+let PAST_MET=null;
+async function loadPastPairs(){                      // 지난 대진에서 파트너·상대 횟수 집계
   if(PAST_PAIRS) return PAST_PAIRS;
-  PAST_PAIRS={};
+  PAST_PAIRS={}; PAST_MET={};
   if(TRIAL||!clubId()) return PAST_PAIRS;
+  const mk=(a,b)=>{ const x=String(a), y=String(b); return x<y?x+'|'+y:y+'|'+x; };
   try{
     const logs=await api(`/clubs/${clubId()}/bracket2/logs`)||[];
-    logs.slice(0,12).forEach(l=>((l.data||{}).games||[]).forEach(g=>{
-      [g.teamA,g.teamB].forEach(t=>{ if((t||[]).length===2){
+    /* 최근 여섯 번만 본다 — 열두 번까지 보면 반년 전 대진이 오늘 편성을 붙잡는다.
+       파트너 회피는 예전대로 열두 번을 쓴다(그쪽은 오래 기억할수록 좋다). */
+    logs.slice(0,12).forEach((l,li)=>((l.data||{}).games||[]).forEach(g=>{
+      const A=(g.teamA||[]).filter(Boolean), B=(g.teamB||[]).filter(Boolean);
+      [A,B].forEach(t=>{ if(t.length===2){
         const k=[t[0].id,t[1].id].sort().join('-'); PAST_PAIRS[k]=(PAST_PAIRS[k]||0)+1; } });
+      if(li>=6) return;
+      /* 만남은 같은 편이든 맞은편이든 한 번으로 센다 — 코트에서는 둘 다 <또 만났다>다 */
+      const four=A.concat(B);
+      for(let i=0;i<four.length;i++) for(let j=i+1;j<four.length;j++){
+        const k=mk(four[i].id, four[j].id); PAST_MET[k]=(PAST_MET[k]||0)+1; }
     }));
   }catch(e){}
   return PAST_PAIRS;
@@ -23632,7 +23790,7 @@ async function cb2Gen(mode){
     const n=sel.length;
     if(n<8){ toast('한울 방식은 8명부터예요 · 지금 '+n+'명이에요'); return; }
     if(courts<2){ toast('한울 방식은 2코트부터예요 · 코트 수를 늘려주세요'); return; }
-    const parts=hnSplit(ps, courts, {separate:CB2_HSPLIT});
+    const parts=hnSplit(ps, courts, {separate:CB2_HSPLIT, met:PAST_MET});
     if(!parts.length){ toast('코트당 4명이 안 돼요 · 코트 수를 줄여주세요'); return; }
     if(CB2_HSPLIT && !parts.separated) toast(`성별로 코트를 나눌 수 없어 섞어서 짰어요 · ${parts.why||''}`);
     groups=[];
