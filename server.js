@@ -155,6 +155,9 @@ function auth(req, res, next) {
         /* 어느 기기로 들어왔는지도 함께 — iOS 앱은 헤더를 보내고, 없으면 웹이다 */
         const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
         db.prepare('UPDATE users SET last_seen=?, last_plat=? WHERE id=?').run(t0, plat, req.uid);
+        /* 어느 지역에서 들어왔는지 — 조회는 절대 요청을 막지 않는다(fire and forget).
+           IP 자체는 저장하지 않고 지역 이름만 남긴다. */
+        try { geoTouch(req.uid, clientIp(req)); } catch (e) {}
       }
     } catch (e) {}
     next();
@@ -278,6 +281,9 @@ app.get('/config', (_, res) => {
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
     web_build: WEB_BUILD,
+    /* 점검 중이면 앱이 띠를 띄운다. /config 는 앱이 이미 부르는 곳이라
+       새 요청이 늘지 않는다. */
+    maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
     ios_app_url: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517',   // 맞수 App Store
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
@@ -3394,6 +3400,64 @@ app.delete('/me', auth, (req, res) => {
 
 // ── 모든 기기에서 로그아웃 (폰 분실 대비) ──
 try { db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0'); } catch {}
+
+/* ── 접속 지역 ─────────────────────────────────────────────────────
+   어느 동네에서 쓰는지 알아야 클럽을 어디에 먼저 붙일지 정할 수 있다.
+
+   IP 는 저장하지 않는다. 지역 이름만 남기고 IP 는 조회 캐시의 열쇠로만 쓴다.
+   조회는 외부 API 를 타므로 절대 요청 처리를 막지 않는다 — 던져 두고 잊는다.
+   같은 IP 는 캐시에서 꺼내므로 하루에 몇 번 안 부른다. */
+try { db.exec('ALTER TABLE users ADD COLUMN last_region TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN last_region_at INTEGER'); } catch (e) {}
+try { db.exec(`CREATE TABLE IF NOT EXISTS ip_geo (
+  ip TEXT PRIMARY KEY, region TEXT, country TEXT, at INTEGER)`); } catch (e) {}
+
+function clientIp(req) {
+  const xf = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xf || req.ip || '';
+}
+/* 사설·로컬 대역은 조회해봐야 답이 없다 */
+function localIp(ip) {
+  return !ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.')
+    || ip.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
+}
+const GEO_MEM = new Map();          // ip -> region (프로세스 캐시)
+let GEO_CALLS = 0, GEO_MIN = 0;     // 분당 호출 상한
+async function geoLookup(ip) {
+  if (GEO_MEM.has(ip)) return GEO_MEM.get(ip);
+  const row = db.prepare('SELECT region FROM ip_geo WHERE ip=?').get(ip);
+  if (row && row.region) { GEO_MEM.set(ip, row.region); return row.region; }
+  const m = Math.floor(Date.now() / 60000);
+  if (m !== GEO_MIN) { GEO_MIN = m; GEO_CALLS = 0; }
+  if (GEO_CALLS >= 30) return null;               // 무료 API 는 분당 45 — 여유를 둔다
+  GEO_CALLS++;
+  try {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 3000);
+    const r = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}`
+      + '?fields=status,country,regionName,city&lang=ko', { signal: ac.signal });
+    clearTimeout(t);
+    const j = await r.json();
+    if (!j || j.status !== 'success') return null;
+    /* 한국은 <시도 · 시군구>, 해외는 <나라 · 도시> 로 적는다 */
+    const region = j.country === '대한민국' || j.country === 'South Korea'
+      ? [j.regionName, j.city].filter(Boolean).join(' ')
+      : [j.country, j.city].filter(Boolean).join(' ');
+    if (!region) return null;
+    db.prepare('INSERT OR REPLACE INTO ip_geo (ip,region,country,at) VALUES (?,?,?,?)')
+      .run(ip, region, String(j.country || ''), now());
+    GEO_MEM.set(ip, region);
+    return region;
+  } catch (e) { return null; }
+}
+function geoTouch(uid, ip) {
+  if (!uid || localIp(ip)) return;
+  geoLookup(ip).then(region => {
+    if (!region) return;
+    try { db.prepare('UPDATE users SET last_region=?, last_region_at=? WHERE id=?')
+      .run(region, now(), uid); } catch (e) {}
+  }).catch(() => {});
+}
 
 app.post('/me/logout-all', auth, (req, res) => {
   db.prepare('UPDATE users SET token_version = COALESCE(token_version,0) + 1 WHERE id=?').run(req.uid);
@@ -7269,6 +7333,524 @@ app.get('/admin/purge-list', admin, (_req, res) => {
   });
 });
 
+/* ── 오류 알림 ────────────────────────────────────────────────────
+   관리자 화면은 열어야만 보인다. 그런데 정작 급한 일은 안 열고 있을 때 생긴다.
+   여러 사람에게 나는 오류가 새로 생기면 관리자에게 먼저 알린다.
+
+   같은 오류로 계속 울리면 알림을 끄게 되므로, 한 종류당 하루 한 번만 보낸다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS err_alerted (sig TEXT PRIMARY KEY, at INTEGER)`); } catch (e) {}
+const ERR_ALERT_MIN = 3;          // 몇 명에게 나면 알릴 것인가
+async function errWatch() {
+  try {
+    const rows = db.prepare(`SELECT sig, MAX(path) path, MAX(msg) msg,
+        COUNT(DISTINCT COALESCE(user_id,-1)) people
+      FROM client_errors WHERE at > ? GROUP BY sig`).all(Date.now() - 3 * 864e5);
+    const hot = rows.filter(r => r.people >= ERR_ALERT_MIN);
+    if (!hot.length) return;
+    const ids = (process.env.ADMIN_UIDS || '').split(',')
+      .map(x => +String(x).trim()).filter(Boolean);
+    if (!ids.length) return;      // 받을 사람이 정해져 있지 않으면 조용히 넘어간다
+    const seen = db.prepare('SELECT at FROM err_alerted WHERE sig=?');
+    const mark = db.prepare('INSERT OR REPLACE INTO err_alerted (sig,at) VALUES (?,?)');
+    for (const h of hot) {
+      const s0 = seen.get(h.sig);
+      if (s0 && Date.now() - s0.at < 864e5) continue;    // 하루 한 번
+      mark.run(h.sig, now());
+      for (const uid of ids) {
+        try { await sendPush(uid, { icon: '🚨',
+          title: `오류가 ${h.people}명에게 나고 있어요`,
+          body: `${h.path || ''} · ${String(h.msg || '').slice(0, 60)}`,
+          link: '/admin.html' }); } catch (e) {}
+      }
+      console.log(`[errWatch] ${h.people}명 · ${h.sig.slice(0, 60)}`);
+    }
+  } catch (e) {}
+}
+setInterval(errWatch, 15 * 60000);          // 15분마다 — 더 자주 볼 일은 아니다
+setTimeout(errWatch, 60000);
+
+/* ── 내려받기 ─────────────────────────────────────────────────────
+   세무·정산 정리는 결국 표로 한다. 화면에서 눈으로 옮겨 적게 두지 않는다. */
+function toCsv(rows, cols) {
+  const esc = v => {
+    const t = v == null ? '' : String(v);
+    return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  return '\uFEFF' + [cols.map(c => c[1]).join(',')]        // BOM — 엑셀이 한글을 안 깨게
+    .concat(rows.map(r => cols.map(c => esc(r[c[0]])).join(','))).join('\n');
+}
+app.get('/admin/export/:what', admin, (req, res) => {
+  const what = req.params.what;
+  const ymd = t => t ? new Date(t).toISOString().slice(0, 10) : '';
+  let rows, cols, name;
+  if (what === 'users') {
+    rows = db.prepare(`SELECT u.id, u.name, u.email, u.gender, u.provider,
+        u.created_at, u.last_seen, u.last_plat, u.last_region,
+        (SELECT GROUP_CONCAT(c.name, ' / ') FROM club_members m
+          LEFT JOIN clubs c ON c.id=m.club_id WHERE m.user_id=u.id) clubs
+      FROM users u ORDER BY u.id`).all()
+      .map(r => ({ ...r, created_at: ymd(r.created_at), last_seen: ymd(r.last_seen),
+        gender: r.gender === 'F' ? '여성' : r.gender === 'M' ? '남성' : '' }));
+    cols = [['id','번호'],['name','이름'],['email','이메일'],['gender','성별'],
+      ['provider','가입경로'],['clubs','클럽'],['created_at','가입일'],
+      ['last_seen','마지막접속'],['last_plat','기기'],['last_region','지역']];
+    name = 'members';
+  } else if (what === 'payouts') {
+    rows = db.prepare('SELECT * FROM payouts ORDER BY id DESC LIMIT 5000').all();
+    cols = Object.keys(rows[0] || { id: 1 }).map(k => [k, k]);
+    name = 'payouts';
+  } else if (what === 'clubs') {
+    rows = db.prepare(`SELECT c.id, c.name, c.sport, c.sido, c.sigungu,
+        (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members
+      FROM clubs c ORDER BY members DESC`).all();
+    cols = [['id','번호'],['name','이름'],['sport','종목'],['sido','시도'],
+      ['sigungu','시군구'],['members','회원수']];
+    name = 'clubs';
+  } else return res.status(400).json({ error: 'unknown' });
+
+  alog(req, '내려받음', what, null, { rows: rows.length }, null);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="matsu-${name}-${new Date().toISOString().slice(0,10)}.csv"`);
+  res.send(toCsv(rows, cols));
+});
+
+/* ── 점검 모드 ────────────────────────────────────────────────────
+   배포하는 몇 초 사이에 들어온 사람은 깨진 화면을 본다.
+   미리 켜 두면 앱이 <잠시 점검 중> 을 띄운다. 관리자 경로는 늘 열어 둔다 —
+   점검 모드를 끄러 들어와야 하니까. */
+let MAINT = { on: false, msg: '', until: 0 };
+app.get('/admin/maint', admin, (_req, res) => res.json(MAINT));
+app.post('/admin/maint', admin, (req, res) => {
+  const b = req.body || {};
+  MAINT = { on: !!b.on, msg: String(b.msg || '').slice(0, 120),
+    until: b.minutes ? Date.now() + Math.min(180, +b.minutes) * 60000 : 0 };
+  alog(req, MAINT.on ? '점검 켬' : '점검 끔', 'maint', null,
+    { msg: MAINT.msg, minutes: b.minutes || 0 }, null);
+  res.json(MAINT);
+});
+function maintOn() { return MAINT.on && (!MAINT.until || Date.now() < MAINT.until); }
+
+/* ── 작업 기록과 되돌리기 ──────────────────────────────────────────
+   계정 탭이 있다는 건 관리자가 여럿이라는 뜻이다. 여럿이 만지는 데이터에
+   기록이 없으면 <누가 왜 바꿨는지> 를 아무도 모르고, 되돌릴 수도 없다.
+
+   되돌리기는 <되돌릴 값을 미리 적어 두는> 방식으로 만든다.
+   그래야 무엇을 되돌려야 하는지 나중에 추측하지 않아도 된다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS admin_log (
+  id INTEGER PRIMARY KEY, who TEXT, action TEXT, target TEXT, target_id INTEGER,
+  detail TEXT, undo TEXT, undone INTEGER DEFAULT 0, at INTEGER)`); } catch (e) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_alog_at ON admin_log(at)'); } catch (e) {}
+
+function adminWho(req) {
+  /* 관리자 열쇠는 하나뿐이라 사람을 가릴 수 없다. 화면이 보내주면 그걸 쓴다. */
+  return String(req.headers['x-admin-who'] || '').slice(0, 24) || '관리자';
+}
+function alog(req, action, target, targetId, detail, undo) {
+  try {
+    db.prepare(`INSERT INTO admin_log (who,action,target,target_id,detail,undo,at)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(adminWho(req), action, target, targetId || null,
+        detail ? JSON.stringify(detail) : null,
+        undo ? JSON.stringify(undo) : null, now());
+  } catch (e) {}
+}
+app.get('/admin/log', admin, (req, res) => {
+  const days = Math.min(90, Math.max(1, +req.query.days || 14));
+  const rows = db.prepare(`SELECT * FROM admin_log WHERE at > ? ORDER BY id DESC LIMIT 200`)
+    .all(Date.now() - days * 864e5);
+  res.json(rows.map(r => ({ ...r,
+    detail: r.detail ? JSON.parse(r.detail) : null,
+    canUndo: !!r.undo && !r.undone })));
+});
+app.post('/admin/log/:id/undo', admin, (req, res) => {
+  const r = db.prepare('SELECT * FROM admin_log WHERE id=?').get(+req.params.id);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  if (r.undone) return res.status(400).json({ error: 'already_undone' });
+  if (!r.undo) return res.status(400).json({ error: 'cannot_undo' });
+  let u; try { u = JSON.parse(r.undo); } catch (e) { return res.status(400).json({ error: 'bad_undo' }); }
+  try {
+    /* 되돌리기는 <미리 적어 둔 한 줄>만 실행한다. 임의의 SQL 을 받지 않는다 —
+       그건 되돌리기가 아니라 뒷문이다. */
+    if (u.kind === 'gender')
+      db.prepare('UPDATE users SET gender=? WHERE id=?').run(u.value || null, u.id);
+    else if (u.kind === 'club_gender_ov')
+      db.prepare('UPDATE club_members SET gender_ov=? WHERE club_id=? AND user_id=?')
+        .run(u.value || null, u.club_id, u.id);
+    else if (u.kind === 'grade')
+      db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?')
+        .run(u.value, u.club_id, u.id);
+    else return res.status(400).json({ error: 'unknown_kind' });
+  } catch (e) { return res.status(500).json({ error: 'undo_failed' }); }
+  db.prepare('UPDATE admin_log SET undone=1 WHERE id=?').run(r.id);
+  alog(req, '되돌림', r.target, r.target_id, { of: r.action }, null);
+  res.json({ ok: true });
+});
+
+/* ── 클럽 한 곳 들여다보기 ────────────────────────────────────────
+   회원은 한 명씩 볼 수 있는데 클럽은 못 봤다. 그런데 이 앱은 클럽 단위로 굴러간다 —
+   대진이 잘 짜이는지, 사람이 붙는지, 죽어가는지가 전부 클럽에서 갈린다. */
+app.get('/admin/clubs/:id/detail', admin, (req, res) => {
+  const cid = +req.params.id;
+  const c = db.prepare('SELECT * FROM clubs WHERE id=?').get(cid);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+
+  const members = db.prepare(`SELECT m.user_id id, m.grade, m.role, u.name, u.gender,
+      u.last_seen FROM club_members m LEFT JOIN users u ON u.id=m.user_id
+    WHERE m.club_id=? ORDER BY (u.last_seen IS NULL), u.last_seen DESC`).all(cid);
+  const F = v => v === 'F' || String(v || '').startsWith('여');
+  const women = members.filter(m => F(m.gender)).length;
+  const noGender = members.filter(m => !m.gender).length;
+  const active = members.filter(m => m.last_seen && Date.now() - m.last_seen < 30 * 864e5).length;
+
+  /* 최근 대진이 어떻게 짜였나 — 품질 탭과 같은 셈을 이 클럽만 놓고 다시 한다 */
+  const logs = db.prepare(`SELECT date, data FROM club_bracket_logs
+    WHERE club_id=? ORDER BY date DESC LIMIT 12`).all(cid);
+  const lv = {}; members.forEach(m => { lv[m.id] = ladderLv(m.grade); });
+  const brackets = [];
+  let allN = 0, allBad = 0;
+  logs.forEach(L => {
+    let d; try { d = JSON.parse(L.data); } catch (e) { return; }
+    let n = 0, bad = 0, scored = 0;
+    (d.games || []).forEach(g => {
+      const A = (g.teamA || []).filter(Boolean), B = (g.teamB || []).filter(Boolean);
+      if (A.length < 2 || B.length < 2) return;
+      const gp = Math.abs(((lv[A[0].id] || 2) + (lv[A[1].id] || 2)) / 2
+                        - ((lv[B[0].id] || 2) + (lv[B[1].id] || 2)) / 2);
+      n++; if (gp >= 1) bad++;
+      if (g.sa != null && g.sb != null) scored++;
+    });
+    if (n) { brackets.push({ date: L.date, games: n, bad, scored }); allN += n; allBad += bad; }
+  });
+
+  const moves = db.prepare(`SELECT COUNT(*) n FROM grade_changes WHERE club_id=? AND created_at > ?`)
+    .get(cid, Date.now() - 30 * 864e5).n;
+
+  res.json({ id: cid, name: c.name, sido: c.sido, sigungu: c.sigungu,
+    members: members.length, women, men: members.length - women, noGender, active,
+    brackets, gapPct: allN ? Math.round(allBad / allN * 1000) / 10 : null,
+    moves30: moves,
+    top: members.slice(0, 8).map(m => ({ id: m.id, name: m.name, grade: m.grade,
+      role: m.role, last_seen: m.last_seen })) });
+});
+
+/* ── 전역 검색 ────────────────────────────────────────────────────
+   문의가 오면 이름 하나만 들고 온다. 그런데 지금은 <어느 탭인지> 부터 정해야 했다.
+   한 칸에 넣으면 회원·클럽·매치를 한꺼번에 찾아준다. */
+app.get('/admin/search', admin, (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 1) return res.json({ users: [], clubs: [], matches: [] });
+  const like = '%' + q + '%';
+  const num = /^#?\d+$/.test(q) ? +q.replace('#', '') : null;
+
+  const users = db.prepare(`SELECT id, name, email, gender, last_seen, last_plat, last_region
+    FROM users WHERE name LIKE ? OR email LIKE ? ${num ? 'OR id=?' : ''}
+    ORDER BY (last_seen IS NULL), last_seen DESC LIMIT 8`)
+    .all(...(num ? [like, like, num] : [like, like]));
+
+  const clubs = db.prepare(`SELECT c.id, c.name, c.sido, c.sigungu,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members
+    FROM clubs c WHERE c.name LIKE ? ${num ? 'OR c.id=?' : ''} LIMIT 6`)
+    .all(...(num ? [like, num] : [like]));
+
+  const matches = db.prepare(`SELECT id, dt, loc, status, fmt FROM open_matches
+    WHERE loc LIKE ? ${num ? 'OR id=?' : ''} ORDER BY dt DESC LIMIT 6`)
+    .all(...(num ? [like, num] : [like]));
+
+  res.json({ users, clubs, matches });
+});
+
+/* ── 메뉴에 붙는 숫자 ──────────────────────────────────────────────
+   화면을 열어야만 보이는 정보는 급할 때 소용이 없다.
+   메뉴에 숫자를 붙여 <어디를 눌러야 하는지> 를 먼저 알린다. */
+app.get('/admin/badges', admin, (_req, res) => {
+  const out = {};
+  try {
+    const r = db.prepare(`SELECT sig, COUNT(DISTINCT COALESCE(user_id,-1)) people
+      FROM client_errors WHERE at > ? GROUP BY sig`).all(Date.now() - 3 * 864e5);
+    const many = r.filter(x => x.people >= 3).length;
+    if (many) out.errors = many;
+  } catch (e) {}
+  try {
+    const n = db.prepare("SELECT COUNT(*) n FROM reports WHERE status='open'").get().n;
+    if (n) out.reports = n;
+  } catch (e) {}
+  res.json(out);
+});
+
+/* ── 회원 한 명 들여다보기 ────────────────────────────────────────
+   문의가 오면 세 가지를 묻게 된다 — 언제 뭘 했나, 등급이 왜 움직였나,
+   그리고 뭔가 깨졌던 건 아닌가. 지금은 그 셋이 서로 다른 화면에 흩어져 있어
+   답 한 번 하려고 세 곳을 돌아다녀야 한다. 한 자리에 모은다. */
+app.get('/admin/users/:id/detail', admin, (req, res) => {
+  const uid = +req.params.id;
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(uid);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+
+  const clubs = db.prepare(`SELECT m.club_id, m.grade, m.role, c.name
+    FROM club_members m LEFT JOIN clubs c ON c.id=m.club_id WHERE m.user_id=?`).all(uid);
+
+  /* 등급이 어떻게 움직였나 — 문의의 절반은 여기서 답이 난다 */
+  const grades = db.prepare(`SELECT g.*, c.name AS club FROM grade_changes g
+    LEFT JOIN clubs c ON c.id=g.club_id WHERE g.user_id=?
+    ORDER BY g.created_at DESC LIMIT 12`).all(uid);
+
+  /* 최근 대진 — 이름이 아니라 아이디로 찾는다. 동명이인이 있어도 어긋나지 않는다 */
+  const games = [];
+  const logs = db.prepare(`SELECT l.club_id, l.date, l.data, c.name AS club
+    FROM club_bracket_logs l LEFT JOIN clubs c ON c.id=l.club_id
+    WHERE l.club_id IN (SELECT club_id FROM club_members WHERE user_id=?)
+    ORDER BY l.date DESC LIMIT 20`).all(uid);
+  for (const L of logs) {
+    let d; try { d = JSON.parse(L.data); } catch (e) { continue; }
+    let w = 0, n = 0, mates = new Set(), foes = new Set();
+    (d.games || []).forEach(g => {
+      const A = (g.teamA || []).filter(Boolean), B = (g.teamB || []).filter(Boolean);
+      const inA = A.some(p => +p.id === uid), inB = B.some(p => +p.id === uid);
+      if (!inA && !inB) return;
+      n++;
+      const mine = inA ? A : B, them = inA ? B : A;
+      mine.forEach(p => { if (+p.id !== uid) mates.add(p.name); });
+      them.forEach(p => foes.add(p.name));
+      if (g.sa != null && g.sb != null) {
+        const diff = inA ? g.sa - g.sb : g.sb - g.sa;
+        if (diff > 0) w++;
+      }
+    });
+    if (n) games.push({ date: L.date, club: L.club, n, w,
+      mates: mates.size, foes: foes.size });
+    if (games.length >= 8) break;
+  }
+
+  /* 이 사람이 겪은 오류 — <나만 이래요> 라는 문의에 바로 답할 수 있다 */
+  const errors = db.prepare(`SELECT kind, msg, path, build, at FROM client_errors
+    WHERE user_id=? ORDER BY at DESC LIMIT 10`).all(uid);
+
+  res.json({
+    id: uid, region: u.last_region || null, region_at: u.last_region_at || null,
+    clubs, grades, games, errors,
+    totals: { games: games.reduce((a, g) => a + g.n, 0),
+              wins: games.reduce((a, g) => a + g.w, 0) }
+  });
+});
+
+/* ── 앱 오류 모으기 ────────────────────────────────────────────────
+   지금까지는 회원이 알려줘야 알았다. 어제 <클럽 가입했는데 안 한 것처럼 보임>도
+   제보로 알았고, 그 사이 며칠을 그냥 흘려보냈다.
+   앱이 실패를 겪으면 한 줄 보내게 하고 여기서 묶어 본다.
+
+   묶어서 보는 것이 핵심이다. 한 명이면 그 사람 환경 문제고,
+   여러 명이면 코드 문제다 — 이 구분이 가장 값지다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS client_errors (
+  id INTEGER PRIMARY KEY, user_id INTEGER, sig TEXT, kind TEXT, msg TEXT,
+  path TEXT, build TEXT, plat TEXT, at INTEGER)`); } catch (e) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_cerr_at ON client_errors(at)'); } catch (e) {}
+
+const CERR_RATE = new Map();          // uid|ip -> {m, n}
+app.post('/client-error', (req, res) => {
+  /* 인증을 요구하지 않는다 — 로그인 자체가 깨졌을 때가 제일 알고 싶은 순간이다.
+     대신 한 사람이 쏟아붓지 못하게 분당 상한을 둔다. */
+  try {
+    const uid = tryUid(req);
+    const who = String(uid || clientIp(req) || '?');
+    const m = Math.floor(Date.now() / 60000);
+    const r = CERR_RATE.get(who);
+    if (r && r.m === m) { if (r.n >= 20) return res.json({ ok: true, dropped: true }); r.n++; }
+    else CERR_RATE.set(who, { m, n: 1 });
+
+    const b = req.body || {};
+    const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
+    const kind = cut(b.kind, 24) || 'api';
+    const msg = cut(b.msg, 300);
+    const path = cut(b.path, 160);
+    if (!msg && !path) return res.json({ ok: true });
+    /* 같은 오류인지 묶는 열쇠. 숫자(아이디·시각)는 빼야 같은 것끼리 모인다. */
+    const sig = (kind + ' ' + path.replace(/\d+/g, '#') + ' ' + msg.replace(/\d+/g, '#')).slice(0, 200);
+    db.prepare(`INSERT INTO client_errors (user_id,sig,kind,msg,path,build,plat,at)
+      VALUES (?,?,?,?,?,?,?,?)`)
+      .run(uid || null, sig, kind, msg, path, cut(b.build, 32), cut(b.plat, 12), now());
+  } catch (e) {}
+  res.json({ ok: true });
+});
+
+app.get('/admin/errors', admin, (req, res) => {
+  const days = Math.min(30, Math.max(1, +req.query.days || 3));
+  const since = Date.now() - days * 864e5;
+  const groups = db.prepare(`SELECT sig, kind,
+      COUNT(*) n, COUNT(DISTINCT COALESCE(user_id,-1)) people,
+      MAX(at) last, MIN(at) first,
+      MAX(msg) msg, MAX(path) path, MAX(build) build
+    FROM client_errors WHERE at > ?
+    GROUP BY sig ORDER BY people DESC, n DESC LIMIT 60`).all(since);
+  const total = groups.reduce((a, g) => a + g.n, 0);
+  /* 어느 빌드에서 나는지 — 옛 앱만의 문제인지 새 앱도인지 가른다 */
+  const builds = db.prepare(`SELECT COALESCE(NULLIF(build,''),'모름') b, COUNT(*) n
+    FROM client_errors WHERE at > ? GROUP BY b ORDER BY n DESC LIMIT 8`).all(since);
+  res.json({ days, total, groups, builds });
+});
+app.delete('/admin/errors', admin, (req, res) => {
+  const d = Math.max(0, +req.query.olderThanDays || 0);
+  db.prepare('DELETE FROM client_errors WHERE at < ?').run(Date.now() - d * 864e5);
+  res.json({ ok: true });
+});
+
+/* ── 공지 보내기 ──────────────────────────────────────────────────
+   업데이트·점검을 알릴 곳이 없었다. push-test 는 나 한 명에게만 갔다.
+   대상을 골라 보내고, 보내기 전에 몇 명인지 먼저 보여준다 —
+   전체 발송은 되돌릴 수 없으므로 숫자를 보고 손이 멈출 수 있어야 한다. */
+function noticeTargets(to, clubId) {
+  if (to === 'club' && clubId)
+    return db.prepare(`SELECT user_id id FROM club_members WHERE club_id=?`).all(+clubId).map(r => r.id);
+  if (to === 'dormant')
+    return db.prepare(`SELECT id FROM users WHERE last_seen IS NOT NULL AND last_seen < ?`)
+      .all(Date.now() - 30 * 864e5).map(r => r.id);
+  if (to === 'ghost')
+    return db.prepare(`SELECT id FROM users WHERE last_seen IS NULL`).all().map(r => r.id);
+  if (to === 'active')
+    return db.prepare(`SELECT id FROM users WHERE last_seen > ?`)
+      .all(Date.now() - 30 * 864e5).map(r => r.id);
+  return db.prepare('SELECT id FROM users').all().map(r => r.id);
+}
+app.get('/admin/notify/count', admin, (req, res) => {
+  const n = noticeTargets(String(req.query.to || 'all'), req.query.club).length;
+  res.json({ n });
+});
+app.post('/admin/notify', admin, async (req, res) => {
+  const b = req.body || {};
+  const title = String(b.title || '').trim().slice(0, 60);
+  const body = String(b.body || '').trim().slice(0, 200);
+  if (!title) return res.status(400).json({ error: 'title_required' });
+  const ids = noticeTargets(String(b.to || 'all'), b.club);
+  if (!ids.length) return res.json({ sent: 0 });
+  alog(req, '공지 보냄', 'notify', null, { to: b.to || 'all', n: ids.length, title }, null);
+  res.json({ sent: ids.length });          // 먼저 답하고 뒤에서 보낸다 — 수백 명이면 오래 걸린다
+  for (const id of ids) {
+    try { await sendPush(id, { icon: b.icon || '📢', title, body, link: b.link || null }); }
+    catch (e) {}
+  }
+  console.log(`[notify] ${ids.length}명 · ${title}`);
+});
+
+/* ── 서버 상태 ── Railway 는 디스크가 차면 조용히 죽는다 */
+app.get('/admin/health', admin, (_req, res) => {
+  const out = { uptime: Math.floor(process.uptime()), node: process.version,
+    build: SRV_BUILD, web_build: WEB_BUILD, mem: Math.round(process.memoryUsage().rss / 1048576) };
+  try {
+    const p = db.prepare('PRAGMA page_count').get(), s = db.prepare('PRAGMA page_size').get();
+    out.dbMB = Math.round((p.page_count * s.page_size) / 1048576 * 10) / 10;
+  } catch (e) {}
+  try {
+    let n = 0, sz = 0;
+    for (const f of fs.readdirSync(UPLOAD_DIR)) {
+      try { sz += fs.statSync(path.join(UPLOAD_DIR, f)).size; n++; } catch (e) {}
+    }
+    out.uploads = n; out.uploadsMB = Math.round(sz / 1048576 * 10) / 10;
+  } catch (e) {}
+  try { out.errors24h = db.prepare('SELECT COUNT(*) n FROM client_errors WHERE at > ?')
+    .get(Date.now() - 864e5).n; } catch (e) {}
+  /* 오류 알림이 켜져 있는지 — 안 켜져 있으면 조용히 아무 일도 안 하므로
+     화면에서 그 사실을 보여줘야 한다. */
+  out.alertTo = (process.env.ADMIN_UIDS || '').split(',').map(x => x.trim()).filter(Boolean).length;
+  res.json(out);
+});
+
+/* ── 대진 품질 감시 ────────────────────────────────────────────────
+   대진 로직을 크게 바꾸면 시뮬레이션 숫자와 실전이 다를 수 있다.
+   실제로 발행된 대진을 다시 읽어 팀 격차·중복·성비를 세어 준다.
+   여기 숫자가 시뮬레이션(3칸 0.45%)보다 크게 높으면 계수를 다시 봐야 한다. */
+const GRADE_LADDER_S = ['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3','SS1','SS2','SS3'];
+function ladderLv(code) {
+  const i = GRADE_LADDER_S.indexOf(String(code || '').toUpperCase());
+  return i >= 0 ? 1 + i / 3 : 2;                       // 모르면 한가운데(B2 언저리)
+}
+app.get('/admin/bracket-quality', admin, (req, res) => {
+  const days = Math.min(120, Math.max(7, +req.query.days || 30));
+  const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+  const logs = db.prepare(`SELECT l.club_id, l.date, l.data, c.name AS club
+    FROM club_bracket_logs l LEFT JOIN clubs c ON c.id = l.club_id
+    WHERE l.date >= ? ORDER BY l.date DESC LIMIT 300`).all(since);
+
+  /* 등급·성별은 회원 명부에서 가져온다 — 대진 로그에는 이름만 들어 있다 */
+  const lvOf = {}, sexOf = {};
+  db.prepare(`SELECT m.club_id, m.user_id, m.grade, u.gender FROM club_members m
+    LEFT JOIN users u ON u.id = m.user_id`).all().forEach(r => {
+      lvOf[r.club_id + ':' + r.user_id] = ladderLv(r.grade);
+      sexOf[r.club_id + ':' + r.user_id] = String(r.gender || '');
+    });
+  const isF = v => v === 'F' || String(v).startsWith('여');
+
+  const out = [];
+  const roll = { n: 0, g0: 0, g1: 0, g2: 0, g3: 0, g4: 0, dupP: 0, maxO: 0, locked: 0, courts: 0 };
+  logs.forEach(L => {
+    let d; try { d = JSON.parse(L.data); } catch (e) { return; }
+    const games = (d && d.games) || []; if (!games.length) return;
+    const key = (a, b) => String(a) < String(b) ? a + '|' + b : b + '|' + a;
+    const lv = p => lvOf[L.club_id + ':' + p.id] != null ? lvOf[L.club_id + ':' + p.id] : 2;
+    const pair = {}, meet = {}, byCourt = {};
+    const H = [0, 0, 0, 0, 0];                          // 0~4칸
+    games.forEach(g => {
+      const A = (g.teamA || []).filter(Boolean), B = (g.teamB || []).filter(Boolean);
+      if (A.length < 2 || B.length < 2) return;
+      const gap = Math.abs((lv(A[0]) + lv(A[1])) / 2 - (lv(B[0]) + lv(B[1])) / 2);
+      H[Math.min(4, Math.round(gap / (1 / 3)))]++;
+      [A, B].forEach(t => { const k = key(t[0].id, t[1].id); pair[k] = (pair[k] || 0) + 1; });
+      A.forEach(a => B.forEach(b => { const k = key(a.id, b.id); meet[k] = (meet[k] || 0) + 1; }));
+      const c = g.c || 1; (byCourt[c] = byCourt[c] || new Set());
+      [...A, ...B].forEach(p => byCourt[c].add(p.id));
+    });
+    const n = H.reduce((a, b) => a + b, 0); if (!n) return;
+    const dupP = Object.values(pair).reduce((a, v) => a + Math.max(0, v - 1), 0);
+    const maxO = Math.max(0, ...Object.values(meet));
+    /* 성비 잠긴 코트 — 어느 성별이든 1~2명이면 그 사람들은 하루 종일 서로의 상대다 */
+    let locked = 0, courts = 0;
+    Object.entries(byCourt).forEach(([c, set]) => {
+      courts++;
+      let f = 0; set.forEach(id => { if (isF(sexOf[L.club_id + ':' + id])) f++; });
+      const m = set.size - f;
+      if ((f >= 1 && f <= 2) || (m >= 1 && m <= 2)) locked++;
+    });
+    out.push({ club: L.club || ('#' + L.club_id), club_id: L.club_id, date: L.date,
+      games: n, gap3: H[3] + H[4], gap4: H[4], hist: H, dupP, maxO, locked, courts });
+    roll.n += n; roll.g0 += H[0]; roll.g1 += H[1]; roll.g2 += H[2]; roll.g3 += H[3]; roll.g4 += H[4];
+    roll.dupP += dupP; roll.maxO = Math.max(roll.maxO, maxO);
+    roll.locked += locked; roll.courts += courts;
+  });
+  res.json({ days, brackets: out.length, roll, list: out.slice(0, 60) });
+});
+
+/* ── 등급 이동 감시 ────────────────────────────────────────────────
+   기대 대비 실적으로 바꾸면 회원 등급이 한 번 크게 흔들린다.
+   누가 몇 칸 움직였는지 여기서 바로 본다 — 문의가 오면 이 화면으로 답한다. */
+app.get('/admin/grade-moves', admin, (req, res) => {
+  const days = Math.min(180, Math.max(7, +req.query.days || 30));
+  const rows = db.prepare(`SELECT g.*, c.name AS club FROM grade_changes g
+    LEFT JOIN clubs c ON c.id = g.club_id
+    WHERE g.created_at > ? ORDER BY g.created_at DESC LIMIT 400`)
+    .all(Date.now() - days * 864e5);
+  const step = r => {
+    const a = GRADE_LADDER_S.indexOf(String(r.from_grade || '').toUpperCase());
+    const b = GRADE_LADDER_S.indexOf(String(r.to_grade || '').toUpperCase());
+    return (a < 0 || b < 0) ? null : b - a;             // 사다리 칸 수
+  };
+  const list = rows.map(r => ({ ...r, step: step(r) }));
+  const up = list.filter(x => x.dir === 'up').length;
+  const dn = list.filter(x => x.dir === 'down').length;
+  const big = list.filter(x => x.step != null && Math.abs(x.step) >= 3);
+  res.json({ days, total: list.length, up, down: dn, big: big.length, list: list.slice(0, 120) });
+});
+
+/* ── 접속 지역 ────────────────────────────────────────────────────
+   어디에 사람이 모여 있는지 봐야 다음 클럽을 어디에 붙일지 정할 수 있다. */
+app.get('/admin/regions', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT last_region AS region, COUNT(*) n,
+      SUM(CASE WHEN last_seen > ? THEN 1 ELSE 0 END) active
+    FROM users WHERE last_region IS NOT NULL AND last_region <> ''
+    GROUP BY last_region ORDER BY n DESC LIMIT 40`).all(Date.now() - 30 * 864e5);
+  const known = rows.reduce((a, r) => a + r.n, 0);
+  const total = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+  res.json({ total, known, unknown: total - known, list: rows });
+});
+
 app.get('/admin/stats', admin, (_req, res) => {
   const one = (sql) => db.prepare(sql).get().n;
   res.json({
@@ -7392,7 +7974,7 @@ app.get('/admin/users', admin, (req, res) => {
   /* suspended 를 함께 내려준다 — 탈퇴한 계정만 영구 삭제 버튼을 보여주기 위해서.
      이게 없으면 화면에서 <탈퇴한 회원>과 활성 회원을 구분할 방법이 없다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
-    u.last_seen, u.last_plat,
+    u.last_seen, u.last_plat, u.last_region,
     COALESCE(u.rating_doubles,1000) AS rating_doubles,
     (SELECT COUNT(*) FROM matches WHERE status='confirmed'
       AND (home_user_id=u.id OR away_user_id=u.id)) AS tier_games,
@@ -7419,9 +8001,13 @@ app.post('/admin/users/:id/gender', admin, (req, res) => {
   const id = +req.params.id;
   const raw = String((req.body && req.body.gender) || '').trim();
   const g = /^(F|여)/i.test(raw) ? 'F' : /^(M|남)/i.test(raw) ? 'M' : null;
-  const u = db.prepare('SELECT id FROM users WHERE id=?').get(id);
+  const u = db.prepare('SELECT id, name, gender FROM users WHERE id=?').get(id);
   if (!u) return res.status(404).json({ error: 'no_user' });
   db.prepare('UPDATE users SET gender=? WHERE id=?').run(g, id);
+  /* 바꾸기 전 값을 되돌릴 거리로 함께 적는다 — 나중에 추측하지 않아도 되게 */
+  alog(req, '성별 바꿈', 'user', id,
+    { name: u.name, from: u.gender || null, to: g },
+    { kind: 'gender', id, value: u.gender || null });
   res.json({ ok: true, gender: g });
 });
 
@@ -7435,7 +8021,11 @@ app.post('/admin/users/fill-gender', admin, (_req, res) => {
     FROM users u WHERE NULLIF(u.gender,'') IS NULL`).all();
   const st = db.prepare('UPDATE users SET gender=? WHERE id=?');
   let n = 0;
-  rows.forEach(r => { if (r.ov === 'M' || r.ov === 'F') { st.run(r.ov, r.id); n++; } });
+  const before = [];
+  rows.forEach(r => { if (r.ov === 'M' || r.ov === 'F') { before.push(r.id); st.run(r.ov, r.id); n++; } });
+  /* 한 번에 여럿을 바꾼 것은 되돌리기를 걸지 않는다 —
+     되돌릴 값이 사람마다 달라, 한 줄로 담으면 반드시 어긋난다. 기록만 남긴다. */
+  if (n) alog(req, '성별 일괄 채움', 'user', null, { count: n }, null);
   res.json({ ok: true, filled: n });
 });
 app.get('/admin/reports', admin, (_req, res) => {
