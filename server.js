@@ -638,7 +638,7 @@ app.post('/pay/order', auth, (req, res) => {
     .run(orderId, req.uid, amount, amount, 'ready', now());          // cash = amount (1:1)
   res.json({ orderId, amount, cash: amount, orderName: `맞수 캐시 ${amount.toLocaleString()}원` });
 });
-app.post('/pay/confirm', async (req, res) => {
+app.post('/pay/confirm', async (req, res) => {  // @external 결제창이 돌아오며 부름
   const { paymentKey, orderId, amount } = req.body || {};
   if (!paymentKey || !orderId || amount == null) return res.status(400).json({ error: 'missing_params' });
   const ord = db.prepare('SELECT * FROM orders WHERE order_id=?').get(orderId);
@@ -666,7 +666,7 @@ app.post('/pay/confirm', async (req, res) => {
 });
 
 // 토스 웹훅: 결제 상태를 비동기로 통지받아 이중 확인(멱등 처리). 토스 콘솔에 이 URL 등록.
-app.post('/pay/webhook', (req, res) => {
+app.post('/pay/webhook', (req, res) => {  // @external 토스가 부름
   try {
     const ev = req.body || {};
     const data = ev.data || ev;
@@ -1937,7 +1937,7 @@ function liveActivityAskScore(data, g) {
   });
 }
 /* 무엇이 비었는지 짚어 준다 — ready:false 만 보면 넷 중 어디가 문제인지 모른다 */
-app.get('/admin/apns-status', admin, (_req, res) => {
+app.get('/admin/apns-status', admin, (_req, res) => {  // @external 내가 curl 로 부름
   const miss = [];
   if (!APNS.key) miss.push('APNS_KEY');
   if (!APNS.keyId) miss.push('APNS_KEY_ID');
@@ -2654,8 +2654,16 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS comment_reactions (
   id INTEGER PRIMARY KEY, comment_id INTEGER, user_id INTEGER, emoji TEXT, created_at INTEGER,
   UNIQUE(comment_id, user_id, emoji))`); } catch (e) {}
 app.get('/events/:id/reactions', auth, (req, res) => {
-  const rows = db.prepare(`SELECT r.comment_id, r.emoji, r.user_id FROM comment_reactions r
-    JOIN event_comments c ON c.id=r.comment_id WHERE c.event_id=?`).all(+req.params.id);
+  /* 누가 눌렀는지 이름까지 — 숫자만 있으면 <누가 봤나> 를 알 수 없다.
+     클럽은 서로 아는 사이라 이름이 보이는 편이 자연스럽다. */
+  const rows = db.prepare(`SELECT r.comment_id, r.emoji, r.user_id,
+      COALESCE(NULLIF(m.alias,''), u.name) AS name
+    FROM comment_reactions r
+    JOIN event_comments c ON c.id=r.comment_id
+    LEFT JOIN users u ON u.id=r.user_id
+    LEFT JOIN club_events e ON e.id=c.event_id
+    LEFT JOIN club_members m ON m.club_id=e.club_id AND m.user_id=r.user_id
+    WHERE c.event_id=? ORDER BY r.id`).all(+req.params.id);
   res.json(rows);
 });
 app.post('/comments/:cid/react', auth, (req, res) => {
@@ -3800,7 +3808,7 @@ app.get('/clubs/:id/notices', auth, (req, res) => {
 });
 
 /* 읽음 표시 — 앱이 공지를 화면에 그린 뒤 한 번 부른다 */
-app.post('/notices/:nid/read', auth, (req, res) => {
+app.post('/notices/:nid/read', auth, (req, res) => {  // @external 앱이 화면 그린 뒤 부름
   try {
     db.prepare('INSERT OR IGNORE INTO notice_reads (notice_id,user_id,at) VALUES (?,?,?)')
       .run(+req.params.nid, req.uid, now());
@@ -5036,7 +5044,7 @@ app.get('/pay/checkout', (req, res) => {
 })();
 </script></body></html>`);
 });
-app.get('/pay/done', async (req, res) => {
+app.get('/pay/done', async (req, res) => {  // @external 결제 뒤 브라우저가 돌아옴
   const { paymentKey, orderId, amount, fail } = req.query || {};
   let msg = '<b>결제 처리 완료</b><p>앱으로 돌아가면 잔액이 갱신돼요.</p>';
   if (fail) msg = '<b>결제가 취소되거나 실패했어요</b><p>앱으로 돌아가 다시 시도해 주세요.</p>';
@@ -5068,9 +5076,9 @@ function grantPremium(userId, product) {
 // ── PWA: 매니페스트 + 아이콘 (홈 화면 설치용) ──
 const ICON_192 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAABZElEQVR42u3SQREAMAjAsDFBCEM7IrDA8U4k9Bpd+eDqS4CBMBAGwkBgIAyEgTAQGAgDYSAMBAbCQBgIA4GBMBAGwkAYCAyEgTAQBgIDYSAMhIHAQBgIA2EgMBAGwkAYCAOBgTAQBsJAYCAMhIEwEBgIA2EgDAQGwkAYCAOBgTAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIDAQBsJAGAgDgYEwEAbCQGAgDISBMBAYCANhIAwEBsJAGAgDYSAwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAwEAbCQBgIA4GBMBAGwkBgIAyEgTAQGAgDYSAMBAbCQBgIA2EgMBAGwkAYCAyEgTAQBgIDYSAMhIHAQBgIA2EgDAQGwkAYCAOBgTAQBsJAYCAMhIEwEBgIA2EgDAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIAwEBsJAGAgDwdYAWwADBKKT2qQAAAAASUVORK5CYII=', 'base64');
 const ICON_512 = Buffer.from('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', 'base64');
-app.get('/icon-192.png', (req, res) => { res.type('png').send(ICON_192); });
-app.get('/icon-512.png', (req, res) => { res.type('png').send(ICON_512); });
-app.get('/manifest.json', (req, res) => res.json({
+app.get('/icon-192.png', (req, res) => { res.type('png').send(ICON_192); });  // @external 브라우저가 직접 요청
+app.get('/icon-512.png', (req, res) => { res.type('png').send(ICON_512); });  // @external 브라우저가 직접 요청
+app.get('/manifest.json', (req, res) => res.json({  // @external 브라우저가 직접 요청
   name: '맞수 MATSU', short_name: '맞수',
   description: '동호회 운영과 대진, 기록까지 — 맞수',
   start_url: '/', display: 'standalone',
@@ -5081,7 +5089,7 @@ app.get('/manifest.json', (req, res) => res.json({
   ]
 }));
 
-app.post('/iap/apple', auth, async (req, res) => {
+app.post('/iap/apple', auth, async (req, res) => {  // @external 애플 인앱결제 콜백
   const { receipt } = req.body || {};
   if (!receipt) return res.status(400).json({ error: 'no_receipt' });
   const secret = process.env.APPLE_IAP_SHARED_SECRET;
@@ -5128,7 +5136,7 @@ async function googleAccessToken() {
   if (!j.access_token) throw new Error('google_token_failed');
   return j.access_token;
 }
-app.post('/iap/google', auth, async (req, res) => {
+app.post('/iap/google', auth, async (req, res) => {  // @external 구글 인앱결제 콜백
   const { productId, purchaseToken } = req.body || {};
   if (!productId || !purchaseToken) return res.status(400).json({ error: 'missing_params' });
   const pkg = process.env.ANDROID_PACKAGE, email = process.env.GOOGLE_SA_EMAIL;
@@ -6284,8 +6292,8 @@ if (process.env.BACKUPS !== 'off') {
   setTimeout(backupNow, 60_000);                        // 부팅 1분 후 한 번
   setInterval(backupNow, 24 * 3600 * 1000).unref?.();   // 이후 24시간마다
 }
-app.post('/admin/backup', admin, async (_req, res) => { await backupNow(); res.json({ ok: true }); });
-app.get('/admin/backup/latest', admin, (_req, res) => {
+app.post('/admin/backup', admin, async (_req, res) => { await backupNow(); res.json({ ok: true }); });  // @external 내가 curl 로 부름
+app.get('/admin/backup/latest', admin, (_req, res) => {  // @external 내가 curl 로 부름
   try {
     const files = fs.readdirSync(BK_DIR).filter(f => f.startsWith('matsu-')).sort();
     if (!files.length) return res.status(404).json({ error: 'no_backup' });
@@ -7243,7 +7251,7 @@ if (process.env.REMINDERS !== 'off') {
   setTimeout(runReminders, 30_000);                    // 부팅 직후 한 번
   setInterval(runReminders, 6 * 3600 * 1000).unref?.();  // 6시간마다
 }
-app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.json({ ok: true }); });
+app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.json({ ok: true }); });  // @external 내가 curl 로 부름
 
 // ── 운영자 대시보드 API ──
 // 접근키: env ADMIN_KEY (미설정 시 데모용 'matsu-admin'). 헤더 x-admin-key 또는 ?key=
@@ -7433,11 +7441,13 @@ app.delete('/admin/users/:id', admin, (req, res) => {
     });
     db.prepare('DELETE FROM users WHERE id=?').run(uid);
   });
+  /* 되돌릴 수 없는 일일수록 <누가 언제> 가 남아야 한다 */
+  alog(req, '회원 삭제', 'user', uid, { name: u.name, tables: wiped.length }, null);
   res.json({ ok: true, deleted: u.name, wiped });
 });
 
 // 정리 대상 조회 — 탈퇴 계정·클럽 목록
-app.get('/admin/purge-list', admin, (_req, res) => {
+app.get('/admin/purge-list', admin, (_req, res) => {  // @external 내가 curl 로 부름
   res.json({
     suspended_users: db.prepare('SELECT id,name,created_at FROM users WHERE suspended=1').all(),
     clubs: db.prepare(`SELECT c.id, c.name, c.sport,
@@ -7646,6 +7656,93 @@ app.get('/admin/clubs/:id/detail', admin, (req, res) => {
       role: m.role, last_seen: m.last_seen })) });
 });
 
+/* ── 죽은 코드 찾기 ──────────────────────────────────────────────
+   지금까지 세 번, 서버는 되는데 화면이 안 이어진 것을 뒤늦게 찾았다
+   (공지 · 반응 이름 · 회원 삭제). 사람이 기억으로 잡을 일이 아니다.
+
+   서버 라우트를 세고, 앱·관리자 파일에서 그 주소를 찾는다.
+   웹훅처럼 바깥에서 부르는 것은 라우트 옆에 // @external 을 달아 뺀다 —
+   자동으로 알아맞히려 하면 반드시 틀린다. */
+app.get('/admin/dead-code', admin, (_req, res) => {
+  const read = p => { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return ''; } };
+  const here = new URL('.', import.meta.url).pathname;
+  const src  = read(path.join(here, 'server.js'));
+  /* public 안의 html·js 를 전부 읽는다 — 구장(venue)·매니저 화면이 따로 있어서
+     index/admin 만 보면 그쪽 라우트가 통째로 <안 쓰임>으로 잡힌다. */
+  let uses = '';
+  try {
+    const dir = path.join(here, 'public');
+    fs.readdirSync(dir).forEach(f => {
+      if (/\.(html|js)$/i.test(f)) uses += '\n' + read(path.join(dir, f));
+    });
+  } catch (e) {}
+  if (!src) return res.json({ error: 'server.js 를 읽지 못했어요', routes: 0, dead: [] });
+
+  const rx = /app\.(get|post|put|patch|delete)\(\s*'([^']+)'([^\n]*)/g;
+  const routes = [];
+  let m;
+  while ((m = rx.exec(src))) {
+    routes.push({ method: m[1].toUpperCase(), path: m[2],
+      external: /@external/.test(m[3]),
+      note: (m[3].match(/@external\s*([^*\n]*)/) || [, ''])[1].trim(),
+      line: src.slice(0, m.index).split('\n').length });
+  }
+  /* 주소에 :id 같은 자리가 있으면 앱은 `${...}` 로 만든다.
+     그래서 <고정된 앞부분>이 나오는지로 본다 — 놓치는 쪽이 잘못 지우는 것보다 낫다. */
+  const seen = p => {
+    const head = p.split('/:')[0];
+    if (head.length < 4) return true;              // 너무 짧으면 판단하지 않는다
+    return uses.includes(head);
+  };
+  const dead = routes.filter(r => !r.external && !seen(r.path));
+  const ext  = routes.filter(r => r.external);
+  res.json({
+    routes: routes.length,
+    dead: dead.slice(0, 80),
+    external: ext.length,
+    checked: !!uses,
+  });
+});
+
+/* ── 회원 실력 스냅샷 ────────────────────────────────────────────
+   실력 차이는 앱이 계산한다(서버는 경기 기록만 준다).
+   그런데 <이번 값>만 보이면 한 번 튄 숫자로 판단하게 된다.
+   화면을 열 때 그날 값을 한 벌 남겨 두고, 다음에 <지난달과 견줘> 보여준다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS skill_snaps (
+  club_id INTEGER, user_id INTEGER, ymd TEXT, steps INTEGER, games INTEGER, edge INTEGER,
+  PRIMARY KEY(club_id, user_id, ymd))`); } catch (e) {}
+
+app.post('/clubs/:id/skill-snap', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const rows = Array.isArray((req.body || {}).rows) ? req.body.rows.slice(0, 200) : [];
+  const d = new Date().toISOString().slice(0, 10);
+  const ins = db.prepare(`INSERT INTO skill_snaps (club_id,user_id,ymd,steps,games,edge)
+    VALUES (?,?,?,?,?,?) ON CONFLICT(club_id,user_id,ymd) DO UPDATE
+    SET steps=excluded.steps, games=excluded.games, edge=excluded.edge`);
+  try {
+    db.transaction(list => list.forEach(r => {
+      if (!r || !r.user_id) return;
+      ins.run(cid, +r.user_id, d, +r.steps || 0, +r.games || 0, r.edge == null ? null : +r.edge);
+    }))(rows);
+  } catch (e) { console.error('[skill-snap]', e.message); }
+  res.json({ ok: true, saved: rows.length, ymd: d });
+});
+
+/* 지난 값 — 3일보다 오래된 것 중 가장 최근 한 벌.
+   오늘 것과 견주면 늘 같으므로 조금 떨어진 날을 고른다. */
+app.get('/clubs/:id/skill-prev', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const cut = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+  const day = db.prepare(`SELECT ymd FROM skill_snaps WHERE club_id=? AND ymd<=?
+    ORDER BY ymd DESC LIMIT 1`).get(cid, cut);
+  if (!day) return res.json({ ymd: null, rows: [] });
+  const rows = db.prepare(`SELECT user_id, steps, games, edge FROM skill_snaps
+    WHERE club_id=? AND ymd=?`).all(cid, day.ymd);
+  res.json({ ymd: day.ymd, rows });
+});
+
 /* ── 전역 검색 ────────────────────────────────────────────────────
    문의가 오면 이름 하나만 들고 온다. 그런데 지금은 <어느 탭인지> 부터 정해야 했다.
    한 칸에 넣으면 회원·클럽·매치를 한꺼번에 찾아준다. */
@@ -7759,7 +7856,7 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS client_errors (
 try { db.exec('CREATE INDEX IF NOT EXISTS ix_cerr_at ON client_errors(at)'); } catch (e) {}
 
 const CERR_RATE = new Map();          // uid|ip -> {m, n}
-app.post('/client-error', (req, res) => {
+app.post('/client-error', (req, res) => {  // @external 앱이 오류 때 부름(fetch 직접)
   /* 인증을 요구하지 않는다 — 로그인 자체가 깨졌을 때가 제일 알고 싶은 순간이다.
      대신 한 사람이 쏟아붓지 못하게 분당 상한을 둔다. */
   try {
@@ -8232,6 +8329,8 @@ app.post('/admin/users/:id/suspend', admin, (req, res) => {
   const cur = db.prepare('SELECT suspended FROM users WHERE id=?').get(+req.params.id);
   const v = cur && cur.suspended ? 0 : 1;
   db.prepare('UPDATE users SET suspended=? WHERE id=?').run(v, +req.params.id);
+  const nm = (db.prepare('SELECT name FROM users WHERE id=?').get(+req.params.id) || {}).name;
+  alog(req, v ? '계정 정지' : '정지 해제', 'user', +req.params.id, { name: nm }, null);
   res.json({ ok: true, suspended: v });
 });
 // 관리자 환불 (토스 취소 + 캐쉬 회수. 시크릿 없으면 데모로 상태만 변경)
