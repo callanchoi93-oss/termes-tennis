@@ -844,14 +844,8 @@
   .pvday .ti b{display:block;font-size:15px;font-weight:400;color:var(--ink)}
   .pvday .ti span{display:block;font-size:14px;color:var(--gray);margin-top:2px}
   .pvday .go{flex:none;text-align:right}
-  /* 오른쪽은 내 기록 — 뛴 날은 코랄, 안 나간 날은 회색으로 흐린다.
-     목록만 훑어도 내 출석 흐름이 보인다. */
-  .pvday .go b{display:block;font-size:16px;font-weight:700}
-  .pvday .go b.on{color:var(--coral-d)}
-  .pvday .go b.no{color:var(--lgray);font-weight:400}
-  .pvday .go span{display:block;font-size:13px;font-weight:400;color:var(--lgray);margin-top:1px}
-  .pvday.off{background:#fafbfc;border-color:#eef0f2}
-  .pvday.off .dt b,.pvday.off .ti b{color:var(--lgray)}
+  .pvday .go span{display:block;font-size:14px;font-weight:700;color:var(--coral-d)}
+  .pvday .go b{font-size:15px;font-weight:700;color:var(--ink)}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top, 0px)) 20px 8px;flex-shrink:0}
   /* 상태바 가림막 — 페이지가 스크롤돼도 시계·배터리 아래로 내용이 비치지 않게 한다.
      .appbar 의 padding-top 만으로는 스크롤한 뒤를 막지 못한다. */
@@ -2736,21 +2730,27 @@
   .xd-danger span{ font-size:14px;font-weight:700;color:var(--lgray);cursor:pointer;
     padding:8px 14px;border-radius:10px }
   /* 지난 대진 카드 — 왼쪽 날짜, 가운데 모임, 오른쪽 그날 1위 */
+  /* 일정 탭 카드(.psess2)와 크기를 맞춘다 — 같은 클럽 안 목록이라 문법이 같아야 한다 */
   .bk-card{ display:flex;align-items:center;gap:13px;background:#fff;
-    border:1px solid var(--line);border-radius:16px;padding:15px 16px;margin-bottom:8px;cursor:pointer }
+    border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-bottom:8px;cursor:pointer }
   .bk-card:active{ transform:scale(.995) }
   .bk-card .d{ width:34px;flex:none;text-align:center }
-  .bk-card .d b{ display:block;font-size:20px;font-weight:700;letter-spacing:-.04em;line-height:1 }
-  .bk-card .d i{ font-style:normal;font-size:14px;color:var(--lgray) }
+  .bk-card .d b{ display:block;font-size:20px;font-weight:700;letter-spacing:-.04em;line-height:1.15 }
+  .bk-card .d i{ display:block;font-style:normal;font-size:14px;color:var(--gray);line-height:1.15 }
   .bk-card .t{ flex:1;min-width:0 }
-  .bk-card .t b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em;
+  .bk-card .t b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em;line-height:1.35;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .bk-card .t span{ display:block;font-size:14px;color:var(--gray);margin-top:4px }
+  .bk-card .t span{ display:block;font-size:14px;color:var(--gray);margin-top:2px;line-height:1.4 }
   .bk-card .w{ flex:none;text-align:right }
-  .bk-card .w i{ font-style:normal;display:block;font-size:14px;font-weight:700;
-    color:var(--coral);letter-spacing:.02em }
-  .bk-card .w b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.02em;margin-top:4px }
-  .bk-card .w b.off{ color:#cad0d6;font-weight:400;font-size:14px;margin:0 }
+  /* 오른쪽은 내 기록 — 뛴 날은 코랄, 안 나간 날은 흐리게.
+     목록만 훑어도 내 출석 흐름이 보인다. */
+  .bk-card .w b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.02em }
+  .bk-card .w b.me{ color:var(--coral-d) }
+  .bk-card .w b.off{ color:var(--lgray);font-weight:400;font-size:15px }
+  .bk-card .w i{ font-style:normal;display:block;font-size:13px;font-weight:400;
+    color:var(--lgray);margin-top:1px }
+  .bk-card.off{ background:#fafbfc;border-color:#eef0f2 }
+  .bk-card.off .d b,.bk-card.off .t b{ color:var(--lgray) }
   /* 아직 대진이 없는 모임 안내 */
   .bk-hint{ display:flex;align-items:center;gap:13px;background:#fff;
     border:1px solid #ffd9c2;border-radius:16px;padding:15px 16px;margin-bottom:13px;cursor:pointer }
@@ -3369,26 +3369,34 @@
      카드를 전부 흰색으로 두고, 왼쪽에 날짜 기둥을 세운다.
      오늘 것만 기둥이 코랄이 되어 <지금 살아있는 것> 하나만 눈에 띈다 —
      클럽 카드 배지·티어 사다리와 같은 문법이다. */
-  .psess2{ display:flex;gap:12px;border-radius:16px;background:#fff;border:1px solid var(--line);
-    padding:13px 14px;margin-bottom:7px;cursor:pointer }
+  /* 대진 탭 카드(.pvday)와 크기를 맞춘다 — 같은 클럽 안 목록인데
+     일정 쪽만 커서 나란히 놓고 보면 문법이 갈렸다.
+     여백 13→13/15, 날짜 기둥 46→34, 날짜 21→20px 로 대진에 맞춘다. */
+  .psess2{ display:flex;gap:13px;border-radius:14px;background:#fff;border:1px solid var(--line);
+    padding:13px 15px;margin-bottom:8px;cursor:pointer }
   .psess2.done{ background:#fafbfc;border-color:#eef0f2 }
   /* 날짜 기둥 — 폭을 고정해 여러 장이 세로로 자로 잰 듯 맞는다 */
-  .psess2 .p2d{ flex:none;width:46px;text-align:center;padding-top:1px }
-  .psess2 .p2d b{ display:block;font-size:21px;font-weight:700;letter-spacing:-.045em;
-    color:var(--lgray);line-height:1.1 }
-  .psess2 .p2d i{ display:block;font-style:normal;font-size:12.5px;font-weight:500;
-    color:#b0b8c1;margin-top:2px }
+  .psess2 .p2d{ flex:none;width:34px;text-align:center }
+  .psess2 .p2d b{ display:block;font-size:20px;font-weight:700;letter-spacing:-.045em;
+    color:var(--lgray);line-height:1.15 }
+  /* 요일이 제 줄 높이(22px)를 다 차지해 카드가 대진보다 높아졌다.
+     대진 카드(.pvday .dt span)는 line-height 를 안 키운다 — 같게 맞춘다. */
+  .psess2 .p2d i{ display:block;font-style:normal;font-size:14px;font-weight:400;
+    color:var(--gray);line-height:1.15;margin-top:0 }
   .psess2.now .p2d b{ color:var(--coral-d) }
   .psess2.now .p2d i{ color:var(--coral-d) }
-  .psess2 .p2c{ flex:1;min-width:0 }
-  .psess2 .p2top{ display:flex;align-items:baseline;gap:8px }
-  .psess2 .p2n{ flex:1;min-width:0;font-size:15.5px;font-weight:700;letter-spacing:-.03em;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .psess2 .p2b{ flex:none;font-size:12.5px;white-space:nowrap;font-weight:700;color:var(--lgray);
-    background:var(--felt);border-radius:20px;padding:3px 9px;line-height:1.3 }
+  /* 자식이 span 이라 사이의 줄바꿈이 인라인 공백으로 잡혀 7px 이 더 붙었다.
+     세로 flex 로 두면 그 공백이 사라져 대진 카드와 높이가 맞는다. */
+  .psess2 .p2c{ flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center }
+  .psess2 .p2top{ display:flex;align-items:center;gap:8px }
+  .psess2 .p2n{ flex:1;min-width:0;font-size:15px;font-weight:700;letter-spacing:-.03em;
+    line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  /* 배지가 카드 높이를 밀어 올리지 않게 — 대진 카드와 같은 높이를 유지한다 */
+  .psess2 .p2b{ flex:none;font-size:13px;white-space:nowrap;font-weight:700;color:var(--lgray);
+    background:var(--felt);border-radius:20px;padding:1px 9px;line-height:1.35 }
   .psess2.now .p2b{ background:var(--coral-s);color:var(--coral-d) }
   .psess2 .p2b.off{ background:#f2f4f6;color:#b0b8c1 }
-  .psess2 .p2m{ font-size:13.5px;color:var(--lgray);font-weight:400;margin-top:4px;line-height:1.55;
+  .psess2 .p2m{ font-size:14px;color:var(--gray);font-weight:400;margin-top:2px;line-height:1.4;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .psess2 .p2m b{ color:var(--coral-d);font-weight:700 }
   /* ── 일정 · 교류전 고정 블록 ──
@@ -11597,20 +11605,12 @@ function drawClubPreview(){
           참석 횟수로 나눈 값이에요 · 게스트는 빼고 셉니다</div>`:''}
         <div class="ch" style="font-size:16px;margin:${rk.length?'26px':'4px'} 0 10px">지난 모임</div>
         ${days.length?days.map(d=>`
-          <!-- 오른쪽에 <그날 1위>가 가장 크게 있었는데, 대부분 남의 이름이다.
-               이 화면에 오는 이유는 <그날 내가 어땠나> 다 — 내 기록으로 바꾼다.
-               1위는 없애지 않고 한 줄 아래로 내린다. -->
-          ${(()=>{ const m=d.my||{}; const played=(m.g||0)>0;
-            const rec = played
-              ? `${m.w||0}승${m.d?` ${m.d}무`:''}${m.l?` ${m.l}패`:''}`
-              : '안 나감';
-            return `<button class="pvday${played?'':' off'}" onclick="pvOpenDay('${esc(d.date)}')">
+          <button class="pvday" onclick="pvOpenDay('${esc(d.date)}')">
             <span class="dt"><b>${(d.date||'').slice(8,10).replace(/^0/,'')}</b><span>${dayShort(d.date)}</span></span>
             <span class="ti"><b>${esc(CB2_MODE_NAME[d.mode]||'시간 대진')}</b>
-              <span>${d.games}게임${d.top?` · 1위 ${esc(d.top)}`:''}</span></span>
-            <span class="go"><b class="${played?'on':'no'}">${rec}</b>
-              ${played?'<span>내 기록</span>':''}</span>
-          </button>`; })()}`).join('')
+              <span>${d.courts}코트 · ${d.games}게임</span></span>
+            ${d.top?`<span class="go"><span>그날 1위</span><b>${esc(d.top)}</b></span>`:''}
+          </button>`).join('')
         :`<div class="pvempty">아직 대진 기록이 없어요</div>`}
         ${days.length?'<div style="font-size:14px;color:var(--gray);margin-top:10px">누르면 그날 대진과 점수를 볼 수 있어요</div>':''}`;
     }
@@ -14081,13 +14081,18 @@ function clubTabBracket(){
     const t=String(b.title||'모임').replace(/^\[\d{1,2}\/\d{1,2}\]\s*/,'');
     const tot=b.games||0;
     const top=(BK_TOP||{})[bkDayKey(b.date)]||'';
-    /* 오른쪽은 <그날 1위>. 다시 열어보는 이유가 대부분 그것이라 게임 수보다 앞에 둔다 */
-    return `<div class="bk-card" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
+    /* 오른쪽에 <그날 1위>를 크게 뒀었는데 대부분 남의 이름이다.
+       이 화면에 오는 이유는 <그날 내가 어땠나> 다 — 오른쪽을 내 기록으로 바꾸고
+       1위는 없애지 않고 아랫줄로 내린다. 안 나간 날은 카드를 흐리게 둔다. */
+    const my=(BK_MY||{})[bkDayKey(b.date)]||null;
+    const played=!!(my && my.g);
+    const rec = played ? `${my.w||0}승${my.d?` ${my.d}무`:''}${my.l?` ${my.l}패`:''}` : '안 나감';
+    const sub = `${tot}게임${top?` · 1위 ${esc(top)}`:''}`;
+    return `<div class="bk-card${played?'':' off'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
       <div class="d"><b>${v.day||'–'}</b><i>${v.wd}</i></div>
-      <div class="t"><b>${esc(t)}</b>
-        <span>${esc(CB2_MODE_NAME[b.mode]||'일반')} · ${b.courts||0}코트 · ${tot}게임</span></div>
-      ${top?`<div class="w"><i>그날 1위</i><b>${esc(top)}</b></div>`
-           :`<div class="w"><b class="off">점수 없음</b></div>`}</div>`;
+      <div class="t"><b>${esc(t)}</b><span>${sub}</span></div>
+      <div class="w"><b class="${played?'me':'off'}">${rec}</b>
+        ${played?'<i>내 기록</i>':''}</div></div>`;
   };
   /* 점수가 비어 있으면 알려준다.
      기록 화면이 허전한 건 지표가 적어서가 아니라 점수가 안 들어가서다 —
@@ -26807,17 +26812,32 @@ async function openPlayerReport(uid, name){
 let PASTM=null, PASTM_OPEN=null;
 /* 그날 1위 — 대진 목록에도 붙인다. 예전에는 <모임 기록>을 따로 열어야 보였다.
    로그는 무거우니 클럽마다 한 번만 받아 캐시한다. */
-let BK_TOP=null, BK_TOP_CLUB=null;
+let BK_TOP=null, BK_TOP_CLUB=null, BK_MY=null;
 async function bkTopLoad(){
   const cid=clubId(); if(!SERVER_OK || !cid) return;
   if(BK_TOP && BK_TOP_CLUB===cid) return;
-  BK_TOP_CLUB=cid; BK_TOP={};
+  BK_TOP_CLUB=cid; BK_TOP={}; BK_MY={};
   try{
     const logs=await api(`/clubs/${cid}/bracket2/logs`)||[];
+    const meId=(state.serverUser||{}).id;
     logs.filter(logCountsForRecord).forEach(l=>{
       const {rank}=pastDayStats(l);
       const k=bkDayKey(l.date);
       if(rank[0] && k) BK_TOP[k]=rank[0].name;
+      /* 그날 내 전적도 함께 센다 — 이 화면에 오는 이유가 <그날 내가 어땠나> 다.
+         로그를 이미 받아 왔으니 서버를 더 부르지 않는다. */
+      if(!k) return;
+      const my={g:0,w:0,d:0,l:0};
+      ((l.data||{}).games||[]).forEach(g=>{
+        if(g.sa==null || g.sb==null) return;
+        const a=g.teamA||[], b=g.teamB||[];
+        const inA=a.some(p=>p&&p.id===meId), inB=b.some(p=>p&&p.id===meId);
+        if(!inA && !inB) return;
+        my.g++;
+        const s1=inA?g.sa:g.sb, s2=inA?g.sb:g.sa;
+        if(s1>s2) my.w++; else if(s1<s2) my.l++; else my.d++;
+      });
+      BK_MY[k]=my;
     });
     if(state.view==='club' && clubSub()==='bracket') renderClub();
   }catch(e){}
