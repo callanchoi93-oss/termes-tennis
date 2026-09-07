@@ -844,8 +844,14 @@
   .pvday .ti b{display:block;font-size:15px;font-weight:400;color:var(--ink)}
   .pvday .ti span{display:block;font-size:14px;color:var(--gray);margin-top:2px}
   .pvday .go{flex:none;text-align:right}
-  .pvday .go span{display:block;font-size:14px;font-weight:700;color:var(--coral-d)}
-  .pvday .go b{font-size:15px;font-weight:700;color:var(--ink)}
+  /* 오른쪽은 내 기록 — 뛴 날은 코랄, 안 나간 날은 회색으로 흐린다.
+     목록만 훑어도 내 출석 흐름이 보인다. */
+  .pvday .go b{display:block;font-size:16px;font-weight:700}
+  .pvday .go b.on{color:var(--coral-d)}
+  .pvday .go b.no{color:var(--lgray);font-weight:400}
+  .pvday .go span{display:block;font-size:13px;font-weight:400;color:var(--lgray);margin-top:1px}
+  .pvday.off{background:#fafbfc;border-color:#eef0f2}
+  .pvday.off .dt b,.pvday.off .ti b{color:var(--lgray)}
   .appbar{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top, 0px)) 20px 8px;flex-shrink:0}
   /* 상태바 가림막 — 페이지가 스크롤돼도 시계·배터리 아래로 내용이 비치지 않게 한다.
      .appbar 의 padding-top 만으로는 스크롤한 뒤를 막지 못한다. */
@@ -4712,7 +4718,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.6-0904a';
+const BUILD='v1.1.7-0907a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10450,8 +10456,12 @@ function renderClub(){
           const badge=[done?'지난 모임':esc(evDday(ev)), esc(ev.tag||'정기')].filter(Boolean).join(' · ');
           /* <0명 참여>는 텅 빈 방을 보여주는 말이다. 아직 아무도 없는 건 사실이지만
              그렇게 적으면 첫 사람이 되기가 더 어려워진다. */
-          const who = joined ? `<b>참여중</b> · ${n}명`
-                    : n ? `${n}명 참여` : '아직 아무도 없어요';
+          /* <7명 참석> 은 내가 그 7명 안에 있는지 알려주지 않았다.
+             <참여중 · 7명> 은 참석 여부와 인원을 따로 말해 둘 다 흐려졌다.
+             한 마디로 합친다 — 새 요소를 넣지 않고 있는 글자만 바꾼다.
+             특히 <나 혼자> 는 다른 사람을 부를 이유가 된다. */
+          const who = joined ? (n>1 ? `<b>나 포함 ${n}명</b>` : '<b>나 혼자</b>')
+                    : n ? `${n}명 참석` : '아직 아무도 없어요';
           h+=`<div class="psess2${done?' done':isNext?' now':''}" onclick="openEventDetail('${ev.id}')">
             <span class="p2d"><b>${day||'–'}</b><i>${wd}</i></span>
             <span class="p2c">
@@ -11587,12 +11597,20 @@ function drawClubPreview(){
           참석 횟수로 나눈 값이에요 · 게스트는 빼고 셉니다</div>`:''}
         <div class="ch" style="font-size:16px;margin:${rk.length?'26px':'4px'} 0 10px">지난 모임</div>
         ${days.length?days.map(d=>`
-          <button class="pvday" onclick="pvOpenDay('${esc(d.date)}')">
+          <!-- 오른쪽에 <그날 1위>가 가장 크게 있었는데, 대부분 남의 이름이다.
+               이 화면에 오는 이유는 <그날 내가 어땠나> 다 — 내 기록으로 바꾼다.
+               1위는 없애지 않고 한 줄 아래로 내린다. -->
+          ${(()=>{ const m=d.my||{}; const played=(m.g||0)>0;
+            const rec = played
+              ? `${m.w||0}승${m.d?` ${m.d}무`:''}${m.l?` ${m.l}패`:''}`
+              : '안 나감';
+            return `<button class="pvday${played?'':' off'}" onclick="pvOpenDay('${esc(d.date)}')">
             <span class="dt"><b>${(d.date||'').slice(8,10).replace(/^0/,'')}</b><span>${dayShort(d.date)}</span></span>
             <span class="ti"><b>${esc(CB2_MODE_NAME[d.mode]||'시간 대진')}</b>
-              <span>${d.courts}코트 · ${d.games}게임</span></span>
-            ${d.top?`<span class="go"><span>그날 1위</span><b>${esc(d.top)}</b></span>`:''}
-          </button>`).join('')
+              <span>${d.games}게임${d.top?` · 1위 ${esc(d.top)}`:''}</span></span>
+            <span class="go"><b class="${played?'on':'no'}">${rec}</b>
+              ${played?'<span>내 기록</span>':''}</span>
+          </button>`; })()}`).join('')
         :`<div class="pvempty">아직 대진 기록이 없어요</div>`}
         ${days.length?'<div style="font-size:14px;color:var(--gray);margin-top:10px">누르면 그날 대진과 점수를 볼 수 있어요</div>':''}`;
     }
