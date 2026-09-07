@@ -3214,10 +3214,11 @@
   .sdhd span{ font-size:14px;color:var(--lgray);font-weight:400 }
   .sev{ display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);
     border-radius:16px;margin-bottom:7px;cursor:pointer;background:var(--cream) }
-  .sev.on{ border-color:#ffd9c2;box-shadow:inset 3px 0 0 var(--coral) }
-  .sev .tm{ flex:none;width:46px;text-align:center }
+  /* 왼쪽 띠는 오른쪽 <참석중> 딱지와 같은 말을 두 번 하는 셈이었다.
+     테두리 색만으로 충분하다. */
+  .sev.on{ border-color:#f7c9ab;background:#fffaf7 }
+  .sev .tm{ flex:none;width:52px;text-align:center }
   .sev .tm b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em }
-  .sev .tm span{ display:block;font-size:14px;color:var(--lgray);font-weight:400;margin-top:2px }
   .sev .c{ flex:1;min-width:0 }
   .sev .c b{ font-size:15px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;display:block }
@@ -28125,7 +28126,8 @@ function schedMap(y, mo){
     const d=evParseDate(e.date);
     push(t, { kind: e.tag==='교류전' ? 'xc' : 'club', joined:!!e.joined,
       past:+t<Date.now(), title, time:d.time||'',
-      sub:[state.activeClub||'', d.place||'', (e.count!=null?`${e.count}명`:'')].filter(Boolean).join(' · '),
+      /* 클럽 이름은 이 화면 모든 줄에 같아 알려줄 값이 없다 — 장소와 인원만 남긴다 */
+        sub:[d.place||'', (e.count!=null?`${e.count}명`:'')].filter(Boolean).join(' · '),
       act:`openEventDetail('${e.id}')` });
   });
   (HOME_OM_ALL||[]).forEach(m=>{
@@ -28180,8 +28182,9 @@ function schedCal(){
     <div class="sdhd"><b>${mo+1}월 ${selD}일 ${selWd}</b>
       <span>${selEv.length?`${selEv.length}건`:'일정 없음'}</span></div>
     ${selEv.length ? selEv.map(e=>`<div class="sev${e.joined&&!e.past?' on':''}" onclick="${e.act}">
-        <span class="tm"><b>${esc((e.time||'--:--').slice(0,2))}</b>
-          <span>${esc((e.time||'--:--').slice(3))}분</span></span>
+        <!-- 19:00 을 <19> 와 <00분> 으로 쪼개니 <00분> 이 무슨 말인지 알 수 없었다.
+             시각은 한 덩이로 읽는 것이다. -->
+        <span class="tm"><b>${esc(e.time||'--:--')}</b></span>
         <span class="c"><b>${esc(e.title)}</b><span>${esc(e.sub)}</span></span>
         <span class="tag ${e.past?'done':e.kind==='xc'?'xc':'go'}">${
           e.past?'다녀옴':e.kind==='xc'?'교류전':e.joined?'참석중':'예정'}</span></div>`).join('')
