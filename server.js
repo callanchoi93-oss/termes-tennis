@@ -284,6 +284,8 @@ app.get('/config', (_, res) => {
     /* 점검 중이면 앱이 띠를 띄운다. /config 는 앱이 이미 부르는 곳이라
        새 요청이 늘지 않는다. */
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
+    /* 스토어 주소 — 앱이 자기 플랫폼에 맞는 쪽을 골라 쓴다 */
+    android_app_url: process.env.ANDROID_APP_URL || '',
     ios_app_url: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517',   // 맞수 App Store
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
@@ -389,6 +391,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS rest_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
   rtype TEXT, start TEXT, end TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at INTEGER)`);                    // 연명부 연락처 (본인 입력)
 try { db.exec('ALTER TABLE club_members ADD COLUMN resting INTEGER DEFAULT 0'); } catch (e) {}  // 휴회
+/* 휴회는 켜고 끄는 것뿐이라 <언제 돌아오는지>를 아무도 몰랐다.
+   잊히면 그대로 탈퇴가 된다 — 시작일과 복귀 예정일을 함께 받는다. */
+try { db.exec('ALTER TABLE club_members ADD COLUMN rest_from TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE club_members ADD COLUMN rest_until TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE club_members ADD COLUMN joined_at INTEGER'); } catch (e) {}      // 가입(승인)일
 
 app.get('/me/sport-profile', auth, (req, res) => {
@@ -1024,7 +1030,7 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.rest_from, cm.rest_until, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
       AND COALESCE(u.is_test,0)=0
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
@@ -1407,9 +1413,15 @@ app.post('/clubs/:id/rest-requests/:rid/decide', auth, (req, res) => {
 app.patch('/clubs/:id/members/:uid/resting', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
-  const v = req.body && req.body.resting ? 1 : 0;
-  db.prepare('UPDATE club_members SET resting=? WHERE club_id=? AND user_id=?').run(v, cid, intOrNull(req.params.uid));
-  res.json({ ok: true, resting: v });
+  const b = req.body || {};
+  const v = b.resting ? 1 : 0;
+  const ymd = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : null;
+  /* 휴회를 풀면 기간도 함께 지운다 — 남겨두면 다음에 다시 쉴 때 옛 날짜가 따라온다 */
+  const from  = v ? (ymd(b.rest_from) || new Date().toISOString().slice(0, 10)) : null;
+  const until = v ? ymd(b.rest_until) : null;
+  db.prepare('UPDATE club_members SET resting=?, rest_from=?, rest_until=? WHERE club_id=? AND user_id=?')
+    .run(v, from, until, cid, intOrNull(req.params.uid));
+  res.json({ ok: true, resting: v, rest_from: from, rest_until: until });
 });
 // 역할 변경 — 임원: guest↔member / 클럽장: officer 포함
 app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
@@ -2666,7 +2678,15 @@ app.post('/events/:id/rsvp', auth, (req, res) => {
   const eid = +req.params.id;
   const g = eventGuard(eid, req.uid);
   if (g.err) return res.status(g.err).json({ error: g.msg });
-  const st = ['going', 'absent', 'undecided'].includes(req.body && req.body.status) ? req.body.status : 'going';
+  const raw = req.body && req.body.status;
+  /* 누른 버튼을 다시 누르면 응답을 지운다 — <아직 답하지 않은> 상태로 되돌린다.
+     예전에는 세 값 중 하나로만 갈 수 있어서, 잘못 누르면 되돌릴 길이 없었다.
+     불참으로 남겨두는 것과 <아직 안 정했다>는 명단상 뜻이 다르다. */
+  if (raw === null || raw === 'none' || raw === '') {
+    db.prepare('DELETE FROM event_attendees WHERE event_id=? AND user_id=?').run(eid, req.uid);
+    return res.json({ ok: true, status: null, count: goingCount(eid) });
+  }
+  const st = ['going', 'absent', 'undecided'].includes(raw) ? raw : 'going';
   const has = db.prepare('SELECT id FROM event_attendees WHERE event_id=? AND user_id=?').get(eid, req.uid);
   if (has) db.prepare('UPDATE event_attendees SET status=? WHERE id=?').run(st, has.id);
   else db.prepare('INSERT INTO event_attendees (event_id,user_id,status) VALUES (?,?,?)').run(eid, req.uid, st);
@@ -3732,6 +3752,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS notices (
 CREATE INDEX IF NOT EXISTS ix_notices_club ON notices(club_id, id DESC);`);
 try { db.exec('ALTER TABLE notices ADD COLUMN popup_days INTEGER DEFAULT 0'); } catch (e) {}
 try { db.exec('ALTER TABLE notices ADD COLUMN poll TEXT'); } catch (e) {}
+/* 공지를 올린 사람이 가장 궁금한 것은 <봤을까> 다. 지금은 알 길이 없었다. */
+db.exec(`CREATE TABLE IF NOT EXISTS notice_reads (
+  notice_id INTEGER, user_id INTEGER, at INTEGER,
+  PRIMARY KEY(notice_id, user_id))`);
 db.exec(`CREATE TABLE IF NOT EXISTS notice_votes (
   id INTEGER PRIMARY KEY AUTOINCREMENT, notice_id INTEGER, user_id INTEGER,
   choice INTEGER, answer TEXT, created_at INTEGER, UNIQUE(notice_id, user_id))`);
@@ -3739,9 +3763,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS notice_votes (
 app.get('/clubs/:id/notices', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare(`SELECT n.*, u.name author FROM notices n
+  const rows = db.prepare(`SELECT n.*, u.name author,
+      (SELECT COUNT(*) FROM notice_reads r WHERE r.notice_id=n.id) read_n
+    FROM notices n
     JOIN users u ON u.id=n.author_id WHERE n.club_id=?
     ORDER BY n.pinned DESC, n.id DESC LIMIT 50`).all(cid);
+  /* 몇 명 중 몇 명이 읽었나 — 분모가 없으면 <18명 읽음>은 뜻이 없다 */
+  const memberN = db.prepare('SELECT COUNT(*) n FROM club_members WHERE club_id=?').get(cid).n;
+  rows.forEach(r => { r.member_n = memberN; });
   {
     const cnt = db.prepare('SELECT choice, COUNT(*) n FROM notice_votes WHERE notice_id=? AND choice IS NOT NULL GROUP BY choice');
     const mineQ = db.prepare('SELECT choice, answer FROM notice_votes WHERE notice_id=? AND user_id=?');
@@ -3768,6 +3797,15 @@ app.get('/clubs/:id/notices', auth, (req, res) => {
       return { ...n, poll };
     }));
   }
+});
+
+/* 읽음 표시 — 앱이 공지를 화면에 그린 뒤 한 번 부른다 */
+app.post('/notices/:nid/read', auth, (req, res) => {
+  try {
+    db.prepare('INSERT OR IGNORE INTO notice_reads (notice_id,user_id,at) VALUES (?,?,?)')
+      .run(+req.params.nid, req.uid, now());
+  } catch (e) {}
+  res.json({ ok: true });
 });
 
 app.post('/clubs/:id/notices', auth, (req, res) => {
@@ -4711,6 +4749,64 @@ function apnsSend(token, msg, hostIdx) {
     req.end(body);
   });
 }
+/* ── 안드로이드 알림 (FCM HTTP v1) ────────────────────────────────
+   구글이 2024년에 legacy 서버 키를 없앴다. 이제는 서비스 계정으로 토큰을 받아 쓴다.
+
+   Railway 환경변수 하나면 된다:
+     FCM_SERVICE_ACCOUNT = Firebase 콘솔에서 받은 JSON 통째로
+
+   없으면 조용히 쉰다 — iOS 만 쓰던 때와 똑같이 동작한다. */
+let FCM_SA = null;
+try {
+  const raw = process.env.FCM_SERVICE_ACCOUNT || '';
+  if (raw.trim()) {
+    FCM_SA = JSON.parse(raw);
+    if (FCM_SA.private_key) FCM_SA.private_key = FCM_SA.private_key.replace(/\\n/g, '\n');
+  }
+} catch (e) { console.error('[fcm] FCM_SERVICE_ACCOUNT 를 읽지 못했습니다:', e.message); }
+function fcmReady() { return !!(FCM_SA && FCM_SA.project_id && FCM_SA.client_email && FCM_SA.private_key); }
+
+let FCM_TOKEN = null, FCM_TOKEN_EXP = 0;
+async function fcmAccessToken() {
+  if (FCM_TOKEN && Date.now() < FCM_TOKEN_EXP - 60000) return FCM_TOKEN;
+  const iat = Math.floor(Date.now() / 1000);
+  const assertion = jwt.sign({
+    iss: FCM_SA.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat, exp: iat + 3600,
+  }, FCM_SA.private_key, { algorithm: 'RS256' });
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
+  });
+  const j = await r.json();
+  if (!j.access_token) throw new Error('fcm_token: ' + JSON.stringify(j).slice(0, 200));
+  FCM_TOKEN = j.access_token;
+  FCM_TOKEN_EXP = Date.now() + (j.expires_in || 3600) * 1000;
+  return FCM_TOKEN;
+}
+async function fcmSend(token, msg) {
+  const at = await fcmAccessToken();
+  const r = await fetch(`https://fcm.googleapis.com/v1/projects/${FCM_SA.project_id}/messages:send`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: {
+      token,
+      notification: { title: msg.title || '', body: msg.body || '' },
+      /* 눌렀을 때 갈 곳. 앱이 data 로 읽는다 — iOS 의 url 과 같은 값을 쓴다. */
+      data: { url: String(msg.url || 'home') },
+      android: { priority: 'high', notification: { sound: 'default' } },
+    } }),
+  });
+  if (r.ok) return { ok: true };
+  let j = null; try { j = await r.json(); } catch (e) {}
+  const status = j && j.error && j.error.status;
+  return { ok: false, status: r.status, reason: status || '' };
+}
+
 async function sendPush(userId, msg, opts) {
   // 알림함에는 기본으로 남긴다. 채팅처럼 잦은 알림은 skipInbox 로 푸시만 보낸다.
   const link = msg.link || ICON_LINKS[msg.icon] || null;
@@ -4739,8 +4835,24 @@ async function sendPush(userId, msg, opts) {
     });
   }
 
+  /* 안드로이드는 FCM 으로 — 예전에는 이 갈래가 없어 토큰이 그냥 버려졌다.
+     아래 웹푸시 고리는 토큰을 JSON 으로 파싱하는데, FCM 토큰은 그냥 문자열이라
+     조용히 건너뛰어졌다(오류도 안 났다). */
+  if (fcmReady()) {
+    rows.filter(r => r.platform === 'android').forEach(({ token }) => {
+      fcmSend(token, out).then(r => {
+        /* 앱을 지웠거나 토큰이 만료된 경우만 지운다 — 설정이 덜 된 상태와 구분한다 */
+        if (!r.ok && (r.reason === 'NOT_FOUND' || r.reason === 'UNREGISTERED'))
+          db.prepare('DELETE FROM devices WHERE token=?').run(token);
+        else if (!r.ok) console.error('[fcm]', r.status, r.reason);
+      }).catch(e => console.error('[fcm]', e.message));
+    });
+  }
+
   if (!webpush) return;
   for (const { token } of rows) {
+    /* 안드로이드 토큰은 위에서 처리했다 — 여기서 JSON.parse 하면 매번 실패한다 */
+    if (rows.find(r => r.token === token && r.platform === 'android')) continue;
     let sub;
     try { sub = JSON.parse(token); } catch { continue; }        // 구독 객체가 아니면 건너뛴다
     if (!sub || !sub.endpoint) continue;
@@ -7751,6 +7863,11 @@ app.get('/admin/health', admin, (_req, res) => {
   /* 오류 알림이 켜져 있는지 — 안 켜져 있으면 조용히 아무 일도 안 하므로
      화면에서 그 사실을 보여줘야 한다. */
   out.alertTo = (process.env.ADMIN_UIDS || '').split(',').map(x => x.trim()).filter(Boolean).length;
+  /* 알림이 어느 플랫폼까지 나가나 — 안드로이드를 붙였는데 FCM 을 안 넣으면 조용히 안 간다 */
+  out.apns = apnsReady();
+  out.fcm  = fcmReady();
+  try { const d = db.prepare(`SELECT platform, COUNT(*) n FROM devices GROUP BY platform`).all();
+    out.devices = d; } catch (e) {}
   res.json(out);
 });
 
@@ -10133,11 +10250,11 @@ app.get('/pay/return-to/:orderId', auth, (req, res) => {
   res.json({ return_to: o.return_to || '', status: o.status, cash: o.cash });
 });
 
-// 연결된 웹 클라이언트 (public/) 서빙 — npm start 하면 http://localhost:PORT 에서 바로 동작
-app.use(express.static(new URL('./public', import.meta.url).pathname));
-// 에러는 JSON으로
-app.use((err, req, res, _next) => { console.error(err); res.status(500).json({ error: String(err && err.message || err) }); });
-app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
+/* 정적 서빙·에러 핸들러·listen 은 <모든 라우트가 등록된 뒤>여야 한다.
+   예전에는 이 줄들이 파일 중간에 있어서, 아래쪽에 정의된 32개 라우트가
+   에러 핸들러의 보호를 못 받았다. 그 라우트에서 500 이 나면 Express 기본
+   HTML 페이지가 나가서, 관리자 오류 목록에 <!DOCTYPE html> 덩어리만 찍혔다.
+   실제 파일 맨 끝(bootServer 호출)으로 옮겼다. */
 
 /* ── 교류전 모임 보기 ──
    교류전은 주최 클럽 소속 모임이라 상대 클럽 회원에게는 목록에 뜨지 않는다.
@@ -10218,20 +10335,30 @@ try {
   db.exec('CREATE INDEX IF NOT EXISTS ix_ev_at ON events(at)');
   db.exec('CREATE INDEX IF NOT EXISTS ix_ev_name ON events(name, at)');
 } catch (e) {}
+/* 예전 버전이 platform 없이 만든 표가 남아 있으면 INSERT 준비 단계에서 터진다.
+   CREATE TABLE IF NOT EXISTS 는 컬럼을 더해주지 않으므로 따로 붙인다.
+   이미 있으면 예외가 나고 그냥 넘어간다. */
+try { db.exec('ALTER TABLE events ADD COLUMN platform TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE events ADD COLUMN props TEXT'); } catch (e) {}
 
 /* 앱은 모아서 한 번에 보낸다 — 화면을 옮길 때마다 요청하면 배터리를 먹는다 */
 app.post('/track', auth, (req, res) => {
-  const list = Array.isArray((req.body || {}).events) ? req.body.events.slice(0, 40) : [];
-  const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
-  const ins = db.prepare('INSERT INTO events (user_id,name,props,platform,at) VALUES (?,?,?,?,?)');
-  const t = db.transaction(rows => rows.forEach(r => {
-    const nm = String(r.n || '').slice(0, 40);
-    if (!nm) return;
-    let p = null;
-    try { p = r.p ? JSON.stringify(r.p).slice(0, 400) : null; } catch (e) {}
-    ins.run(req.uid, nm, p, plat, +r.t || now());
-  }));
-  try { t(list); } catch (e) {}
+  /* 사용 기록은 <있으면 좋은> 것이지 <꼭 되어야 하는> 것이 아니다.
+     예전에는 db.prepare 가 try 밖에 있어, 표가 조금만 어긋나도 500 이 났다.
+     기록 하나 못 남긴 것 때문에 앱이 오류를 겪을 이유가 없다 — 통째로 감싼다. */
+  try {
+    const list = Array.isArray((req.body || {}).events) ? req.body.events.slice(0, 40) : [];
+    const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
+    const ins = db.prepare('INSERT INTO events (user_id,name,props,platform,at) VALUES (?,?,?,?,?)');
+    const t = db.transaction(rows => rows.forEach(r => {
+      const nm = String(r.n || '').slice(0, 40);
+      if (!nm) return;
+      let p = null;
+      try { p = r.p ? JSON.stringify(r.p).slice(0, 400) : null; } catch (e) {}
+      ins.run(req.uid, nm, p, plat, +r.t || now());
+    }));
+    t(list);
+  } catch (e) { console.error('[track]', e.message); }
   res.json({ ok: true });
 });
 
@@ -11216,3 +11343,13 @@ function xcDraw(ent, rosters, mix, courts, rounds) {
   }
   return games;
 }
+
+/* ── 마지막: 정적 파일 · 에러 핸들러 · 서버 시작 ──────────────────── */
+// 연결된 웹 클라이언트 (public/) 서빙 — npm start 하면 http://localhost:PORT 에서 바로 동작
+app.use(express.static(new URL('./public', import.meta.url).pathname));
+// 에러는 JSON으로 — 라우트가 터져도 화면이 원인을 읽을 수 있게
+app.use((err, req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ error: String((err && err.message) || err).slice(0, 300) });
+});
+app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
