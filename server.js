@@ -1274,7 +1274,6 @@ app.get('/clubs/:id/public', (req, res) => {
     let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
     const gs = (d.games || []).filter(g => g.sa != null && g.sb != null);
     const dayPt = {};
-    const my = { g: 0, w: 0, d: 0, l: 0 };      // 그날 내 전적
     gs.forEach(g => {
       const a = g.teamA || [], b = g.teamB || [];
       const win = g.sa > g.sb ? 3 : (g.sa === g.sb ? 1 : 0);
@@ -1289,21 +1288,11 @@ app.get('/clubs/:id/public', (req, res) => {
       };
       a.forEach(p => put(p, win));
       b.forEach(p => put(p, lose));
-      /* 이 화면에 오는 이유는 <그날 내가 어땠나> 인데, 남의 1위만 크게 보였다.
-         내 승패를 함께 센다 — 참가자와 점수가 이미 있어 새로 저장할 값은 없다. */
-      const mineA = a.some(p => p && p.id === req.uid);
-      const mineB = b.some(p => p && p.id === req.uid);
-      if (mineA || mineB) {
-        my.g++;
-        const s1 = mineA ? g.sa : g.sb, s2 = mineA ? g.sb : g.sa;
-        if (s1 > s2) my.w++; else if (s1 < s2) my.l++; else my.d++;
-      }
     });
     const top = Object.entries(dayPt).sort((x, y) => y[1] - x[1])[0];
     const courts = new Set((d.games || []).map(g => g.playCourt || g.c).filter(Boolean));
     return { date: r.date, mode: d.mode || 'normal', courts: courts.size || (d.courts || 0),
-             games: (d.games || []).length, done: gs.length, top: top ? maskName(top[0]) : '',
-             my };
+             games: (d.games || []).length, done: gs.length, top: top ? maskName(top[0]) : '' };
   }).filter(x => x.done > 0);
 
   /* 모임이 두 번 이상 있었으면 두 번 이상 나온 사람만 줄에 세운다 —
