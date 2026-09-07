@@ -656,6 +656,18 @@
     background:#fff;border-radius:11px;padding:8px 12px;cursor:pointer;
     font-family:inherit;font-size:14px;font-weight:700;color:var(--gray)}
   .npic-btn svg{width:16px;height:16px}
+  /* 공지 목록 — 색면 대신 테두리. 고정은 작은 딱지로 가른다. */
+  .ntl{ margin-bottom:12px }
+  .ntt{ font-size:17px;font-weight:700;letter-spacing:-.03em;margin-bottom:8px }
+  .ntt em{ font-style:normal;color:var(--lgray);font-weight:400;margin-left:6px }
+  .ntc{ background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-bottom:8px }
+  .ntc .h{ display:flex;gap:5px;margin-bottom:6px }
+  .ntc .k2{ font-size:11.5px;font-weight:700;color:var(--coral-d);background:var(--coral-s);
+    border-radius:6px;padding:2px 8px }
+  .ntc .k3{ font-size:11.5px;font-weight:700;color:var(--lgray);background:var(--felt);
+    border-radius:6px;padding:2px 8px }
+  .ntc .t{ font-size:15px;line-height:1.6;white-space:pre-wrap }
+  .ntc .m{ font-size:13px;color:var(--lgray);margin-top:6px }
   .cnotice{background:var(--amber-s);border-radius:12px;padding:12px 14px;margin-bottom:14px}
   .cnotice .t{font-size:14px;font-weight:400;color:var(--amber)}
   .cnotice .b{font-size:15px;font-weight:400;margin-top:3px;line-height:1.55;color:#6b5a2e}
@@ -3611,9 +3623,17 @@
     text-overflow:ellipsis;white-space:nowrap }
   .mvrow .n .tag{ font-size:13px;white-space:nowrap;font-weight:700;border-radius:5px;padding:2px 6px;flex:none }
   .mvrow .n .tag.me2{ color:var(--coral-d);background:var(--coral-s) }
-  .mvrow .n .tag.owner{ color:var(--gold-d);background:#fff6e3 }
-  .mvrow .n .tag.officer{ color:var(--gray);background:var(--felt) }
+  /* 회장은 코랄로 — 금색은 배경과 색 계열이 달라 탁했다. 나머지는 회청색 하나로 모은다. */
+  .mvrow .n .tag.ow{ color:var(--coral-d);background:var(--coral-s) }
+  .mvrow .n .tag.of{ color:#5c6670;background:#eef2f6 }
+  .mvrow .n .tag.gu{ color:#8b95a1;background:#f2f4f6 }
+  .mvrow .n .tag.rs{ color:#8b95a1;background:#f2f4f6 }
+  .mvrow .n .tag.owner{ color:var(--coral-d);background:var(--coral-s) }
+  .mvrow .n .tag.officer{ color:#5c6670;background:#eef2f6 }
   .mvrow .n .tag.fresh{ color:#03a273;background:#e4f8f1 }
+  /* 쉬는 사람은 줄 전체를 흐리게 — 딱지 하나로는 목록에서 잘 안 걸린다.
+     출석 자리에도 숫자 대신 줄표를 둔다. 쉬는 사람에게 출석을 묻지 않는다. */
+  .mvrow.rest{ opacity:.55 }
   .mvrow .s{ display:flex;align-items:center;gap:6px;margin-top:4px;font-size:14px;
     color:var(--lgray);font-weight:400 }
   .mvrow .s .g{ font-size:13px;white-space:nowrap;font-weight:700;border-radius:5px;padding:2px 6px }
@@ -5447,14 +5467,14 @@ function checkAppUpdate(){
      한 번 닫으면 그 버전에 대해서는 다시 띄우지 않는다. */
   try{ if(localStorage.getItem('upd_done')===latest) return; }catch(e){}
   sessionStorage.setItem('upd_seen', latest);
-  const u=(CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517';
+  const u=storeUrl();
   const el=document.createElement('div');
   el.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));'
     +'z-index:999;background:#14171a;color:#fff;border-radius:16px;padding:14px 16px;'
     +'display:flex;align-items:center;gap:12px;box-shadow:0 6px 22px rgba(0,0,0,.25)';
   el.innerHTML=`<div style="flex:1;min-width:0;font-size:14px;line-height:1.55">
       <b style="font-weight:700">새 버전이 나왔어요</b><br>
-      <span style="color:#b9c0c8">App Store에서 업데이트하면 새 기능을 쓸 수 있어요</span></div>
+      <span style="color:#b9c0c8">${storeName()}에서 업데이트하면 새 기능을 쓸 수 있어요</span></div>
     ${u?`<a href="${u}" target="_blank" rel="noopener" style="flex:none;background:#d9500a;color:#fff;
       border-radius:11px;padding:9px 14px;font-size:14px;font-weight:700;text-decoration:none">업데이트</a>`:''}
     <span style="flex:none;color:#79828d;font-size:20px;cursor:pointer;padding:0 2px">×</span>`;
@@ -5491,6 +5511,24 @@ const API_BASE = (()=>{
   return location.origin;                                   // 웹 · 로컬 개발
 })();
 const TOKEN_KEY = 'matsu_jwt';
+/* 어느 앱으로 들어왔나 — 'ios' | 'android' | 'web'.
+   예전에는 네이티브면 무조건 iOS 로 취급했다. 안드로이드가 붙으면
+   푸시 토큰이 APNs 로 저장되고, 업데이트 안내가 App Store 를 가리킨다. */
+function appPlat(){
+  try{
+    if(!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return 'web';
+    const p = Capacitor.getPlatform && Capacitor.getPlatform();
+    return p === 'android' ? 'android' : 'ios';
+  }catch(e){ return 'web'; }
+}
+const IS_ANDROID_APP = appPlat()==='android';
+/* 스토어 이름과 주소도 갈린다 */
+function storeName(){ return IS_ANDROID_APP ? 'Play 스토어' : 'App Store'; }
+function storeUrl(){
+  if(IS_ANDROID_APP)
+    return (CFG&&CFG.android_app_url) || 'https://play.google.com/store/apps/details?id=app.matsu';
+  return (CFG&&CFG.ios_app_url) || 'https://apps.apple.com/kr/app/id6793127517';
+}
 /* ── 오류를 서버로 한 줄 ─────────────────────────────────────────
    지금까지는 회원이 알려줘야 알았다. 어제 <클럽 가입했는데 안 한 것처럼 보임>도
    제보로 알았고 그 사이 며칠을 흘려보냈다.
@@ -6452,9 +6490,12 @@ function rsvpToast(st){
        :                    '응답을 지웠어요 · 아직 답하지 않은 상태예요';
 }
 async function setRsvp(status){
+  /* 모임 상세와 같은 규칙 — 같은 버튼을 다시 누르면 응답을 지운다 */
+  const cur0 = (SRV_EVENT||{}).my_status || null;
+  if(cur0 === status) status = null;
   if(!SERVER_OK || !SRV_EVENT){
     const _c=AC(); if(_c){ _c.schedule=_c.schedule||{dt:'',attendees:[],attend:null}; _c.schedule.attend=(status==='going'); } renderClub();
-    toast(status==='going'?'참석 체크 완료':status==='absent'?'불참 처리됐어요':'미정으로 표시했어요'); return;
+    toast(rsvpToast(status)); return;
   }
   try{
     const r = await api(`/events/${SRV_EVENT.id}/rsvp`, {method:'POST', body: JSON.stringify({status})});
@@ -6607,6 +6648,10 @@ function canSetTitle(scale, myRole, myTitle){
    직책이 있으면 직책이 이긴다 — '임원'보다 '총무'가 그 사람이 하는 일을 더 정확히 말한다.
    직책이 없으면 권한(회장/임원/게스트)을 쓰고, 정회원은 이름표를 달지 않는다. */
 function memberLabel(m){
+  /* 휴회를 가장 먼저 본다 — 서버는 resting 을 내려주는데 이 함수가 안 봐서
+     멤버 탭에서는 쉬는 사람이 보통 회원과 똑같이 보였다.
+     운영진이 휴회를 걸어도 아무 일이 안 일어나는 상태였다. */
+  if(m && m.resting) return '휴회';
   const t = (m && m.title || '').trim();
   if(t) return t;
   const r = (m && m.role) || 'member';
@@ -6615,11 +6660,18 @@ function memberLabel(m){
 /* 이름표 색: 직책은 권한 색을 따라간다 — 회장 직책은 코랄, 임원 직책은 회색.
    직책만 있고 권한이 없는 사람(예: 권한 없는 총무)은 임원과 같은 회색으로 둔다. */
 function memberLabelCls(m){
+  if(m && m.resting) return 'rs';
   const r=(m&&m.role)||'member';
   return r==='owner' ? 'ow' : r==='guest' ? 'gu' : 'of';
 }
-const ROLE_STYLE = {owner:'background:#e7edf3;color:#a5750d', officer:'background:#efe7fb;color:#5b3fd6',
-                    member:'background:#e4f8f1;color:#03a273', guest:'background:#e1e6eb;color:#697480'};
+/* 회장은 회색 바탕에 금색 글씨였다 — 배경과 글자가 다른 색 계열이라 탁했다.
+   임원의 보라는 앱 어디에도 없는 색이었다.
+   회장은 코랄(앱에서 <지금 중요한 것>을 뜻하는 색), 나머지는 차분한 회청색으로
+   색을 셋에서 둘로 줄인다. 배지는 적을수록 읽힌다. */
+const ROLE_STYLE = {owner:'background:var(--coral-s);color:var(--coral-d)',
+                    officer:'background:#eef2f6;color:#5c6670',
+                    member:'background:#eef2f6;color:#5c6670',
+                    guest:'background:#f2f4f6;color:#8b95a1'};
 let MB_CACHE=[];
 
 async function openMembers(){
@@ -6637,6 +6689,11 @@ async function openMembers(){
 
   let h=`<div class="sh-top"><h3>연명부</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">총 <b>${ms.length}명</b> · 임원 ${cnt('owner')+cnt('officer')} · 정회원 ${cnt('member')} · 게스트 ${cnt('guest')}${restN?` · 휴회 ${restN}`:''}</div>`;
+  /* 복귀일이 지난 사람을 맨 위에 — 휴회는 잊히기 쉽고, 잊히면 그대로 탈퇴가 된다 */
+  ;(()=>{ const due=restDue(ms);
+    if(due.length) h+=`<div class="warn" style="margin-top:8px"><b>돌아올 때가 됐어요 ${due.length}명</b>
+      <span style="color:var(--gray);font-weight:400">· ${due.slice(0,3).map(m=>esc(m.name)).join(' · ')}${
+        due.length>3?` 외 ${due.length-3}명`:''}</span></div>`; })();
   if(officer){
     h+=`<button class="btn ghost sm" style="margin-bottom:10px" onclick="exportRoster()">Excel(.xlsx)로 내려받기</button>`;
     api(`/clubs/${cid}/rest-requests`).then(rs=>{
@@ -6702,7 +6759,18 @@ function openMemberEdit(uid){
   if(role!=='owner'){
     if(isOwner) h+=`<button class="btn ghost" style="margin-top:8px" onclick="setMemberRole(${uid},'${role==='officer'?'member':'officer'}')">${role==='officer'?'임원 해제':'임원으로 임명'}</button>
       <button class="btn ghost" style="margin-top:8px" onclick="transferOwner(${uid},'${esc(m.name)}')">클럽장 양도</button>`;
-    h+=`<button class="btn ghost" style="margin-top:8px" onclick="toggleResting(${uid},${m.resting?0:1})">${m.resting?'휴회 해제':'휴회 처리'}</button>`;
+    /* 휴회는 켜고 끄는 것뿐이라 언제 돌아오는지 아무도 몰랐다.
+       걸 때 복귀 예정일을 함께 받는다 — 비워도 되지만, 적어두면 잊지 않는다. */
+    if(m.resting){
+      h+=`<div class="note" style="text-align:left;margin-top:8px">
+        ${m.rest_from?`${esc(m.rest_from)}부터 쉬는 중`:'쉬는 중'}${
+          m.rest_until?` · <b>${esc(m.rest_until)}</b>에 돌아올 예정`:' · 복귀일 미정'}</div>
+        <button class="btn ghost" style="margin-top:8px" onclick="toggleResting(${uid},0)">휴회 해제</button>`;
+    } else {
+      h+=`<div class="fld" style="margin-top:8px"><label>언제까지 쉬나요 (비워도 돼요)</label>
+        <input id="restUntil" type="date" value=""></div>
+        <button class="btn ghost" onclick="toggleResting(${uid},1)">휴회 처리</button>`;
+    }
     /* 내보내기는 되돌릴 수 없다 — 맨 아래에 따로 떼어두고, 왜 내보내는지 남기게 한다 */
     if(isOwner || role!=='officer')
       h+=`<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
@@ -6788,9 +6856,29 @@ async function decideRest(rid, approve){
   }catch(e){ toast('처리에 실패했어요'); }
 }
 async function toggleResting(uid, v){
-  try{ await api(`/clubs/${clubId()}/members/${uid}/resting`,{method:'PATCH',body:JSON.stringify({resting:v})});
-    toast(v?'휴회 처리했어요':'휴회를 해제했어요'); openMembers();
+  const until = v ? ((document.getElementById('restUntil')||{}).value||null) : null;
+  try{ await api(`/clubs/${clubId()}/members/${uid}/resting`,
+        {method:'PATCH',body:JSON.stringify({resting:v, rest_until:until})});
+    toast(v ? (until?`${until}까지 휴회로 표시했어요`:'휴회 처리했어요') : '휴회를 해제했어요');
+    await loadClubServer(); openMembers();
   }catch(e){ toast('변경에 실패했어요'); }
+}
+/* 복귀 예정일을 사람 말로. 날짜가 지났으면 <돌아올 때가 됐어요>. */
+function restUntilText(d){
+  if(!d) return '쉬는 중';
+  const t=new Date(d+'T00:00:00').getTime();
+  if(isNaN(t)) return '쉬는 중';
+  const days=Math.ceil((t-Date.now())/864e5);
+  if(days<0) return '돌아올 때가 됐어요';
+  if(days===0) return '오늘 복귀';
+  const m=+d.slice(5,7);
+  return `${m}월까지 쉬어요`;
+}
+/* 복귀일이 지난 사람 — 휴회는 잊히기 쉽고, 잊히면 그대로 탈퇴가 된다 */
+function restDue(list){
+  const now=Date.now();
+  return (list||[]).filter(m=>m.resting && m.rest_until &&
+    new Date(m.rest_until+'T00:00:00').getTime() < now);
 }
 
 /* 연명부 Excel 내보내기 — 원본 연명부 서식 재현 (남색 헤더·연하늘 임원행·눈금선 없음) */
@@ -7725,7 +7813,7 @@ function openDues(){
 function toggleDue(nm){ const c=AC(); c.dues[nm]=c.dues[nm]==='paid'?'unpaid':'paid'; openDues(); }
 function remindUnpaid(){ const c=AC(); const mem=clubMembersList(); const u=mem.filter(nm=>c.dues[nm]!=='paid'); if(!u.length){toast('미납자가 없어요');return;} pushNotif('💳','회비 납부 요청',`${u.length}명에게 납부 요청을 보냈어요`); closeOv(); toast(`미납 ${u.length}명에게 알림을 보냈어요`); }
 // ── 공지사항 ──
-async function openNotices(){
+async function openNotices(opts){
   const cid = clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
   let list=[], officer=false;
@@ -7738,7 +7826,9 @@ async function openNotices(){
 
   let h=`<div class="sh-top"><h3>공지사항</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
   if(officer){
-    h+=`<textarea id="ncBody" placeholder="공지 내용을 입력하세요" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;font-family:inherit;min-height:76px;resize:none"></textarea>
+    /* <안 나오는 회원>에서 넘어오면 무엇을 쓸지까지 채워 둔다 — 빈 칸이면 결국 안 보낸다 */
+    const pre=(opts&&opts.prefill)||'';
+    h+=`<textarea id="ncBody" placeholder="공지 내용을 입력하세요" style="width:100%;box-sizing:border-box;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;font-family:inherit;min-height:76px;resize:none">${esc(pre)}</textarea>
       <div id="ncWarn" class="cwarn"></div>
       <div style="display:flex;align-items:center;gap:14px;margin:9px 2px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:400;color:var(--gray)">
@@ -7860,6 +7950,8 @@ async function postNotice(){
   }
   try{
     await api(`/clubs/${clubId()}/notices`,{method:'POST',body:JSON.stringify({body,pinned,popup_days,poll})});
+    /* 올린 공지가 소식 탭에 바로 보이게 — 예전에는 이 화면을 다시 열어야만 보였다 */
+    CLUB_NOTICES=null; loadNotices().then(()=>{ if(state.view==='club') renderClub(); });
     toast('공지를 올렸어요 · 회원들에게 알림이 갔어요'); openNotices();
   }catch(e){
     const m=String(e.message||'');
@@ -11249,15 +11341,39 @@ function openIntroEdit(){
   /* 딱지는 <넣을 말>이지 누를 버튼이 아니다 — 코랄로 채우면 저장 버튼과 무게가 같아진다.
      회색 테두리로 낮추고, 이미 넣은 말에는 체크만 남긴다.
      글자 수는 상자에 담지 않는다(.note 는 베이지 블록이라 덩어리가 된다). */
-  const CHIPS=['초보 환영','매너 중시','주말 오전','정기전 위주','게스트 환영'];
+/* 낱말 칩은 넣어도 문장은 직접 써야 했다 — 빈 칸 앞에서 막히는 건 그대로였다.
+   완성된 글 세 벌을 두고 고르면 채워지게 한다. 고치는 것이 쓰는 것보다 쉽다. */
+const INTRO_TPL=[
+  {k:'가', n:'편하게 치는 클럽', tag:'초보 환영',
+   b:'주말 오전에 모여 즐겁게 치는 클럽입니다.\n실력보다 매너와 참석 의지를 봅니다. 초보도 환영해요.\n\n게스트는 미리 말씀 주시면 언제든 환영입니다.'},
+  {k:'나', n:'꾸준히 치는 클럽', tag:'정기전 위주',
+   b:'매주 정해진 요일에 모여 대진을 짜서 칩니다.\n꾸준히 나오실 분을 찾습니다.\n\n한 달에 두 번 이상 참석을 부탁드리고 있어요.'},
+  {k:'다', n:'실력을 겨루는 클럽', tag:'중급 이상',
+   b:'게임 위주로 운영합니다. 랠리가 이어지는 분이면 좋겠습니다.\n월례대회로 조를 나누고 승강이 있습니다.\n\n구력 2년 이상을 권해드려요.'},
+];
+function introUseTpl(i){
+  const t=INTRO_TPL[i]; if(!t) return;
+  const ta=document.getElementById('introTa'); if(!ta) return;
+  /* 이미 쓴 글이 있으면 확인한다 — 눌렀다가 날리면 다시 쓸 마음이 안 든다 */
+  if(ta.value.trim() && !confirm('지금 쓴 글을 지우고 이 글로 바꿀까요?')) return;
+  ta.value=t.b; introCount(); ta.focus();
+  toast('넣었어요 · 클럽에 맞게 고쳐주세요');
+}
   let h=`<div class="sh-top"><h3>클럽 소개</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="ed-page">
       <div class="sd">가입을 고민하는 사람이 <b>가장 먼저 읽는 글</b>이에요.<br>
         분위기 · 실력대 · 게스트 규칙을 적어주세요.</div>
-      <div class="ichl">눌러서 넣기</div>
-      <div id="introChips" class="ichips">${CHIPS.map(t=>
-        `<span class="ichip${cur.includes(t)?' on':''}" onclick="introChip('${t}')">${t}</span>`).join('')}</div>
+      <div class="ichl">골라서 고치기</div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">
+        ${INTRO_TPL.map((t,i)=>`<div onclick="introUseTpl(${i})"
+          style="border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;background:#fff">
+          <div style="font-size:14.5px;font-weight:700">${t.k} · ${t.n}
+            <span style="font-weight:400;color:var(--lgray);margin-left:5px;font-size:13px">${t.tag}</span></div>
+          <div style="font-size:13.5px;color:var(--gray);margin-top:4px;line-height:1.6;
+            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"
+            >${esc(t.b.split('\n\n')[0])}</div></div>`).join('')}
+      </div>
       <textarea id="introTa" maxlength="1000" placeholder="예) 주말 오전에 모여 즐겁게 치는 클럽입니다.
 실력보다 매너와 참석 의지를 봅니다. 초보도 환영해요."
         oninput="introCount()">${esc(cur)}</textarea>
@@ -12181,8 +12297,10 @@ function openClubOps(){
     <div class="opgrid">
       ${tool('가입 신청','승인 · 거절','openAdmin()',pend?'hot':'',pend||0)}
       ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
-      ${tool('회원 실력','등록 구력과 실제가 다른 회원','openMemberSkill()')}
-      ${tool('요즘 오르는 회원','최근 8경기가 그 전보다 나아진 분','openMskTrend()')}
+      <!-- 둘은 같은 표를 정렬만 다르게 보여줬다 — 그 화면 안에 이미 정렬 버튼이 있다.
+           한 칸으로 합치고, 빈 자리에는 <할 수 있는 일>을 넣는다. -->
+      ${tool('회원 실력','등록 구력과 실제 · 요즘 오르는 회원','openMemberSkill()')}
+      ${tool('안 나오는 회원','한 달 넘게 안 보이는 분 · 바로 부르기','openLapsed()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날','openClubBasicEdit(1)')}
@@ -12254,7 +12372,10 @@ async function openClubInvite(){
         <div style="position:relative;margin-top:-36px;text-align:center">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:74px;height:74px;
             border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(160,110,50,.20)">
-            <img src="${PZ_ORIG}" alt="맞수" style="width:52px;height:52px;display:block"></span>
+            <!-- 원본이 220 x 187 이라 정사각으로 늘리면 가로 12% 가 눌린다.
+                 원(74x74)은 정사각 그대로 두고 그림만 비율을 지킨다. -->
+            <img src="${PZ_ORIG}" alt="맞수"
+              style="max-width:52px;max-height:52px;object-fit:contain;display:block"></span>
         </div>
         <div style="position:relative;text-align:center;margin-top:14px">
           <div style="font-size:12px;font-weight:400;color:#c9754a;letter-spacing:3px">INVITATION</div>
@@ -14660,6 +14781,49 @@ function mskTrendChip(t){
     >${up?'▲':'▼'} 최근 ${up?'+':''}${t}%</span>`;
 }
 
+/* ── 안 나오는 회원 ────────────────────────────────────────────────
+   멤버 탭에 <한 달 넘게 안 보임>이 뜨는데 거기서 할 수 있는 일이 없었다.
+   모아서 보여주고, 그 자리에서 부를 수 있게 한다. */
+async function openLapsed(){
+  const cid=clubId(); if(!cid) return toast('클럽을 먼저 골라주세요');
+  let ms=[]; try{ ms=await api(`/clubs/${cid}/members`)||[]; }catch(e){ return toast('불러오지 못했어요'); }
+  const now=Date.now();
+  /* 휴회 중인 사람은 뺀다 — 쉬겠다고 말한 사람에게 왜 안 오냐고 물을 수 없다.
+     게스트도 뺀다. 원래 가끔 오는 사람이다. */
+  const list=ms.filter(m=>!m.resting && m.role!=='guest')
+    .map(m=>({...m, gap: m.last_seen_at ? Math.floor((now-m.last_seen_at)/864e5) : null}))
+    .filter(m=>m.gap===null || m.gap>=30)
+    .sort((a,b)=>(b.gap===null?9999:b.gap)-(a.gap===null?9999:a.gap));
+  const when=m=>m.gap===null ? '한 번도 안 나왔어요'
+    : m.gap>=60 ? `${Math.floor(m.gap/30)}달째 안 보임` : `${m.gap}일째 안 보임`;
+  let h=`<div class="sh-top"><h3>안 나오는 회원</h3>
+    <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>`;
+  if(!list.length){
+    h+=`<div class="empty" style="padding:40px 20px"><div class="et">모두 나오고 있어요</div>
+      <div class="es">한 달 넘게 안 보이는 분이 없어요</div></div>`;
+  } else {
+    h+=`<div class="sd">${list.length}명 · 한 달 넘게 안 보이는 분이에요</div>
+      <button class="btn" style="margin:10px 0 4px" onclick="lapsedCall()">이분들에게 공지 보내기</button>
+      <div class="note" style="text-align:left;margin-bottom:6px">
+        휴회 중인 분과 게스트는 뺐어요 — 쉬겠다고 말한 사람에게 왜 안 오냐고 물을 수는 없으니까요.</div>`;
+    list.forEach(m=>{
+      h+=`<div class="mrow" onclick="openMemberEdit(${m.user_id})">
+        <div class="mrow-c"><div class="mrow-n">${esc(m.name)}</div>
+          <div class="mrow-s">${when(m)}${m.phone?` · ${esc(m.phone)}`:''}</div></div></div>`;
+    });
+  }
+  LAPSED_IDS = list.map(m=>m.user_id);
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+let LAPSED_IDS=[];
+function lapsedCall(){
+  if(!LAPSED_IDS.length) return;
+  closeOv();
+  /* 공지 화면을 열되, 무엇을 쓸지까지 채워 둔다 — 빈 칸이면 결국 안 보낸다 */
+  openNotices({prefill:'오랜만이에요! 이번 주에 코트 자리가 있어요.\n편하실 때 한 번 나와주세요 🎾'});
+}
+
 /* 요즘 오르는 회원 — 같은 화면을 <상승세 순>으로 연다.
    따로 화면을 만들지 않는다. 회원 실력과 같은 값을 보는데 정렬만 다른 것이라,
    두 화면으로 갈라 두면 같은 표를 두 벌 관리하게 된다. */
@@ -15281,19 +15445,39 @@ function clubTabRecords(){
      클럽 기록은 클럽 회원의 기록이다. 게스트 id 는 'g' 로 시작한다.
      참석 횟수 조건도 순위와 같은 값을 쓴다 — 한 번 나온 사람은 전당에도 안 넣는다. */
   const hallPool = list.filter(r=>!/^g/i.test(String(r.id)) && r.dayN>=RKMIN);
+  /* 3경기 3승(100%)과 40경기 34승(85%)을 같은 잣대로 두면 앞이 이긴다.
+     적게 뛸수록 운이 크게 작용하므로 <가상의 5승 5패>를 미리 깔고 비교한다.
+     순위만 이 값으로 정하고, 화면에는 실제 승률과 경기 수를 그대로 보여준다 —
+     회원에게 <보정 승률 66.7%> 를 설명할 방법이 없기 때문이다. */
+  const HK = 5;
+  const adjWr = r => (r.w + HK) / ((r.g || 0) + 2 * HK);
+  const adjRate = (r,key) => {
+    if(key==='wr') return adjWr(r);
+    if(key==='ga') return ((r.ga||0) + HK*2) / ((r.g||0) + HK); // 경기당 실점(작을수록 좋음)
+    return r[key];
+  };
+  /* 누적으로 세는 상(득실차·최다 득점·최다 참여)은 많이 뛸수록 커지므로
+     원래부터 공정하다 — 건드리지 않는다.
+     문제는 <비율>과 <작을수록 좋은 누적>이다:
+       승률   — 적게 뛰면 100% 가 쉽다
+       최소 실점 — 적게 뛰면 무조건 적다 (가장 심함)
+     이 둘만 경기당으로 바꿔 보정한다. */
+  const RATE = {wr:1, ga:1};
   const best=(key,asc,min)=>{
     const f=hallPool.filter(r=>r.g>=(min||0)); if(!f.length) return null;
-    return f.slice().sort((a,b)=>asc?a[key]-b[key]:b[key]-a[key])[0];
+    const k = RATE[key] ? (r=>adjRate(r,key)) : (r=>r[key]);
+    return f.slice().sort((a,b)=>asc?k(a)-k(b):k(b)-k(a))[0];
   };
   /* 상 이름은 테니스 말로. '다이아손·철벽'은 어디서 온 말인지 알기 어렵고
      테니스 치는 사람이 코트에서 쓰는 단어가 아니다. */
   /* 이름은 한 배열에만 있다 — 바꾸고 싶으면 여기만 고치면 된다.
      테니스 용어(에이스·위너·리터너)는 정확하지만 딱딱해서, 말맛이 남는 쪽으로 골랐다. */
   const HALL=[
-    {l:'승리요정', s:'승률 1위',    p:best('wr',false,4), f:r=>`${r.wr}%`},
-    {l:'점수도둑', s:'득실차 1위',  p:best('gd',false,3), f:r=>`${r.gd>=0?'+':''}${r.gd}`},
+    {l:'승리요정', s:'승률 1위',    p:best('wr',false,4), f:r=>`${r.wr}%`,  n:r=>`${r.g}경기`},
+    {l:'점수도둑', s:'득실차 1위',  p:best('gd',false,3), f:r=>`${r.gd>=0?'+':''}${r.gd}`, n:r=>`${r.g}경기`},
     {l:'팡팡쳐요', s:'최다 득점',   p:best('gf',false),   f:r=>`${r.gf}점`},
-    {l:'안내줘요', s:'최소 실점',   p:best('ga',true,3),  f:r=>`${r.ga}실점`},
+    {l:'안내줘요', s:'경기당 최소 실점', p:best('ga',true,3),
+      f:r=>`${(Math.round((r.ga||0)/(r.g||1)*10)/10)}점`, n:r=>`${r.g}경기`},
     {l:'매주와요', s:'최다 참여',   p:best('dayN',false), f:r=>`${r.dayN}회`},
     /* 잘 친 사람만 칭찬하면 코트 밖에서 도운 사람은 남는 게 없다.
        남의 점수를 대신 넣어준 횟수 — 한 번이라도 있으면 자리를 만든다. */
@@ -15337,7 +15521,9 @@ function clubTabRecords(){
         <div class="hl">${x.l}</div>
         <div class="hn">${esc(x.p.name)}</div>
         <div class="hv">${x.f(x.p)}</div>
-        <div class="hs">${x.s}</div></div>`).join('')}</div>`;
+        <!-- 몇 경기인지 안 보이면 <5경기 100%> 와 <40경기 85%> 를 구별할 수 없다.
+             순위는 보정값으로 정하지만, 보는 사람도 스스로 판단할 수 있어야 한다. -->
+        <div class="hs">${x.s}${x.n?` · ${x.n(x.p)}`:''}</div></div>`).join('')}</div>`;
     if(!RK_HALL_ALL && HALL.length>2)
       h+=`<button class="hallmore" onclick="RK_HALL_ALL=1;renderClub()">명예의 전당 ${HALL.length-2}개 더 보기</button>`;
   }
@@ -15515,8 +15701,10 @@ function mvRows(){
     const role=memberLabel(r), rcls=memberLabelCls(r);
     const mine=r.user_id===meId;
     const fresh=MV_FRESH && r.joined_at && (Date.now()-r.joined_at) < 30*864e5;
-    const [at,acls]=mvAtt(r);
-    h+=`<div class="mvrow${mine?' me':''}" onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})">
+    let [at,acls]=mvAtt(r);
+    /* 휴회 중이면 출석 숫자가 아니라 <언제 돌아오나>가 알고 싶은 정보다 */
+    if(r.resting){ at = r.rest_until ? restUntilText(r.rest_until) : '쉬는 중'; acls='cold'; }
+    h+=`<div class="mvrow${mine?' me':''}${r.resting?' rest':''}" onclick="openClubMember(${jsArg(r.user_id)},${jsArg(r.name)})">
       <span class="av" style="${ph?`background-image:url('${ph}')`:''}">${ph?'':esc(String(r.name).slice(0,1))}</span>
       <span class="c">
         <span class="n"><b>${esc(r.name)}</b>
@@ -15621,12 +15809,65 @@ function loadClubRoster(){
 }
 function retryClubRoster(){ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; CLUB_ROSTER_ERR=false;
   CLUB_ROSTER_RETRIED=false; renderClub(); }
+/* 공지는 운영진 도구 시트 안에서만 보였다 — 올린 사람도 다시 열어야 볼 수 있었고
+   회원은 볼 길이 없었다. 소식 탭이 읽던 AC().notices 는 로컬 데모 값이라
+   서버 공지가 들어가지 않는다. 서버에서 받아 여기 띄운다. */
+let CLUB_NOTICES=null, _ntOnce=false;
+async function loadNotices(){
+  const cid=clubId(); if(!SERVER_OK||!cid) return;
+  try{ CLUB_NOTICES=await api(`/clubs/${cid}/notices`)||[]; }catch(e){ CLUB_NOTICES=[]; }
+}
+/* 화면에 그린 공지는 읽은 것으로 친다 — 따로 누르게 하면 아무도 안 누른다 */
+function markNoticeRead(id){
+  if(!id) return;
+  try{ const k='nt_read_'+id; if(localStorage.getItem(k)) return; localStorage.setItem(k,'1'); }catch(e){}
+  api(`/notices/${id}/read`,{method:'POST'}).catch(()=>{});
+}
+function noticeCard(n, officer){
+  const t=n.created_at?timeAgo(n.created_at):'';
+  markNoticeRead(n.id);
+  return `<div class="ntc">
+    ${n.pinned||n.poll?`<div class="h">${n.pinned?'<span class="k2">고정</span>':''}${
+      n.poll?'<span class="k3">투표</span>':''}</div>`:''}
+    <div class="t">${esc(n.body||'')}</div>
+    <div class="m">${esc(n.author||'')}${t?` · ${t}`:''}${
+      officer&&n.member_n?` · 읽음 ${n.read_n||0} / ${n.member_n}`:''}</div></div>`;
+}
+/* 팝업 공지 — <팝업> 을 켜도 읽는 코드가 없어 아무 일도 일어나지 않았다.
+   설정한 날짜까지 하루 한 번만 띄운다. 매번 띄우면 그건 안내가 아니라 방해다. */
+function popupNotices(){
+  const list=(CLUB_NOTICES||[]).filter(n=>{
+    if(!n.popup_days || !n.created_at) return false;
+    return Date.now() < n.created_at + n.popup_days*864e5;
+  });
+  if(!list.length) return;
+  const n=list[0], key='nt_pop_'+n.id+'_'+ymd();
+  try{ if(localStorage.getItem(key)) return; localStorage.setItem(key,'1'); }catch(e){ return; }
+  markNoticeRead(n.id);
+  const el=document.createElement('div');
+  el.className='fullov on';
+  el.style.cssText='display:flex;align-items:center;justify-content:center;padding:24px;z-index:900';
+  el.innerHTML=`<div style="background:#fff;border-radius:18px;padding:20px;max-width:340px;width:100%">
+    <div style="font-size:12px;font-weight:700;color:var(--coral-d);letter-spacing:.06em">클럽 공지</div>
+    <div style="font-size:15.5px;line-height:1.65;margin-top:9px;white-space:pre-wrap">${esc(n.body||'')}</div>
+    <div style="font-size:13px;color:var(--lgray);margin-top:8px">${esc(n.author||'')}</div>
+    <button class="btn" style="width:100%;margin-top:14px">확인했어요</button></div>`;
+  el.querySelector('button').onclick=()=>el.remove();
+  document.body.appendChild(el);
+}
+
 function clubTabNews(){
-  const c=AC()||{}; const notices=(c.notices||[]);
   let h='';
-  if(notices.length){ const nt=notices[0];
-    h+=`<div class="cnotice"><div class="t">공지</div>
-      <div class="b">${esc(nt.b||nt.body||nt.t||'')}</div></div>`;
+  if(SERVER_OK && clubId()){
+    if(CLUB_NOTICES===null && !_ntOnce){ _ntOnce=true;
+      loadNotices().then(()=>{ _ntOnce=false; if(state.view==='club') renderClub();
+        try{ popupNotices(); }catch(e){} }); }
+    const list=CLUB_NOTICES||[];
+    const officer=state.bcfg&&state.bcfg.role==='officer';
+    if(list.length){
+      h+=`<div class="ntl"><div class="ntt">공지<em>${list.length}</em></div>
+        ${list.slice(0,5).map(n=>noticeCard(n,officer)).join('')}</div>`;
+    }
   }
 
   if(SERVER_OK && clubId() && !window.FEED_LOADED && !window._feedOnce){
@@ -25474,8 +25715,9 @@ function cb2ShareText(){
     '· 내 경기 점수를 직접 넣을 수 있어요',
     '· 다음 모임엔 참석만 누르면 대진에 들어가요',
     '· 오늘 친 기록이 내 시즌 기록으로 쌓여요',
-    '아이폰 https://apps.apple.com/kr/app/id6793127517',
-    '안드로이드 https://matsu.up.railway.app'].join('\n');
+    /* 안드로이드는 앱이 없어서 웹 주소를 줬었다. 이제 스토어로 보낸다. */
+    '아이폰 '+iosAppUrl(),
+    '안드로이드 '+androidAppUrl()].join('\n');
   return head+'\n'+lines.join('\n')+'\n'+tail;
 }
 function cb2Share(){
@@ -26846,12 +27088,16 @@ function drawEventDetail(){
         <div style="font-size:15px;font-weight:400;color:#3d444b;margin-top:4px;line-height:1.65;word-break:break-word">${esc(c.body)}</div>
         ${(()=>{ const rc=evReactCounts(c.id); const keys=Object.keys(rc);
           return keys.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
-            ${keys.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:14px;font-weight:400;${rc[em].mine?`background:${accentBg};border:1px solid ${accent}44;color:${accent}`:'background:#f0f1f3;border:1px solid transparent;color:#57606b'}">${em}<span style="font-size:14px">${rc[em].n}</span></span>`).join('')}</div>`:''; })()}
+            ${keys.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:14px;font-weight:400;${/* 내가 누른 것은 연한 코랄 면이었는데, 댓글 카드(회색 면) 위에 또 색면이 얹혀
+        얼룩처럼 보였다. 면을 걷고 흰 바탕 + 코랄 테두리로 바꾼다 —
+        누른 것은 테두리 색으로, 안 누른 것은 옅은 테두리로 갈린다. */
+      rc[em].mine?`background:#fff;border:1px solid ${accent};color:${accent};font-weight:700`
+                 :'background:#fff;border:1px solid #e5e8eb;color:#57606b'}">${em}<span style="font-size:14px">${rc[em].n}</span></span>`).join('')}</div>`:''; })()}
         <div style="display:flex;gap:12px;margin-top:6px;align-items:center">
           <span onclick="evPick(${c.id})" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">반응</span>
           <span onclick="evReply(${c.id},'${esc(c.name)}')" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">답글</span>
           ${mine?`<span onclick="evDelComment(${c.id})" style="font-size:14px;font-weight:400;color:#a3abb4;cursor:pointer">삭제</span>`:''}</div>
-        ${EVD.pickFor===c.id?`<div style="display:flex;gap:6px;margin-top:7px;background:#f4f6f8;border-radius:12px;padding:7px 9px;width:fit-content">
+        ${EVD.pickFor===c.id?`<div style="display:flex;gap:6px;margin-top:7px;background:#fff;border:1px solid #e5e8eb;border-radius:12px;padding:7px 9px;width:fit-content">
           ${EV_EMOJI.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;font-size:20px;line-height:1">${em}</span>`).join('')}</div>`:''}
       </div></div>`;
     kids.forEach(k=>{ s+=line(k,1); });
@@ -26902,8 +27148,12 @@ function fmtAgo(ts){ const s=Math.floor((Date.now()-ts)/1000);
   if(s<86400) return Math.floor(s/3600)+'시간 전'; return Math.floor(s/86400)+'일 전'; }
 async function evRsvp(status){
   if(!EVD) return;
-  try{ track('rsvp', {s:status}); }catch(e){}
-  try{ const r=await api(`/events/${EVD.ev.id}/rsvp`,{method:'POST',body:JSON.stringify({status})});
+  /* 누른 버튼을 다시 누르면 응답을 지운다 — 잘못 눌렀을 때 되돌릴 길이 없었다.
+     불참으로 남겨두는 것과 <아직 안 정했다>는 명단상 뜻이 다르다. */
+  const cur = (EVD.ev||{}).my_status || null;
+  const next = (cur === status) ? null : status;
+  try{ track('rsvp', {s:next||'none'}); }catch(e){}
+  try{ const r=await api(`/events/${EVD.ev.id}/rsvp`,{method:'POST',body:JSON.stringify({status:next})});
     const list=await api(`/clubs/${clubId()}/events`); SRV_EVENTS=list;
     EVD.ev=list.find(x=>String(x.id)===String(EVD.ev.id))||EVD.ev;
     drawEventDetail(); renderClub();
@@ -27096,17 +27346,25 @@ function isIOSWeb(){
       (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);   // 아이패드
   }catch(e){ return false; }
 }
-/* 초대장을 받은 사람이 어디서 열지 알 수 없다 — 카톡 안, PC, 안드로이드 모두 가능하다.
-   아이폰이면 App Store 버튼을, 그 밖에서는 링크 한 줄을 남긴다. */
+/* 초대장을 받은 사람이 어디서 열지 알 수 없다 — 카톡 안, PC, 아이폰, 안드로이드 모두 가능하다.
+   예전에는 아이폰만 챙기고 안드로이드는 <아이폰이라면> 이라는 남의 얘기를 봤다.
+   폰 종류를 보고 그 사람 스토어를 권한다. */
 function iosAppUrl(){ return (CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517'; }
+function androidAppUrl(){ return (CFG&&CFG.android_app_url)||'https://play.google.com/store/apps/details?id=app.matsu'; }
+function isAndroidWeb(){ try{ return /Android/i.test(navigator.userAgent); }catch(e){ return false; } }
 function storeCta(){
-  const u=iosAppUrl();
-  if(isIOSWeb()) return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
-    style="display:block;margin-top:8px;text-align:center;text-decoration:none">App Store에서 앱으로 받기</a>`;
-  if(nativeNow()) return '';
-  return `<div class="note" style="text-align:center;margin-top:10px">아이폰이라면
-    <a href="${u}" target="_blank" rel="noopener"
-      style="color:var(--coral-d);font-weight:700;text-decoration:underline">App Store에서 앱으로</a> 받을 수 있어요</div>`;
+  if(nativeNow()) return '';                        // 이미 앱 안이다
+  const ios = isIOSWeb(), and = isAndroidWeb();
+  const u = ios ? iosAppUrl() : and ? androidAppUrl() : null;
+  const nm = ios ? 'App Store' : 'Play 스토어';
+  if(u) return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
+    style="display:block;margin-top:8px;text-align:center;text-decoration:none">${nm}에서 앱으로 받기</a>`;
+  /* PC 등 — 어느 폰인지 모르니 둘 다 알려준다 */
+  return `<div class="note" style="text-align:center;margin-top:10px">폰에서는 앱으로 더 편해요 ·
+    <a href="${iosAppUrl()}" target="_blank" rel="noopener"
+      style="color:var(--coral-d);font-weight:700;text-decoration:underline">아이폰</a> ·
+    <a href="${androidAppUrl()}" target="_blank" rel="noopener"
+      style="color:var(--coral-d);font-weight:700;text-decoration:underline">안드로이드</a></div>`;
 }
 function acceptInviteCard(token){
   glClose();
@@ -35509,7 +35767,7 @@ async function initNativePush(){
         PUSH_TOKEN = tok;
         if(!authToken()){                                // 아직 로그인 전 — 보관해 둔다
           pushDiag('토큰 보관', '로그인 전'); pushDone('wait','로그인하면 자동으로 켜져요'); return; }
-        try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:tok, platform:'ios'})});
+        try{ await api('/push/register', {method:'POST', body: JSON.stringify({token:tok, platform:appPlat()})});
           pushDiag('등록 완료'); pushDone('ok'); toast('알림을 켰어요');
         }catch(e){ const m = String((e&&e.message)||e).slice(0,80);
           pushDiag('등록 실패', m); pushDone('fail','서버 저장 실패 · '+m); }
