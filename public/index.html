@@ -14108,7 +14108,9 @@ function clubTabBracket(){
        1위는 없애지 않고 아랫줄로 내린다. 안 나간 날은 카드를 흐리게 둔다. */
     const my=(BK_MY||{})[bkDayKey(b.date)]||null;
     const played=!!(my && my.g);
-    const rec = played ? `${my.w||0}승${my.d?` ${my.d}무`:''}${my.l?` ${my.l}패`:''}` : '안 나감';
+    /* <불참> 은 신청했다가 빠진 것처럼 읽힌다 — 일정 탭에서 참석을 취소할 때 쓸 말이다.
+       여기는 지난 기록을 보는 곳이라 담담한 <미참석> 이 맞다. */
+    const rec = played ? `${my.w||0}승${my.d?` ${my.d}무`:''}${my.l?` ${my.l}패`:''}` : '미참석';
     const sub = `${tot}게임${top?` · 1위 ${esc(top)}`:''}`;
     return `<div class="bk-card${played?'':' off'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
       <div class="d"><b>${v.day||'–'}</b><i>${v.wd}</i></div>
