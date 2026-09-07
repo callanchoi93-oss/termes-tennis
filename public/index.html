@@ -5537,21 +5537,48 @@ function storeUrl(){
    보내는 일이 또 실패해도 다시 보내지 않는다(무한 고리 방지).
    한 화면에서 같은 오류가 쏟아지지 않게 같은 열쇠는 1분에 한 번만 보낸다. */
 const _errSeen = new Map();
+/* 연결이 끊기면 그 순간 나가려던 요청이 <한꺼번에> 실패한다.
+   앱을 열 때 12개, 클럽 화면에 들어갈 때 14개가 동시에 죽는 식이다.
+   그걸 주소마다 한 줄씩 보내면 사건 하나가 스물여섯 줄이 되어,
+   정작 진짜 코드 오류가 그 안에 파묻힌다. 사건 단위로 묶는다. */
+let _netBurst = null;          // {n, first, paths:Set}
+function _netFlush(){
+  const b=_netBurst; _netBurst=null;
+  if(!b) return;
+  _sendErr('net', b.n>1
+    ? `연결이 끊겼어요 · 요청 ${b.n}개 실패`
+    : `연결이 끊겼어요 · ${[...b.paths][0]||''}`,
+    b.n>1 ? `${[...b.paths][0]} 외 ${b.paths.size-1}곳` : ([...b.paths][0]||''));
+}
+function _sendErr(kind, msg, path){
+  const t0 = authToken();
+  fetch(API_BASE + '/client-error', { method:'POST', keepalive:true,
+    headers:{ 'Content-Type':'application/json', ...(t0?{Authorization:'Bearer '+t0}:{}) },
+    body: JSON.stringify({ kind, msg:String(msg||'').slice(0,300),
+      path:String(path||''), build:(typeof BUILD!=='undefined'?BUILD:''),
+      plat: (typeof appPlat==='function' ? appPlat() : 'web') })
+  }).catch(()=>{});
+}
 function logErr(kind, msg, path){
   try{
+    /* 연결이 없으면 기록도 못 보낸다 — 보내봐야 그 요청마저 실패한다 */
+    if(navigator.onLine === false) return;
+    /* 통신 실패는 모았다가 한 줄로. 10초 안에 더 나면 개수만 센다. */
+    if(kind==='net' || kind==='timeout'){
+      if(!_netBurst){ _netBurst={n:0, paths:new Set()}; setTimeout(_netFlush, 10000); }
+      _netBurst.n++;
+      if(_netBurst.paths.size < 20) _netBurst.paths.add(String(path||''));
+      return;
+    }
     const key = kind + '|' + String(path||'').replace(/\d+/g,'#');
     const t = Date.now();
     if(_errSeen.get(key) && t - _errSeen.get(key) < 60000) return;
     _errSeen.set(key, t);
-    const t0 = authToken();
-    fetch(API_BASE + '/client-error', { method:'POST', keepalive:true,
-      headers:{ 'Content-Type':'application/json', ...(t0?{Authorization:'Bearer '+t0}:{}) },
-      body: JSON.stringify({ kind, msg:String(msg||'').slice(0,300),
-        path:String(path||''), build:(typeof BUILD!=='undefined'?BUILD:''),
-        plat: (window.Capacitor ? 'ios' : 'web') })
-    }).catch(()=>{});
+    _sendErr(kind, msg, path);
   }catch(e){}
 }
+/* 끊겼다 돌아왔다는 사실 하나면 충분하다 — 실패한 주소 목록이 아니라 */
+addEventListener('online', ()=>{ try{ _sendErr('net','연결이 돌아왔어요','online'); }catch(e){} });
 /* 잡히지 않은 오류도 같은 통로로 — 화면이 하얗게 죽는 경우가 여기 걸린다 */
 addEventListener('error', ev=>{
   if(!ev || !ev.message) return;
@@ -11335,14 +11362,6 @@ function pvCanEdit(){
   const c=(SRV_MYCLUBS||[]).find(x=>x.name===PV.n || x.id===PV.cid);
   return !!(c && (c.role==='owner'||c.role==='officer'));
 }
-function openIntroEdit(){
-  if(!PV) return;
-  const cur=(PV.c.intro||'');
-  /* 딱지는 <넣을 말>이지 누를 버튼이 아니다 — 코랄로 채우면 저장 버튼과 무게가 같아진다.
-     회색 테두리로 낮추고, 이미 넣은 말에는 체크만 남긴다.
-     글자 수는 상자에 담지 않는다(.note 는 베이지 블록이라 덩어리가 된다). */
-/* 낱말 칩은 넣어도 문장은 직접 써야 했다 — 빈 칸 앞에서 막히는 건 그대로였다.
-   완성된 글 세 벌을 두고 고르면 채워지게 한다. 고치는 것이 쓰는 것보다 쉽다. */
 const INTRO_TPL=[
   {k:'가', n:'편하게 치는 클럽', tag:'초보 환영',
    b:'주말 오전에 모여 즐겁게 치는 클럽입니다.\n실력보다 매너와 참석 의지를 봅니다. 초보도 환영해요.\n\n게스트는 미리 말씀 주시면 언제든 환영입니다.'},
@@ -11359,6 +11378,15 @@ function introUseTpl(i){
   ta.value=t.b; introCount(); ta.focus();
   toast('넣었어요 · 클럽에 맞게 고쳐주세요');
 }
+
+function openIntroEdit(){
+  if(!PV) return;
+  const cur=(PV.c.intro||'');
+  /* 딱지는 <넣을 말>이지 누를 버튼이 아니다 — 코랄로 채우면 저장 버튼과 무게가 같아진다.
+     회색 테두리로 낮추고, 이미 넣은 말에는 체크만 남긴다.
+     글자 수는 상자에 담지 않는다(.note 는 베이지 블록이라 덩어리가 된다). */
+/* 낱말 칩은 넣어도 문장은 직접 써야 했다 — 빈 칸 앞에서 막히는 건 그대로였다.
+   완성된 글 세 벌을 두고 고르면 채워지게 한다. 고치는 것이 쓰는 것보다 쉽다. */
   let h=`<div class="sh-top"><h3>클럽 소개</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="ed-page">
