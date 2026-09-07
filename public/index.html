@@ -1918,6 +1918,9 @@
   /* gap 과 카드의 margin-bottom 이 더해져 간격이 17px 이 됐다.
      대진 탭(.bk-card)은 margin-bottom 만 있어 8px 이다 — 거기에 맞춘다. */
   .plan2{ display:flex; flex-direction:column; gap:0; }
+  /* 그 달 모임이 모두 한 곳일 때만 나온다 */
+  .p2place{ font-size:13.5px;color:var(--lgray);font-weight:400;margin:0 2px 7px }
+  .p2place b{ color:var(--gray);font-weight:700 }
   .psess{ border-radius:20px; padding:15px 16px; cursor:pointer; position:relative; display:flex; flex-direction:column; transition:transform .12s ease; }
   .psess:active{ transform:scale(.985); }
   /* 날짜를 카드 왼쪽 위에 크게 — 제목·본문에서 날짜가 세 번 겹치던 걸 한 번으로 */
@@ -10436,7 +10439,14 @@ function renderClub(){
             <span style="font-size:14px;color:var(--lgray);transition:.15s;display:inline-block;
               transform:rotate(${open?'0':'-90'}deg)">▾</span></div>`;
           if(!open) return;
-          h+=`<div class="plan2">`;
+          /* 같은 장소가 카드마다 반복되면 <다른 곳에서 하는 날> 이 오히려 안 보인다.
+         그 달 모임이 모두 한 곳이면 머리에 한 번만 적고 카드에서는 뺀다. */
+      const gPlaces = [...new Set(G.list.map(e=>{
+        const dd=evParseDate(e.date)||{}; return (dd.place||'').trim();
+      }).filter(Boolean))];
+      const COMMON = (gPlaces.length===1 && G.list.length>1) ? gPlaces[0] : null;
+      if(COMMON) h+=`<div class="p2place">모두 <b>${esc(COMMON)}</b></div>`;
+      h+=`<div class="plan2">`;
           G.list.forEach((ev,ii)=>{ const i=ii; const joined = (SERVER_OK&&clubId()) ? !!ev.joined : ev.attendees.includes('곽주영');
           const d=evParseDate(ev.date); const done=evIsPast(ev);
           const day = d.day!=null ? d.day : '';
@@ -10470,7 +10480,9 @@ function renderClub(){
              한 줄로 눌러 담고, 딱지도 <오늘 · 정기> 하나로 합친다. */
           const n=(SERVER_OK&&clubId()) ? (ev.count!=null?ev.count:(ev.attendees||[]).length)
                                         : (ev.attendees||[]).length;
-          const badge=[done?'지난 모임':esc(evDday(ev)), esc(ev.tag||'정기')].filter(Boolean).join(' · ');
+          /* 거의 모든 모임이 <정기> 라 알려줄 값이 없다. 어쩌다 있는 번개만 적는다. */
+          const tag = (ev.tag && ev.tag!=='정기') ? esc(ev.tag) : '';
+          const badge=[done?'지난 모임':esc(evDday(ev)), tag].filter(Boolean).join(' · ');
           /* <0명 참여>는 텅 빈 방을 보여주는 말이다. 아직 아무도 없는 건 사실이지만
              그렇게 적으면 첫 사람이 되기가 더 어려워진다. */
           /* <7명 참석> 은 내가 그 7명 안에 있는지 알려주지 않았다.
@@ -10484,8 +10496,9 @@ function renderClub(){
             <span class="p2c">
               <span class="p2top"><span class="p2n">${esc(title)}</span>
                 <span class="p2b${done?' off':''}">${badge}</span></span>
-              <span class="p2m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}
-                · ${esc(d.place||'장소 미정')} · ${who}</span></span></div>`; });
+              <span class="p2m">${esc(d.time?(d.end?`${d.time}~${d.end}`:d.time):'시간 미정')}${
+                (COMMON && (d.place||'').trim()===COMMON) ? '' : ` · ${esc(d.place||place||'장소 미정')}`
+                } · ${who}</span></span></div>`; });
           h+=`</div>`;
         });
       }
