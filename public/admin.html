@@ -330,8 +330,8 @@ const NAV=[
   ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지']]],
   ['운영',       [['matches','매치'],['xctest','교류전'],['venues','구장'],
                  ['reports','신고'],['payouts','정산']]],
-  ['설정',       [['log','작업 기록'],['export','내려받기'],['maint','점검'],
-                 ['staff','계정'],['banners','배너']]],
+  ['설정',       [['log','작업 기록'],['dead','죽은 코드'],['export','내려받기'],
+                 ['maint','점검'],['staff','계정'],['banners','배너']]],
 ];
 /* 메뉴에 붙는 숫자 — 급한 것만. 화면을 안 열어도 어디를 눌러야 할지 알게 한다 */
 let BADGE={};
@@ -442,6 +442,38 @@ async function draw(){
   if(TAB==='log')     return drawLog();
   if(TAB==='export')  return drawExport();
   if(TAB==='maint')   return drawMaint();
+  if(TAB==='dead')    return drawDead();
+}
+
+/* ── 죽은 코드 ────────────────────────────────────────────────────
+   세 번이나 <서버는 되는데 화면이 안 이어진 것>을 뒤늦게 찾았다.
+   공지 · 반응 이름 · 회원 삭제 — 사람이 기억으로 잡을 일이 아니다. */
+async function drawDead(){
+  const d=await api('/admin/dead-code');
+  if(d.error) return $('app').innerHTML=shell(
+    `<div class="card"><div class="empty">${esc(d.error)}</div></div>`);
+  const g={};
+  (d.dead||[]).forEach(r=>{ const k=r.path.split('/')[1]||'기타';
+    (g[k]=g[k]||[]).push(r); });
+  const keys=Object.keys(g).sort((a,b)=>g[b].length-g[a].length);
+  $('app').innerHTML=shell(`
+    <div class="kpi">
+      <div><b>${fmt(d.routes)}</b><span>라우트</span></div>
+      <div><b class="${d.dead.length?'hot':''}">${fmt(d.dead.length)}</b><span>안 쓰임</span></div>
+      <div><b>${fmt(d.external)}</b><span>바깥에서 부름</span></div>
+    </div>
+    ${d.dead.length ? `<div class="warn"><b>${d.dead.length}개</b>가 어디서도 안 불려요
+      · 만들다 만 것이거나 지워도 되는 코드예요</div>`
+      : `<div class="card"><div class="empty">안 쓰이는 라우트가 없어요<br>
+        <span style="font-size:var(--t0)">화면과 서버가 다 이어져 있어요</span></div></div>`}
+    ${keys.map(k=>`<div class="card"><div class="ct">/${esc(k)}<span class="tag">${g[k].length}</span></div>
+      ${g[k].map(r=>`<div class="rw"><span class="nm">
+        <b>${esc(r.method)} ${esc(r.path)}</b>
+        <span>server.js ${r.line}행</span></span></div>`).join('')}</div>`).join('')}
+    <div class="note">
+      주소를 <b>글자로 찾는</b> 방식이라, 앱이 <code>\${'{'}...{'}'}</code> 로 만든 주소는 놓칠 수 있어요 ·
+      <b>의심 목록이지 판결이 아니에요</b>.<br>
+      바깥에서 부르는 것(웹훅·아이콘·결제 콜백)은 <code>// @external</code> 을 달면 빠집니다.</div>`);
 }
 
 /* ── 작업 기록 ────────────────────────────────────────────────────
@@ -654,6 +686,11 @@ async function drawHealth(){
       <div class="rw"><span class="nm"><b>메모리</b><span>${fmt(h.mem)}MB · Node ${esc(h.node)}</span></span></div>
       <div class="rw"><span class="nm"><b>업로드</b>
         <span>${fmt(h.uploads||0)}개 · ${h.uploadsMB||0}MB</span></span></div>
+      <div class="rw"><span class="nm"><b>폰 알림</b>
+        <span>${[h.apns?'아이폰(APNs) 켜짐':'<b style="color:#c2410c">아이폰 꺼짐</b>',
+                 h.fcm?'안드로이드(FCM) 켜짐':'<b style="color:#c2410c">안드로이드 꺼짐</b>'].join(' · ')}${
+          (h.devices||[]).length?' · 기기 '+(h.devices||[]).map(d=>`${
+            d.platform==='ios'?'아이폰':d.platform==='android'?'안드로이드':d.platform} ${d.n}`).join(', '):''}</span></span></div>
       <div class="rw"><span class="nm"><b>오류 알림</b>
         <span>${h.alertTo ? `${h.alertTo}명에게 보냄 · 3명 이상 겪는 오류가 새로 생기면 알려요`
           : '<b style="color:#c2410c">꺼져 있어요</b> · ADMIN_UIDS 에 받을 사람 번호를 넣어주세요'}</span></span></div>
@@ -1031,10 +1068,16 @@ async function openU(id){
       <b class="${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">없음</b></div>
     ${u.last_region?`<div class="ur"><span>접속 지역</span><b>${esc(u.last_region)}</b></div>`:''}
     <div class="unote">바꾼 내용은 <b>작업 기록</b>에 남고 되돌릴 수 있어요</div>
+    <!-- 서버에는 정지·삭제가 다 있었는데 화면에 버튼이 없어 쓸 수가 없었다.
+         정지는 되돌릴 수 있고 삭제는 되돌릴 수 없다 — 그 차이를 버튼 색과 문구로 가른다. -->
     <div class="uact">
       <button onclick="pushTest(${u.id},'${esc(u.name)}')">시험 알림 보내기</button>
-      ${u.suspended?`<button class="danger" onclick="purgeUser(${u.id})">기록 영구 삭제</button>`:''}
+      <button onclick="suspendUser(${u.id},'${esc(u.name)}',${u.suspended?0:1})">${
+        u.suspended?'정지 풀기':'계정 정지'}</button>
+      <button class="danger" onclick="delUser(${u.id},'${esc(u.name)}')">회원 삭제</button>
     </div>
+    ${u.suspended?`<div class="unote"><b style="color:#c2410c">정지된 계정</b>이에요 ·
+      로그인하면 처음 화면으로 돌아가요</div>`:''}
     <div id="udet"><div class="unote">기록을 불러오는 중…</div></div>`;
   $('ov').classList.add('on');
   /* 상세는 뒤이어 채운다 — 기본 정보를 붙잡아 두면 시트가 늦게 열린다 */
@@ -1658,9 +1701,20 @@ async function purgeUser(id){
     toast(`${r.deleted||'회원'} · 영구 삭제했어요`); render();
   }catch(e){ toast('삭제하지 못했어요 · 활성 계정일 수 있어요'); }
 }
+async function suspendUser(id,name,v){
+  if(!confirm(v?`${name} 계정을 정지할까요?\n로그인해도 처음 화면으로 돌아갑니다.`
+               :`${name} 계정의 정지를 풀까요?`)) return;
+  try{ await api('/admin/users/'+id+'/suspend',{method:'POST'});
+    toast(v?'정지했어요':'정지를 풀었어요'); render(); }
+  catch(e){ toast('바꾸지 못했어요'); }
+}
 async function delUser(id,name){
-  if(!confirm(`${name} 회원을 삭제할까요? 활동 기록까지 지워지고 되돌릴 수 없어요.`)) return;
-  try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'}); toast('삭제했어요'); render(); }
+  /* 확인 창 한 번으로는 손이 미끄러진다. 이름을 직접 치게 한다 —
+     되돌릴 수 없는 일 앞에서는 한 번 더 멈춰 세우는 게 맞다. */
+  const t=prompt(`${name} 회원을 영구 삭제합니다.\n활동 기록까지 모두 지워지고 되돌릴 수 없어요.\n\n확인하려면 이름 「${name}」을 입력해 주세요.`);
+  if(String(t||'').trim()!==name) return toast('삭제하지 않았어요');
+  try{ await api('/admin/users/'+id+'?force=1',{method:'DELETE'});
+    toast(`${name} · 삭제했어요`); closeU(); render(); }
   catch(e){ toast('삭제하지 못했어요'); }
 }
 async function delClub(id,name){

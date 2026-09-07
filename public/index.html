@@ -14647,19 +14647,20 @@ function balPanelHTML(){
         </div>`;
       })()}
 
+      <!-- 설명이 길면 안 읽힌다. 궁금한 건 <왜 이 등급인가> 하나다.
+           경기가 쌓이면 옮겨간다는 것, 승률이 아니라는 것, 프로필 등급은 그대로라는 것.
+           나머지는 덜어냈다. -->
       <p style="${tsBody};color:var(--gray);margin:16px 0 0;word-break:keep-all;text-wrap:pretty">
-        처음엔 구력만 봅니다. 경기가 쌓이면 성적 쪽으로 옮겨가요.<br>성적은 승률이 아니라 <b>기대 대비 실적</b>이에요 — 강한 상대를 이기면 더 오릅니다.
-        <b style="color:var(--ink)">프로필의 ${esc(s.code)} 등급은 그대로입니다.</b></p>
+        경기가 쌓일수록 성적을 더 봅니다. 성적은 승률이 아니라
+        <b>기대 대비 실적</b>이라, 강한 상대를 이기면 더 오릅니다.
+        <b style="color:var(--ink)">프로필의 ${esc(s.code)} 등급은 그대로예요.</b></p>
 
       <p style="${tsBody};color:var(--gray);margin:12px 0 0;word-break:keep-all;text-wrap:pretty">
         ${!useT
-          ? `아직 <b style="color:var(--ink)">월례대회를 안 치렀어요</b> · 0점.
-             그만큼은 성적 쪽으로 넘어가서, 지금은 구력과 성적으로만 정해집니다.`
+          ? `<b style="color:var(--ink)">월례대회 전이라 0점</b> — 그만큼 성적이 대신합니다.`
           : s.tg
-            ? `월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점.
-               조가 높을수록 점수를 많이 받습니다.`
-            : `아직 <b style="color:var(--ink)">월례대회 조 배정 전</b>이라 0점.
-               조가 높을수록 점수를 많이 받습니다.`}</p>
+            ? `월례대회 <b style="color:var(--ink)">${esc(s.tg)}조</b>라 ${pT}점 · 조가 높을수록 많이 받아요.`
+            : `<b style="color:var(--ink)">조 배정 전이라 0점</b> · 조가 높을수록 많이 받아요.`}</p>
     </details>
   </div>`;
 }
@@ -14772,6 +14773,26 @@ function mskAll(){
 /* 상승세 딱지 — 최근 8경기가 그 이전보다 <기대 대비> 얼마나 나아졌나.
    기대값으로 재므로 <요즘 약한 상대를 만나서 이긴다>는 상승세로 안 잡힌다.
    ±8% 안쪽은 그날 컨디션 범위라 아무 표시도 안 한다 — 표시가 없는 게 기본이다. */
+/* %보다 <등급 칸 수>가 운영진에게 쓸모 있다. 두 칸 위와 세 칸 위는 다른 얘기다. */
+function mskSteps(st){
+  const n=Math.abs(st);
+  const w=['','한','두','세','네','다섯'][n]||n;
+  return `${w} 칸 ${st>0?'위':'아래'}`;
+}
+/* 지난번에도 같았나 — 한 번 튄 값으로 판단하면 다음 달에 되돌리게 된다.
+   등급 계산은 자동이므로 <바꿀지>가 아니라 <믿을 만한지>를 보는 값이다. */
+function mskPrevChip(x){
+  const p=x.prev_steps;
+  if(p==null) return '';
+  const now=x.steps||0;
+  if(now===0) return '';
+  const same = (p>0&&now>0) || (p<0&&now<0);
+  const cs='display:inline-block;font-size:12.5px;font-weight:700;border-radius:20px;'
+    +'padding:2px 9px;margin-top:6px;margin-left:5px;';
+  return same
+    ? `<span style="${cs}background:#eef2f6;color:#5c6670">지난달에도 ${mskSteps(p)}</span>`
+    : `<span style="${cs}background:var(--coral-s);color:var(--coral-d)">이번에 처음</span>`;
+}
 function mskTrendChip(t){
   if(t==null || Math.abs(t)<8) return '';
   const up = t>0;
@@ -14835,10 +14856,20 @@ function openMskTrend(){
   if(CLUBME_GAMES===null) loadClubMeGames();
   renderMemberSkill();
 }
+let MSK_PREV=null;          // 지난 값 {ymd, map:{uid:steps}}
 function openMemberSkill(){
   const cid=clubId();
   if(!SERVER_OK || !cid){ toast('클럽에 가입한 뒤 이용할 수 있어요'); return; }
   MSK_WHO=null; MSK_SORT='gap';
+  /* 지난 값을 먼저 받아 둔다 — <이번에 처음인지>를 알려면 견줄 것이 있어야 한다 */
+  if(MSK_PREV===null){
+    MSK_PREV={ymd:null,map:{}};
+    api(`/clubs/${cid}/skill-prev`).then(r=>{
+      const m={}; (r&&r.rows||[]).forEach(x=>{ m[x.user_id]=x.steps; });
+      MSK_PREV={ymd:(r&&r.ymd)||null, map:m};
+      if(document.body.classList.contains('ops-open')) renderMemberSkill();
+    }).catch(()=>{});
+  }
   /* 명단도 경기 기록도 여기서 처음 필요할 수 있다.
      예전에는 없으면 토스트만 띄우고 빠져나와서, 화면이 흰 채로 남았다.
      둘 다 요청해 두고 <불러오는 중> 화면을 세운 뒤, 도착하면 스스로 다시 그린다. */
@@ -14888,8 +14919,19 @@ function renderMemberSkill(){
   const rows  = mskAll();
   const ready = rows.filter(x=>x.ready);
   const wait  = rows.filter(x=>!x.ready).sort((a,b)=>b.games-a.games);
+  /* 지난 값을 각 줄에 붙인다 — 없으면 딱지가 안 나온다 */
+  ready.forEach(x=>{ const p=(MSK_PREV&&MSK_PREV.map)||{};
+    x.prev_steps = (p[x.uid]!=null) ? p[x.uid] : null; });
   const off   = ready.filter(x=>Math.abs(x.steps)>=2);
   const uses  = balUsesTier();
+  /* 오늘 값을 한 벌 남긴다 — 다음에 <지난달에도 그랬나> 를 볼 수 있게.
+     하루 한 번이면 충분하다. 임원만 저장되므로 실패해도 조용히 넘어간다. */
+  ;(()=>{ const k='msk_snap_'+clubId()+'_'+ymd();
+    try{ if(localStorage.getItem(k)) return; localStorage.setItem(k,'1'); }catch(e){ return; }
+    api(`/clubs/${clubId()}/skill-snap`,{method:'POST',body:JSON.stringify({
+      rows: ready.map(x=>({user_id:x.uid, steps:x.steps, games:x.games, edge:x.edge}))
+    })}).catch(()=>{});
+  })();
 
   let list = ready.slice();
   if(MSK_SORT==='level') list.sort((a,b)=>
@@ -14915,6 +14957,12 @@ function renderMemberSkill(){
       >${MSK_SORT==='trend'
         ? '최근 8경기를 그 이전과 견줘요 · 상대의 강함을 감안한 값이에요'
         : `${MSK_MINGAMES}경기를 넘긴 ${ready.length}명 · 전체 ${rows.length}명`}</div>
+    <!-- <기대보다 +41%> 가 무슨 뜻인지 이 화면에 설명이 없었다.
+         궁금해지는 자리에서 바로 답한다. -->
+    <div style="font-size:13.5px;color:var(--gray);background:var(--felt);border-radius:11px;
+      padding:10px 12px;margin-top:10px;line-height:1.6">
+      <b>기대보다</b>는 <b>상대 실력을 감안한</b> 값이에요. 강한 상대를 이기면 크게 오릅니다.${
+      MSK_PREV&&MSK_PREV.ymd?`<br>딱지의 <b>지난달</b>은 ${esc(MSK_PREV.ymd)} 기록이에요.`:''}</div>
   </div>`;
 
   h+=`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
@@ -14948,25 +14996,34 @@ function renderMemberSkill(){
     if(label) h+=secHd(`${label} <span style="color:var(--ink)">${arr.length}</span>`);
     arr.forEach(x=>{
     const same = x.reg===x.act;
+    /* 등급을 오른쪽 구석에 따로 두니 <어느 쪽으로 얼마나> 를 두 번 봐야 했다.
+       <등록 B2 → A1> 을 이름 옆 한 줄에 붙이고, 차이는 막대로 보여준다.
+       숫자보다 눈이 먼저 읽는다. */
+    const st = x.steps||0;
+    const w  = Math.min(48, Math.abs(st)*11);       // 한 칸을 11% 로 — 네 칸이면 절반
     h+=`<div onclick="MSK_WHO='${esc(x.uid)}';renderMemberSkill()"
-      style="display:flex;align-items:center;gap:12px;padding:14px 0;cursor:pointer;
-      border-top:1px solid var(--line)">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:16px;font-weight:700;letter-spacing:-.03em;overflow:hidden;
-          text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
-        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:4px;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          >${x.games}경기 · 승률 ${x.wr}%${
-            x.edge!=null?` · 기대보다 ${x.edge>=0?'+':''}${x.edge}%`:''}${
-            x.games<MSK_SURE?' · 표본 적음':''}</div>
-        ${mskTrendChip(x.trend)}
+      style="padding:13px 0;cursor:pointer;border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div style="flex:1;min-width:0;font-size:16px;font-weight:700;letter-spacing:-.03em;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
+        ${same ? `<div style="flex:none;font-size:13px;color:var(--lgray)">등록과 같음</div>`
+          : `<div style="flex:none;font-size:13px;color:var(--lgray);white-space:nowrap"
+              >등록 ${esc(x.reg)} →</div>
+             <div style="flex:none;font-size:19px;font-weight:700;letter-spacing:-.04em;
+               color:${mskColor(x.act)}">${esc(x.act)}</div>`}
       </div>
-      <div style="flex:none;text-align:right;white-space:nowrap">
-        <div style="font-size:20px;font-weight:700;letter-spacing:-.04em;line-height:1.15;
-          color:${mskColor(x.act)}">${esc(x.act)}</div>
-        <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:2px"
-          >${same?'등록과 같음':`등록 ${esc(x.reg)}`}</div>
-      </div>
+      ${st ? `<div style="height:5px;border-radius:3px;background:var(--felt);
+        margin-top:7px;position:relative;overflow:hidden">
+        <i style="position:absolute;top:0;bottom:0;border-radius:3px;background:var(--coral);
+          ${st>0?`left:50%;width:${w}%`:`right:50%;width:${w}%`}"></i>
+        <i style="position:absolute;top:0;bottom:0;left:49.6%;width:.8%;background:#c9d0d8"></i>
+      </div>` : ''}
+      <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+        >${x.games}경기 · 승률 ${x.wr}%${
+          st ? ` · <b style="color:var(--gray)">${mskSteps(st)}</b>` : ''}${
+          x.games<MSK_SURE?' · 표본 적음':''}</div>
+      ${mskTrendChip(x.trend)}${mskPrevChip(x)}
     </div>`;
     });
   });
@@ -27088,11 +27145,12 @@ function drawEventDetail(){
         <div style="font-size:15px;font-weight:400;color:#3d444b;margin-top:4px;line-height:1.65;word-break:break-word">${esc(c.body)}</div>
         ${(()=>{ const rc=evReactCounts(c.id); const keys=Object.keys(rc);
           return keys.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
-            ${keys.map(em=>`<span onclick="evReact(${c.id},'${em}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:14px;font-weight:400;${/* 내가 누른 것은 연한 코랄 면이었는데, 댓글 카드(회색 면) 위에 또 색면이 얹혀
+            ${keys.map(em=>`<span onclick="evReact(${c.id},'${em}')" title="${esc((rc[em].who||[]).join(', '))}" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 9px;font-size:14px;font-weight:400;${/* 내가 누른 것은 연한 코랄 면이었는데, 댓글 카드(회색 면) 위에 또 색면이 얹혀
         얼룩처럼 보였다. 면을 걷고 흰 바탕 + 코랄 테두리로 바꾼다 —
         누른 것은 테두리 색으로, 안 누른 것은 옅은 테두리로 갈린다. */
       rc[em].mine?`background:#fff;border:1px solid ${accent};color:${accent};font-weight:700`
-                 :'background:#fff;border:1px solid #e5e8eb;color:#57606b'}">${em}<span style="font-size:14px">${rc[em].n}</span></span>`).join('')}</div>`:''; })()}
+                 :'background:#fff;border:1px solid #e5e8eb;color:#57606b'}">${em}<span style="font-size:14px">${rc[em].n}</span></span>`).join('')}</div>
+            <div style="font-size:13px;color:var(--lgray);margin-top:4px">${esc(evReactWho(rc))}</div>`:''; })()}
         <div style="display:flex;gap:12px;margin-top:6px;align-items:center">
           <span onclick="evPick(${c.id})" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">반응</span>
           <span onclick="evReply(${c.id},'${esc(c.name)}')" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">답글</span>
@@ -27133,13 +27191,31 @@ const EV_EMOJI=['👍','🎾','🔥','😂','🙌','🙏'];
 function evReactCounts(cid){
   const list=(EVD.reactions||[]).filter(r=>r.comment_id===cid);
   const me=(state.serverUser||{}).id, out={};
-  list.forEach(r=>{ out[r.emoji]=out[r.emoji]||{n:0,mine:false}; out[r.emoji].n++; if(r.user_id===me) out[r.emoji].mine=true; });
+  list.forEach(r=>{
+    out[r.emoji]=out[r.emoji]||{n:0,mine:false,who:[]};
+    out[r.emoji].n++;
+    /* 이름을 모은다 — 숫자만 있으면 누가 봤는지 알 수 없다.
+       내 이름은 <나> 로 바꿔 적는다. */
+    out[r.emoji].who.push(r.user_id===me ? '나' : (r.name||''));
+    if(r.user_id===me) out[r.emoji].mine=true;
+  });
   return out;
+}
+/* 반응한 사람들 — 다 적으면 댓글보다 길어진다. 셋까지만 이름을 쓴다. */
+function evReactWho(rc){
+  const seen=new Set(), names=[];
+  Object.keys(rc).forEach(em=>(rc[em].who||[]).forEach(n=>{
+    if(n && !seen.has(n)){ seen.add(n); names.push(n); } }));
+  if(!names.length) return '';
+  return names.length<=3 ? names.join(' · ')
+    : `${names.slice(0,3).join(' · ')} 외 ${names.length-3}명`;
 }
 async function evReact(cid, em){
   try{ await api(`/comments/${cid}/react`,{method:'POST',body:JSON.stringify({emoji:em})});
     EVD.reactions=await api(`/events/${EVD.ev.id}/reactions`)||[];
-    EVD.pickFor=null; drawEventDetail();
+    /* 예전에는 하나 누르면 고르는 줄이 닫혀, 두 개를 남기려면 다시 열어야 했다.
+       서버는 이모지마다 따로 저장하므로 여럿을 남길 수 있다 — 열어 둔다. */
+    drawEventDetail();
   }catch(e){ toast('반응을 남기지 못했어요'); }
 }
 function evPick(cid){ EVD.pickFor = (EVD.pickFor===cid) ? null : cid; drawEventDetail(); }
