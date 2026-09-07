@@ -22,7 +22,47 @@ body{background:var(--paper);color:var(--ink);
   font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;
   letter-spacing:-.018em;line-height:1.6;-webkit-font-smoothing:antialiased;
   padding:var(--s4) var(--s3) 60px;word-break:keep-all}
-.wrap{max-width:760px;margin:0 auto}
+/* 관리자는 노트북에서 오래 들여다보는 화면이다. 앱과 달리 가로가 남고
+   한 번 열면 여러 곳을 오간다. 그래서 메뉴를 왼쪽에 세로로 세우고
+   본문은 남는 폭만큼 넓게 쓴다 — 예전에는 1440px 화면에서 좌우 680px 이 비었다. */
+.wrap{max-width:1240px;margin:0 auto;display:flex;gap:var(--s4);align-items:flex-start}
+.nav{flex:none;width:186px;position:sticky;top:var(--s4);
+  background:#fff;border-radius:16px;padding:var(--s2) var(--s1);
+  box-shadow:0 1px 2px rgba(40,30,18,.04)}
+.nav .g{font-size:var(--t0);font-weight:700;color:#b3aea4;letter-spacing:.08em;
+  padding:var(--s3) var(--s3) var(--s1)}
+.nav a{display:flex;align-items:center;gap:var(--s2);font-size:var(--t1);color:var(--gray);
+  padding:8px var(--s3);border-radius:9px;cursor:pointer;font-weight:500}
+.nav a:hover{background:#f7f5f1}
+.nav a.on{background:var(--ink);color:#fff;font-weight:600}
+.nav a em{margin-left:auto;font-style:normal;font-size:var(--t0);font-weight:700;
+  background:#fdeee4;color:#c2410c;border-radius:10px;padding:1px 7px}
+.nav a.on em{background:#3a444f;color:#ffb894}
+.main{flex:1;min-width:0}
+/* 전역 검색 — 문의는 이름 하나만 들고 온다. 어느 탭인지부터 정하지 않게 한다 */
+.gs{position:relative;flex:1;max-width:340px;margin-left:var(--s4)}
+.gs input{width:100%;border:1px solid var(--line);background:#fff;border-radius:11px;
+  padding:9px 13px;font-size:var(--t1);font-family:inherit;color:var(--ink)}
+.gs input:focus{outline:none;border-color:#d6d0c4}
+.gsr{position:absolute;left:0;right:0;top:calc(100% + 6px);background:#fff;
+  border-radius:13px;box-shadow:0 8px 28px rgba(40,30,18,.14);padding:var(--s2);
+  max-height:60vh;overflow:auto;z-index:40}
+.gsr .g{font-size:var(--t0);font-weight:700;color:#b3aea4;letter-spacing:.07em;
+  padding:var(--s2) var(--s3) var(--s1)}
+.gsr a{display:block;padding:8px var(--s3);border-radius:9px;cursor:pointer}
+.gsr a:hover{background:#f7f5f1}
+.gsr a b{display:block;font-size:var(--t1);font-weight:600}
+.gsr a span{display:block;font-size:var(--t0);color:var(--lgray);margin-top:1px}
+.gsr .none{padding:var(--s3);font-size:var(--t1);color:var(--lgray);text-align:center}
+@media (max-width:1000px){ .gs{max-width:none;margin:var(--s3) 0 0;flex-basis:100%} }
+/* 좁은 화면에서는 예전처럼 위로 접는다 — 폰에서도 그대로 쓴다 */
+@media (max-width:1000px){
+  .wrap{display:block;max-width:760px}
+  .nav{width:auto;position:static;display:flex;flex-wrap:wrap;gap:var(--s1);
+    padding:var(--s2);margin-bottom:var(--s3)}
+  .nav .g{display:none}
+  .nav a{padding:7px 12px;border-radius:20px;border:1px solid var(--line);font-size:var(--t1)}
+}
 .hd{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s4)}
 .hd h1{font-size:var(--t4);font-weight:700;letter-spacing:-.04em}
 .hd .who{font-size:var(--t1);color:var(--lgray);font-weight:500;margin-left:auto}
@@ -263,10 +303,21 @@ const ago=t=>{
 /* 탭 14개를 9개로 묶었다. 구장 관련 넷(구장·예약·열린 시간·정산)은 한 화면에서
    안쪽 탭으로 나누고, 매치와 인원 미달, 계정과 매니저 등급도 함께 본다.
    가로로 흐르던 14개는 뒤쪽에 무엇이 있는지 알 수 없었다. */
-const MAIN=[['stats','현황'],['users','회원'],['clubs','클럽'],['matches','매치']];
-const MORE=[['errors','오류'],['notify','공지'],['bq','대진품질'],['grades','등급이동'],
-  ['regions','지역'],['track','분석'],['xctest','교류전'],['venues','구장'],
-  ['reports','신고'],['payouts','정산'],['staff','계정'],['banners','배너'],['health','서버']];
+/* 묶는 기준은 <같은 순간에 찾게 되는 것끼리>다. 기능이 비슷해서가 아니다.
+   그래서 <공지>가 도구가 아니라 사람 쪽에 있다 — 잠든 회원을 보고 바로 부르게 되니까.
+   <서버>도 설정이 아니라 지켜보기다. 설정하는 곳이 아니라 읽는 곳이라서. */
+const NAV=[
+  ['오늘',       [['stats','현황']]],
+  ['지켜보기',   [['errors','오류'],['bq','대진품질'],['grades','등급이동'],
+                 ['track','분석'],['regions','지역'],['health','서버']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지']]],
+  ['운영',       [['matches','매치'],['xctest','교류전'],['venues','구장'],
+                 ['reports','신고'],['payouts','정산']]],
+  ['설정',       [['log','작업 기록'],['export','내려받기'],['maint','점검'],
+                 ['staff','계정'],['banners','배너']]],
+];
+/* 메뉴에 붙는 숫자 — 급한 것만. 화면을 안 열어도 어디를 눌러야 할지 알게 한다 */
+let BADGE={};
 let TAB='stats', SUB='', UQ='', SEL=null, CACHE={};
 
 function gLabel(v){ const t=String(v||'').trim();
@@ -274,10 +325,55 @@ function gLabel(v){ const t=String(v||'').trim();
   return (t==='F'||t.startsWith('여')) ? '여성' : (t==='M'||t.startsWith('남')) ? '남성' : ''; }
 
 function shell(inner){
-  const seg=MAIN.map(([k,l])=>`<div class="seg ${TAB===k?'on':''}" onclick="go('${k}')">${l}</div>`).join('');
-  const more=MORE.map(([k,l])=>`<span class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</span>`).join('');
-  return `<div class="hd"><h1>맞수 관리자</h1><span class="who">${esc(key().slice(0,4))}···</span></div>
-    <div class="segs">${seg}</div><div class="more">${more}</div>${inner}`;
+  const nav=NAV.map(([g,items])=>
+    `<div class="g">${g}</div>` + items.map(([k,l])=>
+      `<a class="${TAB===k?'on':''}" onclick="go('${k}')">${l}${
+        BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`).join('')).join('');
+  return `<div class="nav">${nav}</div><div class="main">
+    <div class="hd"><h1>${esc(tabLabel(TAB))}</h1>
+      ${gsearchBox()}
+      <span class="who">${esc(key().slice(0,4))}···</span></div>${inner}</div>`;
+}
+function gsearchBox(){
+  return `<div class="gs">
+    <input id="gsq" placeholder="이름 · 클럽 · 번호로 찾기" value="${esc(GSQ)}"
+      oninput="gsearch(this.value)" onfocus="gsearch(this.value)">
+    <div id="gsr"></div></div>`;
+}
+let GSQ='', _gsT=null;
+function gsearch(q){
+  GSQ=q; clearTimeout(_gsT);
+  const box=$('gsr'); if(!box) return;
+  if(!q.trim()){ box.innerHTML=''; return; }
+  /* 한 글자 칠 때마다 부르면 서버가 바쁘다 — 손이 멈추면 그때 찾는다 */
+  _gsT=setTimeout(async()=>{
+    let d; try{ d=await api('/admin/search?q='+encodeURIComponent(q)); }catch(e){ return; }
+    const b=$('gsr'); if(!b) return;
+    const sec=(t,rows)=>rows.length?`<div class="g">${t}</div>`+rows.join(''):'';
+    const u=d.users.map(x=>`<a onclick="gsPick('user',${x.id})"><b>${esc(x.name||'이름 없음')}</b>
+      <span>#${x.id} · ${esc(x.email||'-')}${x.last_region?' · '+esc(x.last_region):''}</span></a>`);
+    const c=d.clubs.map(x=>`<a onclick="gsPick('club',${x.id})"><b>${esc(x.name)}</b>
+      <span>#${x.id} · ${esc([x.sido,x.sigungu].filter(Boolean).join(' ')||'-')} · 회원 ${x.members}명</span></a>`);
+    const m=d.matches.map(x=>`<a onclick="gsPick('match',${x.id})"><b>${esc(x.loc||'매치')}</b>
+      <span>#${x.id} · ${esc(x.dt||'')} · ${esc(x.status||'')}</span></a>`);
+    b.innerHTML = (u.length||c.length||m.length)
+      ? sec('회원',u)+sec('클럽',c)+sec('매치',m)
+      : '<div class="none">찾은 게 없어요</div>';
+  }, 220);
+}
+function gsPick(kind,id){
+  const b=$('gsr'); if(b) b.innerHTML='';
+  GSQ=''; 
+  if(kind==='user'){ TAB='users'; render().then(()=>openU(id)); }
+  else if(kind==='club'){ TAB='clubs'; render().then(()=>openC(id)); }
+  else { TAB='matches'; render(); }
+}
+/* 바깥을 누르면 결과를 닫는다 */
+addEventListener('click', e=>{ if(!e.target.closest('.gs')){ const b=$('gsr'); if(b) b.innerHTML=''; } });
+
+function tabLabel(k){
+  for(const [,items] of NAV){ const f=items.find(x=>x[0]===k); if(f) return f[1]; }
+  return '맞수 관리자';
 }
 function go(k){ TAB=k; SUB=''; render(); }
 function subTabs(list){
@@ -288,11 +384,16 @@ function skel(n){ return `<div class="card">${Array.from({length:n||3},()=>
   `<div class="rw"><div class="nm"><div class="sk" style="width:38%"></div>
    <div class="sk" style="width:62%;height:9px;margin-top:6px"></div></div></div>`).join('')}</div>`; }
 
+async function loadBadges(){
+  try{ BADGE=await api('/admin/badges'); }catch(e){ BADGE={}; }
+}
 async function render(){
   if(!key()){ $('app').innerHTML=`<div class="gate"><h2>관리자 열쇠</h2>
       <p>서버에 설정한 관리자 키를 넣어주세요.</p>
       <input id="k" type="password" placeholder="admin key" onkeydown="if(event.key==='Enter')saveKey()">
       <button onclick="saveKey()">들어가기</button></div>`; return; }
+  /* 메뉴 숫자는 화면마다 다시 부르지 않는다 — 30초에 한 번이면 충분하다 */
+  if(!render._bt || Date.now()-render._bt > 30000){ render._bt=Date.now(); await loadBadges(); }
   $('app').innerHTML=shell(skel(4));
   try{ await draw(); }
   catch(e){ $('app').innerHTML=shell(`<div class="card"><div class="empty">
@@ -321,6 +422,107 @@ async function draw(){
   if(TAB==='errors')  return drawErrors();
   if(TAB==='notify')  return drawNotify();
   if(TAB==='health')  return drawHealth();
+  if(TAB==='log')     return drawLog();
+  if(TAB==='export')  return drawExport();
+  if(TAB==='maint')   return drawMaint();
+}
+
+/* ── 작업 기록 ────────────────────────────────────────────────────
+   관리자가 여럿이면 <누가 왜 바꿨는지> 를 아무도 모르게 된다.
+   되돌리기는 <되돌릴 값을 미리 적어 둔> 것만 할 수 있다 —
+   임의로 되돌리는 건 되돌리기가 아니라 뒷문이다. */
+let LOG_DAYS=14;
+async function drawLog(){
+  const rows=await api('/admin/log?days='+LOG_DAYS);
+  const when=t=>{ const m=Math.floor((Date.now()-t)/60000);
+    if(m<1) return '방금'; if(m<60) return m+'분 전';
+    if(m<1440) return Math.floor(m/60)+'시간 전'; return Math.floor(m/1440)+'일 전'; };
+  const days=[1,7,14,90].map(x=>`<span class="${LOG_DAYS===x?'on':''}"
+    onclick="LOG_DAYS=${x};render()">${x}일</span>`).join('');
+  const say=r=>{
+    const d=r.detail||{};
+    if(r.action==='성별 바꿈') return `${esc(d.name||'#'+r.target_id)} · ${
+      esc(d.from||'없음')} → ${esc(d.to||'없음')}`;
+    if(r.action==='공지 보냄') return `${esc(d.title||'')} · ${fmt(d.n||0)}명`;
+    if(r.action==='내려받음') return `${fmt(d.rows||0)}줄`;
+    if(r.action==='성별 일괄 채움') return `${fmt(d.count||0)}명`;
+    return Object.entries(d).map(([k,v])=>`${k} ${v}`).join(' · ');
+  };
+  $('app').innerHTML=shell(`
+    <div class="more">${days}</div>
+    <div class="card">${rows.length?rows.map(r=>`
+      <div class="rw"><div class="nm">
+        <b>${esc(r.action)}${r.undone?'<span class="tag">되돌림</span>':''}</b>
+        <span>${say(r)}</span>
+        <span class="rt">${esc(r.who)} · ${when(r.at)}</span></div>
+      ${r.canUndo?`<button class="b" onclick="undoLog(${r.id})">되돌리기</button>`:''}</div>`).join('')
+      :`<div class="empty">이 기간에 한 일이 없어요</div>`}</div>
+    <div class="note">되돌리기는 <b>한 명씩 바꾼 것</b>만 됩니다.
+      한 번에 여럿을 바꾼 일(성별 일괄 채움)은 되돌릴 값이 사람마다 달라
+      한 줄로 담으면 어긋나요 — 기록만 남깁니다.</div>`);
+}
+async function undoLog(id){
+  if(!confirm('이 작업을 되돌릴까요?')) return;
+  try{ await api('/admin/log/'+id+'/undo',{method:'POST'}); toast('되돌렸어요'); render(); }
+  catch(e){ toast('되돌리지 못했어요'); }
+}
+
+/* ── 내려받기 ── 세무·정산 정리는 결국 표로 한다 */
+function drawExport(){
+  const item=(k,t,s)=>`<div class="rw"><div class="nm"><b>${t}</b><span>${s}</span></div>
+    <button class="b" onclick="dl('${k}')">CSV</button></div>`;
+  $('app').innerHTML=shell(`
+    <div class="card">
+      ${item('users','회원 명단','이름 · 이메일 · 성별 · 클럽 · 가입일 · 마지막 접속 · 지역')}
+      ${item('clubs','클럽 목록','이름 · 종목 · 지역 · 회원 수')}
+      ${item('payouts','정산 내역','정산 표 전체')}
+    </div>
+    <div class="note">엑셀에서 한글이 안 깨지게 저장돼요.
+      내려받은 기록은 <b>작업 기록</b>에 남습니다.</div>`);
+}
+function dl(what){
+  /* 파일 내려받기는 헤더를 실어야 해서 fetch 로 받아 그 자리에서 저장한다 */
+  fetch('/admin/export/' + what, { headers:{ 'x-admin-key': key() } })
+    .then(r=>{ if(!r.ok) throw 0; return r.blob(); })
+    .then(b=>{ const u=URL.createObjectURL(b), a=document.createElement('a');
+      a.href=u; a.download=`matsu-${what}.csv`; a.click(); URL.revokeObjectURL(u);
+      toast('내려받았어요'); })
+    .catch(()=>toast('내려받지 못했어요'));
+}
+
+/* ── 점검 모드 ────────────────────────────────────────────────────
+   배포하는 몇 초 사이에 들어온 사람은 깨진 화면을 본다. */
+async function drawMaint(){
+  const m=await api('/admin/maint');
+  const left = m.until ? Math.max(0, Math.round((m.until-Date.now())/60000)) : 0;
+  $('app').innerHTML=shell(`
+    <div class="card">
+      <div class="ct">${m.on?'점검 중이에요':'평소대로 돌고 있어요'}</div>
+      ${m.on?`<div class="warn"><b>${esc(m.msg||'잠시 점검 중이에요')}</b>${
+        left?` · 약 ${left}분 남음`:''}</div>`:''}
+      <div class="fld"><label>회원에게 보일 문구</label>
+        <input id="mm" maxlength="120" value="${esc(m.msg||'')}"
+          placeholder="잠시 점검 중이에요 · 곧 돌아올게요"></div>
+      <div class="fld"><label>몇 분 동안 (비우면 끌 때까지)</label>
+        <input id="mn" type="number" min="1" max="180" placeholder="15"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="b ${m.on?'':'on'}" style="flex:1;padding:12px"
+          onclick="setMaint(1)">점검 켜기</button>
+        <button class="b ${m.on?'on':''}" style="flex:1;padding:12px"
+          onclick="setMaint(0)">끄기</button>
+      </div>
+    </div>
+    <div class="note">앱이 이미 부르고 있는 <code>/config</code> 에 실어 보내요 —
+      새 요청이 늘지 않습니다. <b>관리자 화면은 점검 중에도 열립니다</b>
+      (끄러 들어와야 하니까요).</div>`);
+}
+async function setMaint(on){
+  const msg=($('mm')||{}).value||'', minutes=+(($('mn')||{}).value||0);
+  if(on && !confirm('점검 모드를 켤까요?\n회원들에게 띠가 보입니다.')) return;
+  try{ await api('/admin/maint',{method:'POST',
+    body:JSON.stringify({on:!!on, msg, minutes})});
+    toast(on?'점검을 켰어요':'점검을 껐어요'); render(); }
+  catch(e){ toast('바꾸지 못했어요'); }
 }
 
 /* ── 앱 오류 ──────────────────────────────────────────────────────
@@ -435,6 +637,9 @@ async function drawHealth(){
       <div class="rw"><span class="nm"><b>메모리</b><span>${fmt(h.mem)}MB · Node ${esc(h.node)}</span></span></div>
       <div class="rw"><span class="nm"><b>업로드</b>
         <span>${fmt(h.uploads||0)}개 · ${h.uploadsMB||0}MB</span></span></div>
+      <div class="rw"><span class="nm"><b>오류 알림</b>
+        <span>${h.alertTo ? `${h.alertTo}명에게 보냄 · 3명 이상 겪는 오류가 새로 생기면 알려요`
+          : '<b style="color:#c2410c">꺼져 있어요</b> · ADMIN_UIDS 에 받을 사람 번호를 넣어주세요'}</span></span></div>
       <div class="note" style="margin-top:10px">
         Railway 는 디스크가 차면 조용히 멈춰요.
         DB 와 업로드를 합쳐 용량 한도의 절반을 넘으면 정리할 때예요.</div>
@@ -642,13 +847,16 @@ async function drawStats(){
   /* 알림 상태 — 준비됐는지, 폰이 몇 대 붙어 있는지 */
   const ios=push ? ((push.devices||[]).find(d=>d.platform==='ios')||{}).n||0 : 0;
   const web=push ? ((push.devices||[]).find(d=>d.platform==='web')||{}).n||0 : 0;
+  /* apns 가 없는 응답(옛 서버·설정 전)이 오면 여기서 화면 전체가 죽었다.
+     현황은 첫 화면이라 한 칸이 비는 것보다 안 열리는 게 훨씬 나쁘다. */
+  const apns = (push && push.apns) || null;
   const pushBlock = !push ? '' : `
     <div class="card"><div class="ct">알림</div>
       <div class="rw"><div class="nm">
-        <b>${push.apns.ready?'보낼 준비가 됐어요':'아직 설정이 덜 됐어요'}
-          <span class="tag ${push.apns.ready?'g':''}">${push.apns.ready?'APNs':'미설정'}</span></b>
-        <span>${esc(push.apns.bundle_id||'Bundle ID 없음')}${
-          push.apns.key_id?` · 키 ${esc(push.apns.key_id)}`:''}</span></div></div>
+        <b>${!apns?'설정을 읽지 못했어요':apns.ready?'보낼 준비가 됐어요':'아직 설정이 덜 됐어요'}
+          <span class="tag ${apns&&apns.ready?'g':''}">${apns&&apns.ready?'APNs':'미설정'}</span></b>
+        <span>${esc((apns&&apns.bundle_id)||'Bundle ID 없음')}${
+          apns&&apns.key_id?` · 키 ${esc(apns.key_id)}`:''}</span></div></div>
       <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
         <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
         ${ios?'':`<span class="b">확인 필요</span>`}</div>
@@ -692,14 +900,20 @@ async function drawStats(){
         <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
         <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
     </div>`;
-  $('app').innerHTML=shell(`
-    <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
-    ${live+pushBlock}
-    ${todo.length?`<div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>`:''}
-    <div class="card">${todo.length? todo.map(([t,d,n,act])=>
+  /* 손볼 것을 맨 위로 올린다. 관리자가 이 화면을 여는 이유가 그것인데
+     예전에는 지표를 다 지나야 나왔다. 아무것도 없는 날은 이 칸이 통째로 사라져
+     <오늘은 조용하다> 는 것 자체가 한눈에 읽힌다. */
+  const todoBlock = todo.length ? `
+    <div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>
+    <div class="card">${todo.map(([t,d,n,act])=>
       `<div class="rw" onclick="${act}" style="cursor:pointer">
-        <div class="nm"><b>${t}</b><span>${d}</span></div><span class="b">${n}</span></div>`).join('')
-      : `<div class="empty">지금 손볼 것이 없어요</div>`}</div>`);
+        <div class="nm"><b>${t}</b><span>${d}</span></div><span class="b">${n}</span></div>`).join('')}</div>`
+    : `<div class="card"><div class="empty">지금 손볼 것이 없어요<br>
+        <span style="font-size:var(--t0)">조용한 게 좋은 겁니다</span></div></div>`;
+  $('app').innerHTML=shell(`
+    ${todoBlock}
+    <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
+    ${live+pushBlock}`);
 }
 
 /* ── 회원 ── 이름만 굵게, 나머지는 회색 한 줄. 성별은 세 칸 토글. */
@@ -799,6 +1013,7 @@ async function openU(id){
       <b class="${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여성</b>
       <b class="${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">없음</b></div>
     ${u.last_region?`<div class="ur"><span>접속 지역</span><b>${esc(u.last_region)}</b></div>`:''}
+    <div class="unote">바꾼 내용은 <b>작업 기록</b>에 남고 되돌릴 수 있어요</div>
     <div class="uact">
       <button onclick="pushTest(${u.id},'${esc(u.name)}')">시험 알림 보내기</button>
       ${u.suspended?`<button class="danger" onclick="purgeUser(${u.id})">기록 영구 삭제</button>`:''}
@@ -1074,11 +1289,52 @@ function errMsg(e, fb){
 async function drawClubs(){
   const rows=await api('/admin/clubs');
   $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(c=>`
-    <div class="rw"><div class="nm"><b>${esc(c.name)}<span class="tag">${esc(c.sport||'')}</span></b>
+    <div class="rw"><div class="nm" style="cursor:pointer" onclick="openC(${c.id})">
+      <b>${esc(c.name)}<span class="tag">${esc(c.sport||'')}</span></b>
       <span>#${c.id} · ${esc(c.region||'지역 없음')} · 회원 ${c.members}명${
         c.owner?` · 회장 ${esc(c.owner.name)}`:''}</span></div>
       <button class="b dz" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('')
     : `<div class="empty">클럽이 없어요</div>`}</div>`);
+}
+
+/* ── 클럽 한 곳 들여다보기 ────────────────────────────────────────
+   이 앱은 클럽 단위로 굴러간다. 대진이 잘 짜이는지, 사람이 붙는지,
+   죽어가는지가 전부 클럽에서 갈린다 — 그걸 한 화면에서 본다. */
+async function openC(id){
+  $('sheet').innerHTML='<div class="unote">불러오는 중…</div>';
+  $('ov').classList.add('on');
+  let d; try{ d=await api('/admin/clubs/'+id+'/detail'); }
+  catch(e){ $('sheet').innerHTML='<div class="unote">불러오지 못했어요</div>'; return; }
+  const when=t=>{ if(!t) return '기록 없음';
+    const dd=Math.floor((Date.now()-t)/864e5);
+    return dd<1?'오늘':dd<30?dd+'일 전':dd+'일 전'; };
+  /* 성비가 한쪽으로 크게 기울면 혼복이 안 짜인다 — 대진이 막히는 첫 신호다 */
+  const fPct = d.members ? Math.round(d.women/d.members*100) : 0;
+  const skew = d.members>=8 && (fPct<15 || fPct>85);
+  $('sheet').innerHTML=`
+    <div class="sh-top"><h3>${esc(d.name)}</h3><div class="cl" onclick="closeU()">×</div></div>
+    <div class="ur"><span>번호</span><b>#${d.id}</b></div>
+    <div class="ur"><span>지역</span><b>${esc([d.sido,d.sigungu].filter(Boolean).join(' ')||'없음')}</b></div>
+    <div class="ur"><span>회원</span><b>${fmt(d.members)}명 · 최근 30일 ${fmt(d.active)}명</b></div>
+    <div class="ur"><span>성비</span><b${skew?' style="color:#c2410c"':''}>남 ${fmt(d.men)} · 여 ${fmt(d.women)}${
+      d.noGender?` <em style="font-style:normal;color:#c2410c">· 미지정 ${d.noGender}</em>`:''}</b></div>
+    ${skew?`<div class="unote">한쪽으로 크게 기울어 혼복이 잘 안 짜여요 ·
+      대진이 막히는 첫 신호예요</div>`:''}
+    ${d.noGender?`<div class="unote">성별이 빈 ${d.noGender}명은 대진에서 남복·혼복이 잘못 잡혀요</div>`:''}
+    <div class="ur"><span>팀 격차 3칸+</span><b${d.gapPct>2?' style="color:#c2410c"':''}>${
+      d.gapPct==null?'대진 없음':d.gapPct+'%'}</b></div>
+    <div class="ur"><span>30일 등급 이동</span><b>${fmt(d.moves30)}건</b></div>
+    <div class="ul">최근 대진</div>
+    ${d.brackets.length ? d.brackets.map(b=>`<div class="ur">
+      <span>${esc(b.date)}</span><b>${b.games}경기 · 점수 ${b.scored}건${
+        b.bad?` <em style="font-style:normal;color:#c2410c">· 격차 ${b.bad}</em>`:''}</b></div>`).join('')
+      : '<div class="unote">발행된 대진이 없어요</div>'}
+    <div class="ul">회원 (최근 순)</div>
+    ${d.top.map(m=>`<div class="ur"><span>${esc(m.name||'-')}${
+      m.role&&m.role!=='member'?` · ${esc(m.role)}`:''}</span>
+      <b>${esc(m.grade||'-')} <em style="font-style:normal;color:#b3aea4;font-weight:500"
+        >· ${when(m.last_seen)}</em></b></div>`).join('')}
+    ${d.members>8?`<div class="unote">전체 ${fmt(d.members)}명 중 8명만 보여요</div>`:''}`;
 }
 
 /* 오픈매치 열기 — 코트가 먼저 열리고 사람들은 신청만 한다.
