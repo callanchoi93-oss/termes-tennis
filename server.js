@@ -7466,7 +7466,8 @@ async function errWatch() {
   try {
     const rows = db.prepare(`SELECT sig, MAX(path) path, MAX(msg) msg,
         COUNT(DISTINCT COALESCE(user_id,-1)) people
-      FROM client_errors WHERE at > ? GROUP BY sig`).all(Date.now() - 3 * 864e5);
+      FROM client_errors WHERE at > ? AND kind NOT IN ('net','timeout')
+      GROUP BY sig`).all(Date.now() - 3 * 864e5);
     const hot = rows.filter(r => r.people >= ERR_ALERT_MIN);
     if (!hot.length) return;
     const ids = (process.env.ADMIN_UIDS || '').split(',')
@@ -7775,8 +7776,11 @@ app.get('/admin/search', admin, (req, res) => {
 app.get('/admin/badges', admin, (_req, res) => {
   const out = {};
   try {
+    /* 통신 실패는 신호가 약한 곳에서 나는 것이라 코드 문제가 아니다 —
+       배지에 섞으면 <급한 일>이 아닌 것으로 알림이 울린다. */
     const r = db.prepare(`SELECT sig, COUNT(DISTINCT COALESCE(user_id,-1)) people
-      FROM client_errors WHERE at > ? GROUP BY sig`).all(Date.now() - 3 * 864e5);
+      FROM client_errors WHERE at > ? AND kind NOT IN ('net','timeout')
+      GROUP BY sig`).all(Date.now() - 3 * 864e5);
     const many = r.filter(x => x.people >= 3).length;
     if (many) out.errors = many;
   } catch (e) {}
