@@ -2042,51 +2042,146 @@
   .lpin em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);
     padding-left:5px;margin-left:1px;border-left:1px solid #e6eaee }
   .lv .sq.nearsq{ background:#cfd6dd }
-  /* 범례 — 색이 승수를 말하니 열쇠가 있어야 읽힌다 */
-  .lkey{ display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:11px;
-    padding:10px 12px;background:var(--felt);border-radius:11px;
-    font-size:11.5px;color:var(--lgray) }
-  .lkey span{ display:flex;align-items:center;gap:5px }
-  .lkey i{ width:13px;height:12px;flex:none;display:block;
-    clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%) }
-  .lkey .w{ margin-left:auto;color:var(--gray) }
-  /* ── 구장 지분 ── */
-  .repcard{ margin-top:14px;border-radius:16px;padding:14px 15px;
-    background:linear-gradient(135deg,#fff6f1,#fdf0ff);border:1px solid #f6d9c4 }
-  .repcard .rl{ font-size:12px;font-weight:700;color:var(--coral-d) }
-  .repcard .rn{ font-size:19px;font-weight:800;letter-spacing:-.04em;margin-top:3px }
-  .repcard .rn em{ font-style:normal;font-size:13px;font-weight:700;color:var(--coral-d);
-    margin-left:7px }
-  .repcard .rd{ font-size:13px;color:var(--lgray);margin-top:5px }
-  .shbox{ margin-top:4px }
-  .shrow{ padding:10px 0;border-top:1px solid var(--line) }
-  .shrow:first-child{ border-top:none }
-  .shrow.me{ background:#fffaf7;margin:0 -10px;padding:10px;border-radius:10px;border-top:none }
-  .shtop{ display:flex;align-items:baseline;gap:8px }
-  .shtop b{ flex:1;min-width:0;font-size:15px;font-weight:700;letter-spacing:-.03em;
+  /* ── 구장 상세 ── */
+  .vname{ font-size:21px;font-weight:800;letter-spacing:-.035em;line-height:1.25;margin-top:2px }
+  .vmeta{ display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:5px;
+    font-size:12.5px;color:var(--lgray) }
+  .vmeta i{ width:2px;height:2px;border-radius:50%;background:#c9c8c2;display:block }
+  .repcard{ margin-top:16px;border:1px solid #f2dccf;border-radius:14px;overflow:hidden;
+    background:#fff }
+  .repcard .rtop{ display:flex;align-items:center;padding:13px 14px 0 }
+  .repcard .rl{ font-size:11.5px;font-weight:700;color:var(--coral-d) }
+  .repcard .rn2{ margin-left:auto;font-size:11.5px;color:var(--lgray) }
+  .repcard .rname{ display:flex;align-items:baseline;gap:8px;padding:4px 14px 12px;
+    font-size:18px;font-weight:800;letter-spacing:-.03em }
+  .repcard .rname em{ font-style:normal;font-size:15px;font-weight:700;color:var(--coral-d) }
+  /* 여러 클럽을 한 줄에 이어 붙인 띠 — 100% 막대 하나는 아무 말도 안 한다 */
+  .repcard .rbar{ display:flex;height:9px }
+  .repcard .rbar i{ display:block;height:100% }
+  .shbox{ margin-top:14px }
+  .shrow{ display:flex;align-items:center;gap:9px;padding:10px 0;
+    border-bottom:1px solid #f1f0ec }
+  .shrow:last-child{ border-bottom:none }
+  .shrow.me{ background:#fdf6f2;margin:0 -8px;padding:10px 8px;border-radius:9px;
+    border-bottom:none }
+  .shrow .dot{ width:8px;height:8px;border-radius:2px;flex:none }
+  .shrow b{ flex:1;min-width:0;font-size:14px;font-weight:400;letter-spacing:-.02em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .shtop span{ flex:none;font-size:14px;font-weight:800 }
-  .shbar{ height:7px;border-radius:6px;background:#eef1f4;margin-top:7px;overflow:hidden }
-  .shbar i{ display:block;height:100%;border-radius:6px }
-  .shwhy{ font-size:12px;color:var(--lgray);margin-top:5px }
-  /* 승수는 지분에서 제일 무거운 값 — 흐린 글씨에 묻히지 않게 */
-  .shwhy b{ color:var(--coral-d);font-weight:700 }
+  .shrow.me b{ font-weight:700 }
+  .shrow .why{ flex:none;font-size:11.5px;color:var(--lgray) }
+  .shrow.me .why{ color:var(--coral-d) }
+  .shrow .pct{ flex:none;width:40px;text-align:right;font-size:14px;font-weight:700 }
+  .shrow.me .pct{ color:var(--coral-d) }
+  /* 지분 숫자만으로는 뭘 해야 할지 모른다 — 다음 한 수 */
+  .shnext{ margin-top:8px;padding:10px 12px;background:var(--felt);border-radius:10px;
+    font-size:12.5px;color:var(--gray);line-height:1.6 }
+  .shnext b{ color:var(--coral-d);font-weight:700 }
   .hnote{ font-size:12.5px;color:var(--lgray);text-align:center;margin-top:7px }
+  /* 곁가지 행동은 아이콘 칸으로 묶는다 */
+  .vacts{ display:flex;gap:8px;margin-top:8px }
+  .va{ flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:11px 0;border:1px solid var(--line);border-radius:13px;cursor:pointer }
+  .va:active{ background:var(--felt) }
+  .va.off{ opacity:.45;cursor:default }
+  .va span{ font-size:12px;color:var(--gray) }
+  .va .ic{ width:19px;height:19px;display:block;background:var(--ink);
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain }
+  .ic.talk{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z'/></svg>") }
+  .ic.cal{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M3 10h18M8 3v4M16 3v4M12 14v4M10 16h4'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M3 10h18M8 3v4M16 3v4M12 14v4M10 16h4'/></svg>") }
+  .ic.clock{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/></svg>") }
+  .ic.map{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14'/></svg>") }
+  /* 거의 안 누르고 되돌리기 번거로운 동작 — 버튼으로 세우지 않는다 */
+  .vquiet{ text-align:center;margin-top:18px;font-size:12.5px;color:var(--lgray) }
+  .vquiet span{ border-bottom:1px solid var(--line);padding-bottom:1px;cursor:pointer }
+  .vquiet.plain span{ border:none }
+
+  /* ── 클럽 탭의 홈코트 ── */
+  .hc-wrap{ margin-top:18px }
+  .hc-h{ font-size:15px;font-weight:700;letter-spacing:-.03em;margin-bottom:9px }
+  .hc-card{ border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff }
+  .hc-body{ padding:13px 14px 12px;cursor:pointer }
+  .hc-body:active{ background:var(--felt) }
+  .hc-top{ display:flex;align-items:center }
+  .hc-top .lb{ font-size:11.5px;font-weight:700;color:var(--coral-d) }
+  .hc-top .rk{ margin-left:auto;font-size:11.5px;color:var(--lgray) }
+  .hc-n{ display:flex;align-items:baseline;gap:8px;margin-top:4px;
+    font-size:17px;font-weight:800;letter-spacing:-.03em }
+  .hc-n em{ font-style:normal;font-size:14px;font-weight:700;color:var(--coral-d) }
+  /* 우리 칸만 진하게 — 남의 칸까지 세면 어느 게 우리 건지 안 보인다 */
+  .hc-bar{ display:flex;height:7px;border-radius:7px;overflow:hidden;margin-top:10px;
+    background:#f0eeea }
+  .hc-bar i{ display:block;height:100% }
+  .hc-l{ font-size:11.5px;color:var(--lgray);margin-top:7px }
+  .hc-l b{ color:var(--coral-d);font-weight:700 }
+  /* 처음 보는 사람에게 한 번만 — 닫으면 안 돌아온다 */
+  .hc-tip{ display:flex;align-items:flex-start;gap:8px;background:#fdf6f2;
+    border-bottom:1px solid #f5e4da;padding:10px 12px }
+  .hc-tip span{ flex:1;font-size:12px;color:#8a4a2a;line-height:1.55 }
+  .hc-tip i{ flex:none;font-style:normal;font-size:15px;line-height:1;color:#b98d74;
+    padding:1px 2px;cursor:pointer }
+  /* 문 두 개 — 카드 아래에 붙여 한 덩어리로 읽히게 */
+  .hc-doors{ display:flex;border-top:1px solid #efeee9 }
+  .hc-sep{ width:1px;background:#efeee9 }
+  .hc-d{ flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    padding:12px 0;font-size:13px;color:var(--gray);cursor:pointer;position:relative }
+  .hc-d:active{ background:var(--felt) }
+  .hc-d .ic{ width:17px;height:17px;display:block;background:currentColor;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain }
+  .hc-d .nu{ width:6px;height:6px;border-radius:50%;background:var(--coral);display:block }
+  .hc-card.empty .hc-body{ cursor:default }
+  .hc-card.empty .hc-body:active{ background:none }
+  .hc-t{ font-size:15px;font-weight:700;letter-spacing:-.03em }
+  .hc-s{ font-size:12.5px;color:var(--lgray);margin-top:4px;line-height:1.6 }
+  .hc-go{ margin-top:11px;border:1px solid var(--line);background:#fff;border-radius:10px;
+    padding:9px 14px;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);
+    cursor:pointer }
+  .hc-go:active{ background:var(--felt) }
+
   /* ── 구장톡 ── */
   .tktabs{ display:flex;gap:18px;border-bottom:1px solid var(--line);margin-top:6px }
   .tkt{ padding:10px 2px 9px;font-size:16px;font-weight:700;color:var(--lgray);
     cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px }
   .tkt.on{ color:var(--ink);border-bottom-color:var(--coral) }
-  .tkbar{ background:var(--felt);border-radius:10px;padding:10px 12px;margin-top:10px;
-    font-size:13px;color:var(--gray) }
-  .tkbar b{ color:var(--coral-d);font-weight:700 }
-  .tklock{ text-align:center;color:var(--lgray);font-size:15px;padding:36px 10px 10px;
+  /* 누가 여기 있는지 — 글이 없어도 빈 방으로 느껴지지 않게 */
+  .tkwho{ display:flex;align-items:center;gap:10px;margin-top:15px }
+  .tkwho .av{ display:flex;flex:none }
+  .tkwho .av span{ width:30px;height:30px;border-radius:50%;border:2px solid #fff;
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+    color:#4a1b0c }
+  .tkwho .tx{ font-size:12.5px;color:var(--lgray);line-height:1.4 }
+  /* 커다란 버튼 대신 입력창 모양 — 문턱을 낮춘다 */
+  .tkfield{ display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;
+    border:1px solid var(--line);border-radius:13px;padding:12px 14px;
+    font-size:14px;color:var(--lgray) }
+  .tkfield i{ width:16px;height:16px;flex:none;display:block;background:var(--lgray);
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain;
+    -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/></svg>") }
+  .tkempty{ text-align:center;margin-top:24px;font-size:15px;color:var(--gray);line-height:1.7 }
+  .tkempty span{ font-size:13px;color:var(--lgray) }
+  /* 첫 글감 — 뭘 쓸지 모르는 사람에게 할 말을 준다 */
+  .tkseed{ display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:16px }
+  .tkseed span{ border:1px solid var(--line);border-radius:20px;padding:8px 13px;
+    font-size:12.5px;color:var(--gray);cursor:pointer }
+  .tkseed span:active{ background:var(--felt) }
+  .tkpeek{ margin-top:24px;border-top:1px solid var(--line);padding-top:14px }
+  .tkpeek .ph{ display:flex;align-items:center;font-size:12px;font-weight:700;color:var(--gray) }
+  .tkpeek .ph .go{ margin-left:auto;font-weight:400;color:var(--coral-d);cursor:pointer }
+  .tkpeek .pt{ margin-top:9px;font-size:13.5px;line-height:1.5;cursor:pointer }
+  .tkpeek .pm{ margin-top:4px;font-size:11.5px;color:var(--lgray) }
+  .tklock{ text-align:center;color:var(--lgray);font-size:15px;padding:36px 10px 18px;
     line-height:1.7 }
   .tklock .ic{ width:44px;height:40px;margin:0 auto 14px;background:#e6eaee;
     clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%) }
   .tklock span{ font-size:13.5px }
-  .tkpeek{ margin-top:18px;border-top:1px solid var(--line);padding-top:14px }
-  .tklist{ margin-top:6px }
+  .tklist{ margin-top:14px }
   .tkp{ padding:13px 0;border-top:1px solid var(--line);cursor:pointer }
   .tkp:first-child{ border-top:none }
   .tkp b{ display:block;font-size:15.5px;font-weight:700;letter-spacing:-.03em;margin-bottom:3px }
@@ -2101,6 +2196,14 @@
   .tkc{ padding:11px 0;border-top:1px solid var(--line) }
   .tkc .tx{ font-size:14px;line-height:1.55;margin-top:4px }
   .inp.ta{ min-height:96px;resize:vertical;line-height:1.6;margin-top:8px }
+  /* 범례 — 색이 승수를 말하니 열쇠가 있어야 읽힌다 */
+  .lkey{ display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:11px;
+    padding:10px 12px;background:var(--felt);border-radius:11px;
+    font-size:11.5px;color:var(--lgray) }
+  .lkey span{ display:flex;align-items:center;gap:5px }
+  .lkey i{ width:13px;height:12px;flex:none;display:block;
+    clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%) }
+  .lkey .w{ margin-left:auto;color:var(--gray) }
   /* 사설 코트 — 공공구장과 색으로 갈라 놓는다 */
   .lv .sq.privsq{ background:#a9b6f0 }
   .lpin.priv{ color:var(--ink);border:1px solid #a9b6f0 }
@@ -10803,6 +10906,7 @@ function renderClub(){
        일정 탭에 다 쌓아두면 스크롤만 길어지고 무엇이 중요한지 안 보인다. */
   } else {
     h+=myClubsBlock();
+    h+=homeCourtSection();
     h+=xcSection();
     /* 지역 칩 — '경기도 용인시 처인구'와 '용인 처인구'가 각각 칩이 되던 문제.
        시·도와 시·군·구만 짧게 남겨 같은 지역은 한 칩으로 묶는다. */
@@ -12664,7 +12768,6 @@ function openClubOps(){
       ${tool('회원 실력','등록 구력과 실제 · 요즘 오르는 회원','openMemberSkill()')}
       ${tool('안 나오는 회원','한 달 넘게 안 보이는 분 · 바로 부르기','openLapsed()')}
       ${tool('도전장','근처 클럽에 교류전 청하기','openChallenge()')}
-      ${tool('홈코트','구장 지분 · 대표 클럽 · 구장톡','openLand()')}
       ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
       ${tool('공지 보내기','전체 알림 발송','openNotices()')}
       ${tool('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날','openClubBasicEdit(1)')}
@@ -12898,6 +13001,128 @@ function evXcDday(d){
   const g=new Date(t.getFullYear(), d.mon-1, d.day);
   const n=Math.round((g-t)/864e5);
   return n===0?'오늘':n>0?`D-${n}`:'';
+}
+
+/* 홈코트 · 구장톡 — 운영 도구 안에 있었는데, 거기는 운영진만 여는 자리다.
+   지분을 보고 구장톡에서 노는 건 회원 모두가 하는 일이라 클럽 탭으로 내렸다.
+   구장톡은 홈코트 안쪽 세 단계였다 — 커뮤니티 보러 온 사람에게
+   지도를 먼저 통과하게 하면 안 된다. 따로 문을 낸다. */
+/* 받아온 클럽 id 를 함께 들고 있는다 — 클럽을 바꿨는데 옛 클럽 카드가
+   그대로 남아 있으면, 남의 홈구장을 우리 것으로 읽는다. */
+let HC=null, HC_LOADING=0;
+async function hcLoad(){
+  const cid=xcMyClubId();
+  if(!SERVER_OK || !cid || HC_LOADING===cid) return;
+  HC_LOADING=cid;
+  let d=null;
+  try{ d=await api(`/clubs/${cid}/homecourt`); }catch(e){ d={home:null, can_set:false}; }
+  HC_LOADING=0;
+  /* 기다리는 사이에 클럽을 바꿨으면 버린다 */
+  if(xcMyClubId()!==cid) return;
+  d.cid=cid; HC=d;
+  if(state.view==='club') renderClub();
+}
+/* 받침에 따라 조사를 고른다 — <라온테니스을 넘어요>가 나오면 안 된다.
+   한글이 아닌 글자로 끝나면(숫자·영문) 받침 없는 쪽으로 둔다. */
+function josa(word, withJong, withoutJong){
+  const w=String(word||'').trim();
+  const c=w.charCodeAt(w.length-1);
+  if(!(c>=0xAC00 && c<=0xD7A3)) return withoutJong;
+  return ((c-0xAC00)%28) ? withJong : withoutJong;
+}
+
+/* 지분이라는 말을 처음 보는 사람에게 한 번만 설명한다.
+   상시로 두면 아는 사람에게는 잔소리가 된다. 닫으면 안 돌아온다.
+   기기에만 남긴다 — 이 정도 안내에 서버 왕복을 붙일 값어치는 없다. */
+function hcTipOff(){ try{ return localStorage.getItem('hc_tip')==='1'; }catch(e){ return false; } }
+function hcCloseTip(ev){
+  if(ev&&ev.stopPropagation) ev.stopPropagation();
+  try{ localStorage.setItem('hc_tip','1'); }catch(e){}
+  if(state.view==='club') renderClub();
+}
+
+function homeCourtSection(){
+  const cid=xcMyClubId();
+  if(!SERVER_OK || !cid) return '';
+  if(HC===null || HC.cid!==cid){ hcLoad(); return ''; }
+
+  const doors=(vid)=>`<div class="hc-doors">
+    <div class="hc-d" onclick="openLand()"><i class="ic map"></i>코트 지도</div>
+    <div class="hc-sep"></div>
+    <div class="hc-d" onclick="${vid?`openCourtTalk(${vid},'court')`:'openMyCourtTalk()'}">
+      <i class="ic talk"></i>구장톡${HC.unread?`<em class="nu"></em>`:''}</div>
+  </div>`;
+
+  /* 아직 홈이 없다 — 빈 카드로 두지 않는다.
+     운영진에게는 걸라고 하고, 회원에게는 걸 사람이 따로 있다고 알린다.
+     회원한테 <홈으로 거세요>라고 하면 눌러도 아무 일이 안 일어난다. */
+  if(!HC.home){
+    return `<div class="hc-wrap">
+      <div class="hc-h"><b>홈코트</b></div>
+      <div class="hc-card empty">
+        <div class="hc-body">
+          <div class="hc-t">아직 홈구장이 없어요</div>
+          <div class="hc-s">${HC.can_set
+            ? '자주 가는 코트를 홈으로 걸면 지분이 쌓이고 구장톡이 열려요'
+            : '운영진이 홈구장을 걸면 지분과 구장톡이 열려요'}</div>
+          ${HC.can_set?`<button class="hc-go" onclick="openLand()">코트 고르러 가기</button>`:''}
+        </div>
+        ${HC.can_set?'':doors(null)}
+      </div></div>`;
+  }
+
+  const v=HC.home, bars=HC.bars||[];
+  const solo=(HC.clubs||1)<=1;
+  /* 우리 칸만 진하게 — 남의 칸까지 색이 세면 어느 게 우리 건지 안 보인다.
+     혼자 쓰는 중이면 100%를 코랄로 꽉 채우지 않는다.
+     아직 아무도 안 들어온 것뿐인데 자랑처럼 읽힌다. */
+  const bar=solo
+    ? `<i style="width:100%;background:${landTier(HC.wins).c};opacity:.55"></i>`
+    : bars.map(b=>`<i style="width:${Math.max(2,b.pct)}%;
+        background:${b.mine?'var(--coral)':landTier(b.wins).c};opacity:${b.mine?1:.45}"></i>`).join('');
+
+  /* 지금 할 일을 한 줄로 — 숫자만 보여주면 뭘 해야 할지 모른다 */
+  let line='';
+  if(solo){
+    line = HC.events
+      ? '다른 클럽이 들어오면 지분이 나뉘어요'
+      : '여기서 모임을 열면 지분이 쌓여요. 다른 클럽이 들어오면 나뉘고요.';
+  } else if(HC.top&&HC.top.mine){
+    line = '이 코트의 대표 클럽이에요';
+  } else if(HC.need!=null){
+    const nm=HC.top?HC.top.name:'앞 클럽';
+    line = `교류전 <b>${HC.need}승</b>이면 ${esc(nm)}${josa(nm,'을','를')} 넘어요`;
+  }
+
+  const tip = hcTipOff() ? '' : `<div class="hc-tip">
+    <span>같은 코트를 쓰는 클럽끼리 지분을 나눠 가져요.
+      모임을 열고 교류전에서 이기면 우리 몫이 커져요.</span>
+    <i role="button" tabindex="0" onclick="hcCloseTip(event)">×</i></div>`;
+
+  return `<div class="hc-wrap">
+    <div class="hc-h"><b>홈코트</b></div>
+    <div class="hc-card">
+      ${tip}
+      <div class="hc-body" onclick="landVenue(${v.venue_id})">
+        <div class="hc-top"><span class="lb">우리 홈</span>
+          <span class="rk">${solo?'아직 우리뿐':`${HC.clubs}개 클럽 중 ${HC.rank}위`}</span></div>
+        <div class="hc-n">${esc(v.name)}${solo?'':`<em>${HC.pct}%</em>`}</div>
+        <div class="hc-bar">${bar}</div>
+        ${line?`<div class="hc-l">${line}</div>`:''}
+      </div>
+      ${doors(v.venue_id)}
+    </div></div>`;
+}
+/* 우리 홈구장의 구장톡으로 바로 — 홈이 없으면 전국톡을 연다.
+   홈이 없다고 아무 데도 못 가게 두지 않는다. */
+async function openMyCourtTalk(){
+  const cid=clubId(); if(!cid) return toast('클럽을 먼저 골라주세요');
+  if(HC&&HC.home&&HC.home.venue_id) return openCourtTalk(HC.home.venue_id,'court');
+  let m=null;
+  try{ m=await api('/land/map?km=15&club_id='+cid); }catch(e){}
+  const any=((m&&m.venues)||[])[0];
+  if(any) return openCourtTalk(any.id,'all');
+  toast('아직 볼 수 있는 구장톡이 없어요');
 }
 
 function xcSection(){
@@ -15354,13 +15579,30 @@ function loadKakaoMap(){
 }
 
 /* 구장을 가운데 둔 육각 칸 — 겹 수만큼 둘레로 넓힌다.
-   1겹 7칸 · 2겹 19칸. 칸 하나는 대략 1.5km. */
-function hexRing(lat,lng,depth){
-  const KM=1.5, dLat=KM/111, dLng=KM/(111*Math.cos(lat*Math.PI/180));
+   1겹 7칸 · 2겹 19칸.
+
+   칸 크기는 고정이 아니다. 1.5km 로 고정했더니 2겹이 반경 3km 가 되어
+   1.8km 떨어진 옆 코트를 통째로 덮어버렸다. 도심에서는 코트가 2~3km 간격으로
+   붙어 있어서, 큰 클럽 하나가 동네의 모든 코트를 삼킨다.
+
+   그래서 칸을 <이웃 코트까지 거리의 절반> 안으로 묶는다. 두 코트의 경계는
+   딱 중간에서 만나고 서로를 넘지 않는다. 겹 수(클럽 규모)는 그대로 두고
+   칸만 줄이니, 큰 클럽은 촘촘한 칸을 많이 갖는 모양이 된다. */
+function hexRing(lat,lng,depth,reach){
+  /* reach = 이 구장이 뻗을 수 있는 최대 반경(km). 없으면 예전처럼 1.5km 칸. */
+  let dep=Math.max(1,depth), KM=1.5;
+  if(reach!=null){
+    /* 칸이 250m 밑으로 내려가면 화면에서 안 보인다 — 칸을 더 줄이는 대신 겹을 줄인다.
+       코트가 촘촘한 동네에서는 큰 클럽도 겹이 얕아진다. 그게 맞다.
+       옆 코트가 1.8km 거리면 애초에 4겹을 펼칠 자리가 없다. */
+    dep=Math.max(1, Math.min(dep, Math.floor(reach/0.25)));
+    KM=Math.min(1.5, reach/dep);
+  }
+  const dLat=KM/111, dLng=KM/(111*Math.cos(lat*Math.PI/180));
   const out=[];
-  for(let q=-depth;q<=depth;q++)
-    for(let r=-depth;r<=depth;r++){
-      if(Math.abs(q+r)>depth) continue;
+  for(let q=-dep;q<=dep;q++)
+    for(let r=-dep;r<=dep;r++){
+      if(Math.abs(q+r)>dep) continue;
       const cx=lng+dLng*(q+r/2), cy=lat+dLat*r*0.866;
       const pts=[];
       for(let i=0;i<6;i++){
@@ -15370,6 +15612,17 @@ function hexRing(lat,lng,depth){
       out.push(pts);
     }
   return out;
+}
+/* 이 구장에서 가장 가까운 다른 구장까지 거리(km).
+   경계는 그 절반에서 만난다 — 어느 쪽도 상대를 덮지 않는다. */
+function nearestGap(v, all){
+  let best=Infinity;
+  all.forEach(o=>{
+    if(o===v || o.lat==null) return;
+    const d=landDist(v.lat,v.lng,o.lat,o.lng);
+    if(d>0.05 && d<best) best=d;
+  });
+  return isFinite(best) ? best : 6;
 }
 
 async function openLand(){
@@ -15538,7 +15791,9 @@ async function landDraw(){
     const isMine=(rep&&rep.club_id===myId2)||top.club_id===myId2;
     /* 옅어지는 중이면 흐리게 — 지도에 시간이 담긴다 */
     const fade = (!top.is_home && top.days_left!=null && top.days_left<120);
-    hexRing(v.lat,v.lng,dep).forEach(pts=>{
+    /* 이웃 코트까지 거리의 절반 — 여기를 넘지 않는다 */
+    const reach=nearestGap(v, near)/2;
+    hexRing(v.lat,v.lng,dep,reach).forEach(pts=>{
       const p=new kakao.maps.Polygon({path:pts, strokeWeight:isMine?3:1.5, strokeColor:col,
         strokeOpacity:fade?.4:(isMine?1:.7), fillColor:col, fillOpacity:fade?.10:.28});
       p.setMap(LAND_MAP); LAND_SHAPES.push(p);
@@ -15618,66 +15873,90 @@ function landNearList(){
 async function landVenue(vid){
   let d=null, cs=null;
   const cid=clubId();
-  try{ d=await api(`/venues/${vid}/open-slots`); }catch(e){ return toast('불러오지 못했어요'); }
+  try{ d=await api(`/venues/${vid}/open-slots`); }catch(e){ d={venue:{},slots:[]}; }
   try{ cs=await api(`/venues/${vid}/clubs?club_id=${cid||0}`); }catch(e){ cs={clubs:[]}; }
   LAND_VENUE=vid;
-  const v=d.venue||{}; const slots=d.slots||[];
+  const v=(d&&d.venue)||{}; const slots=(d&&d.slots)||[];
   const clubs=(cs&&cs.clubs)||[], top=cs&&cs.top;
-  const sub=[v.indoor?'실내':'실외', v.sigungu||''].filter(Boolean).join(' · ');
-  let h=`<div class="sh-top"><h3>${esc(v.name||'구장')}</h3>
-      <div class="cl" role="button" tabindex="0" onclick="openLand()">×</div></div>
-    <div class="vsub">${esc(sub)}</div>`;
+  const near=(LAND_NEAR||[]).find(x=>x.id===vid);
+  /* 곁줄 — 가운뎃점으로 잇던 걸 작은 동그라미로 바꾼다. 이름이 길 때 줄이 갈려도 읽힌다 */
+  const meta=[v.indoor?'실내':'실외', v.sigungu||'', near?(near.km<1?`${Math.round(near.km*1000)}m`:`${near.km.toFixed(1)}km`):'']
+    .filter(Boolean);
 
-  /* 대표 클럽 — 지분 1등. 지도 딱지에 이름이 오르는 클럽이다. */
-  if(top){
-    h+=`<div class="repcard">
-      <div class="rl">대표 클럽</div>
-      <div class="rn">${esc(top.name)}<em>지분 ${top.pct}%</em></div>
-      <div class="rd">${clubs.length}개 클럽이 이 코트를 홈으로 쓰고 있어요</div></div>`;
-  }
-  /* 지분 — 어느 클럽이 얼마나 이 코트에서 치는지.
-     인원이 아니라 <온 횟수>로 센다. 큰 클럽이 자동으로 대표가 되면
-     작은 클럽은 겨룰 데가 없어진다. */
+  let h=`<div class="sh-top"><h3>홈코트</h3>
+      <div class="cl" role="button" tabindex="0" onclick="openLand()">×</div></div>
+    <div class="vname">${esc(v.name||'구장')}</div>
+    <div class="vmeta">${meta.map(x=>`<span>${esc(x)}</span>`).join('<i></i>')}</div>`;
+
   if(clubs.length){
-    h+=`<div class="vsec">코트 지분</div>
-      <div class="shbox">${clubs.map((c,i)=>`
+    /* 대표 클럽 — 지도 딱지에 이름이 오르는 클럽. 아래 띠가 곧 지분이다.
+       100% 막대 하나는 아무 말도 안 하니, 여러 클럽을 한 줄에 이어 붙인다. */
+    h+=`<div class="repcard">
+      <div class="rtop"><span class="rl">대표 클럽</span>
+        <span class="rn2">${clubs.length}개 클럽이 함께 씀</span></div>
+      <div class="rname">${esc(top.name)}<em>${top.pct}%</em></div>
+      <div class="rbar">${clubs.map(c=>`<i style="width:${c.pct}%;
+        background:${landTier(c.wins).c}"></i>`).join('')}</div></div>
+
+      <div class="shbox">${clubs.map(c=>`
         <div class="shrow${c.club_id==cid?' me':''}">
-          <div class="shtop"><b>${esc(c.name)}</b>
-            <span>${c.pct}%</span></div>
-          <div class="shbar"><i style="width:${Math.max(3,c.pct)}%;
-            background:${landTier(c.wins).c}"></i></div>
-          <div class="shwhy">최근 6개월 모임 ${c.events}회${c.wins?` · <b>1년 교류전 ${c.wins}승</b>`:''}</div>
+          <span class="dot" style="background:${landTier(c.wins).c}"></span>
+          <b>${esc(c.name)}</b>
+          <span class="why">모임 ${c.events}${c.wins?` · ${c.wins}승`:''}</span>
+          <span class="pct">${c.pct}%</span>
         </div>`).join('')}</div>`;
+
+    /* 지분 숫자만으로는 뭘 해야 할지 모른다 — 다음 한 수를 적어 준다 */
+    const me=clubs.find(c=>c.club_id==cid);
+    if(me && top && me.club_id!==top.club_id){
+      const gap=top.score-me.score, n=Math.ceil(gap/12)+1;
+      h+=`<div class="shnext">교류전 <b>${n}승</b>이면 ${esc(top.name)}${josa(top.name,'을','를')} 넘어요</div>`;
+    } else if(me && clubs.length===1){
+      h+=`<div class="shnext">혼자 쓰고 있어요 · 다른 클럽이 들어오면 지분이 나뉘어요</div>`;
+    }
   } else {
-    h+=`<div class="vnone" style="padding:16px 10px">아직 이 코트를 홈으로 건 클럽이 없어요<br>
+    h+=`<div class="vnone" style="padding:18px 10px">아직 이 코트를 홈으로 건 클럽이 없어요<br>
       <span>먼저 걸면 대표 클럽이 돼요</span></div>`;
   }
 
-  /* 홈 걸기 — 운영진만. 걸면 지분에 들어가고 구장톡이 열린다. */
-  if(cs&&cs.can_set){
-    h+= cs.joined
-      ? `<button class="btn ghost" style="margin-top:10px" onclick="landHomeOff(${vid})">
-          홈구장에서 내려놓기</button>`
-      : `<button class="btn" style="margin-top:10px" onclick="landHomeOn(${vid})">
-          여기를 우리 홈구장으로 걸기</button>
-        <div class="hnote">홈은 ${cs.home_left>0?`${cs.home_left}곳 더`:'더는'} 걸 수 있어요</div>`;
-  } else if(!(cs&&cs.joined)){
-    h+=`<div class="hnote" style="margin-top:10px">홈구장은 클럽 운영진만 걸 수 있어요</div>`;
+  /* 아직 안 건 운영진에게는 <홈으로 걸기>가 주된 행동이다.
+     이미 건 클럽에게는 <교류전 열기>가 주된 행동이고. 하나만 코랄로 둔다. */
+  if(cs&&cs.can_set&&!cs.joined){
+    h+=`<button class="btn" style="margin-top:16px" onclick="landHomeOn(${vid})">
+        여기를 우리 홈구장으로 걸기</button>
+      <div class="hnote">홈은 ${cs.home_left>0?`${cs.home_left}곳 더`:'더는'} 걸 수 있어요</div>`;
+  } else {
+    h+=`<button class="btn" style="margin-top:16px" onclick="landMakeXc(${vid},'${esc(v.name||'')}')">
+      여기서 교류전 열기</button>`;
   }
-  h+=`<button class="btn ghost" style="margin-top:8px" onclick="openCourtTalk(${vid})">
-      구장톡 열기${cs&&cs.joined?'':' · 둘러보기'}</button>`;
+
+  /* 나머지는 아이콘 칸으로 묶는다 — 똑같이 생긴 버튼 넷을 세워두면
+     무엇이 주된 행동인지 알 수 없다. */
+  h+=`<div class="vacts">
+    <div class="va" onclick="openCourtTalk(${vid})">
+      <i class="ic talk"></i><span>구장톡</span></div>
+    <div class="va" onclick="landMakeEv(${vid},'${esc(v.name||'')}')">
+      <i class="ic cal"></i><span>모임 잡기</span></div>
+    <div class="va${slots.length?'':' off'}" onclick="${slots.length?`landBook(${vid})`:''}">
+      <i class="ic clock"></i><span>${slots.length?`빈 시간 ${slots.length}`:'빈 시간 없음'}</span></div>
+  </div>`;
 
   if(slots.length){
     h+=`<div class="vsec">잡을 수 있는 시간</div>
-      ${slots.map(s=>`<div class="vslot" onclick="landBook(${vid})">
+      ${slots.slice(0,3).map(s=>`<div class="vslot" onclick="landBook(${vid})">
         <span class="c"><b>${esc(fmtSlotDate(s.date))} · ${esc(s.start)}~${esc(s.end)}</b>
           <span>${s.courts}면 · ${Number(s.price||0).toLocaleString()}원</span></span>
         <span class="t">예약</span></div>`).join('')}`;
   }
-  h+=`<button class="btn" style="margin-top:12px" onclick="landMakeXc(${vid},'${esc(v.name||'')}')">
-      여기서 교류전 열기</button>
-    <button class="btn ghost" style="margin-top:8px" onclick="landMakeEv(${vid},'${esc(v.name||'')}')">
-      그냥 모임 잡기</button>`;
+
+  /* 내려놓기는 거의 안 누르고 되돌리기 번거로운 동작이다.
+     교류전 열기와 같은 무게로 세워두지 않는다. */
+  if(cs&&cs.can_set&&cs.joined){
+    h+=`<div class="vquiet"><span onclick="landHomeOff(${vid})">홈구장에서 내려놓기</span></div>`;
+  } else if(!(cs&&cs.joined)&&!(cs&&cs.can_set)){
+    h+=`<div class="vquiet plain">홈구장은 클럽 운영진이 걸 수 있어요</div>`;
+  }
+
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
 }
@@ -15687,14 +15966,14 @@ async function landHomeOn(vid){
   let r=null;
   try{ r=await api(`/venues/${vid}/home`,{method:'POST',body:JSON.stringify({club_id:cid})}); }
   catch(e){ return toast(e&&e.message==='home_full'?'홈은 2곳까지 걸 수 있어요':'걸지 못했어요'); }
-  toast('홈구장으로 걸었어요'); landVenue(vid);
+  toast('홈구장으로 걸었어요'); HC=null; hcLoad(); landVenue(vid);
 }
 async function landHomeOff(vid){
   const cid=clubId(); if(!cid) return;
   if(!confirm('홈구장에서 내려놓을까요? 지분도 함께 빠져요')) return;
   try{ await api(`/venues/${vid}/home?club_id=${cid}`,{method:'DELETE'}); }
   catch(e){ return toast('내려놓지 못했어요'); }
-  toast('내려놓았어요'); landVenue(vid);
+  toast('내려놓았어요'); HC=null; hcLoad(); landVenue(vid);
 }
 function fmtSlotDate(d){
   const t=new Date(d+'T00:00:00'); if(isNaN(t)) return d;
@@ -15721,7 +16000,7 @@ function landMakeXc(vid,name){ landMakeEv(vid,name,'교류전'); }
    같은 코트를 쓰는 클럽끼리는 서로를 모른다.
    화요일 저녁마다 옆 코트에서 치는 사람들인데 말을 섞을 데가 없었다.
    구장톡은 그 구장에 홈을 건 클럽만 보이고, 전국톡은 모두 본다. */
-let TALK={vid:null, scope:'court', posts:[], locked:false, venue:''};
+let TALK={vid:null, scope:'court', posts:[], locked:false, venue:'', clubs:[], peek:[]};
 
 async function openCourtTalk(vid,scope){
   TALK.vid=vid; TALK.scope=scope||'court';
@@ -15730,34 +16009,62 @@ async function openCourtTalk(vid,scope){
   try{ d=await api(`/venues/${vid}/talk?scope=${TALK.scope}`); }
   catch(e){ return toast('불러오지 못했어요'); }
   TALK.posts=d.posts||[]; TALK.locked=!!d.locked;
+  TALK.venue=d.venue||TALK.venue||'구장톡';
+  TALK.clubs=d.clubs||[];
+  /* 본 것으로 남긴다 — 클럽 탭의 <새 글> 점이 여기서 꺼진다 */
+  if(TALK.scope==='court' && !TALK.locked){
+    api(`/venues/${vid}/talk/seen`,{method:'POST',body:'{}'}).then(()=>{
+      if(HC&&HC.unread){ HC.unread=0; if(state.view==='club') renderClub(); }
+    }).catch(()=>{});
+  }
+  /* 구장톡이 비었을 때 보여줄 전국톡 한 줄 — 빈손으로 내보내지 않는다 */
+  if(TALK.scope==='court' && !TALK.locked && !TALK.posts.length && !(TALK.peek||[]).length){
+    try{ const a=await api(`/venues/${vid}/talk?scope=all`); TALK.peek=(a.posts||[]).slice(0,1); }
+    catch(e){ TALK.peek=[]; }
+  }
   renderCourtTalk();
 }
 function renderCourtTalk(){
   const t=TALK, cid=clubId();
   const tab=(k,label)=>`<div class="tkt${t.scope===k?' on':''}"
     onclick="openCourtTalk(${t.vid},'${k}')">${label}</div>`;
-  let h=`<div class="sh-top"><h3>구장톡</h3>
+  let h=`<div class="sh-top"><h3>${esc(t.venue||'구장톡')}</h3>
       <div class="cl" role="button" tabindex="0" onclick="landVenue(${t.vid})">×</div></div>
     <div class="tktabs">${tab('court','구장톡')}${tab('all','전국톡')}</div>`;
 
-  if(t.scope==='court'){
-    h+=`<div class="tkbar">이 구장을 <b>홈으로 건 클럽</b>에게만 보이는 공간이에요</div>`;
-  }
   /* 잠긴 화면 — 아직 이 구장에 홈을 안 걸었다.
-     막다른 길로 두지 않는다. 운영진이면 바로 걸 수 있게 길을 낸다. */
+     막다른 길로 두지 않는다. 전국톡은 잠기지 않으니 그쪽 길을 낸다. */
   if(t.locked){
     h+=`<div class="tklock">
       <div class="ic"></div>
       우리 클럽은 이 구장을 홈으로 걸지 않았어요<br>
-      <span>운영진이 홈구장으로 걸면 이곳이 열려요</span>
-      <button class="btn ghost" style="margin-top:16px"
-        onclick="landVenue(${t.vid})">구장 화면으로</button></div>`;
-    /* 잠겨 있어도 전국톡은 읽을 수 있다 — 빈 화면만 주고 끝내지 않는다 */
-    h+=`<div class="tkpeek"><div class="lrh">전국톡 이런 얘길 나누고 있어요</div>
-      <button class="btn ghost" onclick="openCourtTalk(${t.vid},'all')">전국톡 보기</button></div>`;
-  } else if(!t.posts.length){
-    h+=`<div class="vnone" style="padding:34px 10px">아직 올라온 얘기가 없어요<br>
-      <span>먼저 한마디 남겨보세요</span></div>`;
+      <span>운영진이 홈구장으로 걸면 이곳이 열려요</span></div>
+      <button class="btn ghost" onclick="openCourtTalk(${t.vid},'all')">전국톡 보기</button>
+      <div class="vquiet"><span onclick="landVenue(${t.vid})">구장 화면으로</span></div>`;
+    document.getElementById('sheet').innerHTML=h;
+    document.getElementById('ov').classList.add('on');
+    return;
+  }
+
+  /* 누가 여기 있는지 먼저 보여준다 — 글이 없어도 빈 방으로 느껴지지 않게 */
+  const who=(t.clubs||[]);
+  if(t.scope==='court' && who.length){
+    const heads=who.reduce((a,c)=>a+(c.size||0),0);
+    h+=`<div class="tkwho">
+      <div class="av">${who.slice(0,4).map((c,i)=>`<span style="background:${landTier(c.wins).c};
+        margin-left:${i?'-8px':'0'}">${esc(String(c.name||'').slice(0,2))}</span>`).join('')}</div>
+      <span class="tx">이 코트를 쓰는 클럽 ${who.length}곳${heads?` · 회원 ${heads}명`:''}</span></div>`;
+  }
+
+  /* 글쓰기를 커다란 버튼 대신 입력창 모양으로 — 문턱을 낮춘다 */
+  h+=`<div class="tkfield" onclick="openTalkWrite()">
+    <i></i><span>무슨 얘기를 나눌까요</span></div>`;
+
+  if(!t.posts.length){
+    h+=`<div class="tkempty">아직 아무도 말을 안 걸었어요<br>
+      <span>먼저 꺼내면 옆 코트 사람들이 답해요</span></div>
+      <div class="tkseed">${['비 온 뒤 코트 상태','한 면 남아요','교류전 붙으실 분','주차 어디에']
+        .map(x=>`<span onclick="openTalkWrite('${esc(x)}')">${x}</span>`).join('')}</div>`;
   } else {
     h+=`<div class="tklist">${t.posts.map(p=>`
       <div class="tkp" onclick="openTalkPost(${p.id})">
@@ -15770,19 +16077,28 @@ function renderCourtTalk(){
           ${p.comments?`<span class="cm">댓글 ${p.comments}</span>`:''}
         </div></div>`).join('')}</div>`;
   }
-  if(!t.locked){
-    h+=`<button class="btn" style="margin-top:14px" onclick="openTalkWrite()">글쓰기</button>`;
+
+  /* 구장톡이 비어 있어도 빈손으로 나가지 않게 전국톡 한 줄을 미리 보여준다 */
+  if(t.scope==='court' && !t.posts.length && (t.peek||[]).length){
+    const p=t.peek[0];
+    h+=`<div class="tkpeek">
+      <div class="ph"><span>전국톡에서는</span>
+        <span class="go" onclick="openCourtTalk(${t.vid},'all')">더 보기</span></div>
+      <div class="pt" onclick="openCourtTalk(${t.vid},'all')">${esc(p.title||String(p.body||'').slice(0,40))}</div>
+      <div class="pm">${esc(p.club||'')}${p.club?' · ':''}${timeAgo(p.created_at)}${p.comments?` · 댓글 ${p.comments}`:''}</div>
+    </div>`;
   }
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
 }
 
-function openTalkWrite(){
+function openTalkWrite(seed){
   const t=TALK;
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>${t.scope==='all'?'전국톡':'구장톡'}에 쓰기</h3>
       <div class="cl" role="button" tabindex="0" onclick="renderCourtTalk()">×</div></div>
-    <input id="tkTitle" class="inp" placeholder="제목 (없어도 돼요)" maxlength="60">
+    <input id="tkTitle" class="inp" placeholder="제목 (없어도 돼요)" maxlength="60"
+      value="${esc(seed||'')}">
     <textarea id="tkBody" class="inp ta" rows="7" placeholder="무슨 얘기를 나눌까요"></textarea>
     <button class="btn" style="margin-top:12px" onclick="submitTalk()">올리기</button>`;
   document.getElementById('ov').classList.add('on');
