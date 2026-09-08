@@ -9076,10 +9076,19 @@ app.get('/venues/:id/talk', auth, (req, res) => {
 app.post('/venues/:id/talk', auth, (req, res) => {
   const vid = +req.params.id || 0, b = req.body || {};
   const scope = (!vid || b.scope === 'all') ? 'all' : 'court';
-  const cid = +b.club_id || null;
+  /* 앱이 club_id 를 못 보내는 경우가 있다(초대로 들어온 클럽은 이름-번호 짝이 비어 있다).
+     그때는 서버가 내 클럽을 찾아 붙인다 — 안 그러면 글에 클럽 이름이 안 붙는다. */
+  let cid = +b.club_id || null;
+  if (!cid) {
+    const m = db.prepare('SELECT club_id FROM club_members WHERE user_id=? ORDER BY club_id LIMIT 1')
+      .get(req.uid);
+    cid = m ? m.club_id : null;
+  }
   if (scope === 'court' && !atCourt(req.uid, vid))
-    return res.status(403).json({ error: 'not_at_court' });
-  if (cid && !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+    return res.status(403).json({ error: 'not_at_court',
+      message: '이 구장을 홈으로 건 클럽의 회원만 쓸 수 있어요' });
+  if (cid && !isMember(cid, req.uid))
+    return res.status(403).json({ error: 'member_only', message: '클럽 회원만 쓸 수 있어요' });
   const title = String(b.title || '').trim().slice(0, 60);
   const body = String(b.body || '').trim().slice(0, 2000);
   if (!body) return res.status(400).json({ error: 'empty' });
@@ -9144,7 +9153,12 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
   if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
     return res.status(403).json({ error: 'not_at_court' });
   const body = String(b.body || '').trim().slice(0, 1000);
-  if (!body) return res.status(400).json({ error: 'empty' });
+  if (!body) return res.status(400).json({ error: 'empty', message: '내용을 적어주세요' });
+  if (!b.club_id) {
+    const m = db.prepare('SELECT club_id FROM club_members WHERE user_id=? ORDER BY club_id LIMIT 1')
+      .get(req.uid);
+    if (m) b.club_id = m.club_id;
+  }
   const r = db.prepare(`INSERT INTO court_comments (post_id,user_id,club_id,body,anon,created_at)
     VALUES (?,?,?,?,1,?)`).run(pid, req.uid, +b.club_id || null, body, now());
   res.json({ ok: true, id: rid(r) });
