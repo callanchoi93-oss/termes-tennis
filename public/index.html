@@ -2248,6 +2248,11 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z'/></svg>") }
   /* 목록 줄 — 전국톡은 위치가 맨 위, 글쓴이는 제목 아래 */
   .tkcnt{ font-size:12.5px;color:var(--lgray);margin-top:14px }
+  /* 구장톡 탭의 새 글 점 */
+  .tab{ position:relative }
+  .tab .tdot{ display:none;position:absolute;top:5px;left:50%;margin-left:14px;
+    width:6px;height:6px;border-radius:50%;background:var(--coral) }
+  .tab.hasnew .tdot{ display:block }
   .tkloc{ font-size:12px;color:var(--lgray);margin-top:1px }
   .tkby{ display:flex;align-items:center;gap:7px;margin-top:8px }
   .tkby .av{ width:22px;height:22px;font-size:9.5px }
@@ -5042,6 +5047,7 @@
     <section class="screen" id="s-match"></section>
     <section class="screen" id="s-duel"></section>
     <section class="screen" id="s-sched"></section>
+    <section class="screen" id="s-talk"></section>
     <section class="screen" id="s-lounge"></section>
     <section class="screen" id="s-chat"></section>
     <section class="screen" id="s-venue"></section>
@@ -5050,8 +5056,8 @@
   <div class="tabbar">
     <div class="tab on" data-s="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
     <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>오픈매치</div>
+    <div class="tab" data-s="talk" onclick="go('talk')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>구장톡<em class="tdot" id="talkDot"></em></div>
     <div class="tab" data-s="club" onclick="go('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
-    <div class="tab" data-s="sched" onclick="go('sched')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>일정</div>
     <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
   <div id="rtmore" style="display:none;position:fixed;inset:0;z-index:160"></div>
@@ -13166,6 +13172,11 @@ function evXcDday(d){
 /* 받아온 클럽 id 를 함께 들고 있는다 — 클럽을 바꿨는데 옛 클럽 카드가
    그대로 남아 있으면, 남의 홈구장을 우리 것으로 읽는다. */
 let HC=null, HC_LOADING=0;
+/* 구장톡 탭에 새 글 점 — 클럽 카드가 쓰던 값을 그대로 쓴다 */
+function talkDot(){
+  const t=document.querySelector('.tab[data-s="talk"]');
+  if(t) t.classList.toggle('hasnew', !!(HC && HC.unread));
+}
 async function hcLoad(){
   const cid=xcMyClubId();
   if(!SERVER_OK || !cid || HC_LOADING===cid) return;
@@ -13176,6 +13187,7 @@ async function hcLoad(){
   /* 기다리는 사이에 클럽을 바꿨으면 버린다 */
   if(xcMyClubId()!==cid) return;
   d.cid=cid; HC=d;
+  talkDot();
   if(state.view==='club') renderClub();
 }
 /* ══════════ 홈코트 — 클럽 탭 안의 한 페이지 ═══════════════════
@@ -13212,6 +13224,65 @@ function hcExit(){ HCV=null; HCSTACK=[]; renderClub(); }
 function hcHead(title, sub){
   return `<div class="hcp-top">${sub?`<span class="up">${esc(sub)}</span>`:''}
     <b>${esc(title)}</b></div>`;
+}
+
+/* ══════════ 구장톡 탭 ══════════════════════════════════════
+   하단 탭에 자리를 내줬다. 커뮤니티 보러 오는 사람에게
+   클럽 → 홈코트 → 지도 → 코트 를 통과하게 하면 안 온다.
+
+   화면 자체는 클럽 탭 안의 페이지와 같은 걸 쓴다. 그릴 자리만 다르다. */
+let TALK_TAB=null;
+/* 내 활동에 적을 <나의 일정> — 오늘부터 앞으로 남은 내 것만 센다.
+   지난 것까지 세면 숫자가 불어나기만 해서 눌러볼 이유가 없다. */
+function schedCount(){
+  try{
+    const t0=Date.now(); let n=0;
+    (SRV_EVENTS||[]).forEach(e=>{ const t=evTime(e);
+      if(t<8.64e15 && t>=t0 && e.joined) n++; });
+    (HOME_OM_ALL||[]).forEach(m=>{ const t=+new Date(m.start_at||0);
+      if(!isNaN(t) && t>=t0 && (m.joined||m.is_host)) n++; });
+    return n;
+  }catch(e){ return 0; }
+}
+
+function renderTalkTab(){
+  const el=document.getElementById('s-talk'); if(!el) return;
+  const cid=clubId();
+  if(!SERVER_OK || !cid){
+    el.innerHTML=`<h2 class="t" style="margin-bottom:14px">구장톡</h2>
+      <div class="empty"><div class="et">클럽에 가입하면 열려요</div>
+        <div class="es">같은 코트를 쓰는 클럽끼리 얘기하는 자리예요.</div>
+        <button class="btn" style="max-width:240px;margin:0 auto" onclick="go('club')">클럽 찾아보기</button></div>`;
+    return;
+  }
+  /* 우리 홈구장의 구장톡을 연다 — 홈이 없으면 전국톡으로 */
+  if(TALK_TAB!==cid){
+    TALK_TAB=cid;
+    el.innerHTML=`<h2 class="t" style="margin-bottom:14px">구장톡</h2>
+      <div class="empty"><div class="et">불러오는 중…</div></div>`;
+    talkTabLoad(cid);
+    return;
+  }
+  if(!TALK.vid){ el.innerHTML=`<h2 class="t">구장톡</h2>`; return; }
+  el.innerHTML=`<div class="hcp-top"><span class="up">${TALK.scope==='all'?'전국톡':'구장톡'}</span>
+      <b>${esc(TALK.venue||'구장톡')}</b></div>
+    <div id="talkPage">${talkBodyHtml()}</div>`;
+}
+async function talkTabLoad(cid){
+  let d=null;
+  try{ d=await api(`/clubs/${cid}/homecourt`); }catch(e){ d=null; }
+  const vid=(d&&d.home&&d.home.venue_id)||null;
+  if(vid) return openCourtTalk(vid,'court');
+  /* 홈이 없으면 가까운 코트를 잡아 전국톡으로 — 빈 화면으로 두지 않는다 */
+  let m=null;
+  try{ m=await api('/land/map?km=15&club_id='+cid); }catch(e){}
+  const any=((m&&m.venues)||[])[0];
+  if(any) return openCourtTalk(any.id,'all');
+  const el=document.getElementById('s-talk');
+  if(el) el.innerHTML=`<h2 class="t" style="margin-bottom:14px">구장톡</h2>
+    <div class="empty"><div class="et">아직 볼 수 있는 구장톡이 없어요</div>
+      <div class="es">운영진이 홈구장을 걸면 열려요.</div>
+      <button class="btn" style="max-width:240px;margin:0 auto" onclick="openLand()">코트 지도 보기</button></div>`;
 }
 
 function renderHomeCourt(){
@@ -16292,7 +16363,7 @@ function landMakeXc(vid,name){ landMakeEv(vid,name,'교류전'); }
    화요일 저녁마다 옆 코트에서 치는 사람들인데 말을 섞을 데가 없었다.
    구장톡은 그 구장에 홈을 건 클럽만 보이고, 전국톡은 모두 본다. */
 let TALK={vid:null, scope:'court', posts:[], locked:false, venue:'', clubs:[], peek:[], nick:'',
-  cats:[], picks:[], cat:'', wcat:''};
+  cats:[], picks:[], cat:'', wcat:'', post:null, writing:0};
 
 async function openCourtTalk(vid,scope,cat){
   const sc=scope||'court';
@@ -16308,10 +16379,11 @@ async function openCourtTalk(vid,scope,cat){
   TALK.clubs=d.clubs||[];
   TALK.nick=d.my_nick||TALK.nick||'';
   TALK.cats=d.cats||[]; TALK.picks=d.picks||[];
+  TALK_TAB=clubId();          // 탭에서 열었으면 다시 불러오지 않게
   /* 본 것으로 남긴다 — 클럽 탭의 <새 글> 점이 여기서 꺼진다 */
   if(TALK.scope==='court' && !TALK.locked){
     api(`/venues/${vid}/talk/seen`,{method:'POST',body:'{}'}).then(()=>{
-      if(HC&&HC.unread){ HC.unread=0; }
+      if(HC&&HC.unread){ HC.unread=0; talkDot(); }
     }).catch(()=>{});
   }
   /* 구장톡이 비었을 때 보여줄 전국톡 한 줄 — 빈손으로 내보내지 않는다 */
@@ -16319,6 +16391,7 @@ async function openCourtTalk(vid,scope,cat){
     try{ const a=await api(`/venues/${vid}/talk?scope=all`); TALK.peek=(a.posts||[]).slice(0,1); }
     catch(e){ TALK.peek=[]; }
   }
+  if(talkHost()==='talk'){ TALK.post=null; renderTalkTab(); return; }
   /* 탭을 바꾸는 것뿐이면 길을 더 쌓지 않는다 — 뒤로 갈 때 탭을 되짚게 된다 */
   const same = HCV && HCV.k==='talk' && HCV.id===vid;
   hcOpen({k:'talk', id:vid, name:TALK.venue}, same);
@@ -16424,6 +16497,15 @@ function talkBodyHtml(){
 function openTalkWrite(seed){
   /* 잡담을 기본으로 둔다 — 고르지 않고 올려도 어딘가에는 들어가야 한다 */
   TALK.wcat=TALK.wcat||'chat';
+  if(talkHost()==='talk'){
+    const el=document.getElementById('s-talk'); if(!el) return;
+    TALK.writing=1;
+    el.innerHTML=`<div class="hcp-top"><span class="up">${TALK.scope==='all'?'전국톡':'구장톡'} 글쓰기</span>
+        <b>${esc(TALK.venue||'구장톡')}</b></div>
+      <div id="talkPage">${talkWriteHtml(seed||'')}</div>`;
+    const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
+    return;
+  }
   hcOpen({k:'write', seed:seed||''});
 }
 function catNameOf(k){ const c=(TALK.cats||[]).find(x=>x.k===k); return c?c.n:'잡담'; }
@@ -16513,11 +16595,24 @@ async function submitTalk(){
   try{ await api(`/venues/${t.vid}/talk`,{method:'POST',
     body:JSON.stringify({scope:t.scope, club_id:clubId(), title, body, cat:t.wcat||'chat'})}); }
   catch(e){ return toast('올리지 못했어요'); }
-  HCSTACK.pop();                       // 쓰기 칸은 지나온 길에서 뺀다
+  if(talkHost()==='talk'){ TALK.writing=0; TALK.post=null; }
+  else HCSTACK.pop();                  // 쓰기 칸은 지나온 길에서 뺀다
   openCourtTalk(t.vid, t.scope);
 }
 
-function openTalkPost(pid){ hcOpen({k:'post', id:pid}); }
+/* 구장톡 탭에서 열었으면 그 탭에, 클럽 탭 안이면 홈코트 페이지에 그린다 */
+function talkHost(){ return state.view==='talk' ? 'talk' : 'club'; }
+function openTalkPost(pid){
+  if(talkHost()==='talk'){ TALK.post=pid; renderTalkPostInTab(); return; }
+  hcOpen({k:'post', id:pid});
+}
+function renderTalkPostInTab(){
+  const el=document.getElementById('s-talk'); if(!el) return;
+  el.innerHTML=`<div class="hcp-top"><span class="up">구장톡</span>
+      <b>${esc(TALK.venue||'구장톡')}</b></div>
+    <div id="talkPage"></div>`;
+  talkPostMount(TALK.post);
+}
 async function talkPostMount(pid){
   const p=(TALK.posts||[]).find(x=>x.id===pid); if(!p) return;
   let cs=[];
@@ -36379,7 +36474,7 @@ function _renderMeCore(){
       <div><div style="font-size:15px;font-weight:400">고대비</div><div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:1px">글자·테두리를 더 진하게</div></div>
       <div role="switch" aria-checked="${state.a11y.contrast}" tabindex="0" onclick="toggleA11y('contrast')" style="width:50px;height:30px;border-radius:16px;background:${state.a11y.contrast?'var(--coral)':'#c9cdd2'};position:relative;cursor:pointer;transition:.15s;flex-shrink:0"><div style="width:24px;height:24px;border-radius:50%;background:#fff;position:absolute;top:3px;left:${state.a11y.contrast?'23px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div></div>
   <div class="card"><div class="ch">내 활동</div>
-    <div onclick="go('league')" style="display:flex;justify-content:space-between;padding:8px 4px;cursor:pointer"><span style="font-weight:700">신청한 리그 경기</span><b style="color:var(--coral-d)">${joined}건 ›</b></div>
+    <div onclick="go('sched')" style="display:flex;justify-content:space-between;padding:8px 4px;cursor:pointer"><span style="font-weight:700">나의 일정</span><b style="color:var(--coral-d)">${schedCount()}개 ›</b></div>
     <div onclick="go('club');setClubTab('my')" style="display:flex;justify-content:space-between;padding:8px 4px;border-top:1px solid #eceef0;cursor:pointer"><span style="font-weight:700">가입한 클럽</span><b style="color:var(--coral-d)">${clubs}곳 ›</b></div></div>
   <div class="card"><div class="ch">계정</div>
     <div style="font-size:14px;color:var(--gray);font-weight:400;margin-bottom:12px">${state.userName||'곽주영'} 님으로 로그인됨 · 이 기기(브라우저)에 저장돼요</div>
@@ -37307,6 +37402,9 @@ async function submitLounge(){
 let NAV_HIST=[];
 function goBack(){
   /* 안쪽 화면을 보고 있으면 한 단계씩 되돌린다 — 상단 화살표 하나로 통일 */
+  if(state.view==='talk' && (TALK.post||TALK.writing)){
+    TALK.post=null; TALK.writing=0; renderTalkTab(); return;
+  }
   if(HCV){ hcBack(); return; }
   if(state.view==='club' && state.clubOpen){ closeClubPage(); return; }
   const prev=NAV_HIST.pop() || 'home';
@@ -37314,7 +37412,8 @@ function goBack(){
 }
 function updBackBtn(){
   const b=document.getElementById('backBtn');
-  const show = state.view!=='home' || (state.view==='club' && state.clubOpen);
+  const show = state.view!=='home' || (state.view==='club' && state.clubOpen)
+    || (state.view==='talk' && (TALK.post||TALK.writing));
   if(b) b.style.display = show ? 'flex' : 'none';
   // 대화 화면에서는 대화 버튼을 숨긴다 — 이미 와 있는 곳으로 가는 버튼은 혼란만 준다
   const c=document.getElementById('chatBtn');
@@ -37383,7 +37482,9 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   }
   /* 다른 탭으로 가면 홈코트에서 나온다 — 돌아왔을 때 지도가 남아 있으면
      클럽 탭을 눌렀는데 클럽이 안 보인다. hcOpen 이 부르는 go 는 건드리지 않는다. */
-  if(HCV && v!=='club' ) { HCV=null; HCSTACK=[]; }
+  if(HCV && v!=='club' && v!=='talk') { HCV=null; HCSTACK=[]; }
+  /* 구장톡 탭을 누르면 우리 홈구장의 구장톡부터 — 지도를 통과시키지 않는다 */
+  if(v==='talk'){ HCV=null; HCSTACK=[]; }
   if(!isBack && state.view && state.view!==v){
     NAV_HIST.push(state.view);
     if(NAV_HIST.length>10) NAV_HIST.shift();
@@ -37406,7 +37507,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(v==='club' && SERVER_OK && clubId()){ loadClubServer().then(ok=>{ if(ok) renderClub(); }); }
   if(v==='home'){ try{ loadMyNext(); }catch(e){} }      // 홈으로 올 때마다 오늘 대진을 새로
   try{
-    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
+    ({home:renderHome,league:renderLeague,club:renderClub,bracket:renderBracket,match:renderMatch,duel:renderApps,sched:renderSched,talk:renderTalkTab,lounge:renderLounge,chat:renderChat,me:renderMe})[v]();
   }catch(e){ try{ toast(`화면 오류(${v}): ${String(e.message).slice(0,60)}`); }catch(_){} }
   saveMatsu();
 }
@@ -37759,6 +37860,9 @@ function navBackStep(){
   const nd=document.getElementById('notifDrop');
   if(ov && ov.classList.contains('on')){ closeOv(); return true; }
   if(nd){ closeNotifDrop(); return true; }
+  if(state.view==='talk' && (TALK.post||TALK.writing)){
+    TALK.post=null; TALK.writing=0; renderTalkTab(); return true;
+  }
   /* 홈코트 안이면 한 칸씩 되짚는다 — 기기 뒤로가기가 탭을 통째로 벗어나면
      지도까지 들어온 사람이 클럽 탭 밖으로 튕긴다. */
   if(HCV){ hcBack(); return true; }
