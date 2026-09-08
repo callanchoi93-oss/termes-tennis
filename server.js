@@ -8589,7 +8589,111 @@ try {
     body TEXT, created_at INTEGER)`);
   db.exec('CREATE INDEX IF NOT EXISTS ix_cc_post ON court_comments(post_id, created_at)');
 } catch (e) { console.error('[schema court_talk]', e.message); }
+/* ALTER 는 두 번째 실행부터 <이미 있다>고 던진다 — 하나로 묶으면 뒤엣것이 건너뛰어진다 */
+try { db.exec('ALTER TABLE court_posts ADD COLUMN anon INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE court_comments ADD COLUMN anon INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE court_posts ADD COLUMN cat TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE court_posts ADD COLUMN views INTEGER DEFAULT 0'); } catch (e) {}
+/* 조회수 — 같은 사람이 열 번 들어와도 한 번으로 센다.
+   안 그러면 글쓴이가 자기 글을 새로고침하는 것만으로 <오늘의 픽>에 오른다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_views (
+    post_id INTEGER, user_id INTEGER, at INTEGER,
+    PRIMARY KEY(post_id, user_id))`);
+} catch (e) { console.error('[schema court_views]', e.message); }
 
+/* 말머리 — 두 톡의 목록이 다르다.
+   구장톡은 한 코트를 같이 쓰는 사람들끼리라 <분실물>처럼 그 코트에서만 통하는 게 있고,
+   전국톡은 모르는 사람들이 만나는 자리라 주제가 넓다. */
+const CAT_COURT = [
+  { k: 'state', n: '코트 상태' }, { k: 'seat', n: '빈자리·모집' },
+  { k: 'match', n: '교류전 제안' }, { k: 'cost', n: '예약·비용' },
+  { k: 'lost', n: '분실물' }, { k: 'chat', n: '잡담' },
+];
+const CAT_ALL = [
+  { k: 'chat', n: '잡담' }, { k: 'gear', n: '장비' },
+  { k: 'review', n: '코트 후기' }, { k: 'lesson', n: '레슨·강습' },
+  { k: 'tour', n: '대회·리그' }, { k: 'used', n: '중고·나눔' },
+  { k: 'injury', n: '부상·고민' }, { k: 'newbie', n: '초보 질문' },
+];
+const catName = (scope, k) => {
+  const hit = (scope === 'all' ? CAT_ALL : CAT_COURT).find(c => c.k === k);
+  return hit ? hit.n : '';
+};
+
+/* ── 익명 닉네임 ──────────────────────────────────────────────
+   이름만 가리고 클럽은 남긴다. 클럽까지 가리면 무책임한 말이 늘고,
+   옆 코트 클럽과 얘기하는 자리라는 성격도 사라진다.
+
+   <익명1·익명2> 로는 대화가 안 된다. 사람마다 고정된 이름이 있어야
+   댓글에서 누가 원글쓴이인지 알 수 있다.
+
+   같은 코트에서는 늘 같은 이름, 다른 코트에서는 다른 이름이다.
+   코트마다 같은 이름을 쓰면 여러 코트를 넘나들며 한 사람을 따라갈 수 있다.
+
+   40 × 42 × 42 = 70,560 가지. 두 칸으로 이만큼 만들려면 각 목록이 265개씩
+   필요한데, 그만큼 쓰면 억지스러운 말이 섞인다. 칸을 하나 늘렸다. */
+const NICK_A = ['조용한','끈질긴','묵직한','느긋한','날쌘','깊은','침착한','화끈한','부지런한','담백한',
+  '은근한','단단한','유연한','성실한','과감한','정확한','가벼운','낮은','빠른','꾸준한',
+  '무던한','태연한','여유로운','재빠른','다부진','알뜰한','신중한','대범한','소탈한','살가운',
+  '진득한','야무진','시원한','촘촘한','노련한','상냥한','무심한','우직한','반듯한','씩씩한'];
+const NICK_B = ['새벽','아침','한낮','저녁','한밤','주말','평일','월요일','수요일','금요일',
+  '봄날','여름밤','가을','겨울','장마','첫눈','바람','햇살','그늘','소나기',
+  '안개','노을','실내','야외','클레이','하드코트','잔디','옆코트','뒷코트','센터코트',
+  '베이스라인','네트앞','듀스코트','애드코트','왼손','오른손','양손','원핸드','투핸드','사이드',
+  '코너','야간'];
+const NICK_C = ['드롭샷','랠리','스매시','로브','발리','크로스','슬라이스','톱스핀','백핸드','포핸드',
+  '리턴','에이스','서브','패싱샷','앵글샷','하프발리','오버헤드','문볼','듀스','타이브레이크',
+  '풋워크','스텝','스윙','팔로스루','토스','그립','스트링','라켓','텐션','러닝샷',
+  '다운더라인','드라이브','언더스핀','사이드스핀','백스윙','리시브','브레이크','러브게임','매치포인트','세트포인트',
+  '네트플레이','킥서브'];
+const NICK_TOTAL = NICK_A.length * NICK_B.length * NICK_C.length;
+
+/* 한 번 정해진 이름은 바꾸지 않는다 — 겹쳐서 옆으로 밀린 이름도 그대로 남아야
+   어제 대화하던 사람과 오늘 같은 사람인 걸 알 수 있다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_nicks (
+    venue_id INTEGER, user_id INTEGER, nick TEXT,
+    made_at INTEGER,
+    PRIMARY KEY(venue_id, user_id))`);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_cn_nick ON court_nicks(venue_id, nick)');
+} catch (e) { console.error('[schema court_nicks]', e.message); }
+
+function nickOf(index) {
+  const c = index % NICK_C.length;
+  const b = Math.floor(index / NICK_C.length) % NICK_B.length;
+  const a = Math.floor(index / (NICK_C.length * NICK_B.length)) % NICK_A.length;
+  return `${NICK_A[a]} ${NICK_B[b]} ${NICK_C[c]}`;
+}
+function courtNick(venueId, userId) {
+  const had = db.prepare('SELECT nick FROM court_nicks WHERE venue_id=? AND user_id=?')
+    .get(venueId, userId);
+  if (had) return had.nick;
+  /* 사람과 코트를 섞어 자리를 정한다 — 앱에는 완성된 이름만 나간다 */
+  const h = crypto.createHash('sha256')
+    .update(`${userId}:${venueId}:${process.env.JWT_SECRET || 'matsu'}`).digest();
+  let idx = h.readUInt32BE(0) % NICK_TOTAL;
+  /* 이미 쓰이는 조합이면 다음 자리로 — 한 코트에 7만 명이 올 일은 없으니 곧 빈자리가 나온다 */
+  for (let i = 0; i < 50; i++) {
+    const nick = nickOf((idx + i) % NICK_TOTAL);
+    try {
+      db.prepare('INSERT INTO court_nicks (venue_id,user_id,nick,made_at) VALUES (?,?,?,?)')
+        .run(venueId, userId, nick, now());
+      return nick;
+    } catch (e) { /* 그 이름은 이미 쓰인다 */ }
+  }
+  return nickOf(idx) + ' ' + (userId % 100);
+}
+/* 글·댓글 한 줄을 화면에 나갈 모양으로 다듬는다 */
+function talkWho(row, venueId, uid) {
+  /* 규칙을 바꾸기 전에 실명으로 쌓인 글도 같은 규칙을 따른다 —
+     어제 글만 실명이면 그 사람만 드러난다. */
+  row.who = courtNick(venueId || row.venue_id, row.user_id);
+  row.anon = 1;
+  row.mine = (uid && row.user_id === uid) ? 1 : 0;   // 내 글이면 지울 수 있게
+  delete row.user_id;
+  return row;
+}
 /* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
 function atCourt(uid, venueId) {
   return !!db.prepare(`SELECT 1 FROM venue_clubs vc
@@ -8663,18 +8767,37 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   if (scope === 'court' && !atCourt(req.uid, vid))
     return res.json({ scope, locked: true, posts: [], venue: v.name || '', clubs: who,
       message: '이 구장을 홈으로 건 클럽만 보이는 공간이에요' });
+  /* 말머리로 거른다 — 없으면 전체 */
+  const cat = String(req.query.cat || '').trim();
+  const catSql = cat ? ' AND p.cat=? ' : '';
   const rows = scope === 'court'
-    ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,
-        c.name club, u.name who FROM court_posts p
+    ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
+        p.cat,p.views, c.name club, u.name who FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
-        WHERE p.venue_id=? AND p.scope='court'
-        ORDER BY p.created_at DESC LIMIT 50`).all(vid)
-    : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,
-        c.name club, u.name who, v.name venue FROM court_posts p
+        WHERE p.venue_id=? AND p.scope='court' ${catSql}
+        ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
+    : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
+        p.cat,p.views, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
-        WHERE p.scope='all' ORDER BY p.created_at DESC LIMIT 50`).all();
-  res.json({ scope, locked: false, posts: rows.map(postRow), venue: v.name || '', clubs: who });
+        WHERE p.scope='all' ${catSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
+  rows.forEach(r => { r.cat_name = catName(scope, r.cat); });
+  /* 전국톡은 코트가 저마다 달라 글쓴이의 홈구장 기준으로 이름을 만든다 */
+  const posts = rows.map(r => talkWho(postRow(r), r.venue_id || vid, req.uid));
+  /* 내가 이 코트에서 어떤 이름으로 보이는지 — 글쓰기 화면에서 미리 보여준다 */
+  const myNick = courtNick(vid, req.uid);
+  /* 오늘의 픽 — 사람이 고르는 자리를 만들어두면 매일 같은 글이 박혀 있게 된다.
+     최근 이레 안에서 많이 읽힌 순으로 자동으로 뽑는다. 아무도 안 만져도 굴러간다. */
+  let picks = [];
+  if (scope === 'all') {
+    picks = db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.views,p.cat,p.venue_id,p.user_id,
+        v.name venue, v.sigungu FROM court_posts p LEFT JOIN venues v ON v.id=p.venue_id
+      WHERE p.scope='all' AND p.created_at > ? AND p.views > 0
+      ORDER BY p.views DESC LIMIT 3`).all(Date.now() - 7 * 864e5);
+    picks.forEach(p => { p.cat_name = catName('all', p.cat); talkWho(p, p.venue_id, req.uid); });
+  }
+  res.json({ scope, locked: false, posts, venue: v.name || '', clubs: who, my_nick: myNick,
+    cats: scope === 'all' ? CAT_ALL : CAT_COURT, picks, total: rows.length });
 });
 
 app.post('/venues/:id/talk', auth, (req, res) => {
@@ -8687,8 +8810,13 @@ app.post('/venues/:id/talk', auth, (req, res) => {
   const title = String(b.title || '').trim().slice(0, 60);
   const body = String(b.body || '').trim().slice(0, 2000);
   if (!body) return res.status(400).json({ error: 'empty' });
-  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,created_at)
-    VALUES (?,?,?,?,?,?,?)`).run(vid, cid, req.uid, scope, title || null, body, now());
+  /* 구장톡은 통째로 익명이다 — 고르게 두면 스위치가 늘 켜진 채로 남아
+     아무 뜻 없는 버튼이 된다. 클럽 이름은 그대로 보이니 책임은 남는다. */
+  /* 말머리는 목록에 있는 값만 받는다 — 앱이 아무 문자열이나 보내도 표에 안 들어가게 */
+  const list = scope === 'all' ? CAT_ALL : CAT_COURT;
+  const cat = list.some(c => c.k === b.cat) ? b.cat : list[list.length - 1].k;
+  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,anon,cat,created_at)
+    VALUES (?,?,?,?,?,?,1,?,?)`).run(vid, cid, req.uid, scope, title || null, body, cat, now());
   res.json({ ok: true, id: rid(r) });
 });
 
@@ -8698,10 +8826,20 @@ app.get('/talk/:pid/comments', auth, (req, res) => {
   if (!p) return res.status(404).json({ error: 'no_post' });
   if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
     return res.status(403).json({ error: 'not_at_court' });
-  res.json(db.prepare(`SELECT cc.id,cc.body,cc.created_at,cc.user_id,
+  const author = db.prepare('SELECT user_id FROM court_posts WHERE id=?').get(pid).user_id;
+  /* 글을 열 때 조회로 센다 — 댓글을 부르는 시점이 곧 글을 여는 시점이다.
+     같은 사람은 한 번만. 두 번째부터는 INSERT 가 막혀 조용히 지나간다. */
+  try {
+    db.prepare('INSERT INTO court_views (post_id,user_id,at) VALUES (?,?,?)').run(pid, req.uid, now());
+    db.prepare('UPDATE court_posts SET views=COALESCE(views,0)+1 WHERE id=?').run(pid);
+  } catch (e) { /* 이미 본 글 */ }
+  const rows = db.prepare(`SELECT cc.id,cc.body,cc.created_at,cc.user_id,cc.anon,
     u.name who, c.name club FROM court_comments cc
     LEFT JOIN users u ON u.id=cc.user_id LEFT JOIN clubs c ON c.id=cc.club_id
-    WHERE cc.post_id=? ORDER BY cc.created_at`).all(pid));
+    WHERE cc.post_id=? ORDER BY cc.created_at`).all(pid);
+  /* 글쓴이 표시 — 이름이 고정이라야 댓글에서 누가 원글쓴이인지 알 수 있다 */
+  rows.forEach(r => { r.mine_post = (r.user_id === author) ? 1 : 0; });
+  res.json(rows.map(r => talkWho(r, p.venue_id, req.uid)));
 });
 
 app.post('/talk/:pid/comments', auth, (req, res) => {
@@ -8712,8 +8850,8 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
     return res.status(403).json({ error: 'not_at_court' });
   const body = String(b.body || '').trim().slice(0, 1000);
   if (!body) return res.status(400).json({ error: 'empty' });
-  const r = db.prepare(`INSERT INTO court_comments (post_id,user_id,club_id,body,created_at)
-    VALUES (?,?,?,?,?)`).run(pid, req.uid, +b.club_id || null, body, now());
+  const r = db.prepare(`INSERT INTO court_comments (post_id,user_id,club_id,body,anon,created_at)
+    VALUES (?,?,?,?,1,?)`).run(pid, req.uid, +b.club_id || null, body, now());
   res.json({ ok: true, id: rid(r) });
 });
 
@@ -8762,12 +8900,14 @@ app.get('/venues/:id/detail', auth, (req, res) => {
   let talk = [], talkLocked = true;
   if (atCourt(req.uid, vid)) {
     talkLocked = false;
-    talk = db.prepare(`SELECT p.id,p.title,p.body,p.created_at,c.name club
+    talk = db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.anon,p.user_id,p.cat,p.views,c.name club
       FROM court_posts p LEFT JOIN clubs c ON c.id=p.club_id
       WHERE p.venue_id=? AND p.scope='court'
       ORDER BY p.created_at DESC LIMIT 2`).all(vid);
     talk.forEach(p => {
       p.comments = db.prepare('SELECT COUNT(*) n FROM court_comments WHERE post_id=?').get(p.id).n;
+      p.cat_name = catName('court', p.cat);
+      talkWho(p, vid, req.uid);
     });
   }
   res.json({
@@ -8795,6 +8935,34 @@ app.post('/venues/:id/kind', auth, (req, res) => {
   if (!ok) return res.status(403).json({ error: 'not_allowed' });
   db.prepare('UPDATE venues SET kind=? WHERE id=?').run(k, vid);
   res.json({ ok: true, kind: k });
+});
+
+/* 지우기 — 쓴 사람과, 그 구장에 홈을 건 클럽의 운영진이 지울 수 있다.
+   익명이라 화면에는 누군지 안 보이지만 서버는 알고 있다. */
+app.delete('/talk/:pid', auth, (req, res) => {
+  const pid = +req.params.pid;
+  const p = db.prepare('SELECT user_id, venue_id FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post' });
+  const officer = !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
+    WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
+    .get(p.venue_id, req.uid);
+  if (p.user_id !== req.uid && !officer) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM court_comments WHERE post_id=?').run(pid);
+  db.prepare('DELETE FROM court_posts WHERE id=?').run(pid);
+  res.json({ ok: true });
+});
+
+app.delete('/talk/comments/:cid', auth, (req, res) => {
+  const cid = +req.params.cid;
+  const c = db.prepare(`SELECT cc.user_id, p.venue_id FROM court_comments cc
+    JOIN court_posts p ON p.id=cc.post_id WHERE cc.id=?`).get(cid);
+  if (!c) return res.status(404).json({ error: 'no_comment' });
+  const officer = !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
+    WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
+    .get(c.venue_id, req.uid);
+  if (c.user_id !== req.uid && !officer) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('DELETE FROM court_comments WHERE id=?').run(cid);
+  res.json({ ok: true });
 });
 
 /* 우리 클럽 땅 요약 */
