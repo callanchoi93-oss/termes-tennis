@@ -2050,9 +2050,11 @@
   .lvs{ margin-top:12px }
   .lv{ display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line) }
   .lv:first-child{ border-top:none }
-  .lv .sq{ width:20px;height:20px;flex:none;border-radius:50% }
   .lv .c{ flex:1;min-width:0 }
+  /* 우리 코트만 코랄 글씨 — 동그라미를 없앤 자리를 글씨 색이 맡는다 */
   .lv .c b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.03em }
+  .lv.mine .c b{ color:var(--coral-d) }
+  .lv.mine .c span{ color:var(--coral-d);opacity:.75 }
   .lv .c span{ display:block;font-size:13.5px;color:var(--lgray);margin-top:2px }
   .lv .r{ flex:none;font-size:15px;font-weight:700;color:var(--coral-d) }
   .lnone{ text-align:center;color:var(--lgray);font-size:16px;padding:28px 10px;line-height:1.75 }
@@ -2066,7 +2068,6 @@
   /* 아직 안 간 구장 — 거리를 옆에 붙여 <갈 만한가> 를 바로 판단하게 */
   .lpin em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);
     padding-left:5px;margin-left:1px;border-left:1px solid #e6eaee }
-  .lv .sq.nearsq{ background:#cfd6dd }
   /* ── 홈코트 페이지 머리 ──
      뒤로는 ‹, 나가기는 ×. 한 버튼에 겹쳐 두면 닫으려던 사람이 한 칸 뒤로 간다. */
   .hcp-top{ margin:0 0 12px }
@@ -2277,7 +2278,6 @@
     border-top:1px solid #f4f3ef;cursor:pointer }
   .cwv:first-child{ border-top:none }
   .cwv:active{ background:var(--felt) }
-  .cwv .sq{ width:18px;height:18px;flex:none;border-radius:50% }
   .cwv .c{ flex:1;min-width:0 }
   .cwv .c b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em }
   .cwv .c span{ display:block;font-size:13px;color:var(--lgray);margin-top:2px }
@@ -2380,14 +2380,7 @@
   .ws .x{ position:absolute;right:3px;top:3px;width:22px;height:22px;border-radius:50%;
     background:rgba(20,22,20,.6);color:#fff;font-size:15px;line-height:22px;
     text-align:center;cursor:pointer }
-  .ws.add{ display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    border:1.5px dashed var(--line);background:#fff;cursor:pointer }
-  .ws.add span{ font-size:12px;color:var(--lgray) }
-  .ws.add i{ width:20px;height:20px;display:block;background:var(--lgray);
-    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
-    -webkit-mask-size:contain;mask-size:contain;
-    -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='15' rx='2.5'/><circle cx='9' cy='10.5' r='1.8'/><path d='M3 17l5-4 4 3 3-2.5 6 4.5'/></svg>");
-    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='15' rx='2.5'/><circle cx='9' cy='10.5' r='1.8'/><path d='M3 17l5-4 4 3 3-2.5 6 4.5'/></svg>") }
+  /* 더하기 칸은 아래 도구줄로 갔다 — 여기는 고른 사진만 보여준다 */
   .tkfab{ position:sticky;bottom:78px;margin:14px 0 0 auto;width:50px;height:50px;
     border-radius:50%;background:var(--coral);cursor:pointer;
     display:flex;align-items:center;justify-content:center;
@@ -2426,9 +2419,12 @@
   .po .r{ display:flex;align-items:center;gap:8px }
   .po .r span{ flex:1;font-size:15px;line-height:1.5 }
   .po .r em{ flex:none;font-style:normal;font-size:13px;color:var(--lgray) }
-  .po .ck{ width:17px;height:17px;flex:none;border-radius:50%;border:1.6px solid #d6dade }
-  .po.on .ck{ border-color:var(--coral);background:var(--coral);
-    box-shadow:inset 0 0 0 3px #fff }
+  /* 투표 표시 — 빈 동그라미는 눌러야 하는 자리인지 안 읽힌다.
+     동그라미 안에 체크를 넣으면 <고르는 것>이라는 게 바로 보인다. */
+  .po .ck{ width:21px;height:21px;flex:none;border-radius:50%;border:1.6px solid #d6dade;
+    display:flex;align-items:center;justify-content:center;color:#d6dade }
+  .po .ck svg{ width:13px;height:13px;display:block }
+  .po.on .ck{ border-color:var(--coral);background:var(--coral);color:#fff }
   .po.on .r span{ font-weight:700 }
   .po .bar{ height:4px;border-radius:4px;background:#eef1f4;margin-top:8px;overflow:hidden }
   .po .bar b{ display:block;height:100%;background:var(--coral);border-radius:4px }
@@ -2439,6 +2435,28 @@
   .wtags .tg em{ font-style:normal;color:var(--lgray);margin-left:5px }
   .tgin{ flex:1;min-width:130px;border:none;background:var(--felt);border-radius:10px;
     padding:8px 11px;font-size:13px;font-family:inherit;color:var(--ink);outline:none }
+  /* 글쓰기 도구줄 — 사진·투표는 글을 다 쓴 뒤에 붙이는 것이라 아래에 둔다 */
+  .wbar{ position:sticky;bottom:0;display:flex;align-items:center;gap:16px;
+    background:var(--felt);border-top:1px solid var(--line);
+    margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom)) }
+  .wt{ display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--gray);
+    cursor:pointer;white-space:nowrap }
+  .wt.on{ color:var(--coral-d);font-weight:700 }
+  .wt .ic{ width:19px;height:19px;display:block;background:currentColor;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain }
+  .ic.cam{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M3 8.5h3.5L8 6h8l1.5 2.5H21v11H3z'/><circle cx='12' cy='14' r='3.4'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M3 8.5h3.5L8 6h8l1.5 2.5H21v11H3z'/><circle cx='12' cy='14' r='3.4'/></svg>") }
+  .ic.pic{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='15' rx='2.5'/><circle cx='9' cy='10.5' r='1.8'/><path d='M3 17l5-4 4 3 3-2.5 6 4.5'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='15' rx='2.5'/><circle cx='9' cy='10.5' r='1.8'/><path d='M3 17l5-4 4 3 3-2.5 6 4.5'/></svg>") }
+  /* 투표 — 동그라미 안 체크. 목록 배지와 도구줄이 같은 그림을 쓴다 */
+  .ic.vote{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M8 12.3l2.7 2.7L16 9.6'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M8 12.3l2.7 2.7L16 9.6'/></svg>") }
+  .wgo{ margin-left:auto;flex:none;border:0;border-radius:12px;background:var(--coral);
+    color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:11px 22px;
+    cursor:pointer }
+  .wgo:active{ transform:translateY(1px) }
+  .pchip b{ font-weight:700;color:var(--coral-d) }
   .wtool{ display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;
     border:1px solid var(--line);border-radius:12px;padding:11px 0;
     font-size:13.5px;color:var(--gray);cursor:pointer }
@@ -2576,9 +2594,12 @@
   .lkey i{ width:14px;height:14px;flex:none;display:block;border-radius:50% }
   .lkey .w{ display:block;margin:5px 0 0;color:var(--gray);font-weight:700;
     border-top:1px solid #e6e4de;padding-top:8px }
-  /* 사설 코트 — 공공구장과 색으로 갈라 놓는다 */
-  .lv .sq.privsq{ background:#a9b6f0 }
   .lpin.priv{ color:var(--ink);border:1px solid #a9b6f0 }
+  /* 코트 자리에 찍는 점 — 원 한가운데다 */
+  .ldot{ width:13px;height:13px;border-radius:50%;background:var(--coral);
+    border:2.5px solid #fff;box-shadow:0 1px 4px rgba(20,22,20,.28) }
+  /* 우리 코트 이름표는 점 아래에 매단다 */
+  .lpin.on{ margin-top:11px;border:1px solid #f0997b;color:var(--ink) }
   /* 대표 클럽이 있는 코트 — 이름표에 클럽 이름이 함께 오른다 */
   .lpin b{ font-size:11px;font-weight:700;color:var(--coral-d);padding-left:5px;margin-left:1px;
     border-left:1px solid #e6eaee }
@@ -12050,13 +12071,11 @@ function cwCourtSheet(){
     ${rows===null?`<div class="vnone" style="padding:22px 10px">찾는 중…</div>`
       :(rows.length||kk.length)?`<div class="cwvlist">
         ${rows.map(v=>`<div class="cwv" onclick="cwCourtSet(${v.id},'${esc(v.name)}')">
-          <span class="sq" style="background:${kindClr(v.kind)}"></span>
           <span class="c"><b>${esc(v.name)}</b>
             <span>${esc([v.sigungu||v.sido, kindKo(v.kind), v.indoor?'실내':''].filter(Boolean).join(' · '))}</span></span>
         </div>`).join('')}
         ${kk.length?`<div class="cwvh">우리 목록에 없는 곳</div>
           ${kk.map(v=>`<div class="cwv" onclick="cwCourtNew('${esc(v.kakao_id)}')">
-            <span class="sq" style="background:${kindClr(v.kind)}"></span>
             <span class="c"><b>${esc(v.name)}</b>
               <span>${esc([v.addr, kindKo(v.kind)].filter(Boolean).join(' · '))}</span></span>
             <span class="add">추가</span></div>`).join('')}`:''}
@@ -16138,17 +16157,6 @@ async function chDecline(id){
 let LAND=null, LAND_MINE_ONLY=false, LAND_MAP=null, LAND_SHAPES=[], LAND_NEAR=[], LAND_KAKAO=[],
     LAND_PINS=[], LAND_VENUE=null, LAND_SEASONS=null;
 
-/* 칸 색은 <어느 클럽이냐>가 아니라 <그 코트에서 몇 번 이겼냐>를 말한다.
-   클럽마다 색을 돌려쓰면 색이 아무 뜻이 없어서, 지도를 봐도 어디가 센 코트인지
-   알 수가 없었다. 승수를 색으로 옮기면 진한 칸이 곧 뺏기 어려운 코트다.
-
-   규모는 색에 같이 넣지 않는다. 한 축에 둘을 겹치면 둘 다 안 읽힌다.
-   규모는 칸의 크기로 간다 — 큰 클럽이 쓰는 코트는 둘레가 넓다. */
-const LAND_TIERS=[
-  {min:0, c:'#f6c9b4', t:'아직 못 이김'},
-  {min:1, c:'#f1946a', t:'1~2승'},
-  {min:3, c:'#e2612a', t:'3~5승'},
-  {min:6, c:'#a83c14', t:'6승 이상'}];
 const LAND_GRAY='#c3cbd4';
 
 /* 코트 성격 — source(어디서 주워 왔나)가 아니라 kind(가서 칠 수 있나)를 쓴다.
@@ -16156,7 +16164,6 @@ const LAND_GRAY='#c3cbd4';
    <용인시립골드테니스장 · 사설> 이 나오고 있었다.
    학교·아파트를 사설로 묶으면 예약해볼까 하고 헛걸음하게 된다. */
 const KIND_KO={ public:'공공', private:'사설', school:'학교', apt:'아파트' };
-const KIND_CLR={ public:'#7d93b8', private:'#a9b6f0', school:'#8bb89a', apt:'#c9a97d' };
 function kindKo(k){ return KIND_KO[k]||''; }
 /* 실내·실외 면수를 한 줄로 — 한 구장에 둘 다 있는 곳이 흔한데
    indoor 는 참·거짓 하나뿐이라 담을 데가 없었다. 그래서 바닥 칸에 적어 넣고
@@ -16177,13 +16184,13 @@ function courtFace(v){
   if(o) return '실외';
   return v.indoor?'실내':'실외';
 }
-function kindClr(k){ return KIND_CLR[k]||'#cfd6dd'; }
+/* kindClr 은 지웠다 — 목록에서 동그라미를 없애면서 부르는 데가 없어졌다. */
 
-function landTier(wins){
-  let out=LAND_TIERS[0];
-  LAND_TIERS.forEach(t=>{ if((wins||0)>=t.min) out=t; });
-  return out;
-}
+/* 색으로 승수를 말하던 걸 걷어냈다.
+   <아직 못 이김> 같은 말은 처음 쓰는 사람에게 아무 뜻이 없고,
+   네 단계 색을 외워야 지도를 읽을 수 있다는 것 자체가 잘못이었다.
+   색은 하나로 두고, 크기와 진하기만 남긴다. */
+function landTier(){ return {c:'#f1631a'}; }
 
 
 /* 카카오 지도는 볼 때 받아온다 — 앱에 넣지 않으니 크기가 안 늘어난다 */
@@ -16245,8 +16252,7 @@ function landPageHtml(){
       <button class="landre" id="landRe" onclick="landHere()">
         <i></i>이 지역에서 다시 찾기</button>
     </div>
-    <div class="lkey">${LAND_TIERS.map(t=>`<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}
-      <span class="w">원 크기는 클럽 규모</span></div>
+    <div class="lkey"><span class="w">원 크기는 클럽 규모예요 · 진한 원이 우리 코트</span></div>
     <div class="landsheet">
       <div class="lhd"><span class="n">${d.flags||0}<em>곳</em></span>
         <span class="dd">${d.my_rank?`<b>${esc(d.region||'')}에서 ${d.my_rank}번째</b>`:'아직 순위가 없어요'}<br>
@@ -16260,8 +16266,7 @@ function landPageHtml(){
           <span class="v">${r.venues||0}곳</span></div>`).join('')}
       </div>` : ''}
       ${(d.venues||[]).length ? `<div class="lvs">${d.venues.slice(0,6).map(v=>`
-        <div class="lv" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
-          <span class="sq" style="background:${landTier(v.wins||0).c}"></span>
+        <div class="lv mine" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
           <span class="c"><b>${esc(v.name)}</b>
             <span>${v.is_home?'우리 홈':`${v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳'}`}</span></span>
           <span class="r">${v.radius_m?`${(v.radius_m/1000).toFixed(1)}km`:''}</span></div>`).join('')}</div>`
@@ -16423,18 +16428,19 @@ async function landDraw(){
     const owners=byVenue[v.id]||[]; if(!owners.length) return;
     const top=owners.sort((a,b)=>b.depth-a.depth)[0];
     const rep=(m.reps||{})[v.id];
-    const col=landTier(rep?rep.wins:0).c;
     const isMine=(rep&&rep.club_id===myId2)||top.club_id===myId2;
+    const col='#f1631a';                    // 색은 하나 — 진하기로만 우리 것을 가른다
     /* 옅어지는 중이면 흐리게 — 지도에 시간이 담긴다 */
     const fade = (!top.is_home && top.days_left!=null && top.days_left<120);
     const R = top.radius_m || Math.round(nearestGap(v, near)/2*1000) || 800;
     const pos=new kakao.maps.LatLng(v.lat,v.lng);
     /* 안쪽이 진하고 바깥으로 갈수록 옅어진다 */
+    const base = isMine ? 1 : 0.45;
     [[1,.20],[0.68,.16],[0.38,.14]].forEach(([k,op],i)=>{
       const c=new kakao.maps.Circle({center:pos, radius:R*k,
         strokeWeight:i===0?(isMine?2:1):0, strokeColor:col,
         strokeOpacity:fade?.25:(isMine?.75:.4),
-        fillColor:col, fillOpacity:fade?op*0.4:op});
+        fillColor:col, fillOpacity:(fade?op*0.4:op)*base});
       c.setMap(LAND_MAP); LAND_SHAPES.push(c);
     });
   });
@@ -16492,21 +16498,28 @@ function landPins(near, byVenue, clubIdx, reps){
     if(rep) w+=String(rep.name).length*10+16;
     let pt=null; try{ pt=pj&&pj.containerPointFromCoords(pos); }catch(e){}
     if(!fits(pt,w)) return;
-    let content;
+    let content, mine=false;
     if(v._k){
       content=`<div class="lpin priv" onclick="landKakaoOpen('${esc(v.kakao_id)}')">
         <span>${esc(label)}</span><em>${dist}</em></div>`;
     } else if(!owners.length){
-      /* 대표 클럽이 있으면 이름표에 함께 올린다 — 지도만 봐도 누구 코트인지 안다 */
       content=`<div class="lpin${rep?' rep':' empty'}" onclick="landVenue(${v.id})">
         <span>${esc(label)}</span>${rep?`<b>${esc(rep.name)}</b>`:''}<em>${dist}</em></div>`;
     } else {
-      const top=owners.sort((a,b)=>b.depth-a.depth)[0];
-      const col=landTier(rep?rep.wins:0).c;
-      content=`<div class="lpin" style="--c:${col}" onclick="landVenue(${v.id})">
-        <i></i><span>${esc(label)}</span>${rep?`<b>${esc(rep.name)}</b>`:''}</div>`;
+      mine=true;
+      content=`<div class="lpin on" onclick="landVenue(${v.id})">
+        <span>${esc(label)}</span>${rep?`<b>${esc(rep.name)}</b>`:''}</div>`;
     }
-    const ov=new kakao.maps.CustomOverlay({position:pos, content, yAnchor:.5, clickable:true});
+    /* 점은 코트 자리에 따로 찍고 이름표는 그 아래에 매단다.
+       점을 이름표 안에 넣었더니 알약이 가운데 정렬되면서 점이 왼쪽으로 밀려
+       원 한가운데가 아닌 것처럼 보였다. */
+    if(mine){
+      const dot=new kakao.maps.CustomOverlay({position:pos, content:'<div class="ldot"></div>',
+        yAnchor:.5, xAnchor:.5, zIndex:3});
+      dot.setMap(LAND_MAP); LAND_PINS.push(dot);
+    }
+    const ov=new kakao.maps.CustomOverlay({position:pos, content,
+      yAnchor:mine?0:.5, xAnchor:.5, clickable:true});
     ov.setMap(LAND_MAP); LAND_PINS.push(ov);
   });
 }
@@ -16518,11 +16531,19 @@ function landNearList(){
   const list=(LAND_NEAR||[]).slice(0,5);
   if(!list.length){ box.innerHTML=''; return; }
   box.innerHTML=`<div class="lrh" style="margin:16px 0 2px">가까운 테니스장</div>
-    ${list.map(v=>`<div class="lv" onclick="${v._k?`landKakaoOpen('${esc(v.kakao_id)}')`:`landVenue(${v.id})`}" style="cursor:pointer">
-      <span class="sq" style="background:${v.wins?landTier(v.wins).c:kindClr(v.kind)}"></span>
+    /* 이름 앞 동그라미를 없앴다 — 성격은 곁줄에 <용인시 · 사설> 이라고 글자로 이미 있는데
+       동그라미가 같은 말을 색으로 한 번 더 했다. 색과 뜻을 짝지어 외워야 읽히는 것도
+       지도에서 방금 없앤 것과 같은 문제다. 우리 코트만 코랄 글씨로 가른다. */
+    ${list.map(v=>{
+      const mine=(LAND&&LAND.venues||[]).some(x=>x.venue_id===v.id);
+      const sub=[v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '),
+        v.indoor?'실내':'', kindKo(v.kind)].filter(Boolean).join(' · ');
+      return `<div class="lv${mine?' mine':''}"
+        onclick="${v._k?`landKakaoOpen('${esc(v.kakao_id)}')`:`landVenue(${v.id})`}" style="cursor:pointer">
       <span class="c"><b>${esc(v.name)}</b>
-        <span>${esc(v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '))}${v.indoor?' · 실내':''}${kindKo(v.kind)?` · ${kindKo(v.kind)}`:''}${v.wins?` · ${v.wins}승`:''}</span></span>
-      <span class="r near">${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</span></div>`).join('')}`;
+        <span>${mine?'우리 홈 · ':''}${esc(sub)}</span></span>
+      <span class="r near">${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</span></div>`;
+    }).join('')}`;
 }
 /* 지도에서 구장을 누르면 — 빈 타임이 있으면 바로 잡을 수 있게 한다.
    지금은 지도를 보고 나서 예약 탭에 가서 그 구장을 다시 찾아야 했다. */
@@ -16911,7 +16932,7 @@ function talkBodyHtml(){
           <span class="n">${esc(p.who||'익명')}</span>
           ${t.scope==='all'&&p.club?`<span class="s">${esc(p.club)}</span>`:''}
         </div>
-        ${p.has_poll?`<div class="pchip"><i class="ic poll"></i>투표 ${p.poll_n}명</div>`:''}
+        ${p.has_poll?`<div class="pchip"><i class="ic vote"></i>투표 <b>${p.poll_n}명</b></div>`:''}
         <div class="mt">
           <span><i class="ic eye"></i>${p.views||0}</span>
           <span><i class="ic rct"></i>${p.react_n||0}</span>
@@ -16974,8 +16995,8 @@ function openTalkWrite(seed, bodyText){
 function catNameOf(k){ const c=(TALK.cats||[]).find(x=>x.k===k); return c?c.n:'잡담'; }
 
 function talkWriteHtml(seed){
-  /* .inp 은 이 앱에 없는 클래스였다 — 스타일이 하나도 안 걸려서
-     브라우저 기본 입력창 두 개가 나란히 떴다. 앱이 쓰는 .fld 규격에 맞춘다. */
+  /* .inp 은 이 앱에 없는 클래스였다 — 앱이 쓰는 .fld 규격에 맞춘다.
+     익명 스위치는 뺐다. 구장톡은 통째로 익명이라 끌 수 없는 스위치는 화면만 차지한다. */
   const cat=TALK.wcat||'chat';
   const club=myClubName();
   return `<div class="tknick">
@@ -17007,13 +17028,10 @@ function talkWriteHtml(seed){
         placeholder="# 태그입력 (최대 5개)" onkeydown="tagKey(event)">`:''}
     </div>
 
-    <div class="wshots">
-      ${(TALK.photos||[]).map((u,i)=>`<div class="ws">
+    ${(TALK.photos||[]).length?`<div class="wshots">
+      ${TALK.photos.map((u,i)=>`<div class="ws">
         <img src="${esc(u)}" alt=""><span class="x" onclick="talkPhotoDel(${i})">×</span></div>`).join('')}
-      ${(TALK.photos||[]).length<10?`<label class="ws add">
-        <input type="file" accept="image/*" multiple onchange="talkPhotoPick(this)" hidden>
-        <i></i><span>사진</span></label>`:''}
-    </div>
+    </div>`:''}
 
     ${(TALK.poll||[]).length?`<div class="wpoll">
       <div class="ph"><b>투표</b>
@@ -17028,9 +17046,22 @@ function talkWriteHtml(seed){
       ${TALK.poll.length<6?`<div class="padd" onclick="pollAdd()">
         <i></i>항목 더하기</div>`:''}
       <div class="pnote">한 사람이 하나만 고를 수 있어요 · 고른 뒤에는 못 바꿔요</div>
-    </div>`:`<div class="wtool" onclick="pollOn()"><i class="ic poll"></i>투표 넣기</div>`}
+    </div>`:''}
 
-    <button class="btn" style="margin-top:16px" onclick="submitTalk()">${TALK.editing?'고치기':'등록'}</button>`;
+    <div style="height:26px"></div>
+    <!-- 도구줄을 아래에 붙인다 — 사진과 투표는 글을 다 쓴 뒤에 붙이는 것이라
+         본문 사이에 끼워 두면 쓰는 흐름이 끊긴다. -->
+    <div class="wbar">
+      <label class="wt">
+        <input type="file" accept="image/*" capture="environment" onchange="talkPhotoPick(this)" hidden>
+        <i class="ic cam"></i>카메라</label>
+      <label class="wt">
+        <input type="file" accept="image/*" multiple onchange="talkPhotoPick(this)" hidden>
+        <i class="ic pic"></i>사진${(TALK.photos||[]).length?` ${TALK.photos.length}`:''}</label>
+      <div class="wt${(TALK.poll||[]).length?' on':''}" onclick="${(TALK.poll||[]).length?'pollOff()':'pollOn()'}">
+        <i class="ic vote"></i>투표</div>
+      <button class="wgo" onclick="submitTalk()">${TALK.editing?'고치기':'등록'}</button>
+    </div>`;
 }
 function myClubName(){ return state.activeClub||''; }
 /* 사진 — 클럽 소식과 같은 길을 쓴다. 줄여서 올리고 주소만 글에 담는다.
@@ -17252,7 +17283,9 @@ function pollHtml(pid, pl){
     ${pl.opts.map((o,i)=>{
       const pct = voted && pl.total ? Math.round((o.n||0)/pl.total*100) : 0;
       return `<div class="po${pl.mine===i?' on':''}" onclick="${voted?'':`vote(${pid},${i})`}">
-        <div class="r"><i class="ck"></i><span>${esc(o.t)}</span>
+        <div class="r"><i class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5l4 4 8-8.5"/></svg></i>
+          <span>${esc(o.t)}</span>
           <em>${voted?`${o.n}명`:'?'}</em></div>
         <div class="bar"><b style="width:${pct}%"></b></div></div>`;
     }).join('')}
