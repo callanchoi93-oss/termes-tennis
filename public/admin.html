@@ -1513,6 +1513,29 @@ function addBotRow(){
 }
 
 /* ── 구장 ── 넷을 한 화면 안쪽 탭으로 */
+/* 공공데이터 CSV 를 통째로 넣는다 — 테니스장만 골라 담는다 */
+async function vnImport(btn){
+  const el=document.getElementById('vnCsv');
+  const csv=(el&&el.value||'').trim();
+  if(!csv) return toast('CSV를 붙여넣어 주세요');
+  if(btn){ btn.disabled=true; btn.textContent='넣는 중…'; }
+  try{
+    const r=await api('/admin/venues/import',{method:'POST',body:JSON.stringify({csv})});
+    if(r.error) toast(r.error);
+    else toast(`${r.added}곳 넣었어요${r.skipped?` · 이미 있던 ${r.skipped}곳은 건너뜀`:''}`);
+  }catch(e){ toast('넣지 못했어요'); }
+  render();
+}
+/* 주소를 좌표로 바꾼다 — 한 번에 200곳씩, 남으면 다시 누르면 된다 */
+async function vnGeocode(btn){
+  if(btn){ btn.disabled=true; btn.textContent='채우는 중…'; }
+  try{
+    const r=await api('/admin/venues/geocode',{method:'POST',body:'{}'});
+    if(r.error) toast(r.error);
+    else toast(`${r.ok}곳 채웠어요${r.left?` · ${r.left}곳 남음`:' · 다 됐어요'}`);
+  }catch(e){ toast('채우지 못했어요'); }
+  render();
+}
 async function drawVenues(){
   const sub=SUB||'list';
   /* 바깥 탭이 이미 <구장>이라 안쪽 첫 칸은 <목록>으로 둔다 — 같은 말이 두 번 보이면 헷갈린다 */
@@ -1520,6 +1543,9 @@ async function drawVenues(){
   const ep={list:'/admin/venues', book:'/admin/venue-bookings',
             slots:'/admin/venue-slots', pay:'/admin/venue-payouts/by-venue'}[sub];
   const rows=await api(ep).catch(()=>[]);
+  /* 구장이 몇 곳이고 좌표가 몇 곳에 있는지 — 비어 있으면 도전장에서 구장을 못 고른다 */
+  let st=null;
+  if(sub==='list'){ try{ st=await api('/admin/venues/stats'); }catch(e){} }
   const line=r=>{
     if(sub==='list') return [`${esc(r.name)}`,
       `#${r.id} · ${esc([r.sido,r.sigungu].filter(Boolean).join(' ')||r.addr||'주소 없음')} · 코트 ${(r.courts||[]).length}면`, ''];
@@ -1532,7 +1558,32 @@ async function drawVenues(){
   /* 구장은 목록만 보여주고 고칠 길이 없었다 — 이름·주소·전화를 여기서 바로 고친다.
      서버에 PATCH /admin/venues/:id 가 이미 있는데 화면이 안 쓰고 있었다. */
   const editable = (sub==='list');
-  $('app').innerHTML=shell(subTabs(tabs)+
+  const head = st ? `
+    <div class="kpi">
+      <div><b class="${st.total<50?'hot':''}">${fmt(st.total)}</b><span>등록된 구장</span></div>
+      <div><b class="${st.geo<st.total?'hot':''}">${fmt(st.geo)}</b><span>좌표 있음</span></div>
+      <div><b>${fmt(st.used)}</b><span>모임에 쓰인 곳</span></div>
+      <div><b>${fmt(st.exchanges)}</b><span>교류전</span></div>
+    </div>
+    ${st.total<50 ? `<div class="warn"><b>구장이 ${st.total}곳뿐이에요</b> ·
+      도전장에서 고를 구장이 없으면 교류전이 안 열려요</div>
+      <div class="card"><div class="ct">공공데이터 넣기</div>
+        <div class="note" style="margin:6px 0 8px">공공데이터포털에서
+          <b>전국 공공체육시설 현황</b> CSV를 받아 통째로 붙여넣으세요 ·
+          <b>테니스장만</b> 골라 담아요</div>
+        <textarea id="vnCsv" placeholder="시설명,종목,소재지도로명주소,위도,경도&#10;..." 
+          style="width:100%;box-sizing:border-box;height:90px;border:1px solid var(--line);
+          border-radius:10px;padding:9px;font-size:var(--t1);font-family:ui-monospace,monospace"></textarea>
+        <button style="margin-top:8px" onclick="vnImport(this)">넣기</button>
+      </div>` : ''}
+    ${st.geo<st.total ? `<div class="rw"><span class="nm">
+      <b>좌표가 없는 구장 ${fmt(st.total-st.geo)}곳</b>
+      <span>지도에 안 그려져요 · 주소가 있는 곳만 채울 수 있어요</span></span>
+      <button onclick="vnGeocode(this)">좌표 채우기</button></div>` : ''}
+    ${(st.sido||[]).length ? `<div class="card"><div class="ct">시도별</div>
+      ${st.sido.map(x=>`<div class="rw"><span class="nm"><b>${esc(x.sido||'없음')}</b></span>
+        <span>${fmt(x.n)}곳</span></div>`).join('')}</div>` : ''}` : '';
+  $('app').innerHTML=shell(subTabs(tabs)+ head +
     (editable?`<div class="card flat"><div class="ct">구장 추가</div>
       <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
         <input id="vn" placeholder="구장 이름" style="flex:1;border:1px solid var(--line);border-radius:10px;
@@ -1593,6 +1644,9 @@ async function drawStaff(){
   const tabs=[['staff','스태프'],['mgrs','매니저'],['venue','구장 계정']];
   const ep={staff:'/admin/staff-accounts', mgrs:'/admin/managers', venue:'/admin/venue-accounts'}[sub];
   const rows=await api(ep).catch(()=>[]);
+  /* 구장이 몇 곳이고 좌표가 몇 곳에 있는지 — 비어 있으면 도전장에서 구장을 못 고른다 */
+  let st=null;
+  if(sub==='list'){ try{ st=await api('/admin/venues/stats'); }catch(e){} }
   $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(a=>`
     <div class="rw"><div class="nm"><b>${esc(a.name||a.login||a.email||'계정')}
       ${a.grade?`<span class="tag">${esc(a.grade)}</span>`:''}</b>
