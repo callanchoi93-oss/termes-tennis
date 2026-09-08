@@ -7765,6 +7765,11 @@ app.get('/admin/dead-code', admin, (_req, res) => {
 try { db.exec('ALTER TABLE venues ADD COLUMN lat REAL'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN lng REAL'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN indoor INTEGER DEFAULT 0'); } catch (e) {}
+/* 사설 코트는 카카오 장소에서 온다 — 같은 곳을 두 번 앉히지 않게 장소 번호를 들고 있는다.
+   source: public(공공데이터) · kakao(장소검색) · owner(사장님이 직접 낸 곳) */
+try { db.exec('ALTER TABLE venues ADD COLUMN kakao_id TEXT'); } catch (e) {}
+try { db.exec("ALTER TABLE venues ADD COLUMN source TEXT DEFAULT 'public'"); } catch (e) {}
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_venues_kakao ON venues(kakao_id) WHERE kakao_id IS NOT NULL'); } catch (e) {}
 /* 모임이 어느 구장인지 — 지금은 글자로만 적혀 있어 같은 곳인지 알 수 없다 */
 try { db.exec('ALTER TABLE club_events ADD COLUMN venue_id INTEGER'); } catch (e) {}
 
@@ -7935,50 +7940,148 @@ app.get('/admin/venues/stats', admin, (_req, res) => {
 const KAKAO_SIDO = ['서울','부산','대구','인천','광주','대전','울산','세종',
   '경기','강원','충북','충남','전북','전남','경북','경남','제주'];
 
+/* 테니스장이 맞나 — 검색어가 넓어 용품점·아카데미가 잔뜩 섞여 온다 */
+const VENUE_BAD = /용품|샵|숍|스토어|아카데미|레슨|교습|학원|스트링|수리|중고|판매/;
+function isCourtName(name) {
+  const n = String(name || '');
+  return /테니스|정구/.test(n) && !VENUE_BAD.test(n);
+}
+/* 같은 곳인가 — 이름만 보면 안 된다.
+   <시민테니스장> 은 전국에 열 곳이 넘어서, 이름만 맞춰보면
+   부산 것을 넣을 때 서울 것이 이미 있다고 건너뛰어 버린다.
+   이름이 같고 300m 안이면 같은 곳으로 본다. */
+function findVenueDup(name, lat, lng, kakaoId) {
+  const norm = x => String(x || '').replace(/\s/g, '');
+  if (kakaoId) {
+    const k = db.prepare('SELECT id FROM venues WHERE kakao_id=? LIMIT 1').get(String(kakaoId));
+    if (k) return k.id;
+  }
+  const rows = db.prepare(`SELECT id, lat, lng FROM venues
+    WHERE REPLACE(name,' ','')=?`).all(norm(name));
+  if (!rows.length) return null;
+  if (!isFinite(lat) || !isFinite(lng)) return rows[0].id;
+  for (const r of rows) {
+    if (r.lat == null || r.lng == null) return r.id;   // 좌표가 없던 옛 줄 — 같은 곳으로 본다
+    const dLat = (r.lat - lat) * 111, dLng = (r.lng - lng) * 88;
+    if (Math.sqrt(dLat * dLat + dLng * dLng) < 0.3) return r.id;
+  }
+  return null;
+}
+/* 카카오 장소 하나를 구장 표에 앉힌다. 이미 있으면 그 id 를 돌려준다. */
+function upsertKakaoVenue(d) {
+  const name = String(d.place_name || d.name || '').slice(0, 60);
+  const lat = +(d.y != null ? d.y : d.lat), lng = +(d.x != null ? d.x : d.lng);
+  const kid = d.id != null ? String(d.id) : null;
+  if (!name || !isFinite(lat) || !isFinite(lng)) return null;
+  if (!isCourtName(name)) return null;
+  const had = findVenueDup(name, lat, lng, kid);
+  if (had) {
+    /* 공공데이터로 들어와 좌표가 비어 있던 곳이면 여기서 채워준다 */
+    try {
+      db.prepare(`UPDATE venues SET lat=COALESCE(lat,?), lng=COALESCE(lng,?),
+        kakao_id=COALESCE(kakao_id,?) WHERE id=?`).run(lat, lng, kid, had);
+    } catch (e) {}
+    return { id: had, added: false };
+  }
+  const addr = String(d.road_address_name || d.address_name || d.addr || '');
+  const parts = addr.split(/\s+/);
+  const r = db.prepare(`INSERT INTO venues
+    (name,sido,sigungu,addr,lat,lng,indoor,phone,kakao_id,source,active,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,'kakao',1,?)`)
+    .run(name, parts[0] || null, parts[1] || null, addr.slice(0, 120), lat, lng,
+      /실내|돔|인도어|아레나/.test(name) ? 1 : 0,
+      String(d.phone || '').slice(0, 20) || null, kid, now());
+  return { id: r.lastInsertRowid, added: true };
+}
+
+/* 지도에서 방금 찾은 사설 코트를 누를 때 — 우리 표에 없으면 그 자리에서 앉힌다.
+   훑어 담기(admin)를 기다리지 않아도 오늘 문 연 코트에서 모임을 잡을 수 있다. */
+app.post('/venues/from-kakao', auth, (req, res) => {
+  const b = req.body || {};
+  let out = null;
+  try { out = upsertKakaoVenue(b); } catch (e) { return res.status(500).json({ error: e.message }); }
+  if (!out) return res.status(400).json({ error: '테니스장으로 보이지 않아요' });
+  const v = db.prepare('SELECT id,name,addr,lat,lng,indoor,phone,source FROM venues WHERE id=?').get(out.id);
+  res.json({ ok: true, venue: v, added: out.added });
+});
+
+/* 시도마다 대략의 네모 — 검색을 이 안에서 쪼갠다.
+   [서쪽경도, 남쪽위도, 동쪽경도, 북쪽위도] */
+const SIDO_BOX = {
+  서울: [126.76, 37.42, 127.18, 37.70], 부산: [128.80, 34.99, 129.30, 35.39],
+  대구: [128.35, 35.62, 128.76, 36.02], 인천: [126.37, 37.28, 126.79, 37.65],
+  광주: [126.64, 35.05, 127.02, 35.26], 대전: [127.25, 36.18, 127.56, 36.50],
+  울산: [129.05, 35.42, 129.47, 35.75], 세종: [127.14, 36.42, 127.40, 36.72],
+  경기: [126.36, 36.88, 127.84, 38.30], 강원: [127.06, 37.03, 129.38, 38.62],
+  충북: [127.24, 36.00, 128.66, 37.26], 충남: [125.98, 35.98, 127.60, 37.07],
+  전북: [126.30, 35.28, 127.92, 36.15], 전남: [125.06, 34.10, 127.90, 35.50],
+  경북: [127.80, 35.70, 129.60, 37.55], 경남: [127.55, 34.55, 129.25, 35.92],
+  제주: [126.14, 33.10, 126.98, 33.60],
+};
+
 app.post('/admin/venues/search', admin, async (req, res) => {
   const key = process.env.KAKAO_REST_KEY;
   if (!key) return res.json({ error: 'KAKAO_REST_KEY 환경변수가 없어요' });
   const area = String((req.body || {}).area || '').trim();
   if (!area) return res.status(400).json({ error: '지역을 골라주세요' });
 
-  const ins = db.prepare(`INSERT INTO venues (name,sido,sigungu,addr,lat,lng,indoor,phone,active,created_at)
-    VALUES (?,?,?,?,?,?,?,?,1,?)`);
-  const dup = db.prepare(`SELECT id FROM venues WHERE REPLACE(name,' ','')=? LIMIT 1`);
-  const norm = x => String(x || '').replace(/\s/g, '');
-
-  let added = 0, skipped = 0, seen = 0;
-  /* 한 검색어에 최대 45곳(3쪽)까지 준다 — 더 필요하면 검색어를 쪼갠다 */
+  let added = 0, skipped = 0, seen = 0, calls = 0;
   const words = ['테니스장', '테니스클럽', '테니스코트', '실내테니스'];
-  try {
-    for (const w of words) {
-      for (let page = 1; page <= 3; page++) {
-        const url = 'https://dapi.kakao.com/v2/local/search/keyword.json'
-          + `?query=${encodeURIComponent(area + ' ' + w)}&size=15&page=${page}`;
-        const r = await fetch(url, { headers: { Authorization: 'KakaoAK ' + key } });
-        if (!r.ok) break;
-        const j = await r.json();
-        const docs = j.documents || [];
-        seen += docs.length;
-        for (const d of docs) {
-          const name = String(d.place_name || '').slice(0, 60);
-          /* 검색어가 넓어 <테니스 용품점> 같은 것도 섞인다 — 걸러낸다 */
-          if (!/테니스|정구/.test(name)) continue;
-          if (/용품|샵|숍|스토어|아카데미|레슨|교습|학원|스트링/.test(name)) continue;
-          if (dup.get(norm(name))) { skipped++; continue; }
-          const addr = d.road_address_name || d.address_name || '';
-          const parts = addr.split(/\s+/);
-          ins.run(name, parts[0] || null, parts[1] || null, addr.slice(0, 120),
-            +d.y || null, +d.x || null,
-            /실내|돔|인도어/.test(name) ? 1 : 0,
-            String(d.phone || '').slice(0, 20) || null, now());
-          added++;
-        }
-        if (j.meta && j.meta.is_end) break;
-        await new Promise(t => setTimeout(t, 80));   // 카카오 초당 제한
-      }
+  const box = SIDO_BOX[area];
+
+  /* 카카오는 한 검색어에 45곳(3쪽)까지만 준다.
+     <경기 테니스장> 하나로 훑으면 45곳에서 잘려 사설 코트가 대부분 빠졌다 —
+     지도를 네모로 쪼개 각 칸을 따로 물어보고, 45곳을 넘는 칸은 넷으로 또 쪼갠다.
+     쪼개는 건 넘치는 칸만 하니 부르는 횟수는 크게 늘지 않는다. */
+  const ask = async (word, rect, page) => {
+    const q = new URLSearchParams({ query: word, size: '15', page: String(page) });
+    if (rect) q.set('rect', rect.join(','));
+    else q.set('query', area + ' ' + word);
+    calls++;
+    const r = await fetch('https://dapi.kakao.com/v2/local/search/keyword.json?' + q,
+      { headers: { Authorization: 'KakaoAK ' + key } });
+    if (!r.ok) return null;
+    await new Promise(t => setTimeout(t, 60));   // 카카오 초당 제한
+    return r.json();
+  };
+  const take = docs => {
+    seen += docs.length;
+    for (const d of docs) {
+      if (!isCourtName(d.place_name)) continue;
+      /* 네모가 시도 경계를 살짝 넘을 수 있다 — 주소로 한 번 더 거른다 */
+      const addr = String(d.road_address_name || d.address_name || '');
+      if (box && addr && !addr.startsWith(area)) continue;
+      let out = null;
+      try { out = upsertKakaoVenue(d); } catch (e) { continue; }
+      if (!out) continue;
+      if (out.added) added++; else skipped++;
     }
+  };
+  /* 한 칸을 훑는다. 45곳을 넘으면 넷으로 나눠 다시 — 깊이 3까지(한 칸 ≈ 5km). */
+  const sweep = async (word, rect, depth) => {
+    if (calls > 700) return;
+    let over = false;
+    for (let page = 1; page <= 3; page++) {
+      const j = await ask(word, rect, page);
+      if (!j) return;
+      take(j.documents || []);
+      const meta = j.meta || {};
+      if (page === 1 && (meta.pageable_count || 0) >= 45) over = true;
+      if (meta.is_end) break;
+    }
+    if (over && rect && depth < 3) {
+      const [x1, y1, x2, y2] = rect, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      for (const q of [[x1, y1, mx, my], [mx, y1, x2, my], [x1, my, mx, y2], [mx, my, x2, y2]])
+        await sweep(word, q, depth + 1);
+    }
+  };
+
+  try {
+    for (const w of words) await sweep(w, box || null, 0);
   } catch (e) { return res.json({ error: e.message, added, skipped }); }
-  res.json({ ok: true, area, added, skipped, seen,
+  res.json({ ok: true, area, added, skipped, seen, calls,
+    boxed: !!box,
+    private: db.prepare("SELECT COUNT(*) n FROM venues WHERE active=1 AND source='kakao'").get().n,
     total: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1').get().n });
 });
 
@@ -8174,7 +8277,7 @@ app.get('/land/map', auth, (req, res) => {
   const near = (isFinite(lat) && isFinite(lng))
     ? ' AND v.lat BETWEEN ? AND ? AND v.lng BETWEEN ? AND ? ' : '';
   const args = near ? [lat - d, lat + d, lng - d * 1.2, lng + d * 1.2] : [];
-  const venues = db.prepare(`SELECT v.id, v.name, v.lat, v.lng, v.indoor, v.sigungu
+  const venues = db.prepare(`SELECT v.id, v.name, v.lat, v.lng, v.indoor, v.sigungu, v.source
     FROM venues v WHERE v.active=1 AND v.lat IS NOT NULL ${near}
     ORDER BY v.id LIMIT 600`).all(...args);
   const ids = venues.map(v => v.id);
