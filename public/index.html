@@ -2042,6 +2042,18 @@
   .lpin em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);
     padding-left:5px;margin-left:1px;border-left:1px solid #e6eaee }
   .lv .sq.nearsq{ background:#cfd6dd }
+  /* ── 홈코트 페이지 머리 ──
+     뒤로는 ‹, 나가기는 ×. 한 버튼에 겹쳐 두면 닫으려던 사람이 한 칸 뒤로 간다. */
+  .hcp-top{ display:flex;align-items:center;gap:10px;margin:-2px -2px 4px }
+  .hcp-top .bk,.hcp-top .cl{ width:32px;height:32px;flex:none;display:flex;
+    align-items:center;justify-content:center;border-radius:50%;cursor:pointer;
+    font-size:22px;line-height:1;color:var(--gray) }
+  .hcp-top .cl{ font-size:19px }
+  .hcp-top .bk:active,.hcp-top .cl:active{ background:var(--felt) }
+  .hcp-top .ti{ flex:1;min-width:0;text-align:center }
+  .hcp-top .ti b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.03em;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .hcp-top .ti span{ display:block;font-size:11.5px;color:var(--lgray);margin-top:1px }
   /* ── 구장 상세 ── */
   .vname{ font-size:21px;font-weight:800;letter-spacing:-.035em;line-height:1.25;margin-top:2px }
   .vmeta{ display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:5px;
@@ -10643,6 +10655,9 @@ function renderClub(){
      일정에서 교류전을 눌렀을 때, 뒤늦게 도착한 목록 응답이 화면을 덮어써서
      이전 페이지로 돌아간 것처럼 보였다. */
   if(state._xcOpen) return;
+  /* 홈코트는 클럽 탭 안의 한 페이지다 — 시트를 겹쳐 올리지 않는다.
+     시트로 쌓으면 지도 위에 구장, 그 위에 구장톡이 얹혀 뒤로 갈 길이 꼬인다. */
+  if(HCV) return renderHomeCourt();
   /* 첫 진입에서 목록이 비어 있는 경우 — 부팅 때 받아오는 중이거나 아직 시작도 안 했다.
      여기서 한 번 당겨오고, 도착하면 위에서 다시 그린다. */
   if(SERVER_OK && !(state.clubs||[]).length && !renderClub._pull){
@@ -13022,6 +13037,61 @@ async function hcLoad(){
   d.cid=cid; HC=d;
   if(state.view==='club') renderClub();
 }
+/* ══════════ 홈코트 — 클럽 탭 안의 한 페이지 ═══════════════════
+   지도·구장·구장톡을 바텀시트로 쌓았더니 세 겹이 되었다.
+   × 를 누르면 닫히는 대신 아래 시트가 드러나서, 닫으려고 세 번을 눌러야 했다.
+   한 페이지로 펴고 뒤로 가기 한 갈래만 남긴다.
+
+     지도 → 구장 → 구장톡 → 글
+
+   HCV 가 지금 보고 있는 칸이고, HCSTACK 이 지나온 길이다. */
+let HCV=null, HCSTACK=[];
+
+function hcOpen(view, keep){
+  if(HCV && !keep) HCSTACK.push(HCV);
+  HCV=view;
+  const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
+  /* 이미 클럽 탭이면 go 를 부르지 않는다 — go 가 HCV 를 지우고 들어온다 */
+  if(state.view!=='club'){ const v=HCV, st=HCSTACK; go('club'); HCV=v; HCSTACK=st; }
+  renderClub();
+}
+/* 뒤로 — 지나온 칸이 없으면 클럽 탭으로 나간다 */
+function hcBack(){
+  const prev=HCSTACK.pop();
+  HCV=prev||null;
+  const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
+  renderClub();
+}
+/* 나가기 — 몇 겹을 들어왔든 한 번에 클럽 탭으로 */
+function hcExit(){ HCV=null; HCSTACK=[]; renderClub(); }
+
+/* 페이지 머리 — 뒤로는 ‹, 나가기는 ×. 둘을 한 버튼에 겹쳐 두면
+   닫으려던 사람이 한 칸 뒤로 가게 된다. */
+function hcHead(title, sub){
+  return `<div class="hcp-top">
+    <div class="bk" role="button" tabindex="0" onclick="hcBack()">‹</div>
+    <div class="ti"><b>${esc(title)}</b>${sub?`<span>${esc(sub)}</span>`:''}</div>
+    <div class="cl" role="button" tabindex="0" onclick="hcExit()">×</div>
+  </div>`;
+}
+
+function renderHomeCourt(){
+  const el=document.getElementById('s-club'); if(!el) return;
+  const v=HCV||{};
+  let h='';
+  if(v.k==='map')   h=hcHead('홈코트')+`<div id="landPage">${landPageHtml()}</div>`;
+  else if(v.k==='venue') h=hcHead(v.name||'구장','홈코트')+`<div id="venuePage"></div>`;
+  else if(v.k==='talk')  h=hcHead(v.name||'구장톡','구장톡')+`<div id="talkPage"></div>`;
+  else if(v.k==='write') h=hcHead(TALK.scope==='all'?'전국톡에 쓰기':'구장톡에 쓰기')+`<div id="talkPage"></div>`;
+  else if(v.k==='post')  h=hcHead('글','구장톡')+`<div id="talkPage"></div>`;
+  el.innerHTML=h;
+  if(v.k==='map') landPageMount();
+  else if(v.k==='venue') venuePageMount(v.id);
+  else if(v.k==='talk') document.getElementById('talkPage').innerHTML=talkBodyHtml();
+  else if(v.k==='write') document.getElementById('talkPage').innerHTML=talkWriteHtml(v.seed);
+  else if(v.k==='post') talkPostMount(v.id);
+}
+
 /* 받침에 따라 조사를 고른다 — <라온테니스을 넘어요>가 나오면 안 된다.
    한글이 아닌 글자로 끝나면(숫자·영문) 받침 없는 쪽으로 둔다. */
 function josa(word, withJong, withoutJong){
@@ -15535,7 +15605,7 @@ async function chDecline(id){
    진짜 지도 위에 반투명 육각형을 얹는다 — 도로와 지명이 보여야
    <우리 동네구나> 가 온다. */
 let LAND=null, LAND_MINE_ONLY=false, LAND_MAP=null, LAND_SHAPES=[], LAND_NEAR=[], LAND_KAKAO=[],
-    LAND_PINS=[], LAND_VENUE=null;
+    LAND_PINS=[], LAND_VENUE=null, LAND_SEASONS=null;
 
 /* 칸 색은 <어느 클럽이냐>가 아니라 <그 코트에서 몇 번 이겼냐>를 말한다.
    클럽마다 색을 돌려쓰면 색이 아무 뜻이 없어서, 지도를 봐도 어디가 센 코트인지
@@ -15549,6 +15619,15 @@ const LAND_TIERS=[
   {min:3, c:'#e2612a', t:'3~5승'},
   {min:6, c:'#a83c14', t:'6승 이상'}];
 const LAND_GRAY='#c3cbd4';
+
+/* 코트 성격 — source(어디서 주워 왔나)가 아니라 kind(가서 칠 수 있나)를 쓴다.
+   전에는 source==='kakao' 를 사설로 썼는데, 카카오 장소검색은 시립 코트도 주기 때문에
+   <용인시립골드테니스장 · 사설> 이 나오고 있었다.
+   학교·아파트를 사설로 묶으면 예약해볼까 하고 헛걸음하게 된다. */
+const KIND_KO={ public:'공공', private:'사설', school:'학교', apt:'아파트' };
+const KIND_CLR={ public:'#7d93b8', private:'#a9b6f0', school:'#8bb89a', apt:'#c9a97d' };
+function kindKo(k){ return KIND_KO[k]||''; }
+function kindClr(k){ return KIND_CLR[k]||'#cfd6dd'; }
 
 function landTier(wins){
   let out=LAND_TIERS[0];
@@ -15625,18 +15704,22 @@ function nearestGap(v, all){
   return isFinite(best) ? best : 6;
 }
 
+/* 지도 페이지 — 예전엔 시트였다. 시트 위에 구장 시트를 또 올려서
+   × 가 닫기가 아니라 뒤로 가기처럼 굴었다. */
 async function openLand(){
   const cid=clubId();
   if(!SERVER_OK || !cid) return toast('클럽에 가입한 뒤 이용할 수 있어요');
-  let d=null, seasons=null;
-  try{ d=await api(`/clubs/${cid}/land`); }catch(e){ return toast('불러오지 못했어요'); }
-  /* 반기마다 시·도별 1위를 남긴다 — 전국 1위는 몇 년을 해도 못 잡지만
-     <용인시 1위> 는 교류전 두 번이면 바뀐다 */
-  try{ seasons=await api(`/clubs/${cid}/land-seasons`); }catch(e){}
-  LAND=d;
-  const h=`<div class="sh-top"><h3>홈코트</h3>
-      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div id="landMap" class="landmap"></div>
+  try{ LAND=await api(`/clubs/${cid}/land`); }catch(e){ return toast('불러오지 못했어요'); }
+  try{ LAND_SEASONS=await api(`/clubs/${cid}/land-seasons`); }catch(e){ LAND_SEASONS=null; }
+  hcOpen({k:'map'});
+}
+function landPageHtml(){
+  const d=LAND||{}, seasons=LAND_SEASONS;
+  return `<div id="landMap" class="landmap"></div>
+    <button class="landbtn" onclick="landToggleEmpty()">
+      <i></i><span id="landBtnT">${LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기'}</span></button>
+    <div class="lkey">${LAND_TIERS.map(t=>`<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}
+      <span class="w">칸 크기는 클럽 규모</span></div>
     <div class="landsheet">
       <div class="lhd"><span class="n">${d.total||0}<em>칸</em></span>
         <span class="dd">${d.my_rank?`<b>${esc(d.region||'')}에서 ${d.my_rank}번째</b>`:'아직 순위가 없어요'}<br>
@@ -15649,11 +15732,12 @@ async function openLand(){
           <span class="v">${r.cells}칸</span></div>`).join('')}
       </div>` : ''}
       ${(d.venues||[]).length ? `<div class="lvs">${d.venues.slice(0,6).map(v=>`
-        <div class="lv"><span class="sq" style="background:${landTier(v.wins).c}"></span>
+        <div class="lv" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
+          <span class="sq" style="background:${landTier(v.wins||0).c}"></span>
           <span class="c"><b>${esc(v.name)}</b>
             <span>${v.is_home?'우리 홈':`${v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳'}`}</span></span>
           <span class="r">${v.cells}칸</span></div>`).join('')}</div>`
-      : `<div class="lnone" style="padding:18px 10px">아직 차지한 구장이 없어요<br>
+      : `<div class="lnone">아직 차지한 구장이 없어요<br>
           <span>교류전에서 <b>남의 홈에 가서 이기면</b> 그 둘레가 우리 색이 돼요</span></div>`}
       <div id="landNear"></div>
     </div>
@@ -15664,17 +15748,12 @@ async function openLand(){
         <span class="c"><b>${esc(x.season.replace('H1',' 상반기').replace('H2',' 하반기'))}</b>
           <span>${esc(String(x.city||'').split(' ').slice(-1)[0])} 1위</span></span>
         <span class="v">${x.cells}칸</span></div>`).join('')}
-    </div>` : ''}
-    <button class="landbtn" onclick="landToggleEmpty()">
-      <i></i><span id="landBtnT">우리 코트만 보기</span></button>
-    <div class="lkey">${LAND_TIERS.map(t=>`<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}
-      <span class="w">칸 크기는 클럽 규모</span></div>`;
-  document.getElementById('sheet').innerHTML=h;
-  document.getElementById('ov').classList.add('on');
-  LAND_MINE_ONLY=false;
+    </div>` : ''}`;
+}
+async function landPageMount(){
   try{ await loadKakaoMap(); landDraw(); }
-  catch(e){ document.getElementById('landMap').innerHTML=
-    `<div class="lnone" style="padding-top:60px">지도를 불러오지 못했어요<br>
+  catch(e){ const m=document.getElementById('landMap');
+    if(m) m.innerHTML=`<div class="lnone" style="padding-top:60px">지도를 불러오지 못했어요<br>
       <span>${esc(e.message||'')}</span></div>`; }
 }
 
@@ -15701,8 +15780,8 @@ function landCenter(){
   });
 }
 
-/* 카카오 장소 검색으로 주변 사설 코트를 찾는다.
-   공공데이터에 든 819곳은 전부 <공공체육시설>이라 사설 코트가 한 곳도 없다 —
+/* 카카오 장소 검색으로 주변 코트를 찾는다.
+   공공데이터에 든 곳은 전부 <공공체육시설> 목록이라 사설 코트가 한 곳도 없다 —
    실내 코트는 대부분 사설이고 동네에서 실제로 치는 곳은 이쪽이 더 많다.
    서버가 훑어 담기를 기다리지 않고, 지도를 열 때 그 자리에서 물어본다. */
 function kakaoNearbyCourts(lat,lng,km){
@@ -15719,7 +15798,14 @@ function kakaoNearbyCourts(lat,lng,km){
           data.forEach(d=>{
             const n=d.place_name||'';
             if(!/테니스|정구/.test(n) || bad.test(n)) return;
-            out[d.id]={ kakao_id:d.id, name:n, addr:d.road_address_name||d.address_name||'',
+            const ad=d.road_address_name||d.address_name||'';
+            /* 서버가 분류하기 전이라 여기서 같은 규칙으로 미리 가린다 */
+            const t=n+' '+ad;
+            const kd=/학교|대학|캠퍼스/.test(t) ? 'school'
+              : /아파트|APT|힐스테이트|자이|푸르지오|e편한세상|래미안|더샵|아이파크|롯데캐슬/.test(t) ? 'apt'
+              : /시립|구립|군립|도립|국민체육|생활체육|공설|시민|체육공원|근린공원|체육센터|공단/.test(t) ? 'public'
+              : 'private';
+            out[d.id]={ kakao_id:d.id, name:n, addr:ad, kind:kd,
               lat:+d.y, lng:+d.x, phone:d.phone||'',
               indoor:/실내|돔|인도어|아레나/.test(n)?1:0 };
           });
@@ -15730,7 +15816,7 @@ function kakaoNearbyCourts(lat,lng,km){
     });
   });
 }
-/* 지도에서 방금 찾은 사설 코트를 누를 때 — 우리 표에 앉히고 나서 평소 화면을 연다 */
+/* 지도에서 방금 찾은 코트를 누를 때 — 우리 표에 앉히고 나서 평소 화면을 연다 */
 async function landKakaoOpen(kid){
   const p=(LAND_KAKAO||[]).find(x=>x.kakao_id===kid);
   if(!p) return;
@@ -15775,8 +15861,17 @@ async function landDraw(){
   /* 칸(육각형)을 먼저 깔고, 이름표는 지도가 자리를 잡은 뒤에 붙인다.
      한꺼번에 다 찍으면 <용인시립…> 같은 긴 이름끼리 서로를 덮어 아무것도 못 읽는다.
      화면 좌표로 겹치는 이름표를 걸러내면, 확대할수록 가려졌던 게 하나씩 나온다. */
+  /* 화면에 담을 범위 — 가까운 24곳을 다 담으면 제일 먼 곳(15km 넘는 것도 있다)까지
+     들어오느라 축척이 8km 가 되어, 정작 우리 코트가 점만 하게 줄어든다.
+     6km 안쪽만 담고, 그 안에 세 곳이 안 되면 가까운 순으로 다섯 곳까지 넓힌다. */
+  const NEAR_KM=6;
+  let fit=near.filter(v=>v.km<=NEAR_KM);
+  if(fit.length<3) fit=near.slice(0,5);
+  /* 우리 코트는 아무리 멀어도 화면에 있어야 한다 */
+  near.forEach(v=>{ if((byVenue[v.id]||[]).length && fit.indexOf(v)<0) fit.push(v); });
+
   const bounds=new kakao.maps.LatLngBounds();
-  near.forEach(v=>{ if(!(LAND_MINE_ONLY && !(byVenue[v.id]||[]).length))
+  fit.forEach(v=>{ if(!(LAND_MINE_ONLY && !(byVenue[v.id]||[]).length))
     bounds.extend(new kakao.maps.LatLng(v.lat,v.lng)); });
   const myId2=+clubId();
   near.forEach(v=>{
@@ -15863,14 +15958,14 @@ function landNearList(){
   if(!list.length){ box.innerHTML=''; return; }
   box.innerHTML=`<div class="lrh" style="margin:16px 0 2px">가까운 테니스장</div>
     ${list.map(v=>`<div class="lv" onclick="${v._k?`landKakaoOpen('${esc(v.kakao_id)}')`:`landVenue(${v.id})`}" style="cursor:pointer">
-      <span class="sq ${v._k||v.source==='kakao'?'privsq':'nearsq'}"></span>
+      <span class="sq" style="background:${v.wins?landTier(v.wins).c:kindClr(v.kind)}"></span>
       <span class="c"><b>${esc(v.name)}</b>
-        <span>${esc(v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '))}${v.indoor?' · 실내':''}${v._k||v.source==='kakao'?' · 사설':''}${v.wins?` · ${v.wins}승`:''}</span></span>
+        <span>${esc(v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '))}${v.indoor?' · 실내':''}${kindKo(v.kind)?` · ${kindKo(v.kind)}`:''}${v.wins?` · ${v.wins}승`:''}</span></span>
       <span class="r near">${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</span></div>`).join('')}`;
 }
 /* 지도에서 구장을 누르면 — 빈 타임이 있으면 바로 잡을 수 있게 한다.
    지금은 지도를 보고 나서 예약 탭에 가서 그 구장을 다시 찾아야 했다. */
-async function landVenue(vid){
+async function venuePageMount(vid){
   let d=null, cs=null;
   const cid=clubId();
   try{ d=await api(`/venues/${vid}/open-slots`); }catch(e){ d={venue:{},slots:[]}; }
@@ -15880,12 +15975,11 @@ async function landVenue(vid){
   const clubs=(cs&&cs.clubs)||[], top=cs&&cs.top;
   const near=(LAND_NEAR||[]).find(x=>x.id===vid);
   /* 곁줄 — 가운뎃점으로 잇던 걸 작은 동그라미로 바꾼다. 이름이 길 때 줄이 갈려도 읽힌다 */
-  const meta=[v.indoor?'실내':'실외', v.sigungu||'', near?(near.km<1?`${Math.round(near.km*1000)}m`:`${near.km.toFixed(1)}km`):'']
+  const meta=[v.indoor?'실내':'실외', kindKo(v.kind), v.sigungu||'',
+    near?(near.km<1?`${Math.round(near.km*1000)}m`:`${near.km.toFixed(1)}km`):'']
     .filter(Boolean);
 
-  let h=`<div class="sh-top"><h3>홈코트</h3>
-      <div class="cl" role="button" tabindex="0" onclick="openLand()">×</div></div>
-    <div class="vname">${esc(v.name||'구장')}</div>
+  let h=`<div class="vname">${esc(v.name||'구장')}</div>
     <div class="vmeta">${meta.map(x=>`<span>${esc(x)}</span>`).join('<i></i>')}</div>`;
 
   if(clubs.length){
@@ -15933,7 +16027,7 @@ async function landVenue(vid){
   /* 나머지는 아이콘 칸으로 묶는다 — 똑같이 생긴 버튼 넷을 세워두면
      무엇이 주된 행동인지 알 수 없다. */
   h+=`<div class="vacts">
-    <div class="va" onclick="openCourtTalk(${vid})">
+    <div class="va" onclick="openCourtTalk(${vid},'court')">
       <i class="ic talk"></i><span>구장톡</span></div>
     <div class="va" onclick="landMakeEv(${vid},'${esc(v.name||'')}')">
       <i class="ic cal"></i><span>모임 잡기</span></div>
@@ -15957,8 +16051,7 @@ async function landVenue(vid){
     h+=`<div class="vquiet plain">홈구장은 클럽 운영진이 걸 수 있어요</div>`;
   }
 
-  document.getElementById('sheet').innerHTML=h;
-  document.getElementById('ov').classList.add('on');
+  const box=document.getElementById('venuePage'); if(box) box.innerHTML=h;
 }
 /* 홈으로 걸기 · 내려놓기 */
 async function landHomeOn(vid){
@@ -15966,14 +16059,14 @@ async function landHomeOn(vid){
   let r=null;
   try{ r=await api(`/venues/${vid}/home`,{method:'POST',body:JSON.stringify({club_id:cid})}); }
   catch(e){ return toast(e&&e.message==='home_full'?'홈은 2곳까지 걸 수 있어요':'걸지 못했어요'); }
-  toast('홈구장으로 걸었어요'); HC=null; hcLoad(); landVenue(vid);
+  toast('홈구장으로 걸었어요'); HC=null; hcLoad(); venuePageMount(vid);
 }
 async function landHomeOff(vid){
   const cid=clubId(); if(!cid) return;
   if(!confirm('홈구장에서 내려놓을까요? 지분도 함께 빠져요')) return;
   try{ await api(`/venues/${vid}/home?club_id=${cid}`,{method:'DELETE'}); }
   catch(e){ return toast('내려놓지 못했어요'); }
-  toast('내려놓았어요'); HC=null; hcLoad(); landVenue(vid);
+  toast('내려놓았어요'); HC=null; hcLoad(); venuePageMount(vid);
 }
 function fmtSlotDate(d){
   const t=new Date(d+'T00:00:00'); if(isNaN(t)) return d;
@@ -15981,13 +16074,13 @@ function fmtSlotDate(d){
 }
 /* 예약 화면은 이미 있다 — 그 구장을 열어준 뒤 이어서 잡게 한다 */
 function landBook(vid){
-  closeOv();
+  hcExit();
   state.view='venues'; render();
   setTimeout(()=>{ if(typeof vnEnter==='function') vnEnter(vid); }, 60);
 }
 /* 구장을 미리 골라둔 채로 모임 만들기를 연다 */
 function landMakeEv(vid,name,tag){
-  closeOv();
+  hcExit();
   openNewEvent(tag||'정기');
   NE.venue={id:vid, name:name}; NE.place=name; NE.freePlace=false;
   renderNewEvent();
@@ -16004,7 +16097,6 @@ let TALK={vid:null, scope:'court', posts:[], locked:false, venue:'', clubs:[], p
 
 async function openCourtTalk(vid,scope){
   TALK.vid=vid; TALK.scope=scope||'court';
-  const cid=clubId();
   let d=null;
   try{ d=await api(`/venues/${vid}/talk?scope=${TALK.scope}`); }
   catch(e){ return toast('불러오지 못했어요'); }
@@ -16014,36 +16106,33 @@ async function openCourtTalk(vid,scope){
   /* 본 것으로 남긴다 — 클럽 탭의 <새 글> 점이 여기서 꺼진다 */
   if(TALK.scope==='court' && !TALK.locked){
     api(`/venues/${vid}/talk/seen`,{method:'POST',body:'{}'}).then(()=>{
-      if(HC&&HC.unread){ HC.unread=0; if(state.view==='club') renderClub(); }
+      if(HC&&HC.unread){ HC.unread=0; }
     }).catch(()=>{});
   }
   /* 구장톡이 비었을 때 보여줄 전국톡 한 줄 — 빈손으로 내보내지 않는다 */
-  if(TALK.scope==='court' && !TALK.locked && !TALK.posts.length && !(TALK.peek||[]).length){
+  if(TALK.scope==='court' && !TALK.locked && !TALK.posts.length){
     try{ const a=await api(`/venues/${vid}/talk?scope=all`); TALK.peek=(a.posts||[]).slice(0,1); }
     catch(e){ TALK.peek=[]; }
   }
-  renderCourtTalk();
+  /* 탭을 바꾸는 것뿐이면 길을 더 쌓지 않는다 — 뒤로 갈 때 탭을 되짚게 된다 */
+  const same = HCV && HCV.k==='talk' && HCV.id===vid;
+  hcOpen({k:'talk', id:vid, name:TALK.venue}, same);
 }
-function renderCourtTalk(){
-  const t=TALK, cid=clubId();
+
+function talkBodyHtml(){
+  const t=TALK;
   const tab=(k,label)=>`<div class="tkt${t.scope===k?' on':''}"
     onclick="openCourtTalk(${t.vid},'${k}')">${label}</div>`;
-  let h=`<div class="sh-top"><h3>${esc(t.venue||'구장톡')}</h3>
-      <div class="cl" role="button" tabindex="0" onclick="landVenue(${t.vid})">×</div></div>
-    <div class="tktabs">${tab('court','구장톡')}${tab('all','전국톡')}</div>`;
+  let h=`<div class="tktabs">${tab('court','구장톡')}${tab('all','전국톡')}</div>`;
 
   /* 잠긴 화면 — 아직 이 구장에 홈을 안 걸었다.
      막다른 길로 두지 않는다. 전국톡은 잠기지 않으니 그쪽 길을 낸다. */
   if(t.locked){
-    h+=`<div class="tklock">
+    return h+`<div class="tklock">
       <div class="ic"></div>
       우리 클럽은 이 구장을 홈으로 걸지 않았어요<br>
       <span>운영진이 홈구장으로 걸면 이곳이 열려요</span></div>
-      <button class="btn ghost" onclick="openCourtTalk(${t.vid},'all')">전국톡 보기</button>
-      <div class="vquiet"><span onclick="landVenue(${t.vid})">구장 화면으로</span></div>`;
-    document.getElementById('sheet').innerHTML=h;
-    document.getElementById('ov').classList.add('on');
-    return;
+      <button class="btn ghost" onclick="openCourtTalk(${t.vid},'all')">전국톡 보기</button>`;
   }
 
   /* 누가 여기 있는지 먼저 보여준다 — 글이 없어도 빈 방으로 느껴지지 않게 */
@@ -16078,7 +16167,6 @@ function renderCourtTalk(){
         </div></div>`).join('')}</div>`;
   }
 
-  /* 구장톡이 비어 있어도 빈손으로 나가지 않게 전국톡 한 줄을 미리 보여준다 */
   if(t.scope==='court' && !t.posts.length && (t.peek||[]).length){
     const p=t.peek[0];
     h+=`<div class="tkpeek">
@@ -16088,21 +16176,15 @@ function renderCourtTalk(){
       <div class="pm">${esc(p.club||'')}${p.club?' · ':''}${timeAgo(p.created_at)}${p.comments?` · 댓글 ${p.comments}`:''}</div>
     </div>`;
   }
-  document.getElementById('sheet').innerHTML=h;
-  document.getElementById('ov').classList.add('on');
+  return h;
 }
 
-function openTalkWrite(seed){
-  const t=TALK;
-  document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${t.scope==='all'?'전국톡':'구장톡'}에 쓰기</h3>
-      <div class="cl" role="button" tabindex="0" onclick="renderCourtTalk()">×</div></div>
-    <input id="tkTitle" class="inp" placeholder="제목 (없어도 돼요)" maxlength="60"
+function openTalkWrite(seed){ hcOpen({k:'write', seed:seed||''}); }
+function talkWriteHtml(seed){
+  return `<input id="tkTitle" class="inp" placeholder="제목 (없어도 돼요)" maxlength="60"
       value="${esc(seed||'')}">
-    <textarea id="tkBody" class="inp ta" rows="7" placeholder="무슨 얘기를 나눌까요"></textarea>
+    <textarea id="tkBody" class="inp ta" rows="8" placeholder="무슨 얘기를 나눌까요"></textarea>
     <button class="btn" style="margin-top:12px" onclick="submitTalk()">올리기</button>`;
-  document.getElementById('ov').classList.add('on');
-  setTimeout(()=>{ const b=document.getElementById('tkBody'); if(b) b.focus(); },80);
 }
 async function submitTalk(){
   const t=TALK;
@@ -16112,16 +16194,18 @@ async function submitTalk(){
   try{ await api(`/venues/${t.vid}/talk`,{method:'POST',
     body:JSON.stringify({scope:t.scope, club_id:clubId(), title, body})}); }
   catch(e){ return toast('올리지 못했어요'); }
+  HCSTACK.pop();                       // 쓰기 칸은 지나온 길에서 뺀다
   openCourtTalk(t.vid, t.scope);
 }
 
-async function openTalkPost(pid){
+function openTalkPost(pid){ hcOpen({k:'post', id:pid}); }
+async function talkPostMount(pid){
   const p=(TALK.posts||[]).find(x=>x.id===pid); if(!p) return;
   let cs=[];
   try{ cs=await api(`/talk/${pid}/comments`)||[]; }catch(e){}
-  document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${esc(p.title||'구장톡')}</h3>
-      <div class="cl" role="button" tabindex="0" onclick="renderCourtTalk()">×</div></div>
+  const box=document.getElementById('talkPage'); if(!box) return;
+  box.innerHTML=`
+    ${p.title?`<div class="vname">${esc(p.title)}</div>`:''}
     <div class="tkhead">${p.club?`<span class="cl">${esc(p.club)}</span>`:''}
       <span class="ag">${timeAgo(p.created_at)}</span></div>
     <div class="tkbody">${esc(p.body||'').replace(/\n/g,'<br>')}</div>
@@ -16133,7 +16217,6 @@ async function openTalkPost(pid){
       :`<div class="vnone" style="padding:18px 10px">아직 댓글이 없어요</div>`}
     <textarea id="tkCm" class="inp ta" rows="3" placeholder="댓글 남기기"></textarea>
     <button class="btn" style="margin-top:8px" onclick="submitComment(${pid})">올리기</button>`;
-  document.getElementById('ov').classList.add('on');
 }
 async function submitComment(pid){
   const body=(document.getElementById('tkCm')||{}).value||'';
@@ -16141,7 +16224,7 @@ async function submitComment(pid){
   try{ await api(`/talk/${pid}/comments`,{method:'POST',
     body:JSON.stringify({body, club_id:clubId()})}); }
   catch(e){ return toast('올리지 못했어요'); }
-  openTalkPost(pid);
+  talkPostMount(pid);
 }
 
 function landToggleEmpty(){
@@ -16149,6 +16232,12 @@ function landToggleEmpty(){
   const t=document.getElementById('landBtnT'); if(t) t.textContent=LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기';
   const b=document.querySelector('.landbtn'); if(b) b.classList.toggle('on', LAND_MINE_ONLY);
   landDraw();
+}
+/* 지도에서 구장을 누르면 그 구장 페이지로 — 시트를 덮어씌우지 않는다 */
+function landVenue(vid){
+  const v=(LAND_NEAR||[]).find(x=>x.id===vid) ||
+    ((LAND&&LAND.venues)||[]).find(x=>x.venue_id===vid) || {};
+  hcOpen({k:'venue', id:vid, name:v.name||'구장'});
 }
 
 /* ── 안 나오는 회원 ────────────────────────────────────────────────
@@ -36951,6 +37040,9 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
     /* 탭으로 들어오면 항상 목록부터. 상세에 머물러 있으면 다른 클럽을 못 찾는다 */
     if(!isBack) state.clubOpen=null;
   }
+  /* 다른 탭으로 가면 홈코트에서 나온다 — 돌아왔을 때 지도가 남아 있으면
+     클럽 탭을 눌렀는데 클럽이 안 보인다. hcOpen 이 부르는 go 는 건드리지 않는다. */
+  if(HCV && v!=='club' ) { HCV=null; HCSTACK=[]; }
   if(!isBack && state.view && state.view!==v){
     NAV_HIST.push(state.view);
     if(NAV_HIST.length>10) NAV_HIST.shift();
@@ -37326,6 +37418,9 @@ function navBackStep(){
   const nd=document.getElementById('notifDrop');
   if(ov && ov.classList.contains('on')){ closeOv(); return true; }
   if(nd){ closeNotifDrop(); return true; }
+  /* 홈코트 안이면 한 칸씩 되짚는다 — 기기 뒤로가기가 탭을 통째로 벗어나면
+     지도까지 들어온 사람이 클럽 탭 밖으로 튕긴다. */
+  if(HCV){ hcBack(); return true; }
   if(NAV_HIST.length){ goBack(); return true; }
   if(state.view!=='home'){ go('home', true); return true; }
   return false;
