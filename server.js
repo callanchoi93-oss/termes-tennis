@@ -7786,12 +7786,16 @@ const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수
 /* 한 구장에 클럽이 하나만 있는 게 아니다 — 같은 코트를 대여섯 클럽이 나눠 쓴다.
    운영진이 <여기가 우리 홈> 이라고 걸면 그 구장의 지분 다툼에 들어간다.
    지분이 가장 큰 클럽이 그 구장의 <대표 클럽> 으로 지도에 오른다. */
-db.exec(`CREATE TABLE IF NOT EXISTS venue_clubs (
-  venue_id INTEGER, club_id INTEGER,
-  set_by INTEGER,                 -- 건 사람 (운영진)
-  set_at INTEGER,
-  PRIMARY KEY(venue_id, club_id))`);
-db.exec('CREATE INDEX IF NOT EXISTS ix_vc_club ON venue_clubs(club_id)');
+/* 스키마 생성은 반드시 감싼다 — 여기서 던지면 라우트가 하나도 안 붙어
+   앱 전체가 안 뜬다. 기능 하나가 죽는 편이 서버가 죽는 것보다 낫다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS venue_clubs (
+    venue_id INTEGER, club_id INTEGER,
+    set_by INTEGER,               -- 건 사람 (운영진)
+    set_at INTEGER,
+    PRIMARY KEY(venue_id, club_id))`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_vc_club ON venue_clubs(club_id)');
+} catch (e) { console.error('[schema venue_clubs]', e.message); }
 
 const HOME_MAX = 2;               // 한 클럽이 걸 수 있는 홈 구장 수
 
@@ -7826,7 +7830,9 @@ function homeVenues(clubId) {
 const SHARE_BASE = 10, SHARE_SIZE = 4, SHARE_EVENT = 1, SHARE_WIN = 12;
 const SHARE_EV_DAYS = 182, SHARE_WIN_DAYS = 365, SHARE_ACT_DAYS = 90;
 
-function activeMembers(clubId, since) {
+/* 지분에 쓰는 <활동 인원> — 최근 3개월에 모임에 한 번이라도 나온 사람 수.
+   위쪽 activeMembers() 는 명부 인원(요금제 한도용)이라 뜻이 다르다. 이름을 갈라 둔다. */
+function shareActiveMembers(clubId, since) {
   try {
     return db.prepare(`SELECT COUNT(DISTINCT ea.user_id) n
       FROM event_attendees ea JOIN club_events e ON e.id=ea.event_id
@@ -7881,7 +7887,7 @@ function venueShares(venueId) {
   rows.forEach(r => {
     r.events = evMap[r.club_id] || 0;
     r.wins = winMap[r.club_id] || 0;
-    r.size = activeMembers(r.club_id, t - SHARE_ACT_DAYS * 864e5);
+    r.size = shareActiveMembers(r.club_id, t - SHARE_ACT_DAYS * 864e5);
     r.score = SHARE_BASE + SHARE_SIZE * Math.sqrt(r.size)
       + SHARE_EVENT * r.events + SHARE_WIN * r.wins;
   });
@@ -8468,19 +8474,21 @@ app.delete('/venues/:id/home', auth, (req, res) => {
    같은 코트를 쓰는 클럽끼리는 서로를 모른다.
    화요일 저녁마다 옆 코트에서 치는 사람들인데 말을 섞을 데가 없었다.
    구장톡은 그 구장에 홈을 건 클럽만 보이고, 전국톡은 모두 본다. */
-db.exec(`CREATE TABLE IF NOT EXISTS court_posts (
-  id INTEGER PRIMARY KEY,
-  venue_id INTEGER,               -- 전국톡이면 글쓴이의 홈 구장 (어디서 왔는지 딱지용)
-  club_id INTEGER, user_id INTEGER,
-  scope TEXT DEFAULT 'court',     -- court(그 구장 클럽만) · all(전국)
-  title TEXT, body TEXT,
-  created_at INTEGER)`);
-db.exec('CREATE INDEX IF NOT EXISTS ix_cp_venue ON court_posts(venue_id, scope, created_at)');
-db.exec('CREATE INDEX IF NOT EXISTS ix_cp_scope ON court_posts(scope, created_at)');
-db.exec(`CREATE TABLE IF NOT EXISTS court_comments (
-  id INTEGER PRIMARY KEY, post_id INTEGER, user_id INTEGER, club_id INTEGER,
-  body TEXT, created_at INTEGER)`);
-db.exec('CREATE INDEX IF NOT EXISTS ix_cc_post ON court_comments(post_id, created_at)');
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_posts (
+    id INTEGER PRIMARY KEY,
+    venue_id INTEGER,             -- 전국톡이면 글쓴이의 홈 구장 (어디서 왔는지 딱지용)
+    club_id INTEGER, user_id INTEGER,
+    scope TEXT DEFAULT 'court',   -- court(그 구장 클럽만) · all(전국)
+    title TEXT, body TEXT,
+    created_at INTEGER)`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_cp_venue ON court_posts(venue_id, scope, created_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS ix_cp_scope ON court_posts(scope, created_at)');
+  db.exec(`CREATE TABLE IF NOT EXISTS court_comments (
+    id INTEGER PRIMARY KEY, post_id INTEGER, user_id INTEGER, club_id INTEGER,
+    body TEXT, created_at INTEGER)`);
+  db.exec('CREATE INDEX IF NOT EXISTS ix_cc_post ON court_comments(post_id, created_at)');
+} catch (e) { console.error('[schema court_talk]', e.message); }
 
 /* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
 function atCourt(uid, venueId) {
