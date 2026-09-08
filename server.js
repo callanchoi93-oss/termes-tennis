@@ -7770,6 +7770,40 @@ try { db.exec('ALTER TABLE venues ADD COLUMN indoor INTEGER DEFAULT 0'); } catch
 try { db.exec('ALTER TABLE venues ADD COLUMN kakao_id TEXT'); } catch (e) {}
 try { db.exec("ALTER TABLE venues ADD COLUMN source TEXT DEFAULT 'public'"); } catch (e) {}
 try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_venues_kakao ON venues(kakao_id) WHERE kakao_id IS NOT NULL'); } catch (e) {}
+
+/* 코트의 성격 — source 와는 다른 값이다.
+   source 는 <어디서 주워 왔나>이고 kind 는 <가서 칠 수 있는 곳인가>다.
+   카카오 장소검색은 시립 코트도 같이 주기 때문에, source='kakao' 를 사설로 쓰면
+   <용인시립골드테니스장 · 사설> 이 된다. 실제로 그렇게 나오고 있었다.
+
+   공공/사설 둘로만 가르지 않는다. 학교와 아파트 코트는 남이 가서 칠 수 없는데
+   사설로 묶어두면 <예약해볼까> 하고 헛걸음하게 된다. */
+try { db.exec("ALTER TABLE venues ADD COLUMN kind TEXT") } catch (e) {}
+
+const KIND_SCHOOL = /학교|대학|캠퍼스|교육청|유치원/;
+const KIND_APT = /아파트|아파트단지|APT|힐스테이트|자이|푸르지오|e편한세상|이편한세상|래미안|더샵|아이파크|롯데캐슬|스카이뷰|리버파크|한신|주공|빌리지|타운/;
+const KIND_PUBLIC = /시립|구립|군립|도립|국민체육|생활체육|공설|시민|체육공원|근린공원|체육센터|올림픽|월드컵|스포츠타운|문화체육|종합운동장|공단|주민센터|복지관|청소년/;
+
+function venueKind(name, addr) {
+  const t = `${name || ''} ${addr || ''}`;
+  if (KIND_SCHOOL.test(t)) return 'school';
+  if (KIND_APT.test(t)) return 'apt';
+  if (KIND_PUBLIC.test(t)) return 'public';
+  return 'private';
+}
+/* 한 번 훑어 채운다 — 공공데이터로 들어온 줄은 목록 자체가 공공체육시설이라
+   이름이 무엇이든 공공으로 둔다. 나머지는 이름으로 가린다. */
+try {
+  const rows = db.prepare('SELECT id,name,addr,source FROM venues WHERE kind IS NULL').all();
+  if (rows.length) {
+    const up = db.prepare('UPDATE venues SET kind=? WHERE id=?');
+    db.transaction(list => list.forEach(v => {
+      const k = (v.source === 'public') ? 'public' : venueKind(v.name, v.addr);
+      up.run(k, v.id);
+    }))(rows);
+    console.log(`[venue kind] ${rows.length}곳 분류`);
+  }
+} catch (e) { console.error('[venue kind]', e.message); }
 /* 모임이 어느 구장인지 — 지금은 글자로만 적혀 있어 같은 곳인지 알 수 없다 */
 try { db.exec('ALTER TABLE club_events ADD COLUMN venue_id INTEGER'); } catch (e) {}
 
@@ -8092,11 +8126,11 @@ function upsertKakaoVenue(d) {
   const addr = String(d.road_address_name || d.address_name || d.addr || '');
   const parts = addr.split(/\s+/);
   const r = db.prepare(`INSERT INTO venues
-    (name,sido,sigungu,addr,lat,lng,indoor,phone,kakao_id,source,active,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,'kakao',1,?)`)
+    (name,sido,sigungu,addr,lat,lng,indoor,phone,kakao_id,source,kind,active,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,'kakao',?,1,?)`)
     .run(name, parts[0] || null, parts[1] || null, addr.slice(0, 120), lat, lng,
       /실내|돔|인도어|아레나/.test(name) ? 1 : 0,
-      String(d.phone || '').slice(0, 20) || null, kid, now());
+      String(d.phone || '').slice(0, 20) || null, kid, venueKind(name, addr), now());
   return { id: r.lastInsertRowid, added: true };
 }
 
@@ -8107,7 +8141,7 @@ app.post('/venues/from-kakao', auth, (req, res) => {
   let out = null;
   try { out = upsertKakaoVenue(b); } catch (e) { return res.status(500).json({ error: e.message }); }
   if (!out) return res.status(400).json({ error: '테니스장으로 보이지 않아요' });
-  const v = db.prepare('SELECT id,name,addr,lat,lng,indoor,phone,source FROM venues WHERE id=?').get(out.id);
+  const v = db.prepare('SELECT id,name,addr,lat,lng,indoor,phone,source,kind FROM venues WHERE id=?').get(out.id);
   res.json({ ok: true, venue: v, added: out.added });
 });
 
@@ -8187,7 +8221,8 @@ app.post('/admin/venues/search', admin, async (req, res) => {
   } catch (e) { return res.json({ error: e.message, added, skipped }); }
   res.json({ ok: true, area, added, skipped, seen, calls,
     boxed: !!box,
-    private: db.prepare("SELECT COUNT(*) n FROM venues WHERE active=1 AND source='kakao'").get().n,
+    kinds: db.prepare(`SELECT COALESCE(kind,'?') k, COUNT(*) n FROM venues
+      WHERE active=1 GROUP BY k`).all(),
     total: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1').get().n });
 });
 
@@ -8198,6 +8233,23 @@ app.get('/admin/venues/areas', admin, (_req, res) => {
   const have = {};
   rows.forEach(r => { KAKAO_SIDO.forEach(s => { if (String(r.sido).startsWith(s)) have[s] = (have[s] || 0) + r.n; }); });
   res.json(KAKAO_SIDO.map(s => ({ area: s, n: have[s] || 0 })));
+});
+
+/* 코트가 얼마나·어떻게 들어와 있나 — 사설이 실제로 담겼는지 눈으로 볼 자리.
+   공공데이터만 넣고 훑어 담기를 안 돌리면 사설이 0곳인데, 지도만 봐서는 모른다. */
+app.get('/admin/venues/kinds', admin, (_req, res) => {
+  const q = sql => { try { return db.prepare(sql).all(); } catch (e) { return []; } };
+  res.json({
+    total: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1').get().n,
+    geocoded: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1 AND lat IS NOT NULL').get().n,
+    by_kind: q(`SELECT COALESCE(kind,'?') k, COUNT(*) n FROM venues
+      WHERE active=1 GROUP BY k ORDER BY n DESC`),
+    by_source: q(`SELECT COALESCE(source,'?') s, COUNT(*) n FROM venues
+      WHERE active=1 GROUP BY s ORDER BY n DESC`),
+    /* 시도별 사설 수 — 훑어 담기를 안 돌린 지역이 여기서 0 으로 드러난다 */
+    private_by_sido: q(`SELECT COALESCE(sido,'?') sido, COUNT(*) n FROM venues
+      WHERE active=1 AND kind='private' GROUP BY sido ORDER BY n DESC LIMIT 20`),
+  });
 });
 
 /* 좌표 채우기 — 주소를 카카오 지도로 바꿔 한 번 저장한다.
@@ -8383,7 +8435,7 @@ app.get('/land/map', auth, (req, res) => {
   const near = (isFinite(lat) && isFinite(lng))
     ? ' AND v.lat BETWEEN ? AND ? AND v.lng BETWEEN ? AND ? ' : '';
   const args = near ? [lat - d, lat + d, lng - d * 1.2, lng + d * 1.2] : [];
-  const venues = db.prepare(`SELECT v.id, v.name, v.lat, v.lng, v.indoor, v.sigungu, v.source
+  const venues = db.prepare(`SELECT v.id, v.name, v.lat, v.lng, v.indoor, v.sigungu, v.source, v.kind
     FROM venues v WHERE v.active=1 AND v.lat IS NOT NULL ${near}
     ORDER BY v.id LIMIT 600`).all(...args);
   const ids = venues.map(v => v.id);
@@ -8422,7 +8474,7 @@ app.get('/land/map', auth, (req, res) => {
 /* 이 구장에 어느 클럽이 있고 누가 대표인가 */
 app.get('/venues/:id/clubs', auth, (req, res) => {
   const vid = +req.params.id;
-  const v = db.prepare('SELECT id,name,addr,sigungu,indoor,source FROM venues WHERE id=?').get(vid);
+  const v = db.prepare('SELECT id,name,addr,sigungu,indoor,source,kind FROM venues WHERE id=?').get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
   const s = venueShares(vid);
   /* 내 클럽이 여기 걸려 있나 · 내가 운영진인가 — 버튼을 뭘 보여줄지 정한다 */
@@ -10549,10 +10601,13 @@ app.post('/admin/venues', admin, (req, res) => {
     const u = db.prepare('SELECT id FROM users WHERE phone=?').get(String(b.owner_phone).replace(/\D/g, ''));
     ownerId = u ? u.id : null;
   }
-  const r = db.prepare(`INSERT INTO venues (name,owner_id,sido,sigungu,addr,phone,memo,photos,bank,created_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+  /* 사장님이 직접 낸 곳 — source 기본값이 'public' 이라 공립으로 잡히고 있었다.
+     주인이 있는 코트는 사설이다. 이름이 <○○시민테니스장> 이어도 위탁 운영이면 사설이다. */
+  const r = db.prepare(`INSERT INTO venues (name,owner_id,sido,sigungu,addr,phone,memo,photos,bank,source,kind,created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,'owner',?,?)`)
     .run(name, ownerId, b.sido || '', b.sigungu || '', b.addr || '', b.phone || '', b.memo || '',
-         JSON.stringify(Array.isArray(b.photos) ? b.photos.slice(0, 8) : []), b.bank || '', now());
+         JSON.stringify(Array.isArray(b.photos) ? b.photos.slice(0, 8) : []), b.bank || '',
+         'private', now());
   res.json({ ok: true, id: rid(r) });
 });
 app.patch('/admin/venues/:id', admin, (req, res) => {
