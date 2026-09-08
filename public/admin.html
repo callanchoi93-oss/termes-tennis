@@ -1513,6 +1513,16 @@ function addBotRow(){
 }
 
 /* ── 구장 ── 넷을 한 화면 안쪽 탭으로 */
+/* 카카오 장소 검색으로 그 지역 테니스장을 긁어온다 — 사설 코트가 여기서 들어온다 */
+async function vnSearch(area, btn){
+  if(btn){ btn.disabled=true; btn.textContent=area+' 찾는 중…'; }
+  try{
+    const r=await api('/admin/venues/search',{method:'POST',body:JSON.stringify({area})});
+    if(r.error) toast(r.error);
+    else toast(`${area} · ${r.added}곳 넣었어요${r.skipped?` · 이미 있던 ${r.skipped}곳은 건너뜀`:''}`);
+  }catch(e){ toast('찾지 못했어요'); }
+  render();
+}
 /* 공공데이터 CSV 를 통째로 넣는다 — 테니스장만 골라 담는다 */
 async function vnImport(btn){
   const el=document.getElementById('vnCsv');
@@ -1544,8 +1554,11 @@ async function drawVenues(){
             slots:'/admin/venue-slots', pay:'/admin/venue-payouts/by-venue'}[sub];
   const rows=await api(ep).catch(()=>[]);
   /* 구장이 몇 곳이고 좌표가 몇 곳에 있는지 — 비어 있으면 도전장에서 구장을 못 고른다 */
-  let st=null;
-  if(sub==='list'){ try{ st=await api('/admin/venues/stats'); }catch(e){} }
+  let st=null, areas=null;
+  if(sub==='list'){
+    try{ st=await api('/admin/venues/stats'); }catch(e){}
+    try{ areas=await api('/admin/venues/areas'); }catch(e){}
+  }
   const line=r=>{
     if(sub==='list') return [`${esc(r.name)}`,
       `#${r.id} · ${esc([r.sido,r.sigungu].filter(Boolean).join(' ')||r.addr||'주소 없음')} · 코트 ${(r.courts||[]).length}면`, ''];
@@ -1568,10 +1581,10 @@ async function drawVenues(){
     ${st.total<50 ? `<div class="warn"><b>구장이 ${st.total}곳뿐이에요</b> ·
       도전장에서 고를 구장이 없으면 교류전이 안 열려요</div>
       <div class="card"><div class="ct">공공데이터 넣기</div>
-        <div class="note" style="margin:6px 0 8px">공공데이터포털에서
-          <b>전국 공공체육시설 현황</b> CSV를 받아 통째로 붙여넣으세요 ·
-          <b>테니스장만</b> 골라 담아요</div>
-        <textarea id="vnCsv" placeholder="시설명,종목,소재지도로명주소,위도,경도&#10;..." 
+        <div class="note" style="margin:6px 0 8px">공공데이터포털
+          <b>전국 공공체육시설 현황</b>의 <b>테니스장 표</b>를 엑셀에서
+          통째로 복사해 붙여넣으세요 · 합계 줄은 알아서 걸러요</div>
+        <textarea id="vnCsv" placeholder="시도	시군구	시설명	소유기관 …&#10;	종로구	삼청 테니스장	종로구 …" 
           style="width:100%;box-sizing:border-box;height:90px;border:1px solid var(--line);
           border-radius:10px;padding:9px;font-size:var(--t1);font-family:ui-monospace,monospace"></textarea>
         <button style="margin-top:8px" onclick="vnImport(this)">넣기</button>
@@ -1580,6 +1593,13 @@ async function drawVenues(){
       <b>좌표가 없는 구장 ${fmt(st.total-st.geo)}곳</b>
       <span>지도에 안 그려져요 · 주소가 있는 곳만 채울 수 있어요</span></span>
       <button onclick="vnGeocode(this)">좌표 채우기</button></div>` : ''}
+    ${areas ? `<div class="card"><div class="ct">카카오로 구장 찾기</div>
+      <div class="note" style="margin:6px 0 9px">공공데이터에는 <b>공공체육시설만</b> 있어요 ·
+        사설 코트는 여기서 찾아요 · 지역을 눌러 한 번씩 훑으세요</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${areas.map(a=>`<button class="${a.n?'':'hot'}" style="padding:7px 11px"
+          onclick="vnSearch('${a.area}',this)">${a.area}${a.n?` <b>${a.n}</b>`:''}</button>`).join('')}
+      </div></div>` : ''}
     ${(st.sido||[]).length ? `<div class="card"><div class="ct">시도별</div>
       ${st.sido.map(x=>`<div class="rw"><span class="nm"><b>${esc(x.sido||'없음')}</b></span>
         <span>${fmt(x.n)}곳</span></div>`).join('')}</div>` : ''}` : '';
@@ -1645,8 +1665,11 @@ async function drawStaff(){
   const ep={staff:'/admin/staff-accounts', mgrs:'/admin/managers', venue:'/admin/venue-accounts'}[sub];
   const rows=await api(ep).catch(()=>[]);
   /* 구장이 몇 곳이고 좌표가 몇 곳에 있는지 — 비어 있으면 도전장에서 구장을 못 고른다 */
-  let st=null;
-  if(sub==='list'){ try{ st=await api('/admin/venues/stats'); }catch(e){} }
+  let st=null, areas=null;
+  if(sub==='list'){
+    try{ st=await api('/admin/venues/stats'); }catch(e){}
+    try{ areas=await api('/admin/venues/areas'); }catch(e){}
+  }
   $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length? rows.map(a=>`
     <div class="rw"><div class="nm"><b>${esc(a.name||a.login||a.email||'계정')}
       ${a.grade?`<span class="tag">${esc(a.grade)}</span>`:''}</b>
