@@ -8686,14 +8686,93 @@ function courtNick(venueId, userId) {
 }
 /* 글·댓글 한 줄을 화면에 나갈 모양으로 다듬는다 */
 function talkWho(row, venueId, uid) {
+  if (!row.venue_id && !venueId) venueId = 0;      // 클럽 없이 전국톡에 쓴 글
   /* 규칙을 바꾸기 전에 실명으로 쌓인 글도 같은 규칙을 따른다 —
      어제 글만 실명이면 그 사람만 드러난다. */
-  row.who = courtNick(venueId || row.venue_id, row.user_id);
+  row.who = courtNick(venueId || row.venue_id || 0, row.user_id);
   row.anon = 1;
   row.mine = (uid && row.user_id === uid) ? 1 : 0;   // 내 글이면 지울 수 있게
   delete row.user_id;
   return row;
 }
+/* 반응 — 아파트톡처럼 여러 종류. 코트 글은 <물 고였어요>처럼 알림성이 많아서
+   좋아요 하나로는 부족하다. 한 사람이 한 글에 하나만 고른다. */
+const REACTS = ['heart', 'smile', 'lol', 'clap', 'sad'];
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_reacts (
+    post_id INTEGER, user_id INTEGER, kind TEXT, at INTEGER,
+    PRIMARY KEY(post_id, user_id))`);
+} catch (e) { console.error('[schema court_reacts]', e.message); }
+try { db.exec('ALTER TABLE court_posts ADD COLUMN tags TEXT'); } catch (e) {}
+
+/* 투표 — 글에 딸린다. 한 사람이 하나만 고르고, 고른 뒤에 숫자가 보인다.
+   미리 보이면 앞선 쪽으로 쏠린다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_polls (
+    post_id INTEGER PRIMARY KEY, opts TEXT, made_at INTEGER)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS court_votes (
+    post_id INTEGER, user_id INTEGER, opt INTEGER, at INTEGER,
+    PRIMARY KEY(post_id, user_id))`);
+} catch (e) { console.error('[schema court_polls]', e.message); }
+
+function reactsOf(pid, uid) {
+  const rows = db.prepare('SELECT kind, COUNT(*) n FROM court_reacts WHERE post_id=? GROUP BY kind').all(pid);
+  const map = {}; rows.forEach(r => { map[r.kind] = r.n; });
+  const mine = db.prepare('SELECT kind FROM court_reacts WHERE post_id=? AND user_id=?').get(pid, uid);
+  return { counts: map, mine: mine ? mine.kind : null,
+    total: rows.reduce((a, r) => a + r.n, 0) };
+}
+function pollOf(pid, uid) {
+  const p = db.prepare('SELECT opts FROM court_polls WHERE post_id=?').get(pid);
+  if (!p) return null;
+  let opts = []; try { opts = JSON.parse(p.opts) || []; } catch (e) {}
+  const mine = db.prepare('SELECT opt FROM court_votes WHERE post_id=? AND user_id=?').get(pid, uid);
+  const rows = db.prepare('SELECT opt, COUNT(*) n FROM court_votes WHERE post_id=? GROUP BY opt').all(pid);
+  const cnt = {}; rows.forEach(r => { cnt[r.opt] = r.n; });
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  /* 고르기 전에는 숫자를 숨긴다 — 미리 보이면 앞선 쪽으로 쏠린다 */
+  const voted = mine != null;
+  return { opts: opts.map((t, i) => ({ t, n: voted ? (cnt[i] || 0) : null })),
+    mine: voted ? mine.opt : null, total };
+}
+
+app.post('/talk/:pid/react', auth, (req, res) => {
+  const pid = +req.params.pid;
+  const kind = String((req.body || {}).kind || '');
+  const p = db.prepare('SELECT venue_id, scope FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post' });
+  if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
+    return res.status(403).json({ error: 'not_at_court' });
+  const had = db.prepare('SELECT kind FROM court_reacts WHERE post_id=? AND user_id=?').get(pid, req.uid);
+  /* 같은 걸 다시 누르면 뗀다 — 실수로 눌렀을 때 되돌릴 길이 있어야 한다 */
+  if (had && had.kind === kind) {
+    db.prepare('DELETE FROM court_reacts WHERE post_id=? AND user_id=?').run(pid, req.uid);
+  } else if (REACTS.includes(kind)) {
+    db.prepare(`INSERT INTO court_reacts (post_id,user_id,kind,at) VALUES (?,?,?,?)
+      ON CONFLICT(post_id,user_id) DO UPDATE SET kind=?, at=?`)
+      .run(pid, req.uid, kind, now(), kind, now());
+  }
+  res.json({ ok: true, react: reactsOf(pid, req.uid) });
+});
+
+app.post('/talk/:pid/vote', auth, (req, res) => {
+  const pid = +req.params.pid, opt = +(req.body || {}).opt;
+  const p = db.prepare('SELECT venue_id, scope FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post' });
+  if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
+    return res.status(403).json({ error: 'not_at_court' });
+  const poll = db.prepare('SELECT opts FROM court_polls WHERE post_id=?').get(pid);
+  if (!poll) return res.status(404).json({ error: 'no_poll' });
+  let opts = []; try { opts = JSON.parse(poll.opts) || []; } catch (e) {}
+  if (!(opt >= 0 && opt < opts.length)) return res.status(400).json({ error: 'bad_opt' });
+  /* 한 번 고르면 못 바꾼다 — 바꿀 수 있으면 결과를 보고 옮겨 다니게 된다 */
+  try {
+    db.prepare('INSERT INTO court_votes (post_id,user_id,opt,at) VALUES (?,?,?,?)')
+      .run(pid, req.uid, opt, now());
+  } catch (e) { return res.status(400).json({ error: 'already' }); }
+  res.json({ ok: true, poll: pollOf(pid, req.uid) });
+});
+
 /* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
 function atCourt(uid, venueId) {
   return !!db.prepare(`SELECT 1 FROM venue_clubs vc
@@ -8758,11 +8837,13 @@ app.post('/venues/:id/talk/seen', auth, (req, res) => {
 });
 
 app.get('/venues/:id/talk', auth, (req, res) => {
-  const vid = +req.params.id;
-  const scope = req.query.scope === 'all' ? 'all' : 'court';
-  const v = db.prepare('SELECT name FROM venues WHERE id=?').get(vid) || {};
+  const vid = +req.params.id || 0;
+  /* 구장을 안 고른 채로 오면(클럽이 없는 사람) 전국톡만 본다 —
+     전국톡은 클럽에 안 든 사람도 낄 수 있는 자리다. */
+  const scope = (!vid || req.query.scope === 'all') ? 'all' : 'court';
+  const v = vid ? (db.prepare('SELECT name FROM venues WHERE id=?').get(vid) || {}) : {};
   /* 누가 이 코트를 쓰는지 — 글이 하나도 없어도 빈 방으로 느껴지지 않게 앞에 세운다 */
-  const s = venueShares(vid);
+  const s = vid ? venueShares(vid) : { clubs: [] };
   const who = s.clubs.map(c => ({ club_id: c.club_id, name: c.name, wins: c.wins, size: c.size }));
   if (scope === 'court' && !atCourt(req.uid, vid))
     return res.json({ scope, locked: true, posts: [], venue: v.name || '', clubs: who,
@@ -8772,20 +8853,27 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   const catSql = cat ? ' AND p.cat=? ' : '';
   const rows = scope === 'court'
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views, c.name club, u.name who FROM court_posts p
+        p.cat,p.views,p.tags, c.name club, u.name who FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         WHERE p.venue_id=? AND p.scope='court' ${catSql}
         ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
     : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
+        p.cat,p.views,p.tags, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
         WHERE p.scope='all' ${catSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
-  rows.forEach(r => { r.cat_name = catName(scope, r.cat); });
+  rows.forEach(r => {
+    r.cat_name = catName(scope, r.cat);
+    r.react_n = db.prepare('SELECT COUNT(*) n FROM court_reacts WHERE post_id=?').get(r.id).n;
+    r.has_poll = !!db.prepare('SELECT 1 FROM court_polls WHERE post_id=?').get(r.id);
+    r.poll_n = r.has_poll
+      ? db.prepare('SELECT COUNT(*) n FROM court_votes WHERE post_id=?').get(r.id).n : 0;
+    try { r.tags = r.tags ? JSON.parse(r.tags) : []; } catch (e) { r.tags = []; }
+  });
   /* 전국톡은 코트가 저마다 달라 글쓴이의 홈구장 기준으로 이름을 만든다 */
   const posts = rows.map(r => talkWho(postRow(r), r.venue_id || vid, req.uid));
   /* 내가 이 코트에서 어떤 이름으로 보이는지 — 글쓰기 화면에서 미리 보여준다 */
-  const myNick = courtNick(vid, req.uid);
+  const myNick = courtNick(vid || 0, req.uid);
   /* 오늘의 픽 — 사람이 고르는 자리를 만들어두면 매일 같은 글이 박혀 있게 된다.
      최근 이레 안에서 많이 읽힌 순으로 자동으로 뽑는다. 아무도 안 만져도 굴러간다. */
   let picks = [];
@@ -8801,8 +8889,8 @@ app.get('/venues/:id/talk', auth, (req, res) => {
 });
 
 app.post('/venues/:id/talk', auth, (req, res) => {
-  const vid = +req.params.id, b = req.body || {};
-  const scope = b.scope === 'all' ? 'all' : 'court';
+  const vid = +req.params.id || 0, b = req.body || {};
+  const scope = (!vid || b.scope === 'all') ? 'all' : 'court';
   const cid = +b.club_id || null;
   if (scope === 'court' && !atCourt(req.uid, vid))
     return res.status(403).json({ error: 'not_at_court' });
@@ -8815,9 +8903,24 @@ app.post('/venues/:id/talk', auth, (req, res) => {
   /* 말머리는 목록에 있는 값만 받는다 — 앱이 아무 문자열이나 보내도 표에 안 들어가게 */
   const list = scope === 'all' ? CAT_ALL : CAT_COURT;
   const cat = list.some(c => c.k === b.cat) ? b.cat : list[list.length - 1].k;
-  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,anon,cat,created_at)
-    VALUES (?,?,?,?,?,?,1,?,?)`).run(vid, cid, req.uid, scope, title || null, body, cat, now());
-  res.json({ ok: true, id: rid(r) });
+  /* 태그는 다섯 개까지, 한 개 12자까지 — 길고 많으면 목록이 태그로 덮인다 */
+  const tags = (Array.isArray(b.tags) ? b.tags : [])
+    .map(x => String(x || '').replace(/[#\s]/g, '').slice(0, 12))
+    .filter(Boolean).slice(0, 5);
+  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,anon,cat,tags,created_at)
+    VALUES (?,?,?,?,?,?,1,?,?,?)`)
+    .run(vid || null, cid, req.uid, scope, title || null, body, cat, JSON.stringify(tags), now());
+  const pid = rid(r);
+  /* 투표는 두 개 이상 골라야 뜻이 있다 */
+  const opts = (Array.isArray(b.poll) ? b.poll : [])
+    .map(x => String(x || '').trim().slice(0, 40)).filter(Boolean).slice(0, 6);
+  if (opts.length >= 2) {
+    try {
+      db.prepare('INSERT INTO court_polls (post_id,opts,made_at) VALUES (?,?,?)')
+        .run(pid, JSON.stringify(opts), now());
+    } catch (e) {}
+  }
+  res.json({ ok: true, id: pid });
 });
 
 app.get('/talk/:pid/comments', auth, (req, res) => {
@@ -8839,7 +8942,10 @@ app.get('/talk/:pid/comments', auth, (req, res) => {
     WHERE cc.post_id=? ORDER BY cc.created_at`).all(pid);
   /* 글쓴이 표시 — 이름이 고정이라야 댓글에서 누가 원글쓴이인지 알 수 있다 */
   rows.forEach(r => { r.mine_post = (r.user_id === author) ? 1 : 0; });
-  res.json(rows.map(r => talkWho(r, p.venue_id, req.uid)));
+  res.json({ comments: rows.map(r => talkWho(r, p.venue_id, req.uid)),
+    react: reactsOf(pid, req.uid), poll: pollOf(pid, req.uid),
+    tags: (() => { try { const t = db.prepare('SELECT tags FROM court_posts WHERE id=?').get(pid).tags;
+      return t ? JSON.parse(t) : []; } catch (e) { return []; } })() });
 });
 
 app.post('/talk/:pid/comments', auth, (req, res) => {
