@@ -7783,9 +7783,25 @@ db.exec(`CREATE TABLE IF NOT EXISTS land (
 const LAND_MAXDEPTH = 4;
 const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수
 
-/* 클럽의 홈 구장 — 최근 1년 정기모임을 세어 자동으로 잡는다.
-   두 곳을 번갈아 쓰는 클럽이 넷 중 하나라 최대 2곳까지 인정한다. */
+/* 한 구장에 클럽이 하나만 있는 게 아니다 — 같은 코트를 대여섯 클럽이 나눠 쓴다.
+   운영진이 <여기가 우리 홈> 이라고 걸면 그 구장의 지분 다툼에 들어간다.
+   지분이 가장 큰 클럽이 그 구장의 <대표 클럽> 으로 지도에 오른다. */
+db.exec(`CREATE TABLE IF NOT EXISTS venue_clubs (
+  venue_id INTEGER, club_id INTEGER,
+  set_by INTEGER,                 -- 건 사람 (운영진)
+  set_at INTEGER,
+  PRIMARY KEY(venue_id, club_id))`);
+db.exec('CREATE INDEX IF NOT EXISTS ix_vc_club ON venue_clubs(club_id)');
+
+const HOME_MAX = 2;               // 한 클럽이 걸 수 있는 홈 구장 수
+
+/* 클럽의 홈 구장 — 운영진이 걸어 둔 곳을 먼저 본다.
+   안 걸었으면 최근 1년 정기모임을 세어 예전처럼 자동으로 잡는다.
+   (기존 클럽이 갑자기 홈을 잃지 않게 하려고 자동 판정을 남겨 둔다) */
 function homeVenues(clubId) {
+  const set = db.prepare('SELECT venue_id FROM venue_clubs WHERE club_id=? ORDER BY set_at')
+    .all(clubId).map(r => r.venue_id);
+  if (set.length) return set.slice(0, HOME_MAX);
   const since = Date.now() - 365 * 864e5;
   const rows = db.prepare(`SELECT venue_id, COUNT(*) n FROM club_events
     WHERE club_id=? AND venue_id IS NOT NULL AND tag!='교류전'
@@ -7793,6 +7809,90 @@ function homeVenues(clubId) {
   const tot = rows.reduce((a, r) => a + r.n, 0);
   if (tot < 10) return [];                      // 기록이 적으면 홈을 정하지 않는다
   return rows.slice(0, 2).filter(r => r.n / tot >= 0.25).map(r => r.venue_id);
+}
+
+/* 구장 지분 —
+     홈으로 걸어둠              10점
+     규모  √(최근 3개월 활동 인원) × 4
+     모임  최근 6개월 모임 1회     1점
+     교류전 최근 1년 홈 교류전 승  12점
+
+   규모에 √를 씌우는 이유 — 인원을 그대로 곱하면 60명 클럽이 12명 클럽의 5배가 되어
+   모임도 교류전도 의미가 없어진다. √를 씌우면 5배 규모가 2.2배 지분이 된다.
+   크기가 반영은 되되 혼자 결정하지는 않는 자리다.
+
+   활동 인원은 명부가 아니라 최근 3개월에 한 번이라도 나온 사람으로 센다.
+   명부를 쓰면 몇 년 전에 나가고 이름만 남은 회원이 그대로 지분이 된다. */
+const SHARE_BASE = 10, SHARE_SIZE = 4, SHARE_EVENT = 1, SHARE_WIN = 12;
+const SHARE_EV_DAYS = 182, SHARE_WIN_DAYS = 365, SHARE_ACT_DAYS = 90;
+
+function activeMembers(clubId, since) {
+  try {
+    return db.prepare(`SELECT COUNT(DISTINCT ea.user_id) n
+      FROM event_attendees ea JOIN club_events e ON e.id=ea.event_id
+      WHERE e.club_id=? AND e.created_at > ?
+        AND (ea.status IS NULL OR ea.status='going')`).get(clubId, since).n;
+  } catch (e) { return 0; }
+}
+
+/* 이 구장에서 열린 교류전을 클럽별 승수로 센다.
+   land.depth 를 쓰면 안 된다 — 그 값은 원정 승리만 올리고 4에서 막힌다.
+   내 홈에서 지켜낸 승리가 지분에서는 가장 무거운데 depth 에는 안 담긴다. */
+function venueWins(venueId, since) {
+  const evs = db.prepare(`SELECT id FROM club_events
+    WHERE venue_id=? AND tag='교류전' AND created_at > ?`).all(venueId, since);
+  const out = {};
+  for (const e of evs) {
+    /* 교류전 한 판의 승자 — 게임 단위가 아니라 판 단위로 센다.
+       게임으로 세면 코트를 많이 빌린 큰 판 하나가 전부를 삼킨다. */
+    const win = {};
+    db.prepare(`SELECT home_club, away_club, sa, sb FROM exchange_games WHERE event_id=?`)
+      .all(e.id).forEach(g => {
+        if (g.sa == null || g.sb == null) return;
+        const w = g.sa > g.sb ? g.home_club : g.sa < g.sb ? g.away_club : null;
+        if (w) win[w] = (win[w] || 0) + 1;
+      });
+    const sorted = Object.entries(win).sort((a, b) => b[1] - a[1]);
+    if (!sorted.length) continue;
+    /* 동점이면 아무도 이긴 게 아니다 */
+    if (sorted.length > 1 && sorted[0][1] === sorted[1][1]) continue;
+    const w = +sorted[0][0];
+    out[w] = (out[w] || 0) + 1;
+  }
+  return out;
+}
+
+function venueShares(venueId) {
+  const rows = db.prepare(`SELECT vc.club_id, vc.set_at, c.name, c.region
+    FROM venue_clubs vc JOIN clubs c ON c.id=vc.club_id
+    WHERE vc.venue_id=? ORDER BY vc.set_at`).all(venueId);
+  if (!rows.length) return { clubs: [], top: null, total: 0 };
+  const t = Date.now();
+  /* 모임은 <실제로 친 자리>만 센다 — 참석 확정 4명 미만은 빼는데,
+     행 하나 만들면 점수가 오르는 구조라면 빈 모임을 찍어내는 클럽이 반드시 나온다.
+     4명은 코트 한 면을 채우는 최소 인원이다. */
+  const evs = db.prepare(`SELECT e.club_id, COUNT(*) n FROM club_events e
+    WHERE e.venue_id=? AND e.created_at > ?
+      AND (SELECT COUNT(*) FROM event_attendees a
+           WHERE a.event_id=e.id AND (a.status IS NULL OR a.status='going')) >= 4
+    GROUP BY e.club_id`).all(venueId, t - SHARE_EV_DAYS * 864e5);
+  const evMap = {}; evs.forEach(e => { evMap[e.club_id] = e.n; });
+  const winMap = venueWins(venueId, t - SHARE_WIN_DAYS * 864e5);
+  rows.forEach(r => {
+    r.events = evMap[r.club_id] || 0;
+    r.wins = winMap[r.club_id] || 0;
+    r.size = activeMembers(r.club_id, t - SHARE_ACT_DAYS * 864e5);
+    r.score = SHARE_BASE + SHARE_SIZE * Math.sqrt(r.size)
+      + SHARE_EVENT * r.events + SHARE_WIN * r.wins;
+  });
+  const total = rows.reduce((a, r) => a + r.score, 0);
+  rows.forEach(r => {
+    r.pct = total ? Math.round(r.score / total * 1000) / 10 : 0;
+    r.score = Math.round(r.score);
+  });
+  /* 점수순 — 같으면 먼저 건 쪽이 앞 */
+  rows.sort((a, b) => b.score - a.score || a.set_at - b.set_at);
+  return { clubs: rows, top: rows[0] || null, total: Math.round(total) };
 }
 
 /* 교류전이 끝나면 부른다 — 이긴 클럽이 남의 홈에서 이겼을 때만 땅이 움직인다 */
@@ -8295,7 +8395,162 @@ app.get('/land/map', auth, (req, res) => {
       : Math.max(0, Math.round((365 * 864e5 - (now - (l.last_at || now))) / 864e5));
   });
   const mine = (req.query.club_id ? homeVenues(+req.query.club_id) : []);
-  res.json({ venues, land, my_homes: mine });
+  /* 구장마다 대표 클럽 — 지분 1등을 지도 딱지에 함께 띄운다 */
+  const reps = {};
+  if (ids.length) {
+    db.prepare(`SELECT vc.venue_id, vc.club_id, c.name FROM venue_clubs vc
+      JOIN clubs c ON c.id=vc.club_id
+      WHERE vc.venue_id IN (${ids.map(() => '?').join(',')})`).all(...ids)
+      .forEach(r => { (reps[r.venue_id] = reps[r.venue_id] || []).push(r); });
+    Object.keys(reps).forEach(vid => {
+      const s = venueShares(+vid);
+      reps[vid] = s.top ? { club_id: s.top.club_id, name: s.top.name, pct: s.top.pct,
+        wins: s.top.wins, size: s.top.size, n: s.clubs.length } : null;
+    });
+  }
+  res.json({ venues, land, my_homes: mine, reps });
+});
+
+/* ── 구장 지분 · 홈 걸기 ──────────────────────────────────────── */
+
+/* 이 구장에 어느 클럽이 있고 누가 대표인가 */
+app.get('/venues/:id/clubs', auth, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare('SELECT id,name,addr,sigungu,indoor,source FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  const s = venueShares(vid);
+  /* 내 클럽이 여기 걸려 있나 · 내가 운영진인가 — 버튼을 뭘 보여줄지 정한다 */
+  const cid = +req.query.club_id || 0;
+  const mine = cid ? s.clubs.find(c => c.club_id === cid) : null;
+  res.json({ venue: v, clubs: s.clubs, top: s.top, total: s.total,
+    my_share: mine ? mine.pct : null,
+    joined: !!mine,
+    can_set: cid ? isOfficer(cid, req.uid) : false,
+    home_left: cid ? HOME_MAX - db.prepare('SELECT COUNT(*) n FROM venue_clubs WHERE club_id=?')
+      .get(cid).n : 0 });
+});
+
+/* 홈으로 걸기 — 운영진만. 걸면 그 구장 지분에 들어가고 구장톡이 열린다. */
+app.post('/venues/:id/home', auth, (req, res) => {
+  const vid = +req.params.id, cid = +(req.body || {}).club_id;
+  if (!cid) return res.status(400).json({ error: 'no_club' });
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=? AND active=1').get(vid))
+    return res.status(404).json({ error: 'no_venue' });
+  if (db.prepare('SELECT 1 FROM venue_clubs WHERE venue_id=? AND club_id=?').get(vid, cid))
+    return res.json({ ok: true, already: true });
+  const n = db.prepare('SELECT COUNT(*) n FROM venue_clubs WHERE club_id=?').get(cid).n;
+  if (n >= HOME_MAX) return res.status(400).json({ error: 'home_full',
+    message: `홈은 ${HOME_MAX}곳까지 걸 수 있어요. 한 곳을 내려놓고 다시 걸어주세요` });
+  db.prepare('INSERT INTO venue_clubs (venue_id,club_id,set_by,set_at) VALUES (?,?,?,?)')
+    .run(vid, cid, req.uid, now());
+  /* 홈으로 걸었으니 지도에도 우리 색이 깔린다 — 옅어지지 않는 홈 칸 */
+  try {
+    db.prepare(`INSERT INTO land (venue_id,club_id,depth,is_home,last_at) VALUES (?,?,1,1,?)
+      ON CONFLICT(venue_id,club_id) DO UPDATE SET is_home=1, last_at=?`)
+      .run(vid, cid, now(), now());
+  } catch (e) {}
+  const s = venueShares(vid);
+  res.json({ ok: true, clubs: s.clubs, top: s.top });
+});
+
+/* 홈 내려놓기 — 지분도 같이 빠진다 */
+app.delete('/venues/:id/home', auth, (req, res) => {
+  const vid = +req.params.id, cid = +req.query.club_id;
+  if (!cid || !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM venue_clubs WHERE venue_id=? AND club_id=?').run(vid, cid);
+  /* 뺏은 땅(원정 승리)은 남기고, 홈 표시만 뗀다 */
+  try { db.prepare('UPDATE land SET is_home=0 WHERE venue_id=? AND club_id=?').run(vid, cid); } catch (e) {}
+  res.json({ ok: true });
+});
+
+/* ── 구장톡 ────────────────────────────────────────────────────
+   같은 코트를 쓰는 클럽끼리는 서로를 모른다.
+   화요일 저녁마다 옆 코트에서 치는 사람들인데 말을 섞을 데가 없었다.
+   구장톡은 그 구장에 홈을 건 클럽만 보이고, 전국톡은 모두 본다. */
+db.exec(`CREATE TABLE IF NOT EXISTS court_posts (
+  id INTEGER PRIMARY KEY,
+  venue_id INTEGER,               -- 전국톡이면 글쓴이의 홈 구장 (어디서 왔는지 딱지용)
+  club_id INTEGER, user_id INTEGER,
+  scope TEXT DEFAULT 'court',     -- court(그 구장 클럽만) · all(전국)
+  title TEXT, body TEXT,
+  created_at INTEGER)`);
+db.exec('CREATE INDEX IF NOT EXISTS ix_cp_venue ON court_posts(venue_id, scope, created_at)');
+db.exec('CREATE INDEX IF NOT EXISTS ix_cp_scope ON court_posts(scope, created_at)');
+db.exec(`CREATE TABLE IF NOT EXISTS court_comments (
+  id INTEGER PRIMARY KEY, post_id INTEGER, user_id INTEGER, club_id INTEGER,
+  body TEXT, created_at INTEGER)`);
+db.exec('CREATE INDEX IF NOT EXISTS ix_cc_post ON court_comments(post_id, created_at)');
+
+/* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
+function atCourt(uid, venueId) {
+  return !!db.prepare(`SELECT 1 FROM venue_clubs vc
+    JOIN club_members m ON m.club_id=vc.club_id
+    WHERE vc.venue_id=? AND m.user_id=? LIMIT 1`).get(venueId, uid);
+}
+function postRow(p) {
+  return { ...p, comments: db.prepare('SELECT COUNT(*) n FROM court_comments WHERE post_id=?')
+    .get(p.id).n };
+}
+
+app.get('/venues/:id/talk', auth, (req, res) => {
+  const vid = +req.params.id;
+  const scope = req.query.scope === 'all' ? 'all' : 'court';
+  if (scope === 'court' && !atCourt(req.uid, vid))
+    return res.json({ scope, locked: true, posts: [],
+      message: '이 구장을 홈으로 건 클럽만 보이는 공간이에요' });
+  const rows = scope === 'court'
+    ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,
+        c.name club, u.name who FROM court_posts p
+        LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
+        WHERE p.venue_id=? AND p.scope='court'
+        ORDER BY p.created_at DESC LIMIT 50`).all(vid)
+    : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,
+        c.name club, u.name who, v.name venue FROM court_posts p
+        LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
+        LEFT JOIN venues v ON v.id=p.venue_id
+        WHERE p.scope='all' ORDER BY p.created_at DESC LIMIT 50`).all();
+  res.json({ scope, locked: false, posts: rows.map(postRow) });
+});
+
+app.post('/venues/:id/talk', auth, (req, res) => {
+  const vid = +req.params.id, b = req.body || {};
+  const scope = b.scope === 'all' ? 'all' : 'court';
+  const cid = +b.club_id || null;
+  if (scope === 'court' && !atCourt(req.uid, vid))
+    return res.status(403).json({ error: 'not_at_court' });
+  if (cid && !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const title = String(b.title || '').trim().slice(0, 60);
+  const body = String(b.body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,created_at)
+    VALUES (?,?,?,?,?,?,?)`).run(vid, cid, req.uid, scope, title || null, body, now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.get('/talk/:pid/comments', auth, (req, res) => {
+  const pid = +req.params.pid;
+  const p = db.prepare('SELECT venue_id, scope FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post' });
+  if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
+    return res.status(403).json({ error: 'not_at_court' });
+  res.json(db.prepare(`SELECT cc.id,cc.body,cc.created_at,cc.user_id,
+    u.name who, c.name club FROM court_comments cc
+    LEFT JOIN users u ON u.id=cc.user_id LEFT JOIN clubs c ON c.id=cc.club_id
+    WHERE cc.post_id=? ORDER BY cc.created_at`).all(pid));
+});
+
+app.post('/talk/:pid/comments', auth, (req, res) => {
+  const pid = +req.params.pid, b = req.body || {};
+  const p = db.prepare('SELECT venue_id, scope FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post' });
+  if (p.scope === 'court' && !atCourt(req.uid, p.venue_id))
+    return res.status(403).json({ error: 'not_at_court' });
+  const body = String(b.body || '').trim().slice(0, 1000);
+  if (!body) return res.status(400).json({ error: 'empty' });
+  const r = db.prepare(`INSERT INTO court_comments (post_id,user_id,club_id,body,created_at)
+    VALUES (?,?,?,?,?)`).run(pid, req.uid, +b.club_id || null, body, now());
+  res.json({ ok: true, id: rid(r) });
 });
 
 /* 우리 클럽 땅 요약 */
