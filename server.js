@@ -7815,6 +7815,49 @@ db.exec(`CREATE TABLE IF NOT EXISTS land (
   PRIMARY KEY(venue_id, club_id))`);
 
 const LAND_MAXDEPTH = 4;
+
+/* 겹 수는 클럽 규모로 정하고, 이웃 코트가 가까우면 줄인다.
+   앱이 따로 계산하게 두었더니 <7칸> 이라고 적어놓고 19칸을 그렸다.
+   숫자와 그림이 어긋나면 둘 다 못 믿는다. 여기서 한 번만 정하고 앱은 그대로 그린다. */
+function depthOfSize(size) {
+  const n = +size || 0;
+  if (n < 8) return 1;
+  return Math.max(1, Math.min(LAND_MAXDEPTH, Math.round(Math.sqrt(n) / 2.2)));
+}
+/* 가장 가까운 다른 구장까지 거리(km) — 경계는 그 절반에서 만난다 */
+function nearestVenueKm(venueId) {
+  const v = db.prepare('SELECT lat,lng FROM venues WHERE id=?').get(venueId);
+  if (!v || v.lat == null) return 6;
+  const d = 0.12;                                   // 대략 13km 상자만 훑는다
+  const rows = db.prepare(`SELECT lat,lng FROM venues
+    WHERE active=1 AND id!=? AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?`)
+    .all(venueId, v.lat - d, v.lat + d, v.lng - d * 1.3, v.lng + d * 1.3);
+  let best = Infinity;
+  const R = 6371, t = Math.PI / 180;
+  rows.forEach(o => {
+    const dLat = (o.lat - v.lat) * t, dLng = (o.lng - v.lng) * t;
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(v.lat * t) * Math.cos(o.lat * t) * Math.sin(dLng / 2) ** 2;
+    const km = 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+    if (km > 0.05 && km < best) best = km;
+  });
+  return isFinite(best) ? best : 6;
+}
+/* 실제로 그려질 겹 수 — 규모로 정한 뒤 이웃 거리로 깎는다 */
+function effDepth(venueId, size) {
+  const want = depthOfSize(size);
+  const reach = nearestVenueKm(venueId) / 2;
+  const room = Math.floor(reach / (Math.sqrt(3) * 0.2));   // 칸이 200m 밑이면 겹을 줄인다
+  return Math.max(1, Math.min(want, room || 1));
+}
+/* 클럽 활동 인원 — 순위표는 클럽 수십 개를 훑으니 한 번 부른 값은 들고 있는다 */
+const _sizeCache = new Map();
+function sizeOfClub(clubId) {
+  const hit = _sizeCache.get(clubId);
+  if (hit && Date.now() - hit.t < 60e3) return hit.n;
+  const n = shareActiveMembers(clubId, Date.now() - SHARE_ACT_DAYS * 864e5);
+  _sizeCache.set(clubId, { n, t: Date.now() });
+  return n;
+}
 const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수
 
 /* 한 구장에 클럽이 하나만 있는 게 아니다 — 같은 코트를 대여섯 클럽이 나눠 쓴다.
@@ -8447,7 +8490,12 @@ app.get('/land/map', auth, (req, res) => {
   }
   /* 옅어짐이 임박한 곳을 앱이 흐리게 그릴 수 있게 남은 날을 함께 준다 */
   const now = Date.now();
+  const sizeCache = {};
+  const sizeOf = id => (sizeCache[id] != null ? sizeCache[id]
+    : (sizeCache[id] = shareActiveMembers(id, now - SHARE_ACT_DAYS * 864e5)));
   land.forEach(l => {
+    /* 앱은 이 depth 를 그대로 그린다 — 따로 계산하지 않는다 */
+    l.depth = effDepth(l.venue_id, sizeOf(l.club_id));
     l.cells = cellsOf(l.depth);
     l.days_left = l.is_home ? null
       : Math.max(0, Math.round((365 * 864e5 - (now - (l.last_at || now))) / 864e5));
@@ -8669,6 +8717,86 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
   res.json({ ok: true, id: rid(r) });
 });
 
+/* 구장 한 페이지에 필요한 것을 한 번에 준다 —
+   코트 정보·최근에 있었던 일·구장톡 미리보기를 따로 부르면 페이지 하나에 네 번 왕복한다. */
+app.get('/venues/:id/detail', auth, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng
+    FROM venues WHERE id=?`).get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+
+  /* 면 수와 표면 — 사장님이 등록한 곳에만 있다. 없으면 그 줄을 안 보여준다. */
+  const courts = db.prepare(`SELECT COUNT(*) n,
+      GROUP_CONCAT(DISTINCT surface) surfaces FROM venue_courts
+    WHERE venue_id=? AND status!='paused'`).get(vid) || {};
+
+  /* 이 코트에서 있었던 일 — 46% 라는 숫자보다 <10월 26일 라온이 이겼다>가 잘 읽힌다 */
+  const evs = db.prepare(`SELECT e.id, e.title, e.date, e.tag, e.created_at, c.name club
+    FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
+    WHERE e.venue_id=? ORDER BY e.created_at DESC LIMIT 6`).all(vid);
+  const winCache = {};
+  evs.forEach(e => {
+    e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
+      WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
+    if (e.tag !== '교류전') return;
+    /* 교류전이면 누가 이겼는지까지 — 목록에서 바로 읽히게 */
+    const win = {};
+    db.prepare('SELECT home_club, away_club, sa, sb FROM exchange_games WHERE event_id=?')
+      .all(e.id).forEach(g => {
+        if (g.sa == null || g.sb == null) return;
+        const w = g.sa > g.sb ? g.home_club : g.sa < g.sb ? g.away_club : null;
+        if (w) win[w] = (win[w] || 0) + 1;
+      });
+    const sorted = Object.entries(win).sort((a, b) => b[1] - a[1]);
+    e.games = Object.values(win).reduce((a, b) => a + b, 0);
+    if (sorted.length && !(sorted.length > 1 && sorted[0][1] === sorted[1][1])) {
+      const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(+sorted[0][0]);
+      e.winner = c ? c.name : null;
+    }
+    const seats = db.prepare(`SELECT c.name FROM exchange_entries x
+      JOIN clubs c ON c.id=x.club_id WHERE x.event_id=?`).all(e.id).map(r => r.name);
+    e.clubs = seats;
+  });
+
+  /* 구장톡 미리보기 — 들어가 보지 않아도 무슨 얘기가 도는지 보이게 */
+  let talk = [], talkLocked = true;
+  if (atCourt(req.uid, vid)) {
+    talkLocked = false;
+    talk = db.prepare(`SELECT p.id,p.title,p.body,p.created_at,c.name club
+      FROM court_posts p LEFT JOIN clubs c ON c.id=p.club_id
+      WHERE p.venue_id=? AND p.scope='court'
+      ORDER BY p.created_at DESC LIMIT 2`).all(vid);
+    talk.forEach(p => {
+      p.comments = db.prepare('SELECT COUNT(*) n FROM court_comments WHERE post_id=?').get(p.id).n;
+    });
+  }
+  res.json({
+    venue: v,
+    courts: courts.n || 0,
+    surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean) : [],
+    events: evs, talk, talk_locked: talkLocked,
+  });
+});
+
+/* 잘못 잡힌 성격을 고친다 — 이름만으로는 가릴 수 없는 곳이 많다.
+   용인테니스파크처럼 아무 단서가 없는 이름은 기계가 알 길이 없다. */
+app.post('/venues/:id/kind', auth, (req, res) => {
+  const vid = +req.params.id;
+  const k = String((req.body || {}).kind || '');
+  if (!['public', 'private', 'school', 'apt'].includes(k))
+    return res.status(400).json({ error: 'bad_kind' });
+  /* 그 구장에 홈을 건 클럽의 운영진이거나, 구장 주인이거나, 관리자 */
+  const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  const ok = (v.owner_id && v.owner_id === req.uid) ||
+    !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
+      WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
+      .get(vid, req.uid);
+  if (!ok) return res.status(403).json({ error: 'not_allowed' });
+  db.prepare('UPDATE venues SET kind=? WHERE id=?').run(k, vid);
+  res.json({ ok: true, kind: k });
+});
+
 /* 우리 클럽 땅 요약 */
 app.get('/clubs/:id/land', auth, (req, res) => {
   const cid = +req.params.id;
@@ -8676,7 +8804,14 @@ app.get('/clubs/:id/land', auth, (req, res) => {
   const rows = db.prepare(`SELECT l.*, v.name, v.sigungu, v.lat, v.lng, v.indoor
     FROM land l JOIN venues v ON v.id=l.venue_id WHERE l.club_id=?
     ORDER BY l.depth DESC, l.last_at DESC`).all(cid);
-  rows.forEach(r => { r.cells = cellsOf(r.depth); });
+  /* 칸 수는 land.depth(교류전 승리로 넓힌 값)가 아니라
+     실제로 지도에 그려지는 겹으로 센다 — 숫자와 그림을 맞춘다 */
+  const mySize = shareActiveMembers(cid, Date.now() - SHARE_ACT_DAYS * 864e5);
+  rows.forEach(r => {
+    r.depth = effDepth(r.venue_id, mySize);
+    r.cells = cellsOf(r.depth);
+    r.size = mySize;
+  });
   const total = rows.reduce((a, r) => a + r.cells, 0);
   /* 같은 <시> 안에서만 줄을 세운다.
      전국 순위는 큰 클럽이 위를 차지해 작은 클럽이 겨룰 수가 없다 —
@@ -8686,10 +8821,19 @@ app.get('/clubs/:id/land', auth, (req, res) => {
   const parts = String(club.region || '').split(' ').filter(Boolean);
   const city = parts.slice(0, 2).join(' ');        // 「경기도 용인시」
   const label = parts[1] || parts[0] || '';        // 화면에는 「용인시」
-  const rank = city ? db.prepare(`SELECT c.id, c.name,
-      SUM(3*l.depth*(l.depth+1)+1) cells, COUNT(DISTINCT l.venue_id) venues
-    FROM land l JOIN clubs c ON c.id=l.club_id
-    WHERE c.region LIKE ? GROUP BY c.id ORDER BY cells DESC LIMIT 20`).all(city + '%') : [];
+  /* 순위도 같은 규칙으로 센다 — 여기만 land.depth 를 쓰면 내 칸과 순위표가 어긋난다 */
+  let rank = [];
+  if (city) {
+    const cs = db.prepare(`SELECT c.id, c.name, l.venue_id FROM land l
+      JOIN clubs c ON c.id=l.club_id WHERE c.region LIKE ?`).all(city + '%');
+    const acc = {};
+    cs.forEach(r => {
+      const a = acc[r.id] || (acc[r.id] = { id: r.id, name: r.name, cells: 0, venues: 0 });
+      a.cells += cellsOf(effDepth(r.venue_id, sizeOfClub(r.id)));
+      a.venues++;
+    });
+    rank = Object.values(acc).sort((a, b) => b.cells - a.cells).slice(0, 20);
+  }
   const pos = rank.findIndex(r => r.id === cid) + 1;
   /* 전국은 순위가 아니라 <얼마나 다녔나> 로 본다 — 작은 클럽도 겨룰 만하다 */
   const flags = rows.length;
