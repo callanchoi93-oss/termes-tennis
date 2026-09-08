@@ -7858,7 +7858,20 @@ function sizeOfClub(clubId) {
   _sizeCache.set(clubId, { n, t: Date.now() });
   return n;
 }
-const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수
+const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수 (옛 방식, 남겨둠)
+
+/* 지도에 그릴 원의 반경(m).
+   벌집을 없앴다 — 육각형은 지형과 아무 상관이 없어서 지도 위에 격자를 덮어쓴 것처럼
+   보였고, 이웃을 피하려 칸을 줄이다 보니 잘게 쪼개진 덩어리가 됐다.
+   원은 가장자리를 흐리게 둘 수 있어 겹쳐도 지저분해지지 않는다.
+
+   규모로 크기를 정하고, 이웃 코트까지 거리의 절반 안으로 묶는 규칙은 그대로다. */
+function radiusOf(venueId, size) {
+  const n = +size || 0;
+  const want = 400 + Math.min(1400, Math.round(Math.sqrt(n) * 240));   // 8명 ≈ 1.1km, 60명 ≈ 1.8km
+  const half = nearestVenueKm(venueId) / 2 * 1000;
+  return Math.max(250, Math.round(Math.min(want, half)));
+}
 
 /* 한 구장에 클럽이 하나만 있는 게 아니다 — 같은 코트를 대여섯 클럽이 나눠 쓴다.
    운영진이 <여기가 우리 홈> 이라고 걸면 그 구장의 지분 다툼에 들어간다.
@@ -8497,6 +8510,7 @@ app.get('/land/map', auth, (req, res) => {
     /* 앱은 이 depth 를 그대로 그린다 — 따로 계산하지 않는다 */
     l.depth = effDepth(l.venue_id, sizeOf(l.club_id));
     l.cells = cellsOf(l.depth);
+    l.radius_m = radiusOf(l.venue_id, sizeOf(l.club_id));
     l.days_left = l.is_home ? null
       : Math.max(0, Math.round((365 * 864e5 - (now - (l.last_at || now))) / 864e5));
   });
@@ -9287,35 +9301,34 @@ app.get('/clubs/:id/land', auth, (req, res) => {
   const rows = db.prepare(`SELECT l.*, v.name, v.sigungu, v.lat, v.lng, v.indoor
     FROM land l JOIN venues v ON v.id=l.venue_id WHERE l.club_id=?
     ORDER BY l.depth DESC, l.last_at DESC`).all(cid);
-  /* 칸 수는 land.depth(교류전 승리로 넓힌 값)가 아니라
-     실제로 지도에 그려지는 겹으로 센다 — 숫자와 그림을 맞춘다 */
+  /* <19칸>은 아무도 못 알아본다. 육각형을 없애면서 칸도 같이 내렸다.
+     이제 세는 값은 <깃발 꽂은 코트가 몇 곳인가>다. 이건 설명이 필요 없다.
+     지도에는 원으로 그리니 반경(m)만 내려준다. */
   const mySize = shareActiveMembers(cid, Date.now() - SHARE_ACT_DAYS * 864e5);
   rows.forEach(r => {
-    r.depth = effDepth(r.venue_id, mySize);
-    r.cells = cellsOf(r.depth);
+    r.radius_m = radiusOf(r.venue_id, mySize);
     r.size = mySize;
   });
-  const total = rows.reduce((a, r) => a + r.cells, 0);
+  const total = rows.length;
   /* 같은 <시> 안에서만 줄을 세운다.
      전국 순위는 큰 클럽이 위를 차지해 작은 클럽이 겨룰 수가 없다 —
      47위라는 걸 알아봐야 할 수 있는 일이 없다.
-     18칸 대 13칸이면 다음 교류전 두 번으로 뒤집힌다. */
+     코트 3곳 대 2곳이면 다음 교류전 한 번으로 뒤집힌다. */
   const club = db.prepare('SELECT region FROM clubs WHERE id=?').get(cid) || {};
   const parts = String(club.region || '').split(' ').filter(Boolean);
   const city = parts.slice(0, 2).join(' ');        // 「경기도 용인시」
   const label = parts[1] || parts[0] || '';        // 화면에는 「용인시」
-  /* 순위도 같은 규칙으로 센다 — 여기만 land.depth 를 쓰면 내 칸과 순위표가 어긋난다 */
+  /* 순위도 코트 수로 — 같으면 교류전 승수가 많은 쪽이 앞 */
   let rank = [];
   if (city) {
-    const cs = db.prepare(`SELECT c.id, c.name, l.venue_id FROM land l
+    const cs = db.prepare(`SELECT c.id, c.name, l.venue_id, l.depth FROM land l
       JOIN clubs c ON c.id=l.club_id WHERE c.region LIKE ?`).all(city + '%');
     const acc = {};
     cs.forEach(r => {
-      const a = acc[r.id] || (acc[r.id] = { id: r.id, name: r.name, cells: 0, venues: 0 });
-      a.cells += cellsOf(effDepth(r.venue_id, sizeOfClub(r.id)));
-      a.venues++;
+      const a = acc[r.id] || (acc[r.id] = { id: r.id, name: r.name, venues: 0, wins: 0 });
+      a.venues++; a.wins += Math.max(0, (r.depth || 1) - 1);
     });
-    rank = Object.values(acc).sort((a, b) => b.cells - a.cells).slice(0, 20);
+    rank = Object.values(acc).sort((a, b) => b.venues - a.venues || b.wins - a.wins).slice(0, 20);
   }
   const pos = rank.findIndex(r => r.id === cid) + 1;
   /* 전국은 순위가 아니라 <얼마나 다녔나> 로 본다 — 작은 클럽도 겨룰 만하다 */
