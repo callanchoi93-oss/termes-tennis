@@ -2037,6 +2037,16 @@
     padding:4px 9px;box-shadow:0 1px 5px rgba(18,22,28,.2);font-size:12px;font-weight:700;
     white-space:nowrap;transform:translateX(-50%) }
   .lpin i{ width:7px;height:7px;border-radius:50%;background:var(--c);display:block }
+  .lpin{ cursor:pointer }
+  /* 아직 안 간 구장 — 거리를 옆에 붙여 <갈 만한가> 를 바로 판단하게 */
+  .lpin em{ font-style:normal;font-size:11px;font-weight:700;color:var(--lgray);
+    padding-left:5px;margin-left:1px;border-left:1px solid #e6eaee }
+  .lv .sq.nearsq{ background:#cfd6dd }
+  /* 사설 코트 — 공공구장과 색으로 갈라 놓는다 */
+  .lv .sq.privsq{ background:#a9b6f0 }
+  .lpin.priv{ color:var(--ink);border:1px solid #a9b6f0 }
+  .lpin.priv span{ color:#4a56a8 }
+  .lv .r.near{ color:var(--lgray);font-size:13px;font-weight:700 }
   .plan2{ display:flex; flex-direction:column; gap:0; }
   /* 그 달 모임이 모두 한 곳일 때만 나온다 */
   .p2place{ font-size:13.5px;color:var(--lgray);font-weight:400;margin:0 2px 7px }
@@ -15236,7 +15246,7 @@ async function chDecline(id){
    교류전에서 남의 홈에 원정 가서 이기면 그 구장 둘레를 차지한다.
    진짜 지도 위에 반투명 육각형을 얹는다 — 도로와 지명이 보여야
    <우리 동네구나> 가 온다. */
-let LAND=null, LAND_EMPTY=false, LAND_MAP=null, LAND_SHAPES=[];
+let LAND=null, LAND_MINE_ONLY=false, LAND_MAP=null, LAND_SHAPES=[], LAND_NEAR=[], LAND_KAKAO=[];
 const LAND_COLORS=['#f1631a','#3182f6','#0f9d76','#7b61ff','#e8a33d','#e05f8a'];
 
 /* 카카오 지도는 볼 때 받아온다 — 앱에 넣지 않으니 크기가 안 늘어난다 */
@@ -15246,7 +15256,9 @@ function loadKakaoMap(){
     const key=(CFG&&CFG.kakao_js_key)||'';
     if(!key) return no(new Error('지도 키가 없어요'));
     const sc=document.createElement('script');
-    sc.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false`;
+    /* libraries=services — 장소 검색을 쓴다.
+       공공데이터에는 사설 코트가 없어서, 지도를 열 때 카카오에 한 번 더 물어본다. */
+    sc.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false&libraries=services`;
     sc.onload=()=>kakao.maps.load(ok);
     sc.onerror=()=>no(new Error('지도를 불러오지 못했어요'));
     document.head.appendChild(sc);
@@ -15300,8 +15312,9 @@ async function openLand(){
           <span class="c"><b>${esc(v.name)}</b>
             <span>${v.is_home?'우리 홈':`${v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳'}`}</span></span>
           <span class="r">${v.cells}칸</span></div>`).join('')}</div>`
-      : `<div class="lnone">아직 차지한 구장이 없어요<br>
+      : `<div class="lnone" style="padding:18px 10px">아직 차지한 구장이 없어요<br>
           <span>교류전에서 <b>남의 홈에 가서 이기면</b> 그 둘레가 우리 색이 돼요</span></div>`}
+      <div id="landNear"></div>
     </div>
     ${(seasons&&(seasons.mine||[]).length) ? `<div class="lseason">
       <div class="lrh">지난 시즌</div>
@@ -15312,49 +15325,138 @@ async function openLand(){
         <span class="v">${x.cells}칸</span></div>`).join('')}
     </div>` : ''}
     <button class="landbtn" onclick="landToggleEmpty()">
-      <i></i><span id="landBtnT">빈 구장 보기</span></button>`;
+      <i></i><span id="landBtnT">우리 땅만 보기</span></button>`;
   document.getElementById('sheet').innerHTML=h;
   document.getElementById('ov').classList.add('on');
-  LAND_EMPTY=false;
+  LAND_MINE_ONLY=false;
   try{ await loadKakaoMap(); landDraw(); }
   catch(e){ document.getElementById('landMap').innerHTML=
     `<div class="lnone" style="padding-top:60px">지도를 불러오지 못했어요<br>
       <span>${esc(e.message||'')}</span></div>`; }
 }
 
+/* 두 점 사이 거리(km) — 가까운 순으로 줄을 세우려고 쓴다 */
+function landDist(aLat,aLng,bLat,bLng){
+  const R=6371, t=Math.PI/180;
+  const dLat=(bLat-aLat)*t, dLng=(bLng-aLng)*t;
+  const s=Math.sin(dLat/2)**2 + Math.cos(aLat*t)*Math.cos(bLat*t)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
+}
+/* 지도의 가운데를 정한다 — 뺏은 구장이 있으면 거기, 없으면 지금 내 자리.
+   위치를 안 주면 클럽 동네로 간다. 빈 지도를 넓게 보여주지 않는다. */
+function landCenter(){
+  const first=(LAND&&LAND.venues||[])[0];
+  if(first && first.lat!=null) return Promise.resolve({lat:first.lat, lng:first.lng});
+  return new Promise(ok=>{
+    if(!navigator.geolocation) return ok({lat:37.24, lng:127.17});
+    let done=false;
+    const fin=p=>{ if(!done){ done=true; ok(p); } };
+    setTimeout(()=>fin({lat:37.24, lng:127.17}), 2500);
+    navigator.geolocation.getCurrentPosition(
+      p=>fin({lat:p.coords.latitude, lng:p.coords.longitude}),
+      ()=>fin({lat:37.24, lng:127.17}), {timeout:2500, maximumAge:6e5});
+  });
+}
+
+/* 카카오 장소 검색으로 주변 사설 코트를 찾는다.
+   공공데이터에 든 819곳은 전부 <공공체육시설>이라 사설 코트가 한 곳도 없다 —
+   실내 코트는 대부분 사설이고 동네에서 실제로 치는 곳은 이쪽이 더 많다.
+   서버가 훑어 담기를 기다리지 않고, 지도를 열 때 그 자리에서 물어본다. */
+function kakaoNearbyCourts(lat,lng,km){
+  return new Promise(ok=>{
+    if(!(window.kakao&&kakao.maps&&kakao.maps.services)) return ok([]);
+    const ps=new kakao.maps.services.Places();
+    const words=['테니스장','테니스클럽','실내테니스'];
+    const bad=/용품|샵|숍|스토어|아카데미|레슨|교습|학원|스트링|수리|중고|판매/;
+    const out={}; let left=words.length;
+    const fin=()=>{ if(--left<=0) ok(Object.values(out)); };
+    words.forEach(w=>{
+      ps.keywordSearch(w,(data,st)=>{
+        if(st===kakao.maps.services.Status.OK){
+          data.forEach(d=>{
+            const n=d.place_name||'';
+            if(!/테니스|정구/.test(n) || bad.test(n)) return;
+            out[d.id]={ kakao_id:d.id, name:n, addr:d.road_address_name||d.address_name||'',
+              lat:+d.y, lng:+d.x, phone:d.phone||'',
+              indoor:/실내|돔|인도어|아레나/.test(n)?1:0 };
+          });
+        }
+        fin();
+      },{ location:new kakao.maps.LatLng(lat,lng),
+          radius:Math.min(20000, Math.round((km||10)*1000)), sort:'distance', size:15 });
+    });
+  });
+}
+/* 지도에서 방금 찾은 사설 코트를 누를 때 — 우리 표에 앉히고 나서 평소 화면을 연다 */
+async function landKakaoOpen(kid){
+  const p=(LAND_KAKAO||[]).find(x=>x.kakao_id===kid);
+  if(!p) return;
+  let r=null;
+  try{ r=await api('/venues/from-kakao',{method:'POST',body:JSON.stringify(p)}); }
+  catch(e){ return toast('불러오지 못했어요'); }
+  if(r&&r.venue) landVenue(r.venue.id);
+}
+
 async function landDraw(){
   const el=document.getElementById('landMap'); if(!el) return;
-  const first=(LAND.venues||[])[0];
-  const ctr=new kakao.maps.LatLng(first?first.lat:37.24, first?first.lng:127.17);
-  LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:7});
-  /* 기본 지도는 색이 진해 칸이 묻힌다 — 옅은 회색 지도로 바꾼다 */
-  try{ LAND_MAP.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT); }catch(e){}
+  const c=await landCenter();
+  const ctr=new kakao.maps.LatLng(c.lat, c.lng);
+  /* level 5 — 대략 반경 3km. 구장 이름이 읽히는 거리다.
+     지적편집도(USE_DISTRICT)는 얹지 않는다 — 용도지역 색이 온 화면을 덮어
+     정작 봐야 할 구장이 묻혔다. 기본 도로지도가 제일 잘 읽힌다. */
+  LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:5});
   let m=null;
-  try{ m=await api(`/land/map?lat=${first?first.lat:37.24}&lng=${first?first.lng:127.17}&km=25&club_id=${clubId()}`); }
+  try{ m=await api(`/land/map?lat=${c.lat}&lng=${c.lng}&km=15&club_id=${clubId()}`); }
   catch(e){ return; }
   LAND_SHAPES.forEach(s=>s.setMap(null)); LAND_SHAPES=[];
   const byVenue={}; (m.land||[]).forEach(l=>{ (byVenue[l.venue_id]=byVenue[l.venue_id]||[]).push(l); });
   const clubIdx={}; let ci=0;
   const myId=+clubId();
   (m.land||[]).forEach(l=>{ if(clubIdx[l.club_id]==null) clubIdx[l.club_id]= (l.club_id===myId?0:++ci); });
-  (m.venues||[]).forEach(v=>{
-    if(v.lat==null) return;
+
+  /* 우리 표(공공데이터)에 있는 곳 + 카카오에서 방금 찾은 사설 코트를 합친다 */
+  const dbNear=(m.venues||[]).filter(v=>v.lat!=null)
+    .map(v=>({...v, km:landDist(c.lat,c.lng,v.lat,v.lng)}));
+  let kk=[];
+  try{ kk=await kakaoNearbyCourts(c.lat, c.lng, 10); }catch(e){}
+  const nrm=x=>String(x||'').replace(/\s/g,'');
+  /* 같은 곳이 두 번 찍히지 않게 — 이름이 같고 300m 안이면 하나로 본다 */
+  const fresh=kk.filter(p=>!dbNear.some(v=>
+    nrm(v.name)===nrm(p.name) && landDist(v.lat,v.lng,p.lat,p.lng)<0.3))
+    .map(p=>({...p, _k:true, km:landDist(c.lat,c.lng,p.lat,p.lng)}));
+  LAND_KAKAO=fresh;
+  /* 가까운 곳부터 24곳만 — 다 찍으면 이름표가 서로 겹쳐 못 읽는다 */
+  const near=dbNear.concat(fresh).sort((a,b)=>a.km-b.km).slice(0,24);
+  LAND_NEAR=near;
+
+  const bounds=new kakao.maps.LatLngBounds();
+  near.forEach(v=>{
+    const pos=new kakao.maps.LatLng(v.lat,v.lng);
+    /* 카카오에서 막 찾은 사설 코트 — 아직 우리 표에 없으니 누를 때 앉힌다 */
+    if(v._k){
+      if(LAND_MINE_ONLY) return;
+      bounds.extend(pos);
+      const km=new kakao.maps.CustomOverlay({position:pos,
+        content:`<div class="lpin priv" onclick="landKakaoOpen('${esc(v.kakao_id)}')">
+          <span>${esc(v.name)}</span><em>${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</em></div>`,
+        yAnchor:.5, clickable:true});
+      km.setMap(LAND_MAP); LAND_SHAPES.push(km);
+      return;
+    }
     const owners=byVenue[v.id]||[];
     if(!owners.length){
-      /* 빈 구장 — <빈 구장 보기> 를 켰을 때만 점선으로 보여준다 */
-      if(!LAND_EMPTY) return;
-      hexRing(v.lat,v.lng,1).forEach(pts=>{
-        const p=new kakao.maps.Polygon({path:pts, strokeWeight:1.5, strokeColor:'#9aa5b0',
-          strokeOpacity:.9, strokeStyle:'shortdash', fillColor:'#ffffff', fillOpacity:.35});
-        p.setMap(LAND_MAP); LAND_SHAPES.push(p);
-      });
-      /* 누르면 빈 타임을 보여준다 — 지도를 보고 나서 예약 탭으로 다시 찾아가지 않게 */
-      const em=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(v.lat,v.lng),
+      /* 아직 아무도 안 간 구장 — 그냥 테니스장으로 보여준다.
+         칸(육각형)은 그리지 않는다. 안 가본 곳까지 칸을 치면 지도가 격자로 덮인다. */
+      if(LAND_MINE_ONLY) return;
+      bounds.extend(pos);
+      const em=new kakao.maps.CustomOverlay({position:pos,
         content:`<div class="lpin empty" onclick="landVenue(${v.id})">
-          <span>${esc(v.name)}</span></div>`, yAnchor:.5});
+          <span>${esc(v.name)}</span><em>${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</em></div>`,
+        yAnchor:.5, clickable:true});
       em.setMap(LAND_MAP); LAND_SHAPES.push(em);
       return;
     }
+    bounds.extend(pos);
     const top=owners.sort((a,b)=>b.depth-a.depth)[0];
     const col=LAND_COLORS[clubIdx[top.club_id]%LAND_COLORS.length];
     /* 옅어지는 중이면 흐리게 — 지도에 시간이 담긴다 */
@@ -15364,11 +15466,28 @@ async function landDraw(){
         strokeOpacity:fade?.4:.85, fillColor:col, fillOpacity:fade?.10:.30});
       p.setMap(LAND_MAP); LAND_SHAPES.push(p);
     });
-    const mk=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(v.lat,v.lng),
+    const mk=new kakao.maps.CustomOverlay({position:pos,
       content:`<div class="lpin" style="--c:${col}" onclick="landVenue(${v.id})">
-        ${top.is_home?'<i></i>':''}<span>${esc(v.name)}</span></div>`, yAnchor:.5});
+        <i></i><span>${esc(v.name)}</span></div>`, yAnchor:.5, clickable:true});
     mk.setMap(LAND_MAP); LAND_SHAPES.push(mk);
   });
+  /* 찍은 곳이 다 들어오게 맞춘다 — 한 곳뿐이면 그대로 둔다 */
+  try{ if(!bounds.isEmpty()) LAND_MAP.setBounds(bounds, 40, 40, 40, 40); }catch(e){}
+  landNearList();
+}
+
+/* 지도 아래에 가까운 구장을 몇 곳 적어 준다 —
+   지도만으로는 <여기서 뭘 하라는 거지> 가 안 풀린다. 눌러서 바로 잡게 한다. */
+function landNearList(){
+  const box=document.getElementById('landNear'); if(!box) return;
+  const list=(LAND_NEAR||[]).slice(0,5);
+  if(!list.length){ box.innerHTML=''; return; }
+  box.innerHTML=`<div class="lrh" style="margin:16px 0 2px">가까운 테니스장</div>
+    ${list.map(v=>`<div class="lv" onclick="${v._k?`landKakaoOpen('${esc(v.kakao_id)}')`:`landVenue(${v.id})`}" style="cursor:pointer">
+      <span class="sq ${v._k||v.source==='kakao'?'privsq':'nearsq'}"></span>
+      <span class="c"><b>${esc(v.name)}</b>
+        <span>${esc(v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '))}${v.indoor?' · 실내':''}${v._k||v.source==='kakao'?' · 사설':''}</span></span>
+      <span class="r near">${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</span></div>`).join('')}`;
 }
 /* 지도에서 구장을 누르면 — 빈 타임이 있으면 바로 잡을 수 있게 한다.
    지금은 지도를 보고 나서 예약 탭에 가서 그 구장을 다시 찾아야 했다. */
@@ -15417,10 +15536,12 @@ function landMakeEv(vid,name,tag){
 }
 function landMakeXc(vid,name){ landMakeEv(vid,name,'교류전'); }
 
+/* 주변 구장을 기본으로 보여준다 — 끄면 우리 칸만 남는다.
+   전에는 반대였다. 처음 열면 아무것도 없는 지도가 떴다. */
 function landToggleEmpty(){
-  LAND_EMPTY=!LAND_EMPTY;
-  const t=document.getElementById('landBtnT'); if(t) t.textContent=LAND_EMPTY?'빈 구장 숨기기':'빈 구장 보기';
-  const b=document.querySelector('.landbtn'); if(b) b.classList.toggle('on', LAND_EMPTY);
+  LAND_MINE_ONLY=!LAND_MINE_ONLY;
+  const t=document.getElementById('landBtnT'); if(t) t.textContent=LAND_MINE_ONLY?'주변 구장 보기':'우리 땅만 보기';
+  const b=document.querySelector('.landbtn'); if(b) b.classList.toggle('on', LAND_MINE_ONLY);
   landDraw();
 }
 
