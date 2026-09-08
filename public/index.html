@@ -2002,6 +2002,19 @@
     background:#fff;border:0;border-radius:22px;padding:9px 14px;font-family:inherit;
     box-shadow:0 2px 10px rgba(18,22,28,.18);font-size:15px;font-weight:700;color:var(--ink);
     cursor:pointer }
+  /* 이 지역에서 다시 찾기 — 많이 움직였을 때만 뜬다.
+     늘 떠 있으면 지도를 볼 때마다 시야를 가린다. */
+  .landre{ position:absolute;left:50%;top:12px;transform:translateX(-50%) translateY(-6px);
+    z-index:6;display:none;align-items:center;gap:7px;white-space:nowrap;
+    background:var(--ink);color:#fff;border:0;border-radius:22px;padding:10px 16px;
+    font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;
+    box-shadow:0 3px 12px rgba(18,22,28,.3);opacity:0;transition:.18s }
+  .landre.on{ display:flex;opacity:1;transform:translateX(-50%) translateY(0) }
+  .landre i{ width:15px;height:15px;flex:none;display:block;background:#fff;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain;
+    -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><path d='M20 11a8 8 0 1 0-2.3 5.7'/><path d='M20 4v7h-7'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><path d='M20 11a8 8 0 1 0-2.3 5.7'/><path d='M20 4v7h-7'/></svg>") }
   .landbtn i{ width:13px;height:12px;display:block;border:1.6px solid var(--ink);
     clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%) }
   .landbtn.on{ background:var(--ink);color:#fff }
@@ -2521,7 +2534,7 @@
   .tkc .tx{ font-size:15px;line-height:1.6;margin-top:6px }
   .inp.ta{ min-height:96px;resize:vertical;line-height:1.6;margin-top:8px }
   /* 범례 — 색이 승수를 말하니 열쇠가 있어야 읽힌다 */
-  /* 범례 — 글씨를 키우면 <칸 크기는 클럽 규모>가 오른쪽에 밀려 혼자 다음 줄로 떨어진다.
+  /* 범례 — 글씨를 키우면 <원 크기는 클럽 규모>가 오른쪽에 밀려 혼자 다음 줄로 떨어진다.
      처음부터 아랫줄에 두어 두 덩어리로 읽히게 한다. */
   .lkey{ margin-top:11px;padding:11px 13px;background:var(--felt);border-radius:11px;
     font-size:13px;color:var(--lgray) }
@@ -16210,26 +16223,29 @@ function landPageHtml(){
       <div id="landMap" class="landmap"></div>
       <button class="landbtn" onclick="landToggleEmpty()">
         <i></i><span id="landBtnT">${LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기'}</span></button>
+      <button class="landre" id="landRe" onclick="landHere()">
+        <i></i>이 지역에서 다시 찾기</button>
     </div>
     <div class="lkey">${LAND_TIERS.map(t=>`<span><i style="background:${t.c}"></i>${t.t}</span>`).join('')}
-      <span class="w">칸 크기는 클럽 규모</span></div>
+      <span class="w">원 크기는 클럽 규모</span></div>
     <div class="landsheet">
-      <div class="lhd"><span class="n">${d.total||0}<em>칸</em></span>
+      <div class="lhd"><span class="n">${d.flags||0}<em>곳</em></span>
         <span class="dd">${d.my_rank?`<b>${esc(d.region||'')}에서 ${d.my_rank}번째</b>`:'아직 순위가 없어요'}<br>
-          전국 ${(d.all_venues||0).toLocaleString()}곳 중 <b>${d.flags||0}곳</b>에 깃발</span></div>
+          전국 ${(d.all_venues||0).toLocaleString()}곳 중 우리 코트</span></div>
       ${(d.rank||[]).length>1 ? `<div class="lrank">
         <div class="lrh">${esc(d.region||'우리 시')} 클럽</div>
         ${d.rank.slice(0,5).map((r,i)=>`<div class="lr${r.id==clubId()?' me':''}">
           <span class="n">${i+1}</span>
-          <span class="c"><b>${esc(r.name)}</b><span>구장 ${r.venues||0}곳</span></span>
-          <span class="v">${r.cells}칸</span></div>`).join('')}
+          <span class="c"><b>${esc(r.name)}</b>
+            <span>${r.wins?`교류전 ${r.wins}승`:'아직 승리 없음'}</span></span>
+          <span class="v">${r.venues||0}곳</span></div>`).join('')}
       </div>` : ''}
       ${(d.venues||[]).length ? `<div class="lvs">${d.venues.slice(0,6).map(v=>`
         <div class="lv" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
           <span class="sq" style="background:${landTier(v.wins||0).c}"></span>
           <span class="c"><b>${esc(v.name)}</b>
             <span>${v.is_home?'우리 홈':`${v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳'}`}</span></span>
-          <span class="r">${v.cells}칸</span></div>`).join('')}</div>`
+          <span class="r">${v.radius_m?`${(v.radius_m/1000).toFixed(1)}km`:''}</span></div>`).join('')}</div>`
       : `<div class="lnone">아직 차지한 구장이 없어요<br>
           <span>교류전에서 <b>남의 홈에 가서 이기면</b> 그 둘레가 우리 색이 돼요</span></div>`}
       <div id="landNear"></div>
@@ -16240,7 +16256,7 @@ function landPageHtml(){
         <span class="n g">1</span>
         <span class="c"><b>${esc(x.season.replace('H1',' 상반기').replace('H2',' 하반기'))}</b>
           <span>${esc(String(x.city||'').split(' ').slice(-1)[0])} 1위</span></span>
-        <span class="v">${x.cells}칸</span></div>`).join('')}
+        <span class="v">${x.cells||0}곳</span></div>`).join('')}
     </div>` : ''}`;
 }
 async function landPageMount(){
@@ -16322,12 +16338,14 @@ async function landKakaoOpen(kid){
 
 async function landDraw(){
   const el=document.getElementById('landMap'); if(!el) return;
-  const c=await landCenter();
+  /* <이 지역에서 다시 찾기>를 눌렀으면 그 자리를 쓴다 */
+  const c = LAND_FORCE ? {lat:LAND_FORCE.lat, lng:LAND_FORCE.lng} : await landCenter();
   const ctr=new kakao.maps.LatLng(c.lat, c.lng);
   /* level 5 — 대략 반경 3km. 구장 이름이 읽히는 거리다.
      지적편집도(USE_DISTRICT)는 얹지 않는다 — 용도지역 색이 온 화면을 덮어
      정작 봐야 할 구장이 묻혔다. 기본 도로지도가 제일 잘 읽힌다. */
-  LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:5});
+  if(LAND_MAP && LAND_FORCE){ LAND_MAP.setCenter(ctr); }
+  else LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:5});
   let m=null;
   try{ m=await api(`/land/map?lat=${c.lat}&lng=${c.lng}&km=15&club_id=${clubId()}`); }
   catch(e){ return; }
@@ -16378,32 +16396,51 @@ async function landDraw(){
   fit.forEach(v=>{ if(!(LAND_MINE_ONLY && !(byVenue[v.id]||[]).length))
     bounds.extend(new kakao.maps.LatLng(v.lat,v.lng)); });
   const myId2=+clubId();
+  /* 벌집을 걷어냈다 — 육각형은 지형과 아무 상관이 없어 지도 위에 격자를 덮어쓴 것처럼
+     보였고, 이웃을 피하려 칸을 줄이다 보니 잘게 쪼개진 덩어리가 됐다.
+     원을 세 겹으로 겹쳐 가장자리를 흐리게 만든다. 겹쳐도 지저분해지지 않는다. */
   near.forEach(v=>{
     if(v._k) return;
     const owners=byVenue[v.id]||[]; if(!owners.length) return;
     const top=owners.sort((a,b)=>b.depth-a.depth)[0];
     const rep=(m.reps||{})[v.id];
-    /* 색은 대표 클럽의 승수. 겹은 서버가 준 값을 그대로 쓴다 —
-       여기서 또 계산하면 <7칸>이라 적어놓고 19칸을 그리게 된다. */
     const col=landTier(rep?rep.wins:0).c;
-    const dep=top.depth||1;
-    /* 우리 클럽 코트는 테두리를 굵게 — 색이 승수를 말하니 소속은 선으로 구분한다 */
     const isMine=(rep&&rep.club_id===myId2)||top.club_id===myId2;
     /* 옅어지는 중이면 흐리게 — 지도에 시간이 담긴다 */
     const fade = (!top.is_home && top.days_left!=null && top.days_left<120);
-    /* 이웃 코트까지 거리의 절반 — 여기를 넘지 않는다 */
-    const reach=nearestGap(v, near)/2;
-    hexRing(v.lat,v.lng,dep,reach).forEach(pts=>{
-      const p=new kakao.maps.Polygon({path:pts, strokeWeight:isMine?3:1.5, strokeColor:col,
-        strokeOpacity:fade?.4:(isMine?1:.7), fillColor:col, fillOpacity:fade?.10:.28});
-      p.setMap(LAND_MAP); LAND_SHAPES.push(p);
+    const R = top.radius_m || Math.round(nearestGap(v, near)/2*1000) || 800;
+    const pos=new kakao.maps.LatLng(v.lat,v.lng);
+    /* 안쪽이 진하고 바깥으로 갈수록 옅어진다 */
+    [[1,.20],[0.68,.16],[0.38,.14]].forEach(([k,op],i)=>{
+      const c=new kakao.maps.Circle({center:pos, radius:R*k,
+        strokeWeight:i===0?(isMine?2:1):0, strokeColor:col,
+        strokeOpacity:fade?.25:(isMine?.75:.4),
+        fillColor:col, fillOpacity:fade?op*0.4:op});
+      c.setMap(LAND_MAP); LAND_SHAPES.push(c);
     });
   });
-  try{ if(!bounds.isEmpty()) LAND_MAP.setBounds(bounds, 40, 40, 40, 40); }catch(e){}
+  if(LAND_FORCE){
+    /* 보던 자리를 그대로 둔다 — 다시 맞추면 화면이 튄다 */
+    try{ LAND_MAP.setLevel(LAND_FORCE.level); }catch(e){}
+    LAND_FORCE=null;
+  } else {
+    try{ if(!bounds.isEmpty()) LAND_MAP.setBounds(bounds, 40, 40, 40, 40); }catch(e){}
+  }
   const paint=()=>landPins(near, byVenue, clubIdx, m.reps||{});
   kakao.maps.event.addListener(LAND_MAP,'idle',paint);
   paint();
   landNearList();
+
+  /* 처음 잡힌 자리 15km 만 불러온다 — 지도를 서울로 옮겨도 다시 찾지 않아서
+     빈 화면이 됐다. 많이 움직였으면 다시 찾기 버튼을 띄운다.
+     자동으로 부르지 않는 이유는, 손가락으로 조금씩 미는 동안 계속 부르게 되기 때문이다. */
+  LAND_AT={lat:c.lat, lng:c.lng};
+  kakao.maps.event.addListener(LAND_MAP,'idle',()=>{
+    const k=LAND_MAP.getCenter();
+    const moved=landDist(LAND_AT.lat, LAND_AT.lng, k.getLat(), k.getLng());
+    const b=document.getElementById('landRe');
+    if(b) b.classList.toggle('on', moved>4);
+  });
 }
 
 /* 이름표 붙이기 — 겹치는 건 버린다.
@@ -17210,6 +17247,17 @@ async function submitComment(pid){
   catch(e){ return toast(apiWhy(e,'올리지 못했어요')); }
   talkPostMount(pid);
 }
+
+let LAND_AT={lat:0,lng:0};
+/* 지금 보고 있는 자리에서 다시 찾는다 — 지도 중심을 그대로 쓴다 */
+async function landHere(){
+  if(!LAND_MAP) return;
+  const k=LAND_MAP.getCenter();
+  LAND_FORCE={lat:k.getLat(), lng:k.getLng(), level:LAND_MAP.getLevel()};
+  const b=document.getElementById('landRe'); if(b) b.classList.remove('on');
+  await landDraw();
+}
+let LAND_FORCE=null;
 
 function landToggleEmpty(){
   LAND_MINE_ONLY=!LAND_MINE_ONLY;
