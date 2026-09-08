@@ -8903,6 +8903,54 @@ app.post('/admin/talk/reports/:id', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+/* 지도를 열 때 찾은 코트를 통째로 담는다 —
+   눌러야만 담기게 두었더니 화면에는 보이는데 표는 비어 있었다.
+   821곳이 전부 공공데이터인 이유가 이것이다. 사람들이 지도를 볼수록 표가 채워진다. */
+app.post('/venues/from-kakao/bulk', auth, (req, res) => {
+  const list = Array.isArray((req.body || {}).places) ? (req.body || {}).places.slice(0, 30) : [];
+  let added = 0, had = 0;
+  const ids = {};
+  db.transaction(() => {
+    for (const p of list) {
+      let out = null;
+      try { out = upsertKakaoVenue(p); } catch (e) { continue; }
+      if (!out) continue;
+      if (out.added) added++; else had++;
+      if (p.id) ids[p.id] = out.id;             // 카카오 장소번호 → 우리 구장번호
+    }
+  })();
+  res.json({ ok: true, added, had, ids });
+});
+
+/* 코트 정보 — 몇 면인지, 조명이 있는지, 주차가 되는지.
+   남이 이 구장을 눌러 들어왔을 때 알고 싶은 것들이다.
+   공공데이터에도 카카오에도 없어서 다니는 사람이 채워야 한다. */
+try { db.exec('ALTER TABLE venues ADD COLUMN courts_n INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN surface TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN lights TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN parking TEXT'); } catch (e) {}
+
+app.post('/venues/:id/info', auth, (req, res) => {
+  const vid = +req.params.id, b = req.body || {};
+  const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  /* 그 구장에 홈을 건 클럽의 운영진, 구장 주인만 고칠 수 있다 */
+  const ok = (v.owner_id && v.owner_id === req.uid) ||
+    !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
+      WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
+      .get(vid, req.uid);
+  if (!ok) return res.status(403).json({ error: 'not_allowed' });
+
+  const n = b.courts_n === '' || b.courts_n == null ? null
+    : Math.max(0, Math.min(60, parseInt(b.courts_n, 10) || 0));
+  const cut = (x, len) => { const t = String(x == null ? '' : x).trim().slice(0, len); return t || null; };
+  db.prepare(`UPDATE venues SET courts_n=?, surface=?, lights=?, parking=?,
+      kind=COALESCE(?, kind) WHERE id=?`)
+    .run(n, cut(b.surface, 20), cut(b.lights, 20), cut(b.parking, 20),
+      ['public', 'private', 'school', 'apt'].includes(b.kind) ? b.kind : null, vid);
+  res.json({ ok: true });
+});
+
 /* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
 function atCourt(uid, venueId) {
   return !!db.prepare(`SELECT 1 FROM venue_clubs vc
@@ -9106,8 +9154,8 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
    코트 정보·최근에 있었던 일·구장톡 미리보기를 따로 부르면 페이지 하나에 네 번 왕복한다. */
 app.get('/venues/:id/detail', auth, (req, res) => {
   const vid = +req.params.id;
-  const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng
-    FROM venues WHERE id=?`).get(vid);
+  const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
+    courts_n,surface,lights,parking,owner_id FROM venues WHERE id=?`).get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
 
   /* 면 수와 표면 — 사장님이 등록한 곳에만 있다. 없으면 그 줄을 안 보여준다. */
@@ -9157,10 +9205,16 @@ app.get('/venues/:id/detail', auth, (req, res) => {
       talkWho(p, vid, req.uid);
     });
   }
+  /* 이 구장을 고칠 수 있는 사람인가 — 화면에서 <고치기>를 보여줄지 정한다 */
+  const canEdit = (v.owner_id && v.owner_id === req.uid) ||
+    !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
+      WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
+      .get(vid, req.uid);
   res.json({
-    venue: v,
-    courts: courts.n || 0,
-    surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean) : [],
+    venue: v, can_edit: canEdit,
+    courts: courts.n || v.courts_n || 0,
+    surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean)
+      : (v.surface ? [v.surface] : []),
     events: evs, talk, talk_locked: talkLocked,
   });
 });
