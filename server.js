@@ -8347,15 +8347,15 @@ app.get('/venues/pick', auth, (req, res) => {
   /* 2) 검색 · 가까운 곳 */
   let rows;
   if (q) {
-    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor FROM venues
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor, kind FROM venues
       WHERE active=1 AND (name LIKE ? OR addr LIKE ?) ORDER BY name LIMIT 40`)
       .all('%' + q + '%', '%' + q + '%');
   } else if (near) {
-    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor,
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor, kind,
         ((lat-?)*(lat-?) + (lng-?)*(lng-?)) d FROM venues
       WHERE active=1 AND lat IS NOT NULL ORDER BY d LIMIT 40`).all(lat, lat, lng, lng);
   } else {
-    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor FROM venues
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor, kind FROM venues
       WHERE active=1 ORDER BY id DESC LIMIT 40`).all();
   }
   rows = rows.filter(r => !seen.has(r.id));
@@ -8773,6 +8773,136 @@ app.post('/talk/:pid/vote', auth, (req, res) => {
   res.json({ ok: true, poll: pollOf(pid, req.uid) });
 });
 
+/* ── 신고 · 차단 ────────────────────────────────────────────────
+   전국톡이 열리면서 가입만 하면 누구나 전국에 글을 올릴 수 있게 됐다.
+   광고와 도배가 들어올 자리다.
+
+   익명이어도 서버는 누가 썼는지 안다. 그래서 신고도 차단도 동작한다. */
+const REPORT_REASONS = [
+  { k: 'ad', n: '광고·홍보' }, { k: 'abuse', n: '욕설·비방' },
+  { k: 'porn', n: '음란물' }, { k: 'spam', n: '도배' },
+  { k: 'privacy', n: '개인정보 노출' }, { k: 'etc', n: '그 밖에' },
+];
+/* 몇 명이 신고하면 자동으로 가릴까 —
+   3명은 30명짜리 구장에서는 짜고 치면 넘길 수 있는 수다. 그래도 방치보다 낫다.
+   가려질 뿐 지워지지 않고, 운영진이 풀 수 있다. */
+const REPORT_HIDE_AT = 3;
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_reports (
+    id INTEGER PRIMARY KEY,
+    kind TEXT,                     -- post · comment
+    target_id INTEGER,
+    user_id INTEGER,               -- 신고한 사람
+    author_id INTEGER,             -- 신고당한 글쓴이
+    venue_id INTEGER, scope TEXT,
+    reason TEXT, memo TEXT,
+    state TEXT DEFAULT 'open',     -- open · kept(문제없음) · removed
+    at INTEGER)`);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_crp ON court_reports(kind, target_id, user_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS ix_crp_state ON court_reports(state, at)');
+  db.exec(`CREATE TABLE IF NOT EXISTS court_blocks (
+    user_id INTEGER, target_id INTEGER, at INTEGER,
+    PRIMARY KEY(user_id, target_id))`);
+} catch (e) { console.error('[schema court_reports]', e.message); }
+try { db.exec('ALTER TABLE court_posts ADD COLUMN hidden INTEGER DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE court_comments ADD COLUMN hidden INTEGER DEFAULT 0'); } catch (e) {}
+
+/* 내가 안 보기로 한 사람들 — 목록에서 통째로 뺀다 */
+function blockedBy(uid) {
+  try {
+    return db.prepare('SELECT target_id FROM court_blocks WHERE user_id=?').all(uid)
+      .map(r => r.target_id);
+  } catch (e) { return []; }
+}
+
+app.get('/talk/report-reasons', auth, (_req, res) => res.json(REPORT_REASONS));
+
+app.post('/talk/report', auth, (req, res) => {
+  const b = req.body || {};
+  const kind = b.kind === 'comment' ? 'comment' : 'post';
+  const tid = +b.id;
+  const reason = REPORT_REASONS.some(r => r.k === b.reason) ? b.reason : 'etc';
+  const memo = String(b.memo || '').trim().slice(0, 300);
+
+  const row = kind === 'post'
+    ? db.prepare('SELECT user_id, venue_id, scope FROM court_posts WHERE id=?').get(tid)
+    : db.prepare(`SELECT cc.user_id, p.venue_id, p.scope FROM court_comments cc
+        JOIN court_posts p ON p.id=cc.post_id WHERE cc.id=?`).get(tid);
+  if (!row) return res.status(404).json({ error: 'no_target' });
+  /* 자기 글은 신고할 수 없다 — 지우면 된다 */
+  if (row.user_id === req.uid) return res.status(400).json({ error: 'own' });
+
+  try {
+    db.prepare(`INSERT INTO court_reports
+      (kind,target_id,user_id,author_id,venue_id,scope,reason,memo,at)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(kind, tid, req.uid, row.user_id, row.venue_id, row.scope, reason, memo || null, now());
+  } catch (e) { return res.json({ ok: true, already: true }); }
+
+  /* 여러 사람이 신고하면 일단 가린다 — 지우지는 않는다. 운영진이 풀 수 있다. */
+  const n = db.prepare('SELECT COUNT(*) n FROM court_reports WHERE kind=? AND target_id=?')
+    .get(kind, tid).n;
+  let hidden = false;
+  if (n >= REPORT_HIDE_AT) {
+    const t = kind === 'post' ? 'court_posts' : 'court_comments';
+    try { db.prepare(`UPDATE ${t} SET hidden=1 WHERE id=?`).run(tid); hidden = true; } catch (e) {}
+  }
+  res.json({ ok: true, count: n, hidden });
+});
+
+/* 이 사람 글 안 보기 — 닉네임이 구장마다 고정이라 실제로 한 사람을 가린다 */
+app.post('/talk/block', auth, (req, res) => {
+  const b = req.body || {};
+  const kind = b.kind === 'comment' ? 'comment' : 'post';
+  const tid = +b.id;
+  const row = kind === 'post'
+    ? db.prepare('SELECT user_id FROM court_posts WHERE id=?').get(tid)
+    : db.prepare('SELECT user_id FROM court_comments WHERE id=?').get(tid);
+  if (!row) return res.status(404).json({ error: 'no_target' });
+  if (row.user_id === req.uid) return res.status(400).json({ error: 'own' });
+  try {
+    db.prepare('INSERT INTO court_blocks (user_id,target_id,at) VALUES (?,?,?)')
+      .run(req.uid, row.user_id, now());
+  } catch (e) {}
+  res.json({ ok: true });
+});
+
+app.get('/admin/talk/reports', admin, (req, res) => {
+  const state = String(req.query.state || 'open');
+  const rows = db.prepare(`SELECT r.*, v.name venue FROM court_reports r
+    LEFT JOIN venues v ON v.id=r.venue_id
+    WHERE r.state=? ORDER BY r.at DESC LIMIT 100`).all(state);
+  rows.forEach(r => {
+    r.reason_name = (REPORT_REASONS.find(x => x.k === r.reason) || {}).n || r.reason;
+    const t = r.kind === 'post' ? 'court_posts' : 'court_comments';
+    const row = db.prepare(`SELECT body, hidden FROM ${t} WHERE id=?`).get(r.target_id);
+    r.body = row ? String(row.body || '').slice(0, 200) : '(지워짐)';
+    r.hidden = row ? row.hidden : null;
+    r.count = db.prepare('SELECT COUNT(*) n FROM court_reports WHERE kind=? AND target_id=?')
+      .get(r.kind, r.target_id).n;
+  });
+  res.json(rows);
+});
+
+app.post('/admin/talk/reports/:id', admin, (req, res) => {
+  const id = +req.params.id;
+  const act = String((req.body || {}).act || '');
+  const r = db.prepare('SELECT kind, target_id FROM court_reports WHERE id=?').get(id);
+  if (!r) return res.status(404).json({ error: 'no_report' });
+  const t = r.kind === 'post' ? 'court_posts' : 'court_comments';
+  if (act === 'remove') {
+    db.prepare(`UPDATE ${t} SET hidden=1 WHERE id=?`).run(r.target_id);
+    db.prepare("UPDATE court_reports SET state='removed' WHERE kind=? AND target_id=?")
+      .run(r.kind, r.target_id);
+  } else if (act === 'keep') {
+    /* 문제없음 — 가려둔 걸 도로 푼다 */
+    db.prepare(`UPDATE ${t} SET hidden=0 WHERE id=?`).run(r.target_id);
+    db.prepare("UPDATE court_reports SET state='kept' WHERE kind=? AND target_id=?")
+      .run(r.kind, r.target_id);
+  } else return res.status(400).json({ error: 'bad_act' });
+  res.json({ ok: true });
+});
+
 /* 내가 이 구장 사람인가 — 내 클럽 중 하나라도 여기 홈을 걸었으면 그렇다 */
 function atCourt(uid, venueId) {
   return !!db.prepare(`SELECT 1 FROM venue_clubs vc
@@ -8851,19 +8981,25 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   /* 말머리로 거른다 — 없으면 전체 */
   const cat = String(req.query.cat || '').trim();
   const catSql = cat ? ' AND p.cat=? ' : '';
+  /* 가려진 글과 안 보기로 한 사람의 글은 뺀다.
+     내 글은 가려져도 나에게는 보인다 — 왜 반응이 없는지 알 수 있어야 한다. */
+  const bl = blockedBy(req.uid);
+  const hideSql = ` AND (p.hidden IS NULL OR p.hidden=0 OR p.user_id=${+req.uid}) `
+    + (bl.length ? ` AND p.user_id NOT IN (${bl.map(Number).join(',')}) ` : '');
   const rows = scope === 'court'
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views,p.tags, c.name club, u.name who FROM court_posts p
+        p.cat,p.views,p.tags,p.hidden, c.name club, u.name who FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
-        WHERE p.venue_id=? AND p.scope='court' ${catSql}
+        WHERE p.venue_id=? AND p.scope='court' ${catSql} ${hideSql}
         ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
     : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views,p.tags, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
+        p.cat,p.views,p.tags,p.hidden, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
-        WHERE p.scope='all' ${catSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
+        WHERE p.scope='all' ${catSql} ${hideSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
   rows.forEach(r => {
     r.cat_name = catName(scope, r.cat);
+    r.hidden = r.hidden ? 1 : 0;
     r.react_n = db.prepare('SELECT COUNT(*) n FROM court_reacts WHERE post_id=?').get(r.id).n;
     r.has_poll = !!db.prepare('SELECT 1 FROM court_polls WHERE post_id=?').get(r.id);
     r.poll_n = r.has_poll
@@ -8881,6 +9017,7 @@ app.get('/venues/:id/talk', auth, (req, res) => {
     picks = db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.views,p.cat,p.venue_id,p.user_id,
         v.name venue, v.sigungu FROM court_posts p LEFT JOIN venues v ON v.id=p.venue_id
       WHERE p.scope='all' AND p.created_at > ? AND p.views > 0
+        AND (p.hidden IS NULL OR p.hidden=0)
       ORDER BY p.views DESC LIMIT 3`).all(Date.now() - 7 * 864e5);
     picks.forEach(p => { p.cat_name = catName('all', p.cat); talkWho(p, p.venue_id, req.uid); });
   }
@@ -8936,10 +9073,14 @@ app.get('/talk/:pid/comments', auth, (req, res) => {
     db.prepare('INSERT INTO court_views (post_id,user_id,at) VALUES (?,?,?)').run(pid, req.uid, now());
     db.prepare('UPDATE court_posts SET views=COALESCE(views,0)+1 WHERE id=?').run(pid);
   } catch (e) { /* 이미 본 글 */ }
-  const rows = db.prepare(`SELECT cc.id,cc.body,cc.created_at,cc.user_id,cc.anon,
+  const bl2 = blockedBy(req.uid);
+  const rows = db.prepare(`SELECT cc.id,cc.body,cc.created_at,cc.user_id,cc.anon,cc.hidden,
     u.name who, c.name club FROM court_comments cc
     LEFT JOIN users u ON u.id=cc.user_id LEFT JOIN clubs c ON c.id=cc.club_id
-    WHERE cc.post_id=? ORDER BY cc.created_at`).all(pid);
+    WHERE cc.post_id=?
+      AND (cc.hidden IS NULL OR cc.hidden=0 OR cc.user_id=?)
+      ${bl2.length ? `AND cc.user_id NOT IN (${bl2.map(Number).join(',')})` : ''}
+    ORDER BY cc.created_at`).all(pid, req.uid);
   /* 글쓴이 표시 — 이름이 고정이라야 댓글에서 누가 원글쓴이인지 알 수 있다 */
   rows.forEach(r => { r.mine_post = (r.user_id === author) ? 1 : 0; });
   res.json({ comments: rows.map(r => talkWho(r, p.venue_id, req.uid)),
