@@ -8501,11 +8501,67 @@ function postRow(p) {
     .get(p.id).n };
 }
 
+/* 구장톡을 마지막으로 본 때 — <새 글> 점을 정직하게 찍으려고 남긴다.
+   최근 3일 글 수로 대신하면 이미 읽은 글에도 점이 붙는다. */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS court_seen (
+    user_id INTEGER, venue_id INTEGER, seen_at INTEGER,
+    PRIMARY KEY(user_id, venue_id))`);
+} catch (e) { console.error('[schema court_seen]', e.message); }
+
+/* 클럽 탭 홈코트 카드 — 한 번에 한 장 분량을 준다.
+   지분·순위·다음 한 수·안 읽은 글을 따로 부르면 탭 열 때마다 네 번을 왕복한다. */
+app.get('/clubs/:id/homecourt', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const officer = isOfficer(cid, req.uid);
+  const row = db.prepare(`SELECT vc.venue_id, v.name FROM venue_clubs vc
+    JOIN venues v ON v.id=vc.venue_id WHERE vc.club_id=? ORDER BY vc.set_at LIMIT 1`).get(cid);
+  if (!row) return res.json({ home: null, can_set: officer });
+
+  const s = venueShares(row.venue_id);
+  const mine = s.clubs.find(c => c.club_id === cid);
+  const rank = s.clubs.findIndex(c => c.club_id === cid) + 1;
+  const top = s.top;
+  /* 1등이 아니면 몇 승이 모자란가 — 숫자만 보여주면 뭘 해야 할지 모른다 */
+  let need = null;
+  if (mine && top && top.club_id !== cid) need = Math.ceil((top.score - mine.score) / SHARE_WIN) + 1;
+
+  const seen = db.prepare('SELECT seen_at FROM court_seen WHERE user_id=? AND venue_id=?')
+    .get(req.uid, row.venue_id);
+  const unread = db.prepare(`SELECT COUNT(*) n FROM court_posts
+    WHERE venue_id=? AND scope='court' AND user_id!=? AND created_at > ?`)
+    .get(row.venue_id, req.uid, (seen && seen.seen_at) || 0).n;
+
+  res.json({
+    home: { venue_id: row.venue_id, name: row.name },
+    pct: mine ? mine.pct : 0, rank: rank || null, clubs: s.clubs.length,
+    /* 혼자 쓰는 중일 때 <100%> 대신 무엇을 적을지 정하려면 우리 활동량이 필요하다 */
+    events: mine ? mine.events : 0, wins: mine ? mine.wins : 0,
+    top: top ? { name: top.name, pct: top.pct, mine: top.club_id === cid } : null,
+    need, unread, can_set: officer,
+    bars: s.clubs.map(c => ({ pct: c.pct, mine: c.club_id === cid, wins: c.wins })),
+  });
+});
+
+app.post('/venues/:id/talk/seen', auth, (req, res) => {
+  try {
+    db.prepare(`INSERT INTO court_seen (user_id,venue_id,seen_at) VALUES (?,?,?)
+      ON CONFLICT(user_id,venue_id) DO UPDATE SET seen_at=?`)
+      .run(req.uid, +req.params.id, now(), now());
+  } catch (e) {}
+  res.json({ ok: true });
+});
+
 app.get('/venues/:id/talk', auth, (req, res) => {
   const vid = +req.params.id;
   const scope = req.query.scope === 'all' ? 'all' : 'court';
+  const v = db.prepare('SELECT name FROM venues WHERE id=?').get(vid) || {};
+  /* 누가 이 코트를 쓰는지 — 글이 하나도 없어도 빈 방으로 느껴지지 않게 앞에 세운다 */
+  const s = venueShares(vid);
+  const who = s.clubs.map(c => ({ club_id: c.club_id, name: c.name, wins: c.wins, size: c.size }));
   if (scope === 'court' && !atCourt(req.uid, vid))
-    return res.json({ scope, locked: true, posts: [],
+    return res.json({ scope, locked: true, posts: [], venue: v.name || '', clubs: who,
       message: '이 구장을 홈으로 건 클럽만 보이는 공간이에요' });
   const rows = scope === 'court'
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,
@@ -8518,7 +8574,7 @@ app.get('/venues/:id/talk', auth, (req, res) => {
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
         WHERE p.scope='all' ORDER BY p.created_at DESC LIMIT 50`).all();
-  res.json({ scope, locked: false, posts: rows.map(postRow) });
+  res.json({ scope, locked: false, posts: rows.map(postRow), venue: v.name || '', clubs: who });
 });
 
 app.post('/venues/:id/talk', auth, (req, res) => {
