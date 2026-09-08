@@ -286,6 +286,8 @@ app.get('/config', (_, res) => {
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
     /* 스토어 주소 — 앱이 자기 플랫폼에 맞는 쪽을 골라 쓴다 */
     android_app_url: process.env.ANDROID_APP_URL || '',
+    /* 지도는 볼 때 받아온다 — 앱에 넣지 않아 크기가 안 늘어난다 */
+    kakao_js_key: process.env.KAKAO_JS_KEY || '',
     ios_app_url: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517',   // 맞수 App Store
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
@@ -2567,10 +2569,21 @@ app.post('/clubs/:id/events', auth, (req, res) => {
     return res.status(403).json({ error: 'officer_only', message: '정기 모임은 임원만 만들 수 있어요' });
   }
   if (!title) return res.status(400).json({ error: 'title_required' });
-  const r = db.prepare(`INSERT INTO club_events (club_id,title,date,tag,place,created_by,created_at)
-                        VALUES (?,?,?,?,?,?,?)`)
+  /* 구장을 목록에서 골랐으면 그 번호를 함께 저장한다 —
+     글자만으로는 <용인테니스파크> 와 <용인 테니스 파크> 가 다른 곳이 된다. */
+  /* 구장을 목록에서 골랐으면 번호를, 못 골랐으면 이름으로 한 번 더 찾아본다.
+     그래야 <용인테니스파크> 와 <용인 테니스 파크> 가 같은 곳이 된다. */
+  let vid = req.body && req.body.venue_id ? +req.body.venue_id : null;
+  if (!vid && place) {
+    const nm = String(place).replace(/\s+/g, '');
+    const hit = db.prepare(`SELECT id FROM venues WHERE active=1
+      AND REPLACE(name,' ','')=? LIMIT 1`).get(nm);
+    if (hit) vid = hit.id;
+  }
+  const r = db.prepare(`INSERT INTO club_events (club_id,title,date,tag,place,venue_id,created_by,created_at)
+                        VALUES (?,?,?,?,?,?,?,?)`)
     .run(cid, String(title), String(date || ''), String(tag || '정기'),
-         String(place || '').trim().slice(0, 60) || null, req.uid, now());
+         String(place || '').trim().slice(0, 60) || null, vid, req.uid, now());
   notifyClub(cid, req.uid, '📅', '새 모임이 열렸어요', `${title}${date ? ' · ' + date : ''}`);
   res.json({ ok: true, id: rid(r) });
 });
@@ -2586,7 +2599,9 @@ app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
   const date = String((req.body || {}).date != null ? (req.body || {}).date : ev.date);
   const place = (req.body || {}).place != null
     ? String((req.body || {}).place).trim().slice(0, 60) : (ev.place || null);
-  db.prepare('UPDATE club_events SET title=?, date=?, place=? WHERE id=?').run(title, date, place || null, eid);
+  const vid2 = req.body && req.body.venue_id ? +req.body.venue_id : null;
+  db.prepare('UPDATE club_events SET title=?, date=?, place=?, venue_id=COALESCE(?,venue_id) WHERE id=?')
+    .run(title, date, place || null, vid2, eid);
   // 참석 응답한 회원들에게 변경 알림
   db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
     .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
@@ -3080,6 +3095,35 @@ app.get('/open-matches', (req, res) => {
   const rows = db.prepare(`SELECT * FROM open_matches WHERE ${where.join(' AND ')}
     ORDER BY id DESC LIMIT 50`).all(...args);
   const fpCache = {};
+  /* 장소 이름으로 구장을 찾아 땅 딱지를 붙인다.
+     오픈매치는 개인이 모이는 자리라 <땅에 반영하지는 않는다> —
+     클럽 이름으로 나온 게 아니니까. 딱지는 보여주기만 한다. */
+  const landTag = (() => {
+    const names = [...new Set(rows.map(m => String(m.loc || '').replace(/\s+/g, '')).filter(Boolean))];
+    if (!names.length) return () => null;
+    const ph = names.map(() => '?').join(',');
+    const vs = db.prepare(`SELECT id, name FROM venues WHERE active=1
+      AND REPLACE(name,' ','') IN (${ph})`).all(...names);
+    if (!vs.length) return () => null;
+    const byName = {}; vs.forEach(v => { byName[v.name.replace(/\s+/g, '')] = v.id; });
+    const ids = vs.map(v => v.id);
+    const own = {};
+    db.prepare(`SELECT l.venue_id, l.depth, c.id club_id, c.name club FROM land l
+      JOIN clubs c ON c.id=l.club_id WHERE l.venue_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY l.depth DESC`).all(...ids)
+      .forEach(l => { if (!own[l.venue_id]) own[l.venue_id] = l; });
+    /* 내가 속한 클럽들 — <우리 땅> 인지 가리는 데 쓴다 */
+    const myClubs = uid ? db.prepare(`SELECT club_id FROM club_members WHERE user_id=?`)
+      .all(uid).map(r => r.club_id) : [];
+    return loc => {
+      const vid = byName[String(loc || '').replace(/\s+/g, '')];
+      if (!vid) return null;
+      const o = own[vid];
+      if (!o) return { t: '빈 구장', k: 'empty' };
+      if (myClubs.includes(o.club_id)) return { t: '우리 땅', k: 'mine' };
+      return { t: `${o.club} 땅`, k: 'rival' };
+    };
+  })();
   res.json(rows.map(m => {
     const v = omView(m, uid);
     if (m.host_id) {
@@ -3087,6 +3131,7 @@ app.get('/open-matches', (req, res) => {
       v.host_fp = fpCache[m.host_id].score;
       v.host_fp_n = fpCache[m.host_id].reviews;
     }
+    v.land = landTag(m.loc);
     return v;
   }));
 });
@@ -5527,6 +5572,11 @@ function notifyClub(clubId, exceptUid, icon, title, body) {
   const rows = db.prepare('SELECT user_id FROM club_members WHERE club_id=?').all(clubId);
   rows.forEach(r => { if (r.user_id !== exceptUid) sendPush(r.user_id, { icon, title, body }); });
 }
+/* 임원에게만 — 도전장처럼 <답을 해야 하는> 일은 회원 전체에게 보낼 필요가 없다 */
+function notifyClubOfficers(clubId, icon, title, body) {
+  db.prepare(`SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')`)
+    .all(clubId).forEach(r => sendPush(r.user_id, { icon, title, body }));
+}
 
 // ══════════════════════════════════════════════════════════════
 //  결제 게이트
@@ -7703,6 +7753,414 @@ app.get('/admin/dead-code', admin, (_req, res) => {
     external: ext.length,
     checked: !!uses,
   });
+});
+
+/* ══════════ 땅따먹기 ══════════════════════════════════════════
+   교류전에서 <남의 홈에 원정 가서 이기면> 그 구장 둘레를 차지한다.
+   · 홈  = 최근 1년 정기모임의 25% 이상인 구장 (최대 2곳) — 등록받지 않는다
+   · 중립 구장 = 지도를 건드리지 않음 (승패 기록으로만 남음)
+   · 원정 패 = 아무 일도 없음 — 져서 얻는 것은 없다
+   · 옅어짐 = 뺏은 땅만 1년. 내 홈은 안 옅어진다(매주 거기서 치니까)
+              실외 구장은 겨울 3개월을 그 계산에서 뺀다 */
+try { db.exec('ALTER TABLE venues ADD COLUMN lat REAL'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN lng REAL'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN indoor INTEGER DEFAULT 0'); } catch (e) {}
+/* 모임이 어느 구장인지 — 지금은 글자로만 적혀 있어 같은 곳인지 알 수 없다 */
+try { db.exec('ALTER TABLE club_events ADD COLUMN venue_id INTEGER'); } catch (e) {}
+
+db.exec(`CREATE TABLE IF NOT EXISTS land (
+  venue_id INTEGER, club_id INTEGER,
+  depth INTEGER DEFAULT 1,        -- 겹 수 (1겹=7칸, 2겹=19칸, 최대 4)
+  is_home INTEGER DEFAULT 0,      -- 내 홈이면 안 옅어진다
+  last_at INTEGER,                -- 마지막으로 지킨 때
+  PRIMARY KEY(venue_id, club_id))`);
+
+const LAND_MAXDEPTH = 4;
+const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수
+
+/* 클럽의 홈 구장 — 최근 1년 정기모임을 세어 자동으로 잡는다.
+   두 곳을 번갈아 쓰는 클럽이 넷 중 하나라 최대 2곳까지 인정한다. */
+function homeVenues(clubId) {
+  const since = Date.now() - 365 * 864e5;
+  const rows = db.prepare(`SELECT venue_id, COUNT(*) n FROM club_events
+    WHERE club_id=? AND venue_id IS NOT NULL AND tag!='교류전'
+      AND created_at > ? GROUP BY venue_id ORDER BY n DESC`).all(clubId, since);
+  const tot = rows.reduce((a, r) => a + r.n, 0);
+  if (tot < 10) return [];                      // 기록이 적으면 홈을 정하지 않는다
+  return rows.slice(0, 2).filter(r => r.n / tot >= 0.25).map(r => r.venue_id);
+}
+
+/* 교류전이 끝나면 부른다 — 이긴 클럽이 남의 홈에서 이겼을 때만 땅이 움직인다 */
+function landAfterExchange(eventId) {
+  try {
+    const ev = db.prepare('SELECT venue_id, club_id FROM club_events WHERE id=?').get(eventId);
+    if (!ev || !ev.venue_id) return;            // 구장을 못 고른 모임은 셈에서 뺀다
+    const entries = db.prepare('SELECT club_id FROM exchange_entries WHERE event_id=?').all(eventId);
+    if (entries.length < 2) return;
+    /* 클럽별 승수 — 이긴 쪽을 가린다 */
+    const win = {};
+    db.prepare(`SELECT home_club, away_club, sa, sb FROM exchange_games WHERE event_id=?`)
+      .all(eventId).forEach(g => {
+        if (g.sa == null || g.sb == null) return;
+        const w = g.sa > g.sb ? g.home_club : g.sa < g.sb ? g.away_club : null;
+        if (w) win[w] = (win[w] || 0) + 1;
+      });
+    const sorted = Object.entries(win).sort((a, b) => b[1] - a[1]);
+    if (!sorted.length) return;
+    const winner = +sorted[0][0];
+    const homesOfWinner = homeVenues(winner);
+    /* 진 클럽들의 홈인가 — 원정 승리여야 땅이 넘어온다 */
+    const awayWin = entries.some(e => e.club_id !== winner
+      && homeVenues(e.club_id).includes(ev.venue_id));
+    const isMyHome = homesOfWinner.includes(ev.venue_id);
+    if (!awayWin && !isMyHome) return;           // 중립 구장 — 지도는 그대로
+    const now = Date.now();
+    const cur = db.prepare('SELECT depth FROM land WHERE venue_id=? AND club_id=?')
+      .get(ev.venue_id, winner);
+    const depth = isMyHome
+      ? Math.max(1, cur ? cur.depth : 1)         // 홈은 지킨 것 — 겹이 늘지 않는다
+      : Math.min(LAND_MAXDEPTH, (cur ? cur.depth : 0) + 1);
+    db.prepare(`INSERT INTO land (venue_id,club_id,depth,is_home,last_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(venue_id,club_id) DO UPDATE SET depth=?, is_home=?, last_at=?`)
+      .run(ev.venue_id, winner, depth, isMyHome ? 1 : 0, now, depth, isMyHome ? 1 : 0, now);
+  } catch (e) { console.error('[land]', e.message); }
+}
+
+/* 옅어짐 — 하루 한 번 훑는다. 뺏은 땅만 줄고, 홈은 그대로 둔다. */
+function landDecay() {
+  try {
+    const now = Date.now();
+    const m = new Date().getMonth();             // 0=1월
+    const winter = (m <= 1 || m === 11);         // 12~2월
+    db.prepare('SELECT rowid, venue_id, club_id, depth, is_home, last_at FROM land')
+      .all().forEach(r => {
+        if (r.is_home) return;                   // 내 홈은 안 옅어진다
+        const v = db.prepare('SELECT indoor FROM venues WHERE id=?').get(r.venue_id) || {};
+        let gap = now - (r.last_at || 0);
+        /* 실외는 겨울에 못 친다 — 그 3개월을 벌점으로 세지 않는다 */
+        if (winter && !v.indoor) gap -= 90 * 864e5;
+        if (gap > 365 * 864e5) {
+          if (r.depth > 1) db.prepare('UPDATE land SET depth=depth-1, last_at=? WHERE rowid=?')
+            .run(now, r.rowid);
+          else db.prepare('DELETE FROM land WHERE rowid=?').run(r.rowid);
+        }
+      });
+  } catch (e) { console.error('[landDecay]', e.message); }
+}
+setInterval(landDecay, 24 * 3600e3);
+
+/* 공공데이터포털 <전국 공공체육시설 현황> 을 한 번에 넣는다.
+   CSV 를 그대로 붙여넣으면 테니스장만 골라 담는다 —
+   구장이 비어 있으면 도전장에서 고를 게 없어 교류전이 안 열린다. */
+app.post('/admin/venues/import', admin, (req, res) => {
+  const csv = String((req.body || {}).csv || '');
+  if (!csv.trim()) return res.status(400).json({ error: 'csv 를 보내주세요' });
+  const lines = csv.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return res.status(400).json({ error: '줄이 너무 적어요' });
+  /* 헤더에서 쓸 칸을 찾는다 — 기관마다 이름이 조금씩 다르다 */
+  const cut = l => {
+    const out = []; let cur = '', q = false;
+    for (const ch of l) {
+      if (ch === '"') q = !q;
+      else if (ch === ',' && !q) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map(x => x.trim().replace(/^"|"$/g, ''));
+  };
+  const head = cut(lines[0]);
+  const find = (...keys) => {
+    for (const k of keys) {
+      const i = head.findIndex(h => h.replace(/\s/g, '').includes(k));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iName = find('시설명', '체육시설명', '명칭');
+  const iKind = find('종목', '시설종류', '시설유형');
+  const iAddr = find('소재지도로명주소', '도로명주소', '소재지지번주소', '주소');
+  const iLat = find('위도'), iLng = find('경도');
+  if (iName < 0 || iAddr < 0)
+    return res.status(400).json({ error: '시설명·주소 칸을 못 찾았어요', head });
+  const ins = db.prepare(`INSERT INTO venues (name,sido,sigungu,addr,lat,lng,indoor,active,created_at)
+    VALUES (?,?,?,?,?,?,?,1,?)`);
+  const dup = db.prepare(`SELECT id FROM venues WHERE REPLACE(name,' ','')=? LIMIT 1`);
+  let added = 0, skipped = 0, notTennis = 0;
+  db.transaction(() => {
+    for (let i = 1; i < lines.length; i++) {
+      const c = cut(lines[i]);
+      const name = c[iName] || '';
+      if (!name) continue;
+      /* 테니스장만 — 종목 칸이 없으면 이름으로 가린다 */
+      const kind = iKind >= 0 ? (c[iKind] || '') : '';
+      const isTennis = /테니스/.test(kind) || /테니스|정구/.test(name);
+      if (!isTennis) { notTennis++; continue; }
+      if (dup.get(name.replace(/\s/g, ''))) { skipped++; continue; }
+      const addr = c[iAddr] || '';
+      const parts = addr.split(/\s+/);
+      const lat = iLat >= 0 ? parseFloat(c[iLat]) : NaN;
+      const lng = iLng >= 0 ? parseFloat(c[iLng]) : NaN;
+      ins.run(name.slice(0, 60), parts[0] || null, parts[1] || null, addr.slice(0, 120),
+        isFinite(lat) ? lat : null, isFinite(lng) ? lng : null,
+        /실내|돔|인도어/.test(name) ? 1 : 0, now());
+      added++;
+    }
+  })();
+  res.json({ ok: true, added, skipped, not_tennis: notTennis,
+    total: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1').get().n });
+});
+
+/* 구장이 몇 곳이고 좌표가 몇 곳에 있는지 — 관리자 화면에 띄운다.
+   비어 있으면 도전장에서 구장을 못 고르고, 그러면 교류전이 안 열린다. */
+app.get('/admin/venues/stats', admin, (_req, res) => {
+  const one = q => { try { return db.prepare(q).get().n; } catch (e) { return 0; } };
+  res.json({
+    total:   one(`SELECT COUNT(*) n FROM venues WHERE active=1`),
+    geo:     one(`SELECT COUNT(*) n FROM venues WHERE active=1 AND lat IS NOT NULL`),
+    addr:    one(`SELECT COUNT(*) n FROM venues WHERE active=1 AND addr IS NOT NULL AND addr!=''`),
+    indoor:  one(`SELECT COUNT(*) n FROM venues WHERE active=1 AND indoor=1`),
+    used:    one(`SELECT COUNT(DISTINCT venue_id) n FROM club_events WHERE venue_id IS NOT NULL`),
+    sido:    (() => { try {
+      return db.prepare(`SELECT sido, COUNT(*) n FROM venues WHERE active=1 AND sido IS NOT NULL
+        GROUP BY sido ORDER BY n DESC LIMIT 8`).all();
+    } catch (e) { return []; } })(),
+    /* 교류전이 몇 번 있었나 — 땅따먹기를 켤 때가 됐는지 알려준다 */
+    exchanges: one(`SELECT COUNT(*) n FROM club_events WHERE tag='교류전'`),
+    challenges: one(`SELECT COUNT(*) n FROM challenges`),
+  });
+});
+
+/* 좌표 채우기 — 주소를 카카오 지도로 바꿔 한 번 저장한다.
+   공공데이터포털 체육시설 목록에 주소가 있으니 그걸 그대로 쓴다. */
+app.post('/admin/venues/geocode', admin, async (_req, res) => {
+  const key = process.env.KAKAO_REST_KEY;
+  if (!key) return res.json({ error: 'KAKAO_REST_KEY 환경변수가 없어요' });
+  const rows = db.prepare(`SELECT id, name, addr FROM venues
+    WHERE active=1 AND lat IS NULL AND addr IS NOT NULL AND addr!='' LIMIT 200`).all();
+  let ok = 0, fail = 0;
+  for (const v of rows) {
+    try {
+      const r = await fetch('https://dapi.kakao.com/v2/local/search/address.json?query='
+        + encodeURIComponent(v.addr), { headers: { Authorization: 'KakaoAK ' + key } });
+      const j = await r.json();
+      const d = (j.documents || [])[0];
+      if (d) {
+        db.prepare('UPDATE venues SET lat=?, lng=? WHERE id=?').run(+d.y, +d.x, v.id);
+        ok++;
+      } else fail++;
+      await new Promise(r2 => setTimeout(r2, 60));   // 카카오 초당 제한을 넘지 않게
+    } catch (e) { fail++; }
+  }
+  /* 이름에 드러나는 실내 구장을 표시해 둔다 — 겨울 규칙에 쓴다 */
+  try {
+    db.prepare(`UPDATE venues SET indoor=1 WHERE indoor=0
+      AND (name LIKE '%실내%' OR name LIKE '%돔%' OR name LIKE '%인도어%')`).run();
+  } catch (e) {}
+  res.json({ ok, fail, left: db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1 AND lat IS NULL').get().n });
+});
+
+/* 모임을 만들 때 고를 구장 목록.
+   <자주 가는 곳> 을 맨 위에 둔다 — 대부분 늘 같은 곳에서 치니
+   한 번에 고르고 끝나야 한다. 딱지로 <여기서 이기면 뺏어요> 까지 알려준다. */
+app.get('/venues/pick', auth, (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const cid = +req.query.club_id || 0;
+  const lat = +req.query.lat, lng = +req.query.lng;
+  const near = isFinite(lat) && isFinite(lng);
+  const pick = r => ({ ...r, coords: r.lat != null });
+
+  /* 1) 그 클럽이 최근 1년 쓴 구장 — 많이 간 순 */
+  let recent = [];
+  if (cid && !q) {
+    recent = db.prepare(`SELECT v.id, v.name, v.sido, v.sigungu, v.addr, v.lat, v.lng, v.indoor,
+        COUNT(*) used FROM club_events e JOIN venues v ON v.id=e.venue_id
+      WHERE e.club_id=? AND e.created_at > ? GROUP BY v.id
+      ORDER BY used DESC LIMIT 6`).all(cid, Date.now() - 365 * 864e5);
+  }
+  const seen = new Set(recent.map(r => r.id));
+
+  /* 2) 검색 · 가까운 곳 */
+  let rows;
+  if (q) {
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor FROM venues
+      WHERE active=1 AND (name LIKE ? OR addr LIKE ?) ORDER BY name LIMIT 40`)
+      .all('%' + q + '%', '%' + q + '%');
+  } else if (near) {
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor,
+        ((lat-?)*(lat-?) + (lng-?)*(lng-?)) d FROM venues
+      WHERE active=1 AND lat IS NOT NULL ORDER BY d LIMIT 40`).all(lat, lat, lng, lng);
+  } else {
+    rows = db.prepare(`SELECT id, name, sido, sigungu, addr, lat, lng, indoor FROM venues
+      WHERE active=1 ORDER BY id DESC LIMIT 40`).all();
+  }
+  rows = rows.filter(r => !seen.has(r.id));
+
+  /* 3) 딱지 — 땅과 예약 타임을 봐서 붙인다 */
+  const all = recent.concat(rows);
+  const ids = all.map(v => v.id);
+  const owner = {}, slots = {};
+  if (ids.length) {
+    const ph = ids.map(() => '?').join(',');
+    db.prepare(`SELECT l.venue_id, l.club_id, l.depth, l.is_home, c.name club
+      FROM land l JOIN clubs c ON c.id=l.club_id
+      WHERE l.venue_id IN (${ph}) ORDER BY l.depth DESC`).all(...ids)
+      .forEach(l => { if (!owner[l.venue_id]) owner[l.venue_id] = l; });
+    db.prepare(`SELECT venue_id, COUNT(*) n FROM venue_slots
+      WHERE venue_id IN (${ph}) AND status='open' AND date >= ?
+      GROUP BY venue_id`).all(...ids, new Date().toISOString().slice(0, 10))
+      .forEach(s => { slots[s.venue_id] = s.n; });
+  }
+  const homes = cid ? homeVenues(cid) : [];
+  const tag = v => {
+    if (homes.includes(v.id)) return { t: '우리 홈', k: 'home' };
+    const o = owner[v.id];
+    if (o && o.club_id === cid) return { t: '우리 땅', k: 'mine' };
+    if (o) return { t: `${o.club} 땅`, k: 'rival' };
+    if (slots[v.id]) return { t: '예약 가능', k: 'book' };
+    return { t: '빈 구장', k: 'empty' };
+  };
+  const dist = v => (near && v.lat != null)
+    ? Math.round(Math.hypot((v.lat - lat) * 111, (v.lng - lng) * 89) * 10) / 10 : null;
+  /* 면수를 함께 준다 — 고르면 <쓰는 코트> 를 그만큼만 보여줄 수 있다 */
+  const courtN = {};
+  if (ids.length) {
+    const ph2 = ids.map(() => '?').join(',');
+    db.prepare(`SELECT venue_id, COUNT(*) n FROM venue_courts
+      WHERE venue_id IN (${ph2}) AND status='active' GROUP BY venue_id`).all(...ids)
+      .forEach(c => { courtN[c.venue_id] = c.n; });
+  }
+  const wrap = v => ({ ...pick(v), tag: tag(v), km: dist(v),
+    slots: slots[v.id] || 0, courts: courtN[v.id] || 0 });
+  res.json({ recent: recent.map(wrap), near: rows.map(wrap) });
+});
+
+/* 빈 구장을 눌렀을 때 — 그 구장에서 잡을 수 있는 타임 */
+app.get('/venues/:id/open-slots', auth, (req, res) => {
+  const rows = db.prepare(`SELECT id, date, start, end, price, court_ids FROM venue_slots
+    WHERE venue_id=? AND status='open' AND date >= ? ORDER BY date, start LIMIT 8`)
+    .all(+req.params.id, new Date().toISOString().slice(0, 10));
+  rows.forEach(r => { try { r.courts = JSON.parse(r.court_ids || '[]').length; } catch (e) { r.courts = 0; } });
+  const v = db.prepare('SELECT id, name, addr, indoor, lat, lng FROM venues WHERE id=?').get(+req.params.id);
+  res.json({ venue: v || null, slots: rows });
+});
+
+/* ── 시즌 마감 ────────────────────────────────────────────────
+   반기마다 시·도별 1위를 뽑아 남긴다.
+   전국 1위는 몇 년을 해도 못 잡지만 <용인시 1위> 는 교류전 두 번이면 바뀐다 —
+   가질 만한 자리라야 겨룰 마음이 생긴다. */
+db.exec(`CREATE TABLE IF NOT EXISTS land_seasons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  season TEXT,                    -- 2026H1
+  city TEXT,                      -- 경기도 용인시
+  club_id INTEGER, cells INTEGER, venues INTEGER,
+  created_at INTEGER)`);
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_ls ON land_seasons(season, city)'); } catch (e) {}
+
+function seasonKey(d = new Date()) {
+  return `${d.getFullYear()}H${d.getMonth() < 6 ? 1 : 2}`;
+}
+/* 반기가 끝나면 그 시점 1위를 굳혀 둔다 */
+function closeSeason(key) {
+  const season = key || seasonKey(new Date(Date.now() - 864e5));
+  try {
+    /* 지역 자르기는 SQL 보다 여기서 하는 편이 읽기 쉽다 */
+    const rows = db.prepare(`SELECT c.id club_id, c.region,
+        SUM(3*l.depth*(l.depth+1)+1) cells, COUNT(DISTINCT l.venue_id) venues
+      FROM land l JOIN clubs c ON c.id=l.club_id
+      WHERE c.region IS NOT NULL AND c.region != ''
+      GROUP BY c.id`).all();
+    const best = {};
+    rows.forEach(r => {
+      const city = String(r.region || '').split(' ').filter(Boolean).slice(0, 2).join(' ');
+      if (!city) return;
+      if (!best[city] || r.cells > best[city].cells) best[city] = { ...r, city };
+    });
+    const ins = db.prepare(`INSERT INTO land_seasons (season,city,club_id,cells,venues,created_at)
+      VALUES (?,?,?,?,?,?) ON CONFLICT(season,city) DO UPDATE
+      SET club_id=excluded.club_id, cells=excluded.cells, venues=excluded.venues`);
+    Object.values(best).forEach(b =>
+      ins.run(season, b.city, b.club_id, b.cells, b.venues, Date.now()));
+    return Object.keys(best).length;
+  } catch (e) { console.error('[season]', e.message); return 0; }
+}
+/* 반기 첫날에 지난 반기를 굳힌다 */
+setInterval(() => {
+  const d = new Date();
+  if (d.getDate() === 1 && (d.getMonth() === 0 || d.getMonth() === 6)) closeSeason();
+}, 12 * 3600e3);
+app.post('/admin/land/close-season', admin, (req, res) => {
+  const n = closeSeason(req.body && req.body.season);
+  res.json({ ok: true, cities: n });
+});
+
+/* 지난 시즌 1위들 — 클럽 화면의 명예의 전당에 쓴다 */
+app.get('/clubs/:id/land-seasons', auth, (req, res) => {
+  const cid = +req.params.id;
+  const club = db.prepare('SELECT region FROM clubs WHERE id=?').get(cid) || {};
+  const city = String(club.region || '').split(' ').slice(0, 2).join(' ');
+  const mine = db.prepare(`SELECT s.*, c.name club FROM land_seasons s
+    JOIN clubs c ON c.id=s.club_id WHERE s.club_id=? ORDER BY s.season DESC LIMIT 8`).all(cid);
+  const here = city ? db.prepare(`SELECT s.*, c.name club FROM land_seasons s
+    JOIN clubs c ON c.id=s.club_id WHERE s.city=? ORDER BY s.season DESC LIMIT 8`).all(city) : [];
+  res.json({ mine, city: here, season: seasonKey() });
+});
+
+/* 지도에 뿌릴 것 — 구장 좌표와 클럽별 칸 */
+app.get('/land/map', auth, (req, res) => {
+  const lat = +req.query.lat, lng = +req.query.lng;
+  const km = Math.min(60, +req.query.km || 12);
+  const d = km / 111;
+  const near = (isFinite(lat) && isFinite(lng))
+    ? ' AND v.lat BETWEEN ? AND ? AND v.lng BETWEEN ? AND ? ' : '';
+  const args = near ? [lat - d, lat + d, lng - d * 1.2, lng + d * 1.2] : [];
+  const venues = db.prepare(`SELECT v.id, v.name, v.lat, v.lng, v.indoor, v.sigungu
+    FROM venues v WHERE v.active=1 AND v.lat IS NOT NULL ${near}
+    ORDER BY v.id LIMIT 600`).all(...args);
+  const ids = venues.map(v => v.id);
+  let land = [];
+  if (ids.length) {
+    land = db.prepare(`SELECT l.venue_id, l.club_id, l.depth, l.is_home, l.last_at, c.name club
+      FROM land l JOIN clubs c ON c.id=l.club_id
+      WHERE l.venue_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  }
+  /* 옅어짐이 임박한 곳을 앱이 흐리게 그릴 수 있게 남은 날을 함께 준다 */
+  const now = Date.now();
+  land.forEach(l => {
+    l.cells = cellsOf(l.depth);
+    l.days_left = l.is_home ? null
+      : Math.max(0, Math.round((365 * 864e5 - (now - (l.last_at || now))) / 864e5));
+  });
+  const mine = (req.query.club_id ? homeVenues(+req.query.club_id) : []);
+  res.json({ venues, land, my_homes: mine });
+});
+
+/* 우리 클럽 땅 요약 */
+app.get('/clubs/:id/land', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT l.*, v.name, v.sigungu, v.lat, v.lng, v.indoor
+    FROM land l JOIN venues v ON v.id=l.venue_id WHERE l.club_id=?
+    ORDER BY l.depth DESC, l.last_at DESC`).all(cid);
+  rows.forEach(r => { r.cells = cellsOf(r.depth); });
+  const total = rows.reduce((a, r) => a + r.cells, 0);
+  /* 같은 <시> 안에서만 줄을 세운다.
+     전국 순위는 큰 클럽이 위를 차지해 작은 클럽이 겨룰 수가 없다 —
+     47위라는 걸 알아봐야 할 수 있는 일이 없다.
+     18칸 대 13칸이면 다음 교류전 두 번으로 뒤집힌다. */
+  const club = db.prepare('SELECT region FROM clubs WHERE id=?').get(cid) || {};
+  const parts = String(club.region || '').split(' ').filter(Boolean);
+  const city = parts.slice(0, 2).join(' ');        // 「경기도 용인시」
+  const label = parts[1] || parts[0] || '';        // 화면에는 「용인시」
+  const rank = city ? db.prepare(`SELECT c.id, c.name,
+      SUM(3*l.depth*(l.depth+1)+1) cells, COUNT(DISTINCT l.venue_id) venues
+    FROM land l JOIN clubs c ON c.id=l.club_id
+    WHERE c.region LIKE ? GROUP BY c.id ORDER BY cells DESC LIMIT 20`).all(city + '%') : [];
+  const pos = rank.findIndex(r => r.id === cid) + 1;
+  /* 전국은 순위가 아니라 <얼마나 다녔나> 로 본다 — 작은 클럽도 겨룰 만하다 */
+  const flags = rows.length;
+  const allVenues = db.prepare('SELECT COUNT(*) n FROM venues WHERE active=1 AND lat IS NOT NULL').get().n;
+  res.json({ total, venues: rows, rank, my_rank: pos || null,
+    region: label, city, flags, all_venues: allVenues });
 });
 
 /* ── 회원 실력 스냅샷 ────────────────────────────────────────────
@@ -10835,6 +11293,12 @@ app.post('/exchange/:id/score', auth, (req, res) => {
     return res.status(403).json({ error: 'not_in_match', message: '참가한 클럽만 넣을 수 있어요' });
   db.prepare('UPDATE exchange_games SET sa=?, sb=?, scored_by=?, scored_at=? WHERE id=?')
     .run(sa == null ? null : +sa, sb == null ? null : +sb, req.uid, now(), g.id);
+  /* 모든 경기 점수가 들어왔으면 땅을 갱신한다 — 중간에 하면 앞선 쪽이 계속 바뀐다 */
+  try {
+    const left = db.prepare('SELECT COUNT(*) n FROM exchange_games WHERE event_id=? AND (sa IS NULL OR sb IS NULL)')
+      .get(eid).n;
+    if (!left) landAfterExchange(eid);
+  } catch (e) {}
   res.json({ ok: true, result: xcResult(eid) });
 });
 
@@ -11168,6 +11632,130 @@ function xcView(ev, uid) {
 }
 
 /* ── 열기 ── 코트를 잡은 클럽의 임원만 */
+/* ══════════ 도전장 ══════════════════════════════════════════
+   교류전이 한 번도 안 열린 이유는 셋이다 —
+   상대를 모르고, 연락이 번거롭고, 해서 뭐가 좋은지 모른다.
+   땅따먹기는 셋째만 푼다. 앞의 둘은 이걸로 푼다:
+   근처 클럽을 보여주고, 앱 안에서 한 번 눌러 청한다. */
+db.exec(`CREATE TABLE IF NOT EXISTS challenges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  from_club INTEGER, to_club INTEGER,
+  date TEXT, venue_id INTEGER, place TEXT,
+  courts INTEGER DEFAULT 2, mins INTEGER DEFAULT 180,
+  msg TEXT,
+  status TEXT DEFAULT 'sent',      -- sent · accepted · declined · expired
+  event_id INTEGER,                -- 수락하면 만들어진 교류전
+  created_by INTEGER, created_at INTEGER, replied_at INTEGER)`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_ch ON challenges(to_club, status)'); } catch (e) {}
+
+/* 근처 클럽 — 땅이 없어도 홈은 있으니 <옆 동네에 클럽이 셋 있네> 가 보인다.
+   실력이 비슷한지도 함께 준다. 붙어도 되겠다는 판단이 서야 청한다. */
+app.get('/clubs/:id/nearby', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const me = db.prepare('SELECT region, sport, avg_grade FROM clubs WHERE id=?').get(cid) || {};
+  const sido = String(me.region || '').split(' ')[0] || '';
+  const rows = db.prepare(`SELECT c.id, c.name, c.region, c.avg_grade,
+      (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members
+    FROM clubs c WHERE c.id!=? AND c.sport=? AND c.region LIKE ?
+    ORDER BY members DESC LIMIT 20`).all(cid, me.sport || 'tennis', sido + '%');
+  /* 이미 보낸 도전장은 다시 못 보내게 표시 */
+  const sent = {};
+  db.prepare(`SELECT to_club, status FROM challenges
+    WHERE from_club=? AND status='sent'`).all(cid).forEach(r => { sent[r.to_club] = 1; });
+  /* 지난 교류전 전적 */
+  const hist = {};
+  db.prepare(`SELECT e.club_id a, e2.club_id b, ce.id eid FROM exchange_entries e
+    JOIN exchange_entries e2 ON e2.event_id=e.event_id AND e2.club_id!=e.club_id
+    JOIN club_events ce ON ce.id=e.event_id
+    WHERE e.club_id=?`).all(cid).forEach(r => { hist[r.b] = (hist[r.b] || 0) + 1; });
+  const myG = String(me.avg_grade || '');
+  res.json(rows.map(c => ({
+    ...c,
+    sent: !!sent[c.id],
+    played: hist[c.id] || 0,
+    /* 등급 앞글자가 같으면 <우리와 비슷> — 붙을 만하다는 신호 */
+    similar: !!(myG && c.avg_grade && myG[0] === String(c.avg_grade)[0]),
+  })));
+});
+
+/* 도전장 보내기 — 연락처를 몰라도 앱 안에서 끝난다 */
+app.post('/clubs/:id/challenge', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '임원만 보낼 수 있어요' });
+  const { to_club, date, venue_id, place, courts, mins, msg } = req.body || {};
+  if (!to_club || !date) return res.status(400).json({ error: 'bad_req' });
+  const dup = db.prepare(`SELECT id FROM challenges
+    WHERE from_club=? AND to_club=? AND status='sent'`).get(cid, +to_club);
+  if (dup) return res.status(409).json({ error: 'already', message: '이미 보낸 도전장이 있어요' });
+  const r = db.prepare(`INSERT INTO challenges
+    (from_club,to_club,date,venue_id,place,courts,mins,msg,created_by,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(cid, +to_club, String(date), venue_id ? +venue_id : null,
+         String(place || '').slice(0, 60) || null, +courts || 2, +mins || 180,
+         String(msg || '').slice(0, 200) || null, req.uid, now());
+  const from = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  notifyClubOfficers(+to_club, '🆚', '도전장이 왔어요',
+    `${from.name || '어느 클럽'} · ${date}`);
+  res.json({ ok: true, id: rid(r) });
+});
+
+/* 받은·보낸 도전장 */
+app.get('/clubs/:id/challenges', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const q = `SELECT ch.*, cf.name from_name, ct.name to_name
+    FROM challenges ch
+    LEFT JOIN clubs cf ON cf.id=ch.from_club
+    LEFT JOIN clubs ct ON ct.id=ch.to_club WHERE `;
+  res.json({
+    got: db.prepare(q + `ch.to_club=? AND ch.status='sent' ORDER BY ch.id DESC LIMIT 10`).all(cid),
+    sent: db.prepare(q + `ch.from_club=? ORDER BY ch.id DESC LIMIT 10`).all(cid),
+  });
+});
+
+/* 수락 — 양쪽에 교류전이 만들어지고 둘 다 자리에 앉는다 */
+app.post('/challenges/:id/accept', auth, (req, res) => {
+  const ch = db.prepare('SELECT * FROM challenges WHERE id=?').get(+req.params.id);
+  if (!ch || ch.status !== 'sent') return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(ch.to_club, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const plan = xcPlanFor(ch.courts, ch.mins) || { per_club: 8 };
+  const from = db.prepare('SELECT name FROM clubs WHERE id=?').get(ch.from_club) || {};
+  const to = db.prepare('SELECT name FROM clubs WHERE id=?').get(ch.to_club) || {};
+  const title = `${from.name || ''} vs ${to.name || ''}`.trim();
+  /* 교류전은 도전한 쪽이 연다 — 구장도 그쪽이 골랐으니 */
+  const r = db.prepare(`INSERT INTO club_events
+      (club_id,title,date,tag,place,venue_id,created_by,created_at,
+       kind,club_slots,per_club,courts,squad_mix,format,match_status)
+      VALUES (?,?,?,'교류전',?,?,?,?, 'exchange',2,?,?, 'md2,mx4','single','open')`)
+    .run(ch.from_club, title, ch.date, ch.place, ch.venue_id, req.uid, now(),
+         plan.per_club, ch.courts);
+  const eid = rid(r);
+  db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at)
+    VALUES (?,?,1,'joined',?), (?,?,2,'joined',?)`)
+    .run(eid, ch.from_club, now(), eid, ch.to_club, now());
+  db.prepare(`UPDATE challenges SET status='accepted', event_id=?, replied_at=? WHERE id=?`)
+    .run(eid, now(), ch.id);
+  notifyClub(ch.from_club, req.uid, '🆚', '도전장을 받아줬어요',
+    `${to.name || ''} · ${ch.date} · 참석을 눌러주세요`);
+  notifyClub(ch.to_club, req.uid, '🆚', '교류전이 잡혔어요',
+    `${from.name || ''} · ${ch.date} · 참석을 눌러주세요`);
+  res.json({ ok: true, event_id: eid });
+});
+
+app.post('/challenges/:id/decline', auth, (req, res) => {
+  const ch = db.prepare('SELECT * FROM challenges WHERE id=?').get(+req.params.id);
+  if (!ch || ch.status !== 'sent') return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(ch.to_club, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare(`UPDATE challenges SET status='declined', replied_at=? WHERE id=?`).run(now(), ch.id);
+  /* 거절은 조용히 — 벌도 없고 소문도 안 낸다 */
+  const to = db.prepare('SELECT name FROM clubs WHERE id=?').get(ch.to_club) || {};
+  notifyClubOfficers(ch.from_club, '🆚', '이번엔 어렵대요',
+    `${to.name || ''} · 다른 날로 다시 보내볼 수 있어요`);
+  res.json({ ok: true });
+});
+
 app.post('/clubs/:id/exchange', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid))
