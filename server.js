@@ -6290,16 +6290,26 @@ function cupLiveNow(b) {
   const doneN = all.filter(z => sc[z.m.key] && sc[z.m.key].a != null).length;
   if (!slot) return { on: false, done: doneN >= all.length, played: doneN, total: all.length,
     started_any: Object.keys(tm).length > 0 };
-  const ties = {};
-  all.filter(z => +z.m.slot === +slot.s).forEach(z => {
-    const k = z.t.id;
-    const o = ties[k] = ties[k] || { home_name: z.t.home_name, away_name: z.t.away_name, courts: [] };
-    const s2 = sc[z.m.key];
-    o.courts.push({ court: z.m.court, kind: z.m.kind, a: s2 ? s2.a : null, b: s2 ? s2.b : null });
-  });
+  /* 짝은 엔트리 낼 때 이미 정해져 있다 — 클럽 이름만 보여주면
+     <누구랑 붙는지>를 알 수 없다. 코트마다 뛰는 네 사람을 실어 보낸다. */
+  const pair = (eid, no) => db.prepare(`SELECT guest_name name, gender, ntrp years
+      FROM cup_roster WHERE entry_id=? AND pair=? ORDER BY gender DESC`).all(eid, no);
+  const courts = all.filter(z => +z.m.slot === +slot.s)
+    .sort((x, y) => (x.m.court || 0) - (y.m.court || 0))
+    .map(z => {
+      const s2 = sc[z.m.key];
+      const A = pair(z.t.home, z.m.no), B = pair(z.t.away, z.m.no);
+      const sum = g => g.reduce((k, r) => k + (+r.years || 0), 0);
+      return { court: z.m.court, kind: z.m.kind,
+        a: s2 ? s2.a : null, b: s2 ? s2.b : null,
+        home: z.t.home, away: z.t.away,
+        home_name: z.t.home_name, away_name: z.t.away_name,
+        pa: A.map(r => r.name), pb: B.map(r => r.name),
+        ya: sum(A), yb: sum(B) };
+    });
   return { on: true, start: slot.start, slot: slot.s,
     left_ms: Math.max(0, started + dur - now), match_sec: cfg.match_sec,
-    played: doneN, total: all.length, ties: Object.values(ties) };
+    played: doneN, total: all.length, courts };
 }
 
 function cupBracket(id) {
