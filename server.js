@@ -6593,6 +6593,9 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     const CLUBS = ['기흥레이크', '수지블루', '처인코트', '동백에이스',
                    '그린코트', '포곡클럽', '양지테니스', '보정스매시',
                    '신갈랠리', '구성크로스', '마북에이스', '언남클럽'];
+    /* 이름에 클럽 이름을 붙이면 <수지블루민수> 가 되어 명단 여섯 칸이 다 잘린다.
+       성을 돌려 쓰면 짧고 사람 이름처럼 보인다. */
+    const SUR = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오'];
     const M = ['준호', '민수', '태민', '영민', '충호', '경태'];
     const F = ['사라', '민지', '인애', '혜선'];
     const seed = Math.abs((q.seed ? +q.seed : Date.now()) | 0);
@@ -6604,8 +6607,9 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
         const tag = `g${b.id}-${live + i + 1}`;
         const cname = `${CLUBS[(live + i) % CLUBS.length]}${live + i >= CLUBS.length ? ` ${live + i}` : ''}`;
         /* 클럽 주인이 있어야 명단이 굴러간다 — 첫 회원을 owner 로 세운다 */
+        let gseq = 0;
         const mkUser = (nm, gender, years) => {
-          const pid = `ghost-${tag}-${nm}`;
+          const pid = `ghost-${tag}-${gseq++}`;
           const r = db.prepare(`INSERT INTO users
             (provider,provider_id,name,gender,region,sport,anon_nick,sport_started,ghost,created_at)
             VALUES ('ghost',?,?,?,?,'tennis',?,?,1,?)`)
@@ -6613,7 +6617,8 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
               JSON.stringify({ tennis: `${yr - years}-03` }), now());
           return rid(r);
         };
-        const owner = mkUser(`${cname}장`, '남성', 3 + ((seed + i) % 3));
+        const sur = k => SUR[(seed + i * 7 + k) % SUR.length];
+        const owner = mkUser(`${sur(0)}${M[i % M.length]}`, '남성', 3 + ((seed + i) % 3));
         const cr = db.prepare(`INSERT INTO clubs (name,sport,region,owner_id,ghost,created_at)
           VALUES (?,'tennis',?,?,1,?)`).run(cname, '경기 용인', owner, now());
         const cid2 = rid(cr);
@@ -6622,13 +6627,15 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
 
         const ids = [owner];
         for (let k = 0; k < CUP_ROSTER_M - 1; k++) {
-          const u = mkUser(`${cname}${M[k % M.length]}`, '남성', 1 + ((seed + i + k) % 5));
+          const u = mkUser(`${sur(k + 1)}${M[(i + k + 1) % M.length]}`, '남성',
+            1 + ((seed + i + k) % 5));
           db.prepare('INSERT INTO club_members (club_id,user_id,role) VALUES (?,?,?)')
             .run(cid2, u, 'member');
           ids.push(u);
         }
         for (let k = 0; k < CUP_ROSTER_F; k++) {
-          const u = mkUser(`${cname}${F[k % F.length]}`, '여성', 1 + ((seed + i + k) % 4));
+          const u = mkUser(`${sur(k + 7)}${F[(i + k) % F.length]}`, '여성',
+            1 + ((seed + i + k) % 4));
           db.prepare('INSERT INTO club_members (club_id,user_id,role) VALUES (?,?,?)')
             .run(cid2, u, 'member');
           ids.push(u);
@@ -6921,8 +6928,43 @@ app.get('/cup/invite/:token', (req, res) => {
       min_teams: cupCfg(b.data).min_teams, max_teams: cupCfg(b.data).max_teams, cfg,
       place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
       pay: (() => { try { return JSON.parse(b.data || '{}').pay || null; } catch (x) { return null; } })() },
+    title: cupCfg(b.data).title,
     roster, need: { n: CUP_ROSTER_N, male: CUP_ROSTER_M, female: CUP_ROSTER_F },
+    /* 초청받은 클럽도 맞수를 쓴다. 이 대회의 목적이 그것이다 —
+       대회는 미끼고, 클럽이 앱에 들어오는 것이 잡는 것이다.
+       그래서 링크를 열었을 때 <지금 어디까지 왔는지>를 같이 내려준다. */
+    me: (() => {
+      const uid = tryUid(req);
+      if (!uid) return { signed: false, clubs: [] };
+      const clubs = db.prepare(`SELECT c.id, c.name, c.region,
+          (SELECT COUNT(*) FROM club_members m2 WHERE m2.club_id=c.id) members
+        FROM club_members m JOIN clubs c ON c.id=m.club_id
+        WHERE m.user_id=? AND m.role IN ('owner','officer') AND c.sport='tennis'`).all(uid);
+      return { signed: true, clubs, taken: !!e.club_id };
+    })(),
   });
+});
+
+/* 초청 자리를 우리 클럽으로 잡는다 — 링크를 연 사람이 그 클럽 운영진이어야 한다.
+   비회원이 이름만 적고 끝내던 길은 닫았다. 대회를 미끼로 클럽을 앱에 들여놓는 게
+   시즌 0 의 목적인데, 그 길을 열어두면 아무도 앱을 안 깐다. */
+app.post('/cup/invite/:token/claim', auth, (req, res) => {
+  const e = cupEntryByToken(req.params.token);
+  if (!e) return res.status(404).json({ error: 'no_invite' });
+  if (e.club_id) return res.status(400).json({ error: 'taken', message: '이미 신청된 초청장이에요' });
+  const cid = +(req.body || {}).club_id;
+  if (!cid || !isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '클럽 운영진만 신청할 수 있어요' });
+  const dup = db.prepare(`SELECT 1 FROM cup_entries
+    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(e.bracket_id, cid);
+  if (dup) return res.status(400).json({ error: 'already', message: '이미 신청한 클럽이에요' });
+  const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  const u = db.prepare('SELECT name, phone FROM users WHERE id=?').get(req.uid) || {};
+  db.prepare(`UPDATE cup_entries SET club_id=?, club_name=?, status='applied',
+      contact_name=COALESCE(contact_name,?), contact_phone=COALESCE(contact_phone,?),
+      applied_at=? WHERE id=?`)
+    .run(cid, c.name || e.club_name, u.name || null, u.phone || null, now(), e.id);
+  res.json({ ok: true, id: e.id, bracket_id: e.bracket_id, club_id: cid });
 });
 
 app.post('/cup/invite/:token/apply', (req, res) => {
@@ -6945,6 +6987,11 @@ app.post('/cup/invite/:token/apply', (req, res) => {
 /* 엔트리 10명 — 한 번에 통째로 받는다.
    한 명씩 받으면 <9명만 넣고 나간 클럽>이 생기고, 그 상태를 화면마다 다뤄야 한다. */
 app.post('/cup/invite/:token/roster', (req, res) => {
+  /* 닫았다 — 이름만 적고 끝내면 그 클럽은 대회가 끝나는 순간 사라진다.
+     엔트리는 앱에서 회원을 골라 낸다. 그래야 구력·성별을 서버가 보증하고,
+     대회가 끝난 뒤에도 그 클럽이 남는다. */
+  return res.status(410).json({ error: 'app_only',
+    message: '엔트리는 맞수 앱에서 회원을 골라 내주세요' });
   const e = cupEntryByToken(req.params.token);
   if (!e) return res.status(404).json({ error: 'no_invite' });
   const list = Array.isArray((req.body || {}).roster) ? (req.body || {}).roster : [];
