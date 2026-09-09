@@ -5649,6 +5649,28 @@ try {
     UNIQUE(bracket_id, tie_id, entry_id, match_no))`);
 } catch (e) { console.error('[schema cup]', e.message); }
 
+/* 짝 기능이 생기기 전에 낸 엔트리는 pair 가 비어 있다.
+   그대로 두면 대진 화면에 <라인업 전>만 뜬다 — 한 번 훑어 채워 준다. */
+try {
+  const holes = db.prepare(`SELECT entry_id FROM cup_roster WHERE pair IS NULL
+    GROUP BY entry_id`).all();
+  let fixed = 0;
+  holes.forEach(h => {
+    const rows = db.prepare(`SELECT id, user_id, guest_name, gender, ntrp
+      FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(h.entry_id);
+    if (rows.length !== CUP_ROSTER_N) return;
+    const br = db.prepare(`SELECT b.data FROM brackets b
+      JOIN cup_entries e ON e.bracket_id=b.id WHERE e.id=?`).get(h.entry_id);
+    const map = cupAutoPair(rows.map(r => ({ id: r.id, gender: r.gender, ntrp: r.ntrp })),
+      cupCap(br && br.data));
+    if (!map) return;
+    const up = db.prepare('UPDATE cup_roster SET pair=? WHERE id=?');
+    rows.forEach(r => { if (map[r.id]) up.run(map[r.id], r.id); });
+    fixed++;
+  });
+  if (fixed) console.log(`[cup] 짝이 비어 있던 엔트리 ${fixed}건을 채웠습니다`);
+} catch (e) { console.error('[cup pair backfill]', e.message); }
+
 /* MATSU CUP 대진 생성기 — 순수 함수.
    서버도 브라우저도 아닌 데서 그대로 돌려볼 수 있어야 한다.
    대회 당일 이 함수가 틀리면 되돌릴 방법이 없다. */
@@ -5757,38 +5779,35 @@ const CUP_DEFAULT = {
      · 한 팀이 같은 슬롯에 두 타이를 뛰지 않는다
      · 한 팀의 다음 타이는 앞 타이가 끝나고 한 슬롯 쉰 뒤에 시작한다
      · 조별이 다 끝나야 준결승, 준결승이 끝나야 결승 */
-function packTies(list, courts, startSlot, busy) {
-  const perSlot = Math.max(2, courts);
-  const used = {};            // 슬롯 → 쓴 코트 수
-  const free = s => perSlot - (used[s] || 0);
-  const out = [];
-  list.forEach(t => {
-    let s = startSlot;
-    for (;; s++) {
-      if (free(s) < 2 || free(s + 1) < 1) continue;
-      /* 한 팀이 같은 슬롯에 두 타이를 뛸 수는 없다.
-         쉬는 시간은 팀이 아니라 사람 기준이다(명세 2.3) — 팀은 10명이라
-         다음 타이에 다른 사람을 내면 된다. 팀 단위로 한 슬롯을 통째로
-         비우게 하면 조별이 9슬롯이면 될 것을 12슬롯 쓰게 된다.
+/* 한 타이 = 한 코트에서 세 칸 연속.
+   예전에는 한 타이를 2+1 로 두 칸에 쪼개 넣었는데, 그러면 4면 중 몇 면이
+   매 칸마다 비었다 — 16칸 × 4면 = 64자리에 48매치라 16자리가 놀았다.
 
-         준결승·결승은 팀이 아직 안 정해져 home 이 null 이다.
-         null 을 팀 번호로 세면 두 타이가 서로 겹친다고 보고 흩어진다. */
-      const ok = [t.home, t.away].filter(id => id != null).every(id => {
-        const b = busy[id] || [];
-        return !b.some(x => x === s || x === s + 1);
-      });
-      if (ok) break;
-    }
-    used[s] = (used[s] || 0) + 2;
-    used[s + 1] = (used[s + 1] || 0) + 1;
-    [t.home, t.away].forEach(id => {
-      if (id == null) return;
-      busy[id] = (busy[id] || []).concat([s, s + 1]);
-    });
-    out.push({ tie: t, slot: s });
+   코트를 한 팀에 통째로 내주면 노는 자리가 사라지고, 화면도 읽기 쉬워진다.
+   <우리는 09:00부터 2번 코트에서 세 경기> 한 줄로 끝난다.
+   같은 물결(wave)에 들어가는 타이들은 서로 다른 클럽이어야 한다 —
+   A조 한 라운드(2타이) + B조 한 라운드(2타이) = 여덟 클럽이라 딱 맞는다. */
+function packTies(list, courts, startSlot, busy) {
+  const out = [];
+  let slot = startSlot;
+  let wave = [];
+  const flush = () => {
+    if (!wave.length) return;
+    wave.forEach((t, i) => out.push({ tie: t, slot, court: (i % courts) + 1 }));
+    slot += 3;
+    wave = [];
+  };
+  list.forEach(t => {
+    const ids = [t.home, t.away].filter(x => x != null);
+    /* 같은 물결에 같은 클럽이 두 번 들어가면 한 사람이 두 코트에 서야 한다 */
+    const clash = wave.some(w => [w.home, w.away].filter(x => x != null)
+      .some(x => ids.includes(x)));
+    if (wave.length >= courts || clash) flush();
+    wave.push(t);
   });
-  const last = out.length ? Math.max(...out.map(x => x.slot + 1)) : startSlot - 1;
-  return { placed: out, nextSlot: last + 1, used, perSlot };
+  flush();
+  const last = out.length ? slot - 1 : startSlot - 1;
+  return { placed: out, nextSlot: last + 1, perSlot: courts };
 }
 
 /* 슬롯에 실제 코트 번호를 준다 — 같은 슬롯에 같은 면이 겹치면 안 된다.
@@ -5809,11 +5828,11 @@ function assignCourts(placed, courts, state) {
     if (got.length) st.next = (got[got.length - 1] % courts) + 1;
     return got;
   };
-  placed.forEach(({ tie, slot }) => {
-    const a = take(slot, 2), b = take(slot + 1, 1);
-    tie.matches[0].court = a[0]; tie.matches[0].slot = slot;
-    tie.matches[1].court = a[1]; tie.matches[1].slot = slot;
-    tie.matches[2].court = b[0]; tie.matches[2].slot = slot + 1;
+  /* 코트는 배치기가 이미 정했다 — 한 타이가 한 면을 세 칸 동안 쓴다.
+     여기서는 그 면에 세 매치를 한 칸씩 얹기만 한다. */
+  placed.forEach(({ tie, slot, court }) => {
+    const c = court || take(slot, 1)[0] || 1;
+    tie.matches.forEach((m, i) => { m.court = c; m.slot = slot + i; });
     tie.slot = slot;
   });
   return st;
@@ -6247,6 +6266,42 @@ function cupCheckPairs(rows, cap) {
   return null;
 }
 
+/* 지금 도는 칸 요약 — 카드가 <참가 확정>에서 <라이브>로 옷을 갈아입으려면 이게 필요하다. */
+function cupLiveNow(b) {
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) { return null; }
+  const cfg = Object.assign({}, CUP_DEFAULT, d.cfg || {});
+  const dur = (cfg.match_sec || 1200) * 1000;
+  const sc = {}, tm = {};
+  db.prepare('SELECT court_key,a,b FROM bracket_scores WHERE bracket_id=?').all(b.id)
+    .forEach(r => { sc[r.court_key] = { a: r.a, b: r.b }; });
+  db.prepare('SELECT court_key,started_at FROM bracket_timers WHERE bracket_id=?').all(b.id)
+    .forEach(r => { tm[r.court_key] = r.started_at; });
+  const all = [];
+  (d.rounds || []).forEach(r => (r.ties || []).forEach(t => (t.matches || []).forEach(m => {
+    all.push({ m, t }); })));
+  if (!all.length) return null;
+  const now = Date.now();
+  let slot = null, started = 0;
+  (d.slots || []).forEach(x => {
+    const ms = all.filter(z => +z.m.slot === +x.s);
+    const st = Math.max(0, ...ms.map(z => tm[z.m.key] || 0));
+    if (st && st + dur > now && st > started) { slot = x; started = st; }
+  });
+  const doneN = all.filter(z => sc[z.m.key] && sc[z.m.key].a != null).length;
+  if (!slot) return { on: false, done: doneN >= all.length, played: doneN, total: all.length,
+    started_any: Object.keys(tm).length > 0 };
+  const ties = {};
+  all.filter(z => +z.m.slot === +slot.s).forEach(z => {
+    const k = z.t.id;
+    const o = ties[k] = ties[k] || { home_name: z.t.home_name, away_name: z.t.away_name, courts: [] };
+    const s2 = sc[z.m.key];
+    o.courts.push({ court: z.m.court, kind: z.m.kind, a: s2 ? s2.a : null, b: s2 ? s2.b : null });
+  });
+  return { on: true, start: slot.start, slot: slot.s,
+    left_ms: Math.max(0, started + dur - now), match_sec: cfg.match_sec,
+    played: doneN, total: all.length, ties: Object.values(ties) };
+}
+
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
 }
@@ -6285,12 +6340,12 @@ app.post('/cup/:bid/entries', auth, (req, res) => {
 app.get('/cup/:bid/teams', auth, (req, res) => {
   const b = cupBracket(req.params.bid);
   if (!b) return res.status(404).json({ error: 'no_cup' });
-  const cid = +req.query.club_id;
-  if (!cid || !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const mine = db.prepare(`SELECT id FROM cup_entries
-    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid);
-  if (!mine && !cupHost(b, req.uid))
-    return res.status(403).json({ error: 'not_applied', message: '참가 신청한 클럽만 볼 수 있어요' });
+  /* 참가 클럽만 보게 막아뒀는데, 대회는 플랫폼이 여는 것이라
+     맞수를 쓰는 사람이면 누구나 봐야 한다. 명단은 어차피 공개다. */
+  const cid = +req.query.club_id || 0;
+  if (cid && !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const mine = cid ? db.prepare(`SELECT id FROM cup_entries
+    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid) : null;
 
   const C = cupCfg(b.data);
   const rows = db.prepare(`SELECT id, club_id, club_name, status, fee_paid, group_label, seat
@@ -6494,12 +6549,13 @@ app.get('/cup/:bid/standings', (req, res) => {
        선수가 아침에 한 번 보면 오늘 누구랑 세 번 뛰는지 다 안다. */
     pairs: (() => {
       const out = {};
-      db.prepare(`SELECT e.id eid, r.pair, r.guest_name name, r.gender, r.ntrp years
+      db.prepare(`SELECT e.id eid, r.pair, r.user_id, r.guest_name name, r.gender, r.ntrp years
         FROM cup_entries e JOIN cup_roster r ON r.entry_id=e.id
         WHERE e.bracket_id=? AND e.status!='cancelled' AND r.pair IS NOT NULL
         ORDER BY e.id, r.pair, r.gender DESC`).all(b.id).forEach(x => {
         const t = out[x.eid] = out[x.eid] || { 1: [], 2: [], 3: [] };
-        if (t[x.pair]) t[x.pair].push({ name: x.name, gender: x.gender, years: x.years });
+        if (t[x.pair]) t[x.pair].push({ user_id: x.user_id, name: x.name,
+          gender: x.gender, years: x.years });
       });
       return out;
     })(),
@@ -6836,6 +6892,34 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
    초청 링크와 달리 로그인해서 들어온다. 회원 명단이 이미 있으니
    이름·성별·NTRP 를 다시 치게 하지 않는다. 골라서 채운다. */
 
+/* 클럽에 안 든 사람도 대회를 본다 — 대회는 플랫폼이 여는 것이다. */
+app.get('/cup/open', (req, res) => {
+  const b = db.prepare(`SELECT id,date,data,club_id FROM brackets
+    WHERE fmt='cup' AND published=1 ORDER BY id DESC LIMIT 1`).get();
+  if (!b) return res.json({ cup: null, entry: null });
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  const C = cupCfg(d);
+  const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
+  let dday = null, due_date = null, event_dday = null;
+  if (b.date) {
+    const day = new Date(b.date + 'T00:00:00').getTime();
+    const due = day - (C.due_days || 14) * 864e5;
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    dday = Math.round((due - t0.getTime()) / 864e5);
+    event_dday = Math.round((day - t0.getTime()) / 864e5);
+    due_date = new Date(due).toISOString().slice(0, 10);
+  }
+  res.json({ cup: {
+    id: b.id, date: b.date, title: C.title, place: C.place,
+    fee: C.fee, deposit: C.deposit, teams: live,
+    max_teams: C.max_teams, min_teams: C.min_teams,
+    left: Math.max(0, C.max_teams - live), dday, due_date, event_dday,
+    roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
+    cap: cupCap(b.data), drawn: !!d.drawn_at, live: cupLiveNow(b),
+    host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
+  }, entry: null });
+});
+
 /* 클럽 탭에 띄울 모집 카드 — 공개된 대회가 있으면 그 한 건 */
 app.get('/clubs/:id/cup-open', auth, (req, res) => {
   const cid = +req.params.id;
@@ -6869,7 +6953,8 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
     due_date, event_dday,
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
-    cap: cupCap(b.data),
+    cap: cupCap(b.data), drawn: !!d.drawn_at,
+    live: cupLiveNow(b),
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
   }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
@@ -7239,7 +7324,11 @@ function cupCheckLineup(ms, ros, cap) {
 app.post('/brackets/:id/slot/:s/start', auth, (req, res) => {
   const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
   if (!b) return res.status(404).json({ error: 'not_found' });
-  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  /* 시계는 주최자만 켠다. 주최 클럽 회원 아무나 켤 수 있으면
+     한 사람이 잘못 눌러 여덟 클럽의 20분이 날아간다. */
+  if (b.fmt === 'cup' ? !cupHost(b, req.uid) : !isMember(b.club_id, req.uid))
+    return res.status(403).json({ error: 'host_only',
+      message: '경기 시작은 주최 클럽 운영진만 누를 수 있어요' });
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   const slot = +req.params.s;
   const t = now();
@@ -7260,7 +7349,9 @@ app.post('/brackets/:id/slot/:s/start', auth, (req, res) => {
 app.post('/brackets/:id/slot/:s/reset', auth, (req, res) => {
   const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
   if (!b) return res.status(404).json({ error: 'not_found' });
-  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (b.fmt === 'cup' ? !cupHost(b, req.uid) : !isMember(b.club_id, req.uid))
+    return res.status(403).json({ error: 'host_only',
+      message: '되돌리기는 주최 클럽 운영진만 누를 수 있어요' });
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   const slot = +req.params.s, t = now();
   const del = db.prepare('DELETE FROM bracket_timers WHERE bracket_id=? AND court_key=?');
@@ -10755,6 +10846,35 @@ try {
 
 /* 클럽 탭 홈코트 카드 — 한 번에 한 장 분량을 준다.
    지분·순위·다음 한 수·안 읽은 글을 따로 부르면 탭 열 때마다 네 번을 왕복한다. */
+/* 내가 낄 수 있는 구장톡 전부.
+   예전에는 /clubs/:id/homecourt 가 LIMIT 1 로 한 곳만 줘서,
+   구장이 둘인 클럽은 나머지 구장톡을 영영 못 봤다.
+   클럽이 둘인 사람도 활성 클럽 것만 보였다 — 라운지에서 클럽을 바꾸러 나가야 했다.
+   내가 든 모든 클럽의 홈 구장을 한 줄로 편다. */
+app.get('/me/courts', auth, (req, res) => {
+  const rows = db.prepare(`SELECT vc.venue_id, v.name, c.id club_id, c.name club_name, vc.set_at
+    FROM club_members m
+    JOIN clubs c ON c.id=m.club_id
+    JOIN venue_clubs vc ON vc.club_id=c.id
+    JOIN venues v ON v.id=vc.venue_id
+    WHERE m.user_id=? AND (m.status IS NULL OR m.status='active')
+    ORDER BY vc.set_at`).all(req.uid);
+  const seen = {};
+  db.prepare('SELECT venue_id, seen_at FROM court_seen WHERE user_id=?').all(req.uid)
+    .forEach(r => { seen[r.venue_id] = r.seen_at; });
+  const out = [], got = {};
+  rows.forEach(r => {
+    if (got[r.venue_id]) { got[r.venue_id].clubs.push(r.club_name); return; }
+    const unread = db.prepare(`SELECT COUNT(*) n FROM court_posts
+      WHERE venue_id=? AND scope='court' AND user_id!=? AND created_at > ?`)
+      .get(r.venue_id, req.uid, seen[r.venue_id] || 0).n;
+    got[r.venue_id] = { venue_id: r.venue_id, name: r.name,
+      clubs: [r.club_name], unread };
+    out.push(got[r.venue_id]);
+  });
+  res.json({ courts: out });
+});
+
 app.get('/clubs/:id/homecourt', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
