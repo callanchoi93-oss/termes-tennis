@@ -5661,15 +5661,15 @@ function cupGroupSizes(n) {
    슬롯 2에서 3복식을 한 코트에서 친다. 남는 한 면은 늦어진 매치의 예비 코트다.
 
    2:0으로 갈려도 3복식은 반드시 친다 — 게임 득실과 출전 인원 규칙 때문이다. */
-function tieMatches(tieId, lane, opt) {
-  const c = lane === 'A' ? [1, 2] : [3, 4];
+/* 코트와 슬롯은 배치기가 나중에 넣는다 — 여기서는 자리만 만든다 */
+function tieMatches(tieId, opt) {
   const fin = !!(opt && opt.final);
   const fmt = fin ? (opt.fmt || 'timed') : 'timed';
   return [
-    { no: 1, kind: 'free',  court: c[0], slot: 1, key: `${tieId}m1`, fmt },
-    { no: 2, kind: 'mixed', court: c[1], slot: 1, key: `${tieId}m2`, fmt },
+    { no: 1, kind: 'free',  court: 0, slot: 0, key: `${tieId}m1`, fmt },
+    { no: 2, kind: 'mixed', court: 0, slot: 0, key: `${tieId}m2`, fmt },
     /* 본선에서 2:0 이면 안 친다 — 화면이 <칠 수도 있음>으로 보여준다 */
-    { no: 3, kind: 'free',  court: c[1], slot: 2, key: `${tieId}m3`, fmt,
+    { no: 3, kind: 'free',  court: 0, slot: 0, key: `${tieId}m3`, fmt,
       skippable: (fin && opt.skip) ? 1 : 0 },
   ];
 }
@@ -5682,8 +5682,13 @@ function addMin(hhmm, min) {
 }
 
 const CUP_DEFAULT = {
-  match_sec: 1500,          // 25분 단타임
-  turn_sec: 300,            // 전환 5분
+  /* 20분 단타임. 25분이면 4면에서 6시간이 걸린다.
+     20분이면 5~6게임이 나와 승부를 가리기에 충분하다. */
+  match_sec: 1200,
+  /* 전환 5분 — 앞 팀이 나가고 다음 팀이 들어와 자리 잡는 시간. 워밍업 포함.
+     3분은 지연됐을 때 당기는 카드로 남겨둔다(명세 2.6). */
+  turn_sec: 300,
+  courts: 4,
   /* 본선(준결승·결승·3위전) 포맷.
      'timed' — 조별과 같은 25분 단타임
      'pro6'  — 6게임 프로세트 노애드. 승부는 확실하지만 평균 35분이라 더 길다 */
@@ -5692,99 +5697,185 @@ const CUP_DEFAULT = {
      조별은 게임 득실과 출전 인원을 세야 해서 반드시 쳐야 하지만,
      본선은 이긴 팀만 올라가면 되므로 칠 이유가 없다. 라운드마다 25분이 빈다. */
   skip_dead: true,
-  lanes: 2,
   cap: { 1: null, 2: 20, 3: 16 },        // 구력 합산 상한(년)
   lunch_after: 4,           // 4라운드 뒤 점심
   lunch_min: 40,
 };
 
-/* teams: [{entry_id, name, group:'A'|'B', seat:1~4}] 8팀
-   두 조가 라운드를 번갈아 쓴다 — A조가 R1·R3·R5, B조가 R2·R4·R6.
-   한 조가 뛰는 동안 다른 조는 쉰다. 코트가 4면뿐이라 동시에는 못 넣는다. */
+/* teams: [{entry_id, name, group:'A'|'B', seat:1~4}]
+
+   ── 슬롯 배치 ──────────────────────────────────────────
+   전에는 <라운드>로 짰다. 한 라운드에 타이 두 개를 놓고, 슬롯1 에 1복식·혼복,
+   슬롯2 에 3복식 하나만 놓았다. 슬롯2 마다 코트 한 면이 예비로 놀았다.
+   그래서 8팀이 8시간 걸렸다.
+
+   이제 슬롯 단위로 채운다. 한 타이는 슬롯 S 에 두 면(1복식·혼복),
+   슬롯 S+1 에 한 면(3복식)을 쓴다. 남는 면에 다음 타이를 밀어 넣는다.
+
+   지켜야 할 것
+     · 한 팀이 같은 슬롯에 두 타이를 뛰지 않는다
+     · 한 팀의 다음 타이는 앞 타이가 끝나고 한 슬롯 쉰 뒤에 시작한다
+     · 조별이 다 끝나야 준결승, 준결승이 끝나야 결승 */
+function packTies(list, courts, startSlot, busy) {
+  const perSlot = Math.max(2, courts);
+  const used = {};            // 슬롯 → 쓴 코트 수
+  const free = s => perSlot - (used[s] || 0);
+  const out = [];
+  list.forEach(t => {
+    let s = startSlot;
+    for (;; s++) {
+      if (free(s) < 2 || free(s + 1) < 1) continue;
+      /* 한 팀이 같은 슬롯에 두 타이를 뛸 수는 없다.
+         쉬는 시간은 팀이 아니라 사람 기준이다(명세 2.3) — 팀은 10명이라
+         다음 타이에 다른 사람을 내면 된다. 팀 단위로 한 슬롯을 통째로
+         비우게 하면 조별이 9슬롯이면 될 것을 12슬롯 쓰게 된다.
+
+         준결승·결승은 팀이 아직 안 정해져 home 이 null 이다.
+         null 을 팀 번호로 세면 두 타이가 서로 겹친다고 보고 흩어진다. */
+      const ok = [t.home, t.away].filter(id => id != null).every(id => {
+        const b = busy[id] || [];
+        return !b.some(x => x === s || x === s + 1);
+      });
+      if (ok) break;
+    }
+    used[s] = (used[s] || 0) + 2;
+    used[s + 1] = (used[s + 1] || 0) + 1;
+    [t.home, t.away].forEach(id => {
+      if (id == null) return;
+      busy[id] = (busy[id] || []).concat([s, s + 1]);
+    });
+    out.push({ tie: t, slot: s });
+  });
+  const last = out.length ? Math.max(...out.map(x => x.slot + 1)) : startSlot - 1;
+  return { placed: out, nextSlot: last + 1, used, perSlot };
+}
+
+/* 슬롯에 실제 코트 번호를 준다 — 같은 슬롯에 같은 면이 겹치면 안 된다.
+
+   낮은 번호부터 채우면 1·2번만 계속 쓰이고 3·4번이 논다.
+   실제로는 네 면이 다 열려 있는데 두 면만 쓰는 것처럼 보여서
+   운영자가 <저 코트는 왜 비었나> 하고 헷갈린다. 골고루 돌린다. */
+function assignCourts(placed, courts, state) {
+  const st = state || { taken: {}, next: 1 };
+  const taken = st.taken;
+  const take = (s, n) => {
+    const got = [];
+    for (let k = 0; k < courts && got.length < n; k++) {
+      const c = ((st.next - 1 + k) % courts) + 1;
+      if (!taken[`${s}:${c}`]) { taken[`${s}:${c}`] = 1; got.push(c); }
+    }
+    /* 다음 타이는 그다음 면부터 — 한 면에 몰리지 않게 */
+    if (got.length) st.next = (got[got.length - 1] % courts) + 1;
+    return got;
+  };
+  placed.forEach(({ tie, slot }) => {
+    const a = take(slot, 2), b = take(slot + 1, 1);
+    tie.matches[0].court = a[0]; tie.matches[0].slot = slot;
+    tie.matches[1].court = a[1]; tie.matches[1].slot = slot;
+    tie.matches[2].court = b[0]; tie.matches[2].slot = slot + 1;
+    tie.slot = slot;
+  });
+  return st;
+}
+
 function buildCupBracket(opt) {
   const teams = (opt && opt.teams) || [];
   const startTime = (opt && opt.startTime) || '09:00';
   const cfg = Object.assign({}, CUP_DEFAULT, (opt && opt.cfg) || {});
+  const courts = (opt && opt.courts) || cfg.courts || 4;
 
   const byGroup = { A: [], B: [] };
   teams.forEach(t => { if (byGroup[t.group]) byGroup[t.group].push(t); });
   ['A', 'B'].forEach(g => byGroup[g].sort((a, b) => a.seat - b.seat));
-
   const seatTeam = (g, seat) => (byGroup[g].find(t => t.seat === seat) || null);
-  const slotMin = Math.round((cfg.match_sec + cfg.turn_sec) / 60);   // 25분 + 전환 5분
-  const matchMin = Math.round(cfg.match_sec / 60);
-  /* 한 타이는 55분이다 — 슬롯 두 개지만 마지막 매치 뒤에는 전환이 필요 없다.
-     30 × 2 로 잡으면 라운드마다 5분씩 밀려 R6 에서 25분이 어긋난다. */
-  const tieMin = slotMin + matchMin;
 
-  const nA = byGroup.A.length, nB = byGroup.B.length;
   const pat = n => (n >= 4 ? SEAT_ROUNDS : n === 3 ? SEAT_ROUNDS3 : []);
-  const pA = pat(nA), pB = pat(nB);
+  const mk = (id, g, p, kind) => {
+    const home = seatTeam(g, p[0]), away = seatTeam(g, p[1]);
+    if (!home || !away) return null;
+    return { id, group: g, kind: kind || null,
+      home: home.entry_id, away: away.entry_id,
+      home_name: home.name, away_name: away.name,
+      matches: tieMatches(id, { final: kind ? 1 : 0, fmt: cfg.final_fmt, skip: cfg.skip_dead }) };
+  };
 
-  /* 라운드 짜기.
-     두 조가 다 3팀이면 한 라운드에 A조 1타이 + B조 1타이를 나란히 놓는다(4면).
-     4팀 조가 있으면 그 조만 2타이로 4면을 다 쓰므로 조를 번갈아 돌린다. */
-  const plan = [];
-  if (nA === 3 && nB === 3) {
-    for (let i = 0; i < 3; i++) plan.push([{ g: 'A', p: pA[i][0] }, { g: 'B', p: pB[i][0] }]);
-  } else {
-    const maxR = Math.max(pA.length, pB.length);
-    for (let i = 0; i < maxR; i++) {
-      if (pA[i]) plan.push(pA[i].map(p => ({ g: 'A', p })));
-      if (pB[i]) plan.push(pB[i].map(p => ({ g: 'B', p })));
-    }
+  /* 조별 타이를 만든다 — 두 조를 번갈아 늘어놓아 한 조가 몰리지 않게 */
+  const gt = [];
+  const maxR = Math.max(pat(byGroup.A.length).length, pat(byGroup.B.length).length);
+  for (let i = 0; i < maxR; i++) {
+    ['A', 'B'].forEach(g => {
+      const rows = pat(byGroup[g].length)[i] || [];
+      rows.forEach((p, k) => {
+        const t = mk(`g${i + 1}${g}${k + 1}`, g, p);
+        if (t) gt.push(t);
+      });
+    });
   }
 
-  const rounds = [];
+  const busy = {};
+  const g = packTies(gt, courts, 0, busy);
+  const cst = assignCourts(g.placed, courts);
+
+  /* 준결승은 조별이 다 끝나야 상대가 정해진다 — 그 뒤 슬롯부터 */
+  const semi = [
+    { id: 'sf1', group: 'F', kind: 'semi', home: null, away: null,
+      home_name: 'A조 1위', away_name: 'B조 2위',
+      matches: tieMatches('sf1', { final: 1, fmt: cfg.final_fmt, skip: cfg.skip_dead }) },
+    { id: 'sf2', group: 'F', kind: 'semi', home: null, away: null,
+      home_name: 'B조 1위', away_name: 'A조 2위',
+      matches: tieMatches('sf2', { final: 1, fmt: cfg.final_fmt, skip: cfg.skip_dead }) },
+  ];
+  const s2 = packTies(semi, courts, g.nextSlot, {});
+  assignCourts(s2.placed, courts, cst);
+
+  const fin = [
+    { id: 'fn1', group: 'F', kind: 'final', home: null, away: null,
+      home_name: '준결승 1 승자', away_name: '준결승 2 승자',
+      matches: tieMatches('fn1', { final: 1, fmt: cfg.final_fmt, skip: cfg.skip_dead }) },
+    { id: 'fn2', group: 'F', kind: 'third', home: null, away: null,
+      home_name: '준결승 1 패자', away_name: '준결승 2 패자',
+      matches: tieMatches('fn2', { final: 1, fmt: cfg.final_fmt, skip: cfg.skip_dead }) },
+  ];
+  const f2 = packTies(fin, courts, s2.nextSlot, {});
+  assignCourts(f2.placed, courts, cst);
+
+  /* 슬롯마다 시각을 매긴다. 점심은 조별 한가운데 */
+  const slotMin = Math.round((cfg.match_sec + cfg.turn_sec) / 60);
+  const lunchAt = Math.floor(g.nextSlot / 2);
+  const slots = [];
   let at = startTime;
-  plan.forEach((slotTies, i) => {
-    const r = i + 1;
-    const ties = slotTies.map((x, k) => {
-      const lane = k === 0 ? 'A' : 'B';
-      const id = `r${r}t${k + 1}`;
-      const home = seatTeam(x.g, x.p[0]), away = seatTeam(x.g, x.p[1]);
-      return {
-        id, lane, group: x.g,
-        home: home ? home.entry_id : null,
-        away: away ? away.entry_id : null,
-        home_name: home ? home.name : '',
-        away_name: away ? away.name : '',
-        matches: tieMatches(id, lane),
-      };
-    }).filter(t => t.home && t.away);        // 자리가 비면 타이를 만들지 않는다
-    const groups = [...new Set(ties.map(t => t.group))].join('');
-    rounds.push({ r, group: groups || 'A', start: at, ties });
-    at = addMin(at, tieMin);
-    if (r === cfg.lunch_after && plan.length > cfg.lunch_after) at = addMin(at, cfg.lunch_min);
+  const lastSlot = f2.nextSlot - 1;
+  for (let sIdx = 0; sIdx <= lastSlot; sIdx++) {
+    slots.push({ s: sIdx, start: at });
+    at = addMin(at, slotMin);
+    if (sIdx === lunchAt && cfg.lunch_min) at = addMin(at, cfg.lunch_min);
+  }
+  const slotStart = n => (slots[n] || {}).start || '';
+
+  /* 화면은 아직 <라운드> 단위로 그린다 — 슬롯을 그대로 내보내면
+     한 타이가 두 줄로 쪼개져 보인다. 타이를 시작 슬롯으로 묶는다. */
+  const all = [].concat(
+    g.placed.map(x => ({ ...x, phase: 'group' })),
+    s2.placed.map(x => ({ ...x, phase: 'semi' })),
+    f2.placed.map(x => ({ ...x, phase: 'final' })));
+  const bySlot = {};
+  all.forEach(x => { (bySlot[x.slot] = bySlot[x.slot] || []).push(x); });
+  const rounds = Object.keys(bySlot).map(Number).sort((a, b) => a - b).map((sIdx, i) => {
+    const items = bySlot[sIdx];
+    const ties = items.map(x => {
+      x.tie.lane = null;
+      return x.tie;
+    });
+    const ph = items[0].phase;
+    return { r: i + 1, slot: sIdx, start: slotStart(sIdx),
+      group: ph === 'group' ? [...new Set(ties.map(t => t.group))].join('') : 'F',
+      final: ph === 'group' ? 0 : 1,
+      kind: ph === 'group' ? null : (ph === 'semi' ? 'semi' : 'final'),
+      ties };
   });
 
-  /* 조별 뒤에 4팀 토너먼트. 자리만 잡아두고 조별이 끝나면 채운다.
-     미리 만들어 두어야 관전 화면에 <다음은 준결승> 이 뜬다.
-
-     준결승은 조를 엇갈려 붙인다(A1-B2, B1-A2).
-     같은 조끼리 다시 만나면 조별에서 이미 한 판 친 팀을 또 만난다. */
-  /* 본선도 조별과 같은 55분으로 잡는다.
-     2:0 이면 3복식을 생략해 실제로는 30분에 끝나지만, 시간표를 평균으로 짜면
-     3복식까지 간 라운드에서 뒤가 통째로 밀린다. 표는 최악을 적고,
-     일찍 끝나면 운영자가 다음 라운드를 앞당긴다. */
-  const sr = rounds.length + 1;
-  rounds.push({ r: sr, group: 'F', start: at, final: 1, kind: 'semi', ties: [
-    { id: `r${sr}t1`, lane: 'A', group: 'F', kind: 'semi', home: null, away: null,
-      home_name: 'A조 1위', away_name: 'B조 2위', matches: tieMatches(`r${sr}t1`, 'A', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
-    { id: `r${sr}t2`, lane: 'B', group: 'F', kind: 'semi', home: null, away: null,
-      home_name: 'B조 1위', away_name: 'A조 2위', matches: tieMatches(`r${sr}t2`, 'B', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
-  ] });
-  at = addMin(at, tieMin);
-
-  const fr = rounds.length + 1;
-  rounds.push({ r: fr, group: 'F', start: at, final: 1, kind: 'final', ties: [
-    { id: `r${fr}t1`, lane: 'A', group: 'F', kind: 'final', home: null, away: null,
-      home_name: '준결승 1 승자', away_name: '준결승 2 승자', matches: tieMatches(`r${fr}t1`, 'A', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
-    { id: `r${fr}t2`, lane: 'B', group: 'F', kind: 'third', home: null, away: null,
-      home_name: '준결승 1 패자', away_name: '준결승 2 패자', matches: tieMatches(`r${fr}t2`, 'B', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
-  ] });
-
-  return { mode: 'cup', cfg, teams, rounds };
+  return { mode: 'cup', cfg, courts, teams, rounds,
+    slots, slot_min: slotMin, end: addMin(slotStart(lastSlot), slotMin) };
 }
 
 /* 조 순위 — 승점 → 매치 득실 → 게임 득실 → 승자승.
@@ -5923,8 +6014,19 @@ function cupCfg(b) {
     min_teams: d.min_teams ? +d.min_teams : CUP_MIN_TEAMS,
     max_teams: d.max_teams ? +d.max_teams : CUP_MAX_TEAMS,
     prize_pct: d.prize_pct != null ? +d.prize_pct : 85,
-    fixed_cost: d.fixed_cost != null ? +d.fixed_cost : 1100000,   // 코트·보험·트로피·비품
-    var_cost: d.var_cost != null ? +d.var_cost : 60000,           // 팀당 공·음료·인력
+    /* 비용은 항목으로 갖는다 — 합계 한 칸만 두면 견적이 바뀌었을 때
+       그 안에 뭐가 들었는지 몰라 통째로 다시 계산해야 한다. */
+    fixed_items: Array.isArray(d.fixed_items) && d.fixed_items.length ? d.fixed_items : [
+      { n: '코트 대관', h: '4면 × 8시간', v: 480000 },
+      { n: '운영 인력', h: '2명 × 18만', v: 360000 },
+      { n: '단체 상해보험', h: '80명', v: 200000 },
+      { n: '트로피·메달', h: '', v: 180000 },
+      { n: '현수막·비품·구급함', h: '', v: 180000 },
+    ],
+    var_items: Array.isArray(d.var_items) && d.var_items.length ? d.var_items : [
+      { n: '공', h: '타이당 1통', v: 22000 },
+      { n: '음료·간식', h: '', v: 18000 },
+    ],
   };
 }
 
@@ -5937,7 +6039,13 @@ function cupCfg(b) {
 
    그래서 상금은 <비용을 빼고 남은 돈의 몇 %>로 센다.
    팀이 적게 오면 남는 돈이 줄고 상금도 같이 줄어 적자가 날 수 없다. */
+const sumItems = a => (a || []).reduce((x, i) => x + (+i.v || 0), 0);
+
 function cupMoney(C, teams) {
+  C = Object.assign({}, C, {
+    fixed_cost: sumItems(C.fixed_items),
+    var_cost: sumItems(C.var_items),
+  });
   const gross = teams * C.fee;                 // 걷은 돈
   const deposits = teams * C.deposit;          // 돌려줄 돈
   const net = gross - deposits;                // 실제로 쓸 수 있는 돈
@@ -6152,7 +6260,8 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
     drawn: !!d.drawn_at, rounds: d.rounds || [], teams: d.teams || [],
     entries: rows, courts: b.courts,
     fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
-    fixed_cost: cupCfg(d).fixed_cost, var_cost: cupCfg(d).var_cost,
+    fixed_items: cupCfg(d).fixed_items, var_items: cupCfg(d).var_items,
+    fixed_cost: sumItems(cupCfg(d).fixed_items), var_cost: sumItems(cupCfg(d).var_items),
     cfg: Object.assign({}, CUP_DEFAULT, d.cfg || {}),
     min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams,
     money: cupMoney(cupCfg(d),
@@ -6188,14 +6297,19 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     const mx = num(q.max_teams, 2, 32);         if (mx != null) d.max_teams = mx;
     const mn = num(q.min_teams, 2, 32);         if (mn != null) d.min_teams = mn;
     const pc = num(q.prize_pct, 0, 100);        if (pc != null) d.prize_pct = pc;
-    const fc = num(q.fixed_cost, 0, 50000000);  if (fc != null) d.fixed_cost = fc;
+    const items = (arr, cap) => (Array.isArray(arr) ? arr : []).slice(0, 12)
+      .map(x => ({ n: String(x.n || '').slice(0, 24),
+        h: String(x.h || '').slice(0, 24),
+        v: Math.max(0, Math.min(cap, Math.round(+x.v || 0))) }))
+      .filter(x => x.n);
+    if (Array.isArray(q.fixed_items)) d.fixed_items = items(q.fixed_items, 50000000);
+    if (Array.isArray(q.var_items)) d.var_items = items(q.var_items, 5000000);
     /* 본선 포맷 — 대진이 이미 짜였으면 다시 추첨해야 반영된다 */
     d.cfg = d.cfg || {};
     if (q.final_fmt === 'timed' || q.final_fmt === 'pro6') d.cfg.final_fmt = q.final_fmt;
     if (q.skip_dead != null) d.cfg.skip_dead = q.skip_dead ? true : false;
     const ms = num(q.match_min, 10, 60);   if (ms != null) d.cfg.match_sec = ms * 60;
     const ts = num(q.turn_min, 0, 20);     if (ts != null) d.cfg.turn_sec = ts * 60;
-    const vc = num(q.var_cost, 0, 5000000);     if (vc != null) d.var_cost = vc;
     /* 손익분기가 정원보다 크면 영영 못 연다 */
     if (d.min_teams && d.max_teams && d.min_teams > d.max_teams)
       return res.status(400).json({ error: 'bad',
