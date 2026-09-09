@@ -2247,6 +2247,14 @@
   .cupt .st.pend{ background:#fdf3dc;color:#8a5a13 }
   .cupt .st.none{ background:var(--felt);color:#b4bcc4 }
 
+  /* 참가 클럽의 엔트리 — 이름과 구력만 한 줄로 편다 */
+  .cupmems{ display:flex;flex-wrap:wrap;gap:5px;padding:0 0 12px 31px }
+  .cupmem{ display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:400;
+    color:var(--gray);background:var(--felt);border-radius:8px;padding:4px 8px;white-space:nowrap }
+  .cupmem.f{ background:#fcedf4;color:#a04a76 }
+  .cupmem em{ font-style:normal;font-size:12px;color:#b4bcc4;font-weight:700 }
+  .cupmem.f em{ color:#c98aa8 }
+
   /* ── 대회 당일 ──
      새 부품을 만들지 않는다. 회차 시계(.xclk)·레일(.xrail)·대진 카드(.bkc)를 그대로 쓴다.
      정기모임에서 매주 보던 화면이라 대회 당일에 따로 배울 것이 없다. */
@@ -14366,26 +14374,31 @@ async function cupTeams(){
     const sub=[t.group_label?`${t.group_label}조 ${t.seat}번`:'',
       t.roster_n?`엔트리 ${t.roster_n}명`:'엔트리 미제출',
       t.mine?'우리 클럽':''].filter(Boolean).join(' · ');
+    /* 명단을 그대로 편다 — 감춰봐야 상대가 할 수 있는 게 없고,
+       누가 나오는지 아는 편이 대회 전에 이야깃거리가 된다. */
+    const ros=(t.roster||[]).map(r=>
+      `<span class="cupmem${r.gender==='F'?' f':''}">${esc(r.name)}<em>${r.years}</em></span>`).join('');
     return `<div class="cupt${t.mine?' me':''}">
       <span class="no">${i+1}</span>
       <span class="c"><b>${esc(t.name)}</b><span>${esc(sub)}</span></span>
-      <span class="st ${k}">${lb}</span></div>`;
+      <span class="st ${k}">${lb}</span></div>
+      ${ros?`<div class="cupmems">${ros}</div>`:''}`;
   }).join('');
+  /* 초청장을 보낸 적 없는 자리에 <미회신>이라고 적으면 거짓이 된다 */
   const empty=Array.from({length:Math.max(0,d.left)},(_,i)=>`
     <div class="cupt"><span class="no">${(d.teams||[]).length+i+1}</span>
       <span class="c" style="color:#b4bcc4"><b style="color:#b4bcc4">빈자리</b>
-        <span>초청장 발송 · 미회신</span></span>
+        <span>아직 안 찼어요</span></span>
       <span class="st none">—</span></div>`).join('');
 
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>참가 클럽</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${(d.teams||[]).length} / ${d.max_teams}팀${
-      d.left?` · ${d.left}자리 남음`:' · 마감'}</div>
+      d.left?` · ${d.left}자리 남음`:' · 마감'} · ${d.min_teams}팀부터 열려요</div>
     <div style="margin-top:14px">${rows}${empty}</div>
-    <div class="cuphint" style="margin-top:14px"><i>◆</i><div>${d.roster_open
-      ? '대회가 가까워 다른 클럽 명단도 열렸어요'
-      : '다른 클럽 명단은 <b>대회 7일 전</b>에 열려요 · 그전에 보이면 상대를 보고 라인업을 짜게 돼요'}</div></div>`;
+    <div class="cuphint" style="margin-top:14px"><i>◆</i><div>
+      이름 옆 숫자는 <b>구력(년)</b>이에요 · 혼복 두 매치는 구력 합 8년까지</div></div>`;
   document.getElementById('ov').classList.add('on');
 }
 
@@ -14419,7 +14432,10 @@ function cupDayDraw(){
   const el=document.getElementById('s-club'); if(!el||state.view!=='club') return;
   const rounds=D.rounds||[], sc=(D.live&&D.live.scores)||{}, tm=(D.live&&D.live.timers)||{};
   const me=cupMyEntry();
-  const dur=((D.live&&D.live.cfg&&D.live.cfg.match_sec)||1500)*1000;
+  /* 대회는 20분 단타임 — 클럽 시간 대진(25분)과 다르다.
+     화면에 숫자를 박지 말고 대회 설정(cfg.match_sec)을 읽는다. */
+  const secs=(D.live&&D.live.cfg&&D.live.cfg.match_sec)||1200;
+  const dur=secs*1000, mins=Math.round(secs/60);
   const now=Date.now();
 
   /* 지금 도는 회차 — 타이머가 켜진 매치가 속한 회차 */
@@ -14448,7 +14464,7 @@ function cupDayDraw(){
       <div class="hd"><span class="cap">${cur.r}회차 진행 중</span>
         <span class="tail">${esc(rname(cur))}</span></div>
       <div class="num"><span class="t">${cupMs(left)}</span>
-        <span class="at">${esc(cur.start||'')} 시작<em> · 25분 단타임</em></span></div>
+        <span class="at">${esc(cur.start||'')} 시작<em> · ${mins}분 단타임</em></span></div>
       ${mineNext?`<div class="ft"><b>${esc(mineNext.t.home_name||'')}</b> vs ${esc(mineNext.t.away_name||'')}</div>`:''}
       ${mineNext?`<button class="go" onclick="cupPickMatch('${esc(mineNext.t.id)}')">점수 넣기</button>`:''}
       ${cupRailHtml(rounds,sc,tm,dur,cur)}
@@ -14456,7 +14472,7 @@ function cupDayDraw(){
     <div class="xclk">
       <div class="hd"><span class="cap" style="background:var(--felt);color:var(--gray)">시작 전</span>
         <span class="tail">${esc((rounds[0]||{}).start||'')} 첫 경기</span></div>
-      <div class="num"><span class="t">25:00</span>
+      <div class="num"><span class="t">${String(mins).padStart(2,"0")}:00</span>
         <span class="at">회차마다 네 코트가 함께 시작해요</span></div>
       ${cupRailHtml(rounds,sc,tm,dur,null)}
     </div>`;
@@ -14568,7 +14584,7 @@ function cupScoreDraw(){
   if(!T) return;
   const KD={free:'남복',mixed:'혼합복식'};
   const tm=(D.live&&D.live.timers)||{};
-  const dur=((D.live&&D.live.cfg&&D.live.cfg.match_sec)||1500)*1000;
+  const dur=((D.live&&D.live.cfg&&D.live.cfg.match_sec)||1200)*1000;
   const st=tm[S.key], left=st?st+dur-Date.now():null;
   const side=(k,nm,v,col)=>`<div style="flex:1;text-align:center">
       <div style="font-size:13px;font-weight:400;color:${col};margin-bottom:9px;line-height:1.4">${esc(nm)}</div>
