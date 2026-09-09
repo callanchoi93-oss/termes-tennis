@@ -5692,7 +5692,7 @@ const CUP_DEFAULT = {
   turn_sec: 300,
   courts: 4,
   /* 본선(준결승·결승·3위전) 포맷.
-     'timed' — 조별과 같은 25분 단타임
+     'timed' — 조별과 같은 20분 단타임
      'pro6'  — 6게임 프로세트 노애드. 승부는 확실하지만 평균 35분이라 더 길다 */
   final_fmt: 'timed',
   /* 본선에서 2:0 이 되면 3복식을 생략한다.
@@ -6184,9 +6184,10 @@ app.post('/cup/:bid/entries', auth, (req, res) => {
   res.json({ ok: true, id: rid(r), token: tok });
 });
 
-/* 참가 클럽 현황 — 참가한 클럽이면 누구나 본다.
-   다른 클럽 명단은 대회 7일 전에 열린다. 그전에 보이면 상대를 보고 라인업을 짜게 되고,
-   먼저 낸 클럽이 손해를 본다. 그때까지는 인원 수만 보낸다. */
+/* 참가 클럽 현황 — 참가한 클럽이면 누구나 본다. 명단도 처음부터 다 보인다.
+   한때 <대회 7일 전에 연다>로 막아뒀는데, 엔트리 6명이 세 매치를 한 자리씩 채우는
+   구조에서는 상대 명단을 봐도 할 수 있는 게 거의 없다. 몰빵도 로테이션도 불가능하고
+   구력 합 8년 상한이 짝 고르기마저 좁힌다. 감추면 대회 전에 생길 이야기만 사라진다. */
 app.get('/cup/:bid/teams', auth, (req, res) => {
   const b = cupBracket(req.params.bid);
   if (!b) return res.status(404).json({ error: 'no_cup' });
@@ -6198,12 +6199,6 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
     return res.status(403).json({ error: 'not_applied', message: '참가 신청한 클럽만 볼 수 있어요' });
 
   const C = cupCfg(b.data);
-  let open7 = false;
-  if (b.date) {
-    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
-    const left = Math.round((new Date(b.date + 'T00:00:00').getTime() - t0.getTime()) / 864e5);
-    open7 = left <= 7;
-  }
   const rows = db.prepare(`SELECT id, club_id, club_name, status, fee_paid, group_label, seat
     FROM cup_entries WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
   const teams = rows.map(r => {
@@ -6212,14 +6207,13 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
     const out = { id: r.id, name: r.club_name, mine: !!isMine,
       status: r.fee_paid ? 'confirmed' : (n >= CUP_ROSTER_N ? 'entered' : 'applied'),
       roster_n: n, group_label: r.group_label, seat: r.seat };
-    /* 우리 명단은 언제나 보인다 — 우리가 낸 것이다 */
-    if (isMine || open7) out.roster = db.prepare(
+    out.roster = db.prepare(
       `SELECT guest_name name, gender, ntrp years FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(r.id);
     return out;
   });
   res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
-    left: Math.max(0, C.max_teams - teams.length), roster_open: open7,
-    date: b.date, title: cupCfg(b.data).title });
+    left: Math.max(0, C.max_teams - teams.length),
+    date: b.date, title: C.title });
 });
 
 app.get('/cup/:bid/entries', auth, (req, res) => {
