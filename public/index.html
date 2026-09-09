@@ -2054,6 +2054,9 @@
   .lv.mine .c span{ color:var(--coral-d);opacity:.75 }
   .lv .c span{ display:block;font-size:13.5px;color:var(--lgray);margin-top:2px }
   .lv .r{ flex:none;font-size:15px;font-weight:700;color:var(--coral-d) }
+  /* 우리 코트 줄의 오른쪽은 숫자가 아니라 <누를 수 있다>는 표시다.
+     여기 km 를 찍었더니 바로 아래 <가까운 테니스장>의 거리와 구분이 안 됐다. */
+  .lv .r.chev{ font-size:17px;font-weight:400;color:var(--faint) }
   .lnone{ text-align:center;color:var(--lgray);font-size:16px;padding:28px 10px;line-height:1.75 }
   .lnone span{ font-size:14px;line-height:1.7 }
   /* 지도 위 구장 이름표 */
@@ -16707,8 +16710,8 @@ function landPageHtml(){
     <div class="lkey"><span class="w">원 크기는 클럽 규모예요 · 진한 원이 우리 코트</span></div>
     <div class="landsheet">
       <div class="lhd"><span class="n">${d.flags||0}<em>곳</em></span>
-        <span class="dd">${d.my_rank?`<b>${esc(d.region||'')}에서 ${d.my_rank}번째</b>`:'아직 순위가 없어요'}<br>
-          전국 ${(d.all_venues||0).toLocaleString()}곳 중 우리 코트</span></div>
+        <span class="dd">${d.my_rank?`<b>${esc(d.region||'')} ${d.my_rank}위</b>`:'아직 순위가 없어요'}<br>
+          전국 ${(d.all_venues||0).toLocaleString()}곳 중 우리가 가진 코트</span></div>
       ${(d.rank||[]).length>1 ? `<div class="lrank">
         <div class="lrh">${esc(d.region||'우리 시')} 클럽</div>
         ${d.rank.slice(0,5).map((r,i)=>`<div class="lr${r.id==clubId()?' me':''}">
@@ -16717,11 +16720,15 @@ function landPageHtml(){
             <span>${r.wins?`교류전 ${r.wins}승`:'아직 승리 없음'}</span></span>
           <span class="v">${r.venues||0}곳</span></div>`).join('')}
       </div>` : ''}
-      ${(d.venues||[]).length ? `<div class="lvs">${d.venues.slice(0,6).map(v=>`
-        <div class="lv mine" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
-          <span class="c"><b>${esc(v.name)}</b>
-            <span>${v.is_home?'우리 홈':`${v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳'}`}</span></span>
-          <span class="r">${v.radius_m?`${(v.radius_m/1000).toFixed(1)}km`:''}</span></div>`).join('')}</div>`
+      ${(d.venues||[]).length ? `<div class="lrh">우리 코트</div>
+        <div class="lvs">${d.venues.slice(0,6).map(v=>{
+        /* 반경은 거리가 아니다 — 곁줄에 이름을 붙여 내린다 */
+        const how=v.is_home?'우리 홈'
+          :(v.days_left!=null&&v.days_left<90?`${v.days_left}일 뒤 옅어짐`:'뺏은 곳');
+        const sub=[how, v.radius_m?`반경 ${(v.radius_m/1000).toFixed(1)}km`:''].filter(Boolean).join(' · ');
+        return `<div class="lv mine" onclick="landVenue(${v.venue_id})" style="cursor:pointer">
+          <span class="c"><b>${esc(v.name)}</b><span>${esc(sub)}</span></span>
+          <span class="r chev">›</span></div>`; }).join('')}</div>`
       : `<div class="lnone">아직 차지한 구장이 없어요<br>
           <span>교류전에서 <b>남의 홈에 가서 이기면</b> 그 둘레가 우리 색이 돼요</span></div>`}
       <div id="landNear"></div>
@@ -16980,20 +16987,26 @@ function landPins(near, byVenue, clubIdx, reps){
    지도만으로는 <여기서 뭘 하라는 거지> 가 안 풀린다. 눌러서 바로 잡게 한다. */
 function landNearList(){
   const box=document.getElementById('landNear'); if(!box) return;
-  const list=(LAND_NEAR||[]).slice(0,5);
+  /* 우리 코트는 바로 위에 이미 나왔다. 여기 또 넣으면 다섯 칸 중 하나를
+     이미 아는 곳에 쓰게 되고, 지도 중심이라 0m 로 찍혀 <가까운>이 무색해진다.
+     번호가 없는 카카오 결과가 섞이므로 이름으로도 한 번 더 거른다. */
+  const nrm=x=>String(x||'').replace(/\s/g,'');
+  const ours=(LAND&&LAND.venues)||[];
+  const list=(LAND_NEAR||[])
+    .filter(v=>!ours.some(o=>o.venue_id===v.id || nrm(o.name)===nrm(v.name)))
+    .slice(0,5);
   if(!list.length){ box.innerHTML=''; return; }
+  /* 이름 앞 동그라미를 없앴다 — 성격은 곁줄에 <용인시 · 사설> 이라고 글자로 이미 있는데
+     동그라미가 같은 말을 색으로 한 번 더 했다. 색과 뜻을 짝지어 외워야 읽히는 것도
+     지도에서 방금 없앤 것과 같은 문제다. 우리 코트만 코랄 글씨로 가른다. */
   box.innerHTML=`<div class="lrh" style="margin:16px 0 2px">가까운 테니스장</div>
-    /* 이름 앞 동그라미를 없앴다 — 성격은 곁줄에 <용인시 · 사설> 이라고 글자로 이미 있는데
-       동그라미가 같은 말을 색으로 한 번 더 했다. 색과 뜻을 짝지어 외워야 읽히는 것도
-       지도에서 방금 없앤 것과 같은 문제다. 우리 코트만 코랄 글씨로 가른다. */
     ${list.map(v=>{
-      const mine=(LAND&&LAND.venues||[]).some(x=>x.venue_id===v.id);
       const sub=[v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '),
         v.indoor?'실내':'', kindKo(v.kind)].filter(Boolean).join(' · ');
-      return `<div class="lv${mine?' mine':''}"
+      return `<div class="lv"
         onclick="${v._k?`landKakaoOpen('${esc(v.kakao_id)}')`:`landVenue(${v.id})`}" style="cursor:pointer">
       <span class="c"><b>${esc(v.name)}</b>
-        <span>${mine?'우리 홈 · ':''}${esc(sub)}</span></span>
+        <span>${esc(sub)}</span></span>
       <span class="r near">${v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`}</span></div>`;
     }).join('')}`;
 }
