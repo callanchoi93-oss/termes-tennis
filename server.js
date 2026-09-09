@@ -5550,8 +5550,27 @@ app.post('/brackets/:id/publish', auth, (req, res) => {
 app.put('/brackets/:id/scores/:key', auth, (req, res) => {
   const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
   if (!b) return res.status(404).json({ error: 'not_found' });
-  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
   const key = String(req.params.key).slice(0, 24);
+  if (b.fmt === 'cup') {
+    /* 컵은 <주최 클럽 회원 아무나>가 아니다. 화면에서 버튼만 감추면
+       링크로 남의 점수를 고칠 수 있으므로 여기서 막는다.
+       주최 클럽 운영진은 모든 경기, 참가 클럽 운영진은 자기 경기만. */
+    let ok = cupHost(b, req.uid);
+    if (!ok) {
+      let d2 = {}; try { d2 = JSON.parse(b.data || '{}'); } catch (e) {}
+      let tie = null;
+      (d2.rounds || []).forEach(r => (r.ties || []).forEach(t => {
+        if ((t.matches || []).some(m => m.key === key)) tie = t; }));
+      if (tie) ok = [tie.home, tie.away].filter(Boolean).some(eid => {
+        const e2 = db.prepare('SELECT club_id FROM cup_entries WHERE id=?').get(eid);
+        return e2 && e2.club_id && isOfficer(e2.club_id, req.uid);
+      });
+    }
+    if (!ok) return res.status(403).json({ error: 'not_yours',
+      message: '이 경기 점수는 두 클럽 운영진과 주최자만 넣을 수 있어요' });
+  } else if (!isMember(b.club_id, req.uid)) {
+    return res.status(403).json({ error: 'member_only' });
+  }
   const a = intOrNull((req.body || {}).a);
   const bb = intOrNull((req.body || {}).b);
   if (a === null && bb === null) db.prepare('DELETE FROM bracket_scores WHERE bracket_id=? AND court_key=?').run(b.id, key);
@@ -5614,6 +5633,11 @@ try {
     guardian_consent INTEGER DEFAULT 0,
     health_declared INTEGER DEFAULT 0)`);
   db.exec('CREATE INDEX IF NOT EXISTS ix_cup_ros ON cup_roster(entry_id)');
+  /* 짝은 엔트리를 낼 때 한 번 정하고 대회 내내 안 바꾼다.
+     타이마다 다시 짜면 주장이 하루 종일 폰을 보고 있어야 하고,
+     상대 라인업을 보고 바꾸는 눈치싸움이 생긴다.
+     pair 1=남복 · 2·3=혼복. cup_lineups 는 이제 안 쓴다. */
+  try { db.exec('ALTER TABLE cup_roster ADD COLUMN pair INTEGER'); } catch (e) {}
   db.exec(`CREATE TABLE IF NOT EXISTS cup_lineups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bracket_id INTEGER NOT NULL,
@@ -5712,8 +5736,11 @@ const CUP_DEFAULT = {
   /* 구력 합 상한. 동호인 구력이 보통 0~10년인데 20년을 두면 아무것도 안 걸러진다.
      혼복 두 매치를 8년으로 묶는다. 1번(남복)은 에이스 매치라 열어 둔다. */
   cap: { 1: null, 2: 8, 3: 8 },        // 구력 합산 상한(년)
-  lunch_after: 4,           // 4라운드 뒤 점심
-  lunch_min: 40,
+  lunch_after: 4,
+  /* 점심을 안 잡는다. 하루짜리 대회에서 40분을 통째로 세우면 코트가 놀고,
+     정작 대부분은 밥을 안 먹고 간식으로 때운다. 자기 차례 사이 20~110분이
+     이미 비어 있어서 그때 먹으면 된다. 필요하면 대회 설정에서 켠다. */
+  lunch_min: 0,
 };
 
 /* teams: [{entry_id, name, group:'A'|'B', seat:1~4}]
@@ -6165,6 +6192,61 @@ function cupMemberForm(cid) {
   return out;
 }
 
+/* 짝을 자동으로 짜준다.
+   6명이 여섯 자리를 한 자리씩 채우고 구력 합 상한이 있어서 가능한 조합이 몇 개 안 된다.
+   남복(1번)은 에이스 매치라 구력이 높은 둘을 넣고, 남은 남자 둘을 여자와 묶는다.
+   합이 상한을 넘으면 조합을 바꿔가며 다 해본다 — 열두 가지뿐이다. */
+function cupAutoPair(rows, cap) {
+  const M = rows.filter(r => r.gender === 'M').slice();
+  const F = rows.filter(r => r.gender === 'F').slice();
+  if (M.length !== CUP_ROSTER_M || F.length !== CUP_ROSTER_F) return null;
+  const yr = r => +r.ntrp || 0;
+  const lim2 = cap && cap[2], lim3 = cap && cap[3];
+  let best = null;
+  for (let a = 0; a < M.length; a++) for (let b = a + 1; b < M.length; b++) {
+    const dbl = [M[a], M[b]];                       // 남복
+    const rest = M.filter((_, i) => i !== a && i !== b);
+    [[0, 1], [1, 0]].forEach(([x, y]) => {
+      const p2 = [rest[0], F[x]], p3 = [rest[1], F[y]];
+      const s2 = yr(p2[0]) + yr(p2[1]), s3 = yr(p3[0]) + yr(p3[1]);
+      if (lim2 != null && s2 > lim2) return;
+      if (lim3 != null && s3 > lim3) return;
+      /* 남복은 세게, 혼복 둘은 고르게 — 그게 세 매치를 다 겨룰 수 있는 배치다 */
+      const score = -(yr(dbl[0]) + yr(dbl[1])) * 10 + Math.abs(s2 - s3);
+      if (!best || score < best.score) best = { score, dbl, p2, p3 };
+    });
+  }
+  if (!best) return null;
+  const out = {};
+  best.dbl.forEach(r => { out[r.id != null ? r.id : r.user_id] = 1; });
+  best.p2.forEach(r => { out[r.id != null ? r.id : r.user_id] = 2; });
+  best.p3.forEach(r => { out[r.id != null ? r.id : r.user_id] = 3; });
+  return out;
+}
+
+/* 짝이 규칙을 지키는지 — 엔트리를 낼 때 한 번만 잰다 */
+function cupCheckPairs(rows, cap) {
+  const by = { 1: [], 2: [], 3: [] };
+  for (const r of rows) {
+    const p = +r.pair;
+    if (!by[p]) return '세 매치에 두 명씩 넣어주세요';
+    by[p].push(r);
+  }
+  for (const p of [1, 2, 3]) {
+    if (by[p].length !== 2) return `${p}번 매치에 두 명을 넣어주세요`;
+    const [x, y] = by[p];
+    if (p === 1 && (x.gender === 'F' || y.gender === 'F'))
+      return '1번은 남자복식이에요 · 여자 회원은 혼복 두 매치에 나갑니다';
+    if (p !== 1 && !((x.gender === 'M' && y.gender === 'F') || (x.gender === 'F' && y.gender === 'M')))
+      return `${p}번은 혼합복식이라 남녀 한 명씩이어야 해요`;
+    const lim = cap && cap[p];
+    const sum = (+x.ntrp || 0) + (+y.ntrp || 0);
+    if (lim != null && sum > lim)
+      return `${p}번 구력 합이 ${lim}년을 넘어요 (지금 ${sum}년)`;
+  }
+  return null;
+}
+
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
 }
@@ -6219,8 +6301,8 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
     const out = { id: r.id, name: r.club_name, mine: !!isMine,
       status: r.fee_paid ? 'confirmed' : (n >= CUP_ROSTER_N ? 'entered' : 'applied'),
       roster_n: n, group_label: r.group_label, seat: r.seat };
-    out.roster = db.prepare(
-      `SELECT id, guest_name name, gender, ntrp years FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(r.id);
+    out.roster = db.prepare(`SELECT id, guest_name name, gender, ntrp years, pair
+      FROM cup_roster WHERE entry_id=? ORDER BY pair, gender DESC, slot`).all(r.id);
     return out;
   });
   res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
@@ -6402,7 +6484,33 @@ app.get('/cup/:bid/standings', (req, res) => {
     .every(r => r.ties.every(t => t.matches.every(m => sc[m.key] && sc[m.key].a != null)));
   if (doneAll) cupFillFinal(data, sc);
   res.json({ standings: st, rounds: data.rounds || [], teams: data.teams || [],
-    cfg: data.cfg || CUP_DEFAULT, title: data.title || '', done: doneAll,
+    /* 시계와 레일이 <슬롯>으로 돌아야 한다 — 회차는 타이를 묶은 이름일 뿐이다 */
+    slots: data.slots || [], slot_min: data.slot_min || 25,
+    cfg: Object.assign({}, CUP_DEFAULT, data.cfg || {}),
+    title: data.title || '', done: doneAll,
+    /* 회차를 켜는 것은 주최자만 한다 — 화면이 그걸 알아야 버튼을 감춘다 */
+    is_host: (() => { const uid = tryUid(req); return uid ? cupHost(b, uid) : false; })(),
+    /* 짝이 고정이라 아직 안 한 경기도 이름을 보여줄 수 있다.
+       선수가 아침에 한 번 보면 오늘 누구랑 세 번 뛰는지 다 안다. */
+    pairs: (() => {
+      const out = {};
+      db.prepare(`SELECT e.id eid, r.pair, r.guest_name name, r.gender, r.ntrp years
+        FROM cup_entries e JOIN cup_roster r ON r.entry_id=e.id
+        WHERE e.bracket_id=? AND e.status!='cancelled' AND r.pair IS NOT NULL
+        ORDER BY e.id, r.pair, r.gender DESC`).all(b.id).forEach(x => {
+        const t = out[x.eid] = out[x.eid] || { 1: [], 2: [], 3: [] };
+        if (t[x.pair]) t[x.pair].push({ name: x.name, gender: x.gender, years: x.years });
+      });
+      return out;
+    })(),
+    /* 내가 어느 클럽 운영진인가 — 점수 버튼을 자기 경기에만 붙이려면 필요하다 */
+    my_entries: (() => {
+      const uid = tryUid(req); if (!uid) return [];
+      return db.prepare(`SELECT e.id FROM cup_entries e
+        JOIN club_members m ON m.club_id=e.club_id
+        WHERE e.bracket_id=? AND e.status!='cancelled' AND m.user_id=?
+          AND m.role IN ('owner','officer')`).all(b.id, uid).map(x => x.id);
+    })(),
     server_now: Date.now() });
 });
 
@@ -6650,12 +6758,15 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
             crypto.randomBytes(9).toString('base64url'), now(), now());
         const eid = rid(er);
         const ins = db.prepare(`INSERT INTO cup_roster
-          (entry_id,user_id,guest_name,gender,ntrp,slot,guardian_consent,health_declared)
-          VALUES (?,?,?,?,?,?,1,1)`);
-        ids.forEach((uid, k) => {
+          (entry_id,user_id,guest_name,gender,ntrp,slot,pair,guardian_consent,health_declared)
+          VALUES (?,?,?,?,?,?,?,1,1)`);
+        const grs = ids.map((uid, k) => {
           const u = db.prepare('SELECT name, gender FROM users WHERE id=?').get(uid);
-          ins.run(eid, uid, u.name, cupG(u.gender), careerYears(uid) || 0, k + 1);
+          return { id: uid, user_id: uid, name: u.name, gender: cupG(u.gender),
+            ntrp: careerYears(uid) || 0, slot: k + 1 };
         });
+        const gp = cupAutoPair(grs, cupCap(b.data)) || {};
+        grs.forEach(r => ins.run(eid, r.user_id, r.name, r.gender, r.ntrp, r.slot, gp[r.id] || null));
         made.push(cname);
       }
     })();
@@ -6843,14 +6954,30 @@ app.post('/cup/:bid/roster', auth, (req, res) => {
     { guardian_consent: 1, health_declared: 1 })));
   if (why) return res.status(400).json({ error: 'bad_roster', message: why });
 
+  /* 짝까지 여기서 정한다 — 앱이 보낸 pairs 를 쓰되, 없으면 자동으로 짠다.
+     한 번 정하면 대회 내내 안 바꾼다. */
+  const cap = cupCap(b.data);
+  const sent = (req.body || {}).pairs || null;
+  rows.forEach(r => { r.id = r.user_id; });
+  if (sent && typeof sent === 'object') {
+    rows.forEach(r => { r.pair = +sent[r.user_id] || 0; });
+  } else {
+    const auto = cupAutoPair(rows, cap);
+    if (!auto) return res.status(400).json({ error: 'bad_pair',
+      message: `남 ${CUP_ROSTER_M} · 여 ${CUP_ROSTER_F} 여야 짝을 지을 수 있어요` });
+    rows.forEach(r => { r.pair = auto[r.user_id]; });
+  }
+  const why2 = cupCheckPairs(rows, cap);
+  if (why2) return res.status(400).json({ error: 'bad_pair', message: why2 });
+
   try {
     db.transaction(() => {
       db.prepare('DELETE FROM cup_roster WHERE entry_id=?').run(e.id);
       const ins = db.prepare(`INSERT INTO cup_roster
-        (entry_id,user_id,guest_name,gender,ntrp,birth_year,slot,guardian_consent,health_declared)
-        VALUES (?,?,?,?,?,?,?,1,1)`);
+        (entry_id,user_id,guest_name,gender,ntrp,birth_year,slot,pair,guardian_consent,health_declared)
+        VALUES (?,?,?,?,?,?,?,?,1,1)`);
       rows.forEach((r, i) =>
-        ins.run(e.id, r.user_id, r.guest_name, r.gender, r.ntrp, r.birth_year, i + 1));
+        ins.run(e.id, r.user_id, r.guest_name, r.gender, r.ntrp, r.birth_year, i + 1, r.pair));
     })();
   } catch (err) {
     /* 이 줄이 없어서 앱에 "(500)" 만 보였다. 원인을 로그와 토스트 양쪽에 남긴다. */
@@ -7107,6 +7234,47 @@ function cupCheckLineup(ms, ros, cap) {
 /* ── 라운드 일괄 타이머 ───────────────────────────────────
    코트마다 따로 켜면 25분 단타임이 코트별로 달라진다.
    운영자가 버튼 하나로 네 면을 동시에 시작한다. */
+/* 슬롯 = 코트가 함께 도는 20분 한 칸. 한 타이는 두 슬롯에 걸치므로
+   <회차>로 켜면 코트가 절반만 켜진다. 물리적으로 같이 시작하는 것은 슬롯이다. */
+app.post('/brackets/:id/slot/:s/start', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
+  const slot = +req.params.s;
+  const t = now();
+  const ins = db.prepare(`INSERT INTO bracket_timers (bracket_id,court_key,started_at) VALUES (?,?,?)
+    ON CONFLICT(bracket_id,court_key) DO UPDATE SET started_at=excluded.started_at`);
+  let n = 0;
+  db.transaction(() => {
+    (data.rounds || []).forEach(r => (r.ties || []).forEach(t2 => (t2.matches || []).forEach(m => {
+      if (+m.slot !== slot) return;
+      ins.run(b.id, String(m.key).slice(0, 24), t); n++;
+    })));
+    db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(t, b.id);
+  })();
+  if (!n) return res.status(404).json({ error: 'no_slot', message: '그 시각에 경기가 없어요' });
+  res.json({ ok: true, started_at: t, courts: n });
+});
+
+app.post('/brackets/:id/slot/:s/reset', auth, (req, res) => {
+  const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
+  if (!b) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(b.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
+  const slot = +req.params.s, t = now();
+  const del = db.prepare('DELETE FROM bracket_timers WHERE bracket_id=? AND court_key=?');
+  let n = 0;
+  db.transaction(() => {
+    (data.rounds || []).forEach(r => (r.ties || []).forEach(t2 => (t2.matches || []).forEach(m => {
+      if (+m.slot !== slot) return;
+      del.run(b.id, String(m.key).slice(0, 24)); n++;
+    })));
+    db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(t, b.id);
+  })();
+  res.json({ ok: true, courts: n });
+});
+
 app.post('/brackets/:id/round/:r/start', auth, (req, res) => {
   const b = db.prepare('SELECT * FROM brackets WHERE id=?').get(+req.params.id);
   if (!b) return res.status(404).json({ error: 'not_found' });
