@@ -6208,7 +6208,7 @@ app.get('/cup/:bid/standings', (req, res) => {
    MATSU CUP 은 플랫폼이 여는 대회다. 클럽마다 <제1회>를 열 수 있으면
    같은 이름의 대회가 여덟 개 생긴다. 그래서 여는 자리는 관리자에만 둔다. */
 app.get('/admin/cups', admin, (_req, res) => {
-  const rows = db.prepare(`SELECT id,club_id,date,published,data,updated_at FROM brackets
+  const rows = db.prepare(`SELECT id,club_id,date,published,data,courts,updated_at FROM brackets
     WHERE fmt='cup' ORDER BY id DESC LIMIT 30`).all();
   res.json(rows.map(r => {
     let d = {}; try { d = JSON.parse(r.data || '{}'); } catch (e) {}
@@ -6219,7 +6219,13 @@ app.get('/admin/cups', admin, (_req, res) => {
       host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
       host_id: r.club_id, teams: live, paid, drawn: !!d.drawn_at,
       income: paid * cupCfg(d).fee, money: cupMoney(cupCfg(d), paid),
-      min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams, fee: cupCfg(d).fee };
+      min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams,
+      fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
+      /* 목록 화면도 정산을 그린다 — 항목이 없으면 합계만 보여주게 되고,
+         설정을 고쳐도 옛 이름이 계속 남는다 */
+      fixed_items: cupCfg(d).fixed_items, var_items: cupCfg(d).var_items,
+      courts: r.courts, cfg: Object.assign({}, CUP_DEFAULT, d.cfg || {}),
+      rounds: d.rounds || [] };
   }));
 });
 
