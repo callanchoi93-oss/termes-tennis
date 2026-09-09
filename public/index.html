@@ -2466,12 +2466,12 @@
   /* 목록에서 투표가 달린 글은 바로 보이게 — 눌러볼 이유가 된다 */
   /* 투표 배지 — .ic 는 마스크만 있는 클래스라 배경과 크기를 여기서 준다.
      안 주면 아이콘이 안 보이고 칸만 부푼다. */
-  /* 투표 배지 — 제목 아래에 붙는 작은 딱지다. 통계 줄만큼 가벼워야
-     제목이 주인공으로 남는다. */
+  /* 투표 표시 — 테두리 상자를 없앴다.
+     상자를 두르니 누르는 버튼처럼 보이고 제목보다 무거웠다.
+     아래 조회·댓글 줄과 같은 결의 한 줄짜리 글씨로 둔다. */
   .pchip{ display:inline-flex;align-items:center;gap:5px;
-    border:1px solid var(--line);border-radius:8px;padding:4px 9px;
-    font-size:12.5px;line-height:1.35;color:var(--gray);vertical-align:middle }
-  .pchip .ic{ width:13px;height:13px;flex:none;display:block;background:currentColor;
+    font-size:13px;line-height:1.3;color:var(--coral-d) }
+  .pchip .ic{ width:14px;height:14px;flex:none;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
   .ltags{ display:flex;gap:5px;flex-wrap:wrap;margin-top:7px }
@@ -2595,8 +2595,8 @@
     color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:11px 22px;
     cursor:pointer }
   .wgo:active{ transform:translateY(1px) }
-  .pchip b{ font-size:12.5px;font-weight:700;color:var(--coral-d) }
-  .pwrap{ margin:0 0 8px }
+  .pchip b{ font-size:13px;font-weight:700;color:var(--coral-d) }
+  .pwrap{ margin:0 0 7px }
   .wtool{ display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;
     border:1px solid var(--line);border-radius:12px;padding:11px 0;
     font-size:13.5px;color:var(--gray);cursor:pointer }
@@ -13944,7 +13944,7 @@ function hcHead(title, sub){
    클럽 → 홈코트 → 지도 → 코트 를 통과하게 하면 안 온다.
 
    화면 자체는 클럽 탭 안의 페이지와 같은 걸 쓴다. 그릴 자리만 다르다. */
-let TALK_TAB=null;
+let TALK_TAB=null, TALK_WAIT=null;
 /* 내 활동에 적을 <나의 일정> — 오늘부터 앞으로 남은 내 것만 센다.
    지난 것까지 세면 숫자가 불어나기만 해서 눌러볼 이유가 없다. */
 function schedCount(){
@@ -13961,9 +13961,15 @@ function schedCount(){
 function renderTalkTab(){
   const el=document.getElementById('s-talk'); if(!el) return;
   const cid=clubId()||0;
+  /* SERVER_OK 는 첫 응답이 와야 켜진다. 앱을 켜자마자 라운지를 누르면
+     아직 false 라서 <연결이 끊겼어요>가 떴다. 서버가 멀쩡한데도 그랬다.
+     기다리는 중과 정말 끊긴 것을 갈라야 한다. */
   if(!SERVER_OK){
     el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
-      <div class="empty"><div class="et">연결이 끊겼어요</div></div>`;
+      <div class="empty"><div class="et">불러오는 중…</div></div>`;
+    /* 응답이 오면 다시 그린다 — 놓치면 <불러오는 중>에서 멈춘다 */
+    clearTimeout(TALK_WAIT);
+    TALK_WAIT=setTimeout(()=>{ if(state.view==='talk') renderTalkTab(); }, 700);
     return;
   }
   /* 클럽이 없어도 들어온다 — 전국톡은 누구나 낄 수 있는 자리다.
