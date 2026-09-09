@@ -2182,6 +2182,9 @@
   .cupcard.done .t{ color:var(--gray) }
   .cupcard .t em{ margin-left:auto;font-style:normal;font-size:12px;color:var(--lgray);
     font-weight:400 }
+  /* 마감 숫자만 굵게. 크기는 12px 그대로 둔다 — 키우면 제목(17px)과 싸운다. */
+  .cupcard .t em b{ font-weight:700;color:var(--ink2) }
+  .cupcard.done .t em b{ color:var(--gray) }
   .cupcard .t .ic{ width:16px;height:16px;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
@@ -2532,7 +2535,7 @@
     -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/></svg>");
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/></svg>") }
   /* ── 글 상세 ── */
-  .pcat{ font-size:13px;font-weight:700;color:var(--coral-d) }
+  .pcat{ font-size:13px;font-weight:700;color:var(--coral-d);margin-top:2px }
   .ptitle{ font-size:22px;font-weight:800;letter-spacing:-.035em;line-height:1.3;margin-top:3px }
   .pmeta{ font-size:13px;color:var(--lgray);margin-top:6px }
   .ptags{ display:flex;gap:6px;flex-wrap:wrap;margin-top:16px }
@@ -13690,16 +13693,20 @@ function cupApplyDraw(){
   const byId={}; A.pool.forEach(p=>{ byId[p.user_id]=p; });
   const picked=A.picked.map(id=>byId[id]).filter(Boolean);
   const f=picked.filter(p=>p.gender==='F').length;
+  /* 정원은 서버가 정한다. 화면에 10 을 박아두면 6 명으로 바꿀 때 또 찾아다녀야 한다. */
+  const need=c.roster_need||10, needF=c.roster_female||2;
+  const officer=(state.bcfg&&state.bcfg.role)==='officer';
   /* 구력이 없으면 상한을 못 잰다 — 넣기 전에 알려준다 */
   const noExp=picked.filter(p=>p.years==null);
-  const full=picked.length>=10 && f>=2 && !noExp.length;
+  const full=picked.length>=need && f>=needF && !noExp.length;
 
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>MATSU CUP 참가 신청</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
     <div class="cupinfo">
-      <div class="r"><span>날짜</span><b>${esc(c.date||'미정')}</b></div>
+      <div class="r"><span>날짜</span><b>${esc(c.date?ymdKo(c.date):'미정')}</b></div>
+      ${c.due_date?`<div class="r"><span>입금 마감</span><b>${esc(ymdKo(c.due_date))}</b></div>`:''}
       ${c.place?`<div class="r"><span>장소</span><b>${esc(c.place)}</b></div>`:''}
       <div class="r"><span>방식</span><b>복식 3매치 · 팀당 9매치</b></div>
       <div class="r"><span>참가비</span><b>${(c.fee/10000)}만원</b></div>
@@ -13712,10 +13719,10 @@ function cupApplyDraw(){
       <div class="a">${esc(c.pay.bank||'')} ${esc(c.pay.no)}</div>
       <div class="b">예금주 ${esc(c.pay.holder||'')}</div></div>`:''}
 
-    <div class="vsec2" style="margin-top:20px"><b>엔트리 10명</b>
-      <span class="${full?'ok':''}">${picked.length}/10명 · 여성 ${f}/2명</span></div>
+    <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
+      <span class="${full?'ok':''}">${picked.length}/${need}명 · 여성 ${f}/${needF}명</span></div>
     <div class="note" style="text-align:left;margin:0 0 10px">
-      혼합복식이 있어 여성 2명 이상이 꼭 필요해요.
+      혼합복식이 있어 여성 ${needF}명 이상이 꼭 필요해요.
       경기 짝은 <b>구력 합산</b>으로 묶어요 — 혼복 20년, 3복식 16년까지.
       구력은 가입할 때 적은 값이라 고칠 수 없어요.</div>
 
@@ -13730,11 +13737,16 @@ function cupApplyDraw(){
       <span class="x" onclick="cupPick(${p.user_id})">×</span>
     </div>`).join(''):`<div class="vnone" style="padding:16px 10px">아직 아무도 안 넣었어요</div>`}
 
-    <div class="cupadd" onclick="cupPool()">＋ 회원 고르기</div>
+    ${officer?`<div class="cupadd" onclick="cupPool()">＋ 회원 고르기</div>`:''}
 
-    ${A.entry
+    ${!officer
+      ? `<div class="hnote" style="margin-top:16px">
+           참가 신청과 엔트리는 <b>클럽장·운영진</b>이 냅니다.<br>${A.entry
+             ? '우리 클럽은 이미 신청했어요 · 위에서 명단을 볼 수 있어요'
+             : '나가고 싶으면 운영진에게 말해주세요'}</div>`
+      : A.entry
       ? `<button class="btn" style="margin-top:14px" onclick="cupRosterGo()"
-          ${full?'':'disabled'}>${full?'엔트리 제출':'10명을 채워주세요'}</button>`
+          ${full?'':'disabled'}>${full?'엔트리 제출':`${need}명을 채워주세요`}</button>`
       : `<button class="btn" style="margin-top:14px" onclick="cupApplyGo()">참가 신청하기</button>
          <div class="hnote">신청한 뒤에 엔트리를 채워도 됩니다</div>`}`;
   document.getElementById('ov').classList.add('on');
@@ -13748,7 +13760,7 @@ function cupPool(){
     <div class="sh-top"><h3>회원 고르기</h3>
       <div class="cl" role="button" tabindex="0" onclick="cupApplyDraw()">×</div></div>
     <div class="note" style="text-align:left;margin-bottom:10px">
-      눌러서 넣고 빼요 · ${A.picked.length}/10명</div>
+      눌러서 넣고 빼요 · ${A.picked.length}/${(A.cup&&A.cup.roster_need)||10}명</div>
     <div class="cuplist">${list.map(p=>{
       const on=A.picked.includes(p.user_id);
       return `<div class="cupm${on?' on':''}" onclick="cupPick(${p.user_id})">
@@ -13762,8 +13774,9 @@ function cupPool(){
 }
 function cupPick(uid){
   const A=CUPA, i=A.picked.indexOf(uid);
+  const need=(A.cup&&A.cup.roster_need)||10;
   if(i>=0) A.picked.splice(i,1);
-  else { if(A.picked.length>=10) return toast('10명까지 넣을 수 있어요'); A.picked.push(uid); }
+  else { if(A.picked.length>=need) return toast(`${need}명까지 넣을 수 있어요`); A.picked.push(uid); }
   /* 지금 열려 있는 화면을 그대로 다시 그린다 */
   if(document.querySelector('.cuplist')) cupPool(); else cupApplyDraw();
 }
@@ -13801,7 +13814,8 @@ async function cupGuestOpen(tok){
   if(!CUPI.rows) CUPI.rows = (d.roster||[]).length ? d.roster.map(r=>({
     guest_name:r.guest_name||'', gender:r.gender, ntrp:r.ntrp,
     birth_year:r.birth_year||'', guardian_consent:r.guardian_consent, health_declared:r.health_declared
-  })) : Array.from({length:10},()=>({guest_name:'',gender:'M',ntrp:'',birth_year:''}));
+  })) : Array.from({length:((CUPI&&CUPI.need&&CUPI.need.n)||10)},
+        ()=>({guest_name:'',gender:'M',ntrp:'',birth_year:''}));
   cupGuestDraw();
 }
 function cupGuestFail(msg){
@@ -14008,7 +14022,7 @@ function renderHomeCourt(){
   else if(v.k==='venue') h=`<div id="venuePage"></div>`;
   else if(v.k==='talk')  h=hcHead(v.name||'구장톡','구장톡')+`<div id="talkPage"></div>`;
   else if(v.k==='write') h=hcHead(TALK.venue||'구장톡', TALK.scope==='all'?'전국톡에 쓰기':'구장톡에 쓰기')+`<div id="talkPage"></div>`;
-  else if(v.k==='post')  h=hcHead(TALK.venue||'구장톡','구장톡')+`<div id="talkPage"></div>`;
+  else if(v.k==='post')  h=`<div id="talkPage"></div>`;      // 머리 없이 말머리부터
   el.innerHTML=h;
   if(v.k==='map') landPageMount();
   else if(v.k==='venue') venuePageMount(v.id);
@@ -14044,21 +14058,32 @@ function cupCardSection(){
   if(CUPC===null || CUPC.cid!==cid){ cupCardLoad(cid); return ''; }
   const c=CUPC.cup; if(!c) return '';
   const e=CUPC.entry;
+  const need=c.roster_need||10;
   const pct=Math.min(100, Math.round(c.teams/c.max_teams*100));
-  const dd = c.dday==null ? '' : (c.dday>0?`D-${c.dday}`:(c.dday===0?'오늘 마감':'마감'));
 
-  /* 이미 신청했으면 상태를, 아니면 모집을 보여준다 */
-  const done = e && e.roster_n>=10;
+  /* 이 D-day 는 대회일이 아니라 입금 마감이다.
+     숫자만 두면 대회가 코앞인 줄 안다 — 10/31 대회의 D-31 은 10/10 입금 마감이다. */
+  const dd = c.dday==null ? ''
+    : c.dday>0   ? `입금 마감 <b>D-${c.dday}</b>`
+    : c.dday===0 ? `입금 <b>오늘 마감</b>`
+    :              '입금 마감됨';
+
+  /* ISO 날짜는 안 읽힌다 — ymdKo 가 '10월 31일 (토)' 로 바꿔 준다 */
+  const when=[ymdKo(c.date), c.place].filter(Boolean).join(' · ');
+  const due =c.due_date ? `입금 ${ymdKo(c.due_date)}까지` : '';
+
+  const done = e && e.roster_n>=need;
   return `<div class="cupcard${done?' done':''}" onclick="cupApply()">
     <div class="b">
       <div class="t"><i class="ic cup"></i>MATSU CUP ${e?'참가 신청함':'참가 모집'}
         ${dd?`<em>${dd}</em>`:''}</div>
       <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
-      <div class="s">${esc([c.date, c.place].filter(Boolean).join(' · '))} · ${c.max_teams}개 클럽<br>
-        팀당 9매치 보장 · 참가비 ${(c.fee/10000)}만원</div>
+      <div class="s">${esc(when)}<br>
+        ${c.max_teams}개 클럽 · 팀당 9매치 · 참가비 ${(c.fee/10000)}만원${
+          due?`<br>${esc(due)}`:''}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="m">${e
-        ? `${e.fee_paid?'입금 완료':'입금 대기'} · 엔트리 ${e.roster_n}/10명${
+        ? `${e.fee_paid?'입금 완료':'입금 대기'} · 엔트리 ${e.roster_n}/${need}명${
             e.group_label?` · ${e.group_label}조 ${e.seat}번`:''}`
         : `${c.teams}팀 신청 · ${c.left}자리 남음`}</div>
     </div>
@@ -17633,11 +17658,12 @@ function openTalkPost(pid){
   if(talkHost()==='talk'){ TALK.post=pid; renderTalkPostInTab(); return; }
   hcOpen({k:'post', id:pid});
 }
+/* 글 상세에는 페이지 머리를 안 그린다.
+   뒤로 가면 바로 <구장톡 · 용인테니스파크>가 나오는데, 여기서 또 적으면
+   말머리·제목까지 굵은 글씨가 세 줄 겹친다. 상세는 말머리부터 시작한다. */
 function renderTalkPostInTab(){
   const el=document.getElementById('s-talk'); if(!el) return;
-  el.innerHTML=`<div class="hcp-top"><span class="up">구장톡</span>
-      <b>${esc(TALK.venue||'구장톡')}</b></div>
-    <div id="talkPage"></div>`;
+  el.innerHTML=`<div id="talkPage"></div>`;
   talkPostMount(TALK.post);
 }
 /* 반응 — 코트 글은 <물 고였어요>처럼 알림성이 많아서 좋아요 하나로는 부족하다.
