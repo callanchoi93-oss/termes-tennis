@@ -5682,7 +5682,7 @@ const CUP_DEFAULT = {
   turn_sec: 300,            // 전환 5분
   final_fmt: 'pro6',        // 결승·3위전은 6게임 프로세트
   lanes: 2,
-  ntrp_cap: { 1: null, 2: 7.0, 3: 6.5 },
+  cap: { 1: null, 2: 20, 3: 16 },        // 구력 합산 상한(년)
   lunch_after: 4,           // 4라운드 뒤 점심
   lunch_min: 40,
 };
@@ -5847,10 +5847,13 @@ function cupDraw(entries, seed) {
 }
 
 const CUP_FEE = 350000, CUP_DEPOSIT = 100000, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
-/* 등급 상한 — 1복식은 제한 없음, 혼복 7.0, 3복식 6.5.
-   강팀도 저변이 없으면 못 이기게 만드는 장치다. 규모가 작다고 빼면 시즌 0 에서
-   검증할 대상이 사라진다. */
-const CUP_CAP = { 1: null, 2: 7.0, 3: 6.5 };
+/* 구력 합산 상한 — 1복식은 제한 없음, 혼복 20년, 3복식 16년.
+   NTRP 로 잡았다가 구력으로 바꿨다. 앱에 NTRP 칸이 없어 등급을 환산해야 했는데,
+   그 환산이 정확하지 않아 대표가 손볼 여지를 열어야 했고, 그러면 상한이 무의미해진다.
+   구력은 sport_started 로 이미 서버가 갖고 있는 값이라 손댈 수 없다.
+
+   강팀도 저변이 없으면 못 이기게 만드는 장치다. 규모가 작다고 빼면 안 된다. */
+const CUP_CAP = { 1: null, 2: 20, 3: 16 };      // 년 단위
 const CUP_ROSTER_N = 10, CUP_ROSTER_F = 2;
 
 function cupBracket(id) {
@@ -5896,8 +5899,10 @@ app.get('/cup/:bid/entries', auth, (req, res) => {
   const paid = live.filter(r => r.fee_paid);
   /* 상금은 참가비 총액의 25% — 금액을 못 박지 않는다.
      팀이 적게 오면 상금도 줄어서 적자가 날 수 없다. */
+  let bd = {}; try { bd = JSON.parse(b.data || '{}'); } catch (e) {}
   res.json({
     entries: rows, teams: live.length, paid: paid.length,
+    title: bd.title || '', date: b.date, place: bd.place || '', pay: bd.pay || null,
     min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS,
     fee: CUP_FEE, deposit: CUP_DEPOSIT,
     income: paid.length * CUP_FEE,
@@ -5920,39 +5925,26 @@ app.patch('/cup/entries/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* 이 클럽이 연 대회 목록 — /clubs/:id/brackets 는 다른 표(club_brackets_ev)를 본다.
-   대회는 brackets 표에 있으므로 따로 뽑는다. */
-app.get('/clubs/:id/cups', auth, (req, res) => {
-  const cid = +req.params.id;
-  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  const rows = db.prepare(`SELECT id,date,published,data,updated_at FROM brackets
-    WHERE club_id=? AND fmt='cup' ORDER BY id DESC LIMIT 20`).all(cid);
-  res.json(rows.map(r => {
-    let d = {}; try { d = JSON.parse(r.data || '{}'); } catch (e) {}
-    return { id: r.id, date: r.date, title: d.title || 'MATSU CUP',
-      teams: (d.teams || []).length, drawn: !!d.drawn_at, updated_at: r.updated_at,
-      entries: db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(r.id).n };
-  }));
-});
 
-/* 대회를 연다 — brackets 에 fmt='cup' 으로 한 줄.
-   기존 대진 화면·스코어·타이머를 그대로 쓴다. 표를 새로 만들지 않는다. */
-app.post('/clubs/:id/cup', auth, (req, res) => {
-  const cid = +req.params.id;
-  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
-  const b = req.body || {};
-  const date = String(b.date || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
-    return res.status(400).json({ error: 'bad_date', message: '대회 날짜를 골라주세요' });
-  const data = { mode: 'cup', cfg: Object.assign({}, CUP_DEFAULT),
-    title: String(b.title || '제1회 MATSU CUP 초청 클럽대항전').slice(0, 60),
-    start: String(b.start || '09:00').slice(0, 5),
-    teams: [], rounds: [] };
-  const r = db.prepare(`INSERT INTO brackets
-    (club_id,sport,fmt,date,courts,data,published,created_by,created_at,updated_at)
-    VALUES (?,'tennis','cup',?,4,?,0,?,?,?)`)
-    .run(cid, date, JSON.stringify(data), req.uid, now(), now());
-  res.json({ ok: true, id: rid(r) });
+
+
+
+/* 입금 계좌·장소 고치기 — 대회를 만든 뒤에도 바뀐다 */
+app.patch('/cup/:bid', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  if (!cupHost(b, req.uid)) return res.status(403).json({ error: 'host_only' });
+  const q = req.body || {};
+  let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
+  data.pay = data.pay || {};
+  if (q.bank != null) data.pay.bank = String(q.bank).trim().slice(0, 20);
+  if (q.account != null) data.pay.no = String(q.account).replace(/[^0-9-]/g, '').slice(0, 30);
+  if (q.holder != null) data.pay.holder = String(q.holder).trim().slice(0, 20);
+  if (q.place != null) data.place = String(q.place).trim().slice(0, 40);
+  if (q.title != null) data.title = String(q.title).trim().slice(0, 60);
+  db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
+    .run(JSON.stringify(data), now(), b.id);
+  res.json({ ok: true, pay: data.pay, place: data.place || '' });
 });
 
 /* 추첨 — 자리를 섞고 대진을 만든다. 참가 클럽 앞에서 돌린다. */
@@ -6000,6 +5992,271 @@ app.get('/cup/:bid/standings', (req, res) => {
     server_now: Date.now() });
 });
 
+/* ── 관리자 ───────────────────────────────────────────────
+   MATSU CUP 은 플랫폼이 여는 대회다. 클럽마다 <제1회>를 열 수 있으면
+   같은 이름의 대회가 여덟 개 생긴다. 그래서 여는 자리는 관리자에만 둔다. */
+app.get('/admin/cups', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT id,club_id,date,published,data,updated_at FROM brackets
+    WHERE fmt='cup' ORDER BY id DESC LIMIT 30`).all();
+  res.json(rows.map(r => {
+    let d = {}; try { d = JSON.parse(r.data || '{}'); } catch (e) {}
+    const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(r.id).n;
+    const paid = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND fee_paid=1 AND status!='cancelled'").get(r.id).n;
+    return { id: r.id, date: r.date, open: !!r.published,
+      title: d.title || 'MATSU CUP', place: d.place || '', pay: d.pay || null,
+      host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
+      host_id: r.club_id, teams: live, paid, drawn: !!d.drawn_at,
+      income: paid * CUP_FEE, prize: Math.round(paid * CUP_FEE * 0.25),
+      min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS, fee: CUP_FEE };
+  }));
+});
+
+app.post('/admin/cups', admin, (req, res) => {
+  const b = req.body || {};
+  const cid = +b.host_club_id;
+  if (!cid || !db.prepare('SELECT 1 FROM clubs WHERE id=?').get(cid))
+    return res.status(400).json({ error: 'no_club', message: '주최 클럽을 골라주세요' });
+  const date = String(b.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return res.status(400).json({ error: 'bad_date', message: '날짜를 골라주세요' });
+  const data = { mode: 'cup', cfg: Object.assign({}, CUP_DEFAULT),
+    title: String(b.title || '제1회 MATSU CUP 초청 클럽대항전').slice(0, 60),
+    start: String(b.start || '09:00').slice(0, 5),
+    place: String(b.place || '').trim().slice(0, 40),
+    pay: { bank: String(b.bank || '').trim().slice(0, 20),
+      no: String(b.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
+      holder: String(b.holder || '').trim().slice(0, 20) },
+    teams: [], rounds: [] };
+  const r = db.prepare(`INSERT INTO brackets
+    (club_id,sport,fmt,date,courts,data,published,created_by,created_at,updated_at)
+    VALUES (?,'tennis','cup',?,4,?,0,?,?,?)`)
+    .run(cid, date, JSON.stringify(data), req.uid || 0, now(), now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+app.get('/admin/cups/:bid', admin, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  const rows = db.prepare('SELECT * FROM cup_entries WHERE bracket_id=? ORDER BY id').all(b.id);
+  rows.forEach(r => {
+    r.roster_n = db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n;
+    r.female_n = db.prepare("SELECT COUNT(*) n FROM cup_roster WHERE entry_id=? AND gender='F'").get(r.id).n;
+  });
+  res.json({ id: b.id, date: b.date, open: !!b.published, title: d.title || '',
+    place: d.place || '', pay: d.pay || null, start: d.start || '09:00',
+    drawn: !!d.drawn_at, rounds: d.rounds || [], teams: d.teams || [],
+    entries: rows, fee: CUP_FEE, min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS });
+});
+
+/* 관리자는 주최 클럽 운영진이 아니어도 손댈 수 있어야 한다 */
+app.post('/admin/cups/:bid/act', admin, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const q = req.body || {}, act = String(q.act || '');
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+
+  if (act === 'open') {
+    db.prepare('UPDATE brackets SET published=?, updated_at=? WHERE id=?')
+      .run(q.on ? 1 : 0, now(), b.id);
+    return res.json({ ok: true });
+  }
+  if (act === 'pay') {
+    d.pay = { bank: String(q.bank || '').slice(0, 20),
+      no: String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
+      holder: String(q.holder || '').slice(0, 20) };
+    if (q.place != null) d.place = String(q.place).slice(0, 40);
+    db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
+      .run(JSON.stringify(d), now(), b.id);
+    return res.json({ ok: true });
+  }
+  if (act === 'invite') {
+    const name = String(q.club_name || '').trim().slice(0, 40);
+    if (!name) return res.status(400).json({ error: 'empty', message: '클럽 이름을 적어주세요' });
+    const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
+    if (n >= CUP_MAX_TEAMS) return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
+    const tok = crypto.randomBytes(9).toString('base64url');
+    const r = db.prepare(`INSERT INTO cup_entries
+      (bracket_id,club_name,contact_name,contact_phone,invite_token,created_at)
+      VALUES (?,?,?,?,?,?)`).run(b.id, name,
+      String(q.contact_name || '').slice(0, 20) || null,
+      String(q.contact_phone || '').replace(/\D/g, '').slice(0, 11) || null, tok, now());
+    return res.json({ ok: true, id: rid(r), token: tok });
+  }
+  if (act === 'entry') {
+    const e = db.prepare('SELECT * FROM cup_entries WHERE id=? AND bracket_id=?').get(+q.entry_id, b.id);
+    if (!e) return res.status(404).json({ error: 'no_entry' });
+    const st = ['invited', 'applied', 'paid', 'confirmed', 'cancelled'].includes(q.status) ? q.status : null;
+    const dep = ['none', 'held', 'returned', 'forfeited'].includes(q.deposit_state) ? q.deposit_state : null;
+    db.prepare(`UPDATE cup_entries SET status=COALESCE(?,status),
+        fee_paid=COALESCE(?,fee_paid), deposit_state=COALESCE(?,deposit_state) WHERE id=?`)
+      .run(st, q.fee_paid == null ? null : (q.fee_paid ? 1 : 0), dep, e.id);
+    return res.json({ ok: true });
+  }
+  if (act === 'draw') {
+    const rows = db.prepare(`SELECT id, club_name FROM cup_entries
+      WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
+    if (rows.length < CUP_MIN_TEAMS)
+      return res.status(400).json({ error: 'too_few',
+        message: `${CUP_MIN_TEAMS}팀이 모여야 열 수 있어요 (지금 ${rows.length}팀)` });
+    const seed = +q.seed || (Date.now() & 0x7fffffff);
+    const teams = cupDraw(rows, seed);
+    const built = buildCupBracket({ teams, startTime: d.start || '09:00', cfg: d.cfg });
+    const out = Object.assign({}, d, built, { drawn_at: now(), seed });
+    db.transaction(() => {
+      db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
+        .run(JSON.stringify(out), now(), b.id);
+      const up = db.prepare('UPDATE cup_entries SET group_label=?, seat=? WHERE id=?');
+      teams.forEach(t => up.run(t.group, t.seat, t.entry_id));
+    })();
+    return res.json({ ok: true, teams, seed });
+  }
+  res.status(400).json({ error: 'bad_act' });
+});
+
+/* ── 앱 쓰는 클럽 ────────────────────────────────────────
+   초청 링크와 달리 로그인해서 들어온다. 회원 명단이 이미 있으니
+   이름·성별·NTRP 를 다시 치게 하지 않는다. 골라서 채운다. */
+
+/* 클럽 탭에 띄울 모집 카드 — 공개된 대회가 있으면 그 한 건 */
+app.get('/clubs/:id/cup-open', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const b = db.prepare(`SELECT id,date,data,club_id FROM brackets
+    WHERE fmt='cup' AND published=1 ORDER BY id DESC LIMIT 1`).get();
+  if (!b) return res.json({ cup: null });
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
+  const mine = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  const roster = mine
+    ? db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(mine.id).n : 0;
+  /* 마감까지 며칠 — 입금은 대회 21일 전이다 */
+  let dday = null;
+  if (b.date) {
+    const due = new Date(b.date + 'T00:00:00').getTime() - 21 * 864e5;
+    dday = Math.ceil((due - Date.now()) / 864e5);
+  }
+  res.json({ cup: {
+    id: b.id, date: b.date, title: d.title || 'MATSU CUP', place: d.place || '',
+    pay: d.pay || null, fee: CUP_FEE, deposit: CUP_DEPOSIT,
+    teams: live, max_teams: CUP_MAX_TEAMS, min_teams: CUP_MIN_TEAMS,
+    left: Math.max(0, CUP_MAX_TEAMS - live), dday,
+    host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
+    is_host: b.club_id === cid,
+  }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
+    group_label: mine.group_label, seat: mine.seat, roster_n: roster } : null });
+});
+
+/* 신청 — 우리 클럽 이름으로 자리를 잡는다 */
+app.post('/cup/:bid/apply', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +(req.body || {}).club_id;
+  if (!cid || !isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '클럽 운영진만 신청할 수 있어요' });
+  const had = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  if (had) return res.json({ ok: true, id: had.id, already: true });
+  const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
+  if (n >= CUP_MAX_TEAMS)
+    return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
+  const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  const u = db.prepare('SELECT name, phone FROM users WHERE id=?').get(req.uid) || {};
+  const r = db.prepare(`INSERT INTO cup_entries
+    (bracket_id,club_id,club_name,contact_name,contact_phone,status,invite_token,applied_at,created_at)
+    VALUES (?,?,?,?,?,'applied',?,?,?)`)
+    .run(b.id, cid, c.name || '클럽', u.name || null, u.phone || null,
+      crypto.randomBytes(9).toString('base64url'), now(), now());
+  res.json({ ok: true, id: rid(r) });
+});
+
+/* 구력(년) — sport_started 에서 계산한다. 앱이 보낸 값을 안 받는다.
+   등급 환산은 부정확해서 손볼 여지를 열어야 했고, 그러면 상한이 무의미해졌다.
+   구력은 가입할 때 적은 값이라 대회 때문에 고칠 수 없다. */
+function careerYears(uid) {
+  const m = careerMonths(uid, 'tennis');
+  return m == null ? null : Math.floor(m / 12);
+}
+
+/* 엔트리 — 회원 id 로 낸다. 이름·성별·구력을 서버가 회원 표에서 가져온다.
+   앱이 보낸 값을 믿으면 성별이나 구력을 바꿔 적어 규칙을 피할 수 있다. */
+app.post('/cup/:bid/roster', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +(req.body || {}).club_id;
+  if (!cid || !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const e = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  if (!e) return res.status(400).json({ error: 'not_applied', message: '먼저 참가 신청을 해주세요' });
+
+  const ids = Array.isArray((req.body || {}).user_ids) ? (req.body || {}).user_ids.map(Number) : [];
+  const rows = ids.map(uid => {
+    const m = db.prepare(`SELECT m.user_id, m.gender_ov, m.grade, m.alias,
+        u.name, u.gender, u.birth_year FROM club_members m JOIN users u ON u.id=m.user_id
+      WHERE m.club_id=? AND m.user_id=?`).get(cid, uid);
+    if (!m) return null;
+    const y = careerYears(m.user_id);
+    if (y == null) return { err: `${m.alias || m.name}님은 구력이 없어요` };
+    return { user_id: m.user_id, guest_name: m.alias || m.name,
+      gender: (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
+      ntrp: y, birth_year: m.birth_year || null };
+  });
+  const bad = rows.find(r => r && r.err);
+  if (bad) return res.status(400).json({ error: 'no_career',
+    message: bad.err + ' · 내정보에서 테니스 시작 시기를 적어야 나올 수 있어요' });
+  if (rows.some(r => !r))
+    return res.status(400).json({ error: 'not_member', message: '우리 클럽 회원만 넣을 수 있어요' });
+  const why = cupCheckRoster(rows.map(r => Object.assign({}, r, {
+    guardian_consent: 1, health_declared: 1 })));
+  if (why) return res.status(400).json({ error: 'bad_roster', message: why });
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM cup_roster WHERE entry_id=?').run(e.id);
+    const ins = db.prepare(`INSERT INTO cup_roster
+      (entry_id,user_id,guest_name,gender,ntrp,birth_year,slot,guardian_consent,health_declared)
+      VALUES (?,?,?,?,?,?,?,1,1)`);
+    rows.forEach((r, i) => ins.run(e.id, r.user_id, r.guest_name, r.gender, r.ntrp, r.birth_year, i + 1));
+  })();
+  res.json({ ok: true, n: rows.length });
+});
+
+/* 엔트리에 넣을 수 있는 회원 명단 — 이름·성별·등급을 붙여 준다.
+   앱이 회원 목록을 따로 부르면 성별과 등급이 화면마다 다르게 나온다. */
+app.get('/cup/:bid/pool', auth, (req, res) => {
+  const cid = +req.query.club_id;
+  if (!cid || !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT m.user_id, m.grade, m.gender_ov, m.alias, m.resting,
+      u.name, u.gender, u.birth_year FROM club_members m JOIN users u ON u.id=m.user_id
+    WHERE m.club_id=? ORDER BY u.name`).all(cid);
+  res.json(rows.map(m => ({
+    user_id: m.user_id, name: m.alias || m.name,
+    gender: (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
+    grade: m.grade || '', years: careerYears(m.user_id),
+    birth_year: m.birth_year || null, resting: m.resting ? 1 : 0,
+  })));
+});
+
+/* 우리 클럽이 낸 엔트리 — 신청 화면을 다시 열 때 그대로 보여준다 */
+app.get('/cup/:bid/my', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +req.query.club_id;
+  if (!cid || !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const e = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  if (!e) return res.json({ entry: null, roster: [] });
+  res.json({ entry: { id: e.id, status: e.status, fee_paid: e.fee_paid,
+      group_label: e.group_label, seat: e.seat },
+    roster: db.prepare('SELECT * FROM cup_roster WHERE entry_id=? ORDER BY slot').all(e.id) });
+});
+
+/* 모집 열기·닫기 — published 로 클럽 탭 카드를 켠다 */
+app.post('/cup/:bid/open', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  if (!cupHost(b, req.uid)) return res.status(403).json({ error: 'host_only' });
+  const on = (req.body || {}).open ? 1 : 0;
+  db.prepare('UPDATE brackets SET published=?, updated_at=? WHERE id=?').run(on, now(), b.id);
+  res.json({ ok: true, open: !!on });
+});
+
 /* ── 초청받은 클럽 (로그인 없음) ───────────────────────────
    토큰만으로 들어온다. 이 링크를 아는 사람이 그 클럽 대표자다. */
 
@@ -6015,7 +6272,9 @@ app.get('/cup/invite/:token', (req, res) => {
     entry: { id: e.id, club_name: e.club_name, status: e.status,
       contact_name: e.contact_name, fee_paid: e.fee_paid },
     cup: { date: b ? b.date : null, courts: b ? b.courts : 0,
-      host: host ? host.name : '', fee: CUP_FEE, deposit: CUP_DEPOSIT, cfg },
+      host: host ? host.name : '', fee: CUP_FEE, deposit: CUP_DEPOSIT, cfg,
+      place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
+      pay: (() => { try { return JSON.parse(b.data || '{}').pay || null; } catch (x) { return null; } })() },
     roster, need: { n: CUP_ROSTER_N, female: CUP_ROSTER_F },
   });
 });
@@ -6079,8 +6338,8 @@ function cupCheckRoster(list) {
     if (!p.user_id && !nm) return `${no}번 이름을 적어주세요`;
     if (p.gender !== 'M' && p.gender !== 'F') return `${no}번 성별을 골라주세요`;
     if (p.gender === 'F') f++;
-    const n = +p.ntrp;
-    if (!(n >= 1.0 && n <= 7.0)) return `${no}번 NTRP를 1.0~7.0 사이로 적어주세요`;
+    const n = +p.ntrp;                                 // 구력(년)
+    if (!(n >= 0 && n <= 60)) return `${no}번 구력을 0~60년 사이로 적어주세요`;
     const by = +p.birth_year;
     if (by) {
       const age = yr - by;
@@ -6131,8 +6390,9 @@ function cupCheckLineup(ms, ros) {
     if (no === 2 && !((a.gender === 'M' && c.gender === 'F') || (a.gender === 'F' && c.gender === 'M')))
       return '혼합복식은 남녀 한 명씩이어야 해요';
     const cap = CUP_CAP[no];
-    if (cap != null && (a.ntrp + c.ntrp) > cap + 1e-9)
-      return `${no}복식 등급 합이 ${cap}을 넘어요 (지금 ${(a.ntrp + c.ntrp).toFixed(1)})`;
+    const sum = (a.ntrp || 0) + (c.ntrp || 0);        // ntrp 칸에 구력(년)이 담긴다
+    if (cap != null && sum > cap)
+      return `${no}복식 구력 합이 ${cap}년을 넘어요 (지금 ${sum}년)`;
   }
   /* 6자리를 5명 이상이 채운다 — 중복 출전은 한 명까지.
      이게 없으면 에이스 둘이 세 매치를 다 돌고, 클럽 대항이 아니게 된다. */
