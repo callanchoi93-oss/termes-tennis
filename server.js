@@ -261,9 +261,23 @@ async function kakaoIssue(access_token, res) {
 //  이렇게 하면 키를 index.html 에 적을 필요가 없다 (GitHub 이 Public 이므로 중요).
 //  Railway Variables 에 넣으면 재배포 없이 바뀐다.
 // ══════════════════════════════════════════════════════════════
+/* 서버에 어떤 기능이 올라가 있나 — 앱이 옛 서버에 대고 새 기능을 부르면
+   404 만 돌아와서 왜 안 되는지 알 길이 없었다. 실제 표를 확인해 알려준다. */
+function serverCan() {
+  const has = (t, c) => { try {
+    return db.prepare(`PRAGMA table_info(${t})`).all().some(x => x.name === c);
+  } catch (e) { return false; } };
+  return {
+    talk_photo: has('court_posts', 'photos'),
+    talk_edit: has('court_posts', 'edited_at'),
+    venue_info: has('venues', 'indoor_n'),
+  };
+}
+
 app.get('/config', (_, res) => {
   res.set('Cache-Control', 'no-store');   // 브라우저가 옛 응답을 붙잡지 못하게
   res.json({
+    can: serverCan(),
     google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
