@@ -6208,12 +6208,41 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
       status: r.fee_paid ? 'confirmed' : (n >= CUP_ROSTER_N ? 'entered' : 'applied'),
       roster_n: n, group_label: r.group_label, seat: r.seat };
     out.roster = db.prepare(
-      `SELECT guest_name name, gender, ntrp years FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(r.id);
+      `SELECT id, guest_name name, gender, ntrp years FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(r.id);
     return out;
   });
   res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - teams.length),
     date: b.date, title: C.title });
+});
+
+/* 엔트리에 오른 사람 한 명의 <그 클럽 안 전적>.
+   대회 전적이 아니라 우리끼리 친 정기모임 결과다 — 클럽이 다르면 비교할 수 없다.
+   앱을 안 쓰는 초청 클럽은 대진 기록 자체가 없어 빈 값이 나간다. */
+app.get('/cup/:bid/member', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +req.query.club_id;
+  if (!cid || !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const seen = db.prepare(`SELECT 1 FROM cup_entries
+    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid);
+  if (!seen && !cupHost(b, req.uid))
+    return res.status(403).json({ error: 'not_applied' });
+
+  const r = db.prepare(`SELECT r.*, e.club_id, e.club_name FROM cup_roster r
+    JOIN cup_entries e ON e.id=r.entry_id
+    WHERE r.id=? AND e.bracket_id=?`).get(+req.query.roster_id, b.id);
+  if (!r) return res.status(404).json({ error: 'no_member' });
+
+  let f = null;
+  if (r.club_id) {
+    const map = cupMemberForm(r.club_id);
+    f = map[r.guest_name] || null;
+  }
+  res.json({ name: r.guest_name, gender: r.gender, years: r.ntrp,
+    club_name: r.club_name, app_club: !!r.club_id,
+    g: f ? f.g : 0, w: f ? f.w : 0, l: f ? f.l : 0,
+    wr: f ? f.wr : null, form: f ? f.form : [] });
 });
 
 app.get('/cup/:bid/entries', auth, (req, res) => {
