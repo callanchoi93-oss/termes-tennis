@@ -2329,15 +2329,27 @@
   /* 이름을 cupfx 로 둔다 — .cupg 는 초청(비회원) 화면이 이미 쓰고 있고
      거기 min-height:100vh 가 걸려 있어서, 같은 이름을 쓰면 이 표가
      화면 높이만큼 늘어나 칸 사이가 텅 비어 버린다. */
-  .cupfx{ display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;
-    align-content:start;gap:1px;background:var(--line);
-    border-radius:14px;overflow:hidden;margin-top:6px }
-  .cupfx .cell{ background:#fff;padding:11px 13px;min-width:0 }
-  .cupfx .k{ font-size:12px;color:var(--lgray);font-weight:700 }
-  .cupfx .v{ font-size:14px;font-weight:700;letter-spacing:-.03em;margin-top:2px;
+  /* 이 화면에서 제일 먼저 확인하는 건 <언제 하느냐>다.
+     날짜를 세우면 나머지가 저절로 곁줄이 된다.
+     2×2 선 격자는 선이 넷이라 네 칸이 서로 밀어냈다. */
+  .cupbig{ display:flex;align-items:flex-end;gap:9px;margin-top:16px }
+  .cupbig .d{ font-size:28px;font-weight:700;letter-spacing:-.04em;line-height:1 }
+  .cupbig .w{ font-size:15px;font-weight:700;color:var(--coral-d);padding-bottom:2px }
+  .cupbig .p{ margin-left:auto;font-size:13px;color:var(--lgray);padding-bottom:3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52% }
+  /* 두 칸 사이에 선을 긋지 않는다 — 값이 둘뿐이라 여백으로 충분히 갈린다 */
+  .cupfx{ display:flex;gap:14px;margin-top:14px;border-top:1px solid var(--line);padding-top:12px }
+  .cupfx .cell{ flex:1;min-width:0 }
+  .cupfx .k{ font-size:12px;color:var(--lgray) }
+  .cupfx .v{ font-size:15px;font-weight:700;letter-spacing:-.02em;margin-top:2px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .cupfx .v s{ text-decoration:none;font-size:12px;color:var(--lgray);
-    font-weight:600;margin-left:3px }
+    font-weight:400;margin-left:4px }
+  /* 안내는 곁줄이다 — ◆ 는 화면에서 제일 진한 색이라 버튼보다 먼저 읽혔다 */
+  .cuphint.plain{ padding-left:0;border-left:0;color:var(--lgray);text-align:center;
+    display:block;font-size:13px }
+  /* 제목 옆 트로피 — 제목이 20px 인데 20px 이면 붙은 점처럼 보인다 */
+  .cuptr.inl{ width:26px;height:26px }
   .cuphint{ display:flex;gap:8px;font-size:13px;color:var(--gray);
     line-height:1.6;margin-top:11px;text-align:left }
   .cuphint i{ font-style:normal;color:var(--coral);flex:none;margin-top:1px }
@@ -2375,7 +2387,8 @@
   .cupform .pct{ width:46px;text-align:right;font-size:15px;font-weight:700;
     letter-spacing:-.03em;font-variant-numeric:tabular-nums }
   .cupform .pct.hi{ color:var(--green) }
-  .cupform .pct.no{ font-size:12px;color:#b4bcc4;font-weight:700 }
+  /* 크기를 줄이면 baseline 이 어긋나 그 줄만 위로 뜬다. 크기는 그대로, 색만 흐리게. */
+  .cupform .pct.no{ color:#cfd5db }
   .cupfhd{ display:flex;justify-content:flex-end;gap:10px;font-size:12px;color:#b4bcc4;
     font-weight:700;padding-bottom:7px }
   .cupfhd .a{ width:69px;text-align:center } .cupfhd .b{ width:46px;text-align:right }
@@ -2461,6 +2474,26 @@
 
   /* ── 초청받은 클럽 화면 (로그인 없음) ──
      앱 프레임 밖이라 여백과 배경을 여기서 다 잡는다. */
+  /* 초청받은 클럽이 밟는 네 칸 — 지금 어디 서 있는지가 보여야 다음을 누른다 */
+  .cgsteps{ display:flex;align-items:center;margin:16px 18px 0 }
+  .cgs{ display:flex;flex-direction:column;align-items:center;gap:5px;flex:none }
+  .cgs s{ text-decoration:none;width:24px;height:24px;border-radius:50%;background:#e5e8eb;
+    color:#8b95a1;font-size:12px;font-weight:700;display:flex;align-items:center;
+    justify-content:center }
+  .cgs b{ font-size:12px;font-weight:400;color:var(--lgray);white-space:nowrap }
+  .cgs.on s{ background:var(--coral);color:#fff }
+  .cgs.on b{ color:var(--ink);font-weight:700 }
+  .cgs.done s{ background:#e9f7f2;color:#00795a }
+  .cgl{ flex:1;height:1px;background:#e5e8eb;margin:0 4px 18px }
+  .cgh{ font-size:19px;font-weight:700;letter-spacing:-.03em;line-height:1.35 }
+  .cgp{ font-size:14px;color:var(--gray);line-height:1.7;margin-top:8px }
+  .cgp u{ text-decoration:none;color:var(--coral-d);font-weight:700 }
+  .cgc{ display:flex;align-items:center;gap:4px;flex-wrap:wrap;border:1px solid var(--line);
+    border-radius:14px;padding:13px 15px;margin-top:10px;cursor:pointer;background:#fff }
+  .cgc b{ font-size:16px;font-weight:700;letter-spacing:-.02em;flex:1;min-width:0 }
+  .cgc span{ display:block;width:100%;font-size:13px;color:var(--lgray);margin-top:2px }
+  .cgc em{ font-style:normal;font-size:13px;font-weight:700;color:var(--coral-d) }
+  .cgfoot{ font-size:13px;color:var(--lgray);text-align:center;line-height:1.7;margin:18px }
   .cupg{ min-height:100vh;background:var(--felt);padding:0 0 40px;
     font-family:inherit;color:var(--ink) }
   .cupg-hd{ background:var(--coral);color:#fff;padding:34px 20px 26px;text-align:center }
@@ -13907,19 +13940,19 @@ function cupApplyDraw(){
     <div class="sh-top"><h3>${cupTrophy('inl')}${esc(c.title||'맞수 리그')}</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
+    ${(()=>{ const m=String(c.date||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      const dd=m?`${+m[2]}월 ${+m[3]}일`:'날짜 미정';
+      const wd=m?WD_KO[new Date(+m[1],+m[2]-1,+m[3]).getDay()]:'';
+      return `<div class="cupbig"><span class="d">${dd}</span>
+        ${wd?`<span class="w">${wd}</span>`:''}
+        <span class="p">${esc(c.place||'장소 미정')}</span></div>`; })()}
     <div class="cupfx">
-      <div class="cell"><div class="k">대회일</div>
-        <div class="v">${esc(c.date?ymdKo(c.date):'미정')}</div></div>
       <div class="cell"><div class="k">참가비</div>
         <div class="v">${(c.fee/10000)}만원<s>클럽당</s></div></div>
-      <div class="cell"><div class="k">장소</div>
-        <div class="v">${esc(c.place||'미정')}</div></div>
       <div class="cell"><div class="k">입금 마감</div>
         <div class="v">${c.due_date?esc(ymdKo(c.due_date)):'미정'}</div></div>
     </div>
-    <div class="cuphint"><i>◆</i><div>
-      <b>${c.min_teams}팀이 안 모이면 열지 않고 전액 돌려드려요.</b>
-      보증금 ${(c.deposit/10000)}만원은 완주하시면 반환됩니다.</div></div>
+    <div class="cuphint plain">${c.min_teams}팀이 안 모이면 열지 않고 참가비는 전액 환불돼요</div>
 
     ${c.pay&&c.pay.no?`<div class="cupacc" style="margin-top:12px">
       <div class="a">${esc(c.pay.bank||'')} ${esc(c.pay.no)}</div>
@@ -13932,8 +13965,7 @@ function cupApplyDraw(){
         <div class="cp">${lim?`구력 합 ${lim}년`:'제한 없음'}</div>
         <div class="wh"><s></s><s class="${no===1?'':'f'}"></s></div></div>`;}).join('')}
     </div>
-    <div class="cuphint"><i>◆</i><div>남자 ${needM}명, 여자 ${needF}명이
-      <b>정확히 한 매치씩</b> 뜁니다. 아무도 두 번 나올 수 없어요.</div></div>
+    <div class="cuphint plain">남 ${needM} · 여 ${needF}가 정확히 한 매치씩 뜁니다</div>
 
     <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
       <span class="${full?'ok':''}">${picked.length}/${need}명</span></div>
@@ -14075,98 +14107,91 @@ function cupGuestFail(msg){
       <div class="s">링크를 다시 확인해 주세요</div></div></div>`;
 }
 /* 앱 화면을 통째로 갈아끼운다 — 초청 클럽은 앱의 다른 화면을 볼 이유가 없다 */
+/* 초청받은 클럽이 링크를 열었을 때.
+   예전에는 이름만 적고 끝낼 수 있었는데 닫았다. 대회는 미끼고,
+   클럽이 맞수에 들어오는 것이 잡는 것이다. 그 길을 열어두면 아무도 앱을 안 깐다.
+   대신 <다음 한 걸음>만 크게 보여준다 — 로그인, 클럽 만들기, 신청, 회원 모으기 순. */
 function cupGuestDraw(){
-  const c=CUPI.cup||{}, e=CUPI.entry||{};
+  const c=CUPI.cup||{}, e=CUPI.entry||{}, me=CUPI.me||{signed:false,clubs:[]};
   const need=CUPI.need||{n:6,male:4,female:2};
-  const rows=CUPI.rows||[];
-  const f=rows.filter(r=>r.gender==='F').length;
-  const filled=rows.filter(r=>String(r.guest_name||'').trim() && r.ntrp).length;
+  const mins=Math.round((c.cfg&&c.cfg.match_sec||1200)/60);
+
+  /* 지금 어느 칸에 서 있나 — 이게 정해져야 버튼 하나만 남길 수 있다 */
+  const step = !me.signed ? 'login'
+    : !(me.clubs||[]).length ? 'club'
+    : !e.club_id ? 'claim'
+    : 'entry';
+
+  const dots=['맞수 시작','클럽 만들기','대회 신청','엔트리 6명']
+    .map((t,i)=>{
+      const at=['login','club','claim','entry'].indexOf(step);
+      return `<div class="cgs${i<at?' done':i===at?' on':''}">
+        <s>${i<at?'✓':i+1}</s><b>${t}</b></div>`;
+    }).join('<i class="cgl"></i>');
+
+  const body = step==='login'
+    ? `<div class="cgh">먼저 맞수로 들어오세요</div>
+       <div class="cgp">대회 신청과 엔트리, 당일 대진과 점수까지 앱 안에서 굴러가요.
+         카카오로 10초면 됩니다.</div>
+       <button class="btn" onclick="openLogin&&openLogin()">카카오로 시작하기</button>`
+    : step==='club'
+    ? `<div class="cgh">${esc(e.club_name||'우리 클럽')} 을(를) 만들어 주세요</div>
+       <div class="cgp">클럽을 만들면 이 자리가 바로 우리 것이 됩니다.
+         이름과 지역만 적으면 끝나요.</div>
+       <button class="btn" onclick="cupGuestMakeClub()">클럽 만들기</button>`
+    : step==='claim'
+    ? `<div class="cgh">어느 클럽으로 나가시나요</div>
+       <div class="cgp">고른 클럽 이름으로 대진표에 오릅니다.</div>
+       ${(me.clubs||[]).map(k=>`<div class="cgc" onclick="cupGuestClaim(${k.id})">
+          <b>${esc(k.name)}</b><span>${esc(k.region||'')} · 회원 ${k.members}명</span>
+          <em>이 클럽으로 ›</em></div>`).join('')}
+       <div class="cgp" style="margin-top:14px">다른 클럽으로 나가려면
+         <u onclick="cupGuestMakeClub()">새로 만들기</u></div>`
+    : `<div class="cgh">엔트리 ${need.n}명을 채워주세요</div>
+       <div class="cgp">남 ${need.male}명 · 여 ${need.female}명이 필요해요.
+         회원이 모자라면 클럽 초대 링크를 먼저 뿌리세요.</div>
+       <button class="btn" onclick="cupGuestGoApp()">앱에서 엔트리 내기</button>
+       <button class="btn ghost" onclick="cupGuestGoApp()">회원 초대하기</button>`;
 
   document.body.innerHTML=`<div class="cupg">
     <div class="cupg-hd">
       <div class="t">MATSU League</div>
-      <div class="s">${esc(c.title||'')}</div>
+      <div class="s">${esc(c.host||'')}가 보낸 초청장</div>
     </div>
 
     <div class="cupg-card">
-      <div class="rowk"><span>클럽</span><b>${esc(e.club_name||'')}</b></div>
-      <div class="rowk"><span>날짜</span><b>${esc(c.date||'미정')}</b></div>
-      ${c.place?`<div class="rowk"><span>장소</span><b>${esc(c.place)}</b></div>`:''}
-      <div class="rowk"><span>방식</span><b>복식 3매치 · 팀당 9매치</b></div>
+      <div class="rowk"><span>대회</span><b>${esc(CUPI.title||'맞수 리그')}</b></div>
+      <div class="rowk"><span>날짜</span><b>${esc(c.date?ymdKo(c.date):'미정')}</b></div>
+      <div class="rowk"><span>장소</span><b>${esc(c.place||'미정')}</b></div>
+      <div class="rowk"><span>방식</span><b>복식 3매치 · ${mins}분 단타임</b></div>
       <div class="rowk"><span>참가비</span><b>${((c.fee||0)/10000)}만원</b></div>
       <div class="note" style="text-align:left;margin-top:10px">
-        6팀이 모이지 않으면 열지 않고 전액 돌려드려요.
-        보증금 ${((c.deposit||0)/10000)}만원은 완주하시면 반환됩니다.</div>
+        ${c.min_teams}팀이 안 모이면 열지 않고 전액 돌려드려요.
+        보증금 ${((c.deposit||0)/10000)}만원은 완주하시면 환불됩니다.</div>
     </div>
 
-    ${c.pay&&c.pay.no?`<div class="cupg-card">
-      <div class="h">입금 계좌</div>
-      <div class="cupacc big">
-        <div class="a">${esc(c.pay.bank||'')} ${esc(c.pay.no)}</div>
-        <div class="b">예금주 ${esc(c.pay.holder||'')} · ${((c.fee||0)/10000)}만원</div></div>
-      <button class="btn ghost" style="margin-top:10px"
-        onclick="copyAddr('${esc((c.pay.bank||'')+' '+c.pay.no)}')">계좌번호 복사</button>
-      <div class="note" style="text-align:left">
-        입금은 대회 21일 전까지예요. 그 전까지 6팀이 안 모이면 전액 돌려드려요.</div>
-    </div>`:''}
+    <div class="cgsteps">${dots}</div>
+    <div class="cupg-card">${body}</div>
 
-    <div class="cupg-card">
-      <div class="h">1 · 대표자</div>
-      <div class="fld"><label>이름</label>
-        <input id="cgName" maxlength="20" value="${esc(e.contact_name||'')}"></div>
-      <div class="fld"><label>연락처</label>
-        <input id="cgTel" inputmode="numeric" maxlength="11" placeholder="01012345678"></div>
-      <button class="btn ghost" onclick="cupGuestApply()">대표자 저장</button>
-    </div>
-
-    <div class="cupg-card">
-      <div class="h">2 · 엔트리 ${need.n}명
-        <em class="${filled===need.n && f===need.female ? 'ok':''}">${filled}/${need.n}명 · 남 ${filled-f}/${need.male||4} · 여 ${f}/${need.female}</em></div>
-      <div class="note" style="text-align:left;margin:0 0 10px">
-        혼복이 두 매치라 남자 ${need.male||4}명, 여자 ${need.female}명이 정확히 필요해요.
-        NTRP는 대략이어도 됩니다 — 3.0 초중급, 3.5 중급, 4.0 중상급.</div>
-      ${rows.map((r,i)=>`<div class="cgrow">
-        <span class="no">${i+1}</span>
-        <input class="nm" maxlength="20" placeholder="이름" value="${esc(r.guest_name||'')}"
-          oninput="cupRowSet(${i},'guest_name',this.value)">
-        <select class="gd" onchange="cupRowSet(${i},'gender',this.value)">
-          <option value="M" ${r.gender==='M'?'selected':''}>남</option>
-          <option value="F" ${r.gender==='F'?'selected':''}>여</option></select>
-        <input class="nt" inputmode="decimal" maxlength="3" placeholder="3.5" value="${r.ntrp||''}"
-          oninput="cupRowSet(${i},'ntrp',this.value)">
-        <input class="by" inputmode="numeric" maxlength="4" placeholder="출생년" value="${r.birth_year||''}"
-          oninput="cupRowSet(${i},'birth_year',this.value)">
-      </div>`).join('')}
-      <button class="btn" style="margin-top:12px" onclick="cupGuestRoster()">엔트리 제출</button>
-      <div class="note" style="text-align:left">제출 뒤에도 대회 전날까지 고칠 수 있어요.</div>
-    </div>
-
-    <div class="cupg-foot">MATSU · 동호회 대진·회비 앱</div>
+    <div class="cgfoot">앱을 깔면 우리 클럽 대진·회비·구장도 같이 굴러가요<br>
+      대회가 끝나도 그대로 씁니다</div>
   </div>`;
-  const t=document.getElementById('cgTel'); if(t) t.value=e.contact_phone||'';
 }
-function cupRowSet(i,k,v){ if(CUPI.rows[i]) CUPI.rows[i][k]=v; }
 
-async function cupGuestApply(){
-  const g=id=>(document.getElementById(id)||{}).value||'';
-  try{ await api(`/cup/invite/${encodeURIComponent(CUPI.tok)}/apply`,{method:'POST',
-    body:JSON.stringify({contact_name:g('cgName'), contact_phone:g('cgTel')})}); }
-  catch(e){ return toast(apiWhy(e,'저장하지 못했어요')); }
-  toast('저장했어요');
+function cupGuestGoApp(){
+  /* 초청 토큰을 떼고 앱을 정상으로 연다 — 그래야 클럽 탭 카드로 이어진다 */
+  try{ location.href=location.origin+'/'; }catch(e){ location.reload(); }
 }
-async function cupGuestRoster(){
-  const yr=new Date().getFullYear();
-  const list=(CUPI.rows||[]).map(r=>{
-    const by=parseInt(r.birth_year,10)||null;
-    const age=by?yr-by:null;
-    return { guest_name:String(r.guest_name||'').trim(), gender:r.gender==='F'?'F':'M',
-      ntrp:parseFloat(r.ntrp), birth_year:by,
-      guardian_consent:(age!=null&&age<18)?1:0, health_declared:(age!=null&&age>=65)?1:0 };
-  });
-  try{ await api(`/cup/invite/${encodeURIComponent(CUPI.tok)}/roster`,{method:'POST',
-    body:JSON.stringify({roster:list})}); }
-  catch(e){ return toast(apiWhy(e,'제출하지 못했어요')); }
-  toast('엔트리를 냈어요');
+function cupGuestMakeClub(){
+  try{ sessionStorage.setItem('matsu_cup_token', CUPI.tok||''); }catch(e){}
+  location.href=location.origin+'/?new=club';
+}
+async function cupGuestClaim(cid){
+  try{ await api(`/cup/invite/${encodeURIComponent(CUPI.tok)}/claim`,
+    {method:'POST', body:JSON.stringify({club_id:cid})}); }
+  catch(e){ return toast(apiWhy(e,'신청하지 못했어요')); }
+  toast('신청했어요 · 이제 엔트리를 채워주세요');
+  cupGuestGoApp();
 }
 
 /* ══════════ 홈코트 — 클럽 탭 안의 한 페이지 ═══════════════════
@@ -14381,7 +14406,10 @@ function cupCardSection(){
     : drawn ? '우리 조 대진 보기'
     : paid ? '참가 클럽 보기'
     : e ? (done?'엔트리 보기':'엔트리 채우기') : '참가 신청하기';
-  const tap = today ? 'cupDay()' : (paid && !drawn) ? 'cupTeams()' : 'cupApply()';
+  /* 추첨이 끝났으면 날짜와 상관없이 대진을 볼 수 있어야 한다.
+     예전에는 drawn 이면 신청 화면으로 떨어져서 <우리 조 대진 보기>가 엔트리 화면을 열었다. */
+  const tap = (today || drawn) ? 'cupDay()'
+    : paid ? 'cupTeams()' : 'cupApply()';
   const state2 = !e ? ''
     : today ? `${drawn?`${e.group_label}조 ${e.seat}번 · `:''}오늘 ${esc(c.place||'')}`
     : drawn ? `${e.group_label}조 ${e.seat}번 · 엔트리 ${e.roster_n}/${need}명`
@@ -14410,8 +14438,14 @@ async function cupTeams(){
   const ST={confirmed:['ok','확정'],entered:['pend','입금 대기'],applied:['pend','신청만']};
 
   /* 자리 여덟 칸 — 몇 번째부터 열리는지가 여기서 제일 궁금한 값이다 */
-  const seats=Array.from({length:max},(_,i)=>
-    `<s class="${i<teams.length?'on':''}${i+1===min?' gate':''}">${i+1}</s>`).join('');
+  /* 문(최소 인원) 표시는 <여기까지 와야 열린다>는 뜻이다.
+     넘어서면 흰 테두리로 낮추고, 다 차면 아예 치운다.
+     주황 칸 위에 검은 테두리 하나가 남으면 그 칸만 다른 것처럼 보인다. */
+  const seats=Array.from({length:max},(_,i)=>{
+    const on=i<teams.length, gate=(i+1===min);
+    const cls=[on?'on':'', gate?'gate':'', (gate&&teams.length>=max)?'done':'']
+      .filter(Boolean).join(' ');
+    return `<s class="${cls}">${i+1}</s>`; }).join('');
   const full=teams.length>=max, ok=teams.length>=min;
   const goal = full ? '다 찼어요 · 조 추첨을 기다려요'
     : ok ? '열려요 · 자리가 더 있어요'
@@ -14471,11 +14505,11 @@ async function cupInviteNew(){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>초청장 만들기</h3>
       <div class="cl" role="button" tabindex="0" onclick="cupTeams()">×</div></div>
-    <div class="sd">받는 클럽은 <b>맞수를 안 써도</b> 됩니다</div>
+    <div class="sd">받는 클럽도 <b>맞수를 씁니다</b></div>
     <div class="cuphint" style="margin-top:14px"><i>◆</i><div>
-      링크를 열면 대표자 한 명이 <b>클럽 이름과 엔트리 6명</b>을 그 자리에서 적고 끝납니다.
-      앱을 깔거나 클럽을 만들 필요가 없어요.<br>
-      이미 맞수를 쓰는 클럽이면 링크가 앱으로 열려 바로 신청됩니다.</div></div>
+      링크를 열면 <b>맞수 시작 → 클럽 만들기 → 대회 신청 → 엔트리 6명</b> 순서로 안내됩니다.
+      이미 맞수를 쓰는 클럽이면 클럽만 고르면 끝나요.<br>
+      대회가 끝나도 그 클럽은 앱에 남아 대진·회비·구장을 계속 씁니다.</div></div>
     <div class="wlb" style="margin-top:20px">초청할 클럽 이름</div>
     <input id="cupInvNm" class="wfd" type="text" maxlength="20" placeholder="예) 기흥레이크">
     <div class="wlb">대표자 연락처 <span style="color:var(--lgray);font-weight:400">(선택)</span></div>
@@ -39508,6 +39542,10 @@ setTimeout(()=>{ if(state.loggedIn){ syncMe(); afterLoginNative();
    로그인 화면이 먼저 뜨면 그 자리에서 나간다. */
 const _cupTok = cupTokenFromUrl();
 if(_cupTok){
+  /* api() 첫 줄이 <TRIAL 이고 로그인 안 했으면 체험 시드로> 인데,
+     초청장은 바로 그 상태에서 여는 화면이다. 그래서 서버에 닿지도 못하고
+     <초청장을 찾을 수 없어요>가 떴다. 초청 토큰이 있으면 체험 모드를 끈다. */
+  TRIAL=false;
   hideBoot();
   cupGuestOpen(_cupTok);
 } else {
