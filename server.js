@@ -5661,12 +5661,16 @@ function cupGroupSizes(n) {
    슬롯 2에서 3복식을 한 코트에서 친다. 남는 한 면은 늦어진 매치의 예비 코트다.
 
    2:0으로 갈려도 3복식은 반드시 친다 — 게임 득실과 출전 인원 규칙 때문이다. */
-function tieMatches(tieId, lane) {
+function tieMatches(tieId, lane, opt) {
   const c = lane === 'A' ? [1, 2] : [3, 4];
+  const fin = !!(opt && opt.final);
+  const fmt = fin ? (opt.fmt || 'timed') : 'timed';
   return [
-    { no: 1, kind: 'free',  court: c[0], slot: 1, key: `${tieId}m1` },
-    { no: 2, kind: 'mixed', court: c[1], slot: 1, key: `${tieId}m2` },
-    { no: 3, kind: 'free',  court: c[1], slot: 2, key: `${tieId}m3` },
+    { no: 1, kind: 'free',  court: c[0], slot: 1, key: `${tieId}m1`, fmt },
+    { no: 2, kind: 'mixed', court: c[1], slot: 1, key: `${tieId}m2`, fmt },
+    /* 본선에서 2:0 이면 안 친다 — 화면이 <칠 수도 있음>으로 보여준다 */
+    { no: 3, kind: 'free',  court: c[1], slot: 2, key: `${tieId}m3`, fmt,
+      skippable: (fin && opt.skip) ? 1 : 0 },
   ];
 }
 
@@ -5680,7 +5684,14 @@ function addMin(hhmm, min) {
 const CUP_DEFAULT = {
   match_sec: 1500,          // 25분 단타임
   turn_sec: 300,            // 전환 5분
-  final_fmt: 'pro6',        // 결승·3위전은 6게임 프로세트
+  /* 본선(준결승·결승·3위전) 포맷.
+     'timed' — 조별과 같은 25분 단타임
+     'pro6'  — 6게임 프로세트 노애드. 승부는 확실하지만 평균 35분이라 더 길다 */
+  final_fmt: 'timed',
+  /* 본선에서 2:0 이 되면 3복식을 생략한다.
+     조별은 게임 득실과 출전 인원을 세야 해서 반드시 쳐야 하지만,
+     본선은 이긴 팀만 올라가면 되므로 칠 이유가 없다. 라운드마다 25분이 빈다. */
+  skip_dead: true,
   lanes: 2,
   cap: { 1: null, 2: 20, 3: 16 },        // 구력 합산 상한(년)
   lunch_after: 4,           // 4라운드 뒤 점심
@@ -5747,16 +5758,31 @@ function buildCupBracket(opt) {
     if (r === cfg.lunch_after && plan.length > cfg.lunch_after) at = addMin(at, cfg.lunch_min);
   });
 
-  /* 결승 라운드는 자리만 잡아둔다 — 조별이 끝나야 누가 올라오는지 안다.
-     미리 만들어 두어야 관전 화면에 <다음은 결승> 이 뜬다. */
+  /* 조별 뒤에 4팀 토너먼트. 자리만 잡아두고 조별이 끝나면 채운다.
+     미리 만들어 두어야 관전 화면에 <다음은 준결승> 이 뜬다.
+
+     준결승은 조를 엇갈려 붙인다(A1-B2, B1-A2).
+     같은 조끼리 다시 만나면 조별에서 이미 한 판 친 팀을 또 만난다. */
+  /* 본선도 조별과 같은 55분으로 잡는다.
+     2:0 이면 3복식을 생략해 실제로는 30분에 끝나지만, 시간표를 평균으로 짜면
+     3복식까지 간 라운드에서 뒤가 통째로 밀린다. 표는 최악을 적고,
+     일찍 끝나면 운영자가 다음 라운드를 앞당긴다. */
+  const sr = rounds.length + 1;
+  rounds.push({ r: sr, group: 'F', start: at, final: 1, kind: 'semi', ties: [
+    { id: `r${sr}t1`, lane: 'A', group: 'F', kind: 'semi', home: null, away: null,
+      home_name: 'A조 1위', away_name: 'B조 2위', matches: tieMatches(`r${sr}t1`, 'A', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
+    { id: `r${sr}t2`, lane: 'B', group: 'F', kind: 'semi', home: null, away: null,
+      home_name: 'B조 1위', away_name: 'A조 2위', matches: tieMatches(`r${sr}t2`, 'B', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
+  ] });
+  at = addMin(at, tieMin);
+
   const fr = rounds.length + 1;
-  const finalTies = [
+  rounds.push({ r: fr, group: 'F', start: at, final: 1, kind: 'final', ties: [
     { id: `r${fr}t1`, lane: 'A', group: 'F', kind: 'final', home: null, away: null,
-      home_name: 'A조 1위', away_name: 'B조 1위', matches: tieMatches(`r${fr}t1`, 'A') },
+      home_name: '준결승 1 승자', away_name: '준결승 2 승자', matches: tieMatches(`r${fr}t1`, 'A', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
     { id: `r${fr}t2`, lane: 'B', group: 'F', kind: 'third', home: null, away: null,
-      home_name: 'A조 2위', away_name: 'B조 2위', matches: tieMatches(`r${fr}t2`, 'B') },
-  ];
-  rounds.push({ r: fr, group: 'F', start: at, final: 1, ties: finalTies });
+      home_name: '준결승 1 패자', away_name: '준결승 2 패자', matches: tieMatches(`r${fr}t2`, 'B', {final:1, fmt:cfg.final_fmt, skip:cfg.skip_dead}) },
+  ] });
 
   return { mode: 'cup', cfg, teams, rounds };
 }
@@ -5804,18 +5830,51 @@ function cupStandings(data, scores) {
   return byG;
 }
 
-/* 조별이 끝나면 결승 대진을 채운다 */
+/* 한 타이의 승자·패자 — 세 매치를 다 쳐야 정해진다 */
+function tieWinner(t, scores) {
+  let h = 0, a = 0, done = 0;
+  (t.matches || []).forEach(m => {
+    const s = scores[m.key];
+    if (!s || (s.a == null && s.b == null)) return;
+    done++;
+    if ((+s.a || 0) > (+s.b || 0)) h++; else if ((+s.b || 0) > (+s.a || 0)) a++;
+  });
+  /* 3복식을 생략할 수 있는 타이(본선)는 2:0 이면 두 매치로 끝난다.
+     조별은 세 매치를 다 쳐야 한다 — 게임 득실과 출전 인원을 세야 하기 때문이다. */
+  const canSkip = (t.matches || []).some(m => m.skippable);
+  const enough = done >= 3 || (canSkip && (h >= 2 || a >= 2));
+  if (!enough || h === a) return null;
+  return h > a
+    ? { win: t.home, win_name: t.home_name, lose: t.away, lose_name: t.away_name }
+    : { win: t.away, win_name: t.away_name, lose: t.home, lose_name: t.home_name };
+}
+
+/* 조별이 끝나면 준결승을, 준결승이 끝나면 결승·3위전을 채운다 */
 function cupFillFinal(data, scores) {
+  scores = scores || {};
   const st = cupStandings(data, scores);
-  const fr = (data.rounds || []).find(r => r.final);
-  if (!fr) return data;
-  const a = st.A, b = st.B;
+  const rs = data.rounds || [];
+  const semi = rs.find(r => r.kind === 'semi');
+  const fin = rs.find(r => r.kind === 'final');
   const set = (t, h, w) => {
-    if (h) { t.home = h.entry_id; t.home_name = h.name; }
-    if (w) { t.away = w.entry_id; t.away_name = w.name; }
+    if (h) { t.home = h.entry_id || h.win || h.lose; t.home_name = h.name || h.win_name || h.lose_name; }
+    if (w) { t.away = w.entry_id || w.win || w.lose; t.away_name = w.name || w.win_name || w.lose_name; }
   };
-  set(fr.ties[0], a[0], b[0]);
-  set(fr.ties[1], a[1], b[1]);
+  const a = st.A, b = st.B;
+  if (semi) {
+    /* 조를 엇갈려 붙인다 — 같은 조끼리 다시 만나지 않게 */
+    set(semi.ties[0], a[0], b[1]);
+    set(semi.ties[1], b[0], a[1]);
+  }
+  if (semi && fin) {
+    const w1 = tieWinner(semi.ties[0], scores), w2 = tieWinner(semi.ties[1], scores);
+    if (w1 && w2) {
+      fin.ties[0].home = w1.win; fin.ties[0].home_name = w1.win_name;
+      fin.ties[0].away = w2.win; fin.ties[0].away_name = w2.win_name;
+      fin.ties[1].home = w1.lose; fin.ties[1].home_name = w1.lose_name;
+      fin.ties[1].away = w2.lose; fin.ties[1].away_name = w2.lose_name;
+    }
+  }
   return data;
 }
 
@@ -5846,7 +5905,51 @@ function cupDraw(entries, seed) {
   }));
 }
 
-const CUP_FEE = 350000, CUP_DEPOSIT = 100000, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
+/* 기본값 — 대회마다 바꿀 수 있다.
+   상수로 두면 두 번째 대회에서 참가비나 팀 수를 못 고친다. */
+const CUP_FEE = 450000, CUP_DEPOSIT = 100000, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
+
+/* 이 대회의 설정 — data 에 없으면 기본값 */
+function cupCfg(b) {
+  let d = {};
+  try { d = typeof b === 'string' ? JSON.parse(b || '{}') : (b || {}); } catch (e) {}
+  return {
+    title: d.title || 'MATSU CUP',
+    start: d.start || '09:00',
+    place: d.place || '',
+    pay: d.pay || null,
+    fee: d.fee != null ? +d.fee : CUP_FEE,
+    deposit: d.deposit != null ? +d.deposit : CUP_DEPOSIT,
+    min_teams: d.min_teams ? +d.min_teams : CUP_MIN_TEAMS,
+    max_teams: d.max_teams ? +d.max_teams : CUP_MAX_TEAMS,
+    prize_pct: d.prize_pct != null ? +d.prize_pct : 85,
+    fixed_cost: d.fixed_cost != null ? +d.fixed_cost : 1100000,   // 코트·보험·트로피·비품
+    var_cost: d.var_cost != null ? +d.var_cost : 60000,           // 팀당 공·음료·인력
+  };
+}
+
+/* 정산 — 여기가 틀리면 대회가 끝나고 돈이 모자란다.
+
+   보증금은 수입이 아니다. 완주하면 돌려줄 돈이라 처음부터 빼고 세야 한다.
+   상금을 <참가비 총액의 25%>로 잡으면 8팀에 70만이 나오는데,
+   실제로 쓸 수 있는 돈은 200만이고 비용이 158만이라 42만밖에 안 남는다.
+   그대로 주면 28만 적자다.
+
+   그래서 상금은 <비용을 빼고 남은 돈의 몇 %>로 센다.
+   팀이 적게 오면 남는 돈이 줄고 상금도 같이 줄어 적자가 날 수 없다. */
+function cupMoney(C, teams) {
+  const gross = teams * C.fee;                 // 걷은 돈
+  const deposits = teams * C.deposit;          // 돌려줄 돈
+  const net = gross - deposits;                // 실제로 쓸 수 있는 돈
+  const cost = C.fixed_cost + teams * C.var_cost;
+  const left = net - cost;                     // 상금 주기 전 잔액
+  const prize = Math.max(0, Math.round(left * C.prize_pct / 100));
+  return { gross, deposits, net, cost, left, prize,
+    rest: left - prize,                        // 대회 끝나고 남는 돈
+    first: Math.round(prize * 0.5 / 10000) * 10000,
+    second: Math.round(prize * 0.3 / 10000) * 10000,
+    third: Math.round(prize * 0.2 / 10000) * 10000 };
+}
 /* 구력 합산 상한 — 1복식은 제한 없음, 혼복 20년, 3복식 16년.
    NTRP 로 잡았다가 구력으로 바꿨다. 앱에 NTRP 칸이 없어 등급을 환산해야 했는데,
    그 환산이 정확하지 않아 대표가 손볼 여지를 열어야 했고, 그러면 상한이 무의미해진다.
@@ -5873,9 +5976,10 @@ app.post('/cup/:bid/entries', auth, (req, res) => {
   if (!cupHost(b, req.uid)) return res.status(403).json({ error: 'host_only', message: '주최 클럽 운영진만 할 수 있어요' });
   const name = String((req.body || {}).club_name || '').trim().slice(0, 40);
   if (!name) return res.status(400).json({ error: 'empty', message: '클럽 이름을 적어주세요' });
+  const C0 = cupCfg(b.data);
   const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
-  if (n >= CUP_MAX_TEAMS)
-    return res.status(400).json({ error: 'full', message: `${CUP_MAX_TEAMS}팀이 다 찼어요` });
+  if (n >= C0.max_teams)
+    return res.status(400).json({ error: 'full', message: `${C0.max_teams}팀이 다 찼어요` });
   const tok = crypto.randomBytes(9).toString('base64url');
   const r = db.prepare(`INSERT INTO cup_entries
     (bracket_id,club_id,club_name,contact_name,contact_phone,invite_token,created_at)
@@ -5899,15 +6003,15 @@ app.get('/cup/:bid/entries', auth, (req, res) => {
   const paid = live.filter(r => r.fee_paid);
   /* 상금은 참가비 총액의 25% — 금액을 못 박지 않는다.
      팀이 적게 오면 상금도 줄어서 적자가 날 수 없다. */
-  let bd = {}; try { bd = JSON.parse(b.data || '{}'); } catch (e) {}
+  const C = cupCfg(b.data);
   res.json({
     entries: rows, teams: live.length, paid: paid.length,
-    title: bd.title || '', date: b.date, place: bd.place || '', pay: bd.pay || null,
-    min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS,
-    fee: CUP_FEE, deposit: CUP_DEPOSIT,
-    income: paid.length * CUP_FEE,
-    prize: Math.round(paid.length * CUP_FEE * 0.25),
-    ok_to_run: live.length >= CUP_MIN_TEAMS,
+    title: C.title, date: b.date, place: C.place, pay: C.pay,
+    min_teams: C.min_teams, max_teams: C.max_teams,
+    fee: C.fee, deposit: C.deposit,
+    income: paid.length * C.fee,
+    money: cupMoney(C, paid.length),
+    ok_to_run: live.length >= C.min_teams,
   });
 });
 
@@ -5954,9 +6058,9 @@ app.post('/cup/:bid/draw', auth, (req, res) => {
   if (!cupHost(b, req.uid)) return res.status(403).json({ error: 'host_only' });
   const rows = db.prepare(`SELECT id, club_name FROM cup_entries
     WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
-  if (rows.length < CUP_MIN_TEAMS)
+  if (rows.length < cupCfg(data).min_teams)
     return res.status(400).json({ error: 'too_few',
-      message: `${CUP_MIN_TEAMS}팀이 모여야 열 수 있어요 (지금 ${rows.length}팀)` });
+      message: `${cupCfg(data).min_teams}팀이 모여야 열 수 있어요 (지금 ${rows.length}팀)` });
 
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   const seed = +(req.body || {}).seed || (Date.now() & 0x7fffffff);
@@ -6001,13 +6105,13 @@ app.get('/admin/cups', admin, (_req, res) => {
   res.json(rows.map(r => {
     let d = {}; try { d = JSON.parse(r.data || '{}'); } catch (e) {}
     const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(r.id).n;
-    const paid = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND fee_paid=1 AND status!='cancelled'").get(r.id).n;
+    const paid = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status='confirmed'").get(r.id).n;
     return { id: r.id, date: r.date, open: !!r.published,
       title: d.title || 'MATSU CUP', place: d.place || '', pay: d.pay || null,
       host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
       host_id: r.club_id, teams: live, paid, drawn: !!d.drawn_at,
-      income: paid * CUP_FEE, prize: Math.round(paid * CUP_FEE * 0.25),
-      min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS, fee: CUP_FEE };
+      income: paid * cupCfg(d).fee, money: cupMoney(cupCfg(d), paid),
+      min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams, fee: cupCfg(d).fee };
   }));
 });
 
@@ -6046,7 +6150,13 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
   res.json({ id: b.id, date: b.date, open: !!b.published, title: d.title || '',
     place: d.place || '', pay: d.pay || null, start: d.start || '09:00',
     drawn: !!d.drawn_at, rounds: d.rounds || [], teams: d.teams || [],
-    entries: rows, fee: CUP_FEE, min_teams: CUP_MIN_TEAMS, max_teams: CUP_MAX_TEAMS });
+    entries: rows, courts: b.courts,
+    fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
+    fixed_cost: cupCfg(d).fixed_cost, var_cost: cupCfg(d).var_cost,
+    cfg: Object.assign({}, CUP_DEFAULT, d.cfg || {}),
+    min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams,
+    money: cupMoney(cupCfg(d),
+      rows.filter(r => r.status === 'confirmed').length) });
 });
 
 /* 관리자는 주최 클럽 운영진이 아니어도 손댈 수 있어야 한다 */
@@ -6061,20 +6171,48 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
       .run(q.on ? 1 : 0, now(), b.id);
     return res.json({ ok: true });
   }
-  if (act === 'pay') {
-    d.pay = { bank: String(q.bank || '').slice(0, 20),
-      no: String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
-      holder: String(q.holder || '').slice(0, 20) };
-    if (q.place != null) d.place = String(q.place).slice(0, 40);
-    db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
-      .run(JSON.stringify(d), now(), b.id);
+  /* 설정 — 제목·날짜·장소·정원·참가비를 한 번에 받는다.
+     따로따로 고치게 하면 <참가비만 바꾸려다 날짜가 지워지는> 일이 생긴다. */
+  if (act === 'setup') {
+    if (q.title != null) d.title = String(q.title).trim().slice(0, 60);
+    if (q.start != null) d.start = String(q.start).slice(0, 5);
+    if (q.place != null) d.place = String(q.place).trim().slice(0, 40);
+    if (q.bank != null || q.account != null || q.holder != null) {
+      d.pay = { bank: String(q.bank || '').trim().slice(0, 20),
+        no: String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
+        holder: String(q.holder || '').trim().slice(0, 20) };
+    }
+    const num = (v, lo, hi) => { const n = Math.round(+v); return (n >= lo && n <= hi) ? n : null; };
+    const fee = num(q.fee, 0, 5000000);         if (fee != null) d.fee = fee;
+    const dep = num(q.deposit, 0, 5000000);     if (dep != null) d.deposit = dep;
+    const mx = num(q.max_teams, 2, 32);         if (mx != null) d.max_teams = mx;
+    const mn = num(q.min_teams, 2, 32);         if (mn != null) d.min_teams = mn;
+    const pc = num(q.prize_pct, 0, 100);        if (pc != null) d.prize_pct = pc;
+    const fc = num(q.fixed_cost, 0, 50000000);  if (fc != null) d.fixed_cost = fc;
+    /* 본선 포맷 — 대진이 이미 짜였으면 다시 추첨해야 반영된다 */
+    d.cfg = d.cfg || {};
+    if (q.final_fmt === 'timed' || q.final_fmt === 'pro6') d.cfg.final_fmt = q.final_fmt;
+    if (q.skip_dead != null) d.cfg.skip_dead = q.skip_dead ? true : false;
+    const ms = num(q.match_min, 10, 60);   if (ms != null) d.cfg.match_sec = ms * 60;
+    const ts = num(q.turn_min, 0, 20);     if (ts != null) d.cfg.turn_sec = ts * 60;
+    const vc = num(q.var_cost, 0, 5000000);     if (vc != null) d.var_cost = vc;
+    /* 손익분기가 정원보다 크면 영영 못 연다 */
+    if (d.min_teams && d.max_teams && d.min_teams > d.max_teams)
+      return res.status(400).json({ error: 'bad',
+        message: `손익분기(${d.min_teams}팀)가 정원(${d.max_teams}팀)보다 클 수 없어요` });
+
+    const date = String(q.date || '').slice(0, 10);
+    const courts = num(q.courts, 1, 12);
+    db.prepare(`UPDATE brackets SET data=?, date=COALESCE(NULLIF(?,''),date),
+        courts=COALESCE(?,courts), updated_at=? WHERE id=?`)
+      .run(JSON.stringify(d), /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', courts, now(), b.id);
     return res.json({ ok: true });
   }
   if (act === 'invite') {
     const name = String(q.club_name || '').trim().slice(0, 40);
     if (!name) return res.status(400).json({ error: 'empty', message: '클럽 이름을 적어주세요' });
     const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
-    if (n >= CUP_MAX_TEAMS) return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
+    if (n >= cupCfg(d).max_teams) return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
     const tok = crypto.randomBytes(9).toString('base64url');
     const r = db.prepare(`INSERT INTO cup_entries
       (bracket_id,club_name,contact_name,contact_phone,invite_token,created_at)
@@ -6086,6 +6224,28 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
   if (act === 'entry') {
     const e = db.prepare('SELECT * FROM cup_entries WHERE id=? AND bracket_id=?').get(+q.entry_id, b.id);
     if (!e) return res.status(404).json({ error: 'no_entry' });
+
+    /* 입금이 들어온 걸 확인하면 그 자리에서 확정한다.
+       <입금 확인>과 <확정>을 따로 누르게 하면 하나만 눌러놓고 잊는다.
+       보증금도 같이 <잡아둠>으로 옮긴다 — 완주하면 돌려주고 기권하면 몰수한다. */
+    if (q.confirm != null) {
+      if (q.confirm) {
+        const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status='confirmed'").get(b.id).n;
+        if (n >= cupCfg(d).max_teams)
+          return res.status(400).json({ error: 'full',
+            message: `확정된 팀이 이미 ${cupCfg(d).max_teams}곳이에요` });
+        const ros = db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(e.id).n;
+        db.prepare(`UPDATE cup_entries SET fee_paid=1, status='confirmed',
+          deposit_state='held' WHERE id=?`).run(e.id);
+        /* 엔트리를 아직 안 낸 팀도 확정할 수 있다 — 돈이 먼저 들어오는 게 보통이다.
+           다만 대진을 짜기 전에는 채워야 하니 알려준다. */
+        return res.json({ ok: true, warn: ros >= 10 ? null : '엔트리 10명은 아직 안 냈어요' });
+      }
+      db.prepare(`UPDATE cup_entries SET fee_paid=0, status='applied',
+        deposit_state='none' WHERE id=?`).run(e.id);
+      return res.json({ ok: true });
+    }
+
     const st = ['invited', 'applied', 'paid', 'confirmed', 'cancelled'].includes(q.status) ? q.status : null;
     const dep = ['none', 'held', 'returned', 'forfeited'].includes(q.deposit_state) ? q.deposit_state : null;
     db.prepare(`UPDATE cup_entries SET status=COALESCE(?,status),
@@ -6094,11 +6254,18 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     return res.json({ ok: true });
   }
   if (act === 'draw') {
+    /* 확정된 팀만 대진에 넣는다 — 입금 안 한 팀을 넣으면 당일에 자리가 빈다.
+       부전승이 아마추어 단체전을 죽인다. */
     const rows = db.prepare(`SELECT id, club_name FROM cup_entries
-      WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
-    if (rows.length < CUP_MIN_TEAMS)
+      WHERE bracket_id=? AND status='confirmed' ORDER BY id`).all(b.id);
+    if (rows.length < cupCfg(d).min_teams)
       return res.status(400).json({ error: 'too_few',
-        message: `${CUP_MIN_TEAMS}팀이 모여야 열 수 있어요 (지금 ${rows.length}팀)` });
+        message: `확정된 팀이 ${cupCfg(d).min_teams}곳은 되어야 해요 (지금 ${rows.length}곳)` });
+    const noRoster = rows.filter(r =>
+      db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n < 10);
+    if (noRoster.length)
+      return res.status(400).json({ error: 'no_roster',
+        message: `엔트리를 안 낸 팀이 있어요 · ${noRoster.map(r => r.club_name).join(' · ')}` });
     const seed = +q.seed || (Date.now() & 0x7fffffff);
     const teams = cupDraw(rows, seed);
     const built = buildCupBracket({ teams, startTime: d.start || '09:00', cfg: d.cfg });
@@ -6126,6 +6293,7 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     WHERE fmt='cup' AND published=1 ORDER BY id DESC LIMIT 1`).get();
   if (!b) return res.json({ cup: null });
   let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  const C = cupCfg(d);
   const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
   const mine = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
   const roster = mine
@@ -6138,9 +6306,9 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
   }
   res.json({ cup: {
     id: b.id, date: b.date, title: d.title || 'MATSU CUP', place: d.place || '',
-    pay: d.pay || null, fee: CUP_FEE, deposit: CUP_DEPOSIT,
-    teams: live, max_teams: CUP_MAX_TEAMS, min_teams: CUP_MIN_TEAMS,
-    left: Math.max(0, CUP_MAX_TEAMS - live), dday,
+    pay: C.pay, fee: C.fee, deposit: C.deposit,
+    teams: live, max_teams: C.max_teams, min_teams: C.min_teams,
+    left: Math.max(0, C.max_teams - live), dday,
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
   }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
@@ -6157,7 +6325,7 @@ app.post('/cup/:bid/apply', auth, (req, res) => {
   const had = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
   if (had) return res.json({ ok: true, id: had.id, already: true });
   const n = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
-  if (n >= CUP_MAX_TEAMS)
+  if (n >= cupCfg(b.data).max_teams)
     return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
   const u = db.prepare('SELECT name, phone FROM users WHERE id=?').get(req.uid) || {};
@@ -6272,7 +6440,9 @@ app.get('/cup/invite/:token', (req, res) => {
     entry: { id: e.id, club_name: e.club_name, status: e.status,
       contact_name: e.contact_name, fee_paid: e.fee_paid },
     cup: { date: b ? b.date : null, courts: b ? b.courts : 0,
-      host: host ? host.name : '', fee: CUP_FEE, deposit: CUP_DEPOSIT, cfg,
+      host: host ? host.name : '',
+      fee: cupCfg(b.data).fee, deposit: cupCfg(b.data).deposit,
+      min_teams: cupCfg(b.data).min_teams, max_teams: cupCfg(b.data).max_teams, cfg,
       place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
       pay: (() => { try { return JSON.parse(b.data || '{}').pay || null; } catch (x) { return null; } })() },
     roster, need: { n: CUP_ROSTER_N, female: CUP_ROSTER_F },
