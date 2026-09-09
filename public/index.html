@@ -2338,10 +2338,14 @@
   .tkby.big .c span{ display:block;font-size:13px;color:var(--lgray) }
   .tkp .mt{ margin-top:10px;font-size:14px;color:#a8a7a1 }
   /* 목록에서 투표가 달린 글은 바로 보이게 — 눌러볼 이유가 된다 */
+  /* 투표 배지 — .ic 는 마스크만 있는 클래스라 배경과 크기를 여기서 준다.
+     안 주면 아이콘이 안 보이고 칸만 부푼다. */
   .pchip{ display:inline-flex;align-items:center;gap:6px;margin-top:9px;
-    border:1px solid var(--line);border-radius:9px;padding:6px 11px;
-    font-size:13px;color:var(--gray) }
-  .pchip .ic{ width:12px;height:12px }
+    border:1px solid var(--line);border-radius:9px;padding:5px 11px;
+    font-size:13px;line-height:1.4;color:var(--gray);vertical-align:middle }
+  .pchip .ic{ width:15px;height:15px;flex:none;display:block;background:currentColor;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-size:contain;mask-size:contain }
   .ltags{ display:flex;gap:5px;flex-wrap:wrap;margin-top:7px }
   .ltags span{ font-size:12.5px;color:var(--coral-d) }
   .tkp .mt span{ display:flex;align-items:center;gap:5px }
@@ -2362,7 +2366,13 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M8.5 14.5a4.5 4.5 0 0 0 7 0' stroke-linecap='round'/><path d='M9 9.5h.01M15 9.5h.01' stroke-linecap='round'/></svg>") }
   /* ── 사진 ── */
   /* 목록 오른쪽 썸네일 — 아파트톡처럼 장수를 +N 으로 알린다 */
-  .tkp.haspic{ position:relative;padding-right:96px }
+  /* 썸네일을 피하는 건 소속·제목·글쓴이 세 줄까지다.
+     카드 전체에 여백을 주면 조회·시간 줄까지 밀려서, 시간이 화면 끝이 아니라
+     썸네일 왼쪽에 걸린다. 아파트톡도 그 줄은 썸네일 아래를 지나 끝까지 간다. */
+  .tkp.haspic{ position:relative }
+  .tkp.haspic .tkloc,
+  .tkp.haspic .ti,
+  .tkp.haspic .tkby{ padding-right:96px }
   .tkpic{ position:absolute;right:0;top:18px;width:84px;height:84px;border-radius:10px;
     overflow:hidden;background:var(--felt) }
   .tkpic img{ width:100%;height:100%;object-fit:cover;display:block }
@@ -2457,6 +2467,7 @@
     cursor:pointer }
   .wgo:active{ transform:translateY(1px) }
   .pchip b{ font-weight:700;color:var(--coral-d) }
+  .pwrap{ margin-top:9px }
   .wtool{ display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;
     border:1px solid var(--line);border-radius:12px;padding:11px 0;
     font-size:13.5px;color:var(--gray);cursor:pointer }
@@ -6355,7 +6366,9 @@ async function api(path, opts){
       alert('탈퇴되었거나 이용이 제한된 계정이에요.\n처음 화면으로 이동합니다 — 새로 가입할 수 있어요.');
       location.replace(location.pathname);
     }
-    throw new Error(body || ('HTTP '+r.status));
+    const err = new Error(body || ('HTTP '+r.status));
+    err.status = r.status;                 // 왜 막혔는지 화면에서 말해주려면 필요하다
+    throw err;
   }
   return r.json();
 }
@@ -16932,7 +16945,8 @@ function talkBodyHtml(){
           <span class="n">${esc(p.who||'익명')}</span>
           ${t.scope==='all'&&p.club?`<span class="s">${esc(p.club)}</span>`:''}
         </div>
-        ${p.has_poll?`<div class="pchip"><i class="ic vote"></i>투표 <b>${p.poll_n}명</b></div>`:''}
+        ${p.has_poll?`<div class="pwrap"><span class="pchip">
+          <i class="ic vote"></i>투표 <b>${p.poll_n}명</b></span></div>`:''}
         <div class="mt">
           <span><i class="ic eye"></i>${p.views||0}</span>
           <span><i class="ic rct"></i>${p.react_n||0}</span>
@@ -17082,13 +17096,19 @@ async function talkPhotoPick(el){
   wRedraw();
 }
 function talkPhotoDel(i){ (TALK.photos||[]).splice(i,1); wRedraw(); }
-/* 서버가 왜 막았는지 말해준다 — <올리지 못했어요>만으로는 고칠 길이 없다 */
+/* 서버가 왜 막았는지 말해준다 — <올리지 못했어요>만으로는 고칠 길이 없다.
+   서버가 문장을 안 주면 상태 코드라도 붙인다.
+   404 는 <서버에 그 기능이 아직 없다>는 뜻이라 이것만 알아도 절반은 잡힌다. */
 function apiWhy(e, fallback){
+  const st=e&&e.status;
   try{
-    const m=String((e&&e.message)||'');
-    const j=JSON.parse(m);
-    return j.message || fallback;
-  }catch(x){ return fallback; }
+    const j=JSON.parse(String((e&&e.message)||''));
+    if(j.message) return j.message;
+  }catch(x){}
+  if(st===404) return fallback+' · 서버가 옛 버전이에요 (404)';
+  if(st===413) return '사진이 너무 커요';
+  if(st) return `${fallback} (${st})`;
+  return fallback;
 }
 /* 적던 글을 지키며 다시 그린다 — 태그를 하나 넣을 때마다 본문이 날아가면 안 된다 */
 function wRedraw(){
