@@ -1988,7 +1988,9 @@
   .vslot .c span{ display:block;font-size:13px;color:var(--lgray);margin-top:2px }
   .vslot .t{ flex:none;font-size:13px;font-weight:700;color:var(--green,#0f9d76);
     background:#e9f7f1;border-radius:20px;padding:4px 11px }
-  .lpin.empty{ color:var(--lgray);border:1px dashed #cfd6dd }
+  /* 우리 코트냐 아니냐, 둘로만 가른다. 빈 구장과 카카오 검색 결과를 테두리로
+     나눠 봤자 <아직 우리가 안 쓰는 곳>이라는 뜻은 같다. */
+  .lpin.empty{ color:var(--gray);border:1px solid #e0e4e8 }
   /* ── 홈코트 지도 ── */
   .landwrap{ position:relative;margin-top:4px }
   .landmap{ position:relative;width:100%;height:380px;border-radius:16px;overflow:hidden;
@@ -2021,15 +2023,27 @@
   .landbtn.on{ background:var(--ink);color:#fff }
   .landbtn.on i{ background:#fff }
   .landsheet{ margin-top:12px }
-  .landsheet .lhd{ display:flex;align-items:flex-end;gap:10px }
+  /* flex-end 로 맞추면 32px 짜리 <1곳> 과 두 줄짜리 곁줄이 아래 끝만 맞아서
+     <용인시 1위> 가 위로 떠 보인다. 가운데로 맞춘다. */
+  .landsheet .lhd{ display:flex;align-items:center;gap:10px }
   .landsheet .lhd .n{ font-size:32px;font-weight:800;letter-spacing:-.05em;line-height:1 }
   .landsheet .lhd .n em{ font-style:normal;font-size:16px;font-weight:700;color:var(--gray);
     margin-left:2px }
-  .landsheet .lhd .dd{ flex:1;font-size:14px;color:var(--lgray);padding-bottom:2px;line-height:1.5 }
+  .landsheet .lhd .dd{ flex:1;font-size:14px;color:var(--lgray);line-height:1.5 }
   .landsheet .lhd .dd b{ color:var(--gray);font-weight:700 }
   /* 같은 시 클럽만 줄 세운다 — 전국 순위는 겨룰 수가 없다 */
   .lrank{ margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:11px 13px }
-  .lrh{ font-size:14px;font-weight:700;color:var(--lgray);margin-bottom:6px }
+  /* 순위 대신 <다음에 뭘 하면 되는지>를 적는다. 빈 상태 문구(.lnone)에 있던 말인데
+     코트를 하나라도 가지는 순간 사라져서, 지도를 봐도 할 일이 안 떠올랐다. */
+  .lnudge{ display:flex;gap:9px;align-items:flex-start;background:var(--felt);
+    border-radius:13px;padding:12px 14px;margin-bottom:2px }
+  .lnudge .ic{ width:17px;height:17px;flex:none;margin-top:1px }
+  .lnudge .tx{ font-size:13.5px;color:var(--ink2);line-height:1.6 }
+  .lnudge .tx b{ font-weight:700 }
+  .lnudge .tx s{ text-decoration:none;display:block;color:var(--lgray);
+    font-size:12.5px;margin-top:2px }
+  .lrh{ font-size:14px;font-weight:700;color:var(--lgray);margin:18px 0 6px }
+  .lrh:first-child{ margin-top:0 }
   .lr{ display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f4f5f7 }
   .lr:first-of-type{ border-top:none }
   .lr.me{ background:#fffaf7;margin:0 -8px;padding:8px;border-radius:9px;border-top:none }
@@ -2060,9 +2074,12 @@
   .lnone{ text-align:center;color:var(--lgray);font-size:16px;padding:28px 10px;line-height:1.75 }
   .lnone span{ font-size:14px;line-height:1.7 }
   /* 지도 위 구장 이름표 */
+  /* transform:translateX(-50%) 를 걸어두면 안 된다 — 오버레이가 xAnchor:.5 로 이미
+     반쪽 옮긴 뒤라 총 -100% 가 되고, 알약의 오른쪽 끝이 점에 붙는다.
+     자리 계산은 카카오에 맡긴다. */
   .lpin{ display:flex;align-items:center;gap:4px;background:#fff;border-radius:20px;
     padding:4px 9px;box-shadow:0 1px 5px rgba(18,22,28,.2);font-size:12px;font-weight:700;
-    white-space:nowrap;transform:translateX(-50%) }
+    white-space:nowrap }
   .lpin i{ width:7px;height:7px;border-radius:50%;background:var(--c);display:block }
   .lpin{ cursor:pointer }
   /* 아직 안 간 구장 — 거리를 옆에 붙여 <갈 만한가> 를 바로 판단하게 */
@@ -2195,6 +2212,15 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M7 4h10v5a5 5 0 0 1-10 0z'/><path d='M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'/><path d='M12 14v3M9 20h6'/></svg>") }
   .cupcard .n{ font-size:17px;font-weight:800;letter-spacing:-.03em;margin-top:5px }
   .cupcard .s{ font-size:12.5px;color:var(--gray);line-height:1.6;margin-top:4px }
+  /* 8팀 대회에서 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
+     칸이 적을 때는 점을 그대로 세는 편이 정확하다. 12칸이 넘어가면 바로 돌아간다. */
+  .cupcard .cdots{ display:flex;gap:5px;align-items:center;margin-top:12px }
+  .cupcard .cdots s{ text-decoration:none;width:9px;height:9px;border-radius:5px;
+    background:#f0eeea;flex:none }
+  .cupcard .cdots s.on{ background:var(--coral) }
+  .cupcard.done .cdots s.on{ background:var(--lgray) }
+  .cupcard .cdots em{ font-style:normal;font-size:11.5px;color:var(--lgray);
+    font-weight:700;margin-left:5px }
   .cupcard .bar{ height:7px;border-radius:7px;background:#f0eeea;margin-top:11px;overflow:hidden }
   .cupcard .bar i{ display:block;height:100%;background:var(--coral);border-radius:7px }
   .cupcard .m{ font-size:11.5px;color:var(--lgray);margin-top:7px }
@@ -2742,7 +2768,7 @@
   .lkey i{ width:14px;height:14px;flex:none;display:block;border-radius:50% }
   .lkey .w{ display:block;margin:5px 0 0;color:var(--gray);font-weight:700;
     border-top:1px solid #e6e4de;padding-top:8px }
-  .lpin.priv{ color:var(--ink);border:1px solid #a9b6f0 }
+  .lpin.priv{ color:var(--gray);border:1px solid #e0e4e8 }
   /* 코트 자리에 찍는 점 — 원 한가운데다 */
   .ldot{ width:13px;height:13px;border-radius:50%;background:var(--coral);
     border:2.5px solid #fff;box-shadow:0 1px 4px rgba(20,22,20,.28) }
@@ -2751,8 +2777,9 @@
   /* 대표 클럽이 있는 코트 — 이름표에 클럽 이름이 함께 오른다 */
   .lpin b{ font-size:11px;font-weight:700;color:var(--coral-d);padding-left:5px;margin-left:1px;
     border-left:1px solid #e6eaee }
-  .lpin.rep{ border:1px solid #f6d9c4 }
-  .lpin.priv span{ color:#4a56a8 }
+  /* 다른 클럽 홈은 클럽 이름이 붙는 것으로 이미 갈린다 — 테두리까지 다르게 안 한다 */
+  .lpin.rep{ border:1px solid #e0e4e8 }
+  .lpin.priv span{ color:var(--gray) }
   .lv .r.near{ color:var(--lgray);font-size:13px;font-weight:700 }
   .plan2{ display:flex; flex-direction:column; gap:0; }
   /* 그 달 모임이 모두 한 곳일 때만 나온다 */
@@ -5581,7 +5608,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.7-0907a';
+const BUILD='v1.1.8-0909a';
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -14062,7 +14089,7 @@ function cupCardSection(){
   const c=CUPC.cup; if(!c) return '';
   const e=CUPC.entry;
   const need=c.roster_need||10;
-  const pct=Math.min(100, Math.round(c.teams/c.max_teams*100));
+  const max=c.max_teams||8, got=c.teams||0;
 
   /* 이 D-day 는 대회일이 아니라 입금 마감이다.
      숫자만 두면 대회가 코앞인 줄 안다 — 10/31 대회의 D-31 은 10/10 입금 마감이다. */
@@ -14071,9 +14098,18 @@ function cupCardSection(){
     : c.dday===0 ? `입금 <b>오늘 마감</b>`
     :              '입금 마감됨';
 
-  /* ISO 날짜는 안 읽힌다 — ymdKo 가 '10월 31일 (토)' 로 바꿔 준다 */
-  const when=[ymdKo(c.date), c.place].filter(Boolean).join(' · ');
-  const due =c.due_date ? `입금 ${ymdKo(c.due_date)}까지` : '';
+  /* ISO 날짜는 안 읽힌다 — ymdKo 가 '10월 31일 (토)' 로 바꿔 준다.
+     참가비와 입금 마감일은 카드에서 뺐다 — 카드는 <들어올지 말지>만 정하면 되고,
+     숫자는 신청 화면에 다 있다. */
+  const line=[ymdKo(c.date), c.place, '팀당 9매치'].filter(Boolean).join(' · ');
+
+  /* 8팀 중 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
+     칸이 적으면 점을 그대로 센다. 12칸이 넘으면 점이 뭉개지므로 바로 돌아간다. */
+  const fill = max<=12
+    ? `<div class="cdots">${Array.from({length:max},(_,i)=>
+        `<s class="${i<got?'on':''}"></s>`).join('')}<em>${got} / ${max}팀</em></div>`
+    : `<div class="bar"><i style="width:${Math.min(100,Math.round(got/max*100))}%"></i></div>
+       <div class="m">${got}팀 신청 · ${c.left}자리 남음</div>`;
 
   const done = e && e.roster_n>=need;
   return `<div class="cupcard${done?' done':''}" onclick="cupApply()">
@@ -14081,14 +14117,10 @@ function cupCardSection(){
       <div class="t"><i class="ic cup"></i>MATSU CUP ${e?'참가 신청함':'참가 모집'}
         ${dd?`<em>${dd}</em>`:''}</div>
       <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
-      <div class="s">${esc(when)}<br>
-        ${c.max_teams}개 클럽 · 팀당 9매치 · 참가비 ${(c.fee/10000)}만원${
-          due?`<br>${esc(due)}`:''}</div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="m">${e
-        ? `${e.fee_paid?'입금 완료':'입금 대기'} · 엔트리 ${e.roster_n}/${need}명${
-            e.group_label?` · ${e.group_label}조 ${e.seat}번`:''}`
-        : `${c.teams}팀 신청 · ${c.left}자리 남음`}</div>
+      <div class="s">${esc(line)}</div>
+      ${fill}
+      ${e?`<div class="m">${e.fee_paid?'입금 완료':'입금 대기'} · 엔트리 ${e.roster_n}/${need}명${
+            e.group_label?` · ${e.group_label}조 ${e.seat}번`:''}</div>`:''}
     </div>
     <div class="go">${e?(done?'엔트리 보기':'엔트리 채우기'):'참가 신청하기'}</div>
   </div>`;
@@ -16709,9 +16741,10 @@ function landPageHtml(){
     </div>
     <div class="lkey"><span class="w">원 크기는 클럽 규모예요 · 진한 원이 우리 코트</span></div>
     <div class="landsheet">
-      <div class="lhd"><span class="n">${d.flags||0}<em>곳</em></span>
-        <span class="dd">${d.my_rank?`<b>${esc(d.region||'')} ${d.my_rank}위</b>`:'아직 순위가 없어요'}<br>
-          전국 ${(d.all_venues||0).toLocaleString()}곳 중 우리가 가진 코트</span></div>
+      <!-- 순위 블록을 뺐다. 클럽이 하나뿐일 때 <용인시 1위>는 참가상이고,
+           코트 1곳은 거의 모든 클럽이 같아서 아무것도 안 알려준다.
+           d.my_rank / d.flags 는 계속 내려오니 클럽이 늘면 그때 다시 켠다. -->
+      <div id="landNudge"></div>
       ${(d.rank||[]).length>1 ? `<div class="lrank">
         <div class="lrh">${esc(d.region||'우리 시')} 클럽</div>
         ${d.rank.slice(0,5).map((r,i)=>`<div class="lr${r.id==clubId()?' me':''}">
@@ -16986,20 +17019,36 @@ function landPins(near, byVenue, clubIdx, reps){
 /* 지도 아래에 가까운 구장을 몇 곳 적어 준다 —
    지도만으로는 <여기서 뭘 하라는 거지> 가 안 풀린다. 눌러서 바로 잡게 한다. */
 function landNearList(){
-  const box=document.getElementById('landNear'); if(!box) return;
+  const box=document.getElementById('landNear');
   /* 우리 코트는 바로 위에 이미 나왔다. 여기 또 넣으면 다섯 칸 중 하나를
      이미 아는 곳에 쓰게 되고, 지도 중심이라 0m 로 찍혀 <가까운>이 무색해진다.
      번호가 없는 카카오 결과가 섞이므로 이름으로도 한 번 더 거른다. */
   const nrm=x=>String(x||'').replace(/\s/g,'');
   const ours=(LAND&&LAND.venues)||[];
-  const list=(LAND_NEAR||[])
-    .filter(v=>!ours.some(o=>o.venue_id===v.id || nrm(o.name)===nrm(v.name)))
-    .slice(0,5);
+  const all=(LAND_NEAR||[])
+    .filter(v=>!ours.some(o=>o.venue_id===v.id || nrm(o.name)===nrm(v.name)));
+
+  /* 순위를 뺀 자리에 <다음에 뭘 하면 되는지>를 적는다.
+     아직 코트가 없는 클럽에게는 .lnone 이 같은 말을 하고 있으니 겹치지 않게 한다.
+     LAND_NEAR 는 24곳에서 잘리므로 꽉 찼으면 <넘게> 를 붙인다. */
+  const nb=document.getElementById('landNudge');
+  if(nb) nb.innerHTML = (ours.length && all.length)
+    ? `<div class="lnudge">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f1631a" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21s-7-4.5-7-10a7 7 0 0 1 14 0c0 5.5-7 10-7 10z"/>
+          <circle cx="12" cy="11" r="2.5"/></svg>
+        <div class="tx"><b>근처에 테니스장 ${all.length}곳${all.length>=24?' 넘게':''}이 있어요</b>
+          <s>교류전에서 남의 홈에 가서 이기면 그 둘레가 우리 색이 돼요</s></div></div>`
+    : '';
+
+  if(!box) return;
+  const list=all.slice(0,5);
   if(!list.length){ box.innerHTML=''; return; }
   /* 이름 앞 동그라미를 없앴다 — 성격은 곁줄에 <용인시 · 사설> 이라고 글자로 이미 있는데
      동그라미가 같은 말을 색으로 한 번 더 했다. 색과 뜻을 짝지어 외워야 읽히는 것도
      지도에서 방금 없앤 것과 같은 문제다. 우리 코트만 코랄 글씨로 가른다. */
-  box.innerHTML=`<div class="lrh" style="margin:16px 0 2px">가까운 테니스장</div>
+  box.innerHTML=`<div class="lrh">가까운 테니스장</div>
     ${list.map(v=>{
       const sub=[v.sigungu||String(v.addr||'').split(/\s+/).slice(0,2).join(' '),
         v.indoor?'실내':'', kindKo(v.kind)].filter(Boolean).join(' · ');
