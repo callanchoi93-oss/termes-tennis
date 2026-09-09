@@ -2208,6 +2208,8 @@
   /* 마스크는 currentColor 한 색으로만 찍힌다 — 금컵·초록받침을 못 살린다.
      색이 들어간 트로피는 svg 로 그대로 넣는다. */
   .cuptr{ width:18px;height:18px;flex:none;display:block }
+  /* 제목 안에 넣을 때는 글자 옆에 앉아야 한다 — block 이면 혼자 한 줄을 차지한다 */
+  .cuptr.inl{ display:inline-block;vertical-align:-3px;margin-right:5px }
   .cupcard.done .cuptr{ filter:grayscale(1);opacity:.6 }
   .cupcard .t .ic{ width:16px;height:16px;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -2235,12 +2237,19 @@
   /* ── 신청 화면 v2 ──
      큰 회색 안내 상자가 화면의 3분의 1을 먹고 있었는데 아무도 안 읽는다.
      매치 구성을 그림으로 먼저 보여주고, 글은 얇은 한 줄로 줄인다. */
-  .cupg{ display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  /* 시트가 세로 flex 라 남는 높이를 grid 행이 나눠 먹는다 —
+     align-content 를 start 로 묶고 flex 로 늘어나지 않게 한다. */
+  /* 이름을 cupfx 로 둔다 — .cupg 는 초청(비회원) 화면이 이미 쓰고 있고
+     거기 min-height:100vh 가 걸려 있어서, 같은 이름을 쓰면 이 표가
+     화면 높이만큼 늘어나 칸 사이가 텅 비어 버린다. */
+  .cupfx{ display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;
+    align-content:start;gap:1px;background:var(--line);
     border-radius:14px;overflow:hidden;margin-top:6px }
-  .cupg .cell{ background:#fff;padding:11px 13px }
-  .cupg .k{ font-size:11px;color:var(--lgray);font-weight:700 }
-  .cupg .v{ font-size:14.5px;font-weight:800;letter-spacing:-.03em;margin-top:2px }
-  .cupg .v s{ text-decoration:none;font-size:11px;color:var(--lgray);
+  .cupfx .cell{ background:#fff;padding:11px 13px;min-width:0 }
+  .cupfx .k{ font-size:11px;color:var(--lgray);font-weight:700 }
+  .cupfx .v{ font-size:14.5px;font-weight:800;letter-spacing:-.03em;margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .cupfx .v s{ text-decoration:none;font-size:11px;color:var(--lgray);
     font-weight:600;margin-left:3px }
   .cuphint{ display:flex;gap:8px;font-size:12.5px;color:var(--gray);
     line-height:1.6;margin-top:11px;text-align:left }
@@ -13781,10 +13790,10 @@ function cupApplyDraw(){
     : f<needF ? `여자 ${needF-f}명이 더 필요해요` : '';
 
   document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${cupTrophy()} MATSU CUP 참가 신청</h3>
+    <div class="sh-top"><h3>${cupTrophy('inl')}${esc(c.title||'맞수 리그')}</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
-    <div class="cupg">
+    <div class="cupfx">
       <div class="cell"><div class="k">대회일</div>
         <div class="v">${esc(c.date?ymdKo(c.date):'미정')}</div></div>
       <div class="cell"><div class="k">참가비</div>
@@ -13803,16 +13812,14 @@ function cupApplyDraw(){
       <div class="b">예금주 ${esc(c.pay.holder||'')}</div></div>`:''}
 
     <div class="vsec2" style="margin-top:20px"><b>이렇게 세 매치를 칩니다</b></div>
-    <div class="cupmx">
-      <div class="m"><div class="no">MATCH 1</div><div class="kd">남복</div>
-        <div class="cp">제한 없음</div><div class="wh"><s></s><s></s></div></div>
-      <div class="m"><div class="no">MATCH 2</div><div class="kd">혼복</div>
-        <div class="cp">구력 20년</div><div class="wh"><s></s><s class="f"></s></div></div>
-      <div class="m"><div class="no">MATCH 3</div><div class="kd">혼복</div>
-        <div class="cp">구력 20년</div><div class="wh"><s></s><s class="f"></s></div></div>
+    <div class="cupmx">${[[1,'남복'],[2,'혼복'],[3,'혼복']].map(([no,kd])=>{
+      const lim=(c.cap||{})[no];
+      return `<div class="m"><div class="no">MATCH ${no}</div><div class="kd">${kd}</div>
+        <div class="cp">${lim?`구력 합 ${lim}년`:'제한 없음'}</div>
+        <div class="wh"><s></s><s class="${no===1?'':'f'}"></s></div></div>`;}).join('')}
     </div>
     <div class="cuphint"><i>◆</i><div>남자 ${needM}명, 여자 ${needF}명이
-      <b>정확히 한 매치씩</b> 뜁니다. 짝은 구력 합산으로 묶어요.</div></div>
+      <b>정확히 한 매치씩</b> 뜁니다. 아무도 두 번 나올 수 없어요.</div></div>
 
     <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
       <span class="${full?'ok':''}">${picked.length}/${need}명</span></div>
@@ -13940,7 +13947,7 @@ async function cupGuestOpen(tok){
 }
 function cupGuestFail(msg){
   document.body.innerHTML=`<div class="cupg">
-    <div class="cupg-card"><div class="t">MATSU CUP</div>
+    <div class="cupg-card"><div class="t">MATSU League</div>
       <div class="m">${esc(msg)}</div>
       <div class="s">링크를 다시 확인해 주세요</div></div></div>`;
 }
@@ -13954,8 +13961,8 @@ function cupGuestDraw(){
 
   document.body.innerHTML=`<div class="cupg">
     <div class="cupg-hd">
-      <div class="t">MATSU CUP</div>
-      <div class="s">${esc(c.host||'')} 초청 클럽대항전</div>
+      <div class="t">MATSU League</div>
+      <div class="s">${esc(c.title||'')}</div>
     </div>
 
     <div class="cupg-card">
@@ -14080,7 +14087,7 @@ function hcHead(title, sub){
    클럽 → 홈코트 → 지도 → 코트 를 통과하게 하면 안 온다.
 
    화면 자체는 클럽 탭 안의 페이지와 같은 걸 쓴다. 그릴 자리만 다르다. */
-let TALK_TAB=null, TALK_WAIT=null;
+let TALK_TAB=null, TALK_WAIT=null, TALK_TRY=0;
 /* 내 활동에 적을 <나의 일정> — 오늘부터 앞으로 남은 내 것만 센다.
    지난 것까지 세면 숫자가 불어나기만 해서 눌러볼 이유가 없다. */
 function schedCount(){
@@ -14101,17 +14108,28 @@ function renderTalkTab(){
      아직 false 라서 <연결이 끊겼어요>가 떴다. 서버가 멀쩡한데도 그랬다.
      기다리는 중과 정말 끊긴 것을 갈라야 한다. */
   if(!SERVER_OK){
+    /* 700ms 마다 영원히 다시 그리면 <불러오는 중>에서 절대 안 벗어난다.
+       열 번(=7초) 기다린 뒤에는 정말 안 되는 것으로 보고 손잡이를 준다. */
+    TALK_TRY=(TALK_TRY||0)+1;
     el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
-      <div class="empty"><div class="et">불러오는 중…</div></div>`;
-    /* 응답이 오면 다시 그린다 — 놓치면 <불러오는 중>에서 멈춘다 */
-    clearTimeout(TALK_WAIT);
-    TALK_WAIT=setTimeout(()=>{ if(state.view==='talk') renderTalkTab(); }, 700);
+      <div class="empty">${TALK_TRY>10
+        ? `<div class="et">연결이 안 돼요</div>
+           <div class="es">잠시 뒤 다시 눌러주세요</div>
+           <button class="btn ghost sm" style="margin-top:12px"
+             onclick="TALK_TRY=0;renderTalkTab()">다시 시도</button>`
+        : '<div class="et">불러오는 중…</div>'}</div>`;
+    if(TALK_TRY<=10){
+      clearTimeout(TALK_WAIT);
+      TALK_WAIT=setTimeout(()=>{ if(state.view==='talk') renderTalkTab(); }, 700);
+    }
     return;
   }
+  TALK_TRY=0;
   /* 클럽이 없어도 들어온다 — 전국톡은 누구나 낄 수 있는 자리다.
      구장톡만 클럽이 있어야 열린다. */
   if(TALK_TAB!==cid){
-    TALK_TAB=cid;
+    /* TALK_TAB 을 먼저 바꾸면, 불러오기가 실패했을 때 <이미 불렀다>고 여겨
+       다시 들어와도 빈 화면만 나온다. 성공한 뒤에 openCourtTalk 이 바꾼다. */
     el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
       <div class="empty"><div class="et">불러오는 중…</div></div>`;
     talkTabLoad(cid);
@@ -14214,7 +14232,7 @@ function cupCardSection(){
   const done = e && e.roster_n>=need;
   return `<div class="cupcard${done?' done':''}" onclick="cupApply()">
     <div class="b">
-      <div class="t">${cupTrophy()}MATSU CUP ${e?'참가 신청함':'참가 모집'}
+      <div class="t">${cupTrophy()}MATSU League ${e?'참가 신청함':'참가 모집'}
         ${dd?`<em>${dd}</em>`:''}</div>
       <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
       <div class="s">${esc(line)}</div>
@@ -17427,13 +17445,30 @@ async function openCourtTalk(vid,scope,cat){
   TALK.vid=vid; TALK.scope=sc;
   let d=null;
   try{ d=await api(`/venues/${vid}/talk?scope=${TALK.scope}${TALK.cat?`&cat=${TALK.cat}`:''}`); }
-  catch(e){ return toast('불러오지 못했어요'); }
+  catch(e){
+    toast(apiWhy(e,'불러오지 못했어요'));
+    /* 라운지 탭에서 부른 것이면 화면을 되돌려 준다 — 토스트만 띄우고 끝내면
+       <불러오는 중…> 이 그대로 남아 앱이 멈춘 것처럼 보인다. */
+    if(talkHost()==='talk'){
+      const el=document.getElementById('s-talk');
+      if(el) el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
+        <div class="empty"><div class="et">불러오지 못했어요</div>
+          <div class="es">${esc(apiWhy(e,''))||'잠시 뒤 다시 눌러주세요'}</div>
+          <button class="btn ghost sm" style="margin-top:12px"
+            onclick="openCourtTalk(${vid},'${esc(sc)}')">다시 시도</button></div>`;
+    }
+    return;
+  }
   TALK.posts=d.posts||[]; TALK.locked=!!d.locked;
   TALK.venue=d.venue||TALK.venue||'구장톡';
   TALK.clubs=d.clubs||[];
   TALK.nick=d.my_nick||TALK.nick||'';
   TALK.cats=d.cats||[]; TALK.picks=d.picks||[];
-  TALK_TAB=clubId();          // 탭에서 열었으면 다시 불러오지 않게
+  /* ||0 을 빼면 안 된다 — clubId() 는 클럽이 없을 때 null 을 준다.
+     renderTalkTab 은 clubId()||0 으로 0 을 보므로 null !== 0 이 되어
+     <다 불러왔는데도 다시 불러오기>가 끝없이 돈다. 클럽 없는 계정이
+     라운지에서 <불러오는 중…> 에 갇혔던 이유가 이것이다. */
+  TALK_TAB=clubId()||0;       // 탭에서 열었으면 다시 불러오지 않게
   /* 본 것으로 남긴다 — 클럽 탭의 <새 글> 점이 여기서 꺼진다 */
   if(TALK.scope==='court' && !TALK.locked){
     api(`/venues/${vid}/talk/seen`,{method:'POST',body:'{}'}).then(()=>{
