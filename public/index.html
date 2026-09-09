@@ -2300,7 +2300,7 @@
   .tkloc{ font-size:14px;font-weight:700;color:#a8a7a1;letter-spacing:-.02em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .tkloc em{ font-style:normal;color:var(--gray) }
-  .tkp .ti{ margin:6px 0 8px }
+  .tkp .ti{ margin:6px 0 7px }
      제목이 없는 글은 본문 첫 줄이 제목 자리에 온다. 빈 줄로 두지 않는다. */
   .tkp .ti b{ display:-webkit-box;font-size:17px;font-weight:700;letter-spacing:-.035em;
     line-height:1.4;overflow:hidden;text-overflow:ellipsis;
@@ -2340,10 +2340,12 @@
   /* 목록에서 투표가 달린 글은 바로 보이게 — 눌러볼 이유가 된다 */
   /* 투표 배지 — .ic 는 마스크만 있는 클래스라 배경과 크기를 여기서 준다.
      안 주면 아이콘이 안 보이고 칸만 부푼다. */
-  .pchip{ display:inline-flex;align-items:center;gap:6px;margin-top:9px;
-    border:1px solid var(--line);border-radius:9px;padding:5px 11px;
-    font-size:13px;line-height:1.4;color:var(--gray);vertical-align:middle }
-  .pchip .ic{ width:15px;height:15px;flex:none;display:block;background:currentColor;
+  /* 투표 배지 — 제목 아래에 붙는 작은 딱지다. 통계 줄만큼 가벼워야
+     제목이 주인공으로 남는다. */
+  .pchip{ display:inline-flex;align-items:center;gap:5px;
+    border:1px solid var(--line);border-radius:8px;padding:4px 9px;
+    font-size:12.5px;line-height:1.35;color:var(--gray);vertical-align:middle }
+  .pchip .ic{ width:13px;height:13px;flex:none;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
   .ltags{ display:flex;gap:5px;flex-wrap:wrap;margin-top:7px }
@@ -2466,8 +2468,8 @@
     color:#fff;font-family:inherit;font-size:15px;font-weight:700;padding:11px 22px;
     cursor:pointer }
   .wgo:active{ transform:translateY(1px) }
-  .pchip b{ font-weight:700;color:var(--coral-d) }
-  .pwrap{ margin-top:9px }
+  .pchip b{ font-size:12.5px;font-weight:700;color:var(--coral-d) }
+  .pwrap{ margin:0 0 8px }
   .wtool{ display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;
     border:1px solid var(--line);border-radius:12px;padding:11px 0;
     font-size:13.5px;color:var(--gray);cursor:pointer }
@@ -16940,13 +16942,13 @@ function talkBodyHtml(){
           ${ph.length>1?`<span>+${ph.length-1}</span>`:''}</div>`:''}
         ${head?`<div class="tkloc">${p.hidden?'<em>가려짐</em> · ':''}${head}</div>`:''}
         <div class="ti"><b>${esc(p.title || String(p.body||'').replace(/\s+/g,' ').slice(0,60))}</b></div>
+        ${p.has_poll?`<div class="pwrap"><span class="pchip">
+          <i class="ic vote"></i>투표 <b>${p.poll_n}명</b></span></div>`:''}
         <div class="tkby">
           <span class="av anon">${esc(String(p.who||'익').slice(0,1))}</span>
           <span class="n">${esc(p.who||'익명')}</span>
           ${t.scope==='all'&&p.club?`<span class="s">${esc(p.club)}</span>`:''}
         </div>
-        ${p.has_poll?`<div class="pwrap"><span class="pchip">
-          <i class="ic vote"></i>투표 <b>${p.poll_n}명</b></span></div>`:''}
         <div class="mt">
           <span><i class="ic eye"></i>${p.views||0}</span>
           <span><i class="ic rct"></i>${p.react_n||0}</span>
