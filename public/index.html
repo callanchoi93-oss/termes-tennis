@@ -2193,8 +2193,9 @@
 
   /* ── MATSU CUP · 클럽 탭 모집 카드 ──
      모집 기간에만 뜬다. 늘 붙어 있으면 클럽 탭이 광고판이 된다. */
+  /* 아래 여백이 없어 다음 칸 제목(<클럽 모집>)이 카드에 붙어 보였다 */
   .cupcard{ border:1.5px solid var(--coral);border-radius:16px;overflow:hidden;
-    background:#fff;margin-top:14px;cursor:pointer }
+    background:#fff;margin:14px 0 22px;cursor:pointer }
   .cupcard.done{ border-color:var(--line) }
   .cupcard .b{ padding:14px 15px 13px }
   .cupcard .t{ display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;
@@ -2229,14 +2230,25 @@
   .cupcard.live .m{ color:#8d97a6 }
   .cupcard.live .go{ border-top-color:#2b3444;color:#ff8b4d }
   .cupcard.live .cuptr{ filter:none }
+  /* 코트마다 누가 뛰는지 — 클럽 이름만 보면 <누구랑 붙는지>를 알 수 없다.
+     짝은 엔트리 낼 때 이미 정해져 있으니 그대로 편다. */
   .cuplv{ display:flex;flex-direction:column;gap:7px;margin-top:12px }
-  .cuplv .g{ display:flex;align-items:center;gap:8px;background:#242c38;border-radius:11px;
-    padding:9px 11px }
-  .cuplv .g .nm{ flex:1;min-width:0;font-size:13px;font-weight:700;color:#fff;
+  .cuplv .g{ background:#242c38;border-radius:11px;padding:10px 12px }
+  .cuplv .g .hd{ display:flex;align-items:center;gap:6px;margin-bottom:6px }
+  .cuplv .g .ct{ flex:none;font-size:12px;font-weight:700;color:#cfd6df;
+    background:#333d4c;border-radius:6px;padding:2px 7px }
+  .cuplv .g .kd{ flex:none;font-size:12px;font-weight:700;color:#8d97a6 }
+  .cuplv .g .kd.mx{ color:#d9a0bd }
+  .cuplv .g .vs{ margin-left:auto;font-size:12px;color:#8d97a6;min-width:0;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .cuplv .g .sc{ flex:none;font-size:15px;font-weight:700;color:#fff;
-    font-variant-numeric:tabular-nums }
-  .cuplv .g .ct{ flex:none;font-size:12px;color:#8d97a6 }
+  .cuplv .g .r{ display:flex;align-items:center;gap:8px;padding:2px 0 }
+  .cuplv .g .r .nm{ flex:1;min-width:0;font-size:14px;color:#cfd6df;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .cuplv .g .r.us .nm{ color:#fff;font-weight:700 }
+  .cuplv .g .r .y{ flex:none;font-size:12px;color:#6f7a89 }
+  .cuplv .g .r .pt{ flex:none;width:20px;text-align:right;font-size:16px;font-weight:700;
+    color:#6f7a89;font-variant-numeric:tabular-nums }
+  .cuplv .g .r.w .pt{ color:#ff8b4d }
   .cuplv .clk{ display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;
     color:#ffb45c;margin-top:2px }
   .cuplv .clk s{ text-decoration:none;width:6px;height:6px;border-radius:4px;background:#ff5c33 }
@@ -3107,7 +3119,15 @@
   .tkpeek .pm{ margin-top:4px;font-size:11.5px;color:var(--lgray) }
   .tklock{ text-align:center;color:var(--lgray);font-size:15px;padding:36px 10px 18px;
     line-height:1.7 }
-  .tklock .ic{ width:42px;height:42px;margin:0 auto 14px;background:#e6eaee;border-radius:50% }
+  /* 회색 동그라미만 놓아두면 그림이 안 뜬 것처럼 보인다 — 자물쇠를 그려 넣는다 */
+  .tklock .ic{ width:46px;height:46px;margin:0 auto 14px;border-radius:50%;
+    background:var(--felt);display:flex;align-items:center;justify-content:center }
+  .tklock .ic::after{ content:"";width:22px;height:22px;display:block;background:#a8b0b8;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-position:center;mask-position:center;
+    -webkit-mask-size:contain;mask-size:contain;
+    -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='10' width='16' height='11' rx='2.5'/><path d='M8 10V7a4 4 0 0 1 8 0v3'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='10' width='16' height='11' rx='2.5'/><path d='M8 10V7a4 4 0 0 1 8 0v3'/></svg>") }
   .tklock span{ font-size:13.5px }
   .tklist{ margin-top:14px }
   .tkp{ padding:18px 0;border-top:1px solid var(--line);cursor:pointer }
@@ -14652,15 +14672,23 @@ function cupCardSection(){
           <em>${LV.played} / ${LV.total}매치</em></div>
         <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
         <div class="cuplv">
-          ${(LV.ties||[]).slice(0,3).map(x=>{
-            let a=0,b2=0; (x.courts||[]).forEach(o=>{ if(o.a==null) return;
-              if(o.a>o.b) a++; else if(o.b>o.a) b2++; });
-            return `<div class="g"><span class="nm">${esc(x.home_name)}</span>
-              <span class="sc">${a} : ${b2}</span>
-              <span class="nm" style="text-align:right">${esc(x.away_name)}</span></div>`;
-          }).join('')}
+          ${(LV.courts||[]).map(o=>{
+            const done=o.a!=null;
+            return `<div class="g">
+              <div class="hd"><span class="ct">${o.court}번</span>
+                <span class="kd ${o.kind==='mixed'?'mx':''}">${o.kind==='mixed'?'혼복':'남복'}</span>
+                <span class="vs">${esc(o.home_name)} vs ${esc(o.away_name)}</span></div>
+              <div class="r${done&&o.a>o.b?' w':''}">
+                <span class="nm">${esc((o.pa||[]).join(' · ')||o.home_name)}</span>
+                ${o.ya?`<span class="y">${o.ya}년</span>`:''}
+                <span class="pt">${done?o.a:'–'}</span></div>
+              <div class="r${done&&o.b>o.a?' w':''}">
+                <span class="nm">${esc((o.pb||[]).join(' · ')||o.away_name)}</span>
+                ${o.yb?`<span class="y">${o.yb}년</span>`:''}
+                <span class="pt">${done?o.b:'–'}</span></div>
+            </div>`; }).join('')}
           <div class="clk"><s></s>${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} 남음
-            · ${(LV.ties||[]).reduce((k,x)=>k+(x.courts||[]).length,0)}코트</div>
+            · ${(LV.courts||[]).length}코트</div>
         </div>
       </div>
       <div class="go">대진·점수 보기</div>
@@ -14968,13 +14996,22 @@ function cupDayDraw(){
       ${host&&cur?`<button class="cupgo ghost" onclick="cupSlotStop(${cur.s})">
         ${esc(cur.start||'')} 시작 취소</button>`:''}
       ${(()=>{ /* 16칸 레일은 옆으로 밀어야 해서 선수에게 쓸모가 적다.
-           내 경기 넉 칸만 세우고 전체는 눌러서 본다. */
-        const mineS=slots.filter(x=>me&&x.ms.some(z=>z.t.home===me||z.t.away===me));
-        if(!mineS.length) return `<button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
-        return `<div class="cupmine">${mineS.map(x=>{
-          const on=cur&&cur.s===x.s;
-          const k=x.done?'done':on?'now':'';
-          const lab=x.done?'끝':on?'지금':'대기';
+           내 경기만 세우고 전체는 눌러서 본다.
+           칸(슬롯)이 아니라 <경기(타이)> 단위여야 한다 — 한 타이가 여러 칸에 걸치면
+           10:00 과 10:30 이 따로 나와 두 경기인 줄 안다. 실은 같은 경기다. */
+        const mineT=[];
+        rounds.forEach(r=>(r.ties||[]).forEach(t=>{
+          if(!isMine(t)) return;
+          const ms=(t.matches||[]);
+          const st=Math.max(0,...ms.map(m=>tm[m.key]||0));
+          const done=ms.length&&ms.every(m=>sc[m.key]&&sc[m.key].a!=null);
+          const on=ms.some(m=>tm[m.key]&&tm[m.key]+dur>now);
+          mineT.push({start:r.start, done, on});
+        }));
+        if(!mineT.length) return `<button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
+        return `<div class="cupmine">${mineT.map(x=>{
+          const k=x.done?'done':x.on?'now':'';
+          const lab=x.done?'끝':x.on?'지금':'대기';
           return `<div class="c ${k}"><div class="t">${esc(x.start||'')}</div>
             <div class="s">${lab}</div></div>`; }).join('')}</div>
           <button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
@@ -18530,7 +18567,7 @@ function talkBodyHtml(){
 
   /* 잠긴 이유가 둘이라 안내가 달라야 한다.
      클럽이 없는 사람에게 <운영진이 걸면 열려요>라고 하면 아무것도 할 수 없다. */
-  const noClub=!clubId();
+  const noClub=!clubId() && !(TALK_COURTS||[]).length;
   if(noClub && t.scope==='court'){
     return h+`<div class="tklock">
       <div class="ic"></div>
