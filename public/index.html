@@ -2219,39 +2219,22 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M7 4h10v5a5 5 0 0 1-10 0z'/><path d='M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'/><path d='M12 14v3M9 20h6'/></svg>") }
   .cupcard .n{ font-size:17px;font-weight:700;letter-spacing:-.03em;margin-top:5px }
   .cupcard .s{ font-size:13px;color:var(--gray);line-height:1.6;margin-top:4px }
-  /* 경기가 시작되면 카드가 옷을 갈아입는다 — 모집 카드가 그대로 있으면
-     오늘 뭐가 도는지 알 수 없다. */
-  .cupcard.live{ border-color:var(--ink);background:var(--ink) }
-  .cupcard.live .t{ color:#ff8b4d }
-  .cupcard.live .t em{ color:#8d97a6 }
-  .cupcard.live .t em b{ color:#cfd6df }
-  .cupcard.live .n{ color:#fff }
-  .cupcard.live .s{ color:#98a3b5 }
-  .cupcard.live .m{ color:#8d97a6 }
-  .cupcard.live .go{ border-top-color:#2b3444;color:#ff8b4d }
-  .cupcard.live .cuptr{ filter:none }
-  /* 코트마다 누가 뛰는지 — 클럽 이름만 보면 <누구랑 붙는지>를 알 수 없다.
-     짝은 엔트리 낼 때 이미 정해져 있으니 그대로 편다. */
-  .cuplv{ display:flex;flex-direction:column;gap:7px;margin-top:12px }
-  .cuplv .g{ background:#242c38;border-radius:11px;padding:10px 12px }
-  .cuplv .g .hd{ display:flex;align-items:center;gap:6px;margin-bottom:6px }
-  .cuplv .g .ct{ flex:none;font-size:12px;font-weight:700;color:#cfd6df;
-    background:#333d4c;border-radius:6px;padding:2px 7px }
-  .cuplv .g .kd{ flex:none;font-size:12px;font-weight:700;color:#8d97a6 }
-  .cuplv .g .kd.mx{ color:#d9a0bd }
-  .cuplv .g .vs{ margin-left:auto;font-size:12px;color:#8d97a6;min-width:0;
+  /* 경기가 도는 중이어도 카드는 흰 종이 그대로다.
+     클럽 탭에서 알고 싶은 건 <지금 도는가>와 <우리 점수> 둘뿐이고,
+     코트 넷을 다 펴면 카드가 화면 절반을 먹는다. 자세한 건 눌러 들어가면 있다. */
+  .cuplive{ display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;
+    color:var(--coral-d);margin-top:9px }
+  .cuplive s{ text-decoration:none;width:7px;height:7px;border-radius:4px;background:var(--coral) }
+  .cuplive u{ text-decoration:none;color:var(--lgray);font-weight:400 }
+  /* 우리 경기 한 줄 — 남의 코트는 대진 화면에 다 있다 */
+  .cupmy{ display:flex;align-items:center;gap:9px;margin-top:11px;padding:11px 12px;
+    background:var(--coral-s);border-radius:12px }
+  .cupmy .ct{ font-size:12px;font-weight:700;color:var(--coral-d);background:#fff;
+    border-radius:6px;padding:2px 7px;flex:none }
+  .cupmy .who{ flex:1;min-width:0;font-size:14px;font-weight:700;letter-spacing:-.02em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .cuplv .g .r{ display:flex;align-items:center;gap:8px;padding:2px 0 }
-  .cuplv .g .r .nm{ flex:1;min-width:0;font-size:14px;color:#cfd6df;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .cuplv .g .r.us .nm{ color:#fff;font-weight:700 }
-  .cuplv .g .r .y{ flex:none;font-size:12px;color:#6f7a89 }
-  .cuplv .g .r .pt{ flex:none;width:20px;text-align:right;font-size:16px;font-weight:700;
-    color:#6f7a89;font-variant-numeric:tabular-nums }
-  .cuplv .g .r.w .pt{ color:#ff8b4d }
-  .cuplv .clk{ display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;
-    color:#ffb45c;margin-top:2px }
-  .cuplv .clk s{ text-decoration:none;width:6px;height:6px;border-radius:4px;background:#ff5c33 }
+  .cupmy .sc{ flex:none;font-size:16px;font-weight:700;color:var(--coral-d);
+    font-variant-numeric:tabular-nums }
 
   /* 8팀 대회에서 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
      칸이 적을 때는 점을 그대로 세는 편이 정확하다. 12칸이 넘어가면 바로 돌아간다. */
@@ -2346,60 +2329,6 @@
     cursor:pointer;white-space:nowrap }
   .cupflt div.on{ background:var(--ink);border-color:var(--ink);color:#fff }
 
-  /* ── 클럽 탭 · 한 줄 목록 ──
-     대회·홈코트·코트지도·교류전은 성격이 다른 네 칸이 아니라
-     전부 <이 클럽에 딸린 것>이다. 카드 네 장으로 세우니 서로 싸웠다.
-     클럽을 머리에 두고 한 줄씩 붙이면 그 관계가 저절로 보인다. */
-  .cdesk{ margin-top:14px }
-  .cdesk-hd{ display:flex;align-items:center;gap:12px;background:var(--felt);
-    border-radius:16px;padding:14px 15px;cursor:pointer }
-  .cdesk-hd .lg{ width:46px;height:46px;border-radius:13px;flex:none;overflow:hidden;
-    background:#dfe3e8;display:flex;align-items:center;justify-content:center;
-    font-size:17px;font-weight:700;color:#fff }
-  .cdesk-hd .lg img{ width:100%;height:100%;object-fit:cover;display:block }
-  .cdesk-hd .c{ flex:1;min-width:0 }
-  .cdesk-hd .c b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.02em }
-  .cdesk-hd .c span{ display:block;font-size:12px;color:var(--lgray);margin-top:2px }
-  .cdesk-hd .ar{ color:#b9c0c7;font-size:17px;flex:none }
-  /* 다음 모임 — 이 탭에서 가장 자주 확인하는 값이라 따로 떼어낸다 */
-  .cdesk-next{ display:flex;align-items:center;gap:8px;margin-top:9px;padding:11px 13px;
-    background:#fff;border:1px solid var(--line);border-radius:12px;font-size:13px;cursor:pointer }
-  .cdesk-next i{ width:6px;height:6px;border-radius:4px;background:var(--green);flex:none }
-  .cdesk-next b{ font-weight:700;letter-spacing:-.02em }
-  .cdesk-next em{ margin-left:auto;font-style:normal;color:var(--lgray);font-size:12px }
-  .cdesk-lab{ font-size:12px;font-weight:700;color:#b9c0c7;letter-spacing:.04em;margin:22px 0 2px }
-  .cdesk-r{ display:flex;align-items:center;gap:12px;padding:14px 2px;
-    border-bottom:1px solid var(--line);cursor:pointer }
-  .cdesk-r .ic{ width:32px;height:32px;border-radius:10px;background:var(--felt);flex:none;
-    display:flex;align-items:center;justify-content:center }
-  .cdesk-r.hot .ic{ background:var(--coral-s) }
-  .cdesk-r .ic i{ width:17px;height:17px;display:block;background:var(--gray);
-    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
-    -webkit-mask-position:center;mask-position:center;
-    -webkit-mask-size:contain;mask-size:contain }
-  .cdesk-r.hot .ic i{ background:var(--coral-d) }
-  /* 앱에 이미 .ic.cup · .ic.map · .ic.talk 이 있다 — 없는 것만 새로 그린다 */
-  .ic.vs{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h4l2 10h4l2-10h4'/><path d='M12 3v3M12 18v3'/></svg>");
-    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h4l2 10h4l2-10h4'/><path d='M12 3v3M12 18v3'/></svg>") }
-  .ic.court{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='5' width='18' height='14' rx='1.5'/><path d='M12 5v14M3 12h18M7 9v6M17 9v6'/></svg>");
-    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='5' width='18' height='14' rx='1.5'/><path d='M12 5v14M3 12h18M7 9v6M17 9v6'/></svg>") }
-  .ic.find{ -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>");
-    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>") }
-  .cdesk-r .c{ flex:1;min-width:0 }
-  .cdesk-r .c b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.02em;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .cdesk-r.hot .c b{ color:var(--coral-d) }
-  .cdesk-r .c span{ display:block;font-size:13px;color:var(--lgray);margin-top:1px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-  .cdesk-r .tag{ flex:none;font-size:12px;font-weight:700;color:var(--coral-d);
-    background:var(--coral-s);border-radius:7px;padding:3px 8px }
-  .cdesk-r .tag.live{ background:var(--ink);color:#ff8b4d }
-  .cdesk-r .ar{ color:#d6dbe0;font-size:17px;flex:none }
-  .cdesk-new{ display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px;
-    height:46px;border-radius:13px;border:1px dashed var(--line2, #e5e8eb);
-    font-size:14px;color:var(--gray);cursor:pointer }
-  /* 찾기는 다른 일이다 — 선 하나로 가른다 */
-  .cdesk-find{ margin-top:26px;padding-top:20px;border-top:1px solid var(--line) }
   /* 찾기는 <내 클럽>과 다른 일이다 — 제목 위에 선을 긋고 여백을 준다 */
   .clubfind-h{ margin-top:26px;padding-top:20px;border-top:1px solid var(--line) }
 
@@ -11939,7 +11868,10 @@ function renderClub(){
     /* 예전에는 클럽 카드 · 대회 · 홈코트 · 교류전이 각각 카드로 서서
        한 화면에 다섯 종류가 겹쳤다. 전부 <이 클럽의 일>이라 하나로 묶는다.
        대회 기간에는 대회를 맨 위로 올린다(clubDesk 안에서 갈린다). */
-    h+=clubDesk();
+    h+=myClubsBlock();
+    h+=cupCardSection();
+    h+=homeCourtSection();
+    h+=xcSection();
     /* 지역 칩 — '경기도 용인시 처인구'와 '용인 처인구'가 각각 칩이 되던 문제.
        시·도와 시·군·구만 짧게 남겨 같은 지역은 한 칩으로 묶는다. */
     const regShort = r => { const t=String(r||'').trim().split(/\s+/);
@@ -14722,50 +14654,30 @@ function cupCardSection(){
   const done = e && e.roster_n>=need;
   const over = c.date && c.date < ymd();
   const LV = c.live;
-  /* 칸과 칸 사이(전환 시간)에도 대회는 도는 중이다.
-     여기서 <참가 확정> 카드로 돌아가면 끝난 줄 안다. */
-  if(LV && LV.between){
-    const nx=LV.next;
-    return `<div class="cupcard live" onclick="cupDay()">
+  /* 칸과 칸 사이(전환 시간)에도, 도는 중에도 카드는 흰 종이 그대로다.
+     클럽 탭에서 알고 싶은 건 <지금 도는가>와 <우리 점수> 둘뿐이라
+     코트 넷을 다 펴지 않는다 — 자세한 건 눌러 들어가면 있다. */
+  if(LV && (LV.on || LV.between)){
+    const mm=Math.floor((LV.left_ms||0)/60000), ss=Math.floor((LV.left_ms||0)%60000/1000);
+    const me=(e&&e.id)||0;
+    /* 우리 경기가 도는 중이면 그 한 줄만 — 없으면 남은 시간만 남는다 */
+    const my=(LV.courts||[]).find(o=>me&&(o.home===me||o.away===me));
+    const mine=my?(my.home===me?{p:my.pa,y:my.ya,a:my.a,b:my.b}
+      :{p:my.pb,y:my.yb,a:my.b,b:my.a}):null;
+    return `<div class="cupcard" onclick="cupDay()">
       <div class="b">
-        <div class="t">${cupTrophy()}전환 시간
+        <div class="t">${cupTrophy()}${LV.on?`LIVE · ${esc(LV.start||'')}`:'전환 시간'}
           <em>${LV.played} / ${LV.total}매치</em></div>
         <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
-        <div class="s">${nx?`다음 ${esc(nx.start)} · ${nx.courts}코트`:'점수 입력을 기다려요'}</div>
-        <div class="cuplv"><div class="clk"><s style="background:#f0b429"></s>
-          물 마시고 코트를 바꿔요</div></div>
-      </div>
-      <div class="go">대진·점수 보기</div>
-    </div>`;
-  }
-  /* 경기가 도는 중이면 카드가 라이브가 된다. 참가 안 한 클럽도, 클럽이 없는 사람도
-     같은 카드를 본다 — 대회는 플랫폼이 여는 것이다. */
-  if(LV && LV.on){
-    const mm=Math.floor(LV.left_ms/60000), ss=Math.floor(LV.left_ms%60000/1000);
-    return `<div class="cupcard live" onclick="cupDay()">
-      <div class="b">
-        <div class="t">${cupTrophy()}LIVE · ${esc(LV.start||'')}
-          <em>${LV.played} / ${LV.total}매치</em></div>
-        <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
-        <div class="cuplv">
-          ${(LV.courts||[]).map(o=>{
-            const done=o.a!=null;
-            return `<div class="g">
-              <div class="hd"><span class="ct">${o.court}번</span>
-                <span class="kd ${o.kind==='mixed'?'mx':''}">${o.kind==='mixed'?'혼복':'남복'}</span>
-                <span class="vs">${esc(o.home_name)} vs ${esc(o.away_name)}</span></div>
-              <div class="r${done&&o.a>o.b?' w':''}">
-                <span class="nm">${esc((o.pa||[]).join(' · ')||o.home_name)}</span>
-                ${o.ya?`<span class="y">${o.ya}년</span>`:''}
-                <span class="pt">${done?o.a:'–'}</span></div>
-              <div class="r${done&&o.b>o.a?' w':''}">
-                <span class="nm">${esc((o.pb||[]).join(' · ')||o.away_name)}</span>
-                ${o.yb?`<span class="y">${o.yb}년</span>`:''}
-                <span class="pt">${done?o.b:'–'}</span></div>
-            </div>`; }).join('')}
-          <div class="clk"><s></s>${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} 남음
-            · ${(LV.courts||[]).length}코트</div>
-        </div>
+        ${LV.on
+          ? `<div class="cuplive"><s></s>${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} 남음
+              <u>· ${(LV.courts||[]).length}코트 진행 중</u></div>`
+          : `<div class="cuplive"><s style="background:var(--gold)"></s>전환 시간
+              <u>${LV.next?`· 다음 ${esc(LV.next.start)}`:'· 점수 입력을 기다려요'}</u></div>`}
+        ${mine?`<div class="cupmy">
+          <span class="ct">${my.court}번</span>
+          <span class="who">${esc((mine.p||[]).join(' · '))}</span>
+          <span class="sc">${mine.a==null?'–':mine.a} : ${mine.b==null?'–':mine.b}</span></div>`:''}
       </div>
       <div class="go">대진·점수 보기</div>
     </div>`;
@@ -15437,11 +15349,10 @@ function homeCourtSection(){
   }
   if(HC===null || HC.cid!==cid){ hcLoad(); return ''; }
 
+  /* 구장톡 버튼은 뺐다 — 라운지 탭이 이미 그 문이다.
+     같은 문이 두 개면 어느 쪽이 진짜인지 헷갈린다. */
   const doors=(vid)=>`<div class="hc-doors">
     <div class="hc-d" onclick="openLand()"><i class="ic map"></i>코트 지도</div>
-    <div class="hc-sep"></div>
-    <div class="hc-d" onclick="${vid?`openCourtTalk(${vid},'court')`:'openMyCourtTalk()'}">
-      <i class="ic talk"></i>구장톡${HC.unread?`<em class="nu"></em>`:''}</div>
   </div>`;
 
   /* 아직 홈이 없다 — 빈 카드로 두지 않는다.
@@ -15477,7 +15388,7 @@ function homeCourtSection(){
   if(solo){
     line = HC.events
       ? '다른 클럽이 들어오면 지분이 나뉘어요'
-      : '여기서 모임을 열면 지분이 쌓여요. 다른 클럽이 들어오면 나뉘고요.';
+      : '여기서 모임을 열면 지분이 쌓여요';
   } else if(HC.top&&HC.top.mine){
     line = '이 코트의 대표 클럽이에요';
   } else if(HC.need!=null){
@@ -16753,102 +16664,14 @@ function mcNextEvent(n){
   }catch(e){ return null; }
 }
 
-/* 클럽 탭 본문.
-   평소에는 클럽을 머리에 두고 딸린 것들을 한 줄씩(A),
-   대회 기간에는 대회를 맨 위로 올린다(B).
-   대회·홈코트·코트지도·교류전은 성격이 다른 네 칸이 아니라
-   전부 <이 클럽의 일>이다. 카드 네 장으로 세우면 서로 싸운다. */
+/* 클럽 탭 본문 — 원래 순서를 그대로 둔다.
+   클럽 카드 · 새 클럽 만들기 · (맞수 리그) · 홈코트 · 교류전 · 클럽 찾기.
+   한때 전부 한 줄 목록으로 눕혀봤는데, 홈코트의 지분 막대처럼
+   이 앱만의 것이 사라져 성의 없어 보였다. 겹치던 것만 걷는다. */
 function cupIsNow(){
   const c=(CUPC&&CUPC.cup); if(!c) return false;
   const L=c.live;
   return !!(L && (L.on || L.between)) || (c.date && c.date===ymd());
-}
-
-function cdeskRow(cls, icon, title, sub, act, tag){
-  return `<div class="cdesk-r${cls?' '+cls:''}" onclick="${act}">
-    <span class="ic"><i class="ic ${icon}"></i></span>
-    <span class="c"><b>${title}</b>${sub?`<span>${sub}</span>`:''}</span>
-    ${tag||''}<span class="ar">›</span></div>`;
-}
-
-/* 우리 클럽에 딸린 것들 — 대회 줄은 대회가 있을 때만 낀다 */
-function cdeskRows(withCup){
-  const rows=[];
-  if(withCup){
-    const c=(CUPC&&CUPC.cup), e=(CUPC&&CUPC.entry);
-    if(c){
-      const L=c.live, live=!!(L&&(L.on||L.between));
-      const sub=[c.date?ymdKo(c.date):'', e&&e.group_label?`${e.group_label}조 ${e.seat}번`:'',
-        `${c.teams}/${c.max_teams}팀`].filter(Boolean).join(' · ');
-      const drawn=e&&e.group_label, paid=e&&e.fee_paid, today=c.date&&c.date===ymd();
-      const act=(today||drawn||live)?'cupDay()':paid?'cupTeams()'
-        :(!clubId()||!e)&&c.drawn?'cupDay()':!clubId()?'cupTeams()':'cupApply()';
-      rows.push(cdeskRow('hot','cup', esc(c.title||'맞수 리그'), esc(sub),
-        act, live?`<span class="tag live">LIVE</span>`
-          : paid?`<span class="tag">확정</span>`:''));
-    }
-  }
-  /* 홈코트 — 아직 안 걸었으면 걸라고 하고, 걸었으면 이름과 지분만 한 줄로 */
-  const cid=xcMyClubId();
-  if(HC && HC.cid===cid){
-    if(HC.home){
-      const solo=(HC.clubs||1)<=1;
-      const mine=(HC.bars||[]).find(b=>b.mine);
-      const pct=solo?100:(mine?Math.round(mine.pct):null);
-      rows.push(cdeskRow('','court', esc(HC.home.name||'홈코트'),
-        `우리 홈${pct!=null?` · 지분 ${pct}%`:''}${solo?' · 아직 우리뿐':''}`,
-        `openCourtTalkOrLand(${HC.home.venue_id||0})`));
-    } else {
-      rows.push(cdeskRow('','court','홈코트를 걸어주세요',
-        HC.can_set?'지분이 쌓이고 구장톡이 열려요':'운영진이 걸면 열려요','openLand()'));
-    }
-  } else if(cid) hcLoad();
-  rows.push(cdeskRow('','map','코트 지도','가까운 코트와 우리 지분','openLand()'));
-  if(xcMyClubId()){
-    const up=(XC_LIST&&xcUpcoming(XC_LIST))||[];
-    rows.push(cdeskRow('','vs','교류전',
-      up.length?`다음 ${esc(up[0].date||'')}`:'아직 잡힌 경기가 없어요',
-      up.length?'openXcAll()':'openXcNew()'));
-  }
-  return rows.join('');
-}
-
-function openCourtTalkOrLand(){ openLand(); }
-
-function cdeskHead(){
-  const mine=(state.myClubs||[]).filter(n=>{
-    const c=(state.clubs||[]).find(x=>x.n===n);
-    return !c || !c.sport || c.sport===state.sport;
-  });
-  if(!mine.length) return '';
-  const n=mine[0], c=(state.clubs||[]).find(x=>x.n===n)||{};
-  const av=clubAvatar(n,46);
-  const ev=mcNextEvent(n);
-  return `<div class="cdesk-hd" onclick="openClubPage('${esc(n)}')">
-      ${av||`<span class="lg">${esc(n.slice(0,1))}</span>`}
-      <span class="c"><b>${esc(n)}</b>
-        <span>${esc([c.r||c.region||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · '))}</span></span>
-      <span class="ar">›</span></div>
-    ${ev?`<div class="cdesk-next" onclick="openClubPage('${esc(n)}')">
-      <i></i><b>${esc(ev.when)}</b>
-      <span style="color:var(--lgray)">정기모임</span>
-      ${ev.cnt?`<em>${ev.cnt}명</em>`:''}</div>`:''}
-    ${mine.slice(1).map(x=>cdeskRow('','court',esc(x),'내 클럽',
-      `openClubPage('${esc(x)}')`)).join('')}`;
-}
-
-function clubDesk(){
-  const head=cdeskHead();
-  if(!head) return myClubsBlock();          // 클럽이 없으면 예전 안내 그대로
-  const now=cupIsNow();
-  return `<div class="cdesk">
-    ${now?cupCardSection():''}
-    ${now?`<div class="cdesk-lab">내 클럽</div>`:''}
-    ${head}
-    <div class="cdesk-lab">우리 클럽 일</div>
-    ${cdeskRows(!now)}
-    <div class="cdesk-new" onclick="state._cw=null;openCreateClub()">＋ 새 클럽 만들기</div>
-  </div>`;
 }
 
 function myClubsBlock(){
