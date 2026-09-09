@@ -14672,7 +14672,7 @@ function cupCardSection(){
         <div class="t">${cupTrophy()}전환 시간
           <em>${LV.played} / ${LV.total}매치</em></div>
         <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
-        <div class="s">${nx?`다음 ${esc(nx.start)} · ${nx.courts}코트`:'다음 칸을 기다려요'}</div>
+        <div class="s">${nx?`다음 ${esc(nx.start)} · ${nx.courts}코트`:'점수 입력을 기다려요'}</div>
         <div class="cuplv"><div class="clk"><s style="background:#f0b429"></s>
           물 마시고 코트를 바꿔요</div></div>
       </div>
@@ -14914,6 +14914,11 @@ async function cupDay(){
 function cupMyEntry(){
   const e=(CUPC&&CUPC.entry); return e?e.id:0;
 }
+/* 도는 중인가. 대회를 시작하면 남은 칸에 예약이 미리 걸리므로,
+   <시작 시각이 이미 지났는가>를 안 보면 몇 시간 뒤 칸이 <진행 중>으로 잡힌다.
+   시계에 319:20 이 찍히던 이유가 이것이다. */
+function cupRunning(st,dur,now){ return !!st && st<=now && st+dur>now; }
+
 /* 끝나는 시각 — 기기 시계가 아니라 서버가 준 시작 시각으로 센다 */
 function cupHHMM(ms){ const d=new Date(ms);
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
@@ -14997,6 +15002,13 @@ function cupDayDraw(){
       /* 늦어졌으면 주최자가 당길 수 있다 — 누르면 그 뒤 칸들도 함께 밀린다 */
       btn: host?{t:inMs!=null?'지금 바로 시작':`${esc(next.start||'')} 시작`,
         a:`cupSlotStart(${next.s})`}:null};
+  } else if(anyStarted && !next){
+    /* 마지막 칸까지 시간이 다 지났는데 점수가 덜 들어온 상태.
+       여기서 <시작 전>으로 떨어지면 대회가 안 열린 것처럼 보인다. */
+    const left2=slots.reduce((k,x)=>k+x.ms.filter(z=>!(sc[z.m.key]&&sc[z.m.key].a!=null)).length,0);
+    clk={cls:'', cap:'경기 끝', tail:'점수를 기다려요',
+      big:`${left2}매치`, at:`아직 점수가 안 들어왔어요`,
+      ft:'코트에서 적어둔 종이를 보고 넣어주세요', btn:null};
   } else {
     clk={cls:'', cap:'시작 전', tail:`${esc((slots[0]||{}).start||'')} 첫 경기`,
       big:esc((slots[0]||{}).start||'--:--'),
@@ -15034,7 +15046,7 @@ function cupDayDraw(){
           const ms=(t.matches||[]);
           const st=Math.max(0,...ms.map(m=>tm[m.key]||0));
           const done=ms.length&&ms.every(m=>sc[m.key]&&sc[m.key].a!=null);
-          const on=ms.some(m=>tm[m.key]&&tm[m.key]+dur>now);
+          const on=ms.some(m=>cupRunning(tm[m.key],dur,now));
           mineT.push({start:r.start, done, on});
         }));
         if(!mineT.length) return `<button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
@@ -15096,7 +15108,7 @@ function cupAllSlots(){
     return { s:+x.s, start:x.start, ms, started:st,
       done:ms.length&&ms.every(z=>sc[z.m.key]&&sc[z.m.key].a!=null) };
   }).filter(x=>x.ms.length);
-  const cur=slots.find(x=>x.started && x.started+dur>now);
+  const cur=slots.find(x=>cupRunning(x.started,dur,now));
 
   const F=CUPD.court||0;                    // 0 = 전체
   const P=D.pairs||{}, my=D.my_entries||[];
@@ -15111,7 +15123,7 @@ function cupAllSlots(){
       return z?{x,z}:null; }).filter(Boolean);
     const body=list.map(({x,z})=>{
       const s2=sc[z.m.key], done=s2&&s2.a!=null;
-      const on=x.started&&x.started+dur>now;
+      const on=cupRunning(x.started,dur,now);
       const A=pairOf(z.t.home,z.m.no), B=pairOf(z.t.away,z.m.no);
       const cls=[done?'past':'', on?'now':''].filter(Boolean).join(' ');
       const line=(o,side,win,eid)=>`<div class="${my.includes(eid)?'us':''}">${
@@ -15199,7 +15211,7 @@ function cupRailHtml(slots,sc,tm,dur,cur,me){
     }).join('')}</div>
     <div class="lb">${slots.map(x=>{
       /* 시작은 했는데 점수가 안 들어온 칸 — 빨간 점으로 알린다 */
-      const hole=x.started && !x.done && x.started+dur<now;
+      const hole=x.started && x.started<=now && !x.done && x.started+dur<now;
       return `<div class="${cur&&cur.s===x.s?'now':''}"><s>${esc(x.start||'')}</s>
         <u class="${hole?'hole':mineOf(x)?'mine':'none'}"></u></div>`;
     }).join('')}</div>
@@ -15211,7 +15223,7 @@ function cupRailHtml(slots,sc,tm,dur,cur,me){
 /* 매치 카드 — 짝이 고정이라 아직 안 한 경기도 이름이 다 나온다 */
 function cupTieHtml(r,t,s2,mine,gname,tm,dur,now,mineNext,D){
   const ms=t.matches||[];
-  const live=ms.some(m=>tm[m.key]&&tm[m.key]+dur>now);
+  const live=ms.some(m=>cupRunning(tm[m.key],dur,now));
   const sc=(D&&D.live&&D.live.scores)||{};
   const P=(D&&D.pairs)||{};
   const isNext = mineNext && mineNext.t && mineNext.t.id===t.id;
@@ -15229,7 +15241,7 @@ function cupTieHtml(r,t,s2,mine,gname,tm,dur,now,mineNext,D){
       y:g.reduce((a,x)=>a+(+x.years||0),0) }; };
   const rows=ms.map(m=>{
     const [kd,cls]=KD[m.kind]||['복식',''];
-    const s3=sc[m.key], on=tm[m.key]&&tm[m.key]+dur>now;
+    const s3=sc[m.key], on=cupRunning(tm[m.key],dur,now);
     const A=nm(t.home,m.no), B=nm(t.away,m.no);
     const done=s3&&s3.a!=null;
     const aw=done&&s3.a>s3.b, bw=done&&s3.b>s3.a;
