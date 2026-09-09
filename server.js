@@ -5669,7 +5669,9 @@ function tieMatches(tieId, opt) {
     { no: 1, kind: 'free',  court: 0, slot: 0, key: `${tieId}m1`, fmt },
     { no: 2, kind: 'mixed', court: 0, slot: 0, key: `${tieId}m2`, fmt },
     /* 본선에서 2:0 이면 안 친다 — 화면이 <칠 수도 있음>으로 보여준다 */
-    { no: 3, kind: 'free',  court: 0, slot: 0, key: `${tieId}m3`, fmt,
+    /* 3번도 혼복이다. 엔트리가 남4 여2 인데 남복/혼복/남복 으로 짜면
+       자리가 남5 여1 이 되어 남자 한 명이 두 번 뛰고 여자 한 명은 하루 종일 앉는다. */
+    { no: 3, kind: 'mixed', court: 0, slot: 0, key: `${tieId}m3`, fmt,
       skippable: (fin && opt.skip) ? 1 : 0 },
   ];
 }
@@ -6064,8 +6066,10 @@ function cupMoney(C, teams) {
    구력은 sport_started 로 이미 서버가 갖고 있는 값이라 손댈 수 없다.
 
    강팀도 저변이 없으면 못 이기게 만드는 장치다. 규모가 작다고 빼면 안 된다. */
-const CUP_CAP = { 1: null, 2: 20, 3: 16 };      // 년 단위
-const CUP_ROSTER_N = 10, CUP_ROSTER_F = 2;
+const CUP_CAP = { 1: null, 2: 20, 3: 20 };      // 년 단위 · 2·3번 모두 혼복
+/* 팀당 6명 — 남자 4, 여자 2. 세 매치(남복·혼복·혼복)의 여섯 자리를
+   여섯 사람이 한 자리씩 채운다. 한 명도 벤치에 앉지 않는다. */
+const CUP_ROSTER_N = 6, CUP_ROSTER_M = 4, CUP_ROSTER_F = 2;
 
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
@@ -6437,7 +6441,7 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     left: Math.max(0, C.max_teams - live), dday,
     /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
     due_date, event_dday,
-    roster_need: CUP_ROSTER_N, roster_female: CUP_ROSTER_F,
+    roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
   }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
@@ -6599,7 +6603,7 @@ app.get('/cup/invite/:token', (req, res) => {
       min_teams: cupCfg(b.data).min_teams, max_teams: cupCfg(b.data).max_teams, cfg,
       place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
       pay: (() => { try { return JSON.parse(b.data || '{}').pay || null; } catch (x) { return null; } })() },
-    roster, need: { n: CUP_ROSTER_N, female: CUP_ROSTER_F },
+    roster, need: { n: CUP_ROSTER_N, male: CUP_ROSTER_M, female: CUP_ROSTER_F },
   });
 });
 
@@ -6672,10 +6676,13 @@ function cupCheckRoster(list) {
       if (age >= 65 && !p.health_declared) return `${no}번은 건강 확인에 체크해주세요`;
     }
   }
-  /* 혼복이 있으니 여성이 없으면 대회 자체가 안 굴러간다.
+  /* 혼복이 두 매치라 여자 자리가 정확히 둘이다. 더 넣어도 뛸 자리가 없고
+     덜 넣으면 한 매치를 몰수패로 시작한다. 그래서 <이상>이 아니라 <정확히>다.
      여성 회원은 공고일 이후 가입도 인정한다 — 그 예외가 없으면
      여성이 없는 클럽은 출전을 포기한다. */
-  if (f < CUP_ROSTER_F) return `여성 회원이 ${CUP_ROSTER_F}명 이상 있어야 해요 (혼합복식)`;
+  const m = list.length - f;
+  if (f !== CUP_ROSTER_F || m !== CUP_ROSTER_M)
+    return `남자 ${CUP_ROSTER_M}명, 여자 ${CUP_ROSTER_F}명이어야 해요 (지금 남 ${m} · 여 ${f})`;
   return null;
 }
 
@@ -6711,19 +6718,21 @@ function cupCheckLineup(ms, ros) {
     if (!a || !c) return `${no}복식 선수를 엔트리에서 골라주세요`;
     if (a.id === c.id) return `${no}복식에 같은 사람이 두 번 들어갔어요`;
     used.push(a.id, c.id);
-    if (no === 2 && !((a.gender === 'M' && c.gender === 'F') || (a.gender === 'F' && c.gender === 'M')))
-      return '혼합복식은 남녀 한 명씩이어야 해요';
+    if ((no === 2 || no === 3) &&
+        !((a.gender === 'M' && c.gender === 'F') || (a.gender === 'F' && c.gender === 'M')))
+      return `${no}번은 혼합복식이라 남녀 한 명씩이어야 해요`;
+    if (no === 1 && (a.gender === 'F' || c.gender === 'F'))
+      return '1번은 남자복식이에요 — 여자 회원은 혼복 두 매치에 나갑니다';
     const cap = CUP_CAP[no];
     const sum = (a.ntrp || 0) + (c.ntrp || 0);        // ntrp 칸에 구력(년)이 담긴다
     if (cap != null && sum > cap)
       return `${no}복식 구력 합이 ${cap}년을 넘어요 (지금 ${sum}년)`;
   }
-  /* 6자리를 5명 이상이 채운다 — 중복 출전은 한 명까지.
-     이게 없으면 에이스 둘이 세 매치를 다 돌고, 클럽 대항이 아니게 된다. */
+  /* 여섯 자리를 여섯 사람이 한 자리씩. 남4 여2 가 세 매치에 딱 맞아떨어지므로
+     중복 출전이 생겼다면 누군가는 벤치에 앉았다는 뜻이다. */
   const uniq = new Set(used);
-  if (uniq.size < 5) return `6자리를 5명 이상이 채워야 해요 (지금 ${uniq.size}명)`;
-  const cnt = {}; used.forEach(id => { cnt[id] = (cnt[id] || 0) + 1; });
-  if (Object.values(cnt).some(v => v > 2)) return '한 사람이 세 매치에 다 나올 수는 없어요';
+  if (uniq.size < used.length)
+    return '한 사람이 두 매치에 나올 수 없어요 — 여섯 명이 한 매치씩 뜁니다';
   return null;
 }
 
