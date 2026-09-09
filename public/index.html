@@ -2205,6 +2205,10 @@
   /* 마감 숫자만 굵게. 크기는 12px 그대로 둔다 — 키우면 제목(17px)과 싸운다. */
   .cupcard .t em b{ font-weight:700;color:var(--ink2) }
   .cupcard.done .t em b{ color:var(--gray) }
+  /* 마스크는 currentColor 한 색으로만 찍힌다 — 금컵·초록받침을 못 살린다.
+     색이 들어간 트로피는 svg 로 그대로 넣는다. */
+  .cuptr{ width:18px;height:18px;flex:none;display:block }
+  .cupcard.done .cuptr{ filter:grayscale(1);opacity:.6 }
   .cupcard .t .ic{ width:16px;height:16px;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
@@ -2228,6 +2232,43 @@
     font-size:15px;font-weight:700;color:var(--coral-d) }
   .cupcard.done .go{ border-top-color:var(--line);color:var(--gray) }
 
+  /* ── 신청 화면 v2 ──
+     큰 회색 안내 상자가 화면의 3분의 1을 먹고 있었는데 아무도 안 읽는다.
+     매치 구성을 그림으로 먼저 보여주고, 글은 얇은 한 줄로 줄인다. */
+  .cupg{ display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border-radius:14px;overflow:hidden;margin-top:6px }
+  .cupg .cell{ background:#fff;padding:11px 13px }
+  .cupg .k{ font-size:11px;color:var(--lgray);font-weight:700 }
+  .cupg .v{ font-size:14.5px;font-weight:800;letter-spacing:-.03em;margin-top:2px }
+  .cupg .v s{ text-decoration:none;font-size:11px;color:var(--lgray);
+    font-weight:600;margin-left:3px }
+  .cuphint{ display:flex;gap:8px;font-size:12.5px;color:var(--gray);
+    line-height:1.6;margin-top:11px;text-align:left }
+  .cuphint i{ font-style:normal;color:var(--coral);flex:none;margin-top:1px }
+  .cuphint b{ color:var(--ink2);font-weight:700 }
+  /* 왜 남4 여2 인지 글로 설명하는 대신 자리를 그려서 보여준다 */
+  .cupmx{ display:flex;gap:6px;margin-top:11px }
+  .cupmx .m{ flex:1;border:1px solid var(--line);border-radius:12px;
+    padding:9px 8px;text-align:center }
+  .cupmx .m .no{ font-size:9.5px;font-weight:800;color:#b0b8c1;letter-spacing:.05em }
+  .cupmx .m .kd{ font-size:12.5px;font-weight:800;letter-spacing:-.03em;margin-top:2px }
+  .cupmx .m .cp{ font-size:10px;color:var(--lgray);margin-top:2px }
+  .cupmx .m .wh{ display:flex;gap:3px;justify-content:center;margin-top:6px }
+  .cupmx .m .wh s{ text-decoration:none;width:5px;height:5px;border-radius:3px;
+    background:#4a7fe0 }
+  .cupmx .m .wh s.f{ background:#e05d9e }
+  /* 남녀를 한 줄에 눌러 담으면 어느 쪽이 모자란지 안 보인다 — 두 칸으로 가른다 */
+  .cupcnt{ display:flex;gap:8px;margin:12px 0 2px }
+  .cupcnt .c{ flex:1;border-radius:12px;padding:9px 11px }
+  .cupcnt .c.mm{ background:#eef3ff } .cupcnt .c.ff{ background:#fdeef6 }
+  .cupcnt .c .lb{ font-size:10.5px;font-weight:800 }
+  .cupcnt .c.mm .lb{ color:#2b62d6 } .cupcnt .c.ff .lb{ color:#c93f83 }
+  .cupcnt .c .nm{ font-size:17px;font-weight:800;letter-spacing:-.04em;margin-top:1px }
+  .cupcnt .c .nm em{ font-style:normal;color:var(--green);font-size:13px;margin-left:3px }
+  .cupav{ width:34px;height:34px;border-radius:12px;flex:none;display:flex;
+    align-items:center;justify-content:center;font-size:12.5px;font-weight:800;
+    background:#eef3ff;color:#2b62d6 }
+  .cupav.f{ background:#fdeef6;color:#c93f83 }
   /* ── 신청 화면 ── */
   .cupinfo{ background:var(--felt);border-radius:12px;padding:12px 14px;margin-top:4px }
   .cupinfo .r{ display:flex;align-items:baseline;padding:7px 0;border-top:1px solid #e6e4de }
@@ -2253,6 +2294,9 @@
     text-align:center;font-size:14px;font-weight:700;color:var(--coral-d);
     cursor:pointer;margin-top:12px }
   .cuplist{ max-height:56vh;overflow:auto }
+  .cupm .cupav{ width:32px;height:32px;border-radius:11px;font-size:12px }
+  .cupm.on{ background:var(--coral-s);border-radius:11px;margin:0 -6px;padding:12px 6px }
+  .cupm.off{ opacity:.42 }
   .cupm{ display:flex;align-items:center;gap:11px;padding:12px 2px;
     border-top:1px solid #f4f3ef;cursor:pointer }
   .cupm:first-child{ border-top:none }
@@ -13722,49 +13766,72 @@ function cupApplyDraw(){
   const A=CUPA, c=A.cup;
   const byId={}; A.pool.forEach(p=>{ byId[p.user_id]=p; });
   const picked=A.picked.map(id=>byId[id]).filter(Boolean);
-  const f=picked.filter(p=>p.gender==='F').length;
-  /* 정원은 서버가 정한다. 화면에 10 을 박아두면 6 명으로 바꿀 때 또 찾아다녀야 한다. */
-  const need=c.roster_need||10, needF=c.roster_female||2;
+  const f=picked.filter(p=>p.gender==='F').length, m=picked.length-f;
+  /* 정원은 서버가 정한다. 화면에 6 을 박아두면 바꿀 때 또 찾아다녀야 한다. */
+  const need=c.roster_need||6, needM=c.roster_male||4, needF=c.roster_female||2;
   const officer=(state.bcfg&&state.bcfg.role)==='officer';
   /* 구력이 없으면 상한을 못 잰다 — 넣기 전에 알려준다 */
   const noExp=picked.filter(p=>p.years==null);
-  const full=picked.length>=need && f>=needF && !noExp.length;
+  const full=(m===needM && f===needF && !noExp.length);
+  /* 버튼이 왜 안 눌리는지 버튼 자신이 말하게 한다 */
+  const why = noExp.length ? '구력 없는 회원을 빼주세요'
+    : m>needM ? `남자를 ${m-needM}명 빼주세요`
+    : f>needF ? `여자를 ${f-needF}명 빼주세요`
+    : m<needM ? `남자 ${needM-m}명이 더 필요해요`
+    : f<needF ? `여자 ${needF-f}명이 더 필요해요` : '';
 
   document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>MATSU CUP 참가 신청</h3>
+    <div class="sh-top"><h3>${cupTrophy()} MATSU CUP 참가 신청</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
-    <div class="cupinfo">
-      <div class="r"><span>날짜</span><b>${esc(c.date?ymdKo(c.date):'미정')}</b></div>
-      ${c.due_date?`<div class="r"><span>입금 마감</span><b>${esc(ymdKo(c.due_date))}</b></div>`:''}
-      ${c.place?`<div class="r"><span>장소</span><b>${esc(c.place)}</b></div>`:''}
-      <div class="r"><span>방식</span><b>복식 3매치 · 팀당 9매치</b></div>
-      <div class="r"><span>참가비</span><b>${(c.fee/10000)}만원</b></div>
+    <div class="cupg">
+      <div class="cell"><div class="k">대회일</div>
+        <div class="v">${esc(c.date?ymdKo(c.date):'미정')}</div></div>
+      <div class="cell"><div class="k">참가비</div>
+        <div class="v">${(c.fee/10000)}만원<s>클럽당</s></div></div>
+      <div class="cell"><div class="k">장소</div>
+        <div class="v">${esc(c.place||'미정')}</div></div>
+      <div class="cell"><div class="k">입금 마감</div>
+        <div class="v">${c.due_date?esc(ymdKo(c.due_date)):'미정'}</div></div>
     </div>
-    <div class="note" style="text-align:left;margin-top:10px">
-      ${c.min_teams}팀이 모이지 않으면 열지 않고 전액 돌려드려요.
-      보증금 ${(c.deposit/10000)}만원은 완주하시면 반환됩니다.</div>
+    <div class="cuphint"><i>◆</i><div>
+      <b>${c.min_teams}팀이 안 모이면 열지 않고 전액 돌려드려요.</b>
+      보증금 ${(c.deposit/10000)}만원은 완주하시면 반환됩니다.</div></div>
 
     ${c.pay&&c.pay.no?`<div class="cupacc" style="margin-top:12px">
       <div class="a">${esc(c.pay.bank||'')} ${esc(c.pay.no)}</div>
       <div class="b">예금주 ${esc(c.pay.holder||'')}</div></div>`:''}
 
-    <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
-      <span class="${full?'ok':''}">${picked.length}/${need}명 · 여성 ${f}/${needF}명</span></div>
-    <div class="note" style="text-align:left;margin:0 0 10px">
-      혼합복식이 있어 여성 ${needF}명 이상이 꼭 필요해요.
-      경기 짝은 <b>구력 합산</b>으로 묶어요 — 혼복 20년, 3복식 16년까지.
-      구력은 가입할 때 적은 값이라 고칠 수 없어요.</div>
+    <div class="vsec2" style="margin-top:20px"><b>이렇게 세 매치를 칩니다</b></div>
+    <div class="cupmx">
+      <div class="m"><div class="no">MATCH 1</div><div class="kd">남복</div>
+        <div class="cp">제한 없음</div><div class="wh"><s></s><s></s></div></div>
+      <div class="m"><div class="no">MATCH 2</div><div class="kd">혼복</div>
+        <div class="cp">구력 20년</div><div class="wh"><s></s><s class="f"></s></div></div>
+      <div class="m"><div class="no">MATCH 3</div><div class="kd">혼복</div>
+        <div class="cp">구력 20년</div><div class="wh"><s></s><s class="f"></s></div></div>
+    </div>
+    <div class="cuphint"><i>◆</i><div>남자 ${needM}명, 여자 ${needF}명이
+      <b>정확히 한 매치씩</b> 뜁니다. 짝은 구력 합산으로 묶어요.</div></div>
 
-    ${noExp.length?`<div class="cupwarn">구력을 안 적은 회원은 못 넣어요<br>
+    <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
+      <span class="${full?'ok':''}">${picked.length}/${need}명</span></div>
+    <div class="cupcnt">
+      <div class="c mm"><div class="lb">남자</div>
+        <div class="nm">${m} / ${needM}${m===needM?'<em>✓</em>':''}</div></div>
+      <div class="c ff"><div class="lb">여자</div>
+        <div class="nm">${f} / ${needF}${f===needF?'<em>✓</em>':''}</div></div>
+    </div>
+
+    ${noExp.length?`<div class="cupwarn" style="margin-top:12px">구력을 안 적은 회원은 못 넣어요<br>
       <span>${noExp.map(p=>esc(p.name)).join(' · ')}</span></div>`:''}
 
-    ${picked.length?picked.map((p,i)=>`<div class="cupp">
-      <span class="no">${i+1}</span>
+    ${picked.length?picked.map(p=>`<div class="cupp">
+      <span class="cupav${p.gender==='F'?' f':''}">${esc(p.name.slice(0,1))}</span>
       <span class="c"><b>${esc(p.name)}</b>
         <span>${p.gender==='F'?'여':'남'}${p.grade?` · ${esc(p.grade)}`:''}</span></span>
       <span class="nt">${p.years==null?'구력 없음':`구력 ${p.years}년`}</span>
-      <span class="x" onclick="cupPick(${p.user_id})">×</span>
+      ${officer?`<span class="x" onclick="cupPick(${p.user_id})">×</span>`:''}
     </div>`).join(''):`<div class="vnone" style="padding:16px 10px">아직 아무도 안 넣었어요</div>`}
 
     ${officer?`<div class="cupadd" onclick="cupPool()">＋ 회원 고르기</div>`:''}
@@ -13776,7 +13843,7 @@ function cupApplyDraw(){
              : '나가고 싶으면 운영진에게 말해주세요'}</div>`
       : A.entry
       ? `<button class="btn" style="margin-top:14px" onclick="cupRosterGo()"
-          ${full?'':'disabled'}>${full?'엔트리 제출':`${need}명을 채워주세요`}</button>`
+          ${full?'':'disabled'}>${full?'엔트리 제출':esc(why)}</button>`
       : `<button class="btn" style="margin-top:14px" onclick="cupApplyGo()">참가 신청하기</button>
          <div class="hnote">신청한 뒤에 엔트리를 채워도 됩니다</div>`}`;
   document.getElementById('ov').classList.add('on');
@@ -13784,29 +13851,52 @@ function cupApplyDraw(){
 
 /* 회원 고르기 — 명단에서 누른다. 이름을 다시 칠 이유가 없다. */
 function cupPool(){
-  const A=CUPA;
+  const A=CUPA, c=A.cup;
+  const needM=c.roster_male||4, needF=c.roster_female||2;
+  const byId={}; A.pool.forEach(p=>{ byId[p.user_id]=p; });
+  const pk=A.picked.map(id=>byId[id]).filter(Boolean);
+  const m=pk.filter(p=>p.gender!=='F').length, f=pk.length-m;
+  /* 이미 정원을 채운 성별은 흐리게 — 눌러도 안 들어가는데 멀쩡해 보이면 안 된다.
+     빼는 건 되어야 하므로 이미 고른 사람은 흐리지 않는다. */
   const list=A.pool.filter(p=>!p.resting);
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>회원 고르기</h3>
       <div class="cl" role="button" tabindex="0" onclick="cupApplyDraw()">×</div></div>
-    <div class="note" style="text-align:left;margin-bottom:10px">
-      눌러서 넣고 빼요 · ${A.picked.length}/${(A.cup&&A.cup.roster_need)||10}명</div>
-    <div class="cuplist">${list.map(p=>{
+    <div class="cupcnt" style="margin-top:2px">
+      <div class="c mm"><div class="lb">남자</div>
+        <div class="nm">${m} / ${needM}${m===needM?'<em>✓</em>':''}</div></div>
+      <div class="c ff"><div class="lb">여자</div>
+        <div class="nm">${f} / ${needF}${f===needF?'<em>✓</em>':''}</div></div>
+    </div>
+    <div class="cuphint"><i>◆</i><div>눌러서 넣고 빼요 ·
+      구력은 가입할 때 적은 값이라 여기서 못 고쳐요</div></div>
+    <div class="cuplist" style="margin-top:8px">${list.map(p=>{
       const on=A.picked.includes(p.user_id);
-      return `<div class="cupm${on?' on':''}" onclick="cupPick(${p.user_id})">
-        <span class="ck"></span>
+      const isF=p.gender==='F';
+      const dim=!on && ((isF && f>=needF) || (!isF && m>=needM) || p.years==null);
+      return `<div class="cupm${on?' on':''}${dim?' off':''}" onclick="cupPick(${p.user_id})">
+        <span class="cupav${isF?' f':''}">${esc(p.name.slice(0,1))}</span>
         <span class="c"><b>${esc(p.name)}</b>
-          <span>${p.gender==='F'?'여':'남'}${p.grade?` · ${esc(p.grade)}`:''} · ${
+          <span>${isF?'여':'남'}${p.grade?` · ${esc(p.grade)}`:''} · ${
             p.years==null?'<em class="no">구력 없음</em>':`구력 ${p.years}년`}</span></span>
+        ${on?`<span class="nt" style="color:var(--coral-d);font-weight:700">뽑음</span>`:''}
       </div>`; }).join('')}</div>
     <button class="btn" style="margin-top:12px" onclick="cupApplyDraw()">다 골랐어요</button>`;
   document.getElementById('ov').classList.add('on');
 }
 function cupPick(uid){
-  const A=CUPA, i=A.picked.indexOf(uid);
-  const need=(A.cup&&A.cup.roster_need)||10;
-  if(i>=0) A.picked.splice(i,1);
-  else { if(A.picked.length>=need) return toast(`${need}명까지 넣을 수 있어요`); A.picked.push(uid); }
+  const A=CUPA, c=A.cup, i=A.picked.indexOf(uid);
+  const needM=c.roster_male||4, needF=c.roster_female||2;
+  if(i>=0){ A.picked.splice(i,1); }
+  else {
+    /* 성별 정원이 따로다 — 총원만 세면 남6 여0 도 통과해버린다 */
+    const p=A.pool.find(x=>x.user_id===uid); if(!p) return;
+    const pk=A.picked.map(id=>A.pool.find(x=>x.user_id===id)).filter(Boolean);
+    const m=pk.filter(x=>x.gender!=='F').length, f=pk.length-m;
+    if(p.gender==='F' && f>=needF) return toast(`여자는 ${needF}명까지예요`);
+    if(p.gender!=='F' && m>=needM) return toast(`남자는 ${needM}명까지예요`);
+    A.picked.push(uid);
+  }
   /* 지금 열려 있는 화면을 그대로 다시 그린다 */
   if(document.querySelector('.cuplist')) cupPool(); else cupApplyDraw();
 }
@@ -13830,7 +13920,7 @@ async function cupRosterGo(){
 
 /* ── 초청받은 클럽 (로그인 없음) ─────────────────────────────
    ?cup=토큰 으로 들어온다. 앱을 깔지도, 가입하지도 않는다.
-   대표자 한 명이 이 화면에서 신청하고 엔트리 10명을 적는다. */
+   대표자 한 명이 이 화면에서 신청하고 엔트리(남4 여2)를 적는다. */
 let CUPI=null;
 
 function cupTokenFromUrl(){
@@ -13844,7 +13934,7 @@ async function cupGuestOpen(tok){
   if(!CUPI.rows) CUPI.rows = (d.roster||[]).length ? d.roster.map(r=>({
     guest_name:r.guest_name||'', gender:r.gender, ntrp:r.ntrp,
     birth_year:r.birth_year||'', guardian_consent:r.guardian_consent, health_declared:r.health_declared
-  })) : Array.from({length:((CUPI&&CUPI.need&&CUPI.need.n)||10)},
+  })) : Array.from({length:((CUPI&&CUPI.need&&CUPI.need.n)||6)},
         ()=>({guest_name:'',gender:'M',ntrp:'',birth_year:''}));
   cupGuestDraw();
 }
@@ -13857,7 +13947,7 @@ function cupGuestFail(msg){
 /* 앱 화면을 통째로 갈아끼운다 — 초청 클럽은 앱의 다른 화면을 볼 이유가 없다 */
 function cupGuestDraw(){
   const c=CUPI.cup||{}, e=CUPI.entry||{};
-  const need=CUPI.need||{n:10,female:2};
+  const need=CUPI.need||{n:6,male:4,female:2};
   const rows=CUPI.rows||[];
   const f=rows.filter(r=>r.gender==='F').length;
   const filled=rows.filter(r=>String(r.guest_name||'').trim() && r.ntrp).length;
@@ -13901,9 +13991,9 @@ function cupGuestDraw(){
 
     <div class="cupg-card">
       <div class="h">2 · 엔트리 ${need.n}명
-        <em class="${filled>=need.n && f>=need.female ? 'ok':''}">${filled}/${need.n}명 · 여성 ${f}/${need.female}명</em></div>
+        <em class="${filled===need.n && f===need.female ? 'ok':''}">${filled}/${need.n}명 · 남 ${filled-f}/${need.male||4} · 여 ${f}/${need.female}</em></div>
       <div class="note" style="text-align:left;margin:0 0 10px">
-        혼합복식이 있어 여성 ${need.female}명 이상이 꼭 필요해요.
+        혼복이 두 매치라 남자 ${need.male||4}명, 여자 ${need.female}명이 정확히 필요해요.
         NTRP는 대략이어도 됩니다 — 3.0 초중급, 3.5 중급, 4.0 중상급.</div>
       ${rows.map((r,i)=>`<div class="cgrow">
         <span class="no">${i+1}</span>
@@ -14083,6 +14173,16 @@ function hcCloseTip(ev){
 /* MATSU CUP 모집 카드 — 모집 기간에만 뜬다.
    늘 붙어 있으면 클럽 탭이 광고판이 된다. */
 let CUPC=null;
+/* 금컵 + 초록 받침. 이모지(🏆)는 기기마다 모양이 다르고 색을 못 바꾼다. */
+function cupTrophy(cls){
+  return `<svg class="cuptr ${cls||''}" viewBox="0 0 48 48" aria-hidden="true">
+    <path d="M13 7h22c0 15.5-4.4 21.8-7.6 24h-6.8C17.4 28.8 13 22.5 13 7z" fill="#e9b44c"/>
+    <path d="M24 7h11c0 15.5-4.4 21.8-7.6 24H24z" fill="#d99c3d"/>
+    <rect x="20.6" y="29" width="6.8" height="5.4" fill="#e9b44c"/>
+    <rect x="24" y="29" width="3.4" height="5.4" fill="#d99c3d"/>
+    <path d="M14.5 41.5l3.4-7.4h12.2l3.4 7.4z" fill="#5fae52"/>
+    <path d="M24 34.1h6.1l3.4 7.4H24z" fill="#4e9744"/></svg>`;
+}
 function cupCardSection(){
   const cid=clubId(); if(!SERVER_OK||!cid) return '';
   if(CUPC===null || CUPC.cid!==cid){ cupCardLoad(cid); return ''; }
@@ -14114,7 +14214,7 @@ function cupCardSection(){
   const done = e && e.roster_n>=need;
   return `<div class="cupcard${done?' done':''}" onclick="cupApply()">
     <div class="b">
-      <div class="t"><i class="ic cup"></i>MATSU CUP ${e?'참가 신청함':'참가 모집'}
+      <div class="t">${cupTrophy()}MATSU CUP ${e?'참가 신청함':'참가 모집'}
         ${dd?`<em>${dd}</em>`:''}</div>
       <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
       <div class="s">${esc(line)}</div>
