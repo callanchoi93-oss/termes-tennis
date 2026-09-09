@@ -130,6 +130,12 @@ body{background:var(--paper);color:var(--ink);
 .cgrid .cell.gb{background:#eef2f7;color:#3d4e5f}
 .cgrid .cell.sf{background:#eaf3ee;color:#2f5340}
 .cgrid .cell.fn{background:#2c2c2a;color:#fff}
+/* 유령 클럽 — 진짜 데이터와 헷갈리면 안 된다. 점선으로 <가짜>라고 말한다 */
+.card.ghost{border:1px dashed #d9dee4;background:#fcfcfd}
+.card.ghost #ghostN{width:62px;height:36px;border:1px solid var(--line,#e5e8eb);
+  border-radius:9px;text-align:center;font-size:15px;font-weight:700;font-family:inherit}
+.card.ghost .gu{font-size:13px;color:var(--lgray)}
+.card.ghost .gm{font-size:13px;color:var(--lgray);margin-left:auto}
 /* ── MATSU CUP ── */
 .cuptabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .cuptabs span{border:1px solid var(--line);border-radius:20px;padding:7px 13px;
@@ -1353,7 +1359,9 @@ async function drawCup(){
   const pct=Math.min(100, Math.round(fixed.length/d.max_teams*100));
   const minPct=Math.round(d.min_teams/d.max_teams*100);
   const st={invited:'초청함',applied:'신청함',paid:'입금',confirmed:'확정',cancelled:'취소'};
-  const ready=fixed.filter(e=>e.roster_n>=10).length;
+  /* 서버가 정한 정원을 쓴다 — 여기 10 을 박아두면 6명으로 바꿔도 <엔트리 낸 팀 0>이 된다 */
+  const need=d.roster_need||6;
+  const ready=fixed.filter(e=>e.roster_n>=need).length;
 
   $('app').innerHTML=shell(head+`
     <div class="card">
@@ -1379,6 +1387,7 @@ async function drawCup(){
         <div><span>코트</span><b>${d.courts||4}면</b></div>
         <div><span>참가비</span><b>${fmt(d.fee)}원</b></div>
         <div><span>매치</span><b>${Math.round((d.cfg&&d.cfg.match_sec||1200)/60)}분 · 전환 ${Math.round((d.cfg&&d.cfg.turn_sec||300)/60)}분</b></div>
+        <div><span>입금 마감</span><b>대회 ${(d.cfg&&d.cfg.due_days)||14}일 전</b></div>
         <div><span>보증금</span><b>${fmt(d.deposit)}원</b></div>
         <div><span>정원</span><b>${d.max_teams}팀 · 최소 ${d.min_teams}팀</b></div>
         <div><span>계좌</span><b>${d.pay&&d.pay.no
@@ -1407,6 +1416,21 @@ async function drawCup(){
       ${fixed.length>=d.min_teams?`<div class="cupbtns">
         <span class="b on" onclick="cupDraw()">${d.drawn?'다시 추첨':'추첨하고 대진 짜기'}</span>
         <span class="b" onclick="cupLive(${d.id})">관전 링크</span></div>`:''}
+    </div>
+
+    <div class="card ghost">
+      <div class="hd"><b>테스트용 유령 클럽</b>
+        <span class="b" onclick="ghostWipe()">전부 지우기</span></div>
+      <div class="hint" style="margin-top:0">
+        클럽 하나당 회원 ${need}명(남 ${d.roster_male||4} · 여 ${d.roster_female||2})을 만들고
+        <b>신청 · 엔트리 · 입금 확정</b>까지 한 번에 끝냅니다.
+        구력은 1~5년으로 흩뿌립니다. 지우면 회원까지 흔적 없이 사라집니다.</div>
+      <div class="cupbtns" style="align-items:center">
+        <input id="ghostN" type="number" min="1" max="12"
+          value="${Math.max(1, d.max_teams-live.length)}">
+        <span class="gu">팀</span>
+        <span class="b on" onclick="ghostSeed()">넣기</span>
+        <span class="gm" id="ghostMsg"></span></div>
     </div>
 
     ${d.drawn?`<div class="card">
@@ -1497,6 +1521,25 @@ function cupInvite(){
     drawCup();
   });
 }
+/* ── 유령 클럽 ──
+   여덟 팀을 실제로 굴려보려면 사람을 여덟 클럽 모아야 하는데 그건 불가능하다.
+   ghost=1 로 표를 달아 만들고, 지우기 한 번에 걷어낸다. */
+async function ghostSeed(){
+  const el=$('ghostMsg'), n=+($('ghostN')||{}).value||7;
+  if(el) el.textContent='만드는 중…';
+  const r=await cupAct({act:'seed', n});
+  if(!r){ if(el) el.textContent='실패했어요'; return; }
+  if(el) el.textContent=`${r.n}팀 넣었어요`;
+  drawCup();
+}
+async function ghostWipe(){
+  if(!confirm('유령 클럽과 회원을 모두 지웁니다.\n조 추첨과 점수도 함께 지워져요.')) return;
+  const el=$('ghostMsg');
+  if(el) el.textContent='지우는 중…';
+  const r=await cupAct({act:'unseed'});
+  if(el) el.textContent = r ? `${r.n}팀 지웠어요` : '실패했어요';
+  drawCup();
+}
 function cupCopy(tok){ prompt('초청 링크', `${location.origin}/?cup=${tok}`); }
 function cupLive(id){ prompt('관전 링크', `${location.origin}/?live=${id}`); }
 /* 설정 — 한 화면에서 다 고친다. prompt 를 여섯 번 띄우면
@@ -1540,6 +1583,8 @@ function cupSetupDraw(){
       <div class="frm f3">
         <label>코트<input id="csCourts" inputmode="numeric" value="${d.courts||4}"></label>
         <label>매치 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||1200)/60)}"></label>
+        <label>입금 마감 (대회 며칠 전)<input id="csDue" inputmode="numeric"
+          value="${cfg.due_days||14}"></label>
         <label>전환 (분)<input id="csTurn" inputmode="numeric" value="${Math.round((cfg.turn_sec||300)/60)}"></label>
         <label>정원 (팀)<input id="csMax" inputmode="numeric" value="${d.max_teams}"></label>
         <label>최소 (팀)<input id="csMin" inputmode="numeric" value="${d.min_teams}"></label>
@@ -1698,7 +1743,7 @@ async function cupSetupSave(){
   const r=await cupAct({act:'setup',
     title:g('csTitle'), date:g('csDate'), start:g('csStart'), place:g('csPlace'),
     courts:g('csCourts'), max_teams:g('csMax'), min_teams:g('csMin'),
-    match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'),
+    match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
     prize_pct:g('csPct'), fee:g('csFee'), deposit:g('csDep'),
     fixed_items:CUPCFG.fixed.filter(x=>x.n), var_items:CUPCFG.varr.filter(x=>x.n),
     bank:g('csBank'), holder:g('csHolder'), account:g('csAcc') });

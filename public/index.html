@@ -2272,8 +2272,17 @@
     text-align:center }
   .cupfree b{ display:block;font-size:15px;font-weight:700;color:var(--gray) }
   .cupfree span{ display:block;font-size:13px;color:var(--lgray);margin-top:4px;line-height:1.6 }
-  .cupfree .go{ margin-top:12px;height:44px;border-radius:12px;background:var(--ink);color:#fff;
-    font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center }
+  .cupfree .go{ margin-top:12px;height:44px;border-radius:12px;background:var(--coral);color:#fff;
+    font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;
+    cursor:pointer }
+  /* 이미 보낸 초청 — 회신을 기다리는 중임을 한 줄로 */
+  .cupinv{ display:flex;align-items:center;gap:9px;padding:10px 0;border-top:1px solid var(--line);
+    font-size:13px;color:var(--gray) }
+  .cupinv:first-of-type{ border-top:0 }
+  .cupinv b{ font-weight:700;color:var(--ink2);flex:1;min-width:0 }
+  .cupinv s{ text-decoration:none;flex:none;font-size:12px;font-weight:700;color:var(--coral-d);
+    background:var(--coral-s);border-radius:7px;padding:4px 9px;cursor:pointer }
+  .cupinv em{ font-style:normal;flex:none;font-size:12px;color:#b4bcc4 }
 
   /* 참가 클럽의 엔트리 — 이름과 구력만 한 줄로 편다 */
   .cupmems{ display:flex;flex-wrap:wrap;gap:5px;padding:0 0 12px 31px }
@@ -14376,7 +14385,7 @@ function cupCardSection(){
   const state2 = !e ? ''
     : today ? `${drawn?`${e.group_label}조 ${e.seat}번 · `:''}오늘 ${esc(c.place||'')}`
     : drawn ? `${e.group_label}조 ${e.seat}번 · 엔트리 ${e.roster_n}/${need}명`
-    : paid ? `입금 확인 · 조 추첨은 대회 14일 전에 해요`
+    : paid ? `입금 확인 · 입금이 다 모이면 조 추첨을 해요`
     : `입금 대기 · 엔트리 ${e.roster_n}/${need}명`;
   return `<div class="cupcard${over?' done':''}" onclick="${tap}">
     <div class="b">
@@ -14427,8 +14436,8 @@ async function cupTeams(){
       <b>빈자리 ${d.left}곳</b>
       <span>${esc(c.due_date?ymdKo(c.due_date):'입금 마감')}까지 ${min}팀이 안 모이면<br>
         열지 않고 참가비는 전액 돌려드려요</span>
-      ${(state.bcfg&&state.bcfg.role)==='officer'
-        ? `<div class="go" onclick="toast('운영진 도구에서 초청장을 보낼 수 있어요')">초청 링크 보내기</div>`:''}
+      ${d.is_host
+        ? `<div class="go" onclick="cupInviteNew()">초청장 만들기</div>`:''}
     </div>` : '';
 
   document.getElementById('sheet').innerHTML=`
@@ -14443,6 +14452,60 @@ async function cupTeams(){
     <div style="margin-top:18px">${cards}${free}</div>
     <div class="hnote">이름을 누르면 그 클럽 안 전적이 나와요 · 아래 숫자는 구력</div>`;
   document.getElementById('ov').classList.add('on');
+}
+
+/* 초청장 만들기 — 클럽 초대장과 다른 것이다.
+   클럽 초대장은 <우리 클럽에 들어오세요>, 이건 <너희 클럽으로 대회에 나와라>다.
+   받는 쪽은 앱을 안 써도 된다. 링크 하나로 대표자가 클럽 이름과 엔트리 여섯 명을
+   그 자리에서 적고 끝낸다. 클럽을 만들라고 시키면 신청 자체를 포기한다. */
+async function cupInviteNew(){
+  const c=(CUPC&&CUPC.cup); if(!c) return;
+  let inv={invites:[]};
+  try{ inv=await api(`/cup/${c.id}/invites`); }catch(e){}
+  const rows=(inv.invites||[]).map(v=>{
+    const done=v.status!=='invited';
+    return `<div class="cupinv"><b>${esc(v.club_name)}</b>
+      ${done?`<em>${v.roster_n?`엔트리 ${v.roster_n}명`:'신청함'}</em>`
+            :`<em>회신 대기</em><s onclick="cupInviteCopy('${esc(v.invite_token)}')">링크 복사</s>`}
+    </div>`; }).join('');
+  document.getElementById('sheet').innerHTML=`
+    <div class="sh-top"><h3>초청장 만들기</h3>
+      <div class="cl" role="button" tabindex="0" onclick="cupTeams()">×</div></div>
+    <div class="sd">받는 클럽은 <b>맞수를 안 써도</b> 됩니다</div>
+    <div class="cuphint" style="margin-top:14px"><i>◆</i><div>
+      링크를 열면 대표자 한 명이 <b>클럽 이름과 엔트리 6명</b>을 그 자리에서 적고 끝납니다.
+      앱을 깔거나 클럽을 만들 필요가 없어요.<br>
+      이미 맞수를 쓰는 클럽이면 링크가 앱으로 열려 바로 신청됩니다.</div></div>
+    <div class="wlb" style="margin-top:20px">초청할 클럽 이름</div>
+    <input id="cupInvNm" class="wfd" type="text" maxlength="20" placeholder="예) 기흥레이크">
+    <div class="wlb">대표자 연락처 <span style="color:var(--lgray);font-weight:400">(선택)</span></div>
+    <input id="cupInvTel" class="wfd" type="text" inputmode="numeric" maxlength="11"
+      placeholder="01012345678">
+    <button class="btn" style="margin-top:16px" onclick="cupInviteGo()">초청장 만들기</button>
+    ${rows?`<div class="wlb" style="margin-top:24px">보낸 초청</div>${rows}`:''}
+    <button class="btn ghost" style="margin-top:14px" onclick="cupTeams()">참가 클럽으로</button>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function cupInviteGo(){
+  const c=(CUPC&&CUPC.cup); if(!c) return;
+  const nm=(document.getElementById('cupInvNm')||{}).value||'';
+  const tel=(document.getElementById('cupInvTel')||{}).value||'';
+  if(!nm.trim()) return toast('초청할 클럽 이름을 적어주세요');
+  let r=null;
+  try{ r=await api(`/cup/${c.id}/invite`,{method:'POST',
+    body:JSON.stringify({club_name:nm, contact_phone:tel})}); }
+  catch(e){ return toast(apiWhy(e,'만들지 못했어요')); }
+  cupInviteCopy(r.token, nm);
+  cupInviteNew();
+}
+function cupInviteCopy(tok, nm){
+  const url=`${location.origin}/?cup=${encodeURIComponent(tok)}`;
+  const msg=`${nm?`${nm} 클럽에 보내는 초청장이에요.\n`:''}${url}`;
+  try{
+    if(navigator.share) return navigator.share({title:'MATSU League 초청장', text:msg, url});
+  }catch(e){}
+  try{ navigator.clipboard.writeText(url); toast('링크를 복사했어요'); }
+  catch(e){ prompt('이 링크를 클럽 대표에게 보내세요', url); }
 }
 
 /* 엔트리에 오른 사람 한 명 — 그 클럽 안 전적과 승률 */
