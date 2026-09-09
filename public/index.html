@@ -2218,6 +2218,29 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><path d='M7 4h10v5a5 5 0 0 1-10 0z'/><path d='M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'/><path d='M12 14v3M9 20h6'/></svg>") }
   .cupcard .n{ font-size:17px;font-weight:700;letter-spacing:-.03em;margin-top:5px }
   .cupcard .s{ font-size:13px;color:var(--gray);line-height:1.6;margin-top:4px }
+  /* 경기가 시작되면 카드가 옷을 갈아입는다 — 모집 카드가 그대로 있으면
+     오늘 뭐가 도는지 알 수 없다. */
+  .cupcard.live{ border-color:var(--ink);background:var(--ink) }
+  .cupcard.live .t{ color:#ff8b4d }
+  .cupcard.live .t em{ color:#8d97a6 }
+  .cupcard.live .t em b{ color:#cfd6df }
+  .cupcard.live .n{ color:#fff }
+  .cupcard.live .s{ color:#98a3b5 }
+  .cupcard.live .m{ color:#8d97a6 }
+  .cupcard.live .go{ border-top-color:#2b3444;color:#ff8b4d }
+  .cupcard.live .cuptr{ filter:none }
+  .cuplv{ display:flex;flex-direction:column;gap:7px;margin-top:12px }
+  .cuplv .g{ display:flex;align-items:center;gap:8px;background:#242c38;border-radius:11px;
+    padding:9px 11px }
+  .cuplv .g .nm{ flex:1;min-width:0;font-size:13px;font-weight:700;color:#fff;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  .cuplv .g .sc{ flex:none;font-size:15px;font-weight:700;color:#fff;
+    font-variant-numeric:tabular-nums }
+  .cuplv .g .ct{ flex:none;font-size:12px;color:#8d97a6 }
+  .cuplv .clk{ display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;
+    color:#ffb45c;margin-top:2px }
+  .cuplv .clk s{ text-decoration:none;width:6px;height:6px;border-radius:4px;background:#ff5c33 }
+
   /* 8팀 대회에서 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
      칸이 적을 때는 점을 그대로 세는 편이 정확하다. 12칸이 넘어가면 바로 돌아간다. */
   .cupcard .cdots{ display:flex;gap:5px;align-items:center;margin-top:12px }
@@ -2304,6 +2327,13 @@
   .cupmine .c.now{ background:var(--coral);border-color:var(--coral) }
   .cupmine .c.now .t,.cupmine .c.now .s{ color:#fff }
 
+  /* 필터 — .seg 는 다른 화면에서 회색 알약 배경을 덮어쓴다. 전용 이름을 쓴다. */
+  .cupflt{ display:flex;gap:7px;margin:10px 0 4px }
+  .cupflt div{ flex:1;text-align:center;padding:10px 0;border-radius:12px;font-size:14px;
+    font-weight:700;background:#fff;border:1px solid var(--line);color:var(--gray);
+    cursor:pointer;white-space:nowrap }
+  .cupflt div.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+
   /* ── 전체 슬롯 · 코트를 네 열로 ──
      세로로 읽으면 한 코트의 하루, 가로로 읽으면 그 시각의 전체.
      한 화면이 두 질문에 답한다. 같은 타이가 세 칸에 반복되지만
@@ -2333,13 +2363,36 @@
   .cs-r .c.off{ background:transparent;color:#b9c0c7 }
   .cs-r .c s{ text-decoration:none;color:#b9c0c7 }
 
+  /* 코트 하나만 고르면 폭이 남는다 — 그때는 선수 이름을 편다 */
+  .cs-one{ display:flex;align-items:center;gap:10px;padding:11px 0;
+    border-bottom:1px solid var(--line) }
+  .cs-one:last-child{ border-bottom:0 }
+  .cs-one.past{ opacity:.55 }
+  .cs-one.now{ background:var(--coral-s);border-radius:12px;margin:0 -10px;
+    padding:11px 10px;border-bottom:0 }
+  .cs-one .at{ width:46px;flex:none;font-size:14px;font-weight:700;
+    font-variant-numeric:tabular-nums }
+  .cs-one.now .at{ color:var(--coral-d) }
+  .cs-one .kd{ flex:none;font-size:12px;font-weight:700;border-radius:6px;padding:2px 7px;
+    background:var(--felt);color:var(--ink2) }
+  .cs-one .kd.mx{ background:#fbeef4;color:#c96a9c }
+  .cs-one .pp{ flex:1;min-width:0 }
+  .cs-one .pp div{ font-size:14px;color:var(--gray);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap }
+  .cs-one .pp div.us{ font-weight:700;color:var(--ink) }
+  .cs-one .pp div em{ font-style:normal;font-size:12px;color:#b9c0c7;margin-left:5px }
+  .cs-one .rs{ flex:none;width:34px;text-align:right;font-size:15px;font-weight:700;
+    font-variant-numeric:tabular-nums;color:#b9c0c7 }
+  .cs-one .rs div.w{ color:var(--coral-d) }
+
   /* ── 매치 카드 ──
      점수를 오른쪽에 하나로 붙이면 <6:2 중에 우리가 뭐지>를 한 번 더 생각해야 한다.
      팀마다 자기 점수를 옆에 두면 그 줄만 보면 끝난다. */
   .v6{ background:#fff;border-radius:18px;padding:6px 16px 14px;margin-top:10px;
     box-shadow:0 1px 2px rgba(23,28,37,.04),0 6px 16px rgba(23,28,37,.05) }
-  .v6.own{ background:#fffcfa;
-    box-shadow:0 1px 2px rgba(241,99,26,.06),0 6px 16px rgba(241,99,26,.09) }
+  /* 내 경기라고 종이를 물들이면 화면이 온통 살구빛이 된다.
+     흰 종이를 두고 <이름과 금색 표시>로만 가른다. */
+  .v6.own{ background:#fff }
   .v6 .h{ display:flex;align-items:center;gap:8px;padding:12px 0 11px }
   .v6 .h .nm{ font-size:16px;font-weight:700;letter-spacing:-.03em;flex:1;min-width:0 }
   .v6.own .h .nm{ color:var(--coral-d) }
@@ -2360,6 +2413,9 @@
   .v6 .sd{ display:flex;align-items:center;gap:8px;padding:3px 0 }
   .v6 .sd .who{ flex:1;min-width:0;font-size:14px;font-weight:400;color:var(--gray);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+  /* 본인 이름 — 대진표에서 자기를 찾는 데 1초도 쓰면 안 된다 */
+  .meau{ background:#fff6e3;color:var(--gold-d);border-radius:8px;padding:1px 7px;
+    font-weight:700;box-shadow:inset 0 0 0 1px #f0dcb2 }
   .v6 .sd.us .who{ font-weight:700;color:var(--ink) }
   .v6 .sd .yr{ flex:none;font-size:12px;color:#b9c0c7;font-variant-numeric:tabular-nums }
   .v6 .sd .pt{ flex:none;width:24px;text-align:right;font-size:17px;font-weight:700;
@@ -2683,9 +2739,16 @@
   .hc-go:active{ background:var(--felt) }
 
   /* ── 구장톡 ── */
-  .tktabs{ display:flex;gap:18px;border-bottom:1px solid var(--line);margin-top:6px }
+  /* 구장이 여럿이면 탭 이름이 길어진다 — 줄바꿈 대신 옆으로 민다 */
+  .tktabs{ display:flex;gap:18px;border-bottom:1px solid var(--line);margin-top:6px;
+    overflow-x:auto;-webkit-overflow-scrolling:touch }
+  .tktabs::-webkit-scrollbar{ display:none }
   .tkt{ padding:10px 2px 9px;font-size:16px;font-weight:700;color:var(--lgray);
-    cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px }
+    cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px;
+    white-space:nowrap;flex:none }
+  /* 안 읽은 글이 있는 구장 — 점 하나면 충분하다 */
+  .tkdot{ display:inline-block;width:5px;height:5px;border-radius:3px;background:var(--coral);
+    margin-left:5px;vertical-align:4px }
   .tkt.on{ color:var(--ink);border-bottom-color:var(--coral) }
   /* 누가 여기 있는지 — 글이 없어도 빈 방으로 느껴지지 않게 */
   .tkwho{ display:flex;align-items:center;gap:10px;margin-top:15px }
@@ -14353,7 +14416,7 @@ function hcHead(title, sub){
    클럽 → 홈코트 → 지도 → 코트 를 통과하게 하면 안 온다.
 
    화면 자체는 클럽 탭 안의 페이지와 같은 걸 쓴다. 그릴 자리만 다르다. */
-let TALK_TAB=null, TALK_WAIT=null, TALK_TRY=0;
+let TALK_TAB=null, TALK_WAIT=null, TALK_TRY=0, TALK_COURTS=null;
 /* 내 활동에 적을 <나의 일정> — 오늘부터 앞으로 남은 내 것만 센다.
    지난 것까지 세면 숫자가 불어나기만 해서 눌러볼 이유가 없다. */
 function schedCount(){
@@ -14402,13 +14465,24 @@ function renderTalkTab(){
     return;
   }
   const title = TALK.scope==='all' ? '전국 코트 이야기' : (TALK.venue||'구장톡');
-  el.innerHTML=`<div class="hcp-top"><span class="up">라운지</span>
+  /* 한 구장을 여러 클럽이 쓰면 그 이름을 곁줄에 적어 준다 */
+  const cinfo=(TALK_COURTS||[]).find(v=>v.venue_id===TALK.vid);
+  el.innerHTML=`<div class="hcp-top"><span class="up">라운지${
+      cinfo&&cinfo.clubs&&cinfo.clubs.length>1?` · ${esc(cinfo.clubs.join(' · '))}`:''}</span>
       <b>${esc(title)}</b></div>
     <div id="talkPage">${talkBodyHtml()}</div>`;
 }
 async function talkTabLoad(cid){
+  /* 내가 낄 수 있는 구장을 먼저 다 받는다 — 구장이 둘이면 탭이 둘로 펴진다 */
+  try{ const r=await api('/me/courts'); TALK_COURTS=(r&&r.courts)||[]; }
+  catch(e){ TALK_COURTS=[]; }
   /* 클럽이 없으면 구장이 없다 — 0 으로 열면 서버가 전국톡만 준다 */
-  if(!cid) return openCourtTalk(0,'all');
+  if(!cid && !TALK_COURTS.length) return openCourtTalk(0,'all');
+  /* 클럽이 있으면 구장톡이 먼저다. 안 읽은 글이 있는 구장을 앞세운다. */
+  if(TALK_COURTS.length){
+    const pick=TALK_COURTS.slice().sort((a,b)=>(b.unread||0)-(a.unread||0))[0];
+    return openCourtTalk(pick.venue_id,'court');
+  }
   let d=null;
   try{ d=await api(`/clubs/${cid}/homecourt`); }catch(e){ d=null; }
   const vid=(d&&d.home&&d.home.venue_id)||null;
@@ -14534,7 +14608,9 @@ function cupTrophy(cls){
     <path d="M24 34.1h6.1l3.4 7.4H24z" fill="#4e9744"/></svg>`;
 }
 function cupCardSection(){
-  const cid=clubId(); if(!SERVER_OK||!cid) return '';
+  if(!SERVER_OK) return '';
+  /* 클럽이 없어도 대회는 보인다 — 대회는 플랫폼이 여는 것이다 */
+  const cid=clubId()||0;
   if(CUPC===null || CUPC.cid!==cid){ cupCardLoad(cid); return ''; }
   const c=CUPC.cup; if(!c) return '';
   const e=CUPC.entry;
@@ -14565,6 +14641,31 @@ function cupCardSection(){
      참가 확정된 팀이 <이미 끝난 일>처럼 보인다. 대회가 지난 뒤에만 죽인다. */
   const done = e && e.roster_n>=need;
   const over = c.date && c.date < ymd();
+  const LV = c.live;
+  /* 경기가 도는 중이면 카드가 라이브가 된다. 참가 안 한 클럽도, 클럽이 없는 사람도
+     같은 카드를 본다 — 대회는 플랫폼이 여는 것이다. */
+  if(LV && LV.on){
+    const mm=Math.floor(LV.left_ms/60000), ss=Math.floor(LV.left_ms%60000/1000);
+    return `<div class="cupcard live" onclick="cupDay()">
+      <div class="b">
+        <div class="t">${cupTrophy()}LIVE · ${esc(LV.start||'')}
+          <em>${LV.played} / ${LV.total}매치</em></div>
+        <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
+        <div class="cuplv">
+          ${(LV.ties||[]).slice(0,3).map(x=>{
+            let a=0,b2=0; (x.courts||[]).forEach(o=>{ if(o.a==null) return;
+              if(o.a>o.b) a++; else if(o.b>o.a) b2++; });
+            return `<div class="g"><span class="nm">${esc(x.home_name)}</span>
+              <span class="sc">${a} : ${b2}</span>
+              <span class="nm" style="text-align:right">${esc(x.away_name)}</span></div>`;
+          }).join('')}
+          <div class="clk"><s></s>${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} 남음
+            · ${(LV.ties||[]).reduce((k,x)=>k+(x.courts||[]).length,0)}코트</div>
+        </div>
+      </div>
+      <div class="go">대진·점수 보기</div>
+    </div>`;
+  }
   const paid = e && e.fee_paid;
   const drawn = e && e.group_label;
   /* 오늘이 대회날이면 카드가 대진으로 바뀐다 — 클럽 탭에 카드를 또 만들면
@@ -14578,7 +14679,9 @@ function cupCardSection(){
   /* 추첨이 끝났으면 날짜와 상관없이 대진을 볼 수 있어야 한다.
      예전에는 drawn 이면 신청 화면으로 떨어져서 <우리 조 대진 보기>가 엔트리 화면을 열었다. */
   const tap = (today || drawn) ? 'cupDay()'
-    : paid ? 'cupTeams()' : 'cupApply()';
+    : paid ? 'cupTeams()'
+    : (!clubId() || !e) && c.drawn ? 'cupDay()'
+    : !clubId() ? 'cupTeams()' : 'cupApply()';
   const state2 = !e ? ''
     : today ? `${drawn?`${e.group_label}조 ${e.seat}번 · `:''}오늘 ${esc(c.place||'')}`
     : drawn ? `${e.group_label}조 ${e.seat}번 · 엔트리 ${e.roster_n}/${need}명`
@@ -14599,7 +14702,7 @@ function cupCardSection(){
 /* 참가 클럽 현황 — 확정 카드가 여는 화면 */
 async function cupTeams(){
   const c=(CUPC&&CUPC.cup); if(!c) return;
-  const cid=clubId()||0;
+  const cid=clubId()||0;   // 클럽이 없어도 참가 클럽을 본다
   let d=null;
   try{ d=await api(`/cup/${c.id}/teams?club_id=${cid}`); }
   catch(e){ return toast(apiWhy(e,'불러오지 못했어요')); }
@@ -14750,7 +14853,7 @@ let CUPD=null;
 
 async function cupDay(){
   const c=(CUPC&&CUPC.cup); if(!c) return;
-  const cid=clubId()||0;
+  const cid=clubId()||0;   // 클럽이 없어도 본다 — 점수 버튼만 안 붙는다
   let d=null;
   try{ d=await api(`/cup/${c.id}/standings`); }
   catch(e){ return toast(apiWhy(e,'대진을 불러오지 못했어요')); }
@@ -14766,6 +14869,9 @@ async function cupDay(){
 function cupMyEntry(){
   const e=(CUPC&&CUPC.entry); return e?e.id:0;
 }
+/* 끝나는 시각 — 기기 시계가 아니라 서버가 준 시작 시각으로 센다 */
+function cupHHMM(ms){ const d=new Date(ms);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function cupMs(v){ const t=Math.max(0,Math.round(v/1000));
   return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
 
@@ -14808,6 +14914,7 @@ function cupDayDraw(){
   const rname=r=>r.kind==='semi'?'준결승':r.kind==='final'?'결승·3위전':`${r.group}조`;
   const host=D.is_host;
 
+  const F=D.filter||'all';
   /* 내 다음 경기 — 아직 안 끝난 것 중 첫 번째 하나만 <다음>이다 */
   let mineNext=null;
   rounds.forEach(r=>(r.ties||[]).forEach(t=>{
@@ -14820,20 +14927,25 @@ function cupDayDraw(){
     clk={cls:'', cap:'오늘 경기 끝', tail:`${slots.length}칸 모두 마쳤어요`,
       big:'수고하셨어요', at:'', ft:'', btn:null};
   } else if(cur){
+    /* 남은 시간만 보면 <몇 시까지 뛰나>를 머리로 계산해야 한다.
+       코트에서 시계를 볼 때 필요한 건 끝나는 시각이다. */
+    const endAt=cupHHMM(cur.started+dur);
     clk={cls:'', cap:`${esc(cur.start||'')} 진행 중`,
       tail:`${cur.ms.length}코트${curR?` · ${esc(rname(curR))}`:''}`,
-      big:cupMs(left), at:`${mins}분 단타임<em> · 함께 끝나요</em>`,
+      big:cupMs(left), at:`${endAt} 종료<em> · ${mins}분 단타임</em>`,
       ft: mineNext?`<b>${esc(mineNext.t.home_name||'')}</b> vs ${esc(mineNext.t.away_name||'')}`:'',
       btn: mineNext?{t:'점수 넣기',a:`cupPickMatch('${esc(mineNext.t.id)}')`}:null};
   } else if(next && anyStarted){
     /* 앞 칸은 끝났고 다음은 아직 — 전환 시간. 금색으로 <뛰는 시간이 아니다>를 알린다 */
     clk={cls:' swap', cap:'전환 시간', tail:'물 마시고 코트를 바꿔요',
-      big:esc(next.start||''), at:`다음 시작<em> · ${next.ms.length}코트</em>`, ft:'',
+      big:esc(next.start||''), at:`다음 시작<em> · ${next.ms.length}코트</em>`,
+      ft: host?'':'주최 클럽이 시작을 누르면 네 코트가 함께 켜져요',
       btn: host?{t:`${esc(next.start||'')} 시작`,a:`cupSlotStart(${next.s})`}:null};
   } else {
     clk={cls:'', cap:'시작 전', tail:`${esc((slots[0]||{}).start||'')} 첫 경기`,
       big:esc((slots[0]||{}).start||'--:--'),
-      at:`${mins}분 단타임<em> · 코트가 함께 시작해요</em>`, ft:'',
+      at:`${mins}분 단타임<em> · 코트가 함께 시작해요</em>`,
+      ft: host?'':'주최 클럽이 시작을 누르면 켜져요',
       btn: host&&next?{t:`${esc(next.start||'')} 시작`,a:`cupSlotStart(${next.s})`}:null};
   }
 
@@ -14853,39 +14965,41 @@ function cupDayDraw(){
               <span>${a.map(x=>esc(x.name)).join(' · ')}</span>
               <em>${a.reduce((s2,x)=>s2+(+x.years||0),0)}년</em></div>`; }).join('')}
         </div>`; })()}
-      ${host&&cur?`<button class="cupgo ghost" onclick="cupSlotStop(${cur.s})">이 칸 되돌리기</button>`:''}
+      ${host&&cur?`<button class="cupgo ghost" onclick="cupSlotStop(${cur.s})">
+        ${esc(cur.start||'')} 시작 취소</button>`:''}
       ${(()=>{ /* 16칸 레일은 옆으로 밀어야 해서 선수에게 쓸모가 적다.
            내 경기 넉 칸만 세우고 전체는 눌러서 본다. */
         const mineS=slots.filter(x=>me&&x.ms.some(z=>z.t.home===me||z.t.away===me));
-        if(!mineS.length) return `<button class="cupgo ghost" onclick="cupAllSlots()">전체 대진 보기</button>`;
+        if(!mineS.length) return `<button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
         return `<div class="cupmine">${mineS.map(x=>{
           const on=cur&&cur.s===x.s;
           const k=x.done?'done':on?'now':'';
           const lab=x.done?'끝':on?'지금':'대기';
           return `<div class="c ${k}"><div class="t">${esc(x.start||'')}</div>
             <div class="s">${lab}</div></div>`; }).join('')}</div>
-          <button class="cupgo ghost" onclick="cupAllSlots()">전체 ${slots.length}칸 보기</button>`;
+          <button class="cupgo ghost" onclick="cupAllSlots()">코트별로 보기</button>`;
       })()}
     </div>`;
-
-  const F=D.filter;
-  const shown=rounds.filter(r=>F==='all'||F==='mine'
-    ? (F==='all'|| (r.ties||[]).some(isMine)) : r.group===F || r.final);
 
   el.innerHTML=`<div class="hcp-top"><span class="up">${esc(D.cup.title||'MATSU League')}</span>
       <b>대회 당일</b></div>
     ${clock}
-    ${mineNext?`<div class="cupsec">오늘 내 경기</div>
-      ${rounds.filter(r=>(r.ties||[]).some(isMine)).map(r=>{
-        const t=(r.ties||[]).find(isMine); const s2=tieScore(t);
-        return cupTieHtml(r,t,s2,true,rname(r),tm,dur,now,mineNext,D);
-      }).join('')}`:''}
-    <div class="cupsec">그날 전체 대진</div>
-    <div class="seg" style="margin-bottom:12px">${[['all','전체'],['mine','내 경기'],['A','A조'],['B','B조']]
-      .map(([k,t])=>`<div class="o ${F===k?'on':''}" onclick="CUPD.filter='${k}';cupDayDraw()">${t}</div>`).join('')}</div>
-    ${shown.map(r=>(r.ties||[])
-      .filter(t=>F!=='mine'||isMine(t))
-      .map(t=>cupTieHtml(r,t,tieScore(t),isMine(t),rname(r),tm,dur,now,mineNext,D)).join('')).join('')}
+    <div class="cupsec">전체 대진</div>
+    <div class="cupflt">${[['all','전체'],['mine','내 경기'],['A','A조'],['B','B조']]
+      .map(([k,t])=>`<div class="${F===k?'on':''}"
+        onclick="CUPD.filter='${k}';cupDayDraw()">${t}</div>`).join('')}</div>
+    ${(()=>{
+      /* 회차 순서 그대로 편다. 내 경기만 따로 두면 같은 카드가 두 번 나온다 —
+         필터에 <내 경기>가 있으니 그걸로 가른다. */
+      const out=[];
+      rounds.forEach(r=>(r.ties||[]).forEach(t=>{
+        if(F==='mine' && !isMine(t)) return;
+        if(F==='A'||F==='B'){ if(!(r.group===F||r.final)) return; }
+        out.push(cupTieHtml(r,t,tieScore(t),isMine(t),rname(r),tm,dur,now,mineNext,D));
+      }));
+      return out.length?out.join(''):`<div class="vnone" style="padding:26px 10px">
+        ${F==='mine'?'우리 클럽 경기가 없어요':'경기가 없어요'}</div>`;
+    })()}
     <div style="height:20px"></div>`;
 
   /* 지금 회차가 화면 밖에 있으면 밀어서 보여준다 */
@@ -14915,6 +15029,44 @@ function cupAllSlots(){
   const cur=slots.find(x=>x.started && x.started+dur>now);
 
   const F=CUPD.court||0;                    // 0 = 전체
+  const P=D.pairs||{}, my=D.my_entries||[];
+  const pairOf=(eid,no)=>{ const g=(P[eid]||{})[no]||[];
+    return { s:g.map(x=>x.name).join(' · '), y:g.reduce((a,x)=>a+(+x.years||0),0) }; };
+
+  /* 코트를 하나만 고르면 폭이 남는다 — 그때는 선수 이름을 편다.
+     네 열 격자에는 <강태민·이경태 vs 정준호·강민수>가 안 들어간다. */
+  if(F){
+    const list=slots.map(x=>{
+      const z=x.ms.find(y=>+y.m.court===F);
+      return z?{x,z}:null; }).filter(Boolean);
+    const body=list.map(({x,z})=>{
+      const s2=sc[z.m.key], done=s2&&s2.a!=null;
+      const on=x.started&&x.started+dur>now;
+      const A=pairOf(z.t.home,z.m.no), B=pairOf(z.t.away,z.m.no);
+      const cls=[done?'past':'', on?'now':''].filter(Boolean).join(' ');
+      const line=(o,side,win,eid)=>`<div class="${my.includes(eid)?'us':''}">${
+        esc(o.s||side)}${o.y?`<em>${o.y}년</em>`:''}</div>`;
+      return `<div class="cs-one ${cls}">
+        <span class="at">${esc(x.start||'')}</span>
+        <span class="kd ${z.m.kind==='mixed'?'mx':''}">${z.m.kind==='mixed'?'혼복':'남복'}</span>
+        <span class="pp">
+          ${line(A, z.t.home_name, done&&s2.a>s2.b, z.t.home)}
+          ${line(B, z.t.away_name, done&&s2.b>s2.a, z.t.home?z.t.away:0)}</span>
+        <span class="rs">
+          <div class="${done&&s2.a>s2.b?'w':''}">${done?s2.a:'–'}</div>
+          <div class="${done&&s2.b>s2.a?'w':''}">${done?s2.b:'–'}</div></span></div>`;
+    }).join('');
+    document.getElementById('sheet').innerHTML=`
+      <div class="sh-top"><h3>${F}번 코트</h3>
+        <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+      <div class="sd">하루 ${list.length}경기</div>
+      <div class="cs-seg">${[[0,'전체']].concat(Array.from({length:courts},(_,i)=>[i+1,`${i+1}번`]))
+        .map(([k,t])=>`<div class="${F===k?'on':''}" onclick="CUPD.court=${k};cupAllSlots()">${t}</div>`).join('')}</div>
+      ${body}
+      <div class="hnote">한 클럽이 한 코트를 <b>세 칸 연속</b> 씁니다</div>`;
+    document.getElementById('ov').classList.add('on');
+    return;
+  }
   const short=n2=>String(n2||'').replace(/\s/g,'').slice(0,4);
   const rows=slots.map(x=>{
     const cls=[x.done?'past':'', cur&&cur.s===x.s?'now':''].filter(Boolean).join(' ');
@@ -14955,7 +15107,7 @@ async function cupSlotStart(sl){
 }
 async function cupSlotStop(sl){
   const D=CUPD; if(!D) return;
-  if(!confirm('이 칸 시계를 되돌릴까요?\n점수는 그대로 남아요.')) return;
+  if(!confirm('시계를 끄고 아직 시작 안 한 것으로 되돌립니다.\n잘못 눌렀을 때 쓰세요 · 점수는 그대로 남아요.')) return;
   try{ await api(`/brackets/${D.cup.id}/slot/${sl}/reset`,{method:'POST',body:'{}'}); }
   catch(e){ return toast(apiWhy(e,'되돌리지 못했어요')); }
   cupDay();
@@ -15000,8 +15152,10 @@ function cupTieHtml(r,t,s2,mine,gname,tm,dur,now,mineNext,D){
     : live?`<span class="tag">진행중</span>`
     : isNext?`<span class="tag next">다음</span>`:'';
   const KD={free:['남복',''],mixed:['혼복','mx']};
+  const uid=(state.serverUser||{}).id;
   const nm=(eid,p)=>{ const g=(P[eid]||{})[p]||[];
-    return { s:g.map(x=>esc(x.name)).join(' · '),
+    return { s:g.map(x=>x.user_id&&uid&&x.user_id===uid
+        ? `<span class="meau">${esc(x.name)}</span>` : esc(x.name)).join(' · '),
       y:g.reduce((a,x)=>a+(+x.years||0),0) }; };
   const rows=ms.map(m=>{
     const [kd,cls]=KD[m.kind]||['복식',''];
@@ -15111,9 +15265,14 @@ async function cupScoreSave(){
 
 async function cupCardLoad(cid){
   let d=null;
-  try{ d=await api(`/clubs/${cid}/cup-open`); }catch(e){ d={cup:null}; }
+  try{ d = cid ? await api(`/clubs/${cid}/cup-open`) : await api('/cup/open'); }
+  catch(e){ d={cup:null}; }
   CUPC={cid, ...d};
   if(state.view==='club') renderClub();
+  /* 도는 중이면 20초마다 다시 — 남은 시간과 스코어가 굳어 있으면 안 본다 */
+  clearTimeout(window._cupCardT);
+  if(d && d.cup && d.cup.live && d.cup.live.on)
+    window._cupCardT=setTimeout(()=>cupCardLoad(cid), 20000);
 }
 
 function homeCourtSection(){
@@ -18354,9 +18513,20 @@ async function openCourtTalk(vid,scope,cat){
 
 function talkBodyHtml(){
   const t=TALK;
+  /* 구장이 둘 이상이면 <구장톡> 한 칸으로는 나머지를 영영 못 본다.
+     내가 든 모든 클럽의 홈 구장을 이름 그대로 편다. 하나뿐이면 예전과 같다. */
+  const CS=TALK_COURTS||[];
   const tab=(k,label)=>`<div class="tkt${t.scope===k?' on':''}"
     onclick="talkTab('${k}')">${label}</div>`;
-  let h=`<div class="tktabs">${tab('court','구장톡')}${tab('all','전국톡')}</div>`;
+  let h;
+  if(CS.length>1){
+    h=`<div class="tktabs">${CS.map(v=>`<div class="tkt${
+      t.scope==='court'&&t.vid===v.venue_id?' on':''}"
+      onclick="openCourtTalk(${v.venue_id},'court')">${esc(v.name)}${
+      v.unread?'<i class="tkdot"></i>':''}</div>`).join('')}${tab('all','전국톡')}</div>`;
+  } else {
+    h=`<div class="tktabs">${tab('court','구장톡')}${tab('all','전국톡')}</div>`;
+  }
 
   /* 잠긴 이유가 둘이라 안내가 달라야 한다.
      클럽이 없는 사람에게 <운영진이 걸면 열려요>라고 하면 아무것도 할 수 없다. */
