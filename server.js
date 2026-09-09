@@ -5649,27 +5649,6 @@ try {
     UNIQUE(bracket_id, tie_id, entry_id, match_no))`);
 } catch (e) { console.error('[schema cup]', e.message); }
 
-/* 짝 기능이 생기기 전에 낸 엔트리는 pair 가 비어 있다.
-   그대로 두면 대진 화면에 <라인업 전>만 뜬다 — 한 번 훑어 채워 준다. */
-try {
-  const holes = db.prepare(`SELECT entry_id FROM cup_roster WHERE pair IS NULL
-    GROUP BY entry_id`).all();
-  let fixed = 0;
-  holes.forEach(h => {
-    const rows = db.prepare(`SELECT id, user_id, guest_name, gender, ntrp
-      FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(h.entry_id);
-    if (rows.length !== CUP_ROSTER_N) return;
-    const br = db.prepare(`SELECT b.data FROM brackets b
-      JOIN cup_entries e ON e.bracket_id=b.id WHERE e.id=?`).get(h.entry_id);
-    const map = cupAutoPair(rows.map(r => ({ id: r.id, gender: r.gender, ntrp: r.ntrp })),
-      cupCap(br && br.data));
-    if (!map) return;
-    const up = db.prepare('UPDATE cup_roster SET pair=? WHERE id=?');
-    rows.forEach(r => { if (map[r.id]) up.run(map[r.id], r.id); });
-    fixed++;
-  });
-  if (fixed) console.log(`[cup] 짝이 비어 있던 엔트리 ${fixed}건을 채웠습니다`);
-} catch (e) { console.error('[cup pair backfill]', e.message); }
 
 /* MATSU CUP 대진 생성기 — 순수 함수.
    서버도 브라우저도 아닌 데서 그대로 돌려볼 수 있어야 한다.
@@ -5793,8 +5772,17 @@ function packTies(list, courts, startSlot, busy) {
   let wave = [];
   const flush = () => {
     if (!wave.length) return;
-    wave.forEach((t, i) => out.push({ tie: t, slot, court: (i % courts) + 1 }));
-    slot += 3;
+    /* 물결에 든 타이가 코트보다 적으면 한 타이에 여러 면을 준다.
+       준결승은 타이가 둘뿐인데 한 면씩만 주면 3·4번 코트가 세 칸 내내 논다.
+       두 면씩 주면 세 매치가 두 칸에 들어가 한 칸이 줄어든다. */
+    const per = Math.max(1, Math.min(3, Math.floor(courts / wave.length)));
+    const need = Math.ceil(3 / per);          // 이 물결이 쓸 칸 수
+    wave.forEach((t, i) => {
+      const mine = [];
+      for (let k = 0; k < per; k++) mine.push(((i * per + k) % courts) + 1);
+      out.push({ tie: t, slot, courts: mine, per });
+    });
+    slot += need;
     wave = [];
   };
   list.forEach(t => {
@@ -5830,9 +5818,13 @@ function assignCourts(placed, courts, state) {
   };
   /* 코트는 배치기가 이미 정했다 — 한 타이가 한 면을 세 칸 동안 쓴다.
      여기서는 그 면에 세 매치를 한 칸씩 얹기만 한다. */
-  placed.forEach(({ tie, slot, court }) => {
-    const c = court || take(slot, 1)[0] || 1;
-    tie.matches.forEach((m, i) => { m.court = c; m.slot = slot + i; });
+  placed.forEach(({ tie, slot, courts: cs, per }) => {
+    const list = (cs && cs.length) ? cs : [take(slot, 1)[0] || 1];
+    const p = per || list.length;
+    tie.matches.forEach((m, i) => {
+      m.court = list[i % p];
+      m.slot = slot + Math.floor(i / p);
+    });
     tie.slot = slot;
   });
   return st;
@@ -6281,15 +6273,35 @@ function cupLiveNow(b) {
     all.push({ m, t }); })));
   if (!all.length) return null;
   const now = Date.now();
+  /* 시작 시각이 미래인 칸은 아직 안 켜진 것이다 — 예약만 걸려 있다 */
   let slot = null, started = 0;
   (d.slots || []).forEach(x => {
     const ms = all.filter(z => +z.m.slot === +x.s);
     const st = Math.max(0, ...ms.map(z => tm[z.m.key] || 0));
-    if (st && st + dur > now && st > started) { slot = x; started = st; }
+    if (st && st <= now && st + dur > now && st > started) { slot = x; started = st; }
   });
   const doneN = all.filter(z => sc[z.m.key] && sc[z.m.key].a != null).length;
-  if (!slot) return { on: false, done: doneN >= all.length, played: doneN, total: all.length,
-    started_any: Object.keys(tm).length > 0 };
+  if (!slot) {
+    /* 칸과 칸 사이(전환 시간)에는 도는 코트가 없다. 그렇다고 <참가 확정> 카드로
+       돌아가면 대회가 끝난 줄 안다 — 시작한 적이 있고 아직 안 끝났으면 <진행 중>이다. */
+    const startedAny = Object.values(tm).some(v => v && v <= now);
+    const done = doneN >= all.length;
+    let next = null;
+    if (!done) {
+      (d.slots || []).some(x => {
+        const ms = all.filter(z => +z.m.slot === +x.s);
+        if (!ms.length) return false;
+        const st = Math.max(0, ...ms.map(z => tm[z.m.key] || 0));
+        if (st && st <= now) return false;          // 이미 지난 칸
+        next = { start: x.start, slot: x.s, courts: ms.length,
+          /* 예약이 걸려 있으면 몇 초 뒤에 저절로 켜지는지 알려준다 */
+          in_ms: st ? Math.max(0, st - now) : null };
+        return true;
+      });
+    }
+    return { on: false, between: startedAny && !done, next,
+      done, played: doneN, total: all.length, started_any: startedAny };
+  }
   /* 짝은 엔트리 낼 때 이미 정해져 있다 — 클럽 이름만 보여주면
      <누구랑 붙는지>를 알 수 없다. 코트마다 뛰는 네 사람을 실어 보낸다. */
   const pair = (eid, no) => db.prepare(`SELECT guest_name name, gender, ntrp years
@@ -7342,18 +7354,29 @@ app.post('/brackets/:id/slot/:s/start', auth, (req, res) => {
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   const slot = +req.params.s;
   const t = now();
+  /* 이 칸만 켜는 게 아니라 <여기서부터 끝까지>를 한 번에 건다.
+     칸마다 시작을 눌러야 하면 운영자가 하루 종일 폰을 붙들고 있어야 하고,
+     한 번 놓치면 대회가 통째로 멈춘다.
+     칸 사이 간격 = 경기 시간 + 전환 시간. 늦어지면 그 칸에서 다시 누르면 된다. */
+  const cfg = Object.assign({}, CUP_DEFAULT, data.cfg || {});
+  const step = ((cfg.match_sec || 1200) + (cfg.turn_sec || 300)) * 1000;
   const ins = db.prepare(`INSERT INTO bracket_timers (bracket_id,court_key,started_at) VALUES (?,?,?)
     ON CONFLICT(bracket_id,court_key) DO UPDATE SET started_at=excluded.started_at`);
+  /* 칸 번호가 띄엄띄엄일 수 있으니 <몇 번째 칸인가>로 센다 */
+  const order = (data.slots || []).map(x => +x.s).sort((a, c) => a - c);
+  const base = order.indexOf(slot);
   let n = 0;
   db.transaction(() => {
     (data.rounds || []).forEach(r => (r.ties || []).forEach(t2 => (t2.matches || []).forEach(m => {
-      if (+m.slot !== slot) return;
-      ins.run(b.id, String(m.key).slice(0, 24), t); n++;
+      const k = order.indexOf(+m.slot);
+      if (k < 0 || k < base) return;
+      ins.run(b.id, String(m.key).slice(0, 24), t + (k - base) * step); n++;
     })));
     db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(t, b.id);
   })();
   if (!n) return res.status(404).json({ error: 'no_slot', message: '그 시각에 경기가 없어요' });
-  res.json({ ok: true, started_at: t, courts: n });
+  res.json({ ok: true, started_at: t, matches: n,
+    slots: order.length - base, step_sec: step / 1000 });
 });
 
 app.post('/brackets/:id/slot/:s/reset', auth, (req, res) => {
@@ -7365,15 +7388,19 @@ app.post('/brackets/:id/slot/:s/reset', auth, (req, res) => {
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   const slot = +req.params.s, t = now();
   const del = db.prepare('DELETE FROM bracket_timers WHERE bracket_id=? AND court_key=?');
+  const order = (data.slots || []).map(x => +x.s).sort((a, c) => a - c);
+  const base = order.indexOf(slot);
   let n = 0;
   db.transaction(() => {
+    /* 뒤 칸들이 이 칸을 기준으로 걸려 있으니 함께 푼다 */
     (data.rounds || []).forEach(r => (r.ties || []).forEach(t2 => (t2.matches || []).forEach(m => {
-      if (+m.slot !== slot) return;
+      const k = order.indexOf(+m.slot);
+      if (k < 0 || k < base) return;
       del.run(b.id, String(m.key).slice(0, 24)); n++;
     })));
     db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(t, b.id);
   })();
-  res.json({ ok: true, courts: n });
+  res.json({ ok: true, matches: n });
 });
 
 app.post('/brackets/:id/round/:r/start', auth, (req, res) => {
@@ -15162,4 +15189,33 @@ app.use((err, req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: String((err && err.message) || err).slice(0, 300) });
 });
+/* 짝 기능이 생기기 전에 낸 엔트리는 pair 가 비어 있다.
+   그대로 두면 대진 화면에 <라인업 전>만 뜬다 — 한 번 훑어 채워 준다.
+   CUP_ROSTER_N · cupAutoPair · cupCap 이 다 만들어진 뒤에 불러야 한다.
+   앞에서 부르면 const 초기화 전이라 ReferenceError 가 나고 조용히 지나간다. */
+function cupBackfillPairs() {
+  try {
+    const holes = db.prepare(`SELECT entry_id FROM cup_roster WHERE pair IS NULL
+      GROUP BY entry_id`).all();
+    let fixed = 0, skipped = 0;
+    holes.forEach(h => {
+      const rows = db.prepare(`SELECT id, user_id, guest_name, gender, ntrp
+        FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(h.entry_id);
+      if (rows.length !== CUP_ROSTER_N) { skipped++; return; }
+      const br = db.prepare(`SELECT b.data FROM brackets b
+        JOIN cup_entries e ON e.bracket_id=b.id WHERE e.id=?`).get(h.entry_id);
+      const map = cupAutoPair(rows.map(r => ({ id: r.id, gender: r.gender, ntrp: r.ntrp })),
+        cupCap(br && br.data));
+      if (!map) { skipped++; return; }
+      const up = db.prepare('UPDATE cup_roster SET pair=? WHERE id=?');
+      rows.forEach(r => { if (map[r.id]) up.run(map[r.id], r.id); });
+      fixed++;
+    });
+    if (fixed || skipped)
+      console.log(`[cup] 짝 채우기 — 채움 ${fixed}건 · 건너뜀 ${skipped}건`);
+  } catch (e) { console.error('[cup pair backfill]', e && e.message); }
+}
+
+cupBackfillPairs();
+
 app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
