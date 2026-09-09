@@ -5699,7 +5699,9 @@ const CUP_DEFAULT = {
      조별은 게임 득실과 출전 인원을 세야 해서 반드시 쳐야 하지만,
      본선은 이긴 팀만 올라가면 되므로 칠 이유가 없다. 라운드마다 25분이 빈다. */
   skip_dead: true,
-  cap: { 1: null, 2: 20, 3: 16 },        // 구력 합산 상한(년)
+  /* 구력 합 상한. 동호인 구력이 보통 0~10년인데 20년을 두면 아무것도 안 걸러진다.
+     혼복 두 매치를 8년으로 묶는다. 1번(남복)은 에이스 매치라 열어 둔다. */
+  cap: { 1: null, 2: 8, 3: 8 },        // 구력 합산 상한(년)
   lunch_after: 4,           // 4라운드 뒤 점심
   lunch_min: 40,
 };
@@ -6089,6 +6091,50 @@ const CUP_ROSTER_N = 6, CUP_ROSTER_M = 4, CUP_ROSTER_F = 2;
 const cupFem = v => /^(f|female|여|여성|여자)$/i.test(String(v == null ? '' : v).trim());
 const cupG = v => cupFem(v) ? 'F' : 'M';
 
+/* 클럽 안 전적 — 발행된 대진의 점수를 이름으로 훑는다.
+   /clubs/:id/my-summary 가 나 한 명에게 하던 계산을 명단 전체로 넓힌 것이다.
+   대회 전적이 아니라 <우리끼리 친 결과>다 — 상대 클럽과는 비교할 수 없다. */
+function cupMemberForm(cid) {
+  const st = {};
+  const pick = n => (st[n] = st[n] || { g: 0, w: 0, d: 0, form: [] });
+  try {
+    const brs = db.prepare(`SELECT id, date, data FROM brackets
+      WHERE club_id=? AND published=1 ORDER BY id ASC LIMIT 80`).all(cid);
+    brs.forEach(b => {
+      let data = {}; try { data = JSON.parse(b.data); } catch (e) { return; }
+      const sc = {};
+      db.prepare('SELECT court_key, a, b FROM bracket_scores WHERE bracket_id=?').all(b.id)
+        .forEach(r => { if (r.a !== null && r.b !== null) sc[r.court_key] = r; });
+      (data.reg || []).forEach(r => {
+        const s2 = sc[r.key];
+        if (!s2 || !Array.isArray(r.names) || r.names.length < 2) return;
+        const half = Math.floor(r.names.length / 2);
+        const A = r.names.slice(0, half), B = r.names.slice(half);
+        const draw = s2.a === s2.b;
+        [[A, s2.a, s2.b], [B, s2.b, s2.a]].forEach(([side, mine, opp]) => {
+          side.forEach(n => {
+            if (!n) return;
+            const t = pick(n);
+            t.g++;
+            if (draw) { t.d++; t.form.push(0); }
+            else if (mine > opp) { t.w++; t.form.push(1); }
+            else t.form.push(-1);
+          });
+        });
+      });
+    });
+  } catch (e) { console.error('[cup form]', e && e.message); }
+  const out = {};
+  Object.entries(st).forEach(([n, t]) => {
+    out[n] = { g: t.g, w: t.w, l: t.g - t.w - t.d,
+      /* 다섯 경기 미만은 승률을 안 보낸다 — 두 판 뛰고 100% 인 사람이
+         맨 위에 오면 순서가 거짓말이 된다. 최근 여덟 판은 그대로 보낸다. */
+      wr: t.g >= 5 ? Math.round(t.w / t.g * 100) : null,
+      form: t.form.slice(-8) };
+  });
+  return out;
+}
+
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
 }
@@ -6381,7 +6427,8 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
           deposit_state='held' WHERE id=?`).run(e.id);
         /* 엔트리를 아직 안 낸 팀도 확정할 수 있다 — 돈이 먼저 들어오는 게 보통이다.
            다만 대진을 짜기 전에는 채워야 하니 알려준다. */
-        return res.json({ ok: true, warn: ros >= 10 ? null : '엔트리 10명은 아직 안 냈어요' });
+        return res.json({ ok: true,
+          warn: ros >= CUP_ROSTER_N ? null : `엔트리 ${CUP_ROSTER_N}명은 아직 안 냈어요` });
       }
       db.prepare(`UPDATE cup_entries SET fee_paid=0, status='applied',
         deposit_state='none' WHERE id=?`).run(e.id);
@@ -6404,7 +6451,7 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
       return res.status(400).json({ error: 'too_few',
         message: `확정된 팀이 ${cupCfg(d).min_teams}곳은 되어야 해요 (지금 ${rows.length}곳)` });
     const noRoster = rows.filter(r =>
-      db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n < 10);
+      db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n < CUP_ROSTER_N);
     if (noRoster.length)
       return res.status(400).json({ error: 'no_roster',
         message: `엔트리를 안 낸 팀이 있어요 · ${noRoster.map(r => r.club_name).join(' · ')}` });
@@ -6571,12 +6618,20 @@ app.get('/cup/:bid/pool', auth, (req, res) => {
   const rows = db.prepare(`SELECT m.user_id, m.grade, m.gender_ov, m.alias, m.resting,
       u.name, u.gender, u.birth_year FROM club_members m JOIN users u ON u.id=m.user_id
     WHERE m.club_id=? ORDER BY u.name`).all(cid);
-  res.json(rows.map(m => ({
-    user_id: m.user_id, name: m.alias || m.name,
-    gender: cupG(m.gender_ov || m.gender),
-    grade: m.grade || '', years: careerYears(m.user_id),
-    birth_year: m.birth_year || null, resting: m.resting ? 1 : 0,
-  })));
+  /* 대진에는 별명으로 적히니 전적도 별명으로 찾는다 */
+  const form = cupMemberForm(cid);
+  res.json(rows.map(m => {
+    const nm = m.alias || m.name;
+    const f = form[nm] || form[m.name] || null;
+    return {
+      user_id: m.user_id, name: nm,
+      gender: cupG(m.gender_ov || m.gender),
+      grade: m.grade || '', years: careerYears(m.user_id),
+      birth_year: m.birth_year || null, resting: m.resting ? 1 : 0,
+      g: f ? f.g : 0, w: f ? f.w : 0, l: f ? f.l : 0,
+      wr: f ? f.wr : null, form: f ? f.form : [],
+    };
+  }));
 });
 
 /* 우리 클럽이 낸 엔트리 — 신청 화면을 다시 열 때 그대로 보여준다 */
