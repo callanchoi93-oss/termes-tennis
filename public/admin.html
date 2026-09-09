@@ -74,6 +74,48 @@ body{background:var(--paper);color:var(--ink);
 .more span{font-size:var(--t1);color:var(--gray);font-weight:500;cursor:pointer;
   padding:7px 13px;border-radius:20px;background:#fff;border:1px solid var(--line)}
 .more span.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+/* ── MATSU CUP ── */
+.cuptabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.cuptabs span{border:1px solid var(--line);border-radius:20px;padding:7px 13px;
+  font-size:var(--t1);cursor:pointer;color:var(--gray)}
+.cuptabs span.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
+.cuptabs em{font-style:normal;opacity:.65;margin-left:5px}
+/* 몇 팀 모였나 — 이 대회의 유일한 성패 지표다 */
+.cupsum{display:flex;align-items:center;gap:18px;background:#faf9f6;border-radius:12px;
+  padding:14px 16px;margin-top:12px;flex-wrap:wrap}
+.cupsum .n{font-size:30px;font-weight:800;letter-spacing:-.04em;line-height:1}
+.cupsum .n em{font-style:normal;font-size:13px;font-weight:700;color:var(--lgray);margin-left:2px}
+.cupsum .c{flex:1;min-width:180px}
+.cupsum .bar{position:relative;height:8px;border-radius:8px;background:#e8e5df}
+.cupsum .bar i{display:block;height:100%;border-radius:8px;background:var(--coral,#f1631a)}
+.cupsum .bar b{position:absolute;top:-4px;width:2px;height:16px;background:var(--ink)}
+.cupsum .s{font-size:var(--t1);color:var(--gray);margin-top:8px}
+.cupsum .m span{display:block;font-size:var(--t0);color:var(--lgray)}
+.cupsum .m b{display:block;font-size:16px;font-weight:800;margin-top:2px}
+.cuppay{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:12px;
+  padding-top:12px;border-top:1px solid var(--line)}
+.cuppay span{display:block;font-size:var(--t0);color:var(--lgray)}
+.cuppay b{display:block;font-size:var(--t1);font-weight:600;margin-top:2px}
+.cuppay .btn{margin-left:auto}
+.cupe{display:flex;align-items:center;gap:8px;padding:11px 0;border-top:1px solid var(--line)}
+.cupe .c{flex:1;min-width:0}
+.cupe .c b{display:block;font-size:var(--t2);font-weight:700}
+.cupe .c span{display:block;font-size:var(--t0);color:var(--lgray);margin-top:2px}
+.cupbtns{display:flex;gap:8px;margin-top:14px}
+.cupr{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.cupr .rh{display:flex;align-items:baseline;gap:8px;font-size:var(--t1);font-weight:700}
+.cupr .rh em{font-style:normal;color:var(--lgray);font-weight:400}
+.cupr .rh span{margin-left:auto;font-size:var(--t0);color:var(--lgray);font-weight:400}
+.cupt{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:var(--t1)}
+.cupt .ln{width:44px;flex:none;color:var(--lgray);font-size:var(--t0)}
+.cupt .vs{flex:1}
+.cupt .vs em{font-style:normal;color:var(--lgray);margin:0 5px}
+.cupt .ct{color:var(--lgray);font-size:var(--t0)}
+.frm{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.frm label{display:block;font-size:var(--t0);color:var(--lgray)}
+.frm input{width:100%;box-sizing:border-box;margin-top:4px;border:1px solid var(--line);
+  border-radius:9px;padding:9px 11px;font-size:var(--t1);font-family:inherit}
+.hint{font-size:var(--t0);color:var(--lgray);margin-top:10px;line-height:1.6}
 .card{background:#fff;border-radius:16px;padding:var(--s3) var(--s4) var(--s4);
   box-shadow:0 1px 2px rgba(40,30,18,.04);margin-bottom:var(--s3)}
 .card.flat{padding:var(--s4)}
@@ -328,8 +370,8 @@ const NAV=[
   ['지켜보기',   [['errors','오류'],['bq','대진품질'],['grades','등급이동'],
                  ['track','분석'],['regions','지역'],['health','서버']]],
   ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지']]],
-  ['운영',       [['matches','매치'],['xctest','교류전'],['venues','구장'],
-                 ['reports','신고'],['payouts','정산']]],
+  ['운영',       [['matches','매치'],['xctest','교류전'],['cup','MATSU CUP'],
+                 ['venues','구장'],['reports','신고'],['payouts','정산']]],
   ['설정',       [['log','작업 기록'],['dead','죽은 코드'],['export','내려받기'],
                  ['maint','점검'],['staff','계정'],['banners','배너']]],
 ];
@@ -425,6 +467,7 @@ async function draw(){
   if(TAB==='stats')   return drawStats();
   if(TAB==='track')   return drawTrack();
   if(TAB==='xctest')  return drawXcTest();
+  if(TAB==='cup')     return drawCup();
   if(TAB==='users')   return drawUsers();
   if(TAB==='clubs')   return drawClubs();
   if(TAB==='matches') return drawMatches();
@@ -1199,6 +1242,150 @@ async function drawTrack(){
 /* ── 교류전 테스트 ──
    24명을 실제로 모아야 대진을 볼 수 있는데 그건 무리다.
    그 클럽의 진짜 회원을 골라 참석 처리해서 대진까지 돌려본다. */
+/* ── MATSU CUP ──────────────────────────────────────────
+   플랫폼이 여는 대회다. 클럽 운영진 도구에 두면 클럽마다 <제1회>가 생긴다. */
+let CUPSEL=null;
+
+async function drawCup(){
+  const rows=await api('/admin/cups').catch(()=>[]);
+  if(!CUPSEL && rows.length) CUPSEL=rows[0].id;
+  const d = CUPSEL ? await api('/admin/cups/'+CUPSEL).catch(()=>null) : null;
+
+  const head=`<div class="card">
+    <div class="hd"><b>MATSU CUP</b>
+      <span class="btn sm" onclick="cupNew()">＋ 대회 열기</span></div>
+    ${rows.length?`<div class="cuptabs">${rows.map(r=>
+      `<span class="${r.id===CUPSEL?'on':''}" onclick="CUPSEL=${r.id};drawCup()">
+        ${esc(r.title||'대회')} <em>${esc(r.date||'')}</em></span>`).join('')}</div>`
+      :`<div class="empty">아직 연 대회가 없어요</div>`}</div>`;
+
+  if(!d){ $('app').innerHTML=shell(head); return; }
+
+  const live=(d.entries||[]).filter(e=>e.status!=='cancelled');
+  const paid=live.filter(e=>e.fee_paid);
+  const income=paid.length*d.fee, prize=Math.round(income*0.25);
+  const pct=Math.min(100, Math.round(live.length/d.max_teams*100));
+  const minPct=Math.round(d.min_teams/d.max_teams*100);
+  const st={invited:'초청함',applied:'신청함',paid:'입금',confirmed:'확정',cancelled:'취소'};
+
+  $('app').innerHTML=shell(head+`
+    <div class="card">
+      <div class="hd"><b>${esc(d.title||'')}</b>
+        <span class="btn sm ${d.open?'on':''}" onclick="cupOpen(${!d.open})">
+          ${d.open?'모집 중 · 닫기':'모집 열기'}</span></div>
+      <div class="cupsum">
+        <div class="n">${live.length}<em>/${d.max_teams}팀</em></div>
+        <div class="c">
+          <div class="bar"><i style="width:${pct}%"></i><b style="left:${minPct}%"></b></div>
+          <div class="s">${live.length>=d.min_teams
+            ? `열 수 있어요 · 입금 ${paid.length}팀`
+            : `${d.min_teams-live.length}팀 더 모이면 열려요 (손익분기 ${d.min_teams}팀)`}</div></div>
+        <div class="m"><span>모인 돈</span><b>${fmt(income)}원</b></div>
+        <div class="m"><span>상금 25%</span><b>${fmt(prize)}원</b></div>
+      </div>
+      <div class="cuppay">
+        <div><span>날짜</span><b>${esc(d.date||'')} ${esc(d.start||'')}</b></div>
+        <div><span>장소</span><b>${esc(d.place||'미정')}</b></div>
+        <div><span>계좌</span><b>${d.pay&&d.pay.no
+          ? esc(`${d.pay.bank||''} ${d.pay.no} ${d.pay.holder||''}`) : '없음'}</b></div>
+        <span class="btn sm" onclick="cupPay()">고치기</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><b>참가 클럽 ${live.length}곳</b>
+        <span class="btn sm" onclick="cupInvite()">＋ 초청</span></div>
+      ${live.length?live.map(e=>`<div class="cupe">
+        <div class="c"><b>${esc(e.club_name)}</b>
+          <span>${st[e.status]||e.status} · ${e.roster_n?`엔트리 ${e.roster_n}명 · 여 ${e.female_n}`:'엔트리 없음'}${
+            e.group_label?` · ${e.group_label}조 ${e.seat}번`:''}${e.club_id?' · 앱 클럽':''}</span></div>
+        <span class="btn sm ${e.fee_paid?'on':''}"
+          onclick="cupEntryAct(${e.id},{fee_paid:${e.fee_paid?0:1}})">${e.fee_paid?'입금됨':'입금 확인'}</span>
+        ${e.invite_token?`<span class="btn sm" onclick="cupCopy('${esc(e.invite_token)}')">링크</span>`:''}
+        <span class="btn sm" onclick="cupEntryAct(${e.id},{status:'cancelled'})">취소</span>
+      </div>`).join(''):`<div class="empty">아직 참가 클럽이 없어요</div>`}
+      ${live.length>=d.min_teams?`<div class="cupbtns">
+        <span class="btn" onclick="cupDraw()">${d.drawn?'다시 추첨':'추첨하고 대진 짜기'}</span>
+        <span class="btn ghost" onclick="cupLive(${d.id})">관전 링크</span></div>`:''}
+    </div>
+
+    ${d.drawn?`<div class="card"><div class="hd"><b>대진</b></div>
+      ${(d.rounds||[]).map(r=>`<div class="cupr">
+        <div class="rh">R${r.r} <em>${esc(r.start||'')}</em>
+          <span>${r.final?'결승 · 3위전':`${esc(r.group)}조`}</span></div>
+        ${(r.ties||[]).map(t=>`<div class="cupt">
+          <span class="ln">${esc(t.lane)}레인</span>
+          <span class="vs">${esc(t.home_name||'?')} <em>vs</em> ${esc(t.away_name||'?')}</span>
+          <span class="ct">${t.matches.map(m=>m.court).filter((v,i,a)=>a.indexOf(v)===i).join('·')}번 코트</span>
+        </div>`).join('')}</div>`).join('')}</div>`:''}`);
+}
+
+function cupNew(){
+  const d=new Date(Date.now()+45*864e5);
+  const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  $('app').innerHTML=shell(`<div class="card">
+    <div class="hd"><b>대회 열기</b><span class="btn sm" onclick="drawCup()">취소</span></div>
+    <div class="frm">
+      <label>대회 이름<input id="cuTitle" value="제1회 MATSU CUP 초청 클럽대항전"></label>
+      <label>주최 클럽 번호<input id="cuHost" inputmode="numeric" placeholder="예) 1"></label>
+      <label>날짜<input id="cuDate" type="date" value="${iso}"></label>
+      <label>시작<input id="cuStart" type="time" value="09:00"></label>
+      <label>장소<input id="cuPlace" placeholder="용인테니스파크"></label>
+      <label>은행<input id="cuBank" placeholder="신한"></label>
+      <label>계좌번호<input id="cuAcc" placeholder="110-436-319929"></label>
+      <label>예금주<input id="cuHolder" placeholder="최민혁"></label>
+    </div>
+    <div class="cupbtns"><span class="btn" onclick="cupCreate()">만들기</span></div>
+    <div class="hint">주최 클럽은 스코어 입력 권한을 갖습니다. 그 클럽 회원이 당일 운영해요.</div>
+  </div>`);
+}
+async function cupCreate(){
+  const g=id=>($(id)||{}).value||'';
+  try{
+    const r=await api('/admin/cups',{method:'POST',body:JSON.stringify({
+      title:g('cuTitle'), host_club_id:g('cuHost'), date:g('cuDate'), start:g('cuStart'),
+      place:g('cuPlace'), bank:g('cuBank'), account:g('cuAcc'), holder:g('cuHolder') })});
+    CUPSEL=r.id; drawCup();
+  }catch(e){ alert(cupWhy(e)); }
+}
+function cupWhy(e){
+  try{ return JSON.parse(String(e.message||'')).message || '실패했어요'; }
+  catch(x){ return '실패했어요'; }
+}
+async function cupAct(body){
+  try{ return await api(`/admin/cups/${CUPSEL}/act`,{method:'POST',body:JSON.stringify(body)}); }
+  catch(e){ alert(cupWhy(e)); return null; }
+}
+async function cupOpen(on){ if(await cupAct({act:'open', on:on?1:0})) drawCup(); }
+async function cupEntryAct(id, patch){
+  if(await cupAct(Object.assign({act:'entry', entry_id:id}, patch))) drawCup();
+}
+async function cupDraw(){
+  if(!confirm('추첨을 돌릴까요? 이미 짠 대진이 있으면 새로 바뀝니다')) return;
+  if(await cupAct({act:'draw'})) drawCup();
+}
+function cupInvite(){
+  const n=prompt('초청할 클럽 이름'); if(!n) return;
+  cupAct({act:'invite', club_name:n}).then(r=>{
+    if(!r) return;
+    const url=`${location.origin}/?cup=${r.token}`;
+    prompt('이 링크를 클럽 대표에게 보내세요', url);
+    drawCup();
+  });
+}
+function cupCopy(tok){ prompt('초청 링크', `${location.origin}/?cup=${tok}`); }
+function cupLive(id){ prompt('관전 링크', `${location.origin}/?live=${id}`); }
+function cupPay(){
+  api('/admin/cups/'+CUPSEL).then(d=>{
+    const p=d.pay||{};
+    const bank=prompt('은행', p.bank||''); if(bank==null) return;
+    const acc=prompt('계좌번호', p.no||''); if(acc==null) return;
+    const who=prompt('예금주', p.holder||''); if(who==null) return;
+    const place=prompt('장소', d.place||''); if(place==null) return;
+    cupAct({act:'pay', bank, account:acc, holder:who, place}).then(r=>{ if(r) drawCup(); });
+  });
+}
+
 async function drawXcTest(){
   const rows=await api('/admin/exchange');
   $('app').innerHTML=shell(`
