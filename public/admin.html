@@ -159,6 +159,9 @@ body{background:var(--paper);color:var(--ink);
 .cupled .l.t b{font-weight:700}
 .cupled .l.last b{font-size:16px}
 .cupled .l.last b.bad{color:#d92d20}
+.ciwait{background:#faf9f6;border-radius:10px;padding:14px;text-align:center;
+  font-size:var(--t1);color:var(--gray);line-height:1.7;margin-bottom:10px}
+.ciwait span{font-size:var(--t0);color:var(--lgray)}
 .cupled .pz{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);
   font-size:var(--t1);color:var(--gray)}
 .cupled .pz b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
@@ -1357,28 +1360,16 @@ async function drawCup(){
             ? `열 수 있어요 · 엔트리 낸 팀 ${ready}/${fixed.length}`
             : `${d.min_teams-fixed.length}팀 더 확정되면 열려요 (손익분기 ${d.min_teams}팀)`}
             ${live.length>fixed.length?` · 입금 기다리는 팀 ${live.length-fixed.length}곳`:''}</div></div>
-        <div class="m"><span>쓸 수 있는 돈</span><b>${fmt(M.net)}원</b></div>
-        <div class="m"><span>우승 상금</span><b>${fmt(M.first)}원</b></div>
+        <div class="m"><span>쓸 수 있는 돈</span><b>${fmt(M.net||0)}원</b></div>
+        <div class="m"><span>우승 상금</span><b>${fmt(M.first||0)}원</b></div>
       </div>
-      <div class="cupled">
-        <div class="l"><span>걷은 돈 ${fixed.length}팀 × ${fmt(d.fee)}</span><b>${fmt(M.gross)}</b></div>
-        <div class="l m"><span>돌려줄 보증금 ${fixed.length}팀 × ${fmt(d.deposit)}</span>
-          <b>−${fmt(M.deposits)}</b></div>
-        <div class="l t"><span>실제로 쓸 수 있는 돈</span><b>${fmt(M.net)}</b></div>
-        <div class="l m"><span>고정비 (코트·보험·트로피·비품)</span><b>−${fmt(d.fixed_cost)}</b></div>
-        <div class="l m"><span>변동비 ${fixed.length}팀 × ${fmt(d.var_cost)}</span>
-          <b>−${fmt(fixed.length*d.var_cost)}</b></div>
-        <div class="l t"><span>비용 빼고 남은 돈</span><b>${fmt(M.left)}</b></div>
-        <div class="l m"><span>상금 (잔액의 ${d.prize_pct}%)</span><b>−${fmt(M.prize)}</b></div>
-        <div class="l t last"><span>대회 끝나고 남는 돈</span>
-          <b class="${(M.rest||0)<0?'bad':''}">${fmt(M.rest)}</b></div>
-        <div class="pz">우승 <b>${fmt(M.first)}</b> · 준우승 <b>${fmt(M.second)}</b> · 3위 <b>${fmt(M.third)}</b></div>
-      </div>
+      ${cupLedger(d, fixed.length)}
       <div class="cuppay">
         <div><span>날짜</span><b>${esc(d.date||'')} ${esc(d.start||'')}</b></div>
         <div><span>장소</span><b>${esc(d.place||'미정')}</b></div>
         <div><span>코트</span><b>${d.courts||4}면</b></div>
         <div><span>참가비</span><b>${fmt(d.fee)}원</b></div>
+        <div><span>매치</span><b>${Math.round((d.cfg&&d.cfg.match_sec||1200)/60)}분 · 전환 ${Math.round((d.cfg&&d.cfg.turn_sec||300)/60)}분</b></div>
         <div><span>보증금</span><b>${fmt(d.deposit)}원</b></div>
         <div><span>정원</span><b>${d.max_teams}팀 · 최소 ${d.min_teams}팀</b></div>
         <div><span>계좌</span><b>${d.pay&&d.pay.no
@@ -1605,6 +1596,48 @@ function cupSetupDraw(){
 }
 /* 코트별 시간표 — 당일 운영자가 보는 표다.
    대진 목록만으로는 <지금 몇 번 코트에서 뭐가 도는지>를 알 수 없다. */
+/* 정산 — 설정에서 넣은 항목을 그대로 보여준다.
+   합계 한 줄로 굳혀두면 <고정비 140만>이 무엇으로 이뤄졌는지 알 수 없고,
+   설정을 고쳐도 이 화면은 옛 이름을 계속 보여준다.
+
+   확정된 팀이 0곳이면 계산할 것이 없다. −140만을 빨갛게 띄우면
+   대회가 망한 것처럼 보이는데, 아직 아무도 입금하지 않았을 뿐이다. */
+function cupLedger(d, teams){
+  const F=(d.fixed_items||[]), V=(d.var_items||[]);
+  const sum=a=>a.reduce((t,x)=>t+(+x.v||0),0);
+  const Fs=sum(F), Vs=sum(V);
+  if(!teams){
+    return `<div class="cupled">
+      <div class="ciwait">확정된 팀이 아직 없어요<br>
+        <span>입금을 확인하고 확정하면 여기에 정산이 나옵니다</span></div>
+      <div class="l t"><span>준비된 비용</span><b>${fmt(Fs)} + 팀당 ${fmt(Vs)}</b></div>
+      ${F.map(x=>`<div class="l m"><span>${esc(x.n)}${x.h?` · ${esc(x.h)}`:''}</span>
+        <b>${fmt(x.v)}</b></div>`).join('')}
+    </div>`;
+  }
+  const gross=teams*d.fee, back=teams*d.deposit, net=gross-back;
+  const cost=Fs+teams*Vs, left=net-cost;
+  const pct=d.prize_pct!=null?d.prize_pct:85;
+  const prize=Math.max(0,Math.round(left*pct/100));
+  const r=x=>Math.round(x/10000)*10000;
+  return `<div class="cupled">
+    <div class="l"><span>걷은 돈 ${teams}팀 × ${fmt(d.fee)}</span><b>${fmt(gross)}</b></div>
+    <div class="l m"><span>돌려줄 보증금 ${teams}팀 × ${fmt(d.deposit)}</span><b>−${fmt(back)}</b></div>
+    <div class="l t"><span>실제로 쓸 수 있는 돈</span><b>${fmt(net)}</b></div>
+    ${F.map(x=>`<div class="l m"><span>${esc(x.n)}${x.h?` · ${esc(x.h)}`:''}</span>
+      <b>−${fmt(x.v)}</b></div>`).join('')}
+    ${V.map(x=>`<div class="l m"><span>${esc(x.n)} ${teams}팀 × ${fmt(x.v)}</span>
+      <b>−${fmt(teams*x.v)}</b></div>`).join('')}
+    <div class="l t"><span>비용 빼고 남은 돈</span><b>${fmt(left)}</b></div>
+    <div class="l m"><span>상금 (잔액의 ${pct}%)</span><b>−${fmt(prize)}</b></div>
+    <div class="l t last"><span>대회 끝나고 남는 돈</span>
+      <b class="${left-prize<0?'bad':''}">${fmt(left-prize)}</b></div>
+    <div class="pz">우승 <b>${fmt(r(prize*0.5))}</b> · 준우승 <b>${fmt(r(prize*0.3))}</b>
+      · 3위 <b>${fmt(r(prize*0.2))}</b></div>
+    ${left-prize<0?`<div class="cibad">적자입니다 · 참가비를 올리거나 비용을 줄이세요</div>`:''}
+  </div>`;
+}
+
 function cupGrid(d){
   const courts=d.courts||4;
   const cells={};                     // '슬롯:코트' → 매치

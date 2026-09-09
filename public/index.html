@@ -17667,19 +17667,21 @@ async function talkPostMount(pid){
   TALK.react=rc; TALK.poll=pl;
   const box=document.getElementById('talkPage'); if(!box) return;
 
-  /* 소속 · 제목 · 닉네임 — 목록과 같은 순서로 읽히게 */
-  const ploc = TALK.scope==='all'
-    ? [p.sigungu, p.venue].filter(Boolean).map(esc).join(' · ')
+  /* 소속을 제목 위에 또 적지 않는다.
+     페이지 머리가 이미 <구장톡 · 용인테니스파크> 라고 말하고 있어서
+     같은 자리에 소속이 한 번 더 나오면 제목까지 세 줄이 겹쳐 보인다.
+     클럽 이름은 글쓴이 밑에 붙인다 — 누가 썼는지와 함께 읽히는 게 맞다. */
+  const pwho = TALK.scope==='all'
+    ? [p.club, p.sigungu, p.venue].filter(Boolean).map(esc).join(' · ')
     : esc(p.club||'');
   box.innerHTML=`
-    ${ploc?`<div class="tkloc" style="margin-bottom:3px">${ploc}</div>`:''}
     ${p.cat_name?`<div class="pcat">${esc(p.cat_name)}</div>`:''}
     ${p.title?`<div class="ptitle">${esc(p.title)}</div>`:''}
     <div class="pmeta">${talkWhen(p.created_at)} · 조회 ${(p.views||0).toLocaleString()}</div>
     <div class="tkby big">
       <span class="av anon">${esc(String(p.who||'익').slice(0,1))}</span>
       <div class="c"><b>${esc(p.who||'익명')}</b>
-        ${TALK.scope==='all'&&p.club?`<span>${esc(p.club)}</span>`:''}</div>
+        ${pwho?`<span>${pwho}</span>`:''}</div>
       <span class="more" onclick="talkMore(event,'post',${pid},${p.mine?1:0})">⋯</span>
     </div>
     <div class="tkbody">${esc(p.body||'').replace(/\n/g,'<br>')}</div>
