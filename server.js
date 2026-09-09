@@ -6007,7 +6007,7 @@ function cupCfg(b) {
   let d = {};
   try { d = typeof b === 'string' ? JSON.parse(b || '{}') : (b || {}); } catch (e) {}
   return {
-    title: d.title || 'MATSU CUP',
+    title: d.title || '맞수 리그',
     start: d.start || '09:00',
     place: d.place || '',
     pay: d.pay || null,
@@ -6066,10 +6066,28 @@ function cupMoney(C, teams) {
    구력은 sport_started 로 이미 서버가 갖고 있는 값이라 손댈 수 없다.
 
    강팀도 저변이 없으면 못 이기게 만드는 장치다. 규모가 작다고 빼면 안 된다. */
-const CUP_CAP = { 1: null, 2: 20, 3: 20 };      // 년 단위 · 2·3번 모두 혼복
+/* 구력 합 상한 — 대회마다 다르게 잡는다(cfg.cap).
+   원래는 <에이스 둘이 세 매치를 다 도는 것>을 막으려고 넣은 값인데,
+   엔트리 6명이 여섯 자리를 한 자리씩 채우게 된 뒤로 그 일이 구조적으로 불가능해졌다.
+   그래서 기본값은 <제한 없음>이다. 급을 나누고 싶은 대회만 숫자를 넣는다.
+   동호인 구력이 보통 0~10년인데 20년 같은 값을 박아두면 아무것도 안 걸러진다. */
+const CUP_CAP_DEFAULT = { 1: null, 2: 8, 3: 8 };
+function cupCap(b) {
+  const c = (cupCfg(b) || {}).cap || {};
+  /* 값이 없으면 기본값을 쓴다. 0 을 넣으면 <그 매치는 제한 없음>이라는 뜻이다 —
+     대회마다 급을 다르게 열 수 있어야 해서 0 과 <안 적음>을 갈라 둔다. */
+  const v = k => (c[k] === 0 || c[k] === null) ? null
+    : (c[k] != null && +c[k] > 0) ? +c[k] : CUP_CAP_DEFAULT[k];
+  return { 1: v(1), 2: v(2), 3: v(3) };
+}
 /* 팀당 6명 — 남자 4, 여자 2. 세 매치(남복·혼복·혼복)의 여섯 자리를
    여섯 사람이 한 자리씩 채운다. 한 명도 벤치에 앉지 않는다. */
 const CUP_ROSTER_N = 6, CUP_ROSTER_M = 4, CUP_ROSTER_F = 2;
+
+/* 성별 값이 한 가지가 아니다 — 가입 경로에 따라 'F' 도 '여성' 도 들어 있다.
+   === 'F' 로만 재면 '여성' 으로 저장된 회원이 전부 남자로 잡힌다. */
+const cupFem = v => /^(f|female|여|여성|여자)$/i.test(String(v == null ? '' : v).trim());
+const cupG = v => cupFem(v) ? 'F' : 'M';
 
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
@@ -6219,7 +6237,7 @@ app.get('/admin/cups', admin, (_req, res) => {
     const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(r.id).n;
     const paid = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status='confirmed'").get(r.id).n;
     return { id: r.id, date: r.date, open: !!r.published,
-      title: d.title || 'MATSU CUP', place: d.place || '', pay: d.pay || null,
+      title: d.title || '맞수 리그', place: d.place || '', pay: d.pay || null,
       host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
       host_id: r.club_id, teams: live, paid, drawn: !!d.drawn_at,
       income: paid * cupCfg(d).fee, money: cupMoney(cupCfg(d), paid),
@@ -6435,13 +6453,14 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     due_date   = new Date(due).toISOString().slice(0, 10);
   }
   res.json({ cup: {
-    id: b.id, date: b.date, title: d.title || 'MATSU CUP', place: d.place || '',
+    id: b.id, date: b.date, title: d.title || '맞수 리그', place: d.place || '',
     pay: C.pay, fee: C.fee, deposit: C.deposit,
     teams: live, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - live), dday,
     /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
     due_date, event_dday,
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
+    cap: cupCap(b.data),
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
   }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
@@ -6516,7 +6535,7 @@ app.post('/cup/:bid/roster', auth, (req, res) => {
     rows.push({
       user_id:    Number(m.user_id),
       guest_name: String(m.alias || m.name || '회원'),
-      gender:     (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
+      gender:     cupG(m.gender_ov || m.gender),
       ntrp:       Number(y),
       birth_year: Number(m.birth_year) > 0 ? Number(m.birth_year) : null,
     });
@@ -6554,7 +6573,7 @@ app.get('/cup/:bid/pool', auth, (req, res) => {
     WHERE m.club_id=? ORDER BY u.name`).all(cid);
   res.json(rows.map(m => ({
     user_id: m.user_id, name: m.alias || m.name,
-    gender: (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
+    gender: cupG(m.gender_ov || m.gender),
     grade: m.grade || '', years: careerYears(m.user_id),
     birth_year: m.birth_year || null, resting: m.resting ? 1 : 0,
   })));
@@ -6696,7 +6715,9 @@ app.post('/cup/invite/:token/lineup', (req, res) => {
   const ms = Array.isArray(b.matches) ? b.matches : [];
   if (!tie) return res.status(400).json({ error: 'no_tie' });
   const ros = db.prepare('SELECT * FROM cup_roster WHERE entry_id=?').all(e.id);
-  const why = cupCheckLineup(ms, ros);
+  /* 상한은 대회마다 다르다 — 이 엔트리가 속한 대회 설정에서 읽는다 */
+  const br = db.prepare('SELECT data FROM brackets WHERE id=?').get(e.bracket_id);
+  const why = cupCheckLineup(ms, ros, cupCap(br && br.data));
   if (why) return res.status(400).json({ error: 'bad_lineup', message: why });
   db.transaction(() => {
     db.prepare('DELETE FROM cup_lineups WHERE bracket_id=? AND tie_id=? AND entry_id=?')
@@ -6708,7 +6729,8 @@ app.post('/cup/invite/:token/lineup', (req, res) => {
   res.json({ ok: true });
 });
 
-function cupCheckLineup(ms, ros) {
+function cupCheckLineup(ms, ros, cap) {
+  cap = cap || CUP_CAP_DEFAULT;
   if (ms.length !== 3) return '세 매치를 모두 채워주세요';
   const by = {}; ros.forEach(r => { by[r.id] = r; });
   const used = [];
@@ -6723,10 +6745,10 @@ function cupCheckLineup(ms, ros) {
       return `${no}번은 혼합복식이라 남녀 한 명씩이어야 해요`;
     if (no === 1 && (a.gender === 'F' || c.gender === 'F'))
       return '1번은 남자복식이에요 — 여자 회원은 혼복 두 매치에 나갑니다';
-    const cap = CUP_CAP[no];
+    const lim = cap[no];
     const sum = (a.ntrp || 0) + (c.ntrp || 0);        // ntrp 칸에 구력(년)이 담긴다
-    if (cap != null && sum > cap)
-      return `${no}복식 구력 합이 ${cap}년을 넘어요 (지금 ${sum}년)`;
+    if (lim != null && sum > lim)
+      return `${no}번 구력 합이 ${lim}년을 넘어요 (지금 ${sum}년)`;
   }
   /* 여섯 자리를 여섯 사람이 한 자리씩. 남4 여2 가 세 매치에 딱 맞아떨어지므로
      중복 출전이 생겼다면 누군가는 벤치에 앉았다는 뜻이다. */

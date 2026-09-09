@@ -17,6 +17,29 @@ db.prepare = (sql) => {
   };
 };
 
+/* node:sqlite 에는 better-sqlite3 의 db.transaction() 이 없다.
+   server.js 가 12곳에서 이걸 부르는데, 없으면 TypeError 가 나고
+   그 라우트는 통째로 500 이 된다 (엔트리 제출이 그랬다).
+   같은 모양으로 감싸 준다 — 함수를 받아 <부르면 트랜잭션으로 도는 함수>를 돌려준다.
+   중첩해서 불릴 수 있으므로 안쪽은 SAVEPOINT 로 연다. */
+let _txDepth = 0;
+db.transaction = (fn) => (...args) => {
+  const top = _txDepth === 0;
+  const sp = `sp_${_txDepth}`;
+  db.exec(top ? 'BEGIN' : `SAVEPOINT ${sp}`);
+  _txDepth++;
+  try {
+    const out = fn(...args);
+    _txDepth--;
+    db.exec(top ? 'COMMIT' : `RELEASE ${sp}`);
+    return out;
+  } catch (e) {
+    _txDepth--;
+    try { db.exec(top ? 'ROLLBACK' : `ROLLBACK TO ${sp}`); } catch (_) {}
+    throw e;
+  }
+};
+
 export function initSchema() {
   db.exec(`
   CREATE TABLE IF NOT EXISTS users (
