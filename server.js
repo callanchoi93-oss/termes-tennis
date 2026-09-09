@@ -8819,6 +8819,9 @@ try {
     PRIMARY KEY(user_id, target_id))`);
 } catch (e) { console.error('[schema court_reports]', e.message); }
 try { db.exec('ALTER TABLE court_posts ADD COLUMN hidden INTEGER DEFAULT 0'); } catch (e) {}
+/* 사진 — 클럽 소식과 같은 방식이다. /upload 로 올린 주소만 담는다(그림 자체는 파일로 간다) */
+try { db.exec('ALTER TABLE court_posts ADD COLUMN photos TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE court_posts ADD COLUMN edited_at INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE court_comments ADD COLUMN hidden INTEGER DEFAULT 0'); } catch (e) {}
 
 /* 내가 안 보기로 한 사람들 — 목록에서 통째로 뺀다 */
@@ -8940,6 +8943,11 @@ app.post('/venues/from-kakao/bulk', auth, (req, res) => {
    남이 이 구장을 눌러 들어왔을 때 알고 싶은 것들이다.
    공공데이터에도 카카오에도 없어서 다니는 사람이 채워야 한다. */
 try { db.exec('ALTER TABLE venues ADD COLUMN courts_n INTEGER'); } catch (e) {}
+/* 실내·실외를 따로 센다 — 한 구장에 둘 다 있는 곳이 흔한데
+   indoor 는 참·거짓 하나뿐이라 <실내 2면 실외 3면>을 담을 데가 없었다.
+   그래서 사람들이 바닥 칸에 적어 넣고, 화면에는 <실외 5면 · 실내 2코트 실외 3코트>가 됐다. */
+try { db.exec('ALTER TABLE venues ADD COLUMN indoor_n INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE venues ADD COLUMN outdoor_n INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN surface TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN lights TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN parking TEXT'); } catch (e) {}
@@ -8955,12 +8963,17 @@ app.post('/venues/:id/info', auth, (req, res) => {
       .get(vid, req.uid);
   if (!ok) return res.status(403).json({ error: 'not_allowed' });
 
-  const n = b.courts_n === '' || b.courts_n == null ? null
-    : Math.max(0, Math.min(60, parseInt(b.courts_n, 10) || 0));
+  const num = x => (x === '' || x == null) ? null
+    : Math.max(0, Math.min(60, parseInt(x, 10) || 0));
+  const io = num(b.indoor_n), oo = num(b.outdoor_n);
+  const total = (io == null && oo == null) ? num(b.courts_n) : (io || 0) + (oo || 0);
   const cut = (x, len) => { const t = String(x == null ? '' : x).trim().slice(0, len); return t || null; };
-  db.prepare(`UPDATE venues SET courts_n=?, surface=?, lights=?, parking=?,
-      kind=COALESCE(?, kind) WHERE id=?`)
-    .run(n, cut(b.surface, 20), cut(b.lights, 20), cut(b.parking, 20),
+  /* 실내만 있으면 실내 구장, 아니면 실외로 둔다 — 목록 딱지에 쓰는 값이다 */
+  const indoorFlag = (io != null || oo != null) ? ((io > 0 && !(oo > 0)) ? 1 : 0) : null;
+  db.prepare(`UPDATE venues SET indoor_n=?, outdoor_n=?, courts_n=?, surface=?, lights=?, parking=?,
+      indoor=COALESCE(?, indoor), kind=COALESCE(?, kind) WHERE id=?`)
+    .run(io, oo, total, cut(b.surface, 20), cut(b.lights, 20), cut(b.parking, 20),
+      indoorFlag,
       ['public', 'private', 'school', 'apt'].includes(b.kind) ? b.kind : null, vid);
   res.json({ ok: true });
 });
@@ -9050,12 +9063,12 @@ app.get('/venues/:id/talk', auth, (req, res) => {
     + (bl.length ? ` AND p.user_id NOT IN (${bl.map(Number).join(',')}) ` : '');
   const rows = scope === 'court'
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views,p.tags,p.hidden, c.name club, u.name who FROM court_posts p
+        p.cat,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         WHERE p.venue_id=? AND p.scope='court' ${catSql} ${hideSql}
         ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
     : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views,p.tags,p.hidden, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
+        p.cat,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
         WHERE p.scope='all' ${catSql} ${hideSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
@@ -9067,6 +9080,7 @@ app.get('/venues/:id/talk', auth, (req, res) => {
     r.poll_n = r.has_poll
       ? db.prepare('SELECT COUNT(*) n FROM court_votes WHERE post_id=?').get(r.id).n : 0;
     try { r.tags = r.tags ? JSON.parse(r.tags) : []; } catch (e) { r.tags = []; }
+    try { r.photos = r.photos ? JSON.parse(r.photos) : []; } catch (e) { r.photos = []; }
   });
   /* 전국톡은 코트가 저마다 달라 글쓴이의 홈구장 기준으로 이름을 만든다 */
   const posts = rows.map(r => talkWho(postRow(r), r.venue_id || vid, req.uid));
@@ -9105,7 +9119,9 @@ app.post('/venues/:id/talk', auth, (req, res) => {
     return res.status(403).json({ error: 'member_only', message: '클럽 회원만 쓸 수 있어요' });
   const title = String(b.title || '').trim().slice(0, 60);
   const body = String(b.body || '').trim().slice(0, 2000);
-  if (!body) return res.status(400).json({ error: 'empty' });
+  /* 사진만 올려도 된다 — 코트 상태는 글보다 사진이 빠르다 */
+  if (!body && !(Array.isArray(b.photos) && b.photos.length))
+    return res.status(400).json({ error: 'empty', message: '사진이나 글을 넣어주세요' });
   /* 구장톡은 통째로 익명이다 — 고르게 두면 스위치가 늘 켜진 채로 남아
      아무 뜻 없는 버튼이 된다. 클럽 이름은 그대로 보이니 책임은 남는다. */
   /* 말머리는 목록에 있는 값만 받는다 — 앱이 아무 문자열이나 보내도 표에 안 들어가게 */
@@ -9115,9 +9131,12 @@ app.post('/venues/:id/talk', auth, (req, res) => {
   const tags = (Array.isArray(b.tags) ? b.tags : [])
     .map(x => String(x || '').replace(/[#\s]/g, '').slice(0, 12))
     .filter(Boolean).slice(0, 5);
-  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,anon,cat,tags,created_at)
-    VALUES (?,?,?,?,?,?,1,?,?,?)`)
-    .run(vid || null, cid, req.uid, scope, title || null, body, cat, JSON.stringify(tags), now());
+  const photos = (Array.isArray(b.photos) ? b.photos : [])
+    .filter(u => typeof u === 'string' && u.length < 500).slice(0, 10);
+  const r = db.prepare(`INSERT INTO court_posts (venue_id,club_id,user_id,scope,title,body,anon,cat,tags,photos,created_at)
+    VALUES (?,?,?,?,?,?,1,?,?,?,?)`)
+    .run(vid || null, cid, req.uid, scope, title || null, body, cat,
+      JSON.stringify(tags), JSON.stringify(photos), now());
   const pid = rid(r);
   /* 투표는 두 개 이상 골라야 뜻이 있다 */
   const opts = (Array.isArray(b.poll) ? b.poll : [])
@@ -9157,7 +9176,13 @@ app.get('/talk/:pid/comments', auth, (req, res) => {
   res.json({ comments: rows.map(r => talkWho(r, p.venue_id, req.uid)),
     react: reactsOf(pid, req.uid), poll: pollOf(pid, req.uid),
     tags: (() => { try { const t = db.prepare('SELECT tags FROM court_posts WHERE id=?').get(pid).tags;
-      return t ? JSON.parse(t) : []; } catch (e) { return []; } })() });
+      return t ? JSON.parse(t) : []; } catch (e) { return []; } })(),
+    post: (() => {
+      const row = db.prepare('SELECT title,body,photos,cat,edited_at FROM court_posts WHERE id=?').get(pid);
+      if (!row) return null;
+      try { row.photos = row.photos ? JSON.parse(row.photos) : []; } catch (e) { row.photos = []; }
+      return row;
+    })() });
 });
 
 app.post('/talk/:pid/comments', auth, (req, res) => {
@@ -9183,7 +9208,7 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
 app.get('/venues/:id/detail', auth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
-    courts_n,surface,lights,parking,owner_id FROM venues WHERE id=?`).get(vid);
+    courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id FROM venues WHERE id=?`).get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
 
   /* 면 수와 표면 — 사장님이 등록한 곳에만 있다. 없으면 그 줄을 안 보여준다. */
@@ -9264,6 +9289,36 @@ app.post('/venues/:id/kind', auth, (req, res) => {
   if (!ok) return res.status(403).json({ error: 'not_allowed' });
   db.prepare('UPDATE venues SET kind=? WHERE id=?').run(k, vid);
   res.json({ ok: true, kind: k });
+});
+
+/* 고치기 — 쓴 사람만. 운영진도 남의 글을 고칠 수는 없다(지우는 건 되지만).
+   남의 말을 바꿔놓을 수 있으면 익명 게시판이 성립하지 않는다. */
+app.patch('/talk/:pid', auth, (req, res) => {
+  const pid = +req.params.pid, b = req.body || {};
+  const p = db.prepare('SELECT user_id, scope FROM court_posts WHERE id=?').get(pid);
+  if (!p) return res.status(404).json({ error: 'no_post', message: '지워졌거나 없는 글이에요' });
+  if (p.user_id !== req.uid)
+    return res.status(403).json({ error: 'own_only', message: '쓴 사람만 고칠 수 있어요' });
+  const title = String(b.title || '').trim().slice(0, 60);
+  const body = String(b.body || '').trim().slice(0, 2000);
+  const photos = (Array.isArray(b.photos) ? b.photos : [])
+    .filter(u => typeof u === 'string' && u.length < 500).slice(0, 10);
+  if (!body && !photos.length)
+    return res.status(400).json({ error: 'empty', message: '사진이나 글을 넣어주세요' });
+  const list = p.scope === 'all' ? CAT_ALL : CAT_COURT;
+  const cat = list.some(c => c.k === b.cat) ? b.cat : null;
+  const tags = (Array.isArray(b.tags) ? b.tags : [])
+    .map(x => String(x || '').replace(/[#\s]/g, '').slice(0, 12)).filter(Boolean).slice(0, 5);
+  try {
+    db.prepare(`UPDATE court_posts SET title=?, body=?, photos=?, tags=?,
+        cat=COALESCE(?, cat), edited_at=? WHERE id=?`)
+      .run(title || null, body, JSON.stringify(photos), JSON.stringify(tags), cat, now(), pid);
+  } catch (e) {
+    /* 칸이 없거나 값이 안 맞으면 여기서 걸린다 — 그냥 500 으로 흘리면 다음에도 못 잡는다 */
+    console.error('[talk patch]', e.message);
+    return res.status(500).json({ error: 'db', message: '고치지 못했어요 · ' + e.message });
+  }
+  res.json({ ok: true });
 });
 
 /* 지우기 — 쓴 사람과, 그 구장에 홈을 건 클럽의 운영진이 지울 수 있다.
