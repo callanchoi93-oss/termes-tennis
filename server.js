@@ -6418,17 +6418,26 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
   const mine = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
   const roster = mine
     ? db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(mine.id).n : 0;
-  /* 마감까지 며칠 — 입금은 대회 21일 전이다 */
-  let dday = null;
+  /* 마감까지 며칠 — 입금은 대회 21일 전이다.
+     Date.now() 를 그대로 빼면 오후에 열 때와 새벽에 열 때 숫자가 달라진다.
+     앱의 evDday() 와 같게 오늘 자정을 기준으로 센다. */
+  let dday = null, due_date = null, event_dday = null;
   if (b.date) {
-    const due = new Date(b.date + 'T00:00:00').getTime() - 21 * 864e5;
-    dday = Math.ceil((due - Date.now()) / 864e5);
+    const day = new Date(b.date + 'T00:00:00').getTime();
+    const due = day - 21 * 864e5;
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    dday       = Math.round((due - t0.getTime()) / 864e5);
+    event_dday = Math.round((day - t0.getTime()) / 864e5);
+    due_date   = new Date(due).toISOString().slice(0, 10);
   }
   res.json({ cup: {
     id: b.id, date: b.date, title: d.title || 'MATSU CUP', place: d.place || '',
     pay: C.pay, fee: C.fee, deposit: C.deposit,
     teams: live, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - live), dday,
+    /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
+    due_date, event_dday,
+    roster_need: CUP_ROSTER_N, roster_female: CUP_ROSTER_F,
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
   }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
@@ -6471,38 +6480,63 @@ app.post('/cup/:bid/roster', auth, (req, res) => {
   const b = cupBracket(req.params.bid);
   if (!b) return res.status(404).json({ error: 'no_cup' });
   const cid = +(req.body || {}).club_id;
-  if (!cid || !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
-  const e = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  if (!cid || !isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '클럽 운영진만 낼 수 있어요' });
+  const e = db.prepare(`SELECT * FROM cup_entries
+    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid);
   if (!e) return res.status(400).json({ error: 'not_applied', message: '먼저 참가 신청을 해주세요' });
 
-  const ids = Array.isArray((req.body || {}).user_ids) ? (req.body || {}).user_ids.map(Number) : [];
-  const rows = ids.map(uid => {
-    const m = db.prepare(`SELECT m.user_id, m.gender_ov, m.grade, m.alias,
-        u.name, u.gender, u.birth_year FROM club_members m JOIN users u ON u.id=m.user_id
-      WHERE m.club_id=? AND m.user_id=?`).get(cid, uid);
-    if (!m) return null;
+  /* 중복을 여기서 자른다 — 같은 사람이 두 번 들어오면
+     인원 수는 맞는데 실제로 뛸 사람이 모자란다. */
+  const raw = Array.isArray((req.body || {}).user_ids) ? req.body.user_ids : [];
+  const ids = [...new Set(raw.map(Number).filter(v => Number.isFinite(v) && v > 0))];
+
+  /* m.grade 는 이 라우트에서 쓰지 않는다 — 안 쓰는 칸은 부르지 않는다.
+     칸 하나가 없으면 쿼리 전체가 죽고 500 이 된다. */
+  const sel = db.prepare(`SELECT m.user_id, m.gender_ov, m.alias,
+      u.name, u.gender, u.birth_year
+    FROM club_members m JOIN users u ON u.id=m.user_id
+    WHERE m.club_id=? AND m.user_id=?`);
+
+  const rows = [];
+  for (const uid of ids) {
+    const m = sel.get(cid, uid);
+    if (!m) return res.status(400).json({ error: 'not_member',
+      message: '우리 클럽 회원만 넣을 수 있어요' });
     const y = careerYears(m.user_id);
-    if (y == null) return { err: `${m.alias || m.name}님은 구력이 없어요` };
-    return { user_id: m.user_id, guest_name: m.alias || m.name,
-      gender: (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
-      ntrp: y, birth_year: m.birth_year || null };
-  });
-  const bad = rows.find(r => r && r.err);
-  if (bad) return res.status(400).json({ error: 'no_career',
-    message: bad.err + ' · 내정보에서 테니스 시작 시기를 적어야 나올 수 있어요' });
-  if (rows.some(r => !r))
-    return res.status(400).json({ error: 'not_member', message: '우리 클럽 회원만 넣을 수 있어요' });
-  const why = cupCheckRoster(rows.map(r => Object.assign({}, r, {
-    guardian_consent: 1, health_declared: 1 })));
+    if (y == null) return res.status(400).json({ error: 'no_career',
+      message: `${m.alias || m.name || '회원'}님은 구력이 없어요 · `
+             + '내정보에서 테니스 시작 시기를 적어야 나올 수 있어요' });
+    /* undefined 가 하나라도 섞이면 better-sqlite3 가 바인딩에서 던진다.
+       전부 숫자·문자열·null 로 못박는다. */
+    rows.push({
+      user_id:    Number(m.user_id),
+      guest_name: String(m.alias || m.name || '회원'),
+      gender:     (m.gender_ov || m.gender || 'M') === 'F' ? 'F' : 'M',
+      ntrp:       Number(y),
+      birth_year: Number(m.birth_year) > 0 ? Number(m.birth_year) : null,
+    });
+  }
+
+  const why = cupCheckRoster(rows.map(r => Object.assign({}, r,
+    { guardian_consent: 1, health_declared: 1 })));
   if (why) return res.status(400).json({ error: 'bad_roster', message: why });
 
-  db.transaction(() => {
-    db.prepare('DELETE FROM cup_roster WHERE entry_id=?').run(e.id);
-    const ins = db.prepare(`INSERT INTO cup_roster
-      (entry_id,user_id,guest_name,gender,ntrp,birth_year,slot,guardian_consent,health_declared)
-      VALUES (?,?,?,?,?,?,?,1,1)`);
-    rows.forEach((r, i) => ins.run(e.id, r.user_id, r.guest_name, r.gender, r.ntrp, r.birth_year, i + 1));
-  })();
+  try {
+    db.transaction(() => {
+      db.prepare('DELETE FROM cup_roster WHERE entry_id=?').run(e.id);
+      const ins = db.prepare(`INSERT INTO cup_roster
+        (entry_id,user_id,guest_name,gender,ntrp,birth_year,slot,guardian_consent,health_declared)
+        VALUES (?,?,?,?,?,?,?,1,1)`);
+      rows.forEach((r, i) =>
+        ins.run(e.id, r.user_id, r.guest_name, r.gender, r.ntrp, r.birth_year, i + 1));
+    })();
+  } catch (err) {
+    /* 이 줄이 없어서 앱에 "(500)" 만 보였다. 원인을 로그와 토스트 양쪽에 남긴다. */
+    console.error('[cup roster]', err && err.message, JSON.stringify(rows));
+    return res.status(500).json({ error: 'roster_fail',
+      message: (err && err.message) || '저장하지 못했어요' });
+  }
   res.json({ ok: true, n: rows.length });
 });
 
