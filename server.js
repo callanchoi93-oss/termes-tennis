@@ -6097,7 +6097,34 @@ const cupG = v => cupFem(v) ? 'F' : 'M';
 function cupMemberForm(cid) {
   const st = {};
   const pick = n => (st[n] = st[n] || { g: 0, w: 0, d: 0, form: [] });
+  const tally = (side, mine, opp) => {
+    const draw = mine === opp;
+    side.forEach(n => {
+      const nm = String((n && n.name) || n || '').trim();
+      if (!nm) return;
+      const t = pick(nm);
+      t.g++;
+      if (draw) { t.d++; t.form.push(0); }
+      else if (mine > opp) { t.w++; t.form.push(1); }
+      else t.form.push(-1);
+    });
+  };
   try {
+    /* 대진이 두 군데에 쌓인다.
+       club_brackets_ev — 지금 쓰는 시간 대진(data.games 에 팀과 점수가 같이 있다)
+       brackets         — 예전 대진(data.reg + bracket_scores 로 나뉘어 있다)
+       한쪽만 보면 승률이 통째로 비어 보인다. 실제로 그랬다. */
+    db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=?').all(cid)
+      .concat(db.prepare('SELECT data FROM club_brackets WHERE club_id=?').all(cid))
+      .forEach(row => {
+        let d = {}; try { d = JSON.parse(row.data || '{}'); } catch (e) { return; }
+        (d.games || []).forEach(g => {
+          if (g.sa == null || g.sb == null) return;
+          tally(g.teamA || [], g.sa, g.sb);
+          tally(g.teamB || [], g.sb, g.sa);
+        });
+      });
+
     const brs = db.prepare(`SELECT id, date, data FROM brackets
       WHERE club_id=? AND published=1 ORDER BY id ASC LIMIT 80`).all(cid);
     brs.forEach(b => {
@@ -6110,17 +6137,8 @@ function cupMemberForm(cid) {
         if (!s2 || !Array.isArray(r.names) || r.names.length < 2) return;
         const half = Math.floor(r.names.length / 2);
         const A = r.names.slice(0, half), B = r.names.slice(half);
-        const draw = s2.a === s2.b;
-        [[A, s2.a, s2.b], [B, s2.b, s2.a]].forEach(([side, mine, opp]) => {
-          side.forEach(n => {
-            if (!n) return;
-            const t = pick(n);
-            t.g++;
-            if (draw) { t.d++; t.form.push(0); }
-            else if (mine > opp) { t.w++; t.form.push(1); }
-            else t.form.push(-1);
-          });
-        });
+        tally(A, s2.a, s2.b);
+        tally(B, s2.b, s2.a);
       });
     });
   } catch (e) { console.error('[cup form]', e && e.message); }
@@ -6164,6 +6182,44 @@ app.post('/cup/:bid/entries', auth, (req, res) => {
     String((req.body || {}).contact_phone || '').replace(/\D/g, '').slice(0, 11) || null,
     tok, now());
   res.json({ ok: true, id: rid(r), token: tok });
+});
+
+/* 참가 클럽 현황 — 참가한 클럽이면 누구나 본다.
+   다른 클럽 명단은 대회 7일 전에 열린다. 그전에 보이면 상대를 보고 라인업을 짜게 되고,
+   먼저 낸 클럽이 손해를 본다. 그때까지는 인원 수만 보낸다. */
+app.get('/cup/:bid/teams', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +req.query.club_id;
+  if (!cid || !isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const mine = db.prepare(`SELECT id FROM cup_entries
+    WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid);
+  if (!mine && !cupHost(b, req.uid))
+    return res.status(403).json({ error: 'not_applied', message: '참가 신청한 클럽만 볼 수 있어요' });
+
+  const C = cupCfg(b.data);
+  let open7 = false;
+  if (b.date) {
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const left = Math.round((new Date(b.date + 'T00:00:00').getTime() - t0.getTime()) / 864e5);
+    open7 = left <= 7;
+  }
+  const rows = db.prepare(`SELECT id, club_id, club_name, status, fee_paid, group_label, seat
+    FROM cup_entries WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
+  const teams = rows.map(r => {
+    const n = db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n;
+    const isMine = mine && r.id === mine.id;
+    const out = { id: r.id, name: r.club_name, mine: !!isMine,
+      status: r.fee_paid ? 'confirmed' : (n >= CUP_ROSTER_N ? 'entered' : 'applied'),
+      roster_n: n, group_label: r.group_label, seat: r.seat };
+    /* 우리 명단은 언제나 보인다 — 우리가 낸 것이다 */
+    if (isMine || open7) out.roster = db.prepare(
+      `SELECT guest_name name, gender, ntrp years FROM cup_roster WHERE entry_id=? ORDER BY slot`).all(r.id);
+    return out;
+  });
+  res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
+    left: Math.max(0, C.max_teams - teams.length), roster_open: open7,
+    date: b.date, title: cupCfg(b.data).title });
 });
 
 app.get('/cup/:bid/entries', auth, (req, res) => {
