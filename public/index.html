@@ -2155,7 +2155,8 @@
   .vtk{ display:flex;align-items:center;gap:11px;padding:12px 0;
     border-top:1px solid var(--line);cursor:pointer }
   .vtk:first-of-type{ border-top:0 }
-  .vtk .av{ width:30px;height:30px;border-radius:50%;background:#dfe3e8;flex:none }
+  .vtk .av{ width:32px;height:32px;border-radius:50%;background:#98a3af;color:#fff;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700 }
   .vtk .c{ flex:1;min-width:0 }
   .vtk .c b{ display:block;font-size:13px;font-weight:700 }
   .vtk .c span{ display:block;font-size:13px;color:var(--gray);margin-top:2px;
@@ -18450,8 +18451,10 @@ async function venuePageMount(vid){
   /* 다가오는 모임 — 이 코트에 누가 언제 오는지.
      지분이 <지금까지>라면 이건 <앞으로>다. 총무가 더 자주 보는 값이다. */
   const up=(det&&det.upcoming)||[];
-  if(up.length){
+  if(cs&&cs.joined){
     h+=`<div class="vsec2"><b>다가오는 모임</b></div>`;
+    if(!up.length) h+=`<div class="vnone" style="padding:16px 10px">예정된 모임이 없어요<br>
+      <span>아래 <b>모임 잡기</b>로 열면 여기 뜹니다</span></div>`;
     h+=up.slice(0,3).map(e=>{
       const dt=new Date((e.date||'')+'T00:00:00');
       const mine=cid && e.club_id==cid;
@@ -18468,14 +18471,19 @@ async function venuePageMount(vid){
   /* 구장톡 최근 글 — 버튼만 있으면 안 누른다.
      <2번 코트 네트 낮아요> 같은 한 줄이 보여야 누른다. */
   const tk=(det&&det.talk)||[];
-  if(tk.length && !(det&&det.talk_locked)){
+  if(!(det&&det.talk_locked)){
     h+=`<div class="vsec2"><b>구장톡</b>
       <span onclick="openCourtTalk(${vid},'court')">모두 보기</span></div>`;
-    h+=tk.slice(0,2).map(t=>`<div class="vtk" onclick="openCourtTalk(${vid},'court')">
-      <span class="av"></span>
-      <span class="c"><b>${esc(t.title||t.club||'글')}</b>
-        <span>${esc(String(t.body||'').replace(/\s+/g,' ').slice(0,40))}</span></span>
-      <span class="n">${esc(timeAgo(t.created_at))}</span></div>`).join('');
+    if(!tk.length) h+=`<div class="vnone" style="padding:16px 10px">아직 글이 없어요<br>
+      <span>이 구장을 쓰는 클럽끼리 얘기하는 자리예요</span></div>`;
+    h+=tk.slice(0,2).map(t=>{
+      const who=t.who||t.club||'익명';
+      return `<div class="vtk" onclick="openCourtTalk(${vid},'court')">
+        <span class="av">${esc(who.slice(0,1))}</span>
+        <span class="c"><b>${esc(who)}</b>
+          <span>${esc(String(t.title||t.body||'').replace(/\s+/g,' ').slice(0,40))}</span></span>
+        <span class="n">${esc(timeAgo(t.created_at))}</span></div>`;
+    }).join('');
   }
 
   /* 빈 시간 — 없으면 줄째로 뺀다. <빈 시간 없음> 칸만 남기면 죽은 자리가 된다 */
