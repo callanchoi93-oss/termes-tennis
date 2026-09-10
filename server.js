@@ -9646,6 +9646,63 @@ app.get('/admin/dead-code', admin, (_req, res) => {
    · 원정 패 = 아무 일도 없음 — 져서 얻는 것은 없다
    · 옅어짐 = 뺏은 땅만 1년. 내 홈은 안 옅어진다(매주 거기서 치니까)
               실외 구장은 겨울 3개월을 그 계산에서 뺀다 */
+/* 구장 표는 여기서 만든다 — 아래 ALTER 보다 반드시 먼저여야 한다.
+   예전에는 12000줄 아래에 있어서, 새로 만든 DB 에서는
+   <no such table: venues> 가 나고 칸이 하나도 안 붙었다. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS venues (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  owner_id INTEGER,                      -- 사장님 계정 (users.id)
+  sido TEXT, sigungu TEXT, addr TEXT,
+  phone TEXT, memo TEXT,
+  photos TEXT,                           -- JSON 배열
+  bank TEXT,                             -- 정산 계좌
+  active INTEGER DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS venue_courts (
+  id INTEGER PRIMARY KEY,
+  venue_id INTEGER NOT NULL,
+  no INTEGER NOT NULL,                   -- 1번, 2번 …
+  label TEXT,                            -- 비우면 "N번 코트"
+  indoor INTEGER DEFAULT 0,
+  surface TEXT,                          -- 하드 · 클레이 · 인조잔디
+  price_hour INTEGER DEFAULT 0,          -- 1면 · 1시간
+  photos TEXT,
+  status TEXT DEFAULT 'active',          -- active · paused
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vc_venue ON venue_courts(venue_id);
+
+CREATE TABLE IF NOT EXISTS venue_slots (
+  id INTEGER PRIMARY KEY,
+  venue_id INTEGER NOT NULL,
+  date TEXT NOT NULL,                    -- YYYY-MM-DD
+  start TEXT NOT NULL, end TEXT NOT NULL,-- HH:MM
+  court_ids TEXT NOT NULL,               -- JSON 배열
+  price INTEGER NOT NULL,                -- 이 타임 총 코트비
+  status TEXT DEFAULT 'open',            -- open · held · booked · closed
+  match_id INTEGER,                      -- 잡은 오픈매치
+  held_by INTEGER, held_at INTEGER,      -- 잡은 매니저
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vs_venue ON venue_slots(venue_id, date);
+CREATE INDEX IF NOT EXISTS ix_vs_open ON venue_slots(status, date);
+
+CREATE TABLE IF NOT EXISTS venue_payouts (
+  id INTEGER PRIMARY KEY,
+  venue_id INTEGER NOT NULL,
+  slot_id INTEGER NOT NULL,
+  match_id INTEGER,
+  amount INTEGER NOT NULL,
+  status TEXT DEFAULT 'pending',         -- pending · paid
+  due_at INTEGER, paid_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vp_venue ON venue_payouts(venue_id, status);
+`);
+
 try { db.exec('ALTER TABLE venues ADD COLUMN lat REAL'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN lng REAL'); } catch (e) {}
 try { db.exec('ALTER TABLE venues ADD COLUMN indoor INTEGER DEFAULT 0'); } catch (e) {}
@@ -11176,12 +11233,25 @@ app.get('/venues/:id/detail', auth, (req, res) => {
     !!db.prepare(`SELECT 1 FROM venue_clubs vc JOIN club_members m ON m.club_id=vc.club_id
       WHERE vc.venue_id=? AND m.user_id=? AND m.role IN ('owner','officer') LIMIT 1`)
       .get(vid, req.uid);
+  /* 이 코트에 <누가 언제 오는지> — 지분보다 실용적이다.
+     남의 클럽 모임도 보이면 <그날은 붐비겠네>를 알 수 있고,
+     교류전 제안도 여기서 나온다. */
+  const upcoming = db.prepare(`SELECT e.id, e.date, e.title, e.tag, e.courts,
+      c.id club_id, c.name club
+    FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
+    WHERE e.venue_id=? AND e.date >= ?
+    ORDER BY e.date LIMIT 4`).all(vid, ymdOf(Date.now()));
+  upcoming.forEach(e => {
+    e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
+      WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
+  });
+
   res.json({
     venue: v, can_edit: canEdit,
     courts: courts.n || v.courts_n || 0,
     surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean)
       : (v.surface ? [v.surface] : []),
-    events: evs, talk, talk_locked: talkLocked,
+    events: evs, upcoming, talk, talk_locked: talkLocked,
   });
 });
 
@@ -12033,59 +12103,9 @@ app.post('/admin/venue-accounts/:id/password', admin, (req, res) => {
    ─ 매니저가 열린 시간을 잡으면 hold → 모집 확정되면 booked.
      일반 대관이 잡히면 사장님이 그 시간을 닫으면 된다.
    ═══════════════════════════════════════════════════════════════ */
-db.exec(`
-CREATE TABLE IF NOT EXISTS venues (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  owner_id INTEGER,                      -- 사장님 계정 (users.id)
-  sido TEXT, sigungu TEXT, addr TEXT,
-  phone TEXT, memo TEXT,
-  photos TEXT,                           -- JSON 배열
-  bank TEXT,                             -- 정산 계좌
-  active INTEGER DEFAULT 1,
-  created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS venue_courts (
-  id INTEGER PRIMARY KEY,
-  venue_id INTEGER NOT NULL,
-  no INTEGER NOT NULL,                   -- 1번, 2번 …
-  label TEXT,                            -- 비우면 "N번 코트"
-  indoor INTEGER DEFAULT 0,
-  surface TEXT,                          -- 하드 · 클레이 · 인조잔디
-  price_hour INTEGER DEFAULT 0,          -- 1면 · 1시간
-  photos TEXT,
-  status TEXT DEFAULT 'active',          -- active · paused
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_vc_venue ON venue_courts(venue_id);
+/* venues 스키마는 위(부팅 직후)로 옮겼다 — 아래 ALTER 들이 먼저 돌아서
+   새 DB 에서는 indoor·kind 같은 칸이 영영 안 생겼다. */
 
-CREATE TABLE IF NOT EXISTS venue_slots (
-  id INTEGER PRIMARY KEY,
-  venue_id INTEGER NOT NULL,
-  date TEXT NOT NULL,                    -- YYYY-MM-DD
-  start TEXT NOT NULL, end TEXT NOT NULL,-- HH:MM
-  court_ids TEXT NOT NULL,               -- JSON 배열
-  price INTEGER NOT NULL,                -- 이 타임 총 코트비
-  status TEXT DEFAULT 'open',            -- open · held · booked · closed
-  match_id INTEGER,                      -- 잡은 오픈매치
-  held_by INTEGER, held_at INTEGER,      -- 잡은 매니저
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_vs_venue ON venue_slots(venue_id, date);
-CREATE INDEX IF NOT EXISTS ix_vs_open ON venue_slots(status, date);
-
-CREATE TABLE IF NOT EXISTS venue_payouts (
-  id INTEGER PRIMARY KEY,
-  venue_id INTEGER NOT NULL,
-  slot_id INTEGER NOT NULL,
-  match_id INTEGER,
-  amount INTEGER NOT NULL,
-  status TEXT DEFAULT 'pending',         -- pending · paid
-  due_at INTEGER, paid_at INTEGER,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_vp_venue ON venue_payouts(venue_id, status);
-`);
 /* 정산 계좌 — 기존 DB에도 추가된다 */
 ['bank_name TEXT', 'bank_no TEXT', 'bank_holder TEXT', 'biz_no TEXT', 'bank_at INTEGER']
   .forEach(c => { try { db.exec(`ALTER TABLE venues ADD COLUMN ${c}`); } catch (e) { /* 이미 있음 */ } });
