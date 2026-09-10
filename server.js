@@ -8252,10 +8252,13 @@ app.post('/upload', auth, limitUpload, (req, res) => {
 db.exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
 try { db.exec('ALTER TABLE banners ADD COLUMN sort INTEGER DEFAULT 0'); } catch (e) {}
-try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catch (e) {}   // home | bracket
+try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catch (e) {}   // home | bracket | club_xc | club_new | match
 app.get('/banners', (req, res) => {
   const slot = String(req.query.slot || 'home');
   res.json(db.prepare("SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? ORDER BY sort ASC, id DESC LIMIT 5").all(slot));
+});
+app.get('/admin/banner-slots', admin, (_req, res) => {
+  res.json({ slots: ['home', 'bracket', 'club_xc', 'club_new', 'match'] });
 });
 app.get('/admin/banners', admin, (_req, res) => {
   res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all());
@@ -8277,8 +8280,15 @@ app.post('/admin/banners', admin, (req, res) => {
     fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
     url = '/uploads/' + name;
   } else if (!url.startsWith('/uploads/')) return res.status(400).json({ error: 'bad_image' });
+  /* 자리 이름은 화면이 늘어날 때마다 생긴다 — 두 값만 허용하면
+     새 자리에 올린 배너가 조용히 홈으로 떨어진다(그 버그가 있었다).
+     모르는 값은 거절해서 관리자가 오타를 바로 알게 한다. */
+  const SLOTS = ['home', 'bracket', 'club_xc', 'club_new', 'match'];
+  const slot = SLOTS.includes(String(b.slot || '')) ? String(b.slot) : 'home';
+  if (b.slot && !SLOTS.includes(String(b.slot)))
+    return res.status(400).json({ error: 'bad_slot', allowed: SLOTS });
   db.prepare('INSERT INTO banners (image,link,slot,created_at) VALUES (?,?,?,?)')
-    .run(url, String(b.link || '').slice(0, 300), (b.slot === 'bracket' ? 'bracket' : 'home'), now());
+    .run(url, String(b.link || '').slice(0, 300), slot, now());
   res.json({ ok: true });
 });
 app.delete('/admin/banners/:id', admin, (req, res) => {
