@@ -1954,7 +1954,13 @@
   .vhint{ font-size:13px;color:var(--coral-d);font-weight:700;margin-top:7px;cursor:pointer }
   .vpicked{ border:1.5px solid var(--coral);background:#fffaf7;border-radius:11px;
     padding:11px 12px;display:flex;align-items:center;gap:10px;cursor:pointer }
-  .vpicked .ic{ width:22px;height:22px;flex:none;background:var(--coral);border-radius:50% }
+  /* 동그라미는 아무 뜻이 없다 — 코트를 그린다 */
+  .vpicked .ic{ width:22px;height:22px;flex:none;background:var(--coral);
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-position:center;mask-position:center;
+    -webkit-mask-size:contain;mask-size:contain;
+    -webkit-mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='14' rx='1.5'/><path d='M12 5v14M3 12h18M7 9v6M17 9v6'/></svg>");
+    mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'><rect x='3' y='5' width='18' height='14' rx='1.5'/><path d='M12 5v14M3 12h18M7 9v6M17 9v6'/></svg>") }
   .vpicked .c{ flex:1;min-width:0 }
   .vpicked .c b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
@@ -8794,7 +8800,24 @@ function editEvent(eid){
   NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'', end:'', dur:0, courts:[],
          title:e.title||'', place:'', tag:e.tag||'정기', editId:eid };
   Object.assign(NE, evParseDate(e.date));
+  /* 장소를 안 되살려서 수정만 눌러도 <구장을 골라주세요> 로 돌아갔다.
+     구장을 골라 만든 모임이면 그 구장을, 글자로 적은 모임이면 그 글자를 되돌린다. */
+  neRestorePlace(e);
   renderNewEvent();
+}
+
+/* 모임 하나에서 장소를 되살린다 — 수정·복제가 같은 규칙을 쓰게 한 곳에 둔다 */
+function neRestorePlace(e){
+  const vid=e&&(e.venue_id||e.venueId||(e.venue&&e.venue.id));
+  const nm=NE.place||e.place||(e.venue&&e.venue.name)||'';
+  if(vid){
+    NE.venue={ id:vid, name:nm||(e.venue&&e.venue.name)||'구장',
+      sigungu:(e.venue&&e.venue.sigungu)||'', indoor:(e.venue&&e.venue.indoor)||0,
+      courts:(e.venue&&e.venue.courts)||0 };
+    NE.place=NE.venue.name; NE.freePlace=false;
+  } else if(nm){
+    NE.place=nm; NE.venue=null; NE.freePlace=true;   // 글자로 적힌 옛 모임
+  }
 }
 /* "8/18 (화) 19:00~23:00 · 용인 테니스파크" 를 조각낸다.
    예전 정규식은 종료 시간을 못 읽어서, 수정만 눌러도 시작 시간이 23:00 으로 바뀌었다. */
@@ -8818,6 +8841,7 @@ function copyEvent(eid){
   NE = { y:t.getFullYear(), m:t.getMonth(), day:null, time:'', end:'', dur:0, courts:[],
          title:e.title||'', place:'', tag:e.tag||'정기' };   // editId 없음 = 새 모임
   Object.assign(NE, evParseDate(e.date));
+  neRestorePlace(e);
   NE.day=null;                                  // 날짜만 비워 새로 고르게 한다
   NE._copied=true;
   closeEventPage();
@@ -18455,14 +18479,16 @@ async function venuePageMount(vid){
     h+=`<div class="vsec2"><b>다가오는 모임</b></div>`;
     if(!up.length) h+=`<div class="vnone" style="padding:16px 10px">예정된 모임이 없어요<br>
       <span>아래 <b>모임 잡기</b>로 열면 여기 뜹니다</span></div>`;
+    /* 모임 날짜는 <9/11 금 19:00> 형식이라 Date 로 바로 못 읽는다.
+       서버가 ts 를 같이 내려주니 그걸 쓴다. */
     h+=up.slice(0,3).map(e=>{
-      const dt=new Date((e.date||'')+'T00:00:00');
+      const dt=e.ts?new Date(e.ts):null;
       const mine=cid && e.club_id==cid;
-      const wd=isNaN(dt)?'':WD_KO[dt.getDay()];
       return `<div class="vup${mine?' me':''}" onclick="openEventFromVenue(${e.id})">
-        <span class="d"><b>${isNaN(dt)?'—':dt.getDate()}</b><s>${wd}</s></span>
-        <span class="c"><b>${esc(mine?'우리 '+(e.tag||'정기모임'):`${e.club||''} ${e.tag||'모임'}`)}${
-          e.title?` · ${esc(String(e.title).slice(0,14))}`:''}</b>
+        <span class="d"><b>${dt?dt.getDate():(e.day||'—')}</b>
+          <s>${dt?WD_KO[dt.getDay()]:''}</s></span>
+        <span class="c"><b>${esc(mine?`우리 ${e.tag||'정기모임'}`:`${e.club||''} ${e.tag||'모임'}`)}${
+          e.time?` ${esc(e.time)}`:''}</b>
           <span>${e.people||0}명 참석${e.courts?` · ${e.courts}면`:''}</span></span>
         <span class="ar">›</span></div>`;
     }).join('');
