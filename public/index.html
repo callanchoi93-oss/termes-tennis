@@ -2093,7 +2093,21 @@
     padding-left:5px;margin-left:1px;border-left:1px solid #e6eaee }
   /* ── 홈코트 페이지 머리 ──
      뒤로는 ‹, 나가기는 ×. 한 버튼에 겹쳐 두면 닫으려던 사람이 한 칸 뒤로 간다. */
-  .hcp-top{ margin:0 0 12px }
+  .hcp-top{ margin:0 0 12px; position:relative }
+  .hcp-top .vpick{ cursor:pointer; display:inline-flex; align-items:center; gap:4px }
+  .hcp-top .vcar{ font-style:normal; font-size:17px; color:var(--gray); font-weight:400;
+    line-height:1; transform:translateY(-2px) }
+  .hcp-top .vdot{ width:7px; height:7px; border-radius:50%; background:var(--coral);
+    display:inline-block; align-self:flex-start; margin-top:4px }
+  .vpick-list{ position:absolute; left:0; top:100%; z-index:30; min-width:214px;
+    background:#fff; border-radius:14px; box-shadow:0 10px 30px rgba(28,27,24,.16);
+    padding:6px; margin-top:6px }
+  .vpick-row{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 12px; border-radius:10px; cursor:pointer; font-size:15px; font-weight:500 }
+  .vpick-row:active{ background:#f6f4f0 }
+  .vpick-row.on{ background:#faf8f5 }
+  .vpick-row em{ font-style:normal; font-size:12px; font-weight:600; color:var(--coral-d) }
+  .vpick-row .vck{ font-style:normal; color:var(--coral); font-weight:700 }
   .hcp-top .up{ display:block;font-size:12px;font-weight:700;color:var(--coral-d);
     margin-bottom:3px }
   .hcp-top b{ display:block;font-size:22px;font-weight:800;letter-spacing:-.035em;
@@ -14573,10 +14587,49 @@ function renderTalkTab(){
   const cinfo=(TALK_COURTS||[]).find(v=>v.venue_id===TALK.vid);
   el.innerHTML=`<div class="hcp-top"><span class="up">라운지${
       cinfo&&cinfo.clubs&&cinfo.clubs.length>1?` · ${esc(cinfo.clubs.join(' · '))}`:''}</span>
-      <b>${esc(title)}</b></div>
+      ${venueTitle()}</div>
     <div id="talkPage">${talkBodyHtml()}</div>`;
 }
-async function talkTabLoad(cid){
+async /* ── 구장 고르기 ──
+   구장이 둘 이상인 사람은 제목을 눌러 오간다. 하나뿐이면 아무것도 그리지 않는다.
+   칩을 가로로 늘어놓는 안도 있었지만, 바로 아래 말머리 칩과 생김새가 같아
+   무엇이 구장이고 무엇이 말머리인지 구분이 안 됐다. */
+let VENUE_PICK_OPEN = false;
+function venueTitle(){
+  const list=TALK_COURTS||[];
+  const cur=list.find(v=>v.venue_id===TALK.vid);
+  const name=TALK.scope==='all' ? '전국 코트 이야기' : (TALK.venue||(cur&&cur.name)||'구장톡');
+  if(list.length<2 || TALK.scope==='all') return `<b>${esc(name)}</b>`;
+  /* 지금 보는 곳 말고 다른 구장에 안 읽은 글이 있으면 제목 옆에 점 */
+  const other=list.some(v=>v.venue_id!==TALK.vid && (v.unread||0)>0);
+  return `<b class="vpick" onclick="toggleVenuePick()" role="button" tabindex="0"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleVenuePick()}"
+      aria-expanded="${VENUE_PICK_OPEN?'true':'false'}">${esc(name)}<i class="vcar">⌄</i>${
+      other?'<em class="vdot"></em>':''}</b>${venuePickList()}`;
+}
+function venuePickList(){
+  if(!VENUE_PICK_OPEN) return '';
+  const list=TALK_COURTS||[];
+  return `<div class="vpick-list">${list.map(v=>{
+    const on=v.venue_id===TALK.vid;
+    const n=v.unread||0;
+    return `<div class="vpick-row${on?' on':''}" onclick="pickVenue(${v.venue_id})">
+      <span>${esc(v.name||'구장')}</span>
+      ${on ? '<i class="vck">✓</i>'
+           : (n ? `<em>새 글 ${n>99?'99+':n}</em>` : '')}</div>`;
+  }).join('')}</div>`;
+}
+function toggleVenuePick(){
+  VENUE_PICK_OPEN=!VENUE_PICK_OPEN;
+  if(state.view==='talk') renderTalkTab(); else renderHomeCourt();
+}
+function pickVenue(vid){
+  VENUE_PICK_OPEN=false;
+  if(vid===TALK.vid){ if(state.view==='talk') renderTalkTab(); return; }
+  try{ localStorage.setItem('matsu_last_venue', String(vid)); }catch(e){}
+  openCourtTalk(vid,'court');
+}
+function talkTabLoad(cid){
   /* 내가 낄 수 있는 구장을 먼저 다 받는다 — 구장이 둘이면 탭이 둘로 펴진다 */
   try{ const r=await api('/me/courts'); TALK_COURTS=(r&&r.courts)||[]; }
   catch(e){ TALK_COURTS=[]; }
@@ -14584,7 +14637,12 @@ async function talkTabLoad(cid){
   if(!cid && !TALK_COURTS.length) return openCourtTalk(0,'all');
   /* 클럽이 있으면 구장톡이 먼저다. 안 읽은 글이 있는 구장을 앞세운다. */
   if(TALK_COURTS.length){
-    const pick=TALK_COURTS.slice().sort((a,b)=>(b.unread||0)-(a.unread||0))[0];
+    /* 지난번에 보던 구장을 먼저 연다 — 매번 안 읽은 순으로 고르면
+       방금 보던 곳을 놔두고 다른 구장이 열려 어디에 있는지 헷갈린다. */
+    let last=null;
+    try{ last=+localStorage.getItem('matsu_last_venue')||null; }catch(e){}
+    const keep=last && TALK_COURTS.find(v=>v.venue_id===last);
+    const pick=keep || TALK_COURTS.slice().sort((a,b)=>(b.unread||0)-(a.unread||0))[0];
     return openCourtTalk(pick.venue_id,'court');
   }
   let d=null;
