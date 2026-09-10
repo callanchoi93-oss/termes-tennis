@@ -2281,7 +2281,7 @@ async function drawBanners(){
           <div class="rw">
             <img src="${esc(b.image||'')}" alt="" style="width:104px;aspect-ratio:1200/456;border-radius:9px;
               object-fit:cover;background:#f4f1ea;flex:none">
-            <div class="nm"><b>${i+1}번째${b.slot?'':'<span class="tag">예전 데이터</span>'}</b>
+            <div class="nm"><b>${i+1}번째<span class="tag">slot: ${esc(b.slot||'(비어 있음)')}</span></b>
               <span>${esc(b.link||'링크 없음')}</span></div>
             <div class="seg3">
               <button class="b" onclick="moveBanner('${k}',${i},-1)" ${i===0?'disabled style="opacity:.35"':''}>↑</button>
@@ -2309,9 +2309,23 @@ async function upBanner(){
   if(f.size > 3*1024*1024){ toast('3MB 까지 올릴 수 있어요'); return; }
   const image=await new Promise((ok,no)=>{ const r=new FileReader();
     r.onload=()=>ok(r.result); r.onerror=()=>no(new Error('read')); r.readAsDataURL(f); });
-  try{ await api('/admin/banners',{method:'POST',body:JSON.stringify({
-      image, link:($('blink')||{}).value||'', slot:($('bslot')||{}).value||'home' })});
-    toast('배너를 올렸어요'); render(); }
+  const want=($('bslot')||{}).value||'home';
+  try{
+    await api('/admin/banners',{method:'POST',body:JSON.stringify({
+      image, link:($('blink')||{}).value||'', slot:want })});
+    /* 서버가 slot 을 실제로 저장했는지 바로 확인한다 —
+       무시하고 저장하면 어느 자리에 올려도 전부 홈으로 모인다. */
+    let saved=null;
+    try{ const rows=await api('/admin/banners');
+      saved=(rows||[]).slice().sort((a,b)=>(b.id||0)-(a.id||0))[0]; }catch(_){}
+    if(saved && String(saved.slot||'')!==want){
+      toast('올렸지만 자리가 저장되지 않았어요 · 서버가 slot 을 '
+        + (saved.slot ? `'${saved.slot}' 로 바꿨어요` : '무시했어요'));
+      console.warn('[배너] 보낸 slot:', want, '/ 서버가 준 slot:', saved.slot, saved);
+    } else {
+      toast('배너를 올렸어요');
+    }
+    render(); }
   catch(e){ toast('올리지 못했어요 · 3MB 안쪽인지 확인해 주세요'); }
 }
 async function moveBanner(slot,i,d){
