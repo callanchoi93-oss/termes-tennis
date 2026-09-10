@@ -11236,11 +11236,17 @@ app.get('/venues/:id/detail', auth, (req, res) => {
   /* 이 코트에 <누가 언제 오는지> — 지분보다 실용적이다.
      남의 클럽 모임도 보이면 <그날은 붐비겠네>를 알 수 있고,
      교류전 제안도 여기서 나온다. */
-  const upcoming = db.prepare(`SELECT e.id, e.date, e.title, e.tag, e.courts,
+  /* venue_id 로만 찾으면 예전 모임이 다 빠진다 — 장소를 글자로만 적던 시절 것들이다.
+     이 구장을 홈으로 건 클럽의 모임 중 place 에 구장 이름이 들어간 것도 같이 센다. */
+  const upcoming = db.prepare(`SELECT e.id, e.date, e.title, e.tag, e.courts, e.place,
       c.id club_id, c.name club
     FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
-    WHERE e.venue_id=? AND e.date >= ?
-    ORDER BY e.date LIMIT 4`).all(vid, ymdOf(Date.now()));
+    WHERE e.date >= ? AND (
+      e.venue_id=?
+      OR (e.venue_id IS NULL AND e.place IS NOT NULL AND e.place LIKE ?
+          AND e.club_id IN (SELECT club_id FROM venue_clubs WHERE venue_id=?)))
+    ORDER BY e.date LIMIT 4`)
+    .all(ymdOf(Date.now()), vid, `%${String(v.name || '').slice(0, 12)}%`, vid);
   upcoming.forEach(e => {
     e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
       WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
