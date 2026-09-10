@@ -2235,31 +2235,73 @@ async function drawStaff(){
    무엇이 걸려 있는지 볼 수 없었고 고칠 수도 없었다. 그림을 보여주고 바로 손보게 한다. */
 async function drawBanners(){
   const rows=await api('/admin/banners').catch(()=>[]);
-  const SLOT={home:'홈',club:'클럽',match:'매치'};
+  /* 슬롯은 <어느 탭>이 아니라 <그 탭의 어느 자리>다.
+     자리를 안 정해두면 배너를 올려도 앱이 어디에 그려야 할지 모른다.
+     legacy 는 slot 이 비었거나 'club' 인 예전 데이터 — 홈·교류전 아래로 흡수한다. */
+  const SLOT={
+    home:     {t:'홈 · 상단 캐러셀',          d:'홈 탭 맨 위. 여러 장이면 4초마다 넘어가요'},
+    club_xc:  {t:'클럽 · 교류전 아래',        d:'교류전 블록과 클럽 찾기 사이'},
+    club_new: {t:'클럽 · 새 클럽 만들기 아래', d:'아직 클럽이 없는 사람이 먼저 봐요'},
+    bracket:  {t:'대진 도구 · 상단',          d:'앱이 ?slot=bracket 로 따로 받아가는 자리'},
+    match:    {t:'오픈매치 · 상단',           d:'오픈매치 탭 맨 위'},
+  };
+  /* slot 이 비었으면 예전 홈 배너, 'club' 은 교류전 아래로 흡수.
+     그 밖의 값은 지우지 않고 <그 밖> 묶음에 그대로 둔다 — 모르는 값을 홈으로
+     빨아들이면 대진 배너가 홈에 얹힌다. */
+  const slotOf = b => SLOT[b.slot] ? b.slot
+                    : (b.slot==='club' ? 'club_xc'
+                    : (!b.slot ? 'home' : '_etc'));
+  const etc = rows.filter(b=>slotOf(b)==='_etc');
+  const etcNames = [...new Set(etc.map(b=>b.slot))].join(' · ');
+  const groups = Object.keys(SLOT).map(k=>[k, rows.filter(b=>slotOf(b)===k)])
+    .concat(etc.length ? [['_etc', etc]] : []);
+  if(etc.length) SLOT._etc={t:'그 밖 ('+etcNames+')', d:'이 관리자가 모르는 자리예요. 앱 코드에서 쓰는 값인지 확인해 주세요'};
+
   $('app').innerHTML=shell(`
     <div class="card flat"><div class="ct">배너 올리기</div>
       <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
-        <select id="bslot" class="b" style="padding:8px 10px">
-          ${Object.entries(SLOT).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+        <select id="bslot" class="b" style="padding:8px 10px" onchange="bSlotHint()">
+          ${Object.entries(SLOT).map(([k,v])=>`<option value="${k}">${esc(v.t)}</option>`).join('')}</select>
         <input id="blink" placeholder="눌렀을 때 갈 주소 (선택)"
           style="flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
           font-size:var(--t2);font-family:inherit;font-weight:500"></div>
       <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
-        <input id="bfile" type="file" accept="image/*" style="flex:1;font-size:var(--t1)">
+        <input id="bfile" type="file" accept="image/*" style="flex:1;font-size:var(--t1)"
+          onchange="bPreview(this)">
         <button class="b on" onclick="upBanner()">올리기</button></div>
-      <div class="note">3MB 까지 · 가로로 긴 이미지가 잘 맞아요</div></div>
-    <div class="card">${rows.length? rows.map((b,i)=>`
-      <div class="rw">
-        <img src="${esc(b.image||'')}" alt="" style="width:76px;height:44px;border-radius:9px;
-          object-fit:cover;background:#f4f1ea;flex:none">
-        <div class="nm"><b>${esc(SLOT[b.slot]||b.slot||'홈')}<span class="tag">${i+1}번째</span></b>
-          <span>${esc(b.link||'링크 없음')}</span></div>
-        <div class="seg3">
-          <button class="b" onclick="moveBanner(${i},-1)" ${i===0?'disabled style="opacity:.35"':''}>↑</button>
-          <button class="b" onclick="moveBanner(${i},1)" ${i===rows.length-1?'disabled style="opacity:.35"':''}>↓</button>
-          <button class="b dz" onclick="delBanner(${b.id})">삭제</button></div></div>`).join('')
-      : `<div class="empty">걸린 배너가 없어요</div>`}</div>`);
-  CACHE.banners=rows;
+      <img id="bprev" alt="" style="display:none;width:100%;max-width:360px;margin-top:var(--s2);
+        border-radius:12px;aspect-ratio:1200/456;object-fit:cover;background:#f4f1ea">
+      <div class="note" id="bhint">${esc(SLOT.home.d)} · 3MB 까지 · 1200×456 (가로 2.6 : 세로 1) 이 딱 맞아요</div></div>
+
+    ${groups.map(([k,list])=>`
+      <div class="card"><div class="ct">${esc(SLOT[k].t)}
+          <span class="tag">${list.length}장</span></div>
+        <div class="note" style="margin:0 0 var(--s2)">${esc(SLOT[k].d)}</div>
+        ${list.length ? list.map((b,i)=>`
+          <div class="rw">
+            <img src="${esc(b.image||'')}" alt="" style="width:104px;aspect-ratio:1200/456;border-radius:9px;
+              object-fit:cover;background:#f4f1ea;flex:none">
+            <div class="nm"><b>${i+1}번째${b.slot?'':'<span class="tag">예전 데이터</span>'}</b>
+              <span>${esc(b.link||'링크 없음')}</span></div>
+            <div class="seg3">
+              <button class="b" onclick="moveBanner('${k}',${i},-1)" ${i===0?'disabled style="opacity:.35"':''}>↑</button>
+              <button class="b" onclick="moveBanner('${k}',${i},1)" ${i===list.length-1?'disabled style="opacity:.35"':''}>↓</button>
+              <button class="b dz" onclick="delBanner(${b.id})">삭제</button></div></div>`).join('')
+        : `<div class="empty">이 자리에 걸린 배너가 없어요</div>`}</div>`).join('')}`);
+  CACHE.banners=rows; CACHE.bslot=SLOT; CACHE.bgroups=Object.fromEntries(groups);
+}
+function bSlotHint(){
+  const k=($('bslot')||{}).value, S=CACHE.bslot||{}, n=$('bhint');
+  if(n && S[k]) n.textContent=S[k].d+' · 3MB 까지 · 1200×456 (가로 2.6 : 세로 1) 이 딱 맞아요';
+}
+/* 올리기 전에 눈으로 한 번 — 세로로 긴 이미지를 올려놓고 나중에 발견하는 일이 잦다 */
+function bPreview(el){
+  const f=el.files && el.files[0], img=$('bprev');
+  if(!img) return;
+  if(!f){ img.style.display='none'; return; }
+  const r=new FileReader();
+  r.onload=()=>{ img.src=r.result; img.style.display='block'; };
+  r.readAsDataURL(f);
 }
 async function upBanner(){
   const f=($('bfile')||{}).files && $('bfile').files[0];
@@ -2272,11 +2314,17 @@ async function upBanner(){
     toast('배너를 올렸어요'); render(); }
   catch(e){ toast('올리지 못했어요 · 3MB 안쪽인지 확인해 주세요'); }
 }
-async function moveBanner(i,d){
-  const rows=(CACHE.banners||[]).slice();
-  const j=i+d; if(j<0||j>=rows.length) return;
-  [rows[i],rows[j]]=[rows[j],rows[i]];
-  try{ await api('/admin/banners/order',{method:'PATCH',body:JSON.stringify({ids:rows.map(b=>b.id)})});
+async function moveBanner(slot,i,d){
+  /* 순서는 슬롯 안에서만 의미가 있다. 예전에는 전체 목록을 섞어서
+     홈 배너를 내리면 클럽 배너가 따라 올라왔다. */
+  const g=(CACHE.bgroups||{})[slot]||[];
+  const j=i+d; if(j<0||j>=g.length) return;
+  const list=g.slice(); [list[i],list[j]]=[list[j],list[i]];
+  const moved=new Map(list.map((b,n)=>[b.id,n]));
+  const all=(CACHE.banners||[]).slice();
+  const ids=[]; let n=0;
+  for(const b of all){ ids.push(g.some(x=>x.id===b.id) ? list[n++].id : b.id); }
+  try{ await api('/admin/banners/order',{method:'PATCH',body:JSON.stringify({ids})});
     toast('순서를 바꿨어요'); render(); }
   catch(e){ toast('바꾸지 못했어요'); }
 }
