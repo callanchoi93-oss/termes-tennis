@@ -11236,17 +11236,35 @@ app.get('/venues/:id/detail', auth, (req, res) => {
   /* 이 코트에 <누가 언제 오는지> — 지분보다 실용적이다.
      남의 클럽 모임도 보이면 <그날은 붐비겠네>를 알 수 있고,
      교류전 제안도 여기서 나온다. */
-  /* venue_id 로만 찾으면 예전 모임이 다 빠진다 — 장소를 글자로만 적던 시절 것들이다.
-     이 구장을 홈으로 건 클럽의 모임 중 place 에 구장 이름이 들어간 것도 같이 센다. */
-  const upcoming = db.prepare(`SELECT e.id, e.date, e.title, e.tag, e.courts, e.place,
+  /* 모임 날짜는 ISO 가 아니라 <9/11 금 19:00> 같은 앱 형식으로 저장돼 있다.
+     SQL 로는 <오늘 이후>를 못 가리니, 넉넉히 가져와 여기서 걸러 정렬한다.
+     venue_id 로만 찾으면 예전 모임이 다 빠진다 — 장소를 글자로만 적던 시절 것들이라
+     place 에 구장 이름이 든 것도 같이 본다. */
+  const evParse = str => {
+    const m = String(str || '').match(/(\d{1,2})\/(\d{1,2})[^0-9]*(\d{1,2}:\d{2})?/);
+    if (!m) return null;
+    const now = new Date();
+    let t = new Date(now.getFullYear(), +m[1] - 1, +m[2],
+      ...(m[3] ? m[3].split(':').map(Number) : [0, 0]));
+    const diff = (t - now) / 864e5;             // 연말·연초가 걸치면 연도를 보정
+    if (diff < -200) t.setFullYear(now.getFullYear() + 1);
+    if (diff > 200) t.setFullYear(now.getFullYear() - 1);
+    return { ts: t.getTime(), day: +m[2], mon: +m[1], time: m[3] || '' };
+  };
+  const raw = db.prepare(`SELECT e.id, e.date, e.title, e.tag, e.courts, e.place,
       c.id club_id, c.name club
     FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
-    WHERE e.date >= ? AND (
-      e.venue_id=?
+    WHERE e.venue_id=?
       OR (e.venue_id IS NULL AND e.place IS NOT NULL AND e.place LIKE ?
-          AND e.club_id IN (SELECT club_id FROM venue_clubs WHERE venue_id=?)))
-    ORDER BY e.date LIMIT 4`)
-    .all(ymdOf(Date.now()), vid, `%${String(v.name || '').slice(0, 12)}%`, vid);
+          AND e.club_id IN (SELECT club_id FROM venue_clubs WHERE venue_id=?))
+    ORDER BY e.id DESC LIMIT 60`)
+    .all(vid, `%${String(v.name || '').slice(0, 12)}%`, vid);
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const upcoming = raw
+    .map(e => { const p = evParse(e.date); return p ? Object.assign(e, p) : null; })
+    .filter(e => e && e.ts >= dayStart.getTime())
+    .sort((a, b) => a.ts - b.ts)
+    .slice(0, 4);
   upcoming.forEach(e => {
     e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
       WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
