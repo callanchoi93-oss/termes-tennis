@@ -14590,33 +14590,26 @@ function renderTalkTab(){
       ${venueTitle()}</div>
     <div id="talkPage">${talkBodyHtml()}</div>`;
 }
-async /* ── 구장 고르기 ──
-   구장이 둘 이상인 사람은 제목을 눌러 오간다. 하나뿐이면 아무것도 그리지 않는다.
-   칩을 가로로 늘어놓는 안도 있었지만, 바로 아래 말머리 칩과 생김새가 같아
-   무엇이 구장이고 무엇이 말머리인지 구분이 안 됐다. */
-let VENUE_PICK_OPEN = false;
+/* ── 구장 고르기 ──
+   구장이 둘 이상인 사람은 제목을 눌러 오간다. 하나뿐이면 아무것도 그리지 않는다. */
+let VENUE_PICK_OPEN=false;
 function venueTitle(){
   const list=TALK_COURTS||[];
   const cur=list.find(v=>v.venue_id===TALK.vid);
   const name=TALK.scope==='all' ? '전국 코트 이야기' : (TALK.venue||(cur&&cur.name)||'구장톡');
   if(list.length<2 || TALK.scope==='all') return `<b>${esc(name)}</b>`;
-  /* 지금 보는 곳 말고 다른 구장에 안 읽은 글이 있으면 제목 옆에 점 */
   const other=list.some(v=>v.venue_id!==TALK.vid && (v.unread||0)>0);
   return `<b class="vpick" onclick="toggleVenuePick()" role="button" tabindex="0"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleVenuePick()}"
       aria-expanded="${VENUE_PICK_OPEN?'true':'false'}">${esc(name)}<i class="vcar">⌄</i>${
       other?'<em class="vdot"></em>':''}</b>${venuePickList()}`;
 }
 function venuePickList(){
   if(!VENUE_PICK_OPEN) return '';
-  const list=TALK_COURTS||[];
-  return `<div class="vpick-list">${list.map(v=>{
-    const on=v.venue_id===TALK.vid;
-    const n=v.unread||0;
+  return `<div class="vpick-list">${(TALK_COURTS||[]).map(v=>{
+    const on=v.venue_id===TALK.vid, n=v.unread||0;
     return `<div class="vpick-row${on?' on':''}" onclick="pickVenue(${v.venue_id})">
       <span>${esc(v.name||'구장')}</span>
-      ${on ? '<i class="vck">✓</i>'
-           : (n ? `<em>새 글 ${n>99?'99+':n}</em>` : '')}</div>`;
+      ${on ? '<i class="vck">✓</i>' : (n ? `<em>새 글 ${n>99?'99+':n}</em>` : '')}</div>`;
   }).join('')}</div>`;
 }
 function toggleVenuePick(){
@@ -14629,7 +14622,7 @@ function pickVenue(vid){
   try{ localStorage.setItem('matsu_last_venue', String(vid)); }catch(e){}
   openCourtTalk(vid,'court');
 }
-function talkTabLoad(cid){
+async function talkTabLoad(cid){
   /* 내가 낄 수 있는 구장을 먼저 다 받는다 — 구장이 둘이면 탭이 둘로 펴진다 */
   try{ const r=await api('/me/courts'); TALK_COURTS=(r&&r.courts)||[]; }
   catch(e){ TALK_COURTS=[]; }
@@ -14637,8 +14630,7 @@ function talkTabLoad(cid){
   if(!cid && !TALK_COURTS.length) return openCourtTalk(0,'all');
   /* 클럽이 있으면 구장톡이 먼저다. 안 읽은 글이 있는 구장을 앞세운다. */
   if(TALK_COURTS.length){
-    /* 지난번에 보던 구장을 먼저 연다 — 매번 안 읽은 순으로 고르면
-       방금 보던 곳을 놔두고 다른 구장이 열려 어디에 있는지 헷갈린다. */
+    /* 지난번에 보던 구장을 먼저 — 매번 안 읽은 순으로 고르면 방금 보던 곳을 놓친다 */
     let last=null;
     try{ last=+localStorage.getItem('matsu_last_venue')||null; }catch(e){}
     const keep=last && TALK_COURTS.find(v=>v.venue_id===last);
@@ -15620,13 +15612,12 @@ async function openMyCourtTalk(){
 }
 
 /* ── 클럽 탭 배너 ──
-   홈과 같은 목록(/banners)을 쓰고 slot 으로만 자리를 가른다.
-   목록은 홈에서 이미 한 번 받아 두므로 여기서 또 부르지 않는다. */
-let CLUB_BN={};                       /* 슬롯별 캐시 — 화면을 다시 그려도 다시 안 부른다 */
+   앱이 이미 쓰는 방식(/banners?slot=) 그대로 자리별로 따로 받는다. */
+let CLUB_BN={};
 function clubBanner(slot){
   if(!SERVER_OK) return '';
   if(CLUB_BN[slot]===undefined){
-    CLUB_BN[slot]=null;                 /* 부르는 중 */
+    CLUB_BN[slot]=null;
     api('/banners?slot='+encodeURIComponent(slot))
       .then(r=>{ CLUB_BN[slot]=r||[]; if(state.view==='club') renderClub(); })
       .catch(()=>{ CLUB_BN[slot]=[]; });
@@ -15634,10 +15625,10 @@ function clubBanner(slot){
   const list=CLUB_BN[slot];
   if(!list || !list.length) return '';
   const b=list.find(x=>x&&x.image); if(!b) return '';
-  const src = u => /^https?:|^data:/.test(u||'') ? u : API_BASE + u;
+  const u = s => /^https?:|^data:/.test(s||'') ? s : API_BASE + s;
   return `<div style="border-radius:20px;overflow:hidden;margin:14px 0 4px;
     cursor:${b.link?'pointer':'default'}" onclick="${b.link?`window.open('${esc(b.link)}','_blank')`:''}">
-    <img src="${esc(src(b.image))}" alt="배너"
+    <img src="${esc(u(b.image))}" alt="배너"
       style="width:100%;display:block;aspect-ratio:1200/456;object-fit:cover"></div>`;
 }
 function xcSection(){
@@ -39685,9 +39676,7 @@ function _renderHomeCore(){
   let h='';
   // 상대 경로(/uploads/..)는 앱(capacitor://)에서 깨진다 — 서버 절대주소로 바꾼다
   const bnSrc = u => /^https?:|^data:/.test(u||'') ? u : API_BASE + u;
-  /* 슬롯이 생기기 전 데이터는 slot 이 비어 있다 — 그건 홈 것으로 본다 */
-  const bnSlot = b => (b && b.slot) ? (b.slot==='club' ? 'club_xc' : b.slot) : 'home';
-  { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image&&bnSlot(b)==='home');
+  { const bns=(HOME_BANNERS||[]).filter(b=>b&&b.image);
     if(bns.length===1){ const bn=bns[0];
       h+=`<div style="border-radius:20px;overflow:hidden;margin:4px 0 12px;cursor:${bn.link?'pointer':'default'}" onclick="${bn.link?`window.open('${esc(bn.link)}','_blank')`:''}">
       <img src="${esc(bnSrc(bn.image))}" style="width:100%;display:block;aspect-ratio:5/2;object-fit:cover" alt="배너"></div>`;
@@ -40250,8 +40239,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(v==='duel') MY_APPS=null;                       // 신청이력은 들어올 때마다 최신으로
   if(v==='chat' && state.view==='chat') state.chatRoom=null;
   state.view=v; updBackBtn();
-  /* 주소창을 현재 화면에 맞춘다 — pushState 를 쓰면 뒤로가기 한 칸 유지 규칙이 깨지므로
-     반드시 replaceState. 해시만 바꾸면 popstate 도 hashchange 도 안 뜬다. */
+  /* 주소창을 현재 화면에 맞춘다 — pushState 를 쓰면 <뒤로가기 한 칸 유지> 규칙이 깨진다 */
   try{ const _h='#'+v; if(location.hash!==_h) history.replaceState(history.state||{matsu:1}, '', _h); }catch(e){}
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
@@ -40289,7 +40277,6 @@ checkServer().then(async ok=>{
      네트워크를 다 받은 뒤에 열면, 코트에서 폰을 켠 사람은 로딩만 보다가
      "내가 몇 번째냐"를 못 본 채 기다리게 된다. 받아온 값은 도착하는 대로 갈아끼운다. */
   renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
-  /* 링크로 들어온 화면을 먼저 본다. 없으면 기기에 저장된 마지막 화면. */
   const _hv=(location.hash||'').replace('#','').trim();
   if(['home','league','club','bracket','match','duel','sched','talk','lounge','chat','me'].includes(_hv)) go(_hv);
   else if(state.view) go(state.view);
