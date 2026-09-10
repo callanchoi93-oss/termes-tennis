@@ -40167,6 +40167,9 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   if(v==='duel') MY_APPS=null;                       // 신청이력은 들어올 때마다 최신으로
   if(v==='chat' && state.view==='chat') state.chatRoom=null;
   state.view=v; updBackBtn();
+  /* 주소창을 현재 화면에 맞춘다 — pushState 를 쓰면 뒤로가기 한 칸 유지 규칙이 깨지므로
+     반드시 replaceState. 해시만 바꾸면 popstate 도 hashchange 도 안 뜬다. */
+  try{ const _h='#'+v; if(location.hash!==_h) history.replaceState(history.state||{matsu:1}, '', _h); }catch(e){}
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+v).classList.add('on');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.s===v));
@@ -40203,7 +40206,10 @@ checkServer().then(async ok=>{
      네트워크를 다 받은 뒤에 열면, 코트에서 폰을 켠 사람은 로딩만 보다가
      "내가 몇 번째냐"를 못 본 채 기다리게 된다. 받아온 값은 도착하는 대로 갈아끼운다. */
   renderHome();renderLeague();renderClub();renderLounge();renderChat();renderMe();renderAuthReviews();
-  if(state.view) go(state.view);
+  /* 링크로 들어온 화면을 먼저 본다. 없으면 기기에 저장된 마지막 화면. */
+  const _hv=(location.hash||'').replace('#','').trim();
+  if(['home','league','club','bracket','match','duel','sched','talk','lounge','chat','me'].includes(_hv)) go(_hv);
+  else if(state.view) go(state.view);
   hideBoot();
   // 저장된 세션으로 다시 연 경우에도 서버 가입 정보를 반드시 동기화한다.
   // (이게 빠져 있어서 "정회원인데 클럽이 없다고 나오는" 버그가 있었다)
@@ -40550,6 +40556,10 @@ function navBackStep(){
   if(state.view!=='home'){ go('home', true); return true; }
   return false;
 }
+addEventListener('hashchange', ()=>{
+  const v=(location.hash||'').replace('#','').trim();
+  if(['home','league','club','bracket','match','duel','sched','talk','lounge','chat','me'].includes(v) && v!==state.view) go(v);
+});
 window.addEventListener('popstate', ()=>{
   navBackStep();
   history.pushState({matsu:1},'');                      // 항상 한 칸 유지
