@@ -10581,6 +10581,15 @@ const CAT_ALL = [
   { k: 'tour', n: '대회·리그' }, { k: 'used', n: '중고·나눔' },
   { k: 'injury', n: '부상·고민' }, { k: 'newbie', n: '초보 질문' },
 ];
+/* ── 구장톡 글 끌어올리기 ──
+   전국톡이 비어 있으면 아무도 첫 글을 안 쓴다. 그렇다고 봇으로 채우면
+   한 번 들키는 순간 진짜 글까지 의심받는다.
+   그래서 없는 글을 만들지 않고, 이미 있는 글 중 전국에서도 통하는 것만 함께 보여준다.
+   두 목록에 모두 있는 말머리는 <잡담> 하나뿐이다 — 코트 상태·분실물은 그 구장 사람에게만 뜻이 있다.
+   전국톡에 글이 쌓이면 LIFT_COURT_CHAT 를 false 로 두면 된다. */
+const LIFT_COURT_CHAT = true;
+const LIFT_CATS = ['chat'];
+
 const catName = (scope, k) => {
   const hit = (scope === 'all' ? CAT_ALL : CAT_COURT).find(c => c.k === k);
   return hit ? hit.n : '';
@@ -11041,6 +11050,12 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   const bl = blockedBy(req.uid);
   const hideSql = ` AND (p.hidden IS NULL OR p.hidden=0 OR p.user_id=${+req.uid}) `
     + (bl.length ? ` AND p.user_id NOT IN (${bl.map(Number).join(',')}) ` : '');
+  /* 전국톡은 <전국에 쓴 글> + <구장톡 잡담>을 함께 본다.
+     구장톡 글은 venue_id 가 있어 목록에서 어느 코트에서 왔는지 그대로 드러난다. */
+  const scopeSql = (LIFT_COURT_CHAT && LIFT_CATS.length)
+    ? `(p.scope='all' OR (p.scope='court' AND p.cat IN (${
+        LIFT_CATS.map(c => `'${c}'`).join(',')})))`
+    : `p.scope='all'`;
   const rows = scope === 'court'
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
         p.cat,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who FROM court_posts p
@@ -11048,12 +11063,13 @@ app.get('/venues/:id/talk', auth, (req, res) => {
         WHERE p.venue_id=? AND p.scope='court' ${catSql} ${hideSql}
         ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
     : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
-        p.cat,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
+        p.cat,p.scope,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
-        WHERE p.scope='all' ${catSql} ${hideSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
+        WHERE ${scopeSql} ${catSql} ${hideSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
   rows.forEach(r => {
     r.cat_name = catName(scope, r.cat);
+    r.from_court = (scope === 'all' && r.scope === 'court') ? 1 : 0;
     r.hidden = r.hidden ? 1 : 0;
     r.react_n = db.prepare('SELECT COUNT(*) n FROM court_reacts WHERE post_id=?').get(r.id).n;
     r.has_poll = !!db.prepare('SELECT 1 FROM court_polls WHERE post_id=?').get(r.id);
