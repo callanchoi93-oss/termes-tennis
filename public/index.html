@@ -6994,6 +6994,18 @@ async function api(path, opts){
       alert('탈퇴되었거나 이용이 제한된 계정이에요.\n처음 화면으로 이동합니다 — 새로 가입할 수 있어요.');
       location.replace(location.pathname);
     }
+    /* 401 은 연결 문제가 아니라 로그인이 풀린 것이다.
+       예전에는 그냥 던져서 홈이 <잠깐 연결이 끊겼을 수 있어요>를 띄웠는데,
+       토큰이 죽은 사람은 <다시 시도>를 눌러도 영영 되지 않는다.
+       다른 기기에서 전체 로그아웃하면(token_revoked) 이 경로로 들어온다. */
+    if(r.status===401 && t && !window._AUTH_EXPIRED){
+      window._AUTH_EXPIRED = true;
+      AUTH_EXPIRED = true;
+      try{ localStorage.removeItem(TOKEN_KEY); }catch(e){}
+      state.loggedIn = false;
+      try{ toast('로그인이 풀렸어요 · 다시 로그인해 주세요'); }catch(e){}
+      try{ homeRepaint(); }catch(e){}
+    }
     const err = new Error(body || ('HTTP '+r.status));
     err.status = r.status;                 // 왜 막혔는지 화면에서 말해주려면 필요하다
     throw err;
@@ -7733,6 +7745,8 @@ let MYCLUBS_READY = false;
    <클럽 없음>으로 읽어, 클럽에 가입해 있는 회원에게 <클럽 찾거나 만들기>가 떴다.
    로그아웃 후 다시 로그인하면 나았던 건 그때 요청이 성공했기 때문이다. */
 let MYCLUBS_FAILED = false;
+let MYCLUBS_ERR = 0;          // 401 이면 로그인 만료, 그 밖이면 연결 문제
+let AUTH_EXPIRED = false;
 async function adoptServerClubs(){
   let mine=[];
   /* 실패해도 반드시 표시를 남긴다.
@@ -7747,6 +7761,8 @@ async function adoptServerClubs(){
        <클럽이 없다>고 단정하게 된다 — 그게 이번 버그였다.
        한 번은 조용히 다시 시도한다(네트워크가 잠깐 끊긴 경우가 대부분이다). */
     MYCLUBS_FAILED = true; MYCLUBS_READY = true;
+    MYCLUBS_ERR = (e && e.status) || 0;
+    if(MYCLUBS_ERR === 401) return;          // 토큰이 죽었다 — 다시 불러도 같은 결과다
     if(!adoptServerClubs._retried){
       adoptServerClubs._retried = 1;
       setTimeout(()=>{ adoptServerClubs._retried = 0;
@@ -39552,11 +39568,16 @@ function homeStarter(){
 
   /* 클럽을 못 불러왔을 때는 할 일 목록 대신 사실을 말하고 다시 시도할 길을 준다 */
   if(clubUnknown && !loading){
+    const expired = (MYCLUBS_ERR === 401) || AUTH_EXPIRED;
     h+=`<div class="hstoday quiet">
-      <span class="k soon">불러오지 못함</span>
-      <b>클럽 정보를 못 불러왔어요</b>
-      <span class="m">잠깐 연결이 끊겼을 수 있어요 · 가입한 클럽은 그대로 있습니다</span>
-      <button class="go" onclick="event.stopPropagation();homeRetryClubs(this)">다시 시도</button></div>`;
+      <span class="k soon">${expired?'로그인 만료':'불러오지 못함'}</span>
+      <b>${expired?'로그인이 풀렸어요':'클럽 정보를 못 불러왔어요'}</b>
+      <span class="m">${expired
+        ? '다른 기기에서 로그아웃했거나 오래 지났어요 · 다시 로그인하면 클럽과 전적이 그대로 돌아옵니다'
+        : '잠깐 연결이 끊겼을 수 있어요 · 가입한 클럽은 그대로 있습니다'}</span>
+      <button class="go" onclick="event.stopPropagation();${
+        expired?'logoutMatsu()':'homeRetryClubs(this)'}">${
+        expired?'다시 로그인':'다시 시도'}</button></div>`;
   }
 
   /* ② 시작하기 — 빈 화면을 <할 일>로 바꾼다 */
