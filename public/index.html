@@ -23471,7 +23471,7 @@ async function openClubStats(){
 /* ═══ 초대 링크 — 링크 하나로 즉시 정회원 가입 ═══ */
 /* ═══ 클럽 대진 v2.1 — 테르메스 스타일 · 만들기/보기 분리 · 한울 포함 ═══ */
 let CB2=null, CB2_SEL=new Set(), CB2_TIMER=null, CB2_EVENT=0, CB2_LIST=null;
-const CB2_MODE_NAME={normal:'시간 대진', hanul:'KDK', gender:'성비', monthly:'월례대회', cheongbaek:'청백전', tourney:'대회 준비'};
+const CB2_MODE_NAME={normal:'시간 대진', hanulaa:'한울', hanul:'KDK', gender:'성비', monthly:'월례대회', cheongbaek:'청백전', tourney:'대회 준비'};
 let CB2_SEED=1;
 let CB2_HSPLIT=false;           // 한울 · 여자 코트와 남자 코트를 갈라놓기                 // '다시 섞기'를 누르면 올라간다 — 같은 시드면 같은 대진이 나온다
 const cbQ=()=>CB2_EVENT?`?event=${CB2_EVENT}`:'';
@@ -23640,6 +23640,82 @@ function seedTrialBracket(){
 }
 /* 한울 AB 게임방식 [4Game, 8~16명] — 수기표 원본 그대로
    숫자조(1~8) × 문자조(A~H) · 각자 정확히 4게임 · 같은 블록은 겹치는 선수가 없어 동시 진행 가능 */
+/* ═══ 한울 AA 게임방식 ═══  [4Game · 5~16명]  만든이 H.D.PARK (한울타리 클럽)
+   표를 옮겨 적고 검증했다 — 모든 인원에서 1인 4게임 · 파트너 중복 0 · 시드끼리 파트너 0.
+   자리 이름은 1~9 그리고 A(10)~G(16). */
+const HANUL_AA = {
+  5:['12:34','13:25','14:35','15:24','23:45'],
+  6:['12:34','15:46','23:56','14:25','24:36','16:35'],
+  7:['12:34','56:17','35:24','14:67','23:57','16:25','46:37'],
+  8:['12:34','56:78','13:57','24:68','37:48','15:26','16:38','25:47'],
+  9:['12:34','56:78','19:57','23:68','49:38','15:26','17:89','36:45','24:79'],
+  10:['12:34','56:78','23:6A','19:58','3A:45','27:89','4A:68','13:79','46:59','17:2A'],
+  11:['12:34','56:78','1B:9A','23:68','4A:57','26:9B','13:5B','49:8A','17:28','5A:6B','39:47'],
+  12:['12:34','56:78','9A:BC','37:48','29:5A','1B:6C','13:57','24:9B','68:AC','17:2B','35:6A','49:8C'],
+  13:['12:34','56:78','9A:BC','1D:25','37:4A','68:9B','CD:13','26:5A','47:8B','9C:2D','15:AB','3C:67','48:9D'],
+  14:['12:34','56:78','9A:BC','DE:13','24:57','68:9B','26:CD','79:AE','14:8B','5E:6A','3C:7B','2D:89','3E:45','AC:1D'],
+  15:['12:34','56:78','9A:BC','DE:1F','23:57','46:AB','8D:9E','4F:5C','13:6B','27:8A','9C:5E','36:DF','1B:8C','47:EF','2A:9D'],
+  16:['12:34','56:78','9A:BC','DE:FG','13:57','24:68','9B:DF','AC:EG','15:9D','37:BF','26:AE','48:CG','19:2A','5D:6E','3B:4C','7F:8G'],
+};
+/* 시드 자리 — 이 자리끼리는 표 안에서 한 번도 같은 편이 되지 않는다.
+   실력이 튀는 소수를 여기 넣으면 강강·약약 파트너가 생기지 않는다. */
+const HANUL_SEED = {6:'13',7:'15',8:'17',9:'148',10:'18A',11:'1589',12:'238A',13:'146B',14:'258C',15:'145AD',16:'16BG7A'};
+const haIdx = ch => /[0-9]/.test(ch) ? +ch-1 : ch.charCodeAt(0)-56;
+/* 자리 배정.
+   ① 실력 극단을 시드 자리에 — 위쪽이 더 튀면 강자를, 아래쪽이 더 튀면 약자를.
+      (표 원문: "강자 또는 약자") 튀는 정도는 극단 K명과 그 다음 사람의 실력 간격으로 잰다.
+   ② 나머지 자리는 여러 번 섞어 보고, 게임마다 양 팀 실력·성비 차이가 가장 작은 배치를 고른다. */
+function hnPlanAA(ps, rnd){
+  const n=ps.length, tbl=HANUL_AA[n]; if(!tbl) return null;
+  const seedSlots=(HANUL_SEED[n]||'').split('').map(haIdx);
+  const K=seedSlots.length;
+  const sorted=ps.slice().sort((a,b)=>hnG(b)-hnG(a) || (b.rating||0)-(a.rating||0));
+  let seeds=[], rest=sorted.slice();
+  if(K && n>K+1){
+    const topGap = hnG(sorted[K-1]) - hnG(sorted[K]);            // 상위 K명과 그 다음의 간격
+    const botGap = hnG(sorted[n-K-1]) - hnG(sorted[n-K]);        // 하위 K명과 그 위의 간격
+    seeds = topGap >= botGap ? sorted.slice(0,K) : sorted.slice(n-K);
+    const sid=new Set(seeds.map(p=>p.id));
+    rest = sorted.filter(p=>!sid.has(p.id));
+  }
+  const freeSlots=[...Array(n).keys()].filter(i=>!seedSlots.includes(i));
+  const build=(restOrder)=>{
+    const slot=Array(n);
+    seedSlots.forEach((si,k)=>{ slot[si]=seeds[k]; });
+    freeSlots.forEach((si,k)=>{ slot[si]=restOrder[k]; });
+    return tbl.map(g=>{ const [A,B]=g.split(':');
+      return [[slot[haIdx(A[0])],slot[haIdx(A[1])]],[slot[haIdx(B[0])],slot[haIdx(B[1])]]]; });
+  };
+  const score=plan=>plan.reduce((s,[t1,t2])=>s
+    +Math.abs(t1.filter(hnF).length-t2.filter(hnF).length)*6
+    +Math.abs(t1.reduce((x,p)=>x+hnG(p),0)-t2.reduce((x,p)=>x+hnG(p),0))*3,0);
+  let best=build(rest), bs=score(best);
+  for(let t=0;t<400;t++){
+    const p=build(rest.slice().sort(()=>rnd()-0.5)), sc=score(p);
+    if(sc<bs){ bs=sc; best=p; }
+  }
+  best.seedNames=seeds.map(p=>p.name);
+  best.seedSide = seeds.length ? (seeds[0]===sorted[0] ? '강자' : '약자') : '';
+  return best;
+}
+/* 표 순서를 지키되, 네 명이 모두 비는 가장 이른 라운드에 넣는다.
+   코트가 표의 동시진행 수보다 적어도 한 사람이 두 코트에 서지 않는다. */
+function hnScheduleAA(plan, courts){
+  const rounds=[];            // rounds[r] = { used:Set(id), games:[ [t1,t2], ... ] }
+  plan.forEach(g=>{
+    const ids=[...g[0],...g[1]].map(p=>p.id);
+    let r=0;
+    for(;;r++){
+      if(!rounds[r]) rounds[r]={used:new Set(),games:[]};
+      const R=rounds[r];
+      if(R.games.length<courts && !ids.some(id=>R.used.has(id))) break;
+    }
+    ids.forEach(id=>rounds[r].used.add(id)); rounds[r].games.push(g);
+  });
+  const out=[];
+  rounds.forEach((R,ri)=>R.games.forEach((g,ci)=>out.push({r:ri+1,c:ci+1,t1:g[0],t2:g[1]})));
+  return out;
+}
 /* ═══ KDK 수기표 ═══
    현장 화이트보드에 붙어 있는 그 표다. 번호는 <실력 순>이라 14:23 은
    1등+4등 vs 2등+3등 — 표 자체가 균형을 잡게 설계돼 있어 섞지 않는다.
@@ -28122,10 +28198,13 @@ let CB2_MINS=120;                 // 코트 대관 시간(분) — 시간 대진
    받는 것보다, 고르기 전에 왜 안 되는지 아는 편이 낫다. */
 const CB2_MODES=[
   /* 예전 <일반>을 대체한다. key 는 그대로 두어 지난 대진 기록이 계속 열린다. */
-  {k:'normal',     n:'시간 대진', d:'25분 게임 + 전환 5분 · 코트가 서로 안 기다려요', min:4},
-  /* 한울은 코트마다 따로 돈다 — 인원·코트가 안 맞아도 되고 코트가 비지도 않는다.
-     그래서 일반·성비가 막힐 때 늘 대안이 된다. */
-  {k:'hanul',      n:'KDK',      d:'실력순으로 조를 나눠 코트에 고정 · 비슷한 사람끼리 팽팽하게 · 2코트부터', min:8, minCourts:2},
+  {k:'normal',     n:'시간 대진', d:'전원 섞어서 · 25분씩 자동으로 돌아요 · 초보도 고수와 쳐요', min:4},
+  /* 한울 AA — 한울타리 클럽(H.D.PARK)의 5~16명 4게임 표를 그대로 쓴다.
+     전원이 한 풀에서 코트를 옮겨 다니며 4게임. 시드 자리에 실력 극단을 넣어 강강·약약 파트너를 막는다.
+     시간 대진과 KDK 사이 — 인원이 적거나(5~7명) 코트가 하나여도 된다. */
+  {k:'hanulaa',    n:'한울',      d:'전원 섞어서 · 정해진 표대로 4게임 · 5~16명', min:5, max:16},
+  /* KDK — 실력순으로 조를 잘라 코트에 고정. 인원·코트가 안 맞아도 되고 코트가 비지도 않는다. */
+  {k:'hanul',      n:'KDK',      d:'비슷한 실력끼리 · 조를 코트에 고정 · 2코트부터', min:8, minCourts:2},
   {k:'monthly',    n:'월례대회', d:'같은 조끼리 리그 후 승강 · 조별 4명부터', min:8,
      check:()=>{
        const t=tgData();
@@ -28463,11 +28542,21 @@ function cb2ModePreview(k){
            그래도 1코트(157분 종료)보다는 2코트(139분 종료)가 빨리 끝난다 —
            그래서 코트를 줄이라고 권하지 않는다. 기다림이 생긴다는 것만 알린다.
            쉬는 사람이 4명 이상 생기는 인원을 함께 알려주는 게 실제로 도움이 된다. */
-        return mute(`전원이 매 바퀴 뛰어요 · 쉬는 사람이 없어요`)
-          + mute(`한 코트가 먼저 끝나도 들어갈 사람이 없어 서로 기다려요 · ${n+4}명이면 촘촘해져요`);
+        return mute(`전원이 매 바퀴 뛰어요 · 쉬는 사람 없음`)
+          + mute(`먼저 끝난 코트는 기다려요 · ${n+4}명이면 촘촘해져요`);
       }
       return mute(`${r.rounds}바퀴 · 전원 4경기 · 쉬는 사람 ${r.rest}명`
         + (r.partial?` · 마지막 바퀴는 ${r.tail}코트만 돌아요`:''));
+    }
+    if(k==='hanulaa'){
+      const n=CB2_SEL.size, c=cb2Courts();
+      if(n<5) return '';
+      if(n>16) return mute('17명부터는 표가 없어요 · KDK나 시간 대진으로');
+      const per=Math.min(c, Math.floor(n/4));
+      const rounds=Math.ceil(n/per);
+      const K=(HANUL_SEED[n]||'').length;
+      return mute(`${rounds}라운드 · 전원 4게임 · 코트를 옮겨 다녀요`)
+        + (K ? line(`실력이 튀는 ${K}명은 서로 파트너가 안 돼요`) : '');
     }
     if(k==='hanul'){
       const n=CB2_SEL.size, c=cb2Courts();
@@ -29329,8 +29418,20 @@ async function cb2Gen(mode){
     teamA:t1.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})),
     teamB:t2.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})), sa:null, sb:null});
 
-  if(mode==='hanul'){
-    /* 한울 = 조를 코트에 붙여놓고 그 안에서만 돌린다.
+  if(mode==='hanulaa'){
+    const n=sel.length;
+    if(n<5 || n>16){ toast('한울 방식은 5~16명이에요 · 지금 '+n+'명이에요'); return; }
+    const rnd=_rng((CB2_SEED||1)*131+n*7);
+    const plan=hnPlanAA(ps, rnd);
+    if(!plan){ toast('한울 표에 없는 인원이에요'); return; }
+    hnScheduleAA(plan, courts).forEach(g=>push(g.r, g.c, g.t1, g.t2));
+    groups=null;
+    const rounds=Math.max(...games.map(g=>g.r));
+    toast(plan.seedNames.length
+      ? `한울 ${n}명 · ${rounds}라운드 · ${plan.seedSide} ${plan.seedNames.length}명은 서로 파트너가 안 돼요`
+      : `한울 ${n}명 · ${rounds}라운드`);
+  } else if(mode==='hanul'){
+    /* KDK = 조를 코트에 붙여놓고 그 안에서만 돌린다.
        예전 편성은 게임마다 빈 코트를 찾아 넣는 방식이라 한 사람이
        1코트·2코트를 오갔고, 같은 4명이 다시 묶이면 파트너도 반복됐다. */
     const n=sel.length;
@@ -29587,7 +29688,7 @@ async function cb2Gen(mode){
     }):null,
     late: CB2_LATE.size?{names:ps.filter(p=>p.late).map(p=>p.name), from:lateAfter, note:lateNote}:null,
     guests: CB2_GUESTS.length?CB2_GUESTS.map(g=>g.name):null };
-  const nm={hanul:'KDK', gender:'성비', cheongbaek:'청백전', monthly:'월례대회'}[mode]||'일반';
+  const nm={hanulaa:'한울', hanul:'KDK', gender:'성비', cheongbaek:'청백전', monthly:'월례대회'}[mode]||'일반';
   if(mode!=='cheongbaek'){ CB2_DRAFT={data, nm, mode}; drawPreview(); return; }   // 청백은 오더 단계가 따로
   if(TRIAL){ CB2={...data,_trial:true,updated_at:Date.now()};
     toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 (체험)`);
@@ -31905,7 +32006,7 @@ function evBracketBlock(accent){
   const bk=EVD.bk, gs=(bk&&bk.games)||[];
   if(!gs.length) return '';
   const done=g=>g.sa!=null&&g.sb!=null;
-  const mode={hanul:'KDK',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[bk.mode]||'일반';
+  const mode={hanulaa:'한울',hanul:'KDK',gender:'성비',cheongbaek:'청백전',monthly:'월례대회'}[bk.mode]||'일반';
   const courts=[]; for(let c=1;c<=(bk.courts||0);c++){ const cg=gs.filter(g=>g.c===c); if(cg.length) courts.push({c,cg}); }
   const open=EVD.bkCourt||courts[0]&&courts[0].c||1;
   const LB={'남복':['#e8f3ff','#3182f6'],'여복':['#fdecf2','#eb5a8a'],'혼복':['#f0edff','#7b61ff'],
