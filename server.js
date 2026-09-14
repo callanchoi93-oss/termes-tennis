@@ -79,9 +79,22 @@ setInterval(() => {                                   // 지난 창 청소
   try { db.prepare('DELETE FROM rate_buckets WHERE reset < ?').run(Date.now() - 60_000); } catch {}
 }, 5 * 60 * 1000).unref?.();
 
+/* 같은 코트 와이파이에 붙은 회원들은 서버 입장에서 <한 IP>다.
+   IP 로만 세면 8명이 점수·참석을 동시에 누를 때 분당 30회를 나눠 쓰다 429 가 난다.
+   토큰이 있는 요청은 사용자별로 세고, 없는 요청(로그인 전)만 IP 로 센다. */
+function whoForLimit(req) {
+  try {
+    const h = String(req.headers.authorization || '');
+    if (h.startsWith('Bearer ')) {
+      const p = jwt.verify(h.slice(7), JWT_SECRET);
+      if (p && p.uid) return 'u:' + p.uid;
+    }
+  } catch (e) {}
+  return 'ip:' + ((req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown');
+}
 function rateLimit({ windowMs, max }) {
   return (req, res, next) => {
-    const who = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+    const who = whoForLimit(req);
     const id = who + ':' + (req.route?.path || req.path) + ':' + req.method;
     const t = Date.now();
     let over = false, wait = 0;
@@ -195,6 +208,28 @@ if (IS_PROD && !process.env.ADMIN_KEY) {
   console.error('[FATAL] 운영 환경인데 ADMIN_KEY 가 설정되지 않았습니다. 기본키(matsu-admin)로는 뜨지 않습니다.');
   process.exit(1);
 }
+/* ── JWT_SECRET 이 <바뀌었는지> 감지 ──
+   없을 때는 위에서 막지만, 값이 바뀌는 건 아무도 모르게 지나간다.
+   바뀌는 순간 발급된 토큰이 전부 무효가 되어 회원 전원이 동시에 로그아웃된다 —
+   코트에서 점수를 넣던 사람은 조용히 실패한다.
+   시크릿의 지문(해시 앞 12자)을 DB 에 남겨 두고, 다음 기동 때 다르면 크게 알린다.
+   값 자체는 저장하지 않는다. */
+try {
+  db.exec("CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)");
+  const fp = crypto.createHash('sha256').update(String(JWT_SECRET)).digest('hex').slice(0, 12);
+  const prev = db.prepare("SELECT value FROM app_meta WHERE key='jwt_fp'").get();
+  if (prev && prev.value !== fp) {
+    console.error('══════════════════════════════════════════════════════════');
+    console.error('[경고] JWT_SECRET 이 바뀌었습니다. 지금 이 순간부터 모든 회원의 로그인이 풀립니다.');
+    console.error('       의도한 변경이 아니라면 Railway Variables 에서 이전 값으로 되돌리세요.');
+    console.error('       이전 지문 %s → 현재 %s', prev.value, fp);
+    console.error('══════════════════════════════════════════════════════════');
+  } else if (!prev) {
+    console.log('[boot] JWT_SECRET 지문 기록: %s', fp);
+  }
+  db.prepare("INSERT INTO app_meta (key,value,updated_at) VALUES ('jwt_fp',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+    .run(fp, now());
+} catch (e) { console.error('[boot] JWT 지문 확인 실패:', e.message); }
 
 /* 이름 정리 — 모든 표시 지점에 들어가는 문자열이라 여기서 한 번에 막는다.
    (HTML 특수문자·따옴표·제어문자 제거, 20자 제한) */
@@ -1046,7 +1081,7 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.rest_from, cm.rest_until, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.rest_from, cm.rest_until, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created, u.last_seen${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
       AND COALESCE(u.is_test,0)=0
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
@@ -1076,9 +1111,13 @@ app.get('/clubs/:id/members', (req, res) => {
     }
   } catch (e) {}
 
+  /* 활동 = 앱을 마지막으로 연 시각(last_seen)과 마지막 참석 중 더 최근.
+     참석만 보면 앱은 매일 여는데 코트에 못 나온 사람이 <안 보임>이 되고,
+     접속만 보면 앱은 안 열고 코트만 오는 어르신이 <안 보임>이 된다. 둘 다 본다. */
   res.json(rows.map(r => ({ ...r,
     att4w: att[r.user_id] || 0,
-    last_seen_at: last[r.user_id] || null })));
+    last_seen_at: last[r.user_id] || null,
+    last_active: Math.max(+r.last_seen || 0, +last[r.user_id] || 0) || null })));
 });
 
 /* 모임 글에서 날짜만 뽑는다 — '8/28 (금) 19:00~23:00 · 용인' → 그날 0시.
@@ -1476,6 +1515,10 @@ app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
 try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets (
   club_id INTEGER PRIMARY KEY, data TEXT, updated_at INTEGER)`); } catch (e) {}
 // 모임(이벤트)별로 대진을 따로 보관한다 — 같은 날 여러 모임이 있을 수 있다
+/* 지운 대진은 30일간 휴지통에 둔다 — 점수를 몇 개만 넣고 지웠다가 되살릴 수 있게 */
+try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets_trash (
+  id INTEGER PRIMARY KEY, club_id INTEGER, event_id INTEGER, date TEXT, data TEXT,
+  log_data TEXT, deleted_by INTEGER, deleted_at TEXT)`); } catch (e) {}
 try { db.exec(`CREATE TABLE IF NOT EXISTS club_brackets_ev (
   id INTEGER PRIMARY KEY, club_id INTEGER, event_id INTEGER, data TEXT, updated_at INTEGER,
   UNIQUE(club_id, event_id))`); } catch (e) {}
@@ -1663,6 +1706,38 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
     return res.status(403).json({ error: 'officer_only',
       message: '대진은 임원 또는 이 번개를 연 사람이 짤 수 있어요' });
   const data = req.body || {};
+  /* ── 점수는 여기서 바뀌지 않는다 ──
+     PUT 은 대진 전체를 교체한다. 앱은 이걸 열 곳에서 부른다 — 경기 시작, 타이머, 지각자 반영….
+     그때 올라오는 것은 <그 폰이 마지막으로 받아둔 대진>이다.
+     총무가 대진을 열어 둔 사이 회원이 점수를 넣고, 총무가 다음 라운드 시작을 누르면
+     총무 폰의 옛 대진이 올라가 회원의 점수가 지워졌다. 아무도 오류를 못 봤다.
+     그래서 이미 들어간 점수(sa·sb·by·at)는 score API 로만 바꾸고, PUT 에서는 지킨다.
+     <처음부터 다시 시작>(reset=1)만 임원이 명시적으로 지울 수 있다. */
+  const prevRow = eid
+    ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  const isReset = String(req.query.reset || '') === '1' && isOfficer(cid, req.uid);
+  if (prevRow && !isReset) {
+    try {
+      const prev = JSON.parse(prevRow.data || '{}');
+      const idsOf = g => [...(g.teamA || []), ...(g.teamB || [])].map(p => String(p && p.id)).sort().join(',');
+      const key = g => `${g.r}|${g.c}|${idsOf(g)}`;
+      const old = new Map((prev.games || []).map(g => [key(g), g]));
+      let kept = 0;
+      for (const g of (data.games || [])) {
+        const o = old.get(key(g));
+        if (!o) continue;
+        if (o.sa != null && o.sb != null) {
+          if (g.sa !== o.sa || g.sb !== o.sb) kept++;
+          g.sa = o.sa; g.sb = o.sb;
+          for (const f of ['by', 'at', 'atMs', 'byHelp']) { if (o[f] !== undefined) g[f] = o[f]; else delete g[f]; }
+        }
+        if (o.startedAt && !g.startedAt) g.startedAt = o.startedAt;
+        if (o.endedAt && !g.endedAt) { g.endedAt = o.endedAt; g.endedBy = o.endedBy; }
+      }
+      if (kept) console.log('[bracket2] PUT 이 덮어쓰려던 점수 %d건을 지켰습니다 · club %d · user %d', kept, cid, req.uid);
+    } catch (e) { console.error('[bracket2] 점수 보존 실패:', e.message); }
+  }
   if (eid) {
     db.prepare(`INSERT INTO club_brackets_ev (club_id,event_id,data,updated_at) VALUES (?,?,?,?)
       ON CONFLICT(club_id,event_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
@@ -1695,14 +1770,35 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   const cid = +req.params.id;
   const role = cbRole(cid, req.uid);
   if (!role) return res.status(403).json({ error: 'member_only' });
-  const { gi, sa, sb } = req.body || {};
+  const { gi, sa, sb, date, r, c, ids } = req.body || {};
   const eid = evOf(req);
   const row = eid
     ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
     : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
   if (!row) return res.status(404).json({ error: 'no_bracket' });
   const data = JSON.parse(row.data);
-  const g = (data.games || [])[gi];
+  /* ── 어느 경기인가 ──
+     예전에는 gi(배열 순번)만 받았다. 화면이 띄운 대진과 서버 대진이 다르면
+     — 새 대진을 짰거나, 경기를 지웠거나, 아직 지난 대진을 보고 있거나 —
+     순번은 같아도 다른 경기라서 점수가 엉뚱한 데 들어갔다.
+     (9/4 대진에 9/8 점수가 박힌 사례가 있다.)
+     이제 클라이언트가 <대진 날짜 · 회차 · 코트 · 선수 id 넷>을 함께 보내고,
+     서버는 그 넷이 그대로 있는 경기를 찾는다. 하나라도 어긋나면 409 로 돌려보내
+     화면을 새로 받게 한다. gi 만 보내는 옛 앱은 예전처럼 순번으로 찾는다. */
+  const games = data.games || [];
+  const idsOf = x => [...(x.teamA || []), ...(x.teamB || [])].map(p => String(p && p.id)).sort().join(',');
+  if (date && data.date && String(date).slice(0, 10) !== String(data.date).slice(0, 10))
+    return res.status(409).json({ error: 'stale_bracket', message: '대진이 바뀌었어요 · 화면을 새로 고쳐 주세요' });
+  let g = null;
+  if (r != null && c != null) {
+    const cand = games.filter(x => +x.r === +r && +x.c === +c);
+    g = cand.length === 1 ? cand[0]
+      : (Array.isArray(ids) ? cand.find(x => idsOf(x) === ids.map(String).sort().join(',')) : null) || cand[0] || null;
+    if (g && Array.isArray(ids) && ids.length && idsOf(g) !== ids.map(String).sort().join(','))
+      return res.status(409).json({ error: 'stale_bracket', message: '대진이 바뀌었어요 · 화면을 새로 고쳐 주세요' });
+  } else {
+    g = games[gi];
+  }
   if (!g) return res.status(404).json({ error: 'no_game' });
   const officer = role === 'owner' || role === 'officer';
   const inGame = [...(g.teamA || []), ...(g.teamB || [])].some(p => p && p.id === req.uid);
@@ -1744,7 +1840,12 @@ app.patch('/clubs/:id/bracket2/score', auth, (req, res) => {  // 스코어 — �
   /* 0:0 은 결과가 아니라 <아직 안 함>이다 — 그대로 받으면 무승부로 기록돼
      시즌 랭킹이 조용히 바뀐다. 화면에서도 막지만 옛 버전 앱이 보낼 수 있어 여기서도 막는다. */
   if (+sa === 0 && +sb === 0) return res.status(400).json({ error: 'zero_score', message: '0 : 0 은 저장할 수 없어요' });
-  g.sa = Math.max(0, Math.min(9, +sa)); g.sb = Math.max(0, Math.min(9, +sb));
+  const nsa = Math.max(0, Math.min(9, +sa)), nsb = Math.max(0, Math.min(9, +sb));
+  /* 같은 값이 다시 오면 그냥 성공으로 돌려준다 — 신호가 끊겨 재전송된 요청이
+     로그·알림을 두 번 만들지 않게. 값이 다르면 아래 권한 규칙대로 <고치기>가 된다. */
+  if (g.sa === nsa && g.sb === nsb && g.by === req.uid)
+    return res.json({ ok: true, game: g, dup: true });
+  g.sa = nsa; g.sb = nsb;
   g.by = req.uid; g.at = now(); g.atMs = Date.now();
   /* 코트 밖에서 도운 것도 남긴다 — 승패에만 쌓이면 대신 넣어준 사람은 아무 데도 안 남는다 */
   if (!inGame) g.byHelp = 1;
@@ -2215,18 +2316,38 @@ function notifyNextUp(cid, data, doneGame) {
    예전에는 점수가 들어와야 코트가 열려서, 점수 입력이 6분만 늦어도
    코트가 30분 넘게 놀았다(18명 3코트 시뮬 12분 → 32분).
    경기가 끝난 사람은 실제로 코트에서 나와 있으니, 끝났다는 사실만 먼저 받는다. */
+/* 요청이 가리키는 경기를 찾는다 — 점수·종료가 같은 규칙을 쓴다.
+   회차·코트·선수 넷이 맞는 경기만 고르고, 대진 날짜가 다르거나 선수가 다르면 stale 로 돌려보낸다.
+   r·c 가 없는 옛 앱은 순번(gi)으로 찾는다. */
+function cbFindGame(data, body) {
+  const { gi, date, r, c, ids } = body || {};
+  const games = data.games || [];
+  const idsOf = x => [...(x.teamA || []), ...(x.teamB || [])].map(p => String(p && p.id)).sort().join(',');
+  if (date && data.date && String(date).slice(0, 10) !== String(data.date).slice(0, 10)) return { stale: true };
+  if (r != null && c != null) {
+    const cand = games.filter(x => +x.r === +r && +x.c === +c);
+    const want = Array.isArray(ids) ? ids.map(String).sort().join(',') : null;
+    const g = cand.length === 1 ? cand[0] : (want ? cand.find(x => idsOf(x) === want) : null) || cand[0] || null;
+    if (g && want && ids.length && idsOf(g) !== want) return { stale: true };
+    return { g };
+  }
+  return { g: games[gi] };
+}
 app.patch('/clubs/:id/bracket2/end', auth, (req, res) => {
   const cid = +req.params.id;
   const role = cbRole(cid, req.uid);
   if (!role) return res.status(403).json({ error: 'member_only' });
-  const { gi, undo } = req.body || {};
+  const { undo } = req.body || {};
   const eid = evOf(req);
   const row = eid
     ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
     : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
   if (!row) return res.status(404).json({ error: 'no_bracket' });
   const data = JSON.parse(row.data);
-  const g = (data.games || [])[gi];
+  /* 순번(gi)만 믿으면 대진이 바뀐 사이 다른 경기가 종료된다 — 점수 API 와 같은 구멍 */
+  const found = cbFindGame(data, req.body);
+  if (found.stale) return res.status(409).json({ error: 'stale_bracket', message: '대진이 바뀌었어요 · 화면을 새로 고쳐 주세요' });
+  const g = found.g;
   if (!g) return res.status(404).json({ error: 'no_game' });
   if (!g.startedAt) return res.status(400).json({ error: 'not_started', message: '아직 시작하지 않은 경기예요' });
   if (g.sa != null && g.sb != null) return res.status(400).json({ error: 'already_scored', message: '이미 점수가 들어왔어요' });
@@ -4489,7 +4610,8 @@ function applyRating(m) {
   const a = getUser(m.home_user_id), b = getUser(m.away_user_id);
   if (!a || !b) return;
   const ea = 1 / (1 + 10 ** ((b.rating - a.rating) / 400));
-  const sa = m.home_score > m.away_score ? 1 : 0, K = 28;
+  /* 무승부 0.5 — 복식과 같은 규칙. 예전엔 비기면 홈이 진 것으로 계산됐다 */
+  const sa = m.home_score > m.away_score ? 1 : m.home_score < m.away_score ? 0 : 0.5, K = 28;
   const da = Math.round(K * (sa - ea));
   db.prepare('UPDATE users SET rating=rating+? WHERE id=?').run(da, a.id);
   db.prepare('UPDATE users SET rating=rating-? WHERE id=?').run(da, b.id);
@@ -5382,12 +5504,59 @@ app.delete('/clubs/:id/brackets/:bid', auth, (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   let day = '';
   try { day = String(JSON.parse(row.data || '{}').date || '').slice(0, 10); } catch (e) {}
+  /* 지우기 전에 휴지통으로 — 그날 기록(로그)도 함께 챙긴다 */
+  const log = day ? db.prepare('SELECT data FROM club_bracket_logs WHERE club_id=? AND date=?').get(cid, day) : null;
+  db.prepare(`INSERT INTO club_brackets_trash (club_id,event_id,date,data,log_data,deleted_by,deleted_at)
+    VALUES (?,?,?,?,?,?,?)`).run(cid, eid || 0, day, row.data, log ? log.data : null, req.uid, now());
   if (eid) db.prepare('DELETE FROM club_brackets_ev WHERE club_id=? AND event_id=?').run(cid, eid);
   else     db.prepare('DELETE FROM club_brackets WHERE club_id=?').run(cid);
   if (day && !dayStillHasBracket(cid, day))
     db.prepare('DELETE FROM club_bracket_logs WHERE club_id=? AND date=?').run(cid, day);
-  res.json({ ok: true, date: day });
+  res.json({ ok: true, date: day, trashed: true });
 });
+
+/* 휴지통 목록 — 임원만. 30일 지난 것은 보여주지 않는다 */
+app.get('/clubs/:id/brackets/trash', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const rows = db.prepare(`SELECT t.id, t.event_id, t.date, t.deleted_at, t.data, u.name deleted_by_name
+    FROM club_brackets_trash t LEFT JOIN users u ON u.id=t.deleted_by
+    WHERE t.club_id=? AND t.deleted_at>=? ORDER BY t.deleted_at DESC LIMIT 20`).all(cid, cutoff);
+  res.json(rows.map(r => {
+    let games = 0, scored = 0, made_by = '';
+    try { const d = JSON.parse(r.data || '{}'); games = (d.games || []).length;
+      scored = (d.games || []).filter(g => g.sa != null && g.sb != null).length; made_by = d.made_by || ''; } catch (e) {}
+    return { id: r.id, event_id: r.event_id, date: r.date, deleted_at: r.deleted_at,
+      deleted_by: r.deleted_by_name || '', games, scored, made_by };
+  }));
+});
+
+/* 되살리기 — 그 자리에 다른 대진이 이미 있으면 덮지 않는다 */
+app.post('/clubs/:id/brackets/trash/:tid/restore', auth, (req, res) => {
+  const cid = +req.params.id, tid = +req.params.tid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const t = db.prepare('SELECT * FROM club_brackets_trash WHERE id=? AND club_id=?').get(tid, cid);
+  if (!t) return res.status(404).json({ error: 'not_found' });
+  const taken = t.event_id
+    ? db.prepare('SELECT 1 FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, t.event_id)
+    : db.prepare('SELECT 1 FROM club_brackets WHERE club_id=?').get(cid);
+  if (taken) return res.status(409).json({ error: 'occupied', message: '그 자리에 다른 대진이 있어요 · 먼저 지우고 되살려 주세요' });
+  if (t.event_id) db.prepare('INSERT INTO club_brackets_ev (club_id,event_id,data,updated_at) VALUES (?,?,?,?)')
+                    .run(cid, t.event_id, t.data, now());
+  else db.prepare('INSERT INTO club_brackets (club_id,data,updated_at) VALUES (?,?,?)').run(cid, t.data, now());
+  if (t.log_data && t.date)
+    db.prepare(`INSERT INTO club_bracket_logs (club_id,date,data,updated_at,tag) VALUES (?,?,?,?,'정기')
+      ON CONFLICT(club_id,date) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
+      .run(cid, t.date, t.log_data, now());
+  db.prepare('DELETE FROM club_brackets_trash WHERE id=?').run(tid);
+  res.json({ ok: true, date: t.date, event_id: t.event_id });
+});
+/* 30일 지난 휴지통은 하루 한 번 비운다 */
+setInterval(() => { try {
+  db.prepare('DELETE FROM club_brackets_trash WHERE deleted_at<?')
+    .run(new Date(Date.now() - 30 * 86400000).toISOString());
+} catch (e) {} }, 24 * 3600 * 1000);
 
 /* 지난 모임 기록 하나만 지우기 — 이미 쌓인 찌꺼기를 화면에서 치울 수단 */
 app.delete('/clubs/:id/bracket2/logs/:date', auth, (req, res) => {
@@ -8326,7 +8495,7 @@ app.post('/brackets/:id/finalize', auth, (req, res) => {
 
   for (const g of games) {
     const hs = intOrNull(g.home_score), as = intOrNull(g.away_score);
-    if (hs == null || as == null || hs === as) continue;              // 미입력·무승부는 건너뛴다
+    if (hs == null || as == null) continue;                           // 미입력만 건너뛴다
     const H = (Array.isArray(g.home) ? g.home : [g.home_user_id]).map(intOrNull).filter(Boolean);
     const A = (Array.isArray(g.away) ? g.away : [g.away_user_id]).map(intOrNull).filter(Boolean);
     if (!H.length || !A.length || H.some(x => A.includes(x))) continue;
@@ -8336,7 +8505,11 @@ app.post('/brackets/:id/finalize', auth, (req, res) => {
       applyRating(db.prepare('SELECT * FROM matches WHERE id=?').get(rid(r)));
     } else {                                                          // 복식 — 팀 평균 Elo 로 전원 반영
       const ea = 1 / (1 + 10 ** ((teamElo(A) - teamElo(H)) / 400));
-      const sa = hs > as ? 1 : 0;
+      /* 무승부는 0.5 — Elo 의 원래 정의다. 실력이 같으면 변동 0,
+         강팀이 약팀과 비기면 강팀이 조금 내려가고 약팀이 조금 올라간다(±6 안팎).
+         예전에는 무승부를 건너뛰어 5:5 로 비긴 경기가 랭킹에 흔적을 안 남겼다.
+         25분 제한이라 무승부가 잦은데, 그 시간 안에서 대등했다는 건 정보다. */
+      const sa = hs > as ? 1 : hs < as ? 0 : 0.5;
       const d = Math.round(24 * (sa - ea));                           // 복식은 K 를 낮춘다
       H.forEach(id => bump(id, d));
       A.forEach(id => bump(id, -d));
@@ -10435,6 +10608,19 @@ app.get('/clubs/:id/land-seasons', auth, (req, res) => {
 });
 
 /* 지도에 뿌릴 것 — 구장 좌표와 클럽별 칸 */
+/* 지도를 열 때 <어디서 시작할지>. 위치 권한이 없거나 늦으면 앱은 여기로 온다.
+   예전에는 위치 실패 시 용인 좌표가 박혀 있어서 송파 클럽 회원도 용인 지도를 봤다.
+   순서: 내 클럽 홈코트 → 내가 낀 아무 코트 → 없음(앱이 안내를 띄운다). */
+app.get('/land/center', auth, (req, res) => {
+  const cid = +req.query.club_id || 0;
+  let row = null;
+  if (cid) row = db.prepare(`SELECT v.lat, v.lng, v.name FROM venue_clubs vc JOIN venues v ON v.id=vc.venue_id
+      WHERE vc.club_id=? AND v.lat IS NOT NULL ORDER BY vc.set_at LIMIT 1`).get(cid);
+  if (!row) row = db.prepare(`SELECT v.lat, v.lng, v.name FROM club_members cm
+      JOIN venue_clubs vc ON vc.club_id=cm.club_id JOIN venues v ON v.id=vc.venue_id
+      WHERE cm.user_id=? AND v.lat IS NOT NULL ORDER BY vc.set_at LIMIT 1`).get(req.uid);
+  res.json(row ? { lat: row.lat, lng: row.lng, name: row.name, from: 'court' } : { lat: null, lng: null, from: 'none' });
+});
 app.get('/land/map', auth, (req, res) => {
   const lat = +req.query.lat, lng = +req.query.lng;
   const km = Math.min(60, +req.query.km || 12);
@@ -11045,6 +11231,12 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   /* 말머리로 거른다 — 없으면 전체 */
   const cat = String(req.query.cat || '').trim();
   const catSql = cat ? ' AND p.cat=? ' : '';
+  /* ── 더 보기 ──
+     예전에는 최신 50건만 주고 끝이라, 글이 50개를 넘는 순간 오래된 글은 볼 길이 없었다.
+     before=<글 id> 를 받으면 그보다 오래된 것부터 50건. 51건을 뽑아 하나 남으면 has_more. */
+  const before = +req.query.before || 0;
+  const beforeSql = before ? ' AND p.id < ? ' : '';
+  const PAGE = 50;
   /* 가려진 글과 안 보기로 한 사람의 글은 뺀다.
      내 글은 가려져도 나에게는 보인다 — 왜 반응이 없는지 알 수 있어야 한다. */
   const bl = blockedBy(req.uid);
@@ -11060,13 +11252,15 @@ app.get('/venues/:id/talk', auth, (req, res) => {
     ? db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
         p.cat,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
-        WHERE p.venue_id=? AND p.scope='court' ${catSql} ${hideSql}
-        ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [vid, cat] : [vid]))
+        WHERE p.venue_id=? AND p.scope='court' ${catSql} ${hideSql} ${beforeSql}
+        ORDER BY p.id DESC LIMIT ${PAGE + 1}`).all(...[vid, ...(cat ? [cat] : []), ...(before ? [before] : [])])
     : db.prepare(`SELECT p.id,p.title,p.body,p.created_at,p.club_id,p.user_id,p.anon,p.venue_id,
         p.cat,p.scope,p.views,p.tags,p.hidden,p.photos,p.edited_at, c.name club, u.name who, v.name venue, v.sigungu FROM court_posts p
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
-        WHERE ${scopeSql} ${catSql} ${hideSql} ORDER BY p.created_at DESC LIMIT 50`).all(...(cat ? [cat] : []));
+        WHERE ${scopeSql} ${catSql} ${hideSql} ${beforeSql} ORDER BY p.id DESC LIMIT ${PAGE + 1}`).all(...[...(cat ? [cat] : []), ...(before ? [before] : [])]);
+  const has_more = rows.length > PAGE;
+  if (has_more) rows.pop();
   rows.forEach(r => {
     r.cat_name = catName(scope, r.cat);
     r.from_court = (scope === 'all' && r.scope === 'court') ? 1 : 0;
@@ -11094,7 +11288,8 @@ app.get('/venues/:id/talk', auth, (req, res) => {
     picks.forEach(p => { p.cat_name = catName('all', p.cat); talkWho(p, p.venue_id, req.uid); });
   }
   res.json({ scope, locked: false, posts, venue: v.name || '', clubs: who, my_nick: myNick,
-    cats: scope === 'all' ? CAT_ALL : CAT_COURT, picks, total: rows.length });
+    cats: scope === 'all' ? CAT_ALL : CAT_COURT, picks, total: rows.length,
+    has_more, next_before: rows.length ? rows[rows.length - 1].id : null });
 });
 
 app.post('/venues/:id/talk', auth, (req, res) => {
