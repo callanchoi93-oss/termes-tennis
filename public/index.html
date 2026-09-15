@@ -17548,7 +17548,7 @@ function balForm(){
   const SLOPE = 1.6;                     // 사다리 한 칸 차이가 만드는 기대 승률 기울기
   const baseOf = {};
   (CLUB_ROSTER||[]).forEach(r=>{
-    try{ baseOf[String(r.user_id)] = cbLvBase({glabel:memberGradeCode(r), grade:r.grade}); }
+    try{ baseOf[String(r.user_id)] = cbLvBase({user_id:r.user_id, rating:r.rating, glabel:memberGradeCode(r), grade:r.grade}); }
     catch(e){ baseOf[String(r.user_id)] = 2; } });
   const B = id => baseOf[String(id)] != null ? baseOf[String(id)] : 2;
   let R = {}; Object.keys(st).forEach(id => R[id] = B(id));
@@ -17627,8 +17627,11 @@ function balUsesTier(){
 function balSeat(p){
   const code = memberGradeCode(p) || 'C2';
   const base = gradeStepBase(code);
-  const step = +(String(code).match(/[0-9]/)||[2])[0];   // 1 이 위, 3 이 아래
-  const start = (3 - step) / 2;                          // B1→1, B2→0.5, B3→0
+  const step = +(String(code).match(/[0-9]/)||[2])[0];
+  /* 번호 뜻을 등급 사다리(GRADE_LADDER)와 맞춘다 — 구력이 길수록 3, 그래서 3 이 위다.
+     예전에는 <1 이 위>로 셈해서, 같은 B 안에서 이 값(짝 맞춤 전 정렬·내 점수 카드)은
+     B1 을 B3 보다 위에 두고 대진표·회원 실력 화면은 그 반대로 적었다. */
+  const start = (step - 1) / 2;                          // B1→0, B2→0.5, B3→1
   let seat = start;
   const f = balForm()[String(p.user_id||p.id)] || {g:0,w:0};
   const t = balTrust(f.g);
@@ -17925,7 +17928,7 @@ let MSK_WHO  = null;                    // 상세를 보고 있는 회원
    그래야 여기서 본 <A2>와 대진표에 찍히는 <실력 A2>가 같은 값이 된다.
    cbLvBase 의 1 + i/3 을 뒤집는 것이라 i = (lv-1)*3 이다. */
 function mskLadder(r){
-  const lv = cbLv({ user_id:r.user_id, id:r.user_id,
+  const lv = cbLv({ user_id:r.user_id, id:r.user_id, rating:r.rating,
                     grade:memberGradeCode(r), glabel:memberGradeCode(r) });
   const i  = Math.round((lv-1)*3);
   return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, i))];
@@ -23624,6 +23627,9 @@ function cb2Label(t1,t2){
      여성이 한 명(또는 셋)뿐이면 한 팀에 몰려 있어 혼복이 아니다 —
      그걸 혼복이라 부르면 실제 혼복 경기와 구분이 안 된다. */
   const a1=t1.filter(fem).length, a2=t2.filter(fem).length;
+  /* 남자끼리 vs 여자끼리는 <혼성>이라 적으면 안 된다 — 코트에 가서야 알게 되고
+     "왜 이렇게 붙여놨냐"가 된다. 사실대로 적고, 카드에 이유를 함께 보여준다. */
+  if(Math.abs(a1-a2)===2) return '남복 vs 여복';
   return (a1===a2) ? '혼복' : '혼성'; }
 function seedTrialBracket(){
   if(CB2&&CB2._trial) return;
@@ -23767,7 +23773,12 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
     return c;
   };
   const splits=q=>[[[q[0],q[1]],[q[2],q[3]]],[[q[0],q[2]],[q[1],q[3]]],[[q[0],q[3]],[q[1],q[2]]]];
-  const bestGame=q=>{ let b=null,bc=1e18; splits(q).forEach(([t1,t2])=>{ const c=gameCost(t1,t2)+rnd()*0.5; if(c<bc){bc=c;b=[t1,t2];} }); return {g:b,c:bc}; };
+  /* 1e9 은 <만들면 안 되는 조합>이라는 뜻이다(남남 vs 여여 등).
+     예전에는 그래도 가장 싼 걸 골라서, 대안이 없으면 금지 조합이 그대로 나갔다.
+     이제는 null 을 돌려주고, 부르는 쪽이 쉬는 사람을 바꿔 다시 짜게 한다. */
+  const BAN=1e9;
+  const bestGame=q=>{ let b=null,bc=1e18; splits(q).forEach(([t1,t2])=>{ const c=gameCost(t1,t2)+rnd()*0.5; if(c<bc){bc=c;b=[t1,t2];} });
+    return (bc>=BAN) ? {g:null,c:bc} : {g:b,c:bc}; };
   /* 활동 인원을 g_r 개의 4인조로 나눈다 — 3조까지는 전수, 그 이상은 탐욕+재시작 */
   function partition(active, k){
     if(k===1){ const r=bestGame(active); return r.g?{games:[r.g],cost:r.c}:null; }
@@ -23782,7 +23793,7 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
       rec(active,[],0); return best;
     }
     let best=null;
-    for(let t=0;t<40;t++){
+    for(let t=0;t<60;t++){
       const pool=active.slice().sort(()=>rnd()-0.5); const acc=[]; let cost=0, ok=true;
       while(pool.length){ const a=pool[0]; const others=pool.slice(1); let bg=null,bq=null,bc=1e18;
         hnCombos(others,3).forEach(tri=>{ const r=bestGame([a,...tri]); if(r.g&&r.c<bc){bc=r.c;bg=r.g;bq=tri;} });
@@ -23806,9 +23817,26 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
     const resters=[...cf.slice(0,Math.min(wantF,cf.length)), ...cm.slice(0,Math.min(restN-Math.min(wantF,cf.length),cm.length))];
     if(resters.length<restN){ const more=cand.filter(i=>!resters.includes(i)).sort(byRest); resters.push(...more.slice(0,restN-resters.length)); }
     if(resters.length<restN){ const more=[...Array(n).keys()].filter(i=>!resters.includes(i)).sort(byRest); resters.push(...more.slice(0,restN-resters.length)); }
-    const active=[...Array(n).keys()].filter(i=>!resters.includes(i));
-    const part=partition(active, gr);
-    if(!part){ console.warn('round fail', r); break; }
+    /* 쉬는 사람 구성에 따라 <남은 사람으로는 금지 조합밖에 못 만드는> 경우가 있다.
+       예: 뛰는 4명이 여3·남1 이면 어떻게 나눠도 여여 vs 여남 이다.
+       그럴 때는 쉬는 사람을 바꿔 다시 짠다. */
+    let part=null, resters2=resters, active=null;
+    for(let tryN=0; tryN<24; tryN++){
+      const rs = tryN===0 ? resters : (()=>{
+        const pool=[...Array(n).keys()].filter(i=>rests[i]<K);
+        const pick=pool.sort(()=>rnd()-0.5).slice(0,restN);
+        return pick.length===restN ? pick
+          : pick.concat([...Array(n).keys()].filter(i=>!pick.includes(i)).sort(()=>rnd()-0.5).slice(0,restN-pick.length));
+      })();
+      const act=[...Array(n).keys()].filter(i=>!rs.includes(i));
+      const pt=partition(act, gr);
+      if(pt){ part=pt; resters2=rs; active=act; break; }
+    }
+    if(!part){ console.warn('한울: %d라운드를 짜지 못했어요', r+1); break; }
+    /* resters2 가 resters 와 같은 배열일 수 있다 — 비우고 다시 담으면 빈 배열이 된다.
+       복사본으로 바꿔 담는다. (이걸 놓쳐서 아무도 안 쉰 것으로 기록돼 경기 수가 3~5로 흩어졌다) */
+    const chosen=resters2.slice();
+    resters.length=0; resters.push(...chosen);
     part.games.forEach(([t1,t2],ci)=>{
       const type=typeOf(t1,t2); taken[type]++;
       [t1,t2].forEach(t=>{ partner[pk(t[0],t[1])]=(partner[pk(t[0],t[1])]||0)+1; });
@@ -23866,6 +23894,45 @@ function hnPlanKDK(mem, gpp){
     games.push([best[1].slice(), best[0].slice()]);    // 코트 바꿔서 한 번 더
   }
   return games;
+}
+/* KDK 표는 번호만 본다 — 성별을 모른다. 그래서 조에 남녀가 섞이면
+   1·4번이 남자, 2·3번이 여자일 때 표 그대로 펴면 남남 vs 여여가 나온다.
+   실력 순서를 크게 흔들지 않는 범위에서(같은 값끼리 자리 맞바꿈 위주) 금지 조합이 없는
+   번호 배치를 찾는다. 못 찾으면 null 을 돌려 성별을 아는 편성기로 넘긴다. */
+function kdkBanned(games){
+  const F=t=>t.filter(isF).length;
+  return games.some(([a,b])=>Math.abs(F(a)-F(b))>=2);
+}
+function hnPlanKDKSafe(mem, gpp, seed){
+  const first=hnPlanKDK(mem, gpp);
+  if(!first) return null;
+  if(!kdkBanned(first)) return first;
+  const m=mem.length, tbl=KDK_TABLE[`${m}:${m===4?3:gpp}`]; if(!tbl) return null;
+  const rnd=_rng((seed||1)*613+m*17);
+  const ranked=mem.slice().sort((a,b)=>hnG(b)-hnG(a) || (b.rating||0)-(a.rating||0));
+  const build=order=>{
+    const g=tbl.map(x=>{ const [A,B]=x.split(':'); const at=t=>order[+t-1];
+      return [[at(A[0]),at(A[1])],[at(B[0]),at(B[1])]]; });
+    if(m===4 && gpp===4){
+      const diff=([t1,t2])=>Math.abs(t1.reduce((s,p)=>s+hnG(p),0)-t2.reduce((s,p)=>s+hnG(p),0));
+      const b=g.slice().sort((x,y)=>diff(x)-diff(y))[0];
+      g.push([b[1].slice(), b[0].slice()]);
+    }
+    return g;
+  };
+  /* 실력 순서에서 얼마나 벗어났나 — 적을수록 좋다 */
+  const drift=order=>order.reduce((s,p,i)=>s+Math.abs(ranked.indexOf(p)-i),0);
+  let best=null, bd=1e9;
+  for(let t=0;t<600;t++){
+    const order=ranked.slice();
+    const swaps=1+Math.floor(rnd()*3);
+    for(let k=0;k<swaps;k++){ const i=Math.floor(rnd()*m), j=Math.floor(rnd()*m); [order[i],order[j]]=[order[j],order[i]]; }
+    const g=build(order);
+    if(kdkBanned(g)) continue;
+    const d=drift(order);
+    if(d<bd){ bd=d; best=g; if(d<=2) break; }
+  }
+  return best;
 }
 const HANUL_AB = {
   8:['1A:2B','3C:4D','1B:3D','2A:4C','1C:4B','2D:3A','1D:4A','3B:2C'],
@@ -27239,7 +27306,14 @@ function drawCB2View(){
         let sc;
         /* 혼성 = 남녀가 섞였지만 팀별 인원이 안 맞는 경기(여성 1명 등) */
         const LB={'남복':['#e8f3ff','#3182f6'],'여복':['#fdecf2','#eb5a8a'],'혼복':['#f0edff','#7b61ff'],
-                  '혼성':['#eceff2','#57606b'],'청백':['#e8f3ff','#3182f6']}[g.label]||['#eceef0','#57606b'];
+                  '혼성':['#eceff2','#57606b'],'남복 vs 여복':['#fdf0e8','#b8481f'],
+                  '청백':['#e8f3ff','#3182f6']}[g.label]||['#eceef0','#57606b'];
+        /* 남2·여2 조는 짝이 세 가지뿐이라 이 조합을 한 번은 피할 수 없다.
+           불만이 나올 바로 그 자리에 이유를 적어 둔다. */
+        const gvNote = (g.label==='남복 vs 여복')
+          ? `<div style="margin-top:9px;padding-top:9px;border-top:1px dashed #f0dfd2;
+               font-size:12px;color:var(--lgray);line-height:1.5">남2·여2는 짝이 세 가지뿐이라 이 한 번은 피할 수 없어요</div>`
+          : '';
         let nextUp=false;
         if(done(g)){
           sc=`<span style="font-size:12px;font-weight:400;color:var(--lgray)">완료</span>`;
@@ -27393,7 +27467,7 @@ function drawCB2View(){
               <b style="display:block;font-size:15px;font-weight:700;color:${cB};line-height:1.35;word-break:keep-all;letter-spacing:-.02em">${B}</b>
               ${gB?`<span style="display:block;font-size:var(--t0);font-weight:400;color:var(--lgray);margin-top:2px;letter-spacing:.02em">실력 ${gB}</span>`:''}
             </div>
-          </div></div>`;
+          </div>${gvNote}</div>`;
       });
       h+=`</div>`;
     }
@@ -27600,12 +27674,15 @@ const GRADE_LADDER=['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3',
    등급(구력)이 큰 칸을 정하고, 클럽 성적과 월례대회 조가 그 칸 안의 자리를 정한다.
    <대진 기준> 탭이 보여주는 셈과 같아야 한다 — 화면과 실제가 다르면 안 된다. */
 function cbLvBase(p){
-  const code=String((p&&(p.glabel||p.grade))||'').toUpperCase();
+  const code=cbRegCode(p);
   const i=GRADE_LADDER.indexOf(code);
   if(i>=0) return 1 + i/3;
   /* 레이팅은 등급이 없을 때만. 1000은 <아직 리그를 안 뛴 사람>의 기본값이라
      클럽 전원이 1000인 경우가 대부분이고, 그러면 변별력이 0이다. */
-  if(p && p.rating!=null && p.rating!==1000) return (p.rating-1000)/100 + 3;
+  /* 회원이면 명단의 레이팅을 본다 — 화면마다 넘기는 객체에 rating 이 있기도 없기도 했다 */
+  const row = cbIsClubMember(p) ? cbRosterRow(p.user_id!=null ? p.user_id : p.id) : null;
+  const rt = (row && row.rating!=null) ? row.rating : (p ? p.rating : null);
+  if(rt!=null && rt!==1000) return (rt-1000)/100 + 3;
   const GV={SS:5,S:4,A:3,B:2,C:1};                 // 번호가 없으면 글자만이라도
   return GV[code.replace(/[0-9]/g,'')] || 2;
 }
@@ -27667,8 +27744,9 @@ function cbTeamLv(team){
   arr.forEach(p=>{ const v=cbLv(p); if(isFinite(v)){ sum+=v; n++; } });
   if(!n) return '';
   const lv=sum/n;                                  // 1(C) ~ 5(SS)
-  /* 사다리 한 칸은 등급 하나(3칸)다 — 1.0→C2, 2.0→B2 처럼 가운데로 맞춘다 */
-  const idx=Math.round((lv-1)*3 + 1);
+  /* cbLvBase 는 C1=1.0 · B1=2.0 · A1=3.0 이다. 되돌릴 때 +1 을 붙이면 늘 한 칸 위로 찍힌다 —
+     회원 실력 화면(mskLadder)과 같은 식으로 맞춘다. */
+  const idx=Math.round((lv-1)*3);
   return GRADE_LADDER[Math.max(0, Math.min(GRADE_LADDER.length-1, idx))] || '';
 }
 function cbAvgGrade(list){
@@ -27690,6 +27768,43 @@ function memberGradeCode(r){
      구력이 가리키는 등급과 글자가 같을 때만 — 다르면 운영진 판단을 그대로 둔다. */
   if(auto && gradeStepBase(auto)===man) return auto;
   return man;
+}
+/* ── 등록 등급은 한 곳에서만 정한다 ──
+   회원 실력 화면은 memberGradeCode(클럽 명단)로, 대진표는 대진을 짤 때 저장한 glabel 로
+   출발점을 잡았다. 저장값은 <그날 참석자끼리 구력 순으로 1·2·3 을 다시 매긴 번호>라
+   같은 사람이 두 화면에서 1~2칸 달랐고, 운영진이 정한 등급도 대진에서는 구력으로 덮였다.
+   이제 클럽 회원이면 언제나 명단의 등록 등급을 쓴다. 옛 대진을 다시 열어도 같은 값이 나온다.
+   게스트·명단에 없는 사람만 대진에 저장된 값(없으면 구력 개월)을 쓴다. */
+function cbIsClubMember(p){
+  if(!p || p.is_guest || p.guest===true || p.role==='guest') return false;
+  const uid = p.user_id!=null ? p.user_id : p.id;
+  return uid!=null && uid!=='' && !/^(g|n:)/i.test(String(uid));
+}
+function cbRosterRow(uid){
+  try{
+    const R = (typeof CLUB_ROSTER!=='undefined' && Array.isArray(CLUB_ROSTER)) ? CLUB_ROSTER : null;
+    if(!R) return null;
+    return R.find(x=>String(x.user_id!=null ? x.user_id : x.id)===String(uid)) || null;
+  }catch(e){ return null; }
+}
+function cbRegCode(p){
+  if(!p) return '';
+  if(cbIsClubMember(p)){
+    const m = cbRosterRow(p.user_id!=null ? p.user_id : p.id);
+    if(m){ const c = memberGradeCode(m); if(c) return String(c).toUpperCase(); }
+    /* 명단을 아직 못 받았으면 이 객체로 같은 셈을 한다.
+       대진 만들기 화면은 구력으로 grade 를 덮어쓰므로(fillGradesByCareer) 원래 값을 쓴다. */
+    if(p.sport_started){
+      const g = ('_grade0' in p) ? p._grade0 : p.grade;
+      const c = memberGradeCode({sport_started:p.sport_started, grade:g||''});
+      if(c) return String(c).toUpperCase();
+    }
+  }
+  const saved = String(p.glabel || p.grade || '').toUpperCase();
+  if(!/[0-9]/.test(saved) && p.months!=null){
+    const c = gradeStepFromMonths(+p.months); if(c) return c;
+  }
+  return saved;
 }
 function gradeStepLabel(st){
   const i=gradeInfo(gradeStepBase(st));
@@ -27799,6 +27914,7 @@ function assignGradeRanks(list){
 function fillGradesByCareer(list){
   (list||[]).forEach(p=>{
     if(p.is_guest) return;
+    if(!('_grade0' in p)) p._grade0 = p.grade || '';   // 서버가 준 등록 등급 — cbRegCode 가 쓴다
     const g=gradeFromCareer(careerYearsOf(p));
     if(!g) return;
     // 구력이 있으면 구력이 기준이다. 예전에 저장된 등급이 남아 있으면
@@ -28328,8 +28444,13 @@ function openGradeGuide(){
   document.getElementById('ov').classList.add('on');
 }
 
-function cb2All(){ return assignGradeRanks([ ...fillGradesByCareer(window._cb2Roster||[]),
-  ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, months:g.months, is_guest:true})) ]); }
+function cb2All(){
+  const list = assignGradeRanks([ ...fillGradesByCareer(window._cb2Roster||[]),
+    ...CB2_GUESTS.map(g=>({user_id:g.gid, name:g.name, gender:g.gender, grade:g.grade, rating:g.rating, months:g.months, is_guest:true})) ]);
+  /* 참석자끼리 매긴 번호(assignGradeRanks)는 회원에게 쓰지 않는다 — 회원 실력 화면과 같은 등록 등급을 붙인다 */
+  list.forEach(p=>{ if(cbIsClubMember(p)){ const c=cbRegCode(p); if(c) p.glabel=c; } });
+  return list;
+}
 /* 화면에 'G' 를 붙일지 여부.
    is_guest 는 '외부 게스트(event_guests)'라는 뜻으로 등급 저장 위치 같은 동작 분기에 쓰이므로
    건드리지 않는다. 클럽 명부의 게스트 등급도 손님이라 표시만 함께 해준다. */
@@ -28691,7 +28812,7 @@ function cb2ModePreview(k){
         return mute(`전원이 매 바퀴 뛰어요 · 쉬는 사람 없음`)
           + mute(`먼저 끝난 코트는 기다려요 · ${n+4}명이면 촘촘해져요`);
       }
-      return mute(`${r.rounds}바퀴 · 전원 4경기 · 쉬는 사람 ${r.rest}명`
+      return mute(`${r.rounds}바퀴 · 전원 4경기 · 매 바퀴 ${r.rest}명 쉬어요`
         + (r.partial?` · 마지막 바퀴는 ${r.tail}코트만 돌아요`:''));
     }
     if(k==='hanulaa'){
@@ -28722,18 +28843,21 @@ function cb2ModePreview(k){
       const sizes=parts.map(g=>g.length);
       const idle=c-parts.length;
       const min=Math.min.apply(null,sizes);
-      const head=`${parts.length}개 조 · ${sizes.join('·')}명`;
+      const head=`${parts.length}개 조 · ${sizes.map(x=>x+'명').join('·')}`;
       if(idle>0){
         /* 코트가 남으면 그 코트 수로 줄여 쓰는 게 맞다 */
         return mute(head) + line(`${parts.length}코트만 써요 · ${idle}개 코트는 안 쓰여요`);
       }
-      if(min>=6) return mute(head) + line('파트너가 안 겹쳐요');
+      /* KDK 수기표는 5~8명 조에서 파트너가 한 번도 겹치지 않는다(KDK_TABLE).
+         겹치는 건 4명 조뿐이다 — 조합이 셋이라 한 쌍이 두 번 만난다.
+         예전에는 6명 미만이면 겹친다고 적어서 5명 조에도 틀린 안내가 떴다. */
+      if(min>=5) return mute(head) + line('파트너가 안 겹쳐요');
       const best=[];
       for(let cc=2;cc<c;cc++){
         let p2=null; try{ p2=hnSplit(sel, cc, {separate:false}); }catch(e){}
-        if(p2 && p2.length===cc && Math.min.apply(null,p2.map(g=>g.length))>=6) best.push(cc);
+        if(p2 && p2.length===cc && Math.min.apply(null,p2.map(g=>g.length))>=5) best.push(cc);
       }
-      return mute(head) + mute(`조가 ${min}명이라 파트너가 한 번은 겹쳐요`)
+      return mute(head) + mute(`조가 ${min}명이라 한 쌍은 두 번 짝이 돼요`)
         + (best.length?mute(`${best.join('·')}코트로 하면 안 겹쳐요`):'');
     }
     if(k==='monthly'){
@@ -29090,7 +29214,8 @@ function cbCourtOk(n, courts, mins){
   return {ok:true, R, need, spare:R-need, rounds:need, rest:n-per,
     mins:need*(TB_UNIT+TB_SWAP),
     tight:(n===per),                  // 쉬는 사람이 없다 = 4게임 내리 뛴다
-    partial:(n%courts!==0)};
+    partial:(n%courts!==0),
+    tail:n%courts};                   // 마지막 바퀴에 도는 코트 수 — 빠져 있어 <undefined코트>로 나왔다
 }
 /* 그 인원으로 쓸 수 있는 코트 수 */
 function cbCourtsFor(n, mins){
@@ -29456,7 +29581,9 @@ function cb2Tog(id){ id=String(id);
     const p=cb2All().find(x=>String(x.user_id)===id); if(!p) return;
     const cur=CB2_GRADES.indexOf(p.grade);
     p.grade=CB2_GRADES[(cur+1)%CB2_GRADES.length];
-    if(!p.is_guest){ p._gDirty=true; markGradeManual(p.user_id); }
+    if(!p.is_guest){ p._gDirty=true; markGradeManual(p.user_id);
+      /* 방금 바꾼 등급이 대진·회원 실력 화면에 바로 보이게 — 명단과 원래 값을 함께 고친다 */
+      p._grade0=p.grade; const m=cbRosterRow(p.user_id); if(m) m.grade=p.grade; BAL_CACHE=null; }
     else { const g=CB2_GUESTS.find(x=>x.gid===id); if(g) g.grade=p.grade; }
     drawCB2Build(); return;
   }
@@ -29595,6 +29722,11 @@ async function cb2Gen(mode){
     const n=sel.length;
     if(n<8){ toast('KDK 방식은 8명부터예요 · 지금 '+n+'명이에요'); return; }
     if(courts<2){ toast('KDK 방식은 2코트부터예요 · 코트 수를 늘려주세요'); return; }
+    /* 조 나누기를 먼저 보여준다 — 누가 몇 번 코트인지 납득한 뒤에 대진을 짠다.
+       <이대로 대진 짜기>를 누르면 KDK_OK 를 켜고 이 함수를 다시 부른다. */
+    if(!CB2_HSPLIT && !KDK_OK){
+      if(kdkOpenPreview(ps, courts, ()=>{ KDK_OK=true; cb2Gen(mode).finally(()=>{ KDK_OK=false; }); })) return;
+    }
     /* KDK 는 실력순 조가 기본. 남녀 코트 분리 토글은 그대로 두되, 켜면 성별로 먼저 가른 뒤 그 안에서 실력순 */
     const parts = CB2_HSPLIT
       ? hnSplit(ps, courts, {separate:true, met:PAST_MET, seed:CB2_SEED})
@@ -29605,7 +29737,9 @@ async function cb2Gen(mode){
     parts.forEach((mem,ci)=>{
       /* 조가 4~8명이고 늦참자가 없으면 KDK 표 그대로. 그 밖은 기존 탐색 */
       const late=mem.some(p=>p.late);
-      const plan = (!late && hnPlanKDK(mem, 4)) || hnPlanGroup(mem, {seed:CB2_SEED, lateAfter, past:PAST_PAIRS});
+      /* 표로 짜되 남남 vs 여여가 생기면 번호 배치를 바꿔 본다.
+         그래도 안 되면(예: 조가 남2·여2 인데 표가 그 구조를 못 피함) 성별을 아는 편성기로 넘긴다. */
+      const plan = (!late && hnPlanKDKSafe(mem, 4, CB2_SEED)) || hnPlanGroup(mem, {seed:CB2_SEED, lateAfter, past:PAST_PAIRS});
       if(!plan.length) return;
       const fN=mem.filter(p=>isF(p)).length, mN=mem.length-fN;
       const tag = fN&&!mN ? '여자' : mN&&!fN ? '남자' : `남${mN}·여${fN}`;
@@ -29623,7 +29757,7 @@ async function cb2Gen(mode){
     const small=Math.min.apply(null, parts.map(g=>g.length));
     if(parts.tiered) toast(`실력순으로 ${parts.length}개 조 · 1코트가 상위조예요`);
     if(parts.length<courts) toast(`${n}명이면 ${parts.length}코트가 알맞아요 · 조당 4명은 넘어야 해요`);
-    else if(small<6) toast(`코트당 ${small}명이라 파트너가 한 번은 겹쳐요 · 코트를 줄이면 조합이 다양해져요`);
+    else if(small<5) toast(`코트당 ${small}명이라 한 쌍은 두 번 짝이 돼요 · 코트를 줄이면 안 겹쳐요`);
   } else if(mode==='monthly'){
     /* 월례대회 — 같은 '대회 조'끼리만 경기.
        구력 등급이 아니라 지난 대회 결과로 정해진 조를 쓴다.
@@ -31632,6 +31766,85 @@ setInterval(()=>{ if(scqLoad().length) scqFlush(); }, 30000);
 setTimeout(scqFlush, 4000);
 
 let SC_EDIT=null;
+/* ═══ KDK 조 나누기 미리보기 ═══
+   대진을 짜기 전에 <누가 몇 번 코트인지>를 먼저 보여준다.
+   KDK 는 실력순으로 자르는 방식이라, 그 순서가 납득되지 않으면 대진 전체가 의심받는다.
+   실력 등급과 등록 등급을 나란히 두어 왜 그 자리인지 근거를 함께 보인다. */
+let KDK_PREVIEW=null;         // {parts:[[p,..],..], courts}
+let KDK_OK=false;             // 미리보기에서 확인을 눌렀나
+function kdkOpenPreview(ps, courts, onGo){
+  const parts=hnTier(ps, Math.max(1, Math.min(courts, Math.floor(ps.length/4)))).filter(g=>g.length>=4);
+  if(!parts.length){ toast('코트당 4명이 안 돼요 · 코트 수를 줄여주세요'); return false; }
+  KDK_PREVIEW={parts, onGo};
+  kdkDrawPreview(); return true;
+}
+function kdkSwapSheet(){ toast('코트 바꾸기는 다음에 넣을게요'); }
+function kdkDrawPreview(){
+  const P=KDK_PREVIEW; if(!P) return;
+  const flat=[].concat(...P.parts);
+  const lad=p=>{ const lv=cbLv(p); const i=Math.round((lv-1)*3);
+    return GRADE_LADDER[Math.max(0,Math.min(GRADE_LADDER.length-1,i))]||''; };
+  const games=n=>n===4?4:n;                     // 4명 조는 4게임, 그 밖은 인원 수만큼
+  let no=0, h='';
+  P.parts.forEach((mem,ci)=>{
+    const codes=mem.map(lad);
+    const hi=codes[0]||'', lo=codes[codes.length-1]||'';
+    const fN=mem.filter(isF).length, mN=mem.length-fN;
+    const risky = (mem.length===4 && fN===2 && mN===2);
+    h+=`<div style="margin-top:${ci?18:14}px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 9px">
+        <span style="font-size:14px;font-weight:700">${ci+1}번 코트</span>
+        <span style="font-size:11.5px;font-weight:600;color:${ci?'var(--gray)':'var(--coral-d)'};
+          background:${ci?'var(--felt)':'var(--coral-s)'};border-radius:999px;padding:2px 9px">
+          ${mem.length}명 · ${games(mem.length)}게임</span>
+        <span style="flex:1"></span>
+        <span style="font-size:11.5px;color:var(--lgray)">${esc(hi)}${hi!==lo?' ~ '+esc(lo):''}</span>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">`;
+    mem.forEach((p,i)=>{
+      no++;
+      const reg=cbRegCode(p);
+      const act=codes[i];
+      const few=(balSeat(p).games||0) < MSK_MINGAMES;
+      h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+          ${i<mem.length-1?'border-bottom:.5px solid var(--line);':''}${no===1?'background:var(--paper2,#fdfcfa);':''}">
+        <span style="flex:none;width:21px;font-size:12px;font-weight:700;text-align:center;
+          color:${no===1?'var(--coral-d)':'var(--lgray)'}">${no}</span>
+        <span style="flex:1;font-size:14px;font-weight:600;min-width:0">${esc(p.name||'')}</span>
+        ${few ? `<span style="font-size:11.5px;font-weight:700;color:var(--lgray)">—</span>`
+              : `<span style="font-size:11.5px;font-weight:700;color:${gradeInfo(act).c}">${esc(act)}</span>`}
+        <span style="font-size:11px;color:var(--lgray);width:56px;text-align:right">${
+          few ? '경기 부족' : (reg&&reg!==act ? '등록 '+esc(reg) : '등록 같음')}</span>
+      </div>`;
+    });
+    h+=`</div>`;
+    if(risky) h+=`<div style="margin-top:8px;padding:9px 12px;border-radius:10px;background:var(--coral-s);
+      font-size:12px;color:var(--coral-d);line-height:1.5">남2·여2 코트예요 · 한 게임은 남자끼리 vs 여자끼리가 돼요</div>`;
+  });
+  /* 조 경계에서 실력이 가까운 사람들 — 왜 나는 저 코트냐는 물음을 미리 짚는다 */
+  const edge=[]; let acc=0;
+  P.parts.forEach((mem,ci)=>{ acc+=mem.length;
+    if(ci<P.parts.length-1){
+      const a=flat[acc-1], b=flat[acc];
+      if(a&&b&&Math.abs(cbLv(a)-cbLv(b))<0.34){ edge.push(a.name,b.name); }
+    } });
+  const note = edge.length
+    ? `<div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--coral-s);
+        font-size:12.5px;color:var(--coral-d);line-height:1.55">경계에 있는 <b>${edge.map(esc).join(' · ')}</b>은
+        실력이 가까워요 · 다시 섞으면 코트가 바뀔 수 있어요</div>` : '';
+  document.getElementById('ov').innerHTML=`<div class="sheet">
+    <div class="sh-top"><b>이렇게 나뉘어요</b><button class="x" onclick="closeOv()">✕</button></div>
+    <div style="font-size:13px;color:var(--lgray);margin:-4px 0 0">KDK · ${flat.length}명 · ${P.parts.length}코트 · 실력순</div>
+    <div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--felt);
+      font-size:12.5px;color:var(--gray);line-height:1.55">실력이 높은 순으로 줄 세워 위에서부터 코트에 넣어요 · 비슷한 사람끼리 쳐요</div>
+    ${h}${note}
+    <div style="display:flex;gap:9px;margin-top:16px">
+      <button class="btn ghost" style="flex:1" onclick="closeOv()">닫기</button>
+      <button class="btn" style="flex:1.4" onclick="kdkGo()">이대로 대진 짜기</button>
+    </div></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+function kdkGo(){ const f=KDK_PREVIEW&&KDK_PREVIEW.onGo; closeOv(); KDK_PREVIEW=null; if(f) f(); }
 function cb2Score(gi){                                   // 스테퍼 시트로 교체
   const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   SC_EDIT={gi, a:(g.sa!=null?g.sa:0), b:(g.sb!=null?g.sb:0)};
