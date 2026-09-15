@@ -23731,6 +23731,109 @@ function hnScheduleAA(plan, courts){
   });
   return out;
 }
+/* ═══ 한울 편성 — 라운드 단위 ═══
+   게임을 먼저 만들고 코트에 끼우면 열에 아홉은 구멍이 난다(10명·2코트가 6라운드).
+   그래서 순서를 뒤집는다: 라운드마다 <누가 쉬는지>를 먼저 정하고, 뛰는 사람을
+   코트 수만큼 게임으로 정확히 나눈다. 코트가 비는 라운드는 마지막(인원이 모자랄 때)뿐이다.
+   게임 종류(혼복·여복·남복) 목표, 파트너·상대 중복, 양 팀 실력 합은 그대로 본다. */
+function cbGenderPlanRounds(F, M, past, seed, courts, pref){
+  const all=[...F,...M]; const n=all.length; if(n<4) return [];
+  const isFi=i=>i<F.length;
+  const rnd=_rng((seed||1)*7919+n*31);
+  const {X,Y,Z}=(F.length>0&&M.length>0)?cbGenderMix(F.length,M.length,pref):{X:0,Y:F.length?n:0,Z:M.length?n:0};
+  const quota={'혼복':X,'여복':Y,'남복':Z}, taken={'혼복':0,'여복':0,'남복':0};
+  const G=n, gpr=Math.min(courts, Math.floor(n/4));
+  const rounds=Math.ceil(G/gpr);
+  const played=Array(n).fill(0), rests=Array(n).fill(0), lastRest=Array(n).fill(-9);
+  const cMix=Array(n).fill(0), cSame=Array(n).fill(0);
+  const partner={}, opp={};
+  const pk=(a,b)=>hnK(all[a].id, all[b].id);
+  const pastN=k=>(past&&past[k])||0;
+  const typeOf=(t1,t2)=>{ const f=t1.filter(isFi).length+t2.filter(isFi).length;
+    const ok=(t1.filter(isFi).length===1&&t2.filter(isFi).length===1);
+    return f===0?'남복':f===4?'여복':(f===2&&ok)?'혼복':null; };
+  const gameCost=(t1,t2)=>{
+    const type=typeOf(t1,t2); if(!type) return 1e9;                 // 여여 vs 남남 · 여남 vs 남남 금지
+    let c=0;
+    if(taken[type]>=quota[type]) c+=400;                               // 종류 초과
+    c+=[t1,t2].reduce((s,t)=>s+(partner[pk(t[0],t[1])]||0)*120 + pastN(pk(t[0],t[1]))*30, 0);
+    t1.forEach(a=>t2.forEach(b=>{ c+=(opp[pk(a,b)]||0)*20; }));
+    const g=t=>t.reduce((s,i)=>s+hnG(all[i]),0);
+    c+=Math.pow(Math.abs(g(t1)-g(t2)),2)*25;
+    const cnt=i=>type==='혼복'?cMix[i]:cSame[i];
+    c+=[...t1,...t2].reduce((s,i)=>s+cnt(i)*70,0);
+    return c;
+  };
+  const splits=q=>[[[q[0],q[1]],[q[2],q[3]]],[[q[0],q[2]],[q[1],q[3]]],[[q[0],q[3]],[q[1],q[2]]]];
+  const bestGame=q=>{ let b=null,bc=1e18; splits(q).forEach(([t1,t2])=>{ const c=gameCost(t1,t2)+rnd()*0.5; if(c<bc){bc=c;b=[t1,t2];} }); return {g:b,c:bc}; };
+  /* 활동 인원을 g_r 개의 4인조로 나눈다 — 3조까지는 전수, 그 이상은 탐욕+재시작 */
+  function partition(active, k){
+    if(k===1){ const r=bestGame(active); return r.g?{games:[r.g],cost:r.c}:null; }
+    if(k<=3){
+      let best=null;
+      const rec=(rest,acc,cost)=>{
+        if(!rest.length){ if(!best||cost<best.cost) best={games:acc.slice(),cost}; return; }
+        const a=rest[0]; const others=rest.slice(1);
+        hnCombos(others,3).forEach(tri=>{ const q=[a,...tri]; const r=bestGame(q); if(!r.g) return;
+          const rem=others.filter(i=>!tri.includes(i)); acc.push(r.g); rec(rem,acc,cost+r.c); acc.pop(); });
+      };
+      rec(active,[],0); return best;
+    }
+    let best=null;
+    for(let t=0;t<40;t++){
+      const pool=active.slice().sort(()=>rnd()-0.5); const acc=[]; let cost=0, ok=true;
+      while(pool.length){ const a=pool[0]; const others=pool.slice(1); let bg=null,bq=null,bc=1e18;
+        hnCombos(others,3).forEach(tri=>{ const r=bestGame([a,...tri]); if(r.g&&r.c<bc){bc=r.c;bg=r.g;bq=tri;} });
+        if(!bg){ ok=false; break; } acc.push(bg); cost+=bc; bq.concat([a]).forEach(i=>pool.splice(pool.indexOf(i),1)); }
+      if(ok&&(!best||cost<best.cost)) best={games:acc,cost};
+    }
+    return best;
+  }
+  const out=[]; let made=0;
+  for(let r=0;r<rounds;r++){
+    const gr=Math.min(gpr, G-made); if(gr<=0) break;
+    const restN=n-4*gr;
+    /* 쉬는 사람: 전원이 정확히 K 번 쉰다(K = 라운드 수 − 4). 아직 K 번 못 쉰 사람 중에서만 고르고,
+       그 안에서 전체 성비를 따르게(한 성별이 몰려 쉬면 그 라운드에 종류를 못 채운다),
+       방금 쉰 사람은 뒤로, 나머지는 무작위. */
+    const K=rounds-4;
+    const cand=[...Array(n).keys()].filter(i=>rests[i]<K);
+    const wantF=Math.round(restN*F.length/n);
+    const byRest=(a,b)=>rests[a]-rests[b]||lastRest[a]-lastRest[b]||rnd()-0.5;
+    const cf=cand.filter(isFi).sort(byRest), cm=cand.filter(i=>!isFi(i)).sort(byRest);
+    const resters=[...cf.slice(0,Math.min(wantF,cf.length)), ...cm.slice(0,Math.min(restN-Math.min(wantF,cf.length),cm.length))];
+    if(resters.length<restN){ const more=cand.filter(i=>!resters.includes(i)).sort(byRest); resters.push(...more.slice(0,restN-resters.length)); }
+    if(resters.length<restN){ const more=[...Array(n).keys()].filter(i=>!resters.includes(i)).sort(byRest); resters.push(...more.slice(0,restN-resters.length)); }
+    const active=[...Array(n).keys()].filter(i=>!resters.includes(i));
+    const part=partition(active, gr);
+    if(!part){ console.warn('round fail', r); break; }
+    part.games.forEach(([t1,t2],ci)=>{
+      const type=typeOf(t1,t2); taken[type]++;
+      [t1,t2].forEach(t=>{ partner[pk(t[0],t[1])]=(partner[pk(t[0],t[1])]||0)+1; });
+      t1.forEach(a=>t2.forEach(b=>{ opp[pk(a,b)]=(opp[pk(a,b)]||0)+1; }));
+      [...t1,...t2].forEach(i=>{ played[i]++; if(type==='혼복') cMix[i]++; else cSame[i]++; });
+      out.push({r:r+1, c:ci+1, t1:t1.map(i=>all[i]), t2:t2.map(i=>all[i]), label:type});
+    });
+    resters.forEach(i=>{ rests[i]++; lastRest[i]=r; });
+    made+=gr;
+  }
+  return out;
+}
+
+/* 시드 몇 개를 돌려 가장 고른 것을 고른다 — 12명까지는 6번, 그 이상은 2번(16명·4코트가 0.25초) */
+function cbHanulPlan(F, M, past, seed, courts, pref){
+  const n=F.length+M.length, tries=n<=12?6:2;
+  const sum=t=>t.reduce((s,p)=>s+hnG(p),0);
+  const cost=out=>out.reduce((s,g)=>s+Math.pow(Math.abs(sum(g.t1)-sum(g.t2)),2),0);
+  let best=null,bc=1e18;
+  for(let t=0;t<tries;t++){
+    const out=cbGenderPlanRounds(F,M,past,(seed||1)+t*101,courts,pref);
+    if(!out.length) continue;
+    const c=cost(out); if(c<bc){bc=c;best=out;}
+  }
+  return best||[];
+}
+
 /* ═══ KDK 수기표 ═══
    현장 화이트보드에 붙어 있는 그 표다. 번호는 <실력 순>이라 14:23 은
    1등+4등 vs 2등+3등 — 표 자체가 균형을 잡게 설계돼 있어 섞지 않는다.
@@ -29471,17 +29574,11 @@ async function cb2Gen(mode){
     const n=sel.length;
     if(n<5 || n>16){ toast('한울 방식은 5~16명이에요 · 지금 '+n+'명이에요'); return; }
     const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
-    let plan;
-    if(F.length>=2 && M.length>=2){
-      plan=cbGenderPlan(F, M, PAST_PAIRS, CB2_SEED, 0, 'auto');
-    } else {
-      /* 한 성별뿐이면 성비 계산이 필요 없다 — 실력·파트너만 보는 편성으로 */
-      plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:0, past:PAST_PAIRS})
-        .map(([t1,t2])=>({t1,t2,label:''}));
-    }
-    if(!plan||!plan.length){ toast('한울 대진을 만들지 못했어요 · 인원을 확인해 주세요'); return; }
-    const packed=cbPack(plan.map(g=>({...g, ids:[...g.t1,...g.t2].map(p=>p.id), minR:1})), courts);
-    /* 7명처럼 한 라운드에 한 게임만 서면 1코트만 잡힌다 — 번갈아 잡아야 빈 코트에서 바로 시작한다 */
+    /* 라운드 단위 편성 — 매 라운드 쉬는 사람을 먼저 정하고 나머지를 코트 수만큼 정확히 나눈다.
+       게임을 먼저 만들고 코트에 끼우던 방식은 10명·2코트가 6라운드로 늘어지며 코트가 비었다. */
+    const packed=cbHanulPlan(F, M, PAST_PAIRS, CB2_SEED, courts, 'auto');
+    if(!packed||!packed.length){ toast('한울 대진을 만들지 못했어요 · 인원을 확인해 주세요'); return; }
+    /* 한 라운드에 한 게임뿐이면(7명) 코트를 번갈아 — 빈 코트에서 바로 시작하게 */
     if(courts>1){ const byR={}; packed.forEach(g=>{(byR[g.r]=byR[g.r]||[]).push(g);});
       let flip=0; Object.keys(byR).sort((a,b)=>a-b).forEach(r=>{ if(byR[r].length===1) byR[r][0].c=(flip++%courts)+1; }); }
     packed.forEach(g=>push(g.r,g.c,g.t1,g.t2,g.label));
