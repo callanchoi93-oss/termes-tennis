@@ -1161,7 +1161,10 @@ app.patch('/clubs/:id/grades', auth, (req, res) => {
   const g = (req.body && req.body.grades) || {};
   const st = db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?');
   Object.entries(g).forEach(([uid, v]) => {
-    const gv = ['S', 'A', 'B', 'C'].includes(String(v)) ? String(v) : null;
+    /* 앱의 등급 편집은 SS·S·A·B·C 를 돈다. SS 가 빠져 있어 SS 로 바꾸면 조용히 지워졌다.
+       세부 등급(B2 같은)도 앱이 운영진 지정값으로 읽으므로 함께 받는다. */
+    const sv = String(v || '').toUpperCase();
+    const gv = (['SS', 'S', 'A', 'B', 'C'].includes(sv) || GRADE_STEPS.includes(sv)) ? sv : null;
     st.run(gv, cid, intOrNull(uid));
   });
   res.json({ ok: true, n: Object.keys(g).length });
@@ -1628,12 +1631,14 @@ app.post('/clubs/:id/promote', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
   const list = ((req.body || {}).changes || []).filter(c => c && c.user_id && c.to);
-  const up = db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?');
+  /* 월례대회 승강은 <대회 조>(A·B·C조)만 바꾼다. 조는 앱이 따로 저장한다(tgPush).
+     예전에는 여기서 club_members.grade 에 조 이름을 써 넣었다. 그 칸은 운영진이 정한
+     <등록 등급>이라, B등급 회원이 A조로 올라가면 등록 등급까지 A가 되어
+     회원 실력·대진 편성에서 조가 두 번 반영됐다. 앱도 <구력 등급은 그대로예요>라고 안내한다. */
   const ins = db.prepare(`INSERT INTO grade_changes (club_id,user_id,name,from_grade,to_grade,dir,created_at)
     VALUES (?,?,?,?,?,?,?)`);
   const order = { S: 4, A: 3, B: 2, C: 1 };
   list.forEach(c => {
-    up.run(String(c.to), cid, +c.user_id);
     const dir = (order[c.to] || 0) > (order[c.from] || 0) ? 'up' : 'down';
     ins.run(cid, +c.user_id, String(c.name || ''), String(c.from || ''), String(c.to), dir, now());
     sendPush(+c.user_id, { icon: dir === 'up' ? '🎉' : '📉',
@@ -11919,8 +11924,42 @@ app.get('/admin/health', admin, (_req, res) => {
    여기 숫자가 시뮬레이션(3칸 0.45%)보다 크게 높으면 계수를 다시 봐야 한다. */
 const GRADE_LADDER_S = ['C1','C2','C3','B1','B2','B3','A1','A2','A3','S1','S2','S3','SS1','SS2','SS3'];
 function ladderLv(code) {
-  const i = GRADE_LADDER_S.indexOf(String(code || '').toUpperCase());
-  return i >= 0 ? 1 + i / 3 : 2;                       // 모르면 한가운데(B2 언저리)
+  const c = String(code || '').toUpperCase();
+  const i = GRADE_LADDER_S.indexOf(c);
+  if (i >= 0) return 1 + i / 3;
+  const GV = { SS: 5, S: 4, A: 3, B: 2, C: 1 };          // 글자만 있으면 그 글자 첫 칸(앱 cbLvBase 와 같다)
+  return GV[c.replace(/[0-9]/g, '')] || 2;              // 모르면 B1
+}
+/* 등록 등급 — 앱 memberGradeCode 와 같은 셈이다. 둘이 다르면 감시 숫자와 앱 화면이 어긋난다.
+   구력(개월)을 C 0~2년 · B 2~5년 · A 5~10년 · S 10~20년 · SS 20년~ 으로 나눠 세 칸씩,
+   운영진이 정한 값이 있으면 그것이 우선(글자가 구력과 같으면 구력의 세부 칸을 쓴다). */
+const GRADE_SPAN_S = [['C', 0, 24], ['B', 24, 60], ['A', 60, 120], ['S', 120, 240], ['SS', 240, null]];
+function gradeStepFromMonthsS(m) {
+  if (m == null || m < 0) return null;
+  for (const [g, a, b] of GRADE_SPAN_S) {
+    if (b === null) return g + (Math.min(2, Math.floor((m - a) / 84)) + 1);
+    if (m < b) return g + (Math.min(2, Math.floor((m - a) / ((b - a) / 3))) + 1);
+  }
+  return null;
+}
+function monthsFromStarted(sportStarted, sport) {
+  try {
+    const ym = JSON.parse(sportStarted || '{}')[sport || 'tennis'];
+    const nums = String(ym || '').match(/\d+/g);
+    if (!nums) return null;
+    const y = +nums[0], mo = nums.length > 1 ? +nums[1] : 1;
+    if (!y || y < 1900 || y > 2200 || !(mo >= 1 && mo <= 12)) return null;
+    const d = new Date();
+    return Math.max(0, (d.getFullYear() - y) * 12 + (d.getMonth() + 1 - mo));
+  } catch (e) { return null; }
+}
+function regGradeCode(grade, sportStarted, sport) {
+  const auto = gradeStepFromMonthsS(monthsFromStarted(sportStarted, sport));
+  const man = grade ? String(grade) : '';
+  if (!man) return auto;
+  if (/[0-9]/.test(man)) return man;
+  if (auto && auto.replace(/[0-9]/g, '') === man) return auto;
+  return man;
 }
 app.get('/admin/bracket-quality', admin, (req, res) => {
   const days = Math.min(120, Math.max(7, +req.query.days || 30));
@@ -11931,9 +11970,11 @@ app.get('/admin/bracket-quality', admin, (req, res) => {
 
   /* 등급·성별은 회원 명부에서 가져온다 — 대진 로그에는 이름만 들어 있다 */
   const lvOf = {}, sexOf = {};
-  db.prepare(`SELECT m.club_id, m.user_id, m.grade, u.gender FROM club_members m
-    LEFT JOIN users u ON u.id = m.user_id`).all().forEach(r => {
-      lvOf[r.club_id + ':' + r.user_id] = ladderLv(r.grade);
+  db.prepare(`SELECT m.club_id, m.user_id, m.grade, u.gender, u.sport_started, c.sport FROM club_members m
+    LEFT JOIN users u ON u.id = m.user_id LEFT JOIN clubs c ON c.id = m.club_id`).all().forEach(r => {
+      /* 예전에는 m.grade 만 봤다 — 대부분 비었거나 글자뿐이라 전원이 B 한가운데로 잡혀
+         팀 격차가 늘 0칸으로 나왔다. 앱과 같은 등록 등급으로 센다(성적 보정은 앱만 한다). */
+      lvOf[r.club_id + ':' + r.user_id] = ladderLv(regGradeCode(r.grade, r.sport_started, r.sport));
       sexOf[r.club_id + ':' + r.user_id] = String(r.gender || '');
     });
   const isF = v => v === 'F' || String(v).startsWith('여');
@@ -11975,6 +12016,28 @@ app.get('/admin/bracket-quality', admin, (req, res) => {
     roll.locked += locked; roll.courts += courts;
   });
   res.json({ days, brackets: out.length, roll, list: out.slice(0, 60) });
+});
+
+/* ── 승강이 덮어쓴 등록 등급 되돌리기 ────────────────────────────
+   /promote 가 club_members.grade 에 조 이름(A·B·C)을 써 넣던 시절의 흔적을 지운다.
+   <마지막 승강 기록의 to_grade 와 지금 등급이 같고, 그 뒤로 등급이 안 바뀐 회원>만 대상이다.
+   기본은 미리보기다. ?apply=1 을 붙여야 실제로 비운다(비우면 구력 등급으로 돌아간다).
+   운영진이 일부러 같은 글자를 다시 정했을 수도 있으니 목록을 먼저 보고 클럽에 확인할 것. */
+app.post('/admin/grade-cleanup', admin, (req, res) => {
+  const apply = String(req.query.apply || '') === '1';
+  const rows = db.prepare(`SELECT m.club_id, m.user_id, m.grade, u.name, c.name AS club, g.to_grade, g.created_at
+    FROM club_members m
+    JOIN (SELECT club_id, user_id, to_grade, MAX(created_at) AS created_at FROM grade_changes
+          GROUP BY club_id, user_id) g ON g.club_id = m.club_id AND g.user_id = m.user_id
+    LEFT JOIN users u ON u.id = m.user_id LEFT JOIN clubs c ON c.id = m.club_id
+    WHERE m.grade IS NOT NULL AND UPPER(m.grade) = UPPER(g.to_grade)`).all();
+  if (apply && rows.length) {
+    const st = db.prepare('UPDATE club_members SET grade=NULL WHERE club_id=? AND user_id=?');
+    db.transaction(list => list.forEach(r => st.run(r.club_id, r.user_id)))(rows);
+  }
+  res.json({ applied: apply, n: rows.length,
+    list: rows.slice(0, 300).map(r => ({ club: r.club, club_id: r.club_id, user_id: r.user_id,
+      name: r.name, grade: r.grade, promoted_at: r.created_at })) });
 });
 
 /* ── 등급 이동 감시 ────────────────────────────────────────────────
