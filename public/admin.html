@@ -29,6 +29,7 @@ body{background:var(--paper);color:var(--ink);
 .nav{flex:none;width:186px;position:sticky;top:var(--s4);
   background:#fff;border-radius:16px;padding:var(--s2) var(--s1);
   box-shadow:0 1px 2px rgba(40,30,18,.04)}
+.nav .gmore{ cursor:pointer; user-select:none } .nav .gmore i{ font-style:normal; opacity:.6 }
 .nav .g{font-size:var(--t0);font-weight:700;color:#b3aea4;letter-spacing:.08em;
   padding:var(--s3) var(--s3) var(--s1)}
 .nav a{display:flex;align-items:center;gap:var(--s2);font-size:var(--t1);color:var(--gray);
@@ -448,16 +449,24 @@ const ago=t=>{
 /* 묶는 기준은 <같은 순간에 찾게 되는 것끼리>다. 기능이 비슷해서가 아니다.
    그래서 <공지>가 도구가 아니라 사람 쪽에 있다 — 잠든 회원을 보고 바로 부르게 되니까.
    <서버>도 설정이 아니라 지켜보기다. 설정하는 곳이 아니라 읽는 곳이라서. */
+/* 22개 탭 중 절반은 지금 빈 화면이다 — 오픈매치·결제가 아직이라.
+   빈 탭이 보이면 "고장 났나" 싶어진다. 지금 쓰는 것만 펼치고 나머지는 접는다.
+   기능이 출시되면 HIDDEN 에서 빼기만 하면 된다. */
 const NAV=[
   ['오늘',       [['stats','현황']]],
-  ['지켜보기',   [['errors','오류'],['bq','대진품질'],['grades','등급이동'],
-                 ['track','분석'],['regions','지역'],['health','서버']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지']]],
-  ['운영',       [['matches','매치'],['xctest','교류전'],['cup','MATSU CUP'],
-                 ['venues','구장'],['reports','신고'],['payouts','정산']]],
-  ['설정',       [['log','작업 기록'],['dead','죽은 코드'],['export','내려받기'],
-                 ['maint','점검'],['staff','계정'],['banners','배너']]],
+  ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지'],['reports','신고']]],
+  ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
+  ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
+                 ['cup','MATSU CUP'],['export','내려받기']]],
 ];
+/* 출시 전이라 숨기는 탭 — 주소로 직접 열 수는 있다(#matches 처럼).
+   matches·payouts·venues 는 오픈매치·결제, regions 는 IP 위치라 부정확, track 은 표본 부족,
+   health 는 Railway 대시보드가 더 자세함, dead 는 개발자 도구. */
+const HIDDEN={ matches:'매치', payouts:'정산', venues:'구장', regions:'지역',
+               track:'분석', health:'서버', dead:'죽은 코드' };
+let NAV_MORE = false;
+try{ NAV_MORE = localStorage.getItem('adm_more')==='1'; }catch(e){}
 /* 메뉴에 붙는 숫자 — 급한 것만. 화면을 안 열어도 어디를 눌러야 할지 알게 한다 */
 let BADGE={};
 let TAB='stats', SUB='', UQ='', SEL=null, CACHE={};
@@ -466,16 +475,24 @@ function gLabel(v){ const t=String(v||'').trim();
   if(!t) return '';
   return (t==='F'||t.startsWith('여')) ? '여성' : (t==='M'||t.startsWith('남')) ? '남성' : ''; }
 
+function tabLabelAll(k){ for(const [,items] of NAV){ const h=items.find(x=>x[0]===k); if(h) return h[1]; } return HIDDEN[k]||k; }
 function shell(inner){
-  const nav=NAV.map(([g,items])=>
-    `<div class="g">${g}</div>` + items.map(([k,l])=>
-      `<a class="${TAB===k?'on':''}" onclick="go('${k}')">${l}${
-        BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`).join('')).join('');
+  const item=([k,l])=>`<a class="${TAB===k?'on':''}" onclick="go('${k}')">${l}${
+        BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`;
+  const nav=NAV.map(([g,items])=>{
+    if(g==='더 보기'){
+      const open = NAV_MORE || items.some(x=>x[0]===TAB);
+      return `<div class="g gmore" onclick="navMore()">${g} <i>${open?'▾':'▸'}</i></div>`
+        + (open ? items.map(item).join('') : '');
+    }
+    return `<div class="g">${g}</div>` + items.map(item).join('');
+  }).join('') + (HIDDEN[TAB] ? `<div class="g">숨긴 탭</div>${item([TAB,HIDDEN[TAB]])}` : '');
   return `<div class="nav">${nav}</div><div class="main">
     <div class="hd"><h1>${esc(tabLabel(TAB))}</h1>
       ${gsearchBox()}
       <span class="who">${esc(key().slice(0,4))}···</span></div>${inner}</div>`;
 }
+function navMore(){ NAV_MORE=!NAV_MORE; try{ localStorage.setItem('adm_more', NAV_MORE?'1':'0'); }catch(e){} render(); }
 function gsearchBox(){
   return `<div class="gs">
     <input id="gsq" placeholder="이름 · 클럽 · 번호로 찾기" value="${esc(GSQ)}"
@@ -493,7 +510,7 @@ function gsearch(q){
     const b=$('gsr'); if(!b) return;
     const sec=(t,rows)=>rows.length?`<div class="g">${t}</div>`+rows.join(''):'';
     const u=d.users.map(x=>`<a onclick="gsPick('user',${x.id})"><b>${esc(x.name||'이름 없음')}</b>
-      <span>#${x.id} · ${esc(x.email||'-')}${x.last_region?' · '+esc(x.last_region):''}</span></a>`);
+      <span>#${x.id} · ${esc(x.email||'-')}</span></a>`);
     const c=d.clubs.map(x=>`<a onclick="gsPick('club',${x.id})"><b>${esc(x.name)}</b>
       <span>#${x.id} · ${esc([x.sido,x.sigungu].filter(Boolean).join(' ')||'-')} · 회원 ${x.members}명</span></a>`);
     const m=d.matches.map(x=>`<a onclick="gsPick('match',${x.id})"><b>${esc(x.loc||'매치')}</b>
@@ -513,7 +530,7 @@ function gsPick(kind,id){
 /* 바깥을 누르면 결과를 닫는다 */
 addEventListener('click', e=>{ if(!e.target.closest('.gs')){ const b=$('gsr'); if(b) b.innerHTML=''; } });
 
-function tabLabel(k){
+function tabLabel(k){ if(HIDDEN[k]) return HIDDEN[k];
   for(const [,items] of NAV){ const f=items.find(x=>x[0]===k); if(f) return f[1]; }
   return '맞수 관리자';
 }
@@ -1166,7 +1183,7 @@ async function drawUsers(){
             u.last_plat ? `<s>·</s><i class="dv ${u.last_plat==='ios'?'ios':''}">${
               u.last_plat==='ios'?'아이폰':u.last_plat==='web'?'웹':esc(u.last_plat)}</i>`:''}${
             /* 어느 동네에서 들어왔는지 — 접속할 때 한 번씩 지역만 남긴다 */
-            u.last_region ? `<s>·</s><i>${esc(u.last_region)}</i>` : ''}</div>
+            (u.club_region||u.region) ? `<s>·</s><i>${esc(u.club_region||u.region)}</i>` : ''}</div>
           <span class="us">#${u.id} · 티어 ${fmt(u.rating_doubles||1000)}${
             (u.tier_games||0)<TIER_MIN ? ' · 배치 전' : ` · ${u.tier_games}경기`}</span></div>
         <div class="usn"><b class="${a.cls}">${a.txt}</b><i>${
@@ -1205,7 +1222,8 @@ async function openU(id){
       <b class="${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남성</b>
       <b class="${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여성</b>
       <b class="${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">없음</b></div>
-    ${u.last_region?`<div class="ur"><span>접속 지역</span><b>${esc(u.last_region)}</b></div>`:''}
+    ${(u.club_region||u.region)?`<div class="ur"><span>지역</span><b>${esc(u.club_region||u.region)}</b>
+      <i style="font-size:11px;color:var(--lgray);margin-left:6px">${u.club_region?'클럽 기준':'가입 때 적은 값'}</i></div>`:''}
     <div class="unote">바꾼 내용은 <b>작업 기록</b>에 남고 되돌릴 수 있어요</div>
     <!-- 서버에는 정지·삭제가 다 있었는데 화면에 버튼이 없어 쓸 수가 없었다.
          정지는 되돌릴 수 있고 삭제는 되돌릴 수 없다 — 그 차이를 버튼 색과 문구로 가른다. -->
