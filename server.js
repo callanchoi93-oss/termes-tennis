@@ -252,7 +252,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0914a';
+const SRV_BUILD = 'sH-0916a';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
 /* 앱 안에 든 화면 버전. 이 값과 앱의 BUILD 가 다르면 <새 버전이 나왔어요> 배너가 뜬다.
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
