@@ -23686,13 +23686,23 @@ function hnPlanAA(ps, rnd){
     return tbl.map(g=>{ const [A,B]=g.split(':');
       return [[slot[haIdx(A[0])],slot[haIdx(A[1])]],[slot[haIdx(B[0])],slot[haIdx(B[1])]]]; });
   };
-  const score=plan=>plan.reduce((s,[t1,t2])=>s
-    +Math.abs(t1.filter(hnF).length-t2.filter(hnF).length)*6
-    +Math.abs(t1.reduce((x,p)=>x+hnG(p),0)-t2.reduce((x,p)=>x+hnG(p),0))*3,0);
+  /* 남남 vs 여여(성비 차 2)는 한 게임도 안 나오게 크게 벌점, 한 명 차이는 가볍게.
+     빈자리가 8개 이하면 모든 배치(≤40,320)를 다 본다 — 7명이면 120가지뿐이다.
+     예전엔 400번만 뽑아서 있는 답을 놓쳤다. */
+  const score=plan=>plan.reduce((s,[t1,t2])=>{
+    const d=Math.abs(t1.filter(hnF).length-t2.filter(hnF).length);
+    return s + (d>=2?40:d*6)
+      + Math.abs(t1.reduce((x,p)=>x+hnG(p),0)-t2.reduce((x,p)=>x+hnG(p),0))*3; },0);
   let best=build(rest), bs=score(best);
-  for(let t=0;t<400;t++){
-    const p=build(rest.slice().sort(()=>rnd()-0.5)), sc=score(p);
-    if(sc<bs){ bs=sc; best=p; }
+  if(rest.length<=8){
+    const perm=(arr,k,acc)=>{ if(k===arr.length){ const p=build(arr), sc=score(p); if(sc<bs){bs=sc;best=p;} return; }
+      for(let i=k;i<arr.length;i++){ [arr[k],arr[i]]=[arr[i],arr[k]]; perm(arr,k+1); [arr[k],arr[i]]=[arr[i],arr[k]]; } };
+    perm(rest.slice(),0);
+  } else {
+    for(let t=0;t<3000;t++){
+      const p=build(rest.slice().sort(()=>rnd()-0.5)), sc=score(p);
+      if(sc<bs){ bs=sc; best=p; }
+    }
   }
   best.seedNames=seeds.map(p=>p.name);
   best.seedSide = seeds.length ? (seeds[0]===sorted[0] ? '강자' : '약자') : '';
@@ -23712,8 +23722,13 @@ function hnScheduleAA(plan, courts){
     }
     ids.forEach(id=>rounds[r].used.add(id)); rounds[r].games.push(g);
   });
-  const out=[];
-  rounds.forEach((R,ri)=>R.games.forEach((g,ci)=>out.push({r:ri+1,c:ci+1,t1:g[0],t2:g[1]})));
+  /* 7명처럼 한 라운드에 한 게임만 서면 매번 1코트만 잡힌다.
+     번갈아 잡아야 다음 게임이 빈 코트에서 바로 시작하고, 2코트가 놀지 않는다. */
+  const out=[]; let flip=0;
+  rounds.forEach((R,ri)=>{
+    const single = R.games.length===1 && courts>1;
+    R.games.forEach((g,ci)=>out.push({r:ri+1, c: single ? (flip++%courts)+1 : ci+1, t1:g[0], t2:g[1]}));
+  });
   return out;
 }
 /* ═══ KDK 수기표 ═══
@@ -23729,14 +23744,23 @@ const KDK_TABLE = {
   '8:3': ['18:27','36:45','17:68','25:34','16:57','23:48'],
   '8:4': ['18:27','36:45','17:68','25:34','16:57','23:48','15:46','28:37'],
 };
-/* 실력순으로 번호를 붙여 표를 그대로 편다. 4명은 3게임(표가 그렇다) */
+/* 실력순으로 번호를 붙여 표를 그대로 편다.
+   4명은 표가 3게임뿐인데 KDK 는 전원 4게임이 원칙이다 — 파트너 조합이 세 가지밖에 없어
+   한 쌍은 두 번 만나야 한다. 그 한 게임은 양 팀 실력 합이 가장 비슷한 조합으로 반복한다. */
 function hnPlanKDK(mem, gpp){
-  const key=`${mem.length}:${mem.length===4?3:gpp}`;
+  const m=mem.length;
+  const key=`${m}:${m===4?3:gpp}`;
   const tbl=KDK_TABLE[key]; if(!tbl) return null;
   const ranked=mem.slice().sort((a,b)=>hnG(b)-hnG(a) || (b.rating||0)-(a.rating||0));
-  return tbl.map(g=>{ const [A,B]=g.split(':');
+  const games=tbl.map(g=>{ const [A,B]=g.split(':');
     const at=t=>ranked[+t-1];
     return [[at(A[0]),at(A[1])],[at(B[0]),at(B[1])]]; });
+  if(m===4 && gpp===4){
+    const diff=([t1,t2])=>Math.abs(t1.reduce((s,p)=>s+hnG(p),0)-t2.reduce((s,p)=>s+hnG(p),0));
+    const best=games.slice().sort((a,b)=>diff(a)-diff(b))[0];
+    games.push([best[1].slice(), best[0].slice()]);    // 코트 바꿔서 한 번 더
+  }
+  return games;
 }
 const HANUL_AB = {
   8:['1A:2B','3C:4D','1B:3D','2A:4C','1C:4B','2D:3A','1D:4A','3B:2C'],
@@ -24201,7 +24225,21 @@ function hnPlanAB(mem, rnd){
      여자 자리 4F = 2X + 4Y,  남자 자리 4M = 2X + 4Z
    예전 방식은 남자에게 '혼복 1회' 쿼터를 줘서, 남자 쿼터가 먼저 바닥나면
    여자가 혼복을 3번 못 뛰고 여복만 도는 문제가 있었다. */
-function cbGenderMix(F, M){
+function cbGenderMix(F, M, pref){
+  /* 'auto' — 많은 성별이 주로 같은 성끼리, 적은 성별이 혼복 위주.
+     기본 목표(남 남복3+혼복1 / 여 혼복3+여복1)는 남자가 많은 클럽 기준이다.
+     여자가 더 많으면 역할을 뒤집는다: 여 여복3+혼복1 / 남 혼복3+남복1.
+     한쪽 성별뿐이면 같은 성끼리만. 같은 수면 기본 목표. */
+  if(pref==='auto' && F>M){
+    const r=cbGenderMix(M, F);                       // 인자를 바꿔 계산한 뒤 이름만 되돌린다
+    return {X:r.X, Y:r.Z, Z:r.Y, menMix:r.womenMix, womenMix:r.menMix,
+            menSame:r.womenSame, womenSame:r.menSame, exact:r.exact, flipped:true};
+  }
+  /* 'max' — 혼복을 최대로 (여3·남4 → 혼복 6 + 남복 1) */
+  if(pref==='max' && F>0 && M>0){
+    const X=2*Math.min(F,M), Y=F-X/2, Z=M-X/2;
+    return {X, Y, Z, menMix:2*X/M, womenMix:2*X/F, menSame:4*Z/M, womenSame:4*Y/F, exact:(Y===0||Z===0)};
+  }
   /* 목표: 남 = 남복 3 + 혼복 1, 여 = 여복 1 + 혼복 3.
      혼복 X · 여복 Y · 남복 Z 게임이라 하면 자리 수가 이렇게 묶인다.
        여자 자리 4F = 2X + 4Y      남자 자리 4M = 2X + 4Z
@@ -24229,8 +24267,8 @@ function cbGenderMix(F, M){
           menMix:best.mMix, womenMix:best.wMix, menSame, womenSame,
           exact: best.mMix===1 && menSame===3 && best.wMix===3 && womenSame===1};
 }
-function cbGenderPlan(F, M, past, seed, lateGames){
-  const {X,Y,Z}=cbGenderMix(F.length, M.length);
+function cbGenderPlan(F, M, past, seed, lateGames, pref){
+  const {X,Y,Z}=cbGenderMix(F.length, M.length, pref);
   if(Y<0||Z<0) return [];
   const total=X+Y+Z;
   const buckets={'혼복':X,'여복':Y,'남복':Z}, taken={'혼복':0,'여복':0,'남복':0};
@@ -28202,7 +28240,7 @@ const CB2_MODES=[
   /* 한울 AA — 한울타리 클럽(H.D.PARK)의 5~16명 4게임 표를 그대로 쓴다.
      전원이 한 풀에서 코트를 옮겨 다니며 4게임. 시드 자리에 실력 극단을 넣어 강강·약약 파트너를 막는다.
      시간 대진과 KDK 사이 — 인원이 적거나(5~7명) 코트가 하나여도 된다. */
-  {k:'hanulaa',    n:'한울',      d:'전원 섞어서 · 정해진 표대로 4게임 · 5~16명', min:5, max:16},
+  {k:'hanulaa',    n:'한울',      d:'전원 섞어서 · 4게임씩 · 많은 성별은 같은 성끼리 · 5~16명', min:5, max:16},
   /* KDK — 실력순으로 조를 잘라 코트에 고정. 인원·코트가 안 맞아도 되고 코트가 비지도 않는다. */
   {k:'hanul',      n:'KDK',      d:'비슷한 실력끼리 · 조를 코트에 고정 · 2코트부터', min:8, minCourts:2},
   {k:'monthly',    n:'월례대회', d:'같은 조끼리 리그 후 승강 · 조별 4명부터', min:8,
@@ -28554,9 +28592,13 @@ function cb2ModePreview(k){
       if(n>16) return mute('17명부터는 표가 없어요 · KDK나 시간 대진으로');
       const per=Math.min(c, Math.floor(n/4));
       const rounds=Math.ceil(n/per);
-      const K=(HANUL_SEED[n]||'').length;
+      const all=(typeof cb2All==='function')?cb2All():[];
+      const sel=[...CB2_SEL].map(id=>all.find(x=>String(x.user_id)===String(id))).filter(Boolean);
+      const Fn=sel.filter(isF).length, Mn=sel.length-Fn;
+      const mix=(Fn>=2&&Mn>=2)?cbGenderMix(Fn,Mn,'auto'):null;
       return mute(`${rounds}라운드 · 전원 4게임 · 코트를 옮겨 다녀요`)
-        + (K ? line(`실력이 튀는 ${K}명은 서로 파트너가 안 돼요`) : '');
+        + (per<c ? line(`${n}명이면 한 번에 ${per}게임만 돌아요 · ${c-per}개 코트는 번갈아 써요`) : '')
+        + (mix ? line(`${mix.Z?`남복 ${mix.Z}`:''}${mix.Z&&mix.X?' · ':''}${mix.X?`혼복 ${mix.X}`:''}${(mix.Z||mix.X)&&mix.Y?' · ':''}${mix.Y?`여복 ${mix.Y}`:''} · ${mix.flipped?'여자가 많아 여복 위주':'남자가 많아 남복 위주'} · 양 팀 실력을 맞춰요`) : '');
     }
     if(k==='hanul'){
       const n=CB2_SEL.size, c=cb2Courts();
@@ -29419,17 +29461,31 @@ async function cb2Gen(mode){
     teamB:t2.map(p=>({...one(p), grade:p.grade, glabel:p.glabel})), sa:null, sb:null});
 
   if(mode==='hanulaa'){
+    /* 한울 — 전원이 한 풀에서 4게임씩, 코트를 옮겨 다닌다.
+       원래 한울 AA 는 정해진 표인데, 표는 남녀를 모른다. 여4·남4 여도 남남 vs 여여가 두 게임은 나온다.
+       그래서 표 대신 성비 편성기로 짠다: 혼복을 최대로, 양 팀 실력 합을 맞추고(강강 vs 약약 방지),
+       파트너·상대가 안 겹치게. 그다음 코트에 펼친다. */
     const n=sel.length;
     if(n<5 || n>16){ toast('한울 방식은 5~16명이에요 · 지금 '+n+'명이에요'); return; }
-    const rnd=_rng((CB2_SEED||1)*131+n*7);
-    const plan=hnPlanAA(ps, rnd);
-    if(!plan){ toast('한울 표에 없는 인원이에요'); return; }
-    hnScheduleAA(plan, courts).forEach(g=>push(g.r, g.c, g.t1, g.t2));
+    const M=ps.filter(p=>!isF(p)), F=ps.filter(isF);
+    let plan;
+    if(F.length>=2 && M.length>=2){
+      plan=cbGenderPlan(F, M, PAST_PAIRS, CB2_SEED, 0, 'auto');
+    } else {
+      /* 한 성별뿐이면 성비 계산이 필요 없다 — 실력·파트너만 보는 편성으로 */
+      plan=hnPlanGroup(ps, {seed:CB2_SEED, lateAfter:0, past:PAST_PAIRS})
+        .map(([t1,t2])=>({t1,t2,label:''}));
+    }
+    if(!plan||!plan.length){ toast('한울 대진을 만들지 못했어요 · 인원을 확인해 주세요'); return; }
+    const packed=cbPack(plan.map(g=>({...g, ids:[...g.t1,...g.t2].map(p=>p.id), minR:1})), courts);
+    /* 7명처럼 한 라운드에 한 게임만 서면 1코트만 잡힌다 — 번갈아 잡아야 빈 코트에서 바로 시작한다 */
+    if(courts>1){ const byR={}; packed.forEach(g=>{(byR[g.r]=byR[g.r]||[]).push(g);});
+      let flip=0; Object.keys(byR).sort((a,b)=>a-b).forEach(r=>{ if(byR[r].length===1) byR[r][0].c=(flip++%courts)+1; }); }
+    packed.forEach(g=>push(g.r,g.c,g.t1,g.t2,g.label));
     groups=null;
     const rounds=Math.max(...games.map(g=>g.r));
-    toast(plan.seedNames.length
-      ? `한울 ${n}명 · ${rounds}라운드 · ${plan.seedSide} ${plan.seedNames.length}명은 서로 파트너가 안 돼요`
-      : `한울 ${n}명 · ${rounds}라운드`);
+    const mixN=games.filter(g=>g.label==='혼복').length;
+    toast(`한울 ${n}명 · ${rounds}라운드 · 전원 4게임` + (F.length&&M.length ? ` · 혼복 ${mixN}게임` : ''));
   } else if(mode==='hanul'){
     /* KDK = 조를 코트에 붙여놓고 그 안에서만 돌린다.
        예전 편성은 게임마다 빈 코트를 찾아 넣는 방식이라 한 사람이
