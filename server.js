@@ -54,7 +54,8 @@ const ALLOWED = [
 ].filter(Boolean);
 app.use(cors(process.env.APP_ORIGIN ? {
   origin: (o, cb) => cb(null, !o || ALLOWED.includes(o) || /^http:\/\/localhost(:\d+)?$/.test(o)),
-} : {}));
+  exposedHeaders: ['X-New-Token'],          // iOS 앱(capacitor://)은 다른 출처라 이걸 열어야 헤더를 읽는다
+} : { exposedHeaders: ['X-New-Token'] }));
 
 /* 기본 보안 헤더. helmet 없이 필요한 것만 직접 단다. */
 app.use((_req, res, next) => {
@@ -159,6 +160,15 @@ function auth(req, res, next) {
     if (u.suspended) return res.status(403).json({ error: 'suspended' });
     if ((p.tv || 0) !== (u.token_version || 0))          // 다른 기기에서 전체 로그아웃함
       return res.status(401).json({ error: 'token_revoked' });
+    /* ── 쓰는 사람은 로그인이 안 풀리게 ──
+       토큰은 30일짜리다. 매주 코트에 나오는 사람도 발급 후 30일이 지나면
+       코트에서 점수 넣다가 조용히 풀렸다. 이제 발급 7일이 지난 토큰으로 들어오면
+       새 토큰을 헤더에 실어 돌려준다. 앱이 그걸 받아 바꿔 끼우면 만료일이 다시 30일 뒤로 밀린다.
+       결국 30일 넘게 앱을 안 연 사람만 풀린다. */
+    try {
+      const age = Date.now() / 1000 - (p.iat || 0);
+      if (age > 7 * 86400) res.set('X-New-Token', sign({ id: req.uid }));
+    } catch (e) {}
     /* 마지막 접속 — 모든 요청이 이 문을 지나므로 여기 한 곳이면 된다.
        매 요청마다 쓰면 DB 가 바쁘니 5분에 한 번만 갱신한다. */
     try {
@@ -219,6 +229,7 @@ try {
   const fp = crypto.createHash('sha256').update(String(JWT_SECRET)).digest('hex').slice(0, 12);
   const prev = db.prepare("SELECT value FROM app_meta WHERE key='jwt_fp'").get();
   if (prev && prev.value !== fp) {
+    try { db.prepare("INSERT INTO app_meta (key,value,updated_at) VALUES ('jwt_changed_at',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at").run(String(now()), now()); } catch (e) {}
     console.error('══════════════════════════════════════════════════════════');
     console.error('[경고] JWT_SECRET 이 바뀌었습니다. 지금 이 순간부터 모든 회원의 로그인이 풀립니다.');
     console.error('       의도한 변경이 아니라면 Railway Variables 에서 이전 값으로 되돌리세요.');
@@ -8425,6 +8436,20 @@ try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catc
 app.get('/banners', (req, res) => {
   const slot = String(req.query.slot || 'home');
   res.json(db.prepare("SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? ORDER BY sort ASC, id DESC LIMIT 5").all(slot));
+});
+/* 로그인 만료 현황 — 관리자 <현황>에 띄운다.
+   fresh: 7일 안에 접속(토큰이 자동 갱신됨) · stale: 7~30일(다음 접속 때 갱신) · expired: 30일 넘음(풀림) */
+app.get('/admin/session-health', admin, (_req, res) => {
+  const t = Date.now(), d = 864e5;
+  const n = q => (db.prepare(q).get() || {}).n || 0;
+  const changed = db.prepare("SELECT value FROM app_meta WHERE key='jwt_changed_at'").get();
+  res.json({
+    fresh:   n(`SELECT COUNT(*) n FROM users WHERE last_seen > ${t - 7 * d}`),
+    stale:   n(`SELECT COUNT(*) n FROM users WHERE last_seen BETWEEN ${t - 30 * d} AND ${t - 7 * d}`),
+    expired: n(`SELECT COUNT(*) n FROM users WHERE last_seen IS NOT NULL AND last_seen < ${t - 30 * d}`),
+    never:   n(`SELECT COUNT(*) n FROM users WHERE last_seen IS NULL`),
+    jwt_changed_at: changed ? +changed.value : null,
+  });
 });
 app.get('/admin/banner-slots', admin, (_req, res) => {
   res.json({ slots: ['home', 'bracket', 'club_xc', 'club_new', 'match'] });
