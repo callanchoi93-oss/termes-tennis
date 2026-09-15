@@ -17286,7 +17286,7 @@ async function openBracketTrash(){
     </div>`).join('')
     : `<div class="empty" style="padding:26px 0"><div class="et">휴지통이 비어 있어요</div>
        <div class="es">지운 대진은 여기에 30일간 남아요</div></div>`;
-  document.getElementById('ov').innerHTML=`<div class="sheet">
+  document.getElementById('ov').innerHTML=`<div class="sheet" id="sheet">
     <div class="sh-top"><b>대진 휴지통</b><button class="x" onclick="closeOv()">✕</button></div>
     <div style="font-size:13px;color:var(--lgray);margin:0 0 6px">되살리면 점수와 그날 기록이 그대로 돌아와요</div>
     ${list}
@@ -23954,6 +23954,10 @@ const HANUL_AB = {
 const HN_GV={SS:5,S:4,A:3,B:2,C:1};
 const hnG=p=>cbLv(p);                                 // 조 나누기도 같은 잣대로
 const hnF=p=>isFem(cbSexOf(p));
+/* 여러 곳(kdkBanned · KDK 조 미리보기 · 한울 안내)이 전역 isF 를 부르는데 정의가 없었다.
+   함수 안에서 따로 만든 isF(번호를 받는 것 등)는 그대로 두고, 사람 객체를 받는 전역만 둔다.
+   대진에서 바꿔둔 성별(cbSexOf)을 따른다 — hnF 와 같은 판정이다. */
+function isF(p){ return !!p && isFem(cbSexOf(p)); }
 const hnK=(a,b)=>a<b?a+'_'+b:b+'_'+a;
 function hnCombos(arr,k){
   const out=[]; const rec=(s,acc)=>{ if(acc.length===k){ out.push(acc.slice()); return; }
@@ -29756,7 +29760,7 @@ async function cb2Gen(mode){
     }
     const small=Math.min.apply(null, parts.map(g=>g.length));
     if(parts.tiered) toast(`실력순으로 ${parts.length}개 조 · 1코트가 상위조예요`);
-    if(parts.length<courts) toast(`${n}명이면 ${parts.length}코트가 알맞아요 · 조당 4명은 넘어야 해요`);
+    if(parts.length<courts) toast(`${n}명이면 ${parts.length}코트가 알맞아요 · 조마다 4명은 있어야 해요`);
     else if(small<5) toast(`코트당 ${small}명이라 한 쌍은 두 번 짝이 돼요 · 코트를 줄이면 안 겹쳐요`);
   } else if(mode==='monthly'){
     /* 월례대회 — 같은 '대회 조'끼리만 경기.
@@ -31779,6 +31783,9 @@ function kdkOpenPreview(ps, courts, onGo){
   kdkDrawPreview(); return true;
 }
 function kdkSwapSheet(){ toast('코트 바꾸기는 다음에 넣을게요'); }
+/* 오버레이를 통째로 다시 쓸 때 시트의 id 를 빠뜨리면 안 된다 — 다른 화면이 모두
+   getElementById('sheet') 로 그리기 때문에, 빠지면 이 미리보기 뒤 <이대로 대진 짜기>가
+   다음 화면(발행 미리보기)을 못 그리고 멈췄다. */
 function kdkDrawPreview(){
   const P=KDK_PREVIEW; if(!P) return;
   const flat=[].concat(...P.parts);
@@ -31832,7 +31839,7 @@ function kdkDrawPreview(){
     ? `<div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--coral-s);
         font-size:12.5px;color:var(--coral-d);line-height:1.55">경계에 있는 <b>${edge.map(esc).join(' · ')}</b>은
         실력이 가까워요 · 다시 섞으면 코트가 바뀔 수 있어요</div>` : '';
-  document.getElementById('ov').innerHTML=`<div class="sheet">
+  document.getElementById('ov').innerHTML=`<div class="sheet" id="sheet">
     <div class="sh-top"><b>이렇게 나뉘어요</b><button class="x" onclick="closeOv()">✕</button></div>
     <div style="font-size:13px;color:var(--lgray);margin:-4px 0 0">KDK · ${flat.length}명 · ${P.parts.length}코트 · 실력순</div>
     <div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--felt);
