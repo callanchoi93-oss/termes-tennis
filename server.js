@@ -12107,8 +12107,12 @@ app.get('/admin/users', admin, (req, res) => {
         AND (m.status IS NULL OR m.status='active') LIMIT 1)`;
   /* suspended 를 함께 내려준다 — 탈퇴한 계정만 영구 삭제 버튼을 보여주기 위해서.
      이게 없으면 화면에서 <탈퇴한 회원>과 활성 회원을 구분할 방법이 없다. */
+  /* club_region — 그 사람이 든 클럽의 지역. IP 로 잡은 last_region 은 통신사 게이트웨이 위치라
+     용인 회원이 전주·대구로 찍힌다. 관리자 화면은 이걸 쓴다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
     u.last_seen, u.last_plat, u.last_region,
+    (SELECT c.region FROM club_members cm JOIN clubs c ON c.id=cm.club_id
+      WHERE cm.user_id=u.id ORDER BY cm.joined_at LIMIT 1) AS club_region,
     COALESCE(u.rating_doubles,1000) AS rating_doubles,
     (SELECT COUNT(*) FROM matches WHERE status='confirmed'
       AND (home_user_id=u.id OR away_user_id=u.id)) AS tier_games,
