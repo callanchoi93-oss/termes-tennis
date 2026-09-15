@@ -20857,6 +20857,33 @@ let RK_HALL_ALL=0, RK_THIN=0;   // 명예의 전당 더 보기 · 최소 참석 
 function setClubMeTab(t){ CLUBME_TAB=t; renderClub(); }
 function setClubMeMon(m){ CLUBME_MON = (CLUBME_MON===m ? '' : m); renderClub(); }
 let CLUBME_GAMES=null;          // null=아직 안 불러옴 · []=불러왔는데 없음
+/* 대진 편성과 KDK 미리보기는 클럽 경기 기록(성적)과 명단을 본다.
+   그런데 둘 다 <클럽 기록·회원 실력> 화면을 열어야만 받아졌다. 그 화면을 안 거치고
+   대진 만들기로 바로 오면 기록이 비어 있어서 전원이 <경기 부족>으로 나왔고,
+   조 나누기·짝 맞추기도 성적 없이 등록 등급만으로 짜였다.
+   편성 직전에 기다렸다가 받는다. 실패하면 그대로 진행한다(미리보기가 따로 알린다). */
+function cbWaitUntil(ok, ms){
+  return new Promise(res=>{ const t0=Date.now();
+    const tick=()=>{ if(ok() || Date.now()-t0>ms) return res(); setTimeout(tick,120); }; tick(); });
+}
+let CB_SKILL_FAILED=false;
+async function cbEnsureSkillData(){
+  if(TRIAL || !SERVER_OK || !clubId()) return;
+  const jobs=[];
+  if(CLUBME_GAMES===null){
+    if(window._clubMeLoading) jobs.push(cbWaitUntil(()=>CLUBME_GAMES!==null, 6000));
+    else { window._clubMeLoading=true;
+      jobs.push(cbAllGames().then(r=>{ CLUBME_GAMES=r||[]; CB_SKILL_FAILED=false; })
+        .catch(()=>{ CB_SKILL_FAILED=true; })
+        .finally(()=>{ window._clubMeLoading=false; })); }
+  }
+  if(CLUB_ROSTER===null && typeof loadClubRoster==='function'){
+    loadClubRoster(); jobs.push(cbWaitUntil(()=>CLUB_ROSTER!==null, 6000));
+  }
+  if(!jobs.length) return;
+  await Promise.all(jobs);
+  BAL_CACHE=null;
+}
 function loadClubMeGames(){
   if(window._clubMeLoading) return;
   window._clubMeLoading=true;
@@ -25785,6 +25812,7 @@ function cbFreeTxt(blockG){
    예전에는 <이 코트는 오늘 끝났다>고 보고 아무 말도 안 해서, 코트가 통째로 놀았다. */
 function cbSpareGameFor(court){
   if(!CB2 || !(CB2.games||[]).length) return null;
+  if(CB2.mode==='hanul' || CB2.mode==='monthly') return null;   // 조가 코트에 고정 — cb2MoveCourt 도 막는다
   const gs=CB2.games.map((g,gi)=>({...g,gi}));
   const done=g=>g.sa!=null&&g.sb!=null;
   if((CB2.offCourts||[]).includes(court)) return null;
@@ -27056,6 +27084,9 @@ function cb2More(){
 function closeRtMore(){ const el=document.getElementById('rtmore'); if(el) el.style.display='none'; }
 function drawCB2View(){
   setTimeout(scqBadge, 0);
+  /* 예전에 발행된 고정 코트 대진은 쓰지 않는 코트까지 courts 에 들어 있다 — 쓰는 코트까지만 본다 */
+  if(CB2 && (CB2.mode==='hanul'||CB2.mode==='monthly') && (CB2.games||[]).length){
+    const u=Math.max(...CB2.games.map(g=>+g.c||0)); if(u>0 && u<(CB2.courts||0)) CB2.courts=u; }
   const off=cb2Officer();
   let h=`<div class="om-detail" id="cb2v"><div id="scqBadge" class="scqbar"></div><div class="sh-top">
       <h3 class="gt4">${esc((CB2&&CB2.event&&CB2.event.title)||'클럽 대진')}</h3>
@@ -27630,6 +27661,7 @@ async function openClubBracketBuild(){
   if(!CB2_SEL.size) roster.forEach(p=>CB2_SEL.add(String(p.user_id)));   // 기본 전원 선택
   window._cb2Roster=roster;
   drawCB2Build(); cbLoadBanner();
+  cbEnsureSkillData().then(()=>{ try{ if(document.getElementById('sheet')) drawCB2Build(); }catch(e){} });
 }
 /* CB2_LATE 는 늘 비어 있다 — 늦참 기능을 내렸다.
    집합 자체를 지우면 이 값을 읽는 자리가 스무 곳 넘어 한꺼번에 깨진다.
@@ -28524,7 +28556,7 @@ const TR_KIND_NAME={mixed:'혼복', men:'남복', women:'여복'};
 function cb2GoStep(n){
   if(n===2){
     if(CB2_SEL.size<4){ toast('참석자를 4명 이상 골라주세요'); return; }
-    CB2_COURTS=+((document.getElementById('cb2Courts')||{}).value||3);   // 2단계엔 이 select 가 없다
+    CB2_COURTS=cb2Courts();   // 2단계엔 이 select 가 없다 — 인원으로 쓸 수 있는 만큼만 넘긴다
   }
   /* 지금 고른 방식이 이 인원으로 안 되면 되는 방식으로 옮긴다.
      예전에는 무조건 normal(시간 대진)로 되돌렸는데, 그 방식이 안 되는 인원이면
@@ -28748,9 +28780,14 @@ function cb2GenderCount(){
    예전엔 CB2_GUESTS.length 를 더해서 게스트를 두 번 셌다 — 18명이 35명으로 나왔다. */
 function cb2Head(){ return CB2_SEL.size; }
 function cb2SetMins(m){ CB2_MINS=m; drawCB2Build(); }
+/* 한 번에 돌릴 수 있는 코트는 인원÷4 까지다. 9명이면 3코트를 빌려도 2코트만 쓴다.
+   더 고르게 두면 KDK·월례대회는 조가 코트보다 적어 한 코트가 하루 종일 비고,
+   화면은 <3번 코트가 비었어요 · 옮기고 시작>을 권하는데 고정 코트라 옮길 수 없었다. */
+function cb2MaxCourts(){ return Math.max(1, Math.floor(cb2Head()/4)); }
 function cb2Courts(){
   const el=document.getElementById('cb2Courts');
-  const v = el ? (+el.value||3) : CB2_COURTS;
+  const raw = el ? (+el.value||3) : CB2_COURTS;
+  const v = Math.min(raw, cb2MaxCourts());
   /* 예전에는 <시간 대진이 안 되는 코트>가 골라지면 자동으로 옮겼다.
      그런데 한울처럼 그 코트로 되는 방식이 있는데도 코트가 멋대로 바뀌어,
      실제로 쓸 코트 수를 못 고르게 됐다. 이제 고른 값을 그대로 둔다. */
@@ -29087,10 +29124,15 @@ function drawCB2Build(){
              여기에 시간 대진 조건을 적으면 어느 코트를 골라도 <안 돼요>가 되어
              한울조차 못 쓰는 것처럼 보인다. 어느 방식이 되는지는 2단계에서 알려준다.
              다만 시간 대진이 되는 코트를 위로 올려 고르기 쉽게 둔다. */
-          return good.concat(bad).map(({c})=>
-            `<option value="${c}" ${courts===c?'selected':''}>${c}번 코트</option>`
+          /* 인원÷4 를 넘는 코트는 고를 수 없게 막는다 — 몇 명부터 되는지 함께 적는다 */
+          const mx=cb2MaxCourts();
+          return good.concat(bad).map(({c})=> c>mx
+            ? `<option value="${c}" disabled>${c}코트 · ${c*4}명부터</option>`
+            : `<option value="${c}" ${courts===c?'selected':''}>${c}코트</option>`
           ).join('');
-        })()}</select></div>
+        })()}</select>
+        ${(()=>{ const el=document.getElementById('cb2Courts'); const raw=el?(+el.value||3):CB2_COURTS;
+          return raw>courts ? `<div class="note" style="text-align:left;margin:6px 2px 0">${cb2Head()}명이면 ${courts}코트까지 써요 · ${raw}코트는 ${raw*4}명부터</div>` : ''; })()}</div>
       <div class="fld" style="flex:1">
         <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:7px">
           <strong style="font-size:12px;font-weight:700;letter-spacing:.01em;color:#3e444b;
@@ -29634,6 +29676,7 @@ function cb2LoadPreset(){
 async function cb2Gen(mode){
   { const why=cb2ModeWhy(mode); if(why){ toast(whyMsg(why)); return; } }
   await loadPastPairs();
+  await cbEnsureSkillData();              // 성적·명단 없이 짜지 않는다
   const all=cb2All();
   const sel=[...CB2_SEL].map(id=>all.find(r=>String(r.user_id)===String(id))).filter(Boolean);
   const courts=cb2Courts();
@@ -29761,7 +29804,12 @@ async function cb2Gen(mode){
     const small=Math.min.apply(null, parts.map(g=>g.length));
     if(parts.tiered) toast(`실력순으로 ${parts.length}개 조 · 1코트가 상위조예요`);
     if(parts.length<courts) toast(`${n}명이면 ${parts.length}코트가 알맞아요 · 조마다 4명은 있어야 해요`);
-    else if(small<5) toast(`코트당 ${small}명이라 한 쌍은 두 번 짝이 돼요 · 코트를 줄이면 안 겹쳐요`);
+    else if(small<5){
+      /* KDK 는 2코트부터라 2코트일 때 <코트를 줄이라>고 하면 할 수 없는 일을 권하게 된다 */
+      let alt=null; try{ alt = courts>2 ? hnSplit(ps, courts-1, {tier:true}) : null; }catch(e){}
+      const altOk = alt && alt.length===courts-1 && Math.min.apply(null, alt.map(g=>g.length))>=5;
+      toast(`${small}명 조는 한 쌍이 두 번 짝이 돼요${altOk?` · ${courts-1}코트로 하면 안 겹쳐요`:''}`);
+    }
   } else if(mode==='monthly'){
     /* 월례대회 — 같은 '대회 조'끼리만 경기.
        구력 등급이 아니라 지난 대회 결과로 정해진 조를 쓴다.
@@ -29971,7 +30019,9 @@ async function cb2Gen(mode){
     }
   }
   const rounds=games.length?Math.max(...games.map(g=>g.r)):0;
-  const data={date:ymd(), courts, rounds, mode, gpp:GPP,
+  /* 조가 코트보다 적게 나오면(여자 코트 따로 쓰기 등) 쓰지 않는 코트를 대진에 남기지 않는다 */
+  const usedC = games.length ? Math.max(...games.map(g=>+g.c||0)) : courts;
+  const data={date:ymd(), courts:((mode==='hanul'||mode==='monthly') && usedC>0) ? Math.min(courts, usedC) : courts, rounds, mode, gpp:GPP,
     /* 시간 대진이면 대관 시간을 함께 저장한다 — 회차 수를 여기서 계산한다 */
     mins: (mode==='normal' ? (window._tbMins||CB2_MINS||120) : null),
     made_by:state.userName, games, captains, note:genderNote,
@@ -31812,16 +31862,18 @@ function kdkDrawPreview(){
       no++;
       const reg=cbRegCode(p);
       const act=codes[i];
-      const few=(balSeat(p).games||0) < MSK_MINGAMES;
+      const gN=(balSeat(p).games||0), few=gN < MSK_MINGAMES;
       h+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;
           ${i<mem.length-1?'border-bottom:.5px solid var(--line);':''}${no===1?'background:var(--paper2,#fdfcfa);':''}">
         <span style="flex:none;width:21px;font-size:12px;font-weight:700;text-align:center;
           color:${no===1?'var(--coral-d)':'var(--lgray)'}">${no}</span>
         <span style="flex:1;font-size:14px;font-weight:600;min-width:0">${esc(p.name||'')}</span>
-        ${few ? `<span style="font-size:11.5px;font-weight:700;color:var(--lgray)">—</span>`
-              : `<span style="font-size:11.5px;font-weight:700;color:${gradeInfo(act).c}">${esc(act)}</span>`}
-        <span style="font-size:11px;color:var(--lgray);width:56px;text-align:right">${
-          few ? '경기 부족' : (reg&&reg!==act ? '등록 '+esc(reg) : '등록 같음')}</span>
+        ${few ? `<span style="font-size:11.5px;font-weight:700;color:var(--lgray)">${esc(act||'—')}</span>`
+              : `<span style="font-size:11.5px;font-weight:700;color:${gradeInfo(gradeStepBase(act)).c}">${esc(act)}</span>`}
+        <span style="font-size:11px;color:var(--lgray);width:62px;text-align:right">${
+          /* 경기가 적으면 등록 등급 자리에 선다 — 몇 경기가 더 필요한지 적는다 */
+          few ? (CLUBME_GAMES===null ? '기록 없음' : `경기 ${gN}/${MSK_MINGAMES}`)
+              : (reg&&reg!==act ? '등록 '+esc(reg) : '등록 같음')}</span>
       </div>`;
     });
     h+=`</div>`;
@@ -31844,6 +31896,8 @@ function kdkDrawPreview(){
     <div style="font-size:13px;color:var(--lgray);margin:-4px 0 0">KDK · ${flat.length}명 · ${P.parts.length}코트 · 실력순</div>
     <div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--felt);
       font-size:12.5px;color:var(--gray);line-height:1.55">실력이 높은 순으로 줄 세워 위에서부터 코트에 넣어요 · 비슷한 사람끼리 쳐요</div>
+    ${CLUBME_GAMES===null ? `<div style="margin-top:8px;padding:11px 13px;border-radius:11px;background:var(--coral-s);
+      font-size:12.5px;color:var(--coral-d);line-height:1.55">경기 기록을 불러오지 못해 등록 등급으로만 나눴어요 · 닫고 다시 누르면 다시 불러와요</div>` : ''}
     ${h}${note}
     <div style="display:flex;gap:9px;margin-top:16px">
       <button class="btn ghost" style="flex:1" onclick="closeOv()">닫기</button>
