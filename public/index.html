@@ -6998,6 +6998,8 @@ async function api(path, opts){
     logErr('net', (e&&e.message)||String(e), path);
     throw e;
   } finally { clearTimeout(kill); busyEnd(); }
+  /* 서버가 새 토큰을 실어 보냈으면 바꿔 끼운다 — 쓰는 사람은 로그인이 안 풀린다 */
+  try{ const nt=r && r.headers && r.headers.get('X-New-Token'); if(nt) localStorage.setItem(TOKEN_KEY, nt); }catch(e){}
   if(!r.ok){
     const body = await r.text().catch(()=>'');
     /* 401·403 은 로그인 만료 같은 정상 흐름이라 뺀다 — 남기면 진짜 오류가 묻힌다 */
