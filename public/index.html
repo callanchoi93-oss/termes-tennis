@@ -5982,7 +5982,7 @@
         <div id="gBtnIn" style="position:absolute;inset:0;opacity:0;overflow:hidden"></div>
       </div>
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
-      <button class="sbtn2" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:20px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
+      <button class="sbtn2" id="appleBtn" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:20px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
       <div id="authFallback"></div>
       <div id="authSaved"></div>
       <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
@@ -6086,7 +6086,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.9-0916b';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.1.9-0916e';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -7243,6 +7243,10 @@ async function handleGoogleCredential(resp){
    · 서버 O · 카카오 O → 카카오 버튼만
    · 서버 O · 카카오 X → 아직 로그인할 수 없음을 정직하게 알린다 */
 function applyAuthUI(){
+  /* 안드로이드 앱의 웹뷰 주소(https://localhost)는 애플에 등록할 수 없어
+     <Invalid web redirect url> 로 막힌다. 애플 로그인은 iOS·웹에서만 보인다. */
+  { const ab=document.getElementById('appleBtn');
+    if(ab && appPlat()==='android') ab.style.display='none'; }
   const name = document.getElementById('authName');
   const note = document.getElementById('authNote');
   const fb   = document.getElementById('authFallback');
@@ -29604,7 +29608,7 @@ function cbBannerHTML(){
       <span style="width:34px;height:34px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--gray);flex:none">${li('book',17)}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:400">어떤 방식을 고를까요?</div>
-        <div style="font-size:12px;font-weight:400;color:#79828d;margin-top:1px">5가지 대진 방식 설명 보기</div></div>
+        <div style="font-size:12px;font-weight:400;color:#79828d;margin-top:1px">6가지 대진 방식 설명 보기</div></div>
       <span style="color:#a3abb4;font-weight:400">›</span></div>`;
 }
 async function cbLoadBanner(){
