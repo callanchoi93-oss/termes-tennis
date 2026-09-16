@@ -6086,7 +6086,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.9-0916a';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.1.9-0916b';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -17069,6 +17069,7 @@ function openSeasonRank(){ renderClubStats(); document.getElementById('ov').clas
 function clubSub(){ return state.clubSub || 'sched'; }
 function setClubSub(v){
   if(v!=='me') CLUBME_WHO=null;
+  if(v==='bracket') CB2_LIST=null;          // 다른 기기에서 발행한 대진도 탭을 누르면 보이게
   state.clubSub=v; renderClub();
   /* 화면이 좁아 탭이 밀려 있으면 고른 탭을 보이는 데로 끌어온다 —
      맨 오른쪽 탭을 눌렀는데 그 탭이 화면 밖에 남아 있으면 눌린 줄을 모른다. */
@@ -18194,7 +18195,10 @@ function loadKakaoMap(){
     };
     const run=()=>{ try{ kakao.maps.load(done); }catch(e){ no(e); } };
     const prev=document.querySelector('script[data-kakao-sdk]');
-    if(prev){ prev.addEventListener('load',run); prev.addEventListener('error',()=>no(new Error('지도를 불러오지 못했어요'))); return; }
+    if(prev){
+      /* 이미 다 받아진 스크립트에는 load 가 다시 오지 않는다 — 그러면 약속이 영영 안 풀렸다 */
+      if(window.kakao && kakao.maps && typeof kakao.maps.load==='function') { run(); return; }
+      prev.addEventListener('load',run); prev.addEventListener('error',()=>no(new Error('지도를 불러오지 못했어요'))); return; }
     const sc=document.createElement('script');
     sc.dataset.kakaoSdk='1';
     /* libraries=services — 장소 검색을 쓴다.
@@ -18288,7 +18292,8 @@ function landPageHtml(){
     </div>` : ''}`;
 }
 async function landPageMount(){
-  try{ await loadKakaoMap(); landDraw(); }
+  /* landDraw 를 기다리지 않으면 그 안의 오류가 <오류(P)> 토스트로 샜다 */
+  try{ await loadKakaoMap(); await landDraw(); }
   catch(e){ const m=document.getElementById('landMap');
     if(m) m.innerHTML=`<div class="lnone" style="padding-top:60px">지도를 불러오지 못했어요<br>
       <span>${esc(e.message||'')}</span></div>`; }
@@ -18382,14 +18387,20 @@ async function landKakaoOpen(kid){
 
 async function landDraw(){
   const el=document.getElementById('landMap'); if(!el) return;
+  /* 필터 버튼·<이 지역에서 다시 찾기>는 준비 확인 없이 여기로 온다.
+     앱(WKWebView)에서는 SDK 가 늦게 채워지는 일이 있어 매번 확인한다. */
+  if(!kakaoReady()) await loadKakaoMap();
   /* <이 지역에서 다시 찾기>를 눌렀으면 그 자리를 쓴다 */
   const c = LAND_FORCE ? {lat:LAND_FORCE.lat, lng:LAND_FORCE.lng} : await landCenter();
+  if(!el.isConnected) return;     // 기다리는 사이 화면이 다시 그려졌다 — 새 화면이 따로 그린다
+  /* 화면을 다시 그리면 #landMap 이 새 요소가 된다 — 옛 지도 객체에 그리면 아무것도 안 보인다 */
+  if(LAND_MAP && window._landMapEl!==el) LAND_MAP=null;
   const ctr=new kakao.maps.LatLng(c.lat, c.lng);
   /* level 5 — 대략 반경 3km. 구장 이름이 읽히는 거리다.
      지적편집도(USE_DISTRICT)는 얹지 않는다 — 용도지역 색이 온 화면을 덮어
      정작 봐야 할 구장이 묻혔다. 기본 도로지도가 제일 잘 읽힌다. */
   if(LAND_MAP && LAND_FORCE){ LAND_MAP.setCenter(ctr); }
-  else LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:5});
+  else { LAND_MAP=new kakao.maps.Map(el,{center:ctr, level:5}); window._landMapEl=el; }
   if(LAND_CENTER_FROM==='none'){
     toast('위치를 못 찾아 서울 기준으로 보여요 · 위치 권한을 켜거나 <이 지역에서 다시 찾기>를 눌러주세요');
   }
@@ -19554,7 +19565,7 @@ function landToggleEmpty(){
   LAND_MINE_ONLY=!LAND_MINE_ONLY;
   const t=document.getElementById('landBtnT'); if(t) t.textContent=LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기';
   const b=document.querySelector('.landbtn'); if(b) b.classList.toggle('on', LAND_MINE_ONLY);
-  landDraw();
+  landDraw().catch(e=>toast('지도를 그리지 못했어요 · '+String((e&&e.message)||'').slice(0,30)));
 }
 /* 지도에서 구장을 누르면 그 구장 페이지로 — 시트를 덮어씌우지 않는다 */
 function landVenue(vid){
@@ -22294,10 +22305,10 @@ new MutationObserver(muts=>{
     const v=state.view;
     try{
       if(v==='match'){ window.OM_LOADED=false; renderMatch(); }   // renderMatch 가 자체 로드
-      else if(v==='club'){ if(clubId()){ await loadClubServer(); await loadClubFeed(); } renderClub(); }
+      else if(v==='club'){ if(clubId()){ cbFreshBrackets(); CLUBME_GAMES=null; await loadClubServer(); await loadClubFeed(); } renderClub(); }
       else if(v==='league'){ await loadClubLeague(); renderLeague(); }
       else if(v==='chat'){ await loadDMThreads(); renderChat(); }
-      else if(v==='home'){ renderHome(); }
+      else if(v==='home'){ await loadMyNext(); renderHome(); }
       toast('새로고침했어요');
     }catch(e){}
   }, {passive:true});
@@ -30040,7 +30051,7 @@ async function cb2Gen(mode){
     toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 (체험)`);
     openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400); return; }
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(data)});
-    CB2={...data,updated_at:Date.now()};
+    CB2={...data,updated_at:Date.now()}; cbFreshBrackets();
     toast(mode==='cheongbaek'?'청백 팀을 나눴어요 · 캡틴이 오더를 작성해 주세요':`${nm} 대진을 발행했어요 · 1인 ${GPP}경기`);
     openClubBracketView(); if(mode==='cheongbaek') setTimeout(cb2CaptainPopup,400);
   }catch(e){ toast('임원만 발행할 수 있어요'); }
@@ -30654,11 +30665,29 @@ function mtDate(v){
 }
 /* ── 내 다음 경기 (홈 카드) ── */
 /* 홈 띠에 쓸 오늘 대진을 받아 둔다. 화면을 열어보지 않아도 홈이 먼저 알고 있어야 한다. */
+/* 대진을 발행해도 화면이 안 바뀌던 문제 — 대진 목록(CB2_LIST)·오늘 대진(CB2)·일정은
+   한 번 받으면 다시 묻지 않았다. 삭제·되살리기에서만 비워서, 발행한 뒤에는
+   대진 탭이 <발행된 대진이 없어요>로 남고 새로고침(당기기)도 이것들을 안 비웠다.
+   결국 앱을 껐다 켜야 보였다. 발행·새로고침·탭 진입에서 함께 비운다. */
+function cbFreshBrackets(){
+  CB2_LIST=null; window._cb2Once=false;
+  window._evFor=null; window._evLoading=null;     // 일정 카드의 대진 표시도 새로
+  try{ loadMyNext(); }catch(e){}
+}
 async function loadMyNext(){
   if(!(SERVER_OK&&clubId()&&authToken())) return;
   if(!(state.serverUser||{}).id) return;
   try{
-    const d=await api(`/clubs/${clubId()}/bracket2${cbQ()}`);
+    /* 모임을 고르지 않은 기기(대부분의 회원)는 CB2_EVENT 가 0 이라 <모임 미지정> 대진만 물었다.
+       대진은 모임마다 따로 저장되니, 오늘 진행 중인 모임 대진을 목록에서 찾아 묻는다. */
+    let q=cbQ();
+    if(!CB2_EVENT){
+      try{ const list=await api(`/clubs/${clubId()}/brackets`)||[];
+        const t=list.find(b=>b.active && cbTodayish(b.date)) || list.find(b=>cbTodayish(b.date));
+        if(t && t.event_id) q=`?event=${t.event_id}`;
+      }catch(e){}
+    }
+    const d=await api(`/clubs/${clubId()}/bracket2${q}`);
     const ok = d && (d.games||[]).length && cbTodayish(d.date);
     HOME_BK = ok ? d : null;
     try{ ok ? localStorage.setItem('matsu_home_bk', JSON.stringify(d))
@@ -31512,7 +31541,8 @@ async function cbPublish(){
   cb2SavePreset(data.mode, data.courts);
   if(TRIAL){ CB2={...data,_trial:true,updated_at:Date.now()}; toast(`${nm} 대진을 발행했어요 (체험)`); openClubBracketView(); return; }
   try{ await api(`/clubs/${clubId()}/bracket2${cbQ()}`,{method:'PUT',body:JSON.stringify(data)});
-    CB2={...data,updated_at:Date.now()}; toast(`${nm} 대진을 발행했어요 · 1인 4경기`); openClubBracketView();
+    CB2={...data,updated_at:Date.now()}; cbFreshBrackets();
+    toast(`${nm} 대진을 발행했어요 · 1인 4경기`); openClubBracketView();
   }catch(e){ toast('임원만 발행할 수 있어요'); }
 }
 /* ── 경기 바꾸기 ⋮ ──────────────────────────────────────────
