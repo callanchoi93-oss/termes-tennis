@@ -252,7 +252,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0916a';
+const SRV_BUILD = 'sH-0916b';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
 /* 앱 안에 든 화면 버전. 이 값과 앱의 BUILD 가 다르면 <새 버전이 나왔어요> 배너가 뜬다.
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
@@ -452,7 +452,12 @@ app.get('/oauth/app-return', (req, res) => {
     code: String(req.query.code || ''),
     state: String(req.query.state || ''),
   });
-  const target = 'matsu://oauth?' + q.toString();
+  /* 안드로이드 크롬(맞춤 탭)은 matsu:// 로 스크립트 이동을 자주 막는다.
+     intent:// 주소로 주면 크롬이 앱(app.matsu)을 직접 연다. iOS 는 그대로 matsu:// */
+  const isAndroid = /Android/i.test(String(req.headers['user-agent'] || ''));
+  const target = isAndroid
+    ? `intent://oauth?${q.toString()}#Intent;scheme=matsu;package=app.matsu;end`
+    : 'matsu://oauth?' + q.toString();
   // 일부 브라우저는 302 로 커스텀 스킴 이동을 막는다 — HTML 폴백을 함께 준다
   res.set('Cache-Control', 'no-store');
   res.send(`<!doctype html><meta charset="utf-8">
