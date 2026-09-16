@@ -1286,7 +1286,7 @@ function drawUDetail(d){
   el.innerHTML = sec('소속 클럽', clubs) + sec('최근 대진', games)
     + sec('등급 이동', grades) + sec('겪은 오류', errs);
 }
-function closeU(){ $('ov').classList.remove('on'); UROWS=null; }
+function closeU(){ $('ov').classList.remove('on'); UROWS=null; ROLE_Q=''; }
 
 /* ── 분석 ──
    외부 도구를 붙이면 회원 정보가 밖으로 나가므로 우리 서버에 쌓은 것만 본다.
@@ -1939,13 +1939,110 @@ function errMsg(e, fb){
 /* ── 클럽 ── */
 async function drawClubs(){
   const rows=await api('/admin/clubs');
+  CLUB_ROWS=rows;
   $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(c=>`
     <div class="rw"><div class="nm" style="cursor:pointer" onclick="openC(${c.id})">
       <b>${esc(c.name)}<span class="tag">${esc(c.sport||'')}</span></b>
       <span>#${c.id} · ${esc(c.region||'지역 없음')} · 회원 ${c.members}명${
         c.owner?` · 회장 ${esc(c.owner.name)}`:''}</span></div>
+      <button class="b" onclick="openRoles(${c.id})">권한</button>
       <button class="b dz" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('')
     : `<div class="empty">클럽이 없어요</div>`}</div>`);
+}
+
+/* ── 클럽 권한 관리 ────────────────────────────────────────────
+   클럽장 넘기기(/owner)와 임원 주기·해제(/role).
+   클럽장은 늘 한 명이라 <박탈>은 따로 없다 — 다른 회원에게 넘기면
+   이전 클럽장은 임원으로 남고, 필요하면 이어서 임원 해제를 누른다. */
+let CLUB_ROWS=null, ROLE_Q='';
+const ROLE_NM={owner:'클럽장', officer:'임원', member:'회원', guest:'게스트'};
+async function openRoles(id, fresh){
+  $('ov').classList.add('on');
+  if(fresh || !CLUB_ROWS){
+    if(!CLUB_ROWS) $('sheet').innerHTML='<div class="unote">불러오는 중…</div>';
+    try{ CLUB_ROWS=await api('/admin/clubs'); }
+    catch(e){ $('sheet').innerHTML=`<div class="unote">${esc(errMsg(e,'불러오지 못했어요'))}</div>`; return; }
+  }
+  const c=(CLUB_ROWS||[]).find(x=>x.id===id);
+  if(!c){ $('sheet').innerHTML='<div class="unote">클럽을 찾지 못했어요</div>'; return; }
+  $('sheet').innerHTML=`
+    <div class="sh-top"><h3>${esc(c.name)} · 권한</h3><div class="cl" onclick="closeU()">×</div></div>
+    <div id="roleOwner"></div>
+    <div class="fld" style="margin-top:14px"><input id="roleQ" placeholder="이름으로 찾기" value="${esc(ROLE_Q)}"
+      oninput="ROLE_Q=this.value;roleListDraw(${id})"></div>
+    <div id="roleList"></div>
+    <div class="ul">최근 변경</div>
+    <div id="roleLog"><div class="unote">불러오는 중…</div></div>`;
+  roleListDraw(id);
+  roleLogLoad(id);
+}
+/* 검색할 때는 목록만 다시 그린다 — 입력칸과 기록은 그대로 둔다 */
+function roleListDraw(id){
+  const c=(CLUB_ROWS||[]).find(x=>x.id===id); if(!c) return;
+  const all=c.roster||[];
+  const q=ROLE_Q.trim();
+  const hit=m=>!q || String(m.name||'').includes(q);
+  const owner=all.find(m=>m.role==='owner');
+  const officers=all.filter(m=>m.role==='officer'&&hit(m));
+  const others=all.filter(m=>m.role!=='owner'&&m.role!=='officer'&&hit(m));
+  const nm=m=>esc(m.name||('#'+m.id));
+  const row=(m,btns)=>`<div class="ur" style="gap:10px">
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#161412)">${nm(m)}${
+      m.role==='guest'?'<span class="tag">게스트</span>':''}</span>
+    <div style="display:flex;gap:6px;flex:none">${btns}</div></div>`;
+  const bOwner=m=>`<button class="b" onclick="roleOwner(${id},${m.id})">클럽장으로</button>`;
+  const o=$('roleOwner');
+  if(o) o.innerHTML=`<div class="ul">클럽장</div>${owner
+    ?`<div class="ur"><span style="color:var(--ink,#161412)">👑 ${nm(owner)}</span><b style="font-weight:500;color:#b3aea4;font-size:13px">넘기면 임원으로 남아요</b></div>`
+    :`<div class="unote" style="color:#c2410c">클럽장이 없어요 · 아래에서 한 명을 클럽장으로 정해주세요</div>`}`;
+  const L=$('roleList'); if(!L) return;
+  L.innerHTML=`
+    <div class="ul">임원 ${all.filter(m=>m.role==='officer').length}</div>
+    ${officers.length?officers.map(m=>row(m,
+      `<button class="b dz" onclick="roleSet(${id},${m.id},'member')">임원 해제</button>${bOwner(m)}`)).join('')
+      :'<div class="unote">'+(q?'찾는 임원이 없어요':'임원이 없어요')+'</div>'}
+    <div class="ul">회원 ${all.filter(m=>m.role!=='owner'&&m.role!=='officer').length}</div>
+    ${others.length?others.map(m=>row(m, m.role==='guest'
+      ? `<span style="font-size:12.5px;color:#b3aea4">정회원이 되면 지정할 수 있어요</span>`
+      : `<button class="b on" onclick="roleSet(${id},${m.id},'officer')">임원으로</button>${bOwner(m)}`)).join('')
+      :'<div class="unote">'+(q?'찾는 회원이 없어요':'회원이 없어요')+'</div>'}
+    ${all.length>=500?'<div class="unote">500명까지만 보여요 · 이름으로 찾아주세요</div>':''}`;
+}
+async function roleLogLoad(id){
+  let L=[]; try{ L=await api(`/admin/clubs/${id}/role-log`)||[]; }
+  catch(e){ const el=$('roleLog'); if(el) el.innerHTML=`<div class="unote">${esc(errMsg(e,'기록을 불러오지 못했어요'))}</div>`; return; }
+  const el=$('roleLog'); if(!el) return;
+  const K={owner:'클럽장 지정', officer_grant:'임원 지정', officer_revoke:'임원 해제'};
+  el.innerHTML = L.length ? L.slice(0,15).map(a=>`<div class="ur"><span>${esc(a.name||('#'+a.user_id))} · ${esc(K[a.kind]||a.kind)}</span>
+    <b style="font-weight:500;color:#b3aea4;font-size:13px">${esc(ymd(a.created_at))}</b></div>`).join('')
+    : '<div class="unote">운영자가 바꾼 기록이 없어요</div>';
+}
+function roleWho(id, uid){
+  const c=(CLUB_ROWS||[]).find(x=>x.id===id)||{};
+  return { c, m:(c.roster||[]).find(x=>x.id===uid)||{}, owner:(c.roster||[]).find(x=>x.role==='owner') };
+}
+async function roleSet(id, uid, role){
+  const {c,m}=roleWho(id, uid);
+  const msg = role==='officer'
+    ? `${m.name||'이 회원'}님을 ${c.name} 임원으로 지정할까요?\n대진 짜기·회원 관리 권한이 생기고, 본인에게 알림이 가요.`
+    : `${m.name||'이 회원'}님의 ${c.name} 임원 권한을 해제할까요?\n일반 회원이 되고, 본인에게 알림이 가요.`;
+  if(!confirm(msg)) return;
+  try{ await api(`/admin/clubs/${id}/role`,{method:'POST',body:JSON.stringify({user_id:uid, role})});
+    toast(role==='officer'?'임원으로 지정했어요':'임원을 해제했어요'); }
+  catch(e){ toast(errMsg(e,'바꾸지 못했어요')); return; }
+  await openRoles(id, true);
+}
+async function roleOwner(id, uid){
+  const {c,m,owner}=roleWho(id, uid);
+  const msg = `${m.name||'이 회원'}님을 ${c.name} 클럽장으로 바꿀까요?`
+    + (owner?`\n지금 클럽장 ${owner.name}님은 임원으로 남아요.`:'')
+    + `\n두 분 모두에게 알림이 가요.`;
+  if(!confirm(msg)) return;
+  try{ await api(`/admin/clubs/${id}/owner`,{method:'POST',body:JSON.stringify({user_id:uid})});
+    toast('클럽장을 바꿨어요'); }
+  catch(e){ toast(errMsg(e,'바꾸지 못했어요')); return; }
+  await openRoles(id, true);
+  try{ render(); }catch(_){}                 // 뒤의 클럽 목록에 <회장> 이름도 바뀌게
 }
 
 /* ── 클럽 한 곳 들여다보기 ────────────────────────────────────────
@@ -1964,6 +2061,7 @@ async function openC(id){
   const skew = d.members>=8 && (fPct<15 || fPct>85);
   $('sheet').innerHTML=`
     <div class="sh-top"><h3>${esc(d.name)}</h3><div class="cl" onclick="closeU()">×</div></div>
+    <button class="b" style="width:100%;margin-bottom:8px" onclick="ROLE_Q='';openRoles(${d.id})">클럽장·임원 권한 관리 ›</button>
     <div class="ur"><span>번호</span><b>#${d.id}</b></div>
     <div class="ur"><span>지역</span><b>${esc([d.sido,d.sigungu].filter(Boolean).join(' ')||'없음')}</b></div>
     <div class="ur"><span>회원</span><b>${fmt(d.members)}명 · 최근 30일 ${fmt(d.active)}명</b></div>
