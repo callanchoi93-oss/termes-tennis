@@ -278,8 +278,32 @@ app.post('/auth/dev-login', limitLogin, (req, res) => {
       VALUES (?,?,?,?,?,?,?,?,?)`).run(provider, pid, cleanName(name, '게스트'), gender, region, sport, nick, now(), pin ? pinHash(pid, pin) : null);
     u = getUser(rid(r));
     db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);  // 캐시는 0원부터
-  } else if (u.dev_pin && pin && u.dev_pin !== pinHash(pid, pin)) {
+  } else if (u.dev_pin && (!pin || u.dev_pin !== pinHash(pid, pin))) {
+    /* 비밀번호가 걸린 계정은 비밀번호를 비워 보내도 막는다.
+       예전에는 pin 을 빼고 보내면 검사를 건너뛰어, 이름만 알면 누구나 들어갈 수 있었다. */
     return res.status(403).json({ error: 'wrong_pin', message: '간편 비밀번호가 달라요' });
+  }
+  res.json({ token: sign(u), user: u });
+});
+
+/* ── 스토어 심사용 로그인 ──
+   구글·애플 심사자는 카카오·구글 계정을 새로 만들 수 없어서, 정해 둔 계정 하나로만 들어오게 한다.
+   이름 로그인(dev-login)을 운영에서 켜면 누구나 아무 이름으로 계정을 만들 수 있으니 그건 끈 채로 둔다.
+   Railway 변수 REVIEW_NAME · REVIEW_PIN 이 둘 다 있을 때만 열린다. 새 계정은 이 이름 하나만 만든다. */
+app.post('/auth/review-login', limitLogin, (req, res) => {
+  const RN = String(process.env.REVIEW_NAME || '').trim(), RP = String(process.env.REVIEW_PIN || '');
+  if (!RN || !RP) return res.status(404).json({ error: 'not_found' });
+  const name = String((req.body || {}).name || '').trim(), pin = String((req.body || {}).pin || '');
+  const eq = (a, b) => { const x = Buffer.from(a), y = Buffer.from(b);
+    return x.length === y.length && crypto.timingSafeEqual(x, y); };
+  if (!(eq(name, RN) && eq(pin, RP))) return res.status(403).json({ error: 'wrong_pin', message: '이름 또는 비밀번호가 달라요' });
+  const pid = 'review-' + crypto.createHash('sha256').update(RN).digest('hex').slice(0, 16);
+  let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
+  if (!u) {
+    const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,region,sport,anon_nick,created_at)
+      VALUES ('review',?,?,?,?,?,?,?)`).run(pid, cleanName(RN, '심사'), '남성', '경기 용인', 'tennis', anonNick(pid), now());
+    u = getUser(rid(r));
+    db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);
   }
   res.json({ token: sign(u), user: u });
 });
@@ -327,6 +351,7 @@ app.get('/config', (_, res) => {
     google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
+    review_login: !!(process.env.REVIEW_NAME && process.env.REVIEW_PIN),   // 스토어 심사용 계정 입구
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_native_redirect_uri: process.env.KAKAO_NATIVE_REDIRECT_URI || '',   // iOS 앱: 딥링크 복귀용
     /* 앱에서 카카오톡을 직접 여는 데 쓰는 네이티브 앱 키.
@@ -8339,18 +8364,56 @@ app.get('/terms', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head>
 ${opBox('운영자')}</body></html>`));
 
 app.get('/privacy', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 개인정보처리방침</title>${LEGAL_CSS}</head><body>
-<h1>개인정보처리방침</h1><p class="sub">시행일: 2026-07-15</p>
-<h2>1. 수집하는 항목</h2><ul>
-<li>필수: 이름(닉네임), 로그인 식별자(카카오·구글·애플 ID), 성별, 활동 지역, 종목</li>
-<li>선택: 프로필 사진, 실력 정보, 기기 푸시 토큰</li>
-<li>자동 수집: 서비스 이용 기록(경기 결과, 출석, 접속 일시)</li></ul>
-<h2>2. 이용 목적</h2><p>회원 식별과 로그인, 클럽 운영 기능 제공(대진 편성·회비 장부·출석), 매칭·랭킹 산정, 알림 발송, 부정 이용 방지.</p>
-<h2>3. 보관과 파기</h2><p>회원 탈퇴 시 개인정보는 지체 없이 파기합니다. 클럽 회비 장부와 경기 기록은 장부 무결성을 위해 <b>누구인지 알 수 없도록 익명화</b>하여 보존합니다. 법령이 보존을 요구하는 정보는 해당 기간 동안 보관합니다.</p>
-<h2>4. 제3자 제공</h2><p>법령에 근거한 경우를 제외하고 개인정보를 제3자에게 제공하지 않습니다. 결제 처리를 위해 결제 대행사에 최소한의 정보가 전달될 수 있습니다.</p>
-<h2>5. 처리 위탁</h2><p>서버 호스팅(Railway), 푸시 발송(웹 푸시/APNs)에 한하여 처리를 위탁하며, 수탁자가 개인정보를 다른 목적으로 이용하지 않도록 관리합니다.</p>
-<h2>6. 이용자의 권리</h2><p>이용자는 언제든 자신의 정보를 열람·수정·삭제(탈퇴)할 수 있습니다. 앱 내 [내정보]에서 직접 처리하거나 아래 이메일로 요청할 수 있습니다.</p>
-<h2>7. 안전성 확보 조치</h2><p>비밀 키 기반 인증 토큰, 전송 구간 암호화(HTTPS), 접근 통제, 일일 백업을 시행합니다.</p>
-${opBox('개인정보 보호책임자')}</body></html>`));
+<h1>개인정보처리방침</h1><p class="sub">시행일: 2026-09-16 · 이전 버전 시행일: 2026-07-15</p>
+<p>맞수(이하 “서비스”)는 이용자의 개인정보를 소중히 다루며, 아래와 같이 수집·이용·보관합니다. 이 방침은 웹과 iOS·Android 앱에 똑같이 적용됩니다.</p>
+<h2>1. 수집하는 항목</h2>
+<ul>
+<li><b>필수</b>: 이름(닉네임), 로그인 식별자(카카오·구글·애플 계정 ID), 이메일(로그인 제공자가 넘겨주는 경우), 성별, 활동 지역, 종목, 운동 시작 시기(구력)</li>
+<li><b>선택</b>: 프로필 사진, 클럽에서 지정한 등급, 게시글·댓글·채팅 메시지와 첨부 사진</li>
+<li><b>위치</b>: 홈코트 지도를 열 때 주변 구장을 찾기 위해 기기의 현재 위치(대략적·정확한 위치)를 요청합니다. 허용한 경우에만 쓰며, 검색에 쓴 좌표는 계정에 저장하지 않습니다. 마지막으로 본 지도 위치는 이용자 기기에만 남습니다.</li>
+<li><b>자동 수집</b>: 경기 결과·점수·출석 등 서비스 이용 기록, 접속 일시, 앱 버전, 오류 기록, 푸시 알림용 기기 토큰</li>
+<li><b>결제 시</b>: 결제·환불 처리에 필요한 주문 정보와 거래 내역(카드 번호 등 결제수단 정보는 결제 대행사가 처리하며 서비스는 보관하지 않습니다)</li>
+</ul>
+<h2>2. 이용 목적</h2>
+<p>회원 식별과 로그인, 클럽 운영 기능 제공(모임·출석·대진 편성·점수·회비 장부), 실력 산정과 랭킹, 주변 구장 안내, 커뮤니티(구장톡·채팅) 제공, 알림 발송, 고객 문의 응대, 부정 이용 방지와 서비스 개선.</p>
+<h2>3. 보관과 파기</h2>
+<p>회원 탈퇴 시 개인정보는 지체 없이 파기합니다. 다만 클럽의 회비 장부와 경기 기록은 다른 회원의 기록과 장부가 맞아야 하므로, 누구인지 알 수 없도록 익명화하여 보존합니다. 전자상거래 등 법령이 보존을 요구하는 거래 기록은 해당 기간(예: 대금 결제·재화 공급 기록 5년) 동안 보관한 뒤 파기합니다.</p>
+<h2>4. 제3자 제공</h2>
+<p>법령에 근거한 경우를 제외하고 개인정보를 제3자에게 제공하지 않습니다. 같은 클럽 회원에게는 클럽 운영에 필요한 범위(이름, 성별, 등급, 경기 기록)가 표시됩니다.</p>
+<h2>5. 처리 위탁 및 외부 서비스</h2>
+<ul>
+<li>서버 호스팅·데이터 보관: Railway</li>
+<li>로그인: 카카오, Google, Apple (각 사의 로그인 절차에서 이용자가 동의한 정보만 전달받습니다)</li>
+<li>지도·장소 검색: 카카오맵 (지도 표시와 주변 장소 검색을 위해 좌표가 카카오에 전달됩니다)</li>
+<li>푸시 알림: Google Firebase Cloud Messaging(Android), Apple Push Notification service(iOS), 웹 푸시</li>
+<li>결제: 토스페이먼츠 (결제를 이용하는 경우)</li>
+</ul>
+<p>수탁자가 개인정보를 위탁 목적 외로 이용하지 않도록 관리합니다. 일부 수탁자의 서버는 국외에 있을 수 있습니다.</p>
+<h2>6. 이용자의 권리와 계정 삭제</h2>
+<p>이용자는 언제든 자신의 정보를 열람·수정·삭제할 수 있습니다. 앱의 <b>[내정보] 화면 맨 아래 [계정 탈퇴 (개인정보 삭제)]</b>에서 직접 계정을 삭제할 수 있고, 앱을 쓸 수 없는 경우 <a href="/account-delete">계정 삭제 요청 안내</a>에 따라 요청할 수 있습니다. 위치 권한과 알림 권한은 기기 설정에서 언제든 끌 수 있습니다.</p>
+<h2>7. 만 14세 미만 아동</h2>
+<p>서비스는 만 14세 미만 아동을 대상으로 하지 않으며, 법정대리인의 동의 없이 만 14세 미만 아동의 개인정보를 알면서 수집하지 않습니다.</p>
+<h2>8. 안전성 확보 조치</h2>
+<p>비밀 키 기반 인증 토큰, 전송 구간 암호화(HTTPS), 접근 통제, 일일 백업을 시행합니다.</p>
+<h2>9. 방침의 변경</h2>
+<p>이 방침이 바뀌면 시행일을 갱신하고 앱 공지로 알립니다.</p>
+${opBox('개인정보 보호책임자')}
+</body></html>`));
+
+/* Google Play 는 <앱 밖에서 계정 삭제를 요청할 수 있는 웹 주소>를 요구한다 */
+app.get('/account-delete', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 계정 삭제</title>${LEGAL_CSS}</head><body>
+<h1>맞수 계정 삭제</h1><p class="sub">맞수(개발자: ${OP_NAME || '맞수'})의 계정과 데이터를 삭제하는 방법</p>
+<h2>앱에서 바로 삭제</h2>
+<ol><li>맞수 앱에 로그인합니다.</li><li>아래 <b>내정보</b> 탭을 열고 화면 맨 아래 <b>계정 탈퇴 (개인정보 삭제)</b>를 누릅니다.</li><li>두 번의 확인을 거치면 즉시 삭제됩니다. 클럽장이라면 먼저 클럽장을 다른 회원에게 넘겨야 합니다.</li></ol>
+<h2>앱을 쓸 수 없는 경우</h2>
+<p>${OP_EMAIL ? `<a href="mailto:${OP_EMAIL}?subject=${encodeURIComponent('[맞수] 계정 삭제 요청')}">${OP_EMAIL}</a>` : '운영자 이메일'}로 <b>로그인에 쓴 방법(카카오·구글·애플)</b>과 <b>앱에 표시되는 이름</b>, 가입한 클럽 이름을 적어 보내 주세요. 본인 확인 후 7일 안에 삭제하고 결과를 회신합니다.</p>
+<h2>삭제되는 정보</h2>
+<ul><li>이름, 로그인 식별자, 이메일, 성별, 지역, 구력, 프로필 사진</li><li>게시글·댓글·채팅 메시지와 첨부 사진, 알림용 기기 토큰</li></ul>
+<h2>보관되는 정보</h2>
+<ul><li>클럽 회비 장부와 경기 기록: 다른 회원의 기록이 맞도록 <b>누구인지 알 수 없게 익명화</b>하여 보관합니다.</li><li>결제·환불 거래 기록: 전자상거래법에 따라 5년간 보관 후 파기합니다.</li></ul>
+<p><a href="/privacy">개인정보처리방침 전문 보기</a></p>
+${opBox('문의')}
+</body></html>`));
 
 const START_TS = Date.now();
 app.get('/health', (_, res) => res.json({ ok: true, ts: now() }));
@@ -9515,8 +9578,10 @@ app.get('/admin/clubs', admin, (_req, res) => {
     ...c,
     owner: db.prepare(`SELECT u.id, u.name FROM club_members cm JOIN users u ON u.id=cm.user_id
       WHERE cm.club_id=? AND cm.role='owner' LIMIT 1`).get(c.id) || null,
+    /* 역할 관리 화면이 모든 회원을 고를 수 있어야 한다 — 50명에서 잘리면 뒤쪽 회원을 임원으로 못 올렸다 */
     roster: db.prepare(`SELECT u.id, u.name, cm.role FROM club_members cm JOIN users u ON u.id=cm.user_id
-      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') ORDER BY cm.role='owner' DESC, u.name LIMIT 50`).all(c.id),
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+      ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'officer' THEN 1 WHEN 'member' THEN 2 ELSE 3 END, u.name LIMIT 500`).all(c.id),
   })));
 });
 // 운영자가 클럽장을 강제 변경 — 분쟁·연락 두절 클럽장 처리용. 기존 양도와 같은 규칙으로 정리한다.
@@ -9527,15 +9592,51 @@ app.post('/admin/clubs/:id/owner', admin, (req, res) => {
   const t = db.prepare('SELECT status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
   if (!uid || !t) return res.status(400).json({ error: 'not_member' });
   if (t.status && t.status !== 'active') return res.status(400).json({ error: 'not_active' });
+  const tr = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (tr && tr.role === 'guest') return res.status(400).json({ error: 'is_guest', message: '게스트는 클럽장이 될 수 없어요' });
   const prev = db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role='owner'").get(cid);
   tx(() => {
     if (prev) db.prepare("UPDATE club_members SET role='officer' WHERE club_id=? AND user_id=?").run(cid, prev.user_id);
     db.prepare("UPDATE club_members SET role='owner' WHERE club_id=? AND user_id=?").run(cid, uid);
     db.prepare('UPDATE clubs SET owner_id=? WHERE id=?').run(uid, cid);
   });
+  adminAct('owner', cid, uid, `${prev ? prev.user_id : '-'} → ${uid}`);
   sendPush(uid, { icon: '👑', title: '클럽장이 됐어요', body: `${club.name} 클럽장 권한을 받았어요 (운영자 지정)` });
   if (prev && prev.user_id !== uid) sendPush(prev.user_id, { icon: '🔧', title: '클럽장 변경 안내', body: `${club.name} 클럽장이 운영자에 의해 변경됐어요 · 임원으로 남아요` });
   res.json({ ok: true, club_id: cid, new_owner: uid });
+});
+/* ── 운영자 역할 관리: 임원 주기 · 임원 해제 ──
+   클럽장은 이 경로로 바꾸지 않는다 — 클럽장은 늘 한 명이어야 해서 /owner(넘기기)로만 바꾼다.
+   클럽장을 <박탈>하려면 다른 회원에게 넘기면 되고, 이전 클럽장은 임원으로 남는다. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS admin_actions (
+  id INTEGER PRIMARY KEY, kind TEXT, club_id INTEGER, user_id INTEGER, note TEXT, created_at INTEGER)`); } catch (e) {}
+function adminAct(kind, cid, uid, note) {
+  try { db.prepare('INSERT INTO admin_actions (kind,club_id,user_id,note,created_at) VALUES (?,?,?,?,?)')
+    .run(kind, cid, uid, String(note || ''), now()); } catch (e) {}
+}
+app.post('/admin/clubs/:id/role', admin, (req, res) => {
+  const cid = +req.params.id, uid = intOrNull(req.body && req.body.user_id);
+  const role = String((req.body || {}).role || '');
+  if (!['officer', 'member'].includes(role)) return res.status(400).json({ error: 'bad_role', message: '임원 또는 회원만 지정할 수 있어요' });
+  const club = db.prepare('SELECT id,name FROM clubs WHERE id=?').get(cid);
+  if (!club) return res.status(404).json({ error: 'not_found' });
+  const t = db.prepare('SELECT role,status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!uid || !t) return res.status(400).json({ error: 'not_member' });
+  if (t.status && t.status !== 'active') return res.status(400).json({ error: 'not_active' });
+  if (t.role === 'owner') return res.status(400).json({ error: 'is_owner', message: '클럽장은 다른 회원에게 넘겨서 바꿔요' });
+  if (t.role === 'guest' && role === 'officer') return res.status(400).json({ error: 'is_guest', message: '게스트는 정회원이 된 뒤 임원으로 지정할 수 있어요' });
+  if (t.role === role) return res.json({ ok: true, unchanged: true, role });
+  db.prepare('UPDATE club_members SET role=? WHERE club_id=? AND user_id=?').run(role, cid, uid);
+  adminAct(role === 'officer' ? 'officer_grant' : 'officer_revoke', cid, uid, `${t.role} → ${role}`);
+  sendPush(uid, role === 'officer'
+    ? { icon: '⭐', title: '임원이 됐어요', body: `${club.name} 임원 권한을 받았어요 (운영자 지정)` }
+    : { icon: '🔧', title: '임원 권한 변경', body: `${club.name} 임원에서 회원으로 바뀌었어요 (운영자 처리)` });
+  res.json({ ok: true, club_id: cid, user_id: uid, role, prev: t.role });
+});
+app.get('/admin/clubs/:id/role-log', admin, (req, res) => {
+  const cid = +req.params.id;
+  res.json(db.prepare(`SELECT a.kind, a.user_id, u.name, a.note, a.created_at FROM admin_actions a
+    LEFT JOIN users u ON u.id=a.user_id WHERE a.club_id=? ORDER BY a.id DESC LIMIT 50`).all(cid));
 });
 app.post('/admin/clubs/:id/premium', admin, (req, res) => {
   const cid = +req.params.id;
