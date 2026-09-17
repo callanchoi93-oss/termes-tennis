@@ -4676,6 +4676,10 @@
   .hsoon .ic{ flex:none;width:38px;height:38px;border-radius:13px;background:var(--felt);
     display:flex;align-items:center;justify-content:center;color:var(--gray) }
   .hsoon .c{ flex:1;min-width:0 }
+  /* 폰 폭에서는 버튼이 글자 자리를 빼앗아 제목이 두세 줄로 끊겼다 — 버튼을 글 아래로 내린다 */
+  .hsoon{ flex-wrap:wrap }
+  .hsoon .c{ flex:1 1 calc(100% - 50px) }
+  .hsoon button{ margin-left:50px }
   .hsoon .c b{ display:block;font-size:16px;font-weight:700;letter-spacing:-.03em }
   .hsoon .c span{ display:block;font-size:14px;color:var(--gray);font-weight:400;margin-top:3px;
     line-height:1.55 }
@@ -5837,6 +5841,24 @@
     *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
   }
 </style>
+<script>
+/* 앱(안드로이드·iOS)인지 먼저 표시한다 — CSS 가 첫 화면부터 맞게 그리도록 */
+try{ var _cp=window.Capacitor; if(_cp && _cp.isNativePlatform && _cp.isNativePlatform()){
+  document.documentElement.classList.add('is-native');
+  if(_cp.getPlatform && _cp.getPlatform()==='android') document.documentElement.classList.add('is-android'); } }catch(e){}
+</script>
+<style>
+html.is-android #appleBtn{display:none!important}
+/* 앱에서는 웹의 <폰 모양 액자>를 쓰지 않는다.
+   폴드·태블릿처럼 넓은 화면에서 둥근 액자와 회색 여백이 생겨 웹페이지처럼 보였다.
+   아이폰과 같은 폭(최대 440px)으로 가운데 두고, 양옆은 앱 바탕색으로 채운다. */
+html.is-native body{background:var(--cream)}
+html.is-native .app{margin:0 auto!important;height:100vh!important;height:100dvh!important;
+  min-height:0!important;border-radius:0!important;box-shadow:none!important}
+/* 기기 글자 크기 설정이 커도 줄이 잘게 끊기지 않게 — 안드로이드는 네이티브에서 100% 로 고정한다.
+   웹뷰가 그 설정을 무시하는 경우를 위해 브라우저 쪽 자동 확대도 끈다. */
+html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+</style>
 </head>
 <body>
 <div id="statusGuard" aria-hidden="true"></div>
@@ -5982,7 +6004,7 @@
         <div id="gBtnIn" style="position:absolute;inset:0;opacity:0;overflow:hidden"></div>
       </div>
       <button class="sbtn2" onclick="login('kakao')"><span class="ic" style="background:#fee500;color:#3a2929">K</span><span class="lbl">카카오로 시작하기</span></button>
-      <button class="sbtn2" id="appleBtn" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:20px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
+            <button class="sbtn2" id="appleBtn" onclick="appleLogin()" style="background:#000;border-color:#000"><span class="ic" style="background:#000;color:#fff;font-size:20px"></span><span class="lbl" style="color:#fff">Apple로 계속하기</span></button>
       <div id="authFallback"></div>
       <div id="authSaved"></div>
       <div class="auth-fine" id="authNote" style="margin-top:8px;text-align:center">데모 — 입력한 이름으로 가입되고 이 브라우저에 저장됩니다</div>
@@ -6086,7 +6108,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.1.9-0916f';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.0-0917a';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -11031,6 +11053,18 @@ function notifGo(link){
       const c=(SRV_MYCLUBS||[]).find(x=>String(x.id)===String(arg));
       if(c && c.name) switchClub(c.name);
     }catch(e){} }, 220);
+    return;
+  }
+  if(link.startsWith('cb2:')){                      // 대진 발행 알림 → 그 모임의 대진을 바로 연다
+    const eid=+link.slice(4)||0;
+    go('club');
+    /* 앱이 막 깨어났으면 로그인·클럽 정보가 아직 없다 — 준비될 때까지 잠깐 기다린다 */
+    let tries=0;
+    const open=()=>{
+      if((SERVER_OK && clubId() && authToken()) || TRIAL){ try{ cb2Open(eid); }catch(e){} return; }
+      if(++tries<20) setTimeout(open, 300);
+    };
+    setTimeout(open, 250);
     return;
   }
   if(link.startsWith('match:')){                    // 오픈매치 상세
@@ -18304,8 +18338,12 @@ async function landPageMount(){
   /* landDraw 를 기다리지 않으면 그 안의 오류가 <오류(P)> 토스트로 샜다 */
   try{ await loadKakaoMap(); await landDraw(); }
   catch(e){ const m=document.getElementById('landMap');
+    /* 이유가 제목과 같으면 두 번 적지 않는다. 앱에서는 대개 카카오에 앱 주소가 등록되지 않은 경우다 */
+    const why=String((e&&e.message)||'');
+    const hint = why && why!=='지도를 불러오지 못했어요' ? why
+      : (IS_NATIVE ? '잠시 후 다시 열어주세요 · 계속되면 운영자에게 알려주세요' : '');
     if(m) m.innerHTML=`<div class="lnone" style="padding-top:60px">지도를 불러오지 못했어요<br>
-      <span>${esc(e.message||'')}</span></div>`; }
+      <span>${esc(hint)}</span></div>`; }
 }
 
 /* 두 점 사이 거리(km) — 가까운 순으로 줄을 세우려고 쓴다 */
@@ -27102,8 +27140,42 @@ function cb2More(){
   el.style.display='block';
 }
 function closeRtMore(){ const el=document.getElementById('rtmore'); if(el) el.style.display='none'; }
+/* ── 경기 중 화면 켜 두기 ──
+   대진표를 띄워 둔 채 코트에 서 있으면 화면이 자꾸 꺼져 다시 잠금을 풀어야 했다.
+   오늘 대진 화면이 열려 있는 동안만 켜 두고, 닫으면 바로 놓아준다.
+   앱에 KeepAwake 플러그인이 있으면 그것을, 없으면 브라우저의 Wake Lock 을 쓴다. */
+const WAKE={on:false, lock:null};
+function wakePlugin(){ try{ const K=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.KeepAwake;
+  return (K && typeof K.keepAwake==='function') ? K : null; }catch(e){ return null; } }
+async function wakeGrab(){
+  const K=wakePlugin();
+  if(K){ try{ await K.keepAwake(); return; }catch(e){} }
+  try{ if('wakeLock' in navigator && !WAKE.lock && !document.hidden){
+    WAKE.lock=await navigator.wakeLock.request('screen');
+    WAKE.lock.addEventListener('release', ()=>{ WAKE.lock=null; });
+  } }catch(e){}
+}
+function wakeOn(){ if(WAKE.on) return; WAKE.on=true; wakeGrab(); }
+async function wakeOff(){
+  if(!WAKE.on) return; WAKE.on=false;
+  const K=wakePlugin(); if(K){ try{ await K.allowSleep(); }catch(e){} }
+  try{ if(WAKE.lock){ const l=WAKE.lock; WAKE.lock=null; await l.release(); } }catch(e){}
+}
+/* 다른 앱에 갔다 오면 브라우저 잠금은 풀린다 — 대진이 아직 열려 있으면 다시 잡는다 */
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && WAKE.on && !wakePlugin()) wakeGrab();
+});
+/* 대진 화면이 다른 경로로 사라졌을 때도 놓아준다 */
+setInterval(()=>{
+  if(WAKE.on && !document.getElementById('cb2v') && !(typeof SC_OPEN!=='undefined' && SC_OPEN)) wakeOff();
+}, 15000);
+function cbWakeSync(){
+  const today = CB2 && (CB2.games||[]).length && (!CB2.date || CB2.date===ymd());
+  if(today) wakeOn(); else wakeOff();
+}
 function drawCB2View(){
   setTimeout(scqBadge, 0);
+  setTimeout(cbWakeSync, 0);
   /* 예전에 발행된 고정 코트 대진은 쓰지 않는 코트까지 courts 에 들어 있다 — 쓰는 코트까지만 본다 */
   if(CB2 && (CB2.mode==='hanul'||CB2.mode==='monthly') && (CB2.games||[]).length){
     const u=Math.max(...CB2.games.map(g=>+g.c||0)); if(u>0 && u<(CB2.courts||0)) CB2.courts=u; }
@@ -33403,7 +33475,7 @@ function omGuideCard(){
 function pushLand(raw){
   const link=String(raw||'').trim();
   const v=link.split(':')[0];
-  const OK=['home','match','club','league','chat','sched','me','bracket','lounge','duel','book','feed','post'];
+  const OK=['home','match','club','league','chat','sched','me','bracket','lounge','duel','book','feed','post','cb2'];
   if(!OK.includes(v)) return go('home');
   try{ notifGo(link); }catch(e){ go('home'); }
 }
@@ -36123,6 +36195,7 @@ function contactWarn(elId, warnId){
 /* ═══════════ 1:1 대화 ═══════════ */
 async function openDM(uid, name){
   if(!SERVER_OK){ toast('대화는 서버 연결이 필요해요'); return; }
+  loadDMBlocks();
   closeOv();
   go('chat');
   state.chatRoom = 'dm:' + uid;
@@ -38962,7 +39035,64 @@ const REPLIES=['좋아요! 그때 봬요 🎾','넵 확인했어요','오 좋네
 let DM_THREADS = [];     // 서버 1:1 대화 스레드
 async function loadDMThreads(){
   if(!SERVER_OK){ DM_THREADS=[]; return; }
+  loadDMBlocks();
   try{ DM_THREADS = await api('/dm/threads'); }catch(e){ if(DM_THREADS===null) DM_THREADS = undefined; }
+}
+/* ── 1:1 대화 신고·차단 ──
+   예전 대화방의 <신고>는 이 기기 안에만 적어 두고 운영자에게 가지 않았다.
+   신고는 서버로 보내고(최근 대화가 함께 남는다), 차단은 서버 차단 목록에 넣는다.
+   차단하면 상대는 나에게 메시지를 보낼 수 없고, 대화 목록에서도 사라진다. */
+let DM_BLOCKED=new Set();
+async function loadDMBlocks(){
+  if(!SERVER_OK || !authToken()) return;
+  try{ const rows=await api('/blocks')||[]; DM_BLOCKED=new Set(rows.map(r=>+r.user_id)); }catch(e){}
+}
+const DM_REPORT_REASONS=['욕설·비하·괴롭힘','성적인 메시지','광고·홍보·사기','개인정보 요구·노출','기타'];
+function openDMSafety(uid){
+  const name=state._roomName||'상대';
+  const blocked=DM_BLOCKED.has(+uid);
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${esc(name)}</h3>
+      <div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <button class="btn ghost" style="margin-bottom:9px;justify-content:flex-start" onclick="openDMReport(${+uid})">신고하기</button>
+    ${blocked
+      ? `<button class="btn ghost" style="justify-content:flex-start" onclick="dmUnblock(${+uid})">차단 해제</button>`
+      : `<button class="btn ghost" style="justify-content:flex-start;color:#d9480f" onclick="dmBlock(${+uid})">차단하기</button>`}
+    <div class="note" style="text-align:left">차단하면 상대가 나에게 메시지를 보낼 수 없고, 대화 목록에서도 보이지 않아요. 상대에게 차단 사실은 알리지 않아요.</div>`;
+  document.getElementById('ov').classList.add('on');
+}
+function openDMReport(uid){
+  const name=state._roomName||'상대';
+  let h=`<div class="sh-top"><h3>신고하기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd"><b>${esc(name)}</b>님과의 대화를 신고해요. 최근 대화가 함께 전달되고, 운영자가 확인한 뒤 조치해요.</div>`;
+  DM_REPORT_REASONS.forEach((r,i)=>{ h+=`<button class="btn ghost" style="margin-bottom:9px;justify-content:flex-start;text-align:left" onclick="dmReport(${+uid},${i})">${esc(r)}</button>`; });
+  h+=`<label style="display:flex;align-items:center;gap:8px;margin:6px 2px 4px;font-size:14px;color:var(--gray)">
+      <input type="checkbox" id="dmRepBlock" checked style="accent-color:var(--coral)"> 신고하면서 차단하기</label>
+    <div class="note" style="text-align:left">허위·보복성 신고는 제재될 수 있어요.</div>`;
+  document.getElementById('sheet').innerHTML=h;
+  document.getElementById('ov').classList.add('on');
+}
+async function dmReport(uid, i){
+  const alsoBlock=!!(document.getElementById('dmRepBlock')||{}).checked;
+  try{
+    await api('/report',{method:'POST',body:JSON.stringify({target_type:'dm', target_id:+uid, reason:DM_REPORT_REASONS[i]||'기타'})});
+  }catch(e){ toast('신고를 보내지 못했어요 · 잠시 후 다시 시도해 주세요'); return; }
+  if(alsoBlock){ await dmBlock(uid, true); return; }
+  closeOv(); toast('신고가 접수됐어요 · 운영자가 확인해요');
+}
+async function dmBlock(uid, fromReport){
+  if(!fromReport && !confirm('이 사용자를 차단할까요?\n상대가 나에게 메시지를 보낼 수 없게 돼요.')) return;
+  try{ await api('/block',{method:'POST',body:JSON.stringify({user_id:+uid})}); }
+  catch(e){ toast('차단하지 못했어요 · 잠시 후 다시 시도해 주세요'); return; }
+  DM_BLOCKED.add(+uid);
+  if(Array.isArray(DM_THREADS)) DM_THREADS=DM_THREADS.filter(t=>+((t.user||{}).id)!==+uid);
+  closeOv(); stopChatPoll(); state.chatRoom=null; renderChat();
+  toast(fromReport ? '신고하고 차단했어요' : '차단했어요');
+}
+async function dmUnblock(uid){
+  try{ await api('/unblock',{method:'POST',body:JSON.stringify({user_id:+uid})}); }
+  catch(e){ toast('해제하지 못했어요'); return; }
+  DM_BLOCKED.delete(+uid);
+  closeOv(); renderChat(); toast('차단을 해제했어요');
 }
 function renderChat(){
   if(state.chatRoom){ renderRoom(); return; }
@@ -38981,12 +39111,13 @@ function renderChat(){
   // 서버 스레드 (실제 대화)
   (Array.isArray(DM_THREADS)?DM_THREADS:[]).forEach(t=>{
     const u = t.user || {};
+    if(DM_BLOCKED.has(+u.id)) return;                       // 차단한 사람은 목록에서 뺀다
     const nm = u.name || u.anon_nick || '알 수 없음';
     const preview = (t.mine?'나: ':'') + (t.last||'');
     h+=`<div class="chrow" onclick="openDM(${u.id},'${nm.replace(/'/g,"\\'")}')">
-      <div class="av2" style="background:#484f56">${nm[0]}</div>
-      <div class="ci2"><div class="cn2">${nm}${t.unread?` <span class="dmbadge">${t.unread}</span>`:''}</div>
-        <div class="cl2">${preview.slice(0,34)}</div></div></div>`;
+      <div class="av2" style="background:#484f56">${esc(nm[0])}</div>
+      <div class="ci2"><div class="cn2">${esc(nm)}${t.unread?` <span class="dmbadge">${t.unread}</span>`:''}</div>
+        <div class="cl2">${esc(preview.slice(0,34))}</div></div></div>`;
   });
   // 데모 모드에서만 남는 가상 대화
   dms.forEach(id=>h+=row(id));
@@ -39044,7 +39175,9 @@ function renderRoom(){
     const r=state.chats[id]; if(!r){ state.chatRoom=null; return renderChat(); }
     name=r.name;
   }
-  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">1:1 대화</div></div><span onclick="openReport('${String(name).replace(/'/g,'')}')" style="font-size:13px;color:var(--lgray);font-weight:400;cursor:pointer">⚠ 신고</span></div>`;
+  let h=`<div class="chead"><div class="bk" onclick="backChat()">‹</div><div style="flex:1"><div class="ti">${esc(name)}</div><div class="su">${srv && DM_BLOCKED.has(+id.slice(3)) ? '차단한 사용자' : '1:1 대화'}</div></div>${
+    srv ? `<span role="button" aria-label="신고·차단" onclick="openDMSafety(${+id.slice(3)})" style="font-size:22px;color:var(--gray);font-weight:700;cursor:pointer;padding:0 6px;line-height:1">⋯</span>`
+        : `<span onclick="openReport('${esc(String(name).replace(/'/g,''))}')" style="font-size:13px;color:var(--lgray);font-weight:400;cursor:pointer">⚠ 신고</span>`}</div>`;
   h+=`<div class="msgs" id="msgsBox"></div>
       <div class="chatbar"><input id="chatIn" placeholder="메시지 입력..." maxlength="500" onkeydown="if(enterKey(event))sendChat()"><button onclick="sendChat()">전송</button></div>`;
   document.getElementById('s-chat').innerHTML=h;
@@ -39066,6 +39199,8 @@ function openRoom(id){state.chatRoom=id;renderChat();}
 function openRoomGo(id){ go('chat'); state.chatRoom=id; renderChat(); }
 function backChat(){stopChatPoll();state.chatRoom=null;renderChat();}
 async function sendChat(){
+  { const id=state.chatRoom;
+    if(isSrvRoom(id) && DM_BLOCKED.has(+id.slice(3))){ toast('차단한 사용자예요 · 차단을 해제하면 보낼 수 있어요'); return; } }
   const inp=document.getElementById('chatIn');if(!inp)return;
   const t=inp.value.trim();if(!t)return;
   const id=state.chatRoom;
@@ -39183,7 +39318,7 @@ function openMap(){
 const REPORT_REASONS=['약속 불이행 (노쇼)','비매너·욕설','스코어 조작','기타'];
 function openReport(name){
   let h=`<div class="sh-top"><h3>신고</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd"><b>${name}</b>님을 신고합니다. 사유를 선택하면 운영진이 검토해요. 신고만으로 점수가 깎이지 않고, 운영진 확인 후 조치돼요.</div>`;
+    <div class="sd"><b>${esc(name)}</b>님을 신고합니다. 사유를 선택하면 운영진이 검토해요. 신고만으로 점수가 깎이지 않고, 운영진 확인 후 조치돼요.</div>`;
   REPORT_REASONS.forEach(r=>{ h+=`<button class="btn ghost" style="margin-bottom:9px;justify-content:flex-start;text-align:left" onclick="submitReport('${name}','${r}')">${r}</button>`; });
   h+=`<div class="note">허위·보복성 신고는 제재될 수 있어요.</div>`;
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
@@ -41135,6 +41270,7 @@ function go(v, isBack){ try{ closeEventPage(); }catch(e){}
   saveMatsu();
 }
 function closeOv(){
+  try{ wakeOff(); }catch(e){}
   /* 시트를 닫으면 점수 시트 표시를 지운다 — 안 지우면 시계가 화면을 영영 다시 안 그린다 */
   if(typeof SC_OPEN!=='undefined') SC_OPEN=false;
   /* 대진 화면의 타이머들도 여기서 끊는다.
@@ -41272,6 +41408,12 @@ if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App){
     const code = u.searchParams.get('code');
     const provider = isKakaoScheme ? 'kakao' : (u.searchParams.get('provider') || 'kakao');
     if(!code){ toast('로그인이 취소됐어요'); return; }
+    /* 안드로이드는 같은 복귀 주소가 두 번 들어온다(자동 이동 + <앱 열기> 버튼, 또는 앱 재시작).
+       인가 코드는 한 번만 쓸 수 있어서, 두 번째 요청이 KOE320 으로 실패해
+       <로그인에 실패했어요>가 뜬 뒤 첫 번째 요청 덕에 로그인이 되는 일이 있었다. */
+    window._oauthCodes = window._oauthCodes || new Set();
+    if(window._oauthCodes.has(code)) return;
+    window._oauthCodes.add(code);
     try{
       let d;
       if(provider === 'kakao'){
@@ -41293,7 +41435,9 @@ if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App){
     }catch(e){
       const m = String((e&&e.message)||'');
       console.error('[MATSU] 딥링크 로그인 실패:', m);
-      toast(m.includes('KOE006') ? '카카오 콘솔에 Redirect URI 가 등록되지 않았어요' : '로그인에 실패했어요');
+      if(authToken() && state.loggedIn) return;          // 다른 요청으로 이미 로그인됐다 — 실패를 알리지 않는다
+      toast(m.includes('KOE006') ? '카카오 콘솔에 Redirect URI 가 등록되지 않았어요'
+        : m.includes('KOE320') ? '인증이 만료됐어요 · 다시 눌러주세요' : '로그인에 실패했어요');
     }
   });
 }
@@ -41474,9 +41618,11 @@ async function askNativePush(){
 
 /* ═══════════ PWA ═══════════ */
 // file:// 로 열었을 땐 서비스워커를 등록할 수 없다 (데모 모드).
-if('serviceWorker' in navigator && location.protocol.startsWith('http') && !IS_NATIVE){
-  /* ── 뒤로가기 처리: 백 버튼·스와이프백이 앱을 종료시키지 않는다 ──
-   시트가 열려 있으면 닫고, 다른 탭이면 홈으로, 홈이면 그대로 머문다. */
+/* 뒤로가기(기기 버튼·가장자리 쓸기)가 이 PWA 조건 블록 <안>에 들어 있었다.
+   조건에 !IS_NATIVE 가 있어서, 정작 앱(안드로이드·iOS)에서는 쓸어 뒤로 가기도,
+   화면 단위 뒤로가기도 한 번도 켜지지 않았다. 블록을 나눠 뒤로가기는 어디서나 켠다. */
+const PWA_ON = ('serviceWorker' in navigator) && location.protocol.startsWith('http') && !IS_NATIVE;
+if(PWA_ON){
 // 런타임 오류가 조용히 삼켜져 '안 눌림'으로 보이는 문제 추적용
 window.addEventListener('error', e=>{
   try{ toast('오류: '+String(e.message||'').slice(0,80)); }catch(_){}
@@ -41489,8 +41635,10 @@ window.addEventListener('unhandledrejection', e=>{
     m=m.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
     if(m && !/네트워크|fetch|Load failed/i.test(m)) toast('오류: '+m); }catch(_){}
 });
-history.replaceState({matsu:1},'');
-history.pushState({matsu:1},'');
+}
+/* ── 뒤로가기 처리: 백 버튼·스와이프백이 앱을 종료시키지 않는다 ──
+   시트가 열려 있으면 닫고, 다른 탭이면 홈으로, 홈이면 그대로 머문다. */
+try{ history.replaceState({matsu:1},''); history.pushState({matsu:1},''); }catch(e){}
 /* 뒤로 가기 한 걸음 — 시트가 열려 있으면 시트, 알림창이 열려 있으면 알림창,
    그다음이 화면 이력이다. 안드로이드 뒤로가기 버튼과 화면 쓸기가 같은 길을 쓴다. */
 function navBackStep(){
@@ -41525,7 +41673,10 @@ window.addEventListener('popstate', ()=>{
    탭줄·달력 넘기기 같은 원래 동작이므로 건드리면 안 된다.
    세로가 먼저 크게 움직이면 스크롤로 보고 즉시 손을 뗀다. */
 (function(){
-  const EDGE = 24;        // 여기서 시작해야 뒤로가기로 친다
+  const EDGE = 32;        // 여기서 시작해야 뒤로가기로 친다
+  /* 넓은 화면(폴드·태블릿)에서는 앱이 가운데 있어 화면 왼쪽 끝이 앱의 왼쪽 끝이 아니다.
+     앱 껍데기의 왼쪽 끝을 기준으로 잰다. */
+  const appLeft = ()=>{ const a=document.querySelector('.app'); return a ? Math.max(0, a.getBoundingClientRect().left) : 0; };
   const NEED = 70;        // 이만큼 끌어야 넘어간다
   let x0=0, y0=0, on=false, dx=0, decided=false;
   const veil = ()=>{ let v=document.getElementById('swBack');
@@ -41538,7 +41689,8 @@ window.addEventListener('popstate', ()=>{
   addEventListener('touchstart', ev=>{
     if(ev.touches.length!==1) return;
     const t=ev.touches[0];
-    if(t.clientX > EDGE) return;
+    const L=appLeft();
+    if(t.clientX < L - 4 || t.clientX > L + EDGE) return;
     x0=t.clientX; y0=t.clientY; on=true; dx=0; decided=false;
   }, {passive:true});
   addEventListener('touchmove', ev=>{
@@ -41570,6 +41722,19 @@ window.addEventListener('popstate', ()=>{
   addEventListener('touchcancel', end, {passive:true});
 })();
 
+/* 안드로이드 기기 뒤로가기 — 한 걸음씩 되짚고, 더 갈 곳이 없으면(홈) 앱을 뒤로 보낸다.
+   리스너가 없으면 캐패시터가 웹뷰 이력으로 처리하는데, 위에서 늘 한 칸을 남겨 두므로
+   홈에서 눌러도 아무 일이 없었다. */
+try{
+  if(IS_NATIVE && window.Capacitor.Plugins && Capacitor.Plugins.App && Capacitor.Plugins.App.addListener){
+    Capacitor.Plugins.App.addListener('backButton', ()=>{
+      let moved=false; try{ moved = navBackStep(); }catch(e){}
+      if(!moved){ const A=Capacitor.Plugins.App;
+        if(A.minimizeApp) A.minimizeApp().catch(()=>{}); else if(A.exitApp) A.exitApp(); }
+    });
+  }
+}catch(e){}
+if(PWA_ON){
 window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
       reg.update().catch(()=>{});                             // 열 때마다 새 워커 확인
