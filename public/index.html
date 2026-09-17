@@ -5849,6 +5849,36 @@ try{ var _cp=window.Capacitor; if(_cp && _cp.isNativePlatform && _cp.isNativePla
 </script>
 <style>
 html.is-android #appleBtn{display:none!important}
+/* 움직일 수 있는 범위 트랙 */
+.rt{margin-top:16px;padding:2px 0 2px}
+.rt-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--lgray)}
+.rt-h b{color:var(--ink);font-weight:600}
+.rt-trk{position:relative;height:18px;margin:30px 4px 0}
+.rt-base{position:absolute;left:0;right:0;top:7px;height:4px;border-radius:4px;background:#eef0f3}
+.rt-band{position:absolute;top:6px;height:6px;border-radius:6px;background:linear-gradient(90deg,#ffd9c4,#ffb58f)}
+.rt-tk{position:absolute;top:8px;width:2px;height:2px;margin-left:-1px;border-radius:2px;background:#d1d6db}
+.rt-tk.in{background:#fff;opacity:.9}
+.rt-reg{position:absolute;top:1px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 2px var(--ink)}
+.rt-now{position:absolute;top:-1px;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:var(--coral);
+  box-shadow:0 0 0 3px #fff,0 2px 8px rgba(241,99,26,.45)}
+.rt-now.same{box-shadow:0 0 0 3px #fff,0 0 0 4.5px var(--ink),0 2px 8px rgba(241,99,26,.35)}
+.rt-regl,.rt-nowl{position:absolute;transform:translateX(-50%);font-style:normal;font-size:11px;white-space:nowrap}
+.rt-regl{top:-22px;color:var(--gray);font-weight:600}
+.rt-nowl{top:-25px;color:#fff;background:var(--ink);border-radius:6px;padding:1px 6px;font-weight:700}
+.rt-scale{position:relative;height:16px;margin:9px 4px 0}
+.rt-lb{position:absolute;transform:translateX(-50%);font-size:10.5px;color:#c4c9cf;font-weight:600;white-space:nowrap}
+.rt-lb.in{color:var(--gray)}
+.rt-lb.cur{color:var(--coral-d,#d9500a);font-weight:800}
+.rt-f{font-size:14px;color:var(--gray);margin:12px 0 0;line-height:1.5;word-break:keep-all}
+.rt-f b{color:var(--ink);font-weight:700}
+.rt-f > span:last-child{display:block;font-size:12px;color:var(--lgray);margin-top:3px}
+.rt-max{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--coral-d,#d9500a);
+  background:#fff0e8;border-radius:5px;padding:1px 6px;vertical-align:1px}
+/* 시트 닫기 — 회색 원 안의 가는 ✕. 누르는 범위는 44px */
+.xclose{flex:none;width:32px;height:32px;border-radius:50%;border:0;background:var(--felt);color:var(--gray);
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;font:inherit}
+.xclose::after{content:'';position:absolute;inset:-6px}
+.xclose:active{background:#e5e8eb}
 /* 앱에서는 웹의 <폰 모양 액자>를 쓰지 않는다.
    폴드·태블릿처럼 넓은 화면에서 둥근 액자와 회색 여백이 생겨 웹페이지처럼 보였다.
    아이폰과 같은 폭(최대 440px)으로 가운데 두고, 양옆은 앱 바탕색으로 채운다. */
@@ -5982,7 +6012,7 @@ html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   <div class="fullov on" id="auth"><div class="auth2">
     <div class="auth2-top">
       <div class="auth2-logo"><span class="brand" role="img" aria-label="맞수 MATSU"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg><span class="wm">MATSU</span></span></div>
-      <div class="auth2-sub">최근 작성된 실제 회원의 후기입니다.</div>
+      <div class="auth2-sub">동호회 대진·점수·랭킹을 한 곳에서</div>
       <div class="rev-track" id="revTrack" onscroll="revScroll()"></div>
       <div class="rev-dots" id="revDots"></div>
     </div>
@@ -6108,7 +6138,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.0-0917a';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.0-0917c';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -6268,19 +6298,26 @@ function phoneDone(){
   if(c.replace(/[^0-9]/g,'').length<4){toast('인증번호를 입력해 주세요');return;}
   closeOv(); login('phone');
 }
-let AUTH_REVIEWS=[
-  {t:'드디어 등급이 공정해졌다',b:'자기소개로 부풀리던 시절 끝.\n결과로 딱 정해지니까 매칭이 진짜 됨.',w:'라켓초보 · 경기 용인',time:'2일 전'},
-  {t:'동네 클럽 이렇게 쉽게 구할 줄',b:'혼자 벽치기만 하다가\n이제 주말마다 게임해요 ㅋㅋ',w:'백핸드장인 · 서울 강남',time:'3일 전'},
-  {t:'총무님 일이 확 줄었대요',b:'회비·대진·출석이 자동이라\n운영이 편해졌다고 하시네요.',w:'우리동네총무 · 경기 성남',time:'26.06.26'},
-  {t:'시즌 랭킹 올리는 재미',b:'라이벌이랑 재대결 신청하는\n그 맛이 있음 🔥',w:'챌린저도전 · 인천 연수',time:'5일 전'},
+/* 로그인 화면 캐러셀 — 기능 소개.
+   예전에는 지어낸 후기(닉네임·지역·날짜)를 <최근 작성된 실제 회원의 후기>라고 적어 두었다.
+   서버에 붙으면 기능 소개로 바꾸긴 했지만, 앱을 켜는 순간·연결이 늦을 때·데모에서는
+   가짜 후기가 그대로 보였다. 실제 후기가 아닌 것을 후기라고 보여주면 안 되므로 처음부터 기능 소개만 쓴다.
+   내용은 지금 앱에 있는 기능만 적는다(오픈매치·리그처럼 준비 중인 것은 빼둔다). */
+const AUTH_HIGHLIGHTS=[
+  {t:'참석만 누르면 대진까지', b:'모임에 참석을 누르면\n여섯 가지 방식으로 대진이 짜져요.', w:'맞수 · 대진', time:''},
+  {t:'"지금 몇 게임 했지?" 끝', b:'모두 정확히 네 게임.\n코트가 비면 다음 경기를 알려줘요.', w:'맞수 · 경기 진행', time:''},
+  {t:'점수 넣으면 랭킹이 쌓여요', b:'경기 결과가 시즌 랭킹과\n회원 실력에 바로 반영돼요.', w:'맞수 · 기록', time:''},
+  {t:'총무 일이 절반으로', b:'회비 장부·출석·공지를\n한 곳에서 정리해요.', w:'맞수 · 클럽 운영', time:''},
+  {t:'게스트도 초대장 하나로', b:'카톡방에 초대장을 보내면\n이름만 남기고 신청 완료.', w:'맞수 · 게스트 모집', time:''},
 ];
+let AUTH_REVIEWS=AUTH_HIGHLIGHTS.slice();
 function renderAuthReviews(){
   const tr=document.getElementById('revTrack'); if(!tr)return;
   tr.innerHTML=AUTH_REVIEWS.map(r=>{
     const nick=String(r.w||'').split('·')[0].trim();
-    return `<div class="rev-card"><div class="rv-t">${r.t}</div><div class="rv-b">${r.b}</div>
+    return `<div class="rev-card"><div class="rv-t">${esc(r.t)}</div><div class="rv-b">${esc(r.b)}</div>
       <div class="rv-f"><div class="rv-av">${esc(nick.slice(0,1))}</div>
-      <div class="rv-who">${r.w}</div>${r.time?`<div class="rv-time">${r.time}</div>`:''}</div></div>`;
+      <div class="rv-who">${esc(r.w)}</div>${r.time?`<div class="rv-time">${r.time}</div>`:''}</div></div>`;
   }).join('');
   const dd=document.getElementById('revDots'); if(dd)dd.innerHTML=AUTH_REVIEWS.map((_,i)=>`<i class="${i===0?'on':''}"></i>`).join('');
   clearInterval(window._revIv); let idx=0;
@@ -7447,13 +7484,7 @@ function stripDemoData(){
   state.chatRoom = null;
   PEOPLE = [];                // 회원 찾기에 뜨던 가상 인물
   LB_POOL = [];               // 리더보드
-  // 가짜 후기는 지우되, 캐러셀은 기능 하이라이트로 살린다 (정직한 첫인상)
-  AUTH_REVIEWS = [
-    {t:'참석 체크 한 번이면 대진까지', b:'모임에 참석만 누르면\n복식 대진이 자동으로 짜져요.', w:'맞수 · 대진', time:''},
-    {t:'총무 일이 절반으로', b:'회비 장부·납부 현황·정산이\n자동으로 정리돼요.', w:'맞수 · 클럽 운영', time:''},
-    {t:'게스트도 초대장 하나로', b:'카톡방에 초대장을 뿌리면\n이름만 남기고 신청 완료.', w:'맞수 · 게스트 모집', time:''},
-    {t:'기록이 쌓이면 랭킹이 된다', b:'경기 결과·러닝 기록이\n시즌 랭킹과 PB로 쌓여요.', w:'맞수 · 기록', time:''},
-  ];
+  AUTH_REVIEWS = AUTH_HIGHLIGHTS.slice();   // 캐러셀은 기능 소개 (정직한 첫인상)
   state.clubs = [];           // 클럽 찾기 목록
   state.clubStandings = [];   // 클럽 리그 순위
   state.clubTie = null;       // 클럽 대항전
@@ -7463,7 +7494,7 @@ function stripDemoData(){
   state.clubLogos = {};
   state.myClubs = []; state.clubData = {}; state.activeClub = null;
   // 캐러셀은 기능 하이라이트로 다시 그린다
-  const sub=document.querySelector('.auth2-sub'); if(sub) sub.textContent='동호회 대진·회비·리그를 한 곳에서';
+  const sub=document.querySelector('.auth2-sub'); if(sub) sub.textContent='동호회 대진·점수·랭킹을 한 곳에서';
   ['revTrack','revDots'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=''; });
   try{ renderAuthReviews(); }catch(e){}
 }
@@ -17331,7 +17362,7 @@ async function openBracketTrash(){
     : `<div class="empty" style="padding:26px 0"><div class="et">휴지통이 비어 있어요</div>
        <div class="es">지운 대진은 여기에 30일간 남아요</div></div>`;
   document.getElementById('ov').innerHTML=`<div class="sheet" id="sheet">
-    <div class="sh-top"><b>대진 휴지통</b><button class="x" onclick="closeOv()">✕</button></div>
+    <div class="sh-top"><b>대진 휴지통</b><button class="xclose" aria-label="닫기" onclick="closeOv()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div>
     <div style="font-size:13px;color:var(--lgray);margin:0 0 6px">되살리면 점수와 그날 기록이 그대로 돌아와요</div>
     ${list}
     <button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button></div>`;
@@ -17713,6 +17744,44 @@ function balValue(p){
 /* ── 짝은 이렇게 맞춰요 — 회원이 보는 설명 ────────────────────────────
    대진표만 보면 <왜 이 사람이랑 붙지>가 남는다. 규칙을 숨기면 의심이 된다.
    내 값만 보여준다 — 남의 점수는 아무에게도 보이지 않는다. */
+/* ── 움직일 수 있는 범위 ───────────────────────────────
+   구력 등급 앞뒤 3칸을 가는 트랙 하나로 보여준다. 색은 주황 하나.
+   지금 자리 = 주황 점(말풍선 <지금>), 구력 = 속 빈 원. 둘이 같으면 테두리 두른 점 하나.
+   범위 밖 한 칸씩은 흐리게 더 보여줘 <여기까지>가 느껴지게 한다. */
+function cbRangeTrack(reg, now, few){
+  const L=GRADE_LADDER;
+  const ri=L.indexOf(String(reg||'').toUpperCase());
+  let ni=L.indexOf(String(now||'').toUpperCase());
+  if(ri<0) return '';
+  if(ni<0) ni=ri;
+  const lo=Math.max(0,ri-3), hi=Math.min(L.length-1,ri+3);
+  ni=Math.max(lo,Math.min(hi,ni));
+  const a=Math.max(0,lo-1), b=Math.min(L.length-1,hi+1), n=b-a+1;
+  const x=k=>((k-a+0.5)/n*100).toFixed(2);
+  const d=ni-ri, same=d===0;
+  let ticks='', labs='';
+  for(let k=a;k<=b;k++){
+    const inR=k>=lo&&k<=hi;
+    ticks+=`<i class="rt-tk${inR?' in':''}" style="left:${x(k)}%"></i>`;
+    labs+=`<span class="rt-lb${inR?' in':''}${k===ni?' cur':''}" style="left:${x(k)}%">${L[k]}</span>`;
+  }
+  const msg = few ? '경기가 쌓이면 이 안에서 움직여요'
+    : same ? '구력과 같은 자리예요'
+    : `구력보다 <b>${Math.abs(d)}칸 ${d>0?'위':'아래'}</b>예요`;
+  const cap = (!few && Math.abs(d)>=3) ? '<span class="rt-max">최대</span>' : '';
+  return `<div class="rt" role="img" aria-label="움직일 수 있는 범위 ${L[lo]}부터 ${L[hi]}까지, 지금 ${L[ni]}">
+    <div class="rt-h"><span>움직일 수 있는 범위</span><b>${L[lo]} – ${L[hi]}</b></div>
+    <div class="rt-trk"><div class="rt-base"></div>
+      <div class="rt-band" style="left:${x(lo)}%;width:${(x(hi)-x(lo)).toFixed(2)}%"></div>
+      ${ticks}
+      ${same?'':`<i class="rt-reg" style="left:${x(ri)}%"></i><em class="rt-regl" style="left:${x(ri)}%">구력</em>`}
+      <i class="rt-now${same?' same':''}" style="left:${x(ni)}%"></i>
+      <em class="rt-nowl" style="left:${x(ni)}%">${same?'구력 · 지금':'지금'}</em>
+    </div>
+    <div class="rt-scale">${labs}</div>
+    <p class="rt-f">${msg}${cap}<span>성적과 월례대회를 반영해도 구력에서 한 등급 안에서만 움직여요</span></p>
+  </div>`;
+}
 function balPanelHTML(){
   const me=(state.serverUser||{}).id;
   const meRow=(CLUB_ROSTER||[]).find(r=>String(r.user_id)===String(me));
@@ -17802,6 +17871,8 @@ function balPanelHTML(){
         >${clubLevel || s.code}</span>
       <span style="${tsSub};color:var(--gray);white-space:nowrap">구력 ${esc(s.code)}</span>
     </div>
+
+    ${cbRangeTrack(s.code, clubLevel || s.code, (s.games||0) < MSK_MINGAMES)}
 
     <!-- 링은 <100 중 몇을 채웠나>만 그린다.
          조각 셋으로 쪼개면 구력 몫이 사라진다 — 구력 5점은 둘레의 5%인데
@@ -19840,7 +19911,7 @@ function renderMemberSkill(){
       <div style="font-size:13px;color:var(--lgray);font-weight:400;margin-top:5px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
         >${x.games}경기 · 승률 ${x.wr}%${
-          st ? ` · <b style="color:var(--gray)">${mskSteps(st)}</b>` : ''}${
+          st ? ` · <b style="color:var(--gray)">${mskSteps(st)}</b>${Math.abs(st)>=3?' <span style="font-size:11px;font-weight:700;color:var(--coral-d,#d9500a);background:#fff0e8;border-radius:5px;padding:0 5px">최대</span>':''}` : ''}${
           x.games<MSK_SURE?' · 표본 적음':''}</div>
       ${mskTrendChip(x.trend)}${mskPrevChip(x)}
     </div>`;
@@ -27857,8 +27928,22 @@ function cbLv(p){
     /* 사다리는 1(C) ~ 5(SS) 다. 그런데 상한·하한이 없어서 승률 6% 인 분이
        −0.32 로 계산되고 있었다. 이 값은 팀 실력 합을 맞추는 계산에 그대로 들어가므로
        음수 한 명이 그 조 전체의 균형을 왜곡한다. 사다리 안으로 자른다. */
-    return Math.max(1, Math.min(5, (base*wG + formLv*wF + tierLv*wT) / sum));
+    const mixed = (base*wG + formLv*wF + tierLv*wT) / sum;
+    /* 구력에서 위아래 한 등급(사다리 3칸)까지만 움직인다.
+       성적·월례 조를 모두 섞은 <최종 값>을 한 번만 자른다 — 요소마다 자르면
+       비중과 겹쳐 회원에게 설명할 수 없다. 예전에는 한계가 없어 이론상 5칸까지 갔다.
+       대진 편성·KDK 조 나누기·회원 실력·팀 실력 표시가 모두 이 값을 쓴다. */
+    const M = cbMoveMax();
+    const capped = Math.max(base - M, Math.min(base + M, mixed));
+    return Math.max(1, Math.min(5, capped));
   }catch(e){ return base; }
+}
+/* 한 등급 = 사다리 3칸 = lv 1.0 (함수로 두어 스크립트 어디서 불려도 값이 있다) */
+function cbMoveMax(){ return 1; }
+/* 구력 등급을 기준으로 지금 몇 칸 움직였나 (−3 ~ +3) */
+function cbMoveSteps(reg, act){
+  const a=GRADE_LADDER.indexOf(String(reg||'').toUpperCase()), b=GRADE_LADDER.indexOf(String(act||'').toUpperCase());
+  return (a<0||b<0) ? 0 : b-a;
 }
 /* 팀 평균 등급 — 두 사람의 자리 번호를 평균 내 가장 가까운 칸으로 */
 /* 팀 실력 표시 — 구력 평균이 아니라 <대진에 실제로 쓰는 값>의 평균이다.
@@ -32003,7 +32088,7 @@ function kdkDrawPreview(){
         font-size:12.5px;color:var(--coral-d);line-height:1.55">경계에 있는 <b>${edge.map(esc).join(' · ')}</b>은
         실력이 가까워요 · 다시 섞으면 코트가 바뀔 수 있어요</div>` : '';
   document.getElementById('ov').innerHTML=`<div class="sheet" id="sheet">
-    <div class="sh-top"><b>이렇게 나뉘어요</b><button class="x" onclick="closeOv()">✕</button></div>
+    <div class="sh-top"><b>이렇게 나뉘어요</b><button class="xclose" aria-label="닫기" onclick="closeOv()"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 2l10 10M12 2 2 12"/></svg></button></div>
     <div style="font-size:13px;color:var(--lgray);margin:-4px 0 0">KDK · ${flat.length}명 · ${P.parts.length}코트 · 실력순</div>
     <div style="margin-top:14px;padding:11px 13px;border-radius:11px;background:var(--felt);
       font-size:12.5px;color:var(--gray);line-height:1.55">실력이 높은 순으로 줄 세워 위에서부터 코트에 넣어요 · 비슷한 사람끼리 쳐요</div>
