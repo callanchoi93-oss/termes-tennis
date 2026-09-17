@@ -252,7 +252,7 @@ function cleanName(s, fallback) {
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
 
-const SRV_BUILD = 'sH-0916b';
+const SRV_BUILD = 'sH-0917a';
 /* public/index.html 의 BUILD 와 같은 값을 적는다 — 앱 업데이트 안내 기준 */
 /* 앱 안에 든 화면 버전. 이 값과 앱의 BUILD 가 다르면 <새 버전이 나왔어요> 배너가 뜬다.
    기본값을 옛 버전으로 두면 환경변수를 안 넣었을 때 모두에게 배너가 계속 뜬다 —
@@ -1804,8 +1804,54 @@ app.put('/clubs/:id/bracket2', auth, (req, res) => {          // 발행/수정 �
     if (ev && ev.tag) tag = ev.tag;
   }
   cbLog(cid, data, tag);
+  try { cbPublishNotify(cid, eid, prevRow, data, req.uid, isReset); } catch (e) { console.error('[bracket2] 알림 실패:', e.message); }
   res.json({ ok: true });
 });
+/* ── 대진 발행 알림 ──
+   이 경로(PUT /bracket2)는 경기 시작·타이머·코트 이동 때도 불린다. 그때마다 알리면 폭탄이다.
+   <새로 짠 대진>일 때만 보낸다: 처음 올라온 대진, 날짜가 바뀐 대진, 처음부터 다시 짠 대진,
+   또는 경기 구성(회차·코트·선수)이 이전과 하나도 겹치지 않는 대진.
+   받는 사람은 그 대진에 이름이 있는 회원이고, 발행한 사람은 뺀다.
+   알림을 누르면 앱이 그 모임의 대진을 바로 연다(link: cb2:<모임 번호>).
+   같은 모임에 10분 안에 다시 짜면 한 번만 보낸다. */
+const CB_NOTIFY_AT = new Map();
+function cbPublishNotify(cid, eid, prevRow, data, byUid, isReset) {
+  const games = (data && data.games) || [];
+  if (!games.length) return;
+  const sig = g => `${g.r}|${g.c}|${[...(g.teamA || []), ...(g.teamB || [])].map(p => String(p && p.id)).sort().join(',')}`;
+  let fresh = !prevRow || isReset;
+  if (!fresh) {
+    try {
+      const prev = JSON.parse(prevRow.data || '{}');
+      if ((prev.date || '') !== (data.date || '')) fresh = true;
+      else {
+        const old = new Set((prev.games || []).map(sig));
+        fresh = !games.some(g => old.has(sig(g)));
+      }
+    } catch (e) { fresh = true; }
+  }
+  if (!fresh) return;
+  const key = `${cid}:${eid || 0}`;
+  const last = CB_NOTIFY_AT.get(key) || 0;
+  if (Date.now() - last < 10 * 60 * 1000) return;
+  CB_NOTIFY_AT.set(key, Date.now());
+  const count = {};
+  games.forEach(g => [...(g.teamA || []), ...(g.teamB || [])].forEach(p => {
+    const id = intOrNull(p && p.id);
+    if (id) count[id] = (count[id] || 0) + 1;
+  }));
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  let evTitle = '';
+  if (eid) { try { evTitle = (db.prepare('SELECT title FROM club_events WHERE id=?').get(eid) || {}).title || ''; } catch (e) {} }
+  const link = `cb2:${eid || 0}`;
+  Object.keys(count).forEach(k => {
+    const uid = +k;
+    if (uid === byUid) return;
+    if (!db.prepare('SELECT 1 FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid)) return;   // 게스트·탈퇴자 제외
+    sendPush(uid, { icon: '📋', title: '오늘 대진이 나왔어요',
+      body: `${evTitle || club.name || '클럽'} · 전체 ${games.length}경기 · 내 경기 ${count[k]}개`, link });
+  });
+}
 app.get('/clubs/:id/bracket2/logs', auth, (req, res) => {     // 시즌 기록 — 클럽 멤버
   const cid = +req.params.id;
   if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
@@ -4730,7 +4776,23 @@ app.post('/posts/:id/like', auth, (req, res) => {
   res.json({ ok: true });
 });
 app.post('/report', auth, (req, res) => {
-  const { target_type, target_id, reason } = req.body;
+  const b = req.body || {};
+  const target_type = String(b.target_type || '').slice(0, 20);
+  const target_id = intOrNull(b.target_id);
+  let reason = String(b.reason || '').slice(0, 200);
+  if (!target_type || !target_id) return res.status(400).json({ error: 'bad_target' });
+  /* 1:1 대화 신고는 운영자가 판단할 근거가 필요하다 — 최근 대화 20줄을 신고와 함께 남긴다.
+     대화는 신고한 사람과 상대 둘 사이의 것만 담는다. */
+  if (target_type === 'dm') {
+    if (target_id === req.uid) return res.status(400).json({ error: 'bad_target' });
+    try {
+      const msgs = db.prepare(`SELECT from_id, body, created_at FROM dms
+        WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?) ORDER BY id DESC LIMIT 20`)
+        .all(req.uid, target_id, target_id, req.uid).reverse();
+      const log = msgs.map(m => `${m.from_id === req.uid ? '신고자' : '상대'}: ${String(m.body || '').slice(0, 120)}`).join('\n');
+      reason = `${reason}\n---\n${log}`.slice(0, 4000);
+    } catch (e) {}
+  }
   db.prepare('INSERT INTO reports (reporter_id,target_type,target_id,reason,created_at) VALUES (?,?,?,?,?)')
     .run(req.uid, target_type, target_id, reason, now());
   // 자동 임시 숨김(누적 신고 3회) 예시
@@ -4758,7 +4820,11 @@ app.get('/blocks', auth, (req, res) => {
 
 // ── M캐쉬 지갑 ──
 app.post('/cash/spend', auth, (req, res) => {
-  const { amount, reason } = req.body;
+  const { reason } = req.body || {};
+  /* 금액을 검사하지 않아 음수를 보내면 잔액이 늘었다 */
+  const amount = Number((req.body || {}).amount);
+  if (!Number.isInteger(amount) || amount <= 0 || amount > 10000000)
+    return res.status(400).json({ error: 'bad_amount' });
   const u = getUser(req.uid);
   if (u.cash < amount) return res.status(402).json({ error: 'insufficient', cash: u.cash });
   const bal = u.cash - amount;
@@ -12366,6 +12432,7 @@ app.get('/admin/reports', admin, (_req, res) => {
   res.json(rows.map(r => {
     let target = null;
     if (r.target_type === 'post') target = db.prepare('SELECT id,title,hidden FROM posts WHERE id=?').get(r.target_id) || null;
+    if (r.target_type === 'dm') target = db.prepare('SELECT id,name FROM users WHERE id=?').get(r.target_id) || null;
     return { ...r, target };
   }));
 });
