@@ -4306,6 +4306,33 @@
   .xcr .r{ flex:none;text-align:right } .xcr .r b{ display:block;font-size:14px;font-weight:700;color:var(--coral-d) }
   .xcr .r span{ display:block;font-size:12px;color:var(--lgray);margin-top:2px } .xcr .r span.in{ color:#00a070;font-weight:700 }
   .xcr .r b.w{ font-size:18px;color:var(--coral-d) } .xcr .r b.l{ font-size:18px;color:var(--gray) } .xcr .r b.d{ font-size:18px;color:var(--gray) }
+  .ntc .h{ display:flex;align-items:center;gap:6px } .ntmore{ margin-left:auto;width:36px;height:28px;border:0;background:none;color:var(--lgray);font-size:18px;letter-spacing:.08em;cursor:pointer;font-family:inherit }
+  .nwmenu{ display:flex;align-items:center;justify-content:space-between } .nwmenu em{ font-style:normal;font-size:12px;font-weight:400;color:var(--lgray) }
+  /* 홈 · 다음 모임 — 코트 가는 표 (그림 없이 모양과 글자로) */
+  .hanx2{ margin-top:var(--s3);border-radius:22px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 8px 22px rgba(23,28,37,.07);overflow:hidden;position:relative }
+  .hanx2 .top{ background:var(--coral);color:#fff;padding:var(--s4) var(--s4) 20px;cursor:pointer }
+  .hanx2 .pl{ display:flex;justify-content:space-between;gap:var(--s2) }
+  .hanx2 .pl span{ height:26px;padding:0 var(--s3);border-radius:13px;background:rgba(255,255,255,.2);font-size:var(--t0);font-weight:700;display:inline-flex;align-items:center;white-space:nowrap }
+  .hanx2 .ti{ display:block;font-size:var(--t4);font-weight:800;letter-spacing:-.04em;margin-top:var(--s3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .hanx2 .tm{ display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3) }
+  .hanx2 .tm b{ display:block;font-size:30px;font-weight:800;letter-spacing:-.04em;line-height:1 } .hanx2 .tm span{ display:block;font-size:var(--t0);opacity:.85;margin-top:var(--s1) }
+  .hanx2 .tm .r{ text-align:right }
+  .hanx2 .tm i{ flex:1;position:relative;height:0;border-top:2px dashed rgba(255,255,255,.55);margin-bottom:18px }
+  .hanx2 .tm i em{ position:absolute;left:50%;top:-14px;transform:translateX(-50%);font-style:normal;height:26px;padding:0 var(--s3);border-radius:13px;background:#fff;color:var(--coral-d);font-size:var(--t0);font-weight:700;display:flex;align-items:center;white-space:nowrap }
+  .hanx2 .cut{ position:relative;height:0;border-top:2px dashed var(--line2);margin:0 16px }
+  .hanx2 .cut:before,.hanx2 .cut:after{ content:'';position:absolute;top:-12px;width:22px;height:22px;border-radius:50%;background:var(--cream,#fff);box-shadow:inset 0 0 0 1px var(--line2) }
+  .hanx2 .cut:before{ left:-28px } .hanx2 .cut:after{ right:-28px }
+  .hanx2 .bot{ padding:var(--s4) }
+  .hanx2 .w{ display:flex;align-items:center;gap:var(--s3);cursor:pointer } .hanx2 .w .c{ flex:1;min-width:0 }
+  .hanx2 .w b{ display:block;font-size:var(--t2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis } .hanx2 .w .c span{ display:block;font-size:var(--t1);color:var(--gray);margin-top:2px }
+  .hanx2 .f{ flex:none;display:inline-flex } .hanx2 .f i{ font-style:normal;width:28px;height:28px;border-radius:50%;color:#fff;font-size:var(--t0);font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff }
+  .hanx2 .f i+i{ margin-left:-8px }
+  .hanx2 .a{ display:flex;align-items:center;gap:var(--s2);margin-top:var(--s4) }
+  /* 전역 .sub{margin-bottom:18px} 이 <바꾸기> 버튼에 걸려 카드 아래가 18px 떠 있었다 */
+  .hanx2 .a button,.hanx .a button{ margin:0 !important }
+  .hanx2 .a button{ height:48px;border:0;border-radius:14px;font-size:var(--t2);font-weight:700;font-family:inherit;cursor:pointer }
+  .hanx2 .a button:first-child{ flex:1 } .hanx2 .a button.sub{ flex:0 0 88px;background:var(--felt);color:var(--gray) }
+  .hanx2 .a button.go{ background:var(--coral);color:#fff } .hanx2 .a button.ok{ background:#e6f8f2;color:#00a070 } .hanx2 .a button.mute{ background:var(--felt);color:var(--ink) }
   /* ── 홈 A · 여백형 ── */
   .hanx{ border-radius:20px;background:var(--coral-s);padding:var(--s4);margin-top:var(--s3) }
   .hanx .t{ display:flex;align-items:center;gap:var(--s4);cursor:pointer }
@@ -17596,6 +17623,33 @@ function nwNoticeTile(list){
   return `<div class="nwnt" onclick="openNoticeSheet(${i})"><div class="h"><em>공지</em><b>${esc(L.t)}</b>${list.length>1?`<span onclick="event.stopPropagation();NT_I=(${i}+1)%${list.length};renderClub()">${i+1}/${list.length} ›</span>`:''}</div>
     ${L.s?`<div class="s">${esc(L.s)}</div>`:''}</div>`;
 }
+function openNoticeMenu(id){
+  const n=(CLUB_NOTICES||[]).find(x=>x.id===id); if(!n) return;
+  const row=(t,d,act,red)=>`<button class="nwmenu${red?' rd':''}" onclick="${act}"><span>${t}</span><em>${d}</em></button>`;
+  document.getElementById('sheet').innerHTML=`<div style="padding-top:6px">
+    ${row('수정','내용 · 고정 · 팝업',`closeOv();openNoticeEdit(${id})`)}
+    ${row(n.pinned?'고정 해제':'맨 위에 고정',n.pinned?'소식 맨 위에서 내려요':'소식 맨 위에 접혀서 떠요',`ntPin(${id},${n.pinned?0:1})`)}
+    ${row('삭제','읽음 기록도 함께 지워져요',`ntDel(${id})`,1)}
+    <button class="btn ghost" style="margin-top:12px" onclick="closeOv()">닫기</button></div>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function ntPin(id,v){
+  try{ await api(`/notices/${id}`,{method:'PATCH',body:JSON.stringify({pinned:v})}); closeOv(); CLUB_NOTICES=null; NT_I=0; toast(v?'맨 위에 고정했어요':'고정을 풀었어요'); renderClub(); }
+  catch(e){ toast('처리하지 못했어요'); }
+}
+async function ntDel(id){
+  closeOv(); if(!confirm('이 공지를 지울까요?')) return;
+  try{ await api(`/notices/${id}`,{method:'DELETE'}); CLUB_NOTICES=null; NT_I=0; toast('공지를 지웠어요'); renderClub(); }
+  catch(e){ toast('지우지 못했어요'); }
+}
+function openNoticeEdit(id){
+  const n=(CLUB_NOTICES||[]).find(x=>x.id===id); if(!n) return;
+  const L=String(n.body||'').split('\n');
+  openClubPost({notice:1});
+  NP.editId=id; NP.hasPoll=!!n.poll; NP.title=(L[0]||'').trim(); NP.body=L.slice(1).join('\n').trim();
+  NP.pin=!!n.pinned; NP.popup=!!n.popup_days; NP.notify=false; NP.poll=null;
+  drawClubPost();
+}
 function openNoticeSheet(i){
   const n=(CLUB_NOTICES||[])[i]; if(!n) return;
   const officer=state.bcfg&&state.bcfg.role==='officer';
@@ -17667,17 +17721,19 @@ function drawClubPost(){
     <textarea id="npBody" class="npbody2" maxlength="2000" placeholder="${NP.notice?'공지 내용을 적어주세요':'오늘 경기 어땠어요? 사진과 한 줄을 남겨보세요'}">${esc(NP.body)}</textarea>`;
   if(!NP.notice && n) h+=`<div class="npgrid">${NP.photos.map((u,i)=>`<div style="background-image:url('${u}')"><span onclick="npKeep();NP.photos.splice(${i},1);drawClubPost()">×</span></div>`).join('')}
       ${n<NP_MAX?`<label class="add">＋<input type="file" accept="image/*" multiple style="display:none" onchange="npKeep();addPostPhotos(this.files)"></label>`:''}</div>`;
-  h+=`<div class="nptools">${!NP.notice?`<label>${icImage()} 사진${n?` ${n}`:''}<input type="file" accept="image/*" multiple style="display:none" onchange="npKeep();addPostPhotos(this.files)"></label>
+  if(NP.editId) h+=NP.hasPoll?`<div class="prnote" style="margin-top:var(--s3)">이 공지의 투표는 고칠 수 없어요 · 이미 답한 사람의 선택이 틀어지지 않게</div>`:'';
+  else h+=`<div class="nptools">${!NP.notice?`<label>${icImage()} 사진${n?` ${n}`:''}<input type="file" accept="image/*" multiple style="display:none" onchange="npKeep();addPostPhotos(this.files)"></label>
       <button onclick="npKeep();openNpEvent()">${NP.event?`모임 연결 · ${esc(NP.event.label)}`:'모임 연결'}</button>`
       :`<button class="${NP.poll?'on':''}" onclick="npKeep();NP.poll=NP.poll?null:{q:'',options:['','']};drawClubPost()">${NP.poll?'투표 빼기':'투표 넣기'}</button>`}</div>`;
-  if(NP.notice && NP.poll) h+=`<div class="nppoll"><input id="npPollQ" class="xs-in" maxlength="80" placeholder="투표 질문 (예: 10월 회식 날짜)" value="${esc(NP.poll.q)}">
+  if(NP.notice && NP.poll && !NP.editId) h+=`<div class="nppoll"><input id="npPollQ" class="xs-in" maxlength="80" placeholder="투표 질문 (예: 10월 회식 날짜)" value="${esc(NP.poll.q)}">
       ${NP.poll.options.map((o,i)=>`<input id="npPo${i}" class="xs-in" maxlength="40" placeholder="보기 ${i+1}" value="${esc(o)}">`).join('')}
       ${NP.poll.options.length<6?`<button class="chlink" onclick="npKeep();NP.poll.options.push('');drawClubPost()">＋ 보기 더하기</button>`:''}</div>`;
-  if(officer) h+=`<div class="npbox"><div class="r"><div><b>공지로 올리기</b><span>소식 맨 위에 접혀서 고정돼요</span></div>${sw('notice',NP.notice)}</div>
-      ${NP.notice?`<div class="r"><div><b>앱 열 때 팝업으로</b><span>일주일 동안 한 번씩</span></div>${sw('popup',NP.popup)}</div>
-      <div class="r"><div><b>회원에게 알림 보내기</b></div>${sw('notify',NP.notify)}</div>`:''}</div>`;
-  h+=`<div class="prfoot"><button class="btn" onclick="submitClubPost()">${NP.notice?'공지 올리기':'올리기'}</button></div></div>`;
-  chPage(NP.notice?'공지 · 소식 쓰기':'소식 쓰기', h, 'nwBack()');
+  if(officer || NP.editId) h+=`<div class="npbox">${NP.editId?'':`<div class="r"><div><b>공지로 올리기</b><span>소식 맨 위 공지 칸에 올라가요</span></div>${sw('notice',NP.notice)}</div>`}
+      ${NP.notice?`<div class="r"><div><b>맨 위에 고정</b><span>소식 맨 위에 접혀서 떠요</span></div>${sw('pin',NP.pin)}</div>
+      <div class="r"><div><b>앱 열 때 팝업으로</b><span>일주일 동안 하루 한 번</span></div>${sw('popup',NP.popup)}</div>
+      <div class="r"><div><b>${NP.editId?'고쳤다고 알림 보내기':'회원에게 알림 보내기'}</b>${NP.editId?'<span>「공지가 수정됐어요」</span>':''}</div>${sw('notify',NP.notify)}</div>`:''}</div>`;
+  h+=`<div class="prfoot"><button class="btn" onclick="submitClubPost()">${NP.editId?'고친 내용 저장':NP.notice?'공지 올리기':'올리기'}</button></div></div>`;
+  chPage(NP.editId?'공지 고치기':NP.notice?'공지 · 소식 쓰기':'소식 쓰기', h, 'nwBack()');
   const b=document.getElementById('npBody'); if(b) b.addEventListener('input',()=>{ NP.body=b.value; });
 }
 function openNpEvent(){
@@ -17692,6 +17748,13 @@ async function submitClubPost(){
   npKeep();
   const body=(NP.body||'').trim(), title=(NP.title||'').trim();
   try{
+    if(NP.editId){
+      if(!title && !body) return toast('공지 내용을 적어주세요');
+      await api(`/notices/${NP.editId}`,{method:'PATCH',body:JSON.stringify({ body:[title,body].filter(Boolean).join('\n'),
+        pinned:NP.pin?1:0, popup_days:NP.popup?7:0, notify:NP.notify?1:0 })});
+      CLUB_NOTICES=null; NT_I=0; toast(NP.notify?'고쳤어요 · 회원들에게 알림이 갔어요':'공지를 고쳤어요');
+      NP={}; NEWS_F='notice'; nwBack(); return;
+    }
     if(NP.notice){
       if(!title && !body) return toast('공지 내용을 적어주세요');
       let poll=null;
@@ -23763,11 +23826,12 @@ function markNoticeRead(id){
 function noticeCard(n, officer){
   const t=n.created_at?timeAgo(n.created_at):'';
   markNoticeRead(n.id);
+  const canEdit = officer || (state.serverUser && n.author_id===state.serverUser.id);
   return `<div class="ntc">
-    ${n.pinned||n.poll?`<div class="h">${n.pinned?'<span class="k2">고정</span>':''}${
-      n.poll?'<span class="k3">투표</span>':''}</div>`:''}
+    ${n.pinned||n.poll||canEdit?`<div class="h">${n.pinned?'<span class="k2">고정</span>':''}${
+      n.poll?'<span class="k3">투표</span>':''}${canEdit?`<button class="ntmore" onclick="event.stopPropagation();openNoticeMenu(${n.id})" aria-label="공지 메뉴">···</button>`:''}</div>`:''}
     <div class="t">${esc(n.body||'')}</div>
-    <div class="m">${esc(n.author||'')}${t?` · ${t}`:''}${
+    <div class="m">${esc(n.author||'')}${t?` · ${t}`:''}${n.edited_at?' · 수정됨':''}${
       officer&&n.member_n?` · 읽음 ${n.read_n||0} / ${n.member_n}`:''}</div></div>`;
 }
 /* 팝업 공지 — <팝업> 을 켜도 읽는 코드가 없어 아무 일도 일어나지 않았다.
