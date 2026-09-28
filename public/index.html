@@ -17770,7 +17770,17 @@ async function submitClubPost(){
       window.FEED_LOADED=false; await loadClubFeed(); toast('올렸어요');
     }
     NP={}; NEWS_F='all'; nwBack();
-  }catch(e){ const m=String(e.message); toast(m.includes('contact_blocked')?'연락처는 올릴 수 없어요':'올리지 못했어요'); }
+  }catch(e){
+    /* 왜 안 됐는지 말해준다 — 예전엔 무엇이든 <올리지 못했어요> 하나라 고칠 방법을 몰랐다 */
+    const m=String(e.message||''), st=e.status;
+    let why='올리지 못했어요 · 잠시 후 다시 해주세요';
+    if(m.includes('contact_blocked')){ let r=''; try{ r=JSON.parse(m).reason||''; }catch(x){} why=`${r||'연락처'}로 보이는 내용이 있어요 · 그 부분을 빼고 올려주세요`; }
+    else if(NP.editId && st===404) why='공지 고치기는 새 서버가 필요해요 · server.js를 올린 뒤 다시 해주세요';
+    else if(st===403) why=NP.editId?'이 공지를 고칠 권한이 없어요':'올릴 권한이 없어요';
+    else if(st===400) why='내용을 적어주세요';
+    else if(/네트워크/.test(m)) why=m;
+    toast(why);
+  }
 }
 /* ── 글 보기 — 한 화면 · 말풍선 댓글 · 삭제는 ··· 안에 ── */
 async function openFeedPost(id){
