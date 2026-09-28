@@ -16224,6 +16224,8 @@ app.post('/xinv/:token/accept', auth, (req, res) => {
 });
 /* 이름만 올린 명단 — 그 클럽 운영진만 */
 app.post('/exchange/:id/named', auth, (req, res) => {
+  /* 이름만 올리기는 쓰지 않는다 — 교류전 명단은 맞수에 가입한 회원만 (운영 원칙) */
+  return res.status(410).json({ error: 'signup_required', message: '맞수에 가입한 회원만 명단에 들어가요' });
   const eid = +req.params.id, b = req.body || {}, cid = +b.club_id;
   const ev = xcEvent(eid);
   if (!ev) return res.status(404).json({ error: 'not_found' });
@@ -16476,6 +16478,17 @@ app.post('/exchange/:id/suggest', auth, (req, res) => {
 });
 
 /* ── 조회 ── */
+/* 초대 링크(?xc=)로 연 사람 — 로그인 전에도 무슨 교류전인지는 보여준다 */
+app.get('/exchange/:id/public', (req, res) => {
+  const ev = xcEvent(+req.params.id);
+  if (!ev || ev.kind !== 'exchange') return res.status(404).json({ error: 'not_found', message: '교류전을 찾지 못했어요' });
+  const ents = xcEntries(ev.id);
+  const host = db.prepare('SELECT id, name, region FROM clubs WHERE id=?').get(ev.club_id) || {};
+  const members = db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND (status IS NULL OR status='active')").get(ev.club_id).n;
+  res.json({ id: ev.id, host: { id: host.id, name: host.name, region: host.region, members },
+    date: ev.date, place: ev.place, per_club: ev.per_club, courts: ev.courts,
+    open: ev.match_status === 'open' && ents.length < (ev.club_slots || 2), clubs: ents.length });
+});
 app.get('/exchange/:id', auth, (req, res) => {
   const ev = xcEvent(+req.params.id);
   if (!ev) return res.status(404).json({ error: 'not_found' });
