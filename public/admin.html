@@ -455,7 +455,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['notify','공지'],['reports','신고']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -573,6 +573,7 @@ async function draw(){
   if(TAB==='matches') return drawMatches();
   if(TAB==='venues')  return drawVenues();
   if(TAB==='reports') return drawReports();
+  if(TAB==='posts')   return drawPosts();
   if(TAB==='payouts') return drawPayouts();
   if(TAB==='staff')   return drawStaff();
   if(TAB==='banners') return drawBanners();
@@ -2310,6 +2311,37 @@ async function editVenue(id){
       body:JSON.stringify({name:name.trim(), addr:addr.trim(), phone:phone.trim()})});
     toast('고쳤어요'); render(); }
   catch(e){ toast('고치지 못했어요'); }
+}
+
+/* ── 글 관리 ── 라운지 · 구장톡 글을 최신순으로 훑고, 이름·내용으로 찾아 지운다.
+   신고가 없어도 운영자가 먼저 지울 수 있어야 한다. 지운 기록은 <작업 기록>에 남는다. */
+let POST_Q='';
+async function drawPosts(){
+  const sub=SUB||'lounge';
+  $('app').innerHTML=shell(subTabs([['lounge','라운지'],['talk','구장톡 · 전국톡']])+skel(4));
+  const rows=await api(`/admin/posts?kind=${sub}&q=${encodeURIComponent(POST_Q)}`).catch(e=>{ toast(e.message); return []; });
+  const when=t=>{ const d=new Date(t||0); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  $('app').innerHTML=shell(subTabs([['lounge','라운지'],['talk','구장톡 · 전국톡']])+`
+    <div class="card" style="padding:10px 12px">
+      <input id="postQ" placeholder="제목 · 내용 · 글쓴이로 찾기" value="${esc(POST_Q)}"
+        style="width:100%;box-sizing:border-box;height:40px;border:1px solid #e5e8eb;border-radius:10px;padding:0 12px;font-size:14px"
+        onkeydown="if(event.key==='Enter'){POST_Q=this.value.trim();render();}"></div>
+    <div class="card">${rows.length? rows.map(r=>`
+      <div class="rw" style="align-items:flex-start">
+        <div class="nm" style="min-width:0">
+          <b style="white-space:normal">${esc(r.title||String(r.body||'').slice(0,40)||'(제목 없음)')}${
+            r.hidden?'<span class="tag">숨김</span>':''}${r.reports?`<span class="tag">신고 ${r.reports}</span>`:''}</b>
+          <span style="white-space:normal">${esc(String(r.body||'').slice(0,120))}</span>
+          <span>${esc(r.who||'익명')} · ${when(r.created_at)} · 댓글 ${r.comments||0}${
+            sub==='talk'?` · ${r.scope==='all'?'전국톡':esc(r.venue||'구장톡')}${r.club?` · ${esc(r.club)}`:''}`:(r.category?` · ${esc(r.category)}`:'')}</span></div>
+        <button class="b dz" style="flex:none" onclick="delPost('${sub}',${r.id})">삭제</button></div>`).join('')
+      : `<div class="empty">${POST_Q?'찾는 글이 없어요':'글이 없어요'}</div>`}</div>`);
+}
+async function delPost(kind, id){
+  if(!confirm('이 글을 지울까요?\n댓글도 함께 지워지고 되돌릴 수 없어요.')) return;
+  try{ await api(kind==='talk'?`/admin/talk/${id}`:`/admin/posts/${id}`,{method:'DELETE'});
+    toast('지웠어요'); render(); }
+  catch(e){ toast(e.message||'지우지 못했어요'); }
 }
 
 /* ── 신고 ── */
