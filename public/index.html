@@ -4123,6 +4123,12 @@
      글자 크기가 통째로 커진다(지난 만남 문단이 그랬다) */
   :root{ --x0:12px; --x1:14px;   --x2:16px;   --x3:20px;   --x4:24px; --xlh:1.618 }
   /* 단계 표시 — 클럽 만들기와 같은 방식 */
+  .schd .tb{ white-space:nowrap;flex:none }
+  .schmine{ display:inline-flex;align-items:center;gap:6px;height:32px;margin:10px 4px 0;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:#fff;
+    font-size:13px;font-weight:700;color:#4e5968;font-family:inherit;cursor:pointer }
+  .schmine i{ font-style:normal;color:var(--coral-d) } .schmine.on{ background:var(--ink);border-color:var(--ink);color:#fff } .schmine.on i{ color:#ffb38a }
+  /* 참석 버튼이 들어오면서 정보 줄이 <나 포…> 로 잘렸다 — 두 줄까지 보여준다 */
+  .psess2 .p2m{ white-space:normal !important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
   /* ── 클럽 화면 · 회원 편의 (C-1 ~ C-5) ── */
   .p2go{ flex:none;align-self:center;height:32px;padding:0 12px;border:0;border-radius:10px;background:var(--coral);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;margin-left:8px }
   .p2go.on{ background:#e6f6f0;color:#0b7a5c }
@@ -12844,16 +12850,19 @@ function renderClub(){
       const _off=!!c.officer;
       state._schHead=`<div class="schd">
           ${[['다가오는',false,nUp],['지난 모임',true,nPast]].map(([t,v,n])=>
-            `<span class="tb${!state._clubMine && !!state._clubPast===v?' on':''}" onclick="clubPast(${v})">
+            `<span class="tb${!!state._clubPast===v?' on':''}" onclick="clubPast(${v})">
               <b>${t}</b><i>${n}</i></span>`).join('')}
-          ${SERVER_OK&&clubId()?`<span class="tb${state._clubMine?' on':''}" onclick="clubMine()"><b>내가 가는 날</b><i>${evList0.filter(e=>!evIsPast(e)&&e.my_status==='going').length}</i></span>`:''}
+
           <button class="schmk${_off?'':' guest'}"
             onclick="${SERVER_OK&&clubId()?'openNewEvent()':'openEventCreate()'}">${
             _off?'＋ 만들기':'⚡ 번개 열기'}</button>
         </div>
         <div class="schline"></div>
         <div class="schnow"><b>오늘 ${MON}월 ${DAY}일 ${WD_KO[new Date().getDay()]}</b>
-          <span class="n">${wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></div>`;
+          <span class="n">${wkLeft ? `이번 주 모임 ${wkLeft}개` : '이번 주 남은 모임 없음'}</span></div>
+        ${SERVER_OK&&clubId()&&!state._clubPast?(()=>{ const nMine=evList0.filter(e=>!evIsPast(e)&&e.my_status==='going').length;
+          /* 탭을 하나 더 두면 머리 줄이 두 줄로 깨진다 — 작은 칩으로 */
+          return `<button class="schmine${state._clubMine?' on':''}" onclick="clubMine()">${state._clubMine?'✓ ':''}내가 가는 날만 보기 <i>${nMine}</i></button>`; })():''}`;
       h+=state._schHead; }
     /* 모임 날짜가 지났는지 — 'M/D' 또는 'YYYY-MM-DD' 형태를 받는다.
    지난 모임은 목록에서 감추고, 대진도 새로 짜지 못하게 한다. */
@@ -18919,10 +18928,13 @@ function clubTabHome(){
   const monthN=evs.filter(e=>evIsPast(e) && e.my_status==='going' && evParseDate(e.date).m===mo).length;
   const R=(typeof xcRec==='function')?xcRec(cid):null; const T=(R&&R.total)||null;
   const D=cmDues(cid); const dRow=D&&D.rows&&D.rows[0];
-  const tiles=[[sm&&sm.rank?`${sm.rank}위`:'—','내 순위',`setClubSub('rec')`],[`${monthN}회`,'이번 달 참석',`clubMine()`],
-    [T&&(T.w+T.l+T.d)?`${T.w}승 ${T.l}패`:'—','교류전',`openXcAll('rec')`]];
+  /* 값이 없는 칸은 <—> 로 두지 않고 뺀다 — 비어 보이면 고장 난 줄 안다 */
+  const tiles=[];
+  if(sm && sm.rank) tiles.push([`${sm.rank}위`,`내 순위 · ${sm.total||''}명 중`.replace(/ · 명 중$/,''),`setClubSub('rec')`]);
+  tiles.push([`${monthN}회`,'이번 달 참석',`setClubSub('sched');state._clubMine=true;renderClub()`]);
+  if(T && (T.w+T.l+T.d)) tiles.push([`${T.w}승 ${T.l}패`,'교류전',`openXcAll('rec')`]);
   if(dRow) tiles.push([dRow.status==='paid'?'완납':'미납', `${duesLabel(dRow.period)} 회비`, `openMyDues()`]);
-  h+=`<div class="cmtiles" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.map(([v,k,a])=>`<button onclick="${a}"><b class="${v==='미납'?'rd':''}">${v}</b><span>${k}</span></button>`).join('')}</div>`;
+  if(tiles.length) h+=`<div class="cmtiles" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.map(([v,k,a])=>`<button onclick="${a}"><b class="${v==='미납'?'rd':''}">${v}</b><span>${k}</span></button>`).join('')}</div>`;
   /* 교류전 · 제안 — 클럽 목록 화면에만 있던 것을 클럽 안으로 */
   const xc=(typeof xcSection==='function')?xcSection():'';
   if(xc) h+=xc;
