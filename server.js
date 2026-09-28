@@ -4242,6 +4242,30 @@ app.post('/notices/:id/vote', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* 공지 고치기 — 쓴 사람이나 운영진. 올린 시각 · 읽음 기록은 그대로 두고 <수정됨>만 남긴다.
+   투표는 여기서 고치지 않는다(이미 답한 사람의 선택이 틀어지지 않게). */
+try { db.exec('ALTER TABLE notices ADD COLUMN edited_at BIGINT'); } catch (e) {}
+app.patch('/notices/:id', auth, (req, res) => {
+  const n = db.prepare('SELECT * FROM notices WHERE id=?').get(+req.params.id);
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  const m = db.prepare('SELECT role FROM club_members WHERE club_id=? AND user_id=?').get(n.club_id, req.uid);
+  if (!(n.author_id === req.uid || (m && ['owner', 'officer'].includes(m.role)))) return res.status(403).json({ error: 'not_allowed' });
+  const b = req.body || {};
+  let body = n.body, changed = false;
+  if (b.body !== undefined) {
+    body = String(b.body || '').trim();
+    if (!body) return res.status(400).json({ error: 'empty', message: '공지 내용을 적어주세요' });
+    const bad = findContact(body);
+    if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+    changed = body !== n.body;
+  }
+  const pinned = b.pinned === undefined ? n.pinned : (intOrNull(b.pinned) ? 1 : 0);
+  const popup = b.popup_days === undefined ? n.popup_days : Math.max(0, Math.min(14, intOrNull(b.popup_days) || 0));
+  db.prepare('UPDATE notices SET body=?, pinned=?, popup_days=?, edited_at=? WHERE id=?')
+    .run(body, pinned, popup, changed ? now() : (n.edited_at || null), n.id);
+  if (changed && (b.notify === 1 || b.notify === true)) notifyClub(n.club_id, req.uid, '📢', '공지가 수정됐어요', body.slice(0, 40));
+  res.json({ ok: true, notice: db.prepare('SELECT * FROM notices WHERE id=?').get(n.id) });
+});
 app.delete('/notices/:id', auth, (req, res) => {
   const n = db.prepare('SELECT * FROM notices WHERE id=?').get(+req.params.id);
   if (!n) return res.status(404).json({ error: 'not_found' });
@@ -5600,9 +5624,16 @@ const _PHONE_RE = [/01[016789]\d{7,8}/, /8210\d{7,8}/];
 function findContact(text) {
   const k = _keywordText(text);
   for (const r of _KEYWORD_RULES) if (r.re.test(k)) return r.reason;
-  const d = _digitText(text);
-  for (const re of _PHONE_RE) if (re.test(d)) return '전화번호';
+  /* 전화번호는 <한 덩어리> 안에서만 찾는다 — 숫자 사이에 띄어쓰기 · 하이픈 · 점 · 괄호만 있는 곳.
+     예전에는 글 전체의 숫자를 한 줄로 이어 붙여서 <1번 코트 · 10시 · 21시> 같은 공지가
+     전화번호로 잡혔다. 한글 숫자(공일공 …)는 먼저 숫자로 바꾸므로 여전히 막힌다. */
+  for (const run of _digitRuns(text)) for (const re of _PHONE_RE) if (re.test(run)) return '전화번호';
   return null;
+}
+function _digitRuns(t) {
+  let x = String(t || '').toLowerCase().replace(/[０-９]/g, c => _FULLW[c]);
+  Object.entries(_HANGUL_NUM).forEach(([k, v]) => { x = x.split(k).join(v); });
+  return (x.match(/[0-9](?:[\s\-.·()\/_]{0,3}[0-9])*/g) || []).map(r => r.replace(/[^0-9]/g, ''));
 }
 
 // ══════════════════════════════════════════════════════════════
