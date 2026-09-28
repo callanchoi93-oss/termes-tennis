@@ -3023,6 +3023,49 @@ app.post('/guest/:token/apply', auth, limitWrite, (req, res) => {
   res.json({ ok: true });
 });
 
+/* 코트 화면에서 바로 게스트 신청 — 운영진이 링크를 만들어 돌리지 않아도 된다.
+   클럽의 게스트 설정(모임당 인원 guest_cap · 최소 구력 guest_min_months · 게스트비)을 그대로 따른다. */
+app.post('/events/:id/guest-apply', auth, limitWrite, (req, res) => {
+  const eid = +req.params.id;
+  const ev = db.prepare("SELECT id, club_id, title, date, tag FROM club_events WHERE id=?").get(eid);
+  if (!ev || ev.tag === '교류전') return res.status(404).json({ error: 'no_event', message: '모임을 찾지 못했어요' });
+  const club = db.prepare('SELECT id, name, guest_cap, guest_fee, guest_min_months FROM clubs WHERE id=?').get(ev.club_id) || {};
+  if (!(club.guest_cap > 0)) return res.status(409).json({ error: 'no_guests', message: '이 클럽은 지금 게스트를 받지 않아요' });
+  if (isMember(ev.club_id, req.uid)) return res.status(409).json({ error: 'already_member', message: '이미 이 클럽 회원이에요' });
+  const me = getUser(req.uid);
+  if (!me) return res.status(401).json({ error: 'unauthorized' });
+  if (db.prepare('SELECT 1 FROM event_guests WHERE event_id=? AND (user_id=? OR name=?)').get(eid, req.uid, me.name))
+    return res.status(409).json({ error: 'already_applied', message: '이미 신청했어요' });
+  const n = db.prepare('SELECT COUNT(*) n FROM event_guests WHERE event_id=?').get(eid).n;
+  if (n >= club.guest_cap) return res.status(409).json({ error: 'full', message: '게스트 자리가 다 찼어요' });
+  if (club.guest_min_months) {
+    let started = null;
+    try { const s = JSON.parse(me.sport_started || '{}'); started = s.tennis || Object.values(s)[0] || null; } catch (e) {}
+    const m = String(started || '').match(/^(\d{4})-(\d{1,2})/);
+    const months = m ? (new Date().getFullYear() - +m[1]) * 12 + (new Date().getMonth() + 1 - +m[2]) : null;
+    if (months != null && months < club.guest_min_months)
+      return res.status(409).json({ error: 'too_new', message: `구력 ${Math.round(club.guest_min_months / 12 * 10) / 10}년 이상만 받아요` });
+  }
+  db.prepare(`INSERT INTO event_guests (event_id,name,gender,added_by,created_at,fee,source,user_id)
+    VALUES (?,?,?,?,?,?,'court',?)`).run(eid, me.name, me.gender || null, null, now(), club.guest_fee || 0, req.uid);
+  db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(ev.club_id)
+    .forEach(o => sendPush(o.user_id, { icon: '🙌', title: '게스트 신청이 들어왔어요',
+      body: `${me.name}님 · ${ev.title || ''} ${ev.date || ''} · 코트 화면에서 신청 — 채팅으로 안내해 주세요`, link: 'club' }));
+  res.json({ ok: true, left: Math.max(0, club.guest_cap - n - 1) });
+});
+
+/* 구장 사진 — 계약한 구장의 사장님(또는 연동)이 채운다. 채우면 코트 화면에 바로 뜬다. */
+app.post('/venues/:id/photos', auth, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  if (!v.owner_id || v.owner_id !== req.uid) return res.status(403).json({ error: 'owner_only', message: '계약한 구장 사장님만 올릴 수 있어요' });
+  let photos = (req.body || {}).photos;
+  photos = Array.isArray(photos) ? photos.filter(u => typeof u === 'string' && /^https?:\/\/|^\//.test(u)).slice(0, 12) : [];
+  db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(photos), vid);
+  res.json({ ok: true, photos });
+});
+
 app.get('/events/:id/guests', (req, res) => {
   res.json(db.prepare(`SELECT g.id,g.name,g.gender,g.grade,g.fee,g.paid,g.paid_at,g.added_by,u.name host_name
     FROM event_guests g LEFT JOIN users u ON u.id=g.added_by
@@ -11601,41 +11644,13 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
 app.get('/venues/:id/detail', auth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
-    courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id FROM venues WHERE id=?`).get(vid);
+    courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id,photos FROM venues WHERE id=?`).get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
 
   /* 면 수와 표면 — 사장님이 등록한 곳에만 있다. 없으면 그 줄을 안 보여준다. */
   const courts = db.prepare(`SELECT COUNT(*) n,
       GROUP_CONCAT(DISTINCT surface) surfaces FROM venue_courts
     WHERE venue_id=? AND status!='paused'`).get(vid) || {};
-
-  /* 이 코트에서 있었던 일 — 46% 라는 숫자보다 <10월 26일 라온이 이겼다>가 잘 읽힌다 */
-  const evs = db.prepare(`SELECT e.id, e.title, e.date, e.tag, e.created_at, c.name club
-    FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
-    WHERE e.venue_id=? ORDER BY e.created_at DESC LIMIT 6`).all(vid);
-  const winCache = {};
-  evs.forEach(e => {
-    e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
-      WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
-    if (e.tag !== '교류전') return;
-    /* 교류전이면 누가 이겼는지까지 — 목록에서 바로 읽히게 */
-    const win = {};
-    db.prepare('SELECT home_club, away_club, sa, sb FROM exchange_games WHERE event_id=?')
-      .all(e.id).forEach(g => {
-        if (g.sa == null || g.sb == null) return;
-        const w = g.sa > g.sb ? g.home_club : g.sa < g.sb ? g.away_club : null;
-        if (w) win[w] = (win[w] || 0) + 1;
-      });
-    const sorted = Object.entries(win).sort((a, b) => b[1] - a[1]);
-    e.games = Object.values(win).reduce((a, b) => a + b, 0);
-    if (sorted.length && !(sorted.length > 1 && sorted[0][1] === sorted[1][1])) {
-      const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(+sorted[0][0]);
-      e.winner = c ? c.name : null;
-    }
-    const seats = db.prepare(`SELECT c.name FROM exchange_entries x
-      JOIN clubs c ON c.id=x.club_id WHERE x.event_id=?`).all(e.id).map(r => r.name);
-    e.clubs = seats;
-  });
 
   /* 구장톡 미리보기 — 들어가 보지 않아도 무슨 얘기가 도는지 보이게 */
   let talk = [], talkLocked = true;
@@ -11678,10 +11693,13 @@ app.get('/venues/:id/detail', auth, (req, res) => {
       c.id club_id, c.name club
     FROM club_events e LEFT JOIN clubs c ON c.id=e.club_id
     WHERE e.venue_id=?
-      OR (e.venue_id IS NULL AND e.place IS NOT NULL AND e.place LIKE ?
+      OR (e.venue_id IS NULL AND e.place IS NOT NULL
+          AND REPLACE(e.place,' ','') LIKE ?
           AND e.club_id IN (SELECT club_id FROM venue_clubs WHERE venue_id=?))
-    ORDER BY e.id DESC LIMIT 60`)
-    .all(vid, `%${String(v.name || '').slice(0, 12)}%`, vid);
+    ORDER BY e.id DESC LIMIT 120`)
+    /* <용인테니스파크>(구장) 와 <용인 테니스파크>(모임 장소) 를 같은 곳으로 본다 —
+       예전엔 띄어쓰기 하나 때문에 참석자가 있는 진짜 모임이 홈코트 화면에서 빠졌다 */
+    .all(vid, `%${String(v.name || '').replace(/\s+/g, '').slice(0, 12)}%`, vid);
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const upcoming = raw
     .map(e => { const p = evParse(e.date); return p ? Object.assign(e, p) : null; })
@@ -11691,10 +11709,60 @@ app.get('/venues/:id/detail', auth, (req, res) => {
   upcoming.forEach(e => {
     e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
       WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
+    /* 홈코트 화면에서 바로 참석을 누를 수 있게 — 내 상태를 같이 준다 */
+    const me = db.prepare('SELECT status FROM event_attendees WHERE event_id=? AND user_id=?').get(e.id, req.uid);
+    e.my = me ? (me.status || 'going') : null;
   });
 
+  /* 이 코트에서 있었던 일 — 예전엔 <만든 날> 순이라, 정기모임을 한꺼번에 만든 날(9/21)이
+     다섯 줄로 반복되고 아직 안 한 모임까지 <0명 참석>으로 섞였다. 이제 모임 날짜가 지난 것만, 최근 순. */
+  const evs = raw
+    .map(e => { const p = evParse(e.date); return p ? Object.assign({}, e, p) : null; })
+    .filter(e => e && e.ts < dayStart.getTime())
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 6);
+  evs.forEach(e => {
+    e.people = db.prepare(`SELECT COUNT(*) n FROM event_attendees
+      WHERE event_id=? AND (status IS NULL OR status='going')`).get(e.id).n;
+    if (e.tag !== '교류전') return;
+    /* 교류전이면 누가 이겼는지까지 — 승점으로 가린다 */
+    const r = xcResult(e.id);
+    if (r && r.done && r.winner) e.winner = r.winner === r.home.club_id ? r.home.name : r.away.name;
+    e.games = r ? r.played : 0;
+    if (r) e.score = { a: r.home.name, ap: r.home.pt, b: r.away.name, bp: r.away.pt, done: r.done };
+    e.clubs = db.prepare(`SELECT c.name FROM exchange_entries x
+      JOIN clubs c ON c.id=x.club_id WHERE x.event_id=?`).all(e.id).map(x => x.name);
+  });
+
+  /* 코트 사진 — 구장과 계약하면 사장님 쪽 사진(venues.photos · 코트별 사진)이 그대로 여기 뜬다.
+     따로 올리는 화면은 두지 않는다. 비어 있으면 앱은 사진 칸을 통째로 뺀다. */
+  const jp = x => { try { const a = JSON.parse(x || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const photos = [...jp(v.photos).map(u => ({ url: u, label: '' })),
+    ...db.prepare(`SELECT no, label, photos FROM venue_courts WHERE venue_id=? AND status!='paused' ORDER BY no`).all(vid)
+      .flatMap(c => jp(c.photos).map(u => ({ url: u, label: c.label || `${c.no}번 코트` })))]
+    .filter(p => typeof p.url === 'string' && p.url).slice(0, 12);
+  delete v.photos;
+
+  /* 여기서 칠 수 있어요 — 이 코트의 앞으로 모임 중 <게스트를 받는 클럽>(guest_cap>0)의 것.
+     이 코트에 클럽이 없는 사람에게 가장 쓸모 있는 정보다. 내가 회원인 클럽 모임은 뺀다. */
+  const myClubs = new Set(db.prepare(`SELECT club_id FROM club_members WHERE user_id=?
+    AND (status IS NULL OR status='active')`).all(req.uid).map(r => r.club_id));
+  const guestOpen = raw
+    .map(e => { const p = evParse(e.date); return p ? Object.assign({}, e, p) : null; })
+    .filter(e => e && e.ts >= Date.now() && e.club_id && !myClubs.has(e.club_id) && e.tag !== '교류전')
+    .map(e => {
+      const c = db.prepare('SELECT guest_cap, guest_fee, guest_min_months FROM clubs WHERE id=?').get(e.club_id) || {};
+      if (!(c.guest_cap > 0)) return null;
+      const n = db.prepare('SELECT COUNT(*) n FROM event_guests WHERE event_id=?').get(e.id).n;
+      const mine = !!db.prepare('SELECT 1 FROM event_guests WHERE event_id=? AND user_id=?').get(e.id, req.uid);
+      return { id: e.id, club_id: e.club_id, club: e.club, tag: e.tag, time: e.time, ts: e.ts, courts: e.courts || null,
+        fee: c.guest_fee || 0, cap: c.guest_cap, left: Math.max(0, c.guest_cap - n),
+        min_months: c.guest_min_months || null, applied: mine };
+    })
+    .filter(Boolean).sort((a, b) => a.ts - b.ts).slice(0, 5);
+
   res.json({
-    venue: v, can_edit: canEdit,
+    venue: v, can_edit: canEdit, photos, guest_open: guestOpen,
     courts: courts.n || v.courts_n || 0,
     surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean)
       : (v.surface ? [v.surface] : []),
