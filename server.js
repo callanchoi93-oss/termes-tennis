@@ -3961,6 +3961,8 @@ CREATE TABLE IF NOT EXISTS feed_comments (
   body TEXT NOT NULL, created_at BIGINT
 );`);
 
+/* 소식 글 ↔ 모임 연결(모임 후기) */
+try { db.exec('ALTER TABLE club_posts ADD COLUMN event_id INTEGER'); } catch (e) {}
 app.get('/clubs/:id/feed', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
@@ -3972,10 +3974,17 @@ app.get('/clubs/:id/feed', auth, (req, res) => {
   // '홍길동 님 외 2명이 좋아해요' 를 만들려면 이름이 필요하다 — 최근 순 3명만
   const likers = db.prepare(`SELECT u.name FROM feed_likes fl JOIN users u ON u.id=fl.user_id
     WHERE fl.post_id=? ORDER BY fl.rowid DESC LIMIT 3`);
-  res.json(rows.map(p => ({ ...p,
+  /* 목록에서 <최근 댓글 한 줄> · <어느 모임 이야기인지> 를 보여준다 */
+  const lastCmt = db.prepare(`SELECT c.body, u.name FROM feed_comments c JOIN users u ON u.id=c.user_id
+    WHERE c.post_id=? ORDER BY c.id DESC LIMIT 1`);
+  const evOf = db.prepare('SELECT id, title, date FROM club_events WHERE id=? AND club_id=?');
+  res.json(rows.map(p => { const ev = p.event_id ? evOf.get(p.event_id, cid) : null; const lc = lastCmt.get(p.id);
+    return { ...p,
     likes: nLikes.get(p.id).n, liked: !!myLike.get(p.id, req.uid),
     likers: likers.all(p.id).map(x => x.name),
-    comments: nCmts.get(p.id).n, mine: p.user_id === req.uid })));
+    comments: nCmts.get(p.id).n, mine: p.user_id === req.uid,
+    last_comment: lc ? { name: lc.name, body: String(lc.body || '').slice(0, 80) } : null,
+    event: ev ? { id: ev.id, title: ev.title, date: ev.date } : null }; }));
 });
 
 app.post('/clubs/:id/feed', auth, limitWrite, (req, res) => {
@@ -3989,8 +3998,11 @@ app.post('/clubs/:id/feed', auth, limitWrite, (req, res) => {
   if (!title && !body && !photo) return res.status(400).json({ error: 'empty' });
   const bad = findContact(title + ' ' + body);
   if (bad) return res.status(400).json({ error: 'contact_blocked', reason: bad });
+  const evId = +((req.body || {}).event_id || 0);
+  const evOk = evId && db.prepare('SELECT 1 FROM club_events WHERE id=? AND club_id=?').get(evId, cid) ? evId : null;
   const r = db.prepare('INSERT INTO club_posts (club_id,user_id,title,body,photo,photos,created_at) VALUES (?,?,?,?,?,?,?)')
     .run(cid, req.uid, title || null, body, photo, JSON.stringify(photos), now());
+  if (evOk) try { db.prepare('UPDATE club_posts SET event_id=? WHERE id=?').run(evOk, rid(r)); } catch (e) {}
   res.json({ ok: true, id: rid(r) });
 });
 
@@ -4203,7 +4215,9 @@ app.post('/clubs/:id/notices', auth, (req, res) => {
   const popupDays = Math.max(0, Math.min(14, intOrNull(req.body.popup_days) || 0));
   const r = db.prepare('INSERT INTO notices (club_id,author_id,body,pinned,created_at,popup_days,poll) VALUES (?,?,?,?,?,?,?)')
     .run(cid, req.uid, body, intOrNull(req.body.pinned) ? 1 : 0, now(), popupDays, poll);
-  notifyClub(cid, req.uid, '📢', '새 공지가 올라왔어요', body.slice(0, 40));
+  /* 운영진이 <알림 보내기>를 끄면 조용히 올린다 (기본은 보낸다) */
+  if ((req.body || {}).notify !== 0 && (req.body || {}).notify !== false)
+    notifyClub(cid, req.uid, '📢', '새 공지가 올라왔어요', body.slice(0, 40));
   res.json({ ok: true, id: rid(r) });
 });
 
@@ -15954,7 +15968,7 @@ app.get('/clubs/:id/open-exchanges', auth, (req, res) => {
 });
 
 /* ══════════ 회원 제안 · 초대장 ══════════════════════════════
-   회원이 <이 클럽과 붙고 싶다>를 올리고 → 같이 갈 사람이 모이면(기본 6명) → 운영진이
+   회원이 <이 클럽과 붙고 싶다>를 올리고 → 같이 갈 사람이 모이면(클럽당 인원 9명) → 운영진이
    도전장(맞수 클럽) · 초대장(맞수에 없는 클럽) · 상대 모집(아무 클럽이나)으로 보낸다. */
 db.exec(`CREATE TABLE IF NOT EXISTS xc_proposals (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
@@ -15973,6 +15987,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS xc_invites (
   target_name TEXT, target_region TEXT, created_by INTEGER, created_at INTEGER, expires_at INTEGER,
   used_club INTEGER, used_at INTEGER, challenge_id INTEGER)`);
 const PR_DAYS = 7, INV_DAYS = 14;
+/* 모이는 기준 = 교류전 클럽당 인원(9명). 9명이 모여야 바로 도전장을 보낼 수 있다.
+   예전 기준(6명)으로 모으던 제안도 9명으로 맞춘다 — 이미 운영진에게 올라간 것은 그대로 둔다. */
+const PR_NEED = CH_PER;
+try { db.prepare("UPDATE xc_proposals SET threshold=? WHERE status='gathering' AND threshold<>?").run(PR_NEED, PR_NEED); } catch (e) {}
 function prRow(id) { return db.prepare('SELECT * FROM xc_proposals WHERE id=?').get(+id); }
 function prDates(p) { try { const d = JSON.parse(p.dates || '[]'); return Array.isArray(d) ? d : []; } catch (e) { return []; } }
 function prSweep() {
@@ -16025,7 +16043,7 @@ app.post('/clubs/:id/proposals', auth, limitWrite, (req, res) => {
   const vid = b.venue_id && db.prepare('SELECT 1 FROM venues WHERE id=?').get(+b.venue_id) ? +b.venue_id : null;
   const t = now();
   const r = db.prepare(`INSERT INTO xc_proposals (club_id,user_id,mode,target_club,target_name,target_region,target_memo,
-      dates,venue_id,place,msg,created_at,closes_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      dates,venue_id,place,msg,created_at,closes_at,threshold) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,${PR_NEED})`)
     .run(cid, req.uid, mode, target, mode === 'invite' ? String(b.target_name).trim().slice(0, 30) : null,
       mode === 'invite' ? String(b.target_region || '').trim().slice(0, 30) || null : null,
       mode === 'invite' ? String(b.target_memo || '').trim().slice(0, 60) || null : null,
@@ -16071,11 +16089,11 @@ app.post('/proposals/:id/vote', auth, (req, res) => {
       ON CONFLICT(proposal_id,user_id) DO UPDATE SET dates=excluded.dates`).run(p.id, req.uid, JSON.stringify([...new Set(pick)]), now());
   }
   const cnt = db.prepare('SELECT COUNT(*) n FROM xc_proposal_votes WHERE proposal_id=?').get(p.id).n;
-  if (p.status === 'gathering' && cnt >= (p.threshold || 6)) {
+  if (p.status === 'gathering' && cnt >= (p.threshold || PR_NEED)) {
     db.prepare("UPDATE xc_proposals SET status='ready', ready_at=? WHERE id=?").run(now(), p.id);
     const tn = p.target_club ? (db.prepare('SELECT name FROM clubs WHERE id=?').get(p.target_club) || {}).name : (p.target_name || '상대 모집');
     db.prepare(`SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')`).all(p.club_id)
-      .forEach(o => sendPush(o.user_id, { icon: '🆚', title: '회원 제안 교류전에 6명이 모였어요',
+      .forEach(o => sendPush(o.user_id, { icon: '🆚', title: `회원 제안 교류전에 ${p.threshold || PR_NEED}명이 모였어요`,
         body: `${p.mode === 'open' ? '상대 모집' : 'vs ' + tn} · 운영진이 보내 주세요`, link: `proposal:${p.id}` }));
   }
   res.json(prView(prRow(p.id), req.uid));
