@@ -4219,7 +4219,8 @@
   .nwpost .hd,.nwread .hd{ display:flex;align-items:center;gap:var(--s3) } .nwpost .c,.nwread .c{ flex:1;min-width:0 }
   .nwread .c .nm{ display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap } .nwread .c .nm span{ font-size:var(--t0) !important;line-height:1.4 }
   .nwpost .c b,.nwread .c b{ font-size:var(--t1);font-weight:700 } .nwpost .c > span,.nwread .c > span.mt{ display:block;font-size:var(--t0);color:var(--lgray);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-  .nwpost .evl,.nwread a{ color:var(--coral-d);font-weight:700;cursor:pointer }
+  /* <모임 후기 · 9/22 화요모임> 은 설명 줄이다 — 굵기 400 (앱 규칙: 700 은 제목 · 이름 · 숫자 · 버튼). 코랄 색만으로 링크인 게 보인다 */
+  .nwpost .evl,.nwread a{ color:var(--coral-d);font-weight:400;cursor:pointer }
   .nwpost .tt,.nwread .tt{ font-size:var(--t2);font-weight:700;margin-top:var(--s3) }
   .nwpost .tx{ font-size:var(--t1);line-height:1.6;margin-top:var(--s2);white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden }
   .nwpics{ display:grid;gap:4px;margin-top:var(--s3);border-radius:12px;overflow:hidden }
@@ -18306,7 +18307,12 @@ async function openXc(id){
       <div class="r"><span>1인 참가비</span><b>${x.per_head?won0(x.per_head):'—'}</b></div>
       <div class="r"><span>종목</span><b style="display:flex;gap:6px">${chips}</b></div>
       <div class="r"><span>진행</span><b>25분씩 6회차</b></div>
-      <div class="r"><span>코트</span><b>내 코트 고정 · 상대가 옮겨와요</b></div>
+      ${x.games_each
+        /* 9명 교류전은 시간 대진 — 회차마다 코트와 짝이 바뀌고 쉬는 회차가 있다 */
+        ? `<div class="r"><span>코트</span><b>회차마다 바뀌어요 · 내 경기에서 확인</b></div>
+           <div class="r"><span>쉬는 회차</span><b>1인 ${x.games_each}경기 · ${Math.max(0,6-x.games_each)}번 쉼</b></div>`
+        /* 예전 6명 방식만 조가 코트에 고정되고 상대가 옮겨온다 */
+        : `<div class="r"><span>코트</span><b>내 코트 고정 · 상대가 옮겨와요</b></div>`}
       <div class="r"><span>승부</span><b>승 3점 · 무 1점 합산</b></div>
       ${x.close_at&&!done?`<div class="r"><span>마감</span><b>${new Date(x.close_at).getMonth()+1}/${new Date(x.close_at).getDate()} (${'일월화수목금토'[new Date(x.close_at).getDay()]}) 밤 12시</b></div>`:''}
     </div>
