@@ -479,6 +479,34 @@ try { db.exec('ALTER TABLE users ADD COLUMN exp TEXT'); } catch (e) {}          
 db.exec(`CREATE TABLE IF NOT EXISTS member_exits (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
   reason TEXT, left_at INTEGER)`);
+/* 탈퇴 기록 — 예전엔 날짜가 늘 <오늘>, 구분은 모두 <탈퇴>였다.
+   실제로 나간 날(left_date) · 구분(kind: 본인 요청 · 장기 미활동 · 제명) · 기록한 운영진(by_user)을 남긴다.
+   reason 칸은 사유 메모로 쓴다. */
+['kind TEXT', 'left_date TEXT', 'by_user INTEGER']
+  .forEach(c => { try { db.exec(`ALTER TABLE member_exits ADD COLUMN ${c}`); } catch (e) {} });
+/* 회원 상태 이력 — 가입 · 휴회 · 복회 · 탈퇴를 한 줄씩. 나중에 회원 카드의 이력 타임라인이 이걸 읽는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS member_status_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER, name TEXT,
+  action TEXT, eff_date TEXT, until_date TEXT, reason TEXT, source TEXT, by_user INTEGER, at INTEGER)`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_msl ON member_status_log(club_id, user_id)'); } catch (e) {}
+/* 한국 날짜 — 서버 시계가 UTC 라 새벽에 <어제>가 찍히지 않게 */
+const kstToday = () => new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10);
+function memberLog(cid, uid, action, o) {
+  try {
+    const nm = (db.prepare('SELECT name FROM users WHERE id=?').get(uid) || {}).name || (o && o.name) || '';
+    db.prepare(`INSERT INTO member_status_log (club_id,user_id,name,action,eff_date,until_date,reason,source,by_user,at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(cid, uid, nm, action, (o && o.eff) || kstToday(),
+        (o && o.until) || null, (o && o.reason) || null, (o && o.source) || 'officer', (o && o.by) || null, Date.now());
+  } catch (e) {}
+}
+function memberExit(cid, uid, o) {
+  const u = db.prepare('SELECT name FROM users WHERE id=?').get(uid) || {};
+  const d = (o && /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || ''))) ? String(o.date) : kstToday();
+  db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at,kind,left_date,by_user) VALUES (?,?,?,?,?,?,?,?)')
+    .run(cid, uid, u.name || '', (o && o.memo) || null, Date.now(), (o && o.kind) || '본인 요청', d, (o && o.by) || null);
+  memberLog(cid, uid, 'exit', { eff: d, reason: [(o && o.kind) || '본인 요청', o && o.memo].filter(Boolean).join(' · '),
+    source: (o && o.source) || 'officer', by: o && o.by });
+}
 db.exec(`CREATE TABLE IF NOT EXISTS rest_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
   rtype TEXT, start TEXT, end TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at INTEGER)`);                    // 연명부 연락처 (본인 입력)
@@ -487,6 +515,9 @@ try { db.exec('ALTER TABLE club_members ADD COLUMN resting INTEGER DEFAULT 0'); 
    잊히면 그대로 탈퇴가 된다 — 시작일과 복귀 예정일을 함께 받는다. */
 try { db.exec('ALTER TABLE club_members ADD COLUMN rest_from TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE club_members ADD COLUMN rest_until TEXT'); } catch (e) {}
+/* 휴회 사유와 기록한 운영진 — 예전엔 날짜만 있어서 <왜 · 누가>를 알 수 없었다 */
+try { db.exec('ALTER TABLE club_members ADD COLUMN rest_reason TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE club_members ADD COLUMN rest_by INTEGER'); } catch (e) {}
 try { db.exec('ALTER TABLE club_members ADD COLUMN joined_at INTEGER'); } catch (e) {}      // 가입(승인)일
 
 app.get('/me/sport-profile', auth, (req, res) => {
@@ -1122,7 +1153,8 @@ app.get('/clubs/:id/members', (req, res) => {
   try { uid = jwt.verify((req.headers.authorization||'').replace('Bearer ',''), JWT_SECRET).uid; } catch (e) {}
   const officer = uid ? isOfficer(+req.params.id, uid) : false;
   const rows = db.prepare(`SELECT cm.id, cm.club_id, cm.user_id, cm.role, cm.jersey_no, cm.is_captain, cm.status, cm.grade,
-    cm.resting, cm.rest_from, cm.rest_until, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created, u.last_seen${officer ? ', u.phone' : ''} FROM club_members cm
+    cm.resting, cm.rest_from, cm.rest_until, cm.rest_reason,
+    (SELECT name FROM users WHERE id=cm.rest_by) AS rest_by_name, cm.joined_at, COALESCE(NULLIF(cm.alias,''), u.name) AS name, u.gender, u.rating, u.sport_started, u.photos, u.created_at AS user_created, u.last_seen${officer ? ', u.phone' : ''} FROM club_members cm
     JOIN users u ON u.id=cm.user_id WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
       AND COALESCE(u.is_test,0)=0
     ORDER BY (cm.role='owner') DESC, (cm.role='officer') DESC, cm.resting, u.name`).all(+req.params.id);
@@ -1472,8 +1504,14 @@ app.get('/clubs/:id/roster-logs', auth, (req, res) => {
   const rests = db.prepare(`SELECT r.rtype, r.start, r.end, r.reason, r.created_at, r.status, u.name
     FROM rest_requests r JOIN users u ON u.id=r.user_id
     WHERE r.club_id=? AND r.status='approved' ORDER BY r.id DESC LIMIT 200`).all(cid);
-  const exits = db.prepare('SELECT name, reason, left_at FROM member_exits WHERE club_id=? ORDER BY id DESC LIMIT 200').all(cid);
-  res.json({ rests, exits });
+  /* 운영진이 신청 없이 바로 건 휴회 · 복회도 연명부에 넣는다 */
+  const direct = db.prepare(`SELECT l.action, l.eff_date, l.until_date, l.reason, l.at, l.name, b.name by_name
+    FROM member_status_log l LEFT JOIN users b ON b.id=l.by_user
+    WHERE l.club_id=? AND l.source='officer' AND l.action IN ('rest','return') ORDER BY l.id DESC LIMIT 200`).all(cid)
+    .map(l => ({ rtype: l.action, start: l.eff_date, end: l.until_date, reason: l.reason, created_at: l.at, name: l.name, by_name: l.by_name }));
+  const exits = db.prepare(`SELECT e.name, e.reason, e.left_at, e.kind, e.left_date, b.name by_name
+    FROM member_exits e LEFT JOIN users b ON b.id=e.by_user WHERE e.club_id=? ORDER BY e.id DESC LIMIT 200`).all(cid);
+  res.json({ rests: [...rests, ...direct].sort((a, b) => (b.created_at || 0) - (a.created_at || 0)), exits });
 });
 
 app.post('/clubs/:id/rest-requests', auth, (req, res) => {
@@ -1504,7 +1542,14 @@ app.post('/clubs/:id/rest-requests/:rid/decide', auth, (req, res) => {
   if (!r || r.status !== 'pending') return res.status(404).json({ error: 'not_found' });
   const ok = !(req.body && req.body.approve === false);
   db.prepare('UPDATE rest_requests SET status=? WHERE id=?').run(ok ? 'approved' : 'rejected', r.id);
-  if (ok) db.prepare('UPDATE club_members SET resting=? WHERE club_id=? AND user_id=?').run(r.rtype === 'rest' ? 1 : 0, cid, r.user_id);
+  if (ok) {
+    const rest = r.rtype === 'rest';
+    db.prepare('UPDATE club_members SET resting=?, rest_from=?, rest_until=?, rest_reason=?, rest_by=? WHERE club_id=? AND user_id=?')
+      .run(rest ? 1 : 0, rest ? (r.start || new Date().toISOString().slice(0, 10)) : null, rest ? (r.end || null) : null,
+           rest ? (r.reason || null) : null, rest ? req.uid : null, cid, r.user_id);
+    memberLog(cid, r.user_id, rest ? 'rest' : 'return', { eff: r.start || undefined, until: rest ? r.end : null,
+      reason: r.reason, source: 'request', by: req.uid });
+  }
   sendPush(r.user_id, { icon: ok ? '✅' : '🔔', title: (r.rtype==='rest'?'휴회':'복회') + (ok?' 승인':' 신청 결과'), body: ok ? '처리됐어요' : '승인되지 않았어요' });
   res.json({ ok: true });
 });
@@ -1518,9 +1563,12 @@ app.patch('/clubs/:id/members/:uid/resting', auth, (req, res) => {
   /* 휴회를 풀면 기간도 함께 지운다 — 남겨두면 다음에 다시 쉴 때 옛 날짜가 따라온다 */
   const from  = v ? (ymd(b.rest_from) || new Date().toISOString().slice(0, 10)) : null;
   const until = v ? ymd(b.rest_until) : null;
-  db.prepare('UPDATE club_members SET resting=?, rest_from=?, rest_until=? WHERE club_id=? AND user_id=?')
-    .run(v, from, until, cid, intOrNull(req.params.uid));
-  res.json({ ok: true, resting: v, rest_from: from, rest_until: until });
+  const why   = v ? (String(b.rest_reason || '').trim().slice(0, 60) || null) : null;
+  const tuid  = intOrNull(req.params.uid);
+  db.prepare('UPDATE club_members SET resting=?, rest_from=?, rest_until=?, rest_reason=?, rest_by=? WHERE club_id=? AND user_id=?')
+    .run(v, from, until, why, v ? req.uid : null, cid, tuid);
+  memberLog(cid, tuid, v ? 'rest' : 'return', { eff: v ? from : (ymd(b.return_date) || undefined), until, reason: why, by: req.uid });
+  res.json({ ok: true, resting: v, rest_from: from, rest_until: until, rest_reason: why });
 });
 // 역할 변경 — 임원: guest↔member / 클럽장: officer 포함
 app.patch('/clubs/:id/members/:uid/role', auth, (req, res) => {
@@ -3706,12 +3754,8 @@ app.get('/me/applications', auth, (req, res) => {
 });
 
 app.delete('/me', auth, (req, res) => {
-  try {
-    const u = getUser(req.uid);
-    db.prepare("SELECT club_id FROM club_members WHERE user_id=? AND (status IS NULL OR status='active')").all(req.uid)
-      .forEach(r => db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
-        .run(r.club_id, req.uid, u ? u.name : '', '계정 탈퇴', now()));
-  } catch (e) {}
+  /* 클럽별 <지난 회원> 기록은 아래 삭제 트랜잭션 안에서 남긴다(memberExit).
+     예전엔 여기서 먼저 남겨서, 클럽장이라 탈퇴가 거절돼도 기록만 생겼다. */
 
   const uid = req.uid;
   // 클럽장은 넘기고 나가야 한다 — 클럽이 주인 없이 남으면 안 된다
@@ -3725,6 +3769,10 @@ app.delete('/me', auth, (req, res) => {
     // 회원 혼자인 클럽은 함께 정리
     db.prepare(`DELETE FROM clubs WHERE owner_id=? AND
       (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id AND user_id<>?)=0`).run(uid, uid);
+    /* 계정을 지우면 모든 클럽에서 빠진다 — 클럽마다 <지난 회원>으로 남긴다 */
+    db.prepare(`SELECT club_id FROM club_members WHERE user_id=? AND (status IS NULL OR status='active')
+      AND club_id IN (SELECT id FROM clubs)`).all(uid)
+      .forEach(r => { try { memberExit(r.club_id, uid, { kind: '본인 요청', memo: '맞수 계정 탈퇴', source: 'self' }); } catch (e) {} });
     db.prepare('DELETE FROM club_members WHERE user_id=?').run(uid);
     db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);          // 푸시 구독 파기
     db.prepare('DELETE FROM dms WHERE from_id=? OR to_id=?').run(uid, uid);   // 대화 파기
@@ -3821,6 +3869,8 @@ app.delete('/clubs/:id/leave', auth, (req, res) => {
     if (others > 0) return res.status(400).json({ error: 'owner_must_transfer' });   // 넘기고 나가야 한다
   }
   const unpaid = db.prepare("SELECT COUNT(*) n FROM dues WHERE club_id=? AND user_id=? AND status='unpaid'").get(cid, req.uid).n;
+  /* 스스로 나가도 지난 회원에 남긴다 — 예전엔 운영진이 내보낼 때만 기록됐다 */
+  if (m.role !== 'owner') memberExit(cid, req.uid, { kind: '본인 요청', memo: '앱에서 직접 탈퇴', source: 'self' });
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, req.uid);
   if (m.role === 'owner') db.prepare('DELETE FROM clubs WHERE id=?').run(cid);       // 마지막 사람이면 클럽도 정리
   res.json({ ok: true, unpaid_left: unpaid });
@@ -3834,9 +3884,10 @@ app.delete('/clubs/:id/members/:uid', auth, (req, res) => {
   if (!t) return res.status(404).json({ error: 'not_member' });
   if (t.role === 'owner') return res.status(403).json({ error: 'cannot_kick_owner' });
   if (t.role === 'officer' && me.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
-  { const u = getUser(target);
-    db.prepare('INSERT INTO member_exits (club_id,user_id,name,reason,left_at) VALUES (?,?,?,?,?)')
-      .run(cid, target, u ? u.name : '', '탈퇴', now()); }
+  { const b = req.body || {};
+    const KINDS = ['본인 요청', '장기 미활동', '제명'];
+    memberExit(cid, target, { date: b.left_date, kind: KINDS.includes(b.kind) ? b.kind : '제명',
+      memo: String(b.reason || '').trim().slice(0, 60) || null, by: req.uid, source: 'officer' }); }
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, target);
   /* 나간 회원이 대회 조에 남아 있으면 조 인원이 실제와 어긋난다 */
   try {
@@ -15409,7 +15460,19 @@ function xcEntries(eid) {
 }
 /* 그 클럽이 이 교류전에 낼 수 있는 사람 — 참석을 누른 회원 중에서 센다.
    게스트는 명부에 guest 로 올라 있고, 어느 클럽에서도 정회원이 아닌 사람만. */
+/* 앱이 없는 회원 — 운영진이 이름 · 성별 · 구력만 적어 교류전 명단을 채운다.
+   <총무 1명만 가입하면 교류전이 잡혀요>가 되려면 이게 있어야 한다. 나중에 가입하면 그때 잇는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS xc_named (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER, club_id INTEGER,
+  name TEXT, gender TEXT, started TEXT, added_by INTEGER, created_at INTEGER)`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_xcn ON xc_named(event_id, club_id)'); } catch (e) {}
 function xcRoster(eid, clubId) {
+  return xcRosterMembers(eid, clubId).concat(
+    db.prepare('SELECT * FROM xc_named WHERE event_id=? AND club_id=? ORDER BY id').all(eid, clubId)
+      .map(n => ({ id: 'n' + n.id, name: n.name, gender: n.gender, role: 'named', sport_started: n.started || null,
+                   grade: null, photos: null, named: 1 })));
+}
+function xcRosterMembers(eid, clubId) {
   /* club_members 에 같은 사람이 두 줄 있으면 참석자가 두 번 나온다 — user_id 로 묶는다 */
   /* LEFT JOIN 이라 그 클럽 사람이 아니어도 다 나왔다 — 양쪽 참석자가 섞여
      클럽마다 24명으로 보이고 명단이 똑같았다. 그 클럽 회원만 남긴다. */
@@ -15467,8 +15530,10 @@ function xcView(ev, uid) {
         /* 등급은 운영진이 손으로 적어둔 값(cm.grade)이 없는 회원이 많다 —
            그러면 구력으로 계산해 채운다. 명단에서 어떤 사람만 등급이 뜨면
            <저 사람은 왜 없지> 를 매번 묻게 된다. */
-        people: withGrade(r).map(p => ({ name: p.name, photos: p.photos || null,
-          gender: p.gender || null, grade: p.grade || null, guest: p.role === 'guest' ? 1 : 0 })),
+        people: withGrade(r.filter(p => !p.named)).map(p => ({ name: p.name, photos: p.photos || null,
+          gender: p.gender || null, grade: p.grade || null, guest: p.role === 'guest' ? 1 : 0 }))
+          .concat(r.filter(p => p.named).map(p => ({ name: p.name, gender: p.gender || null, grade: null,
+            named: 1, nid: +String(p.id).slice(1) }))),
         /* 이름 표기가 다른 같은 사람(카카오/네이버 계정) — 운영진에게만 귀띔한다.
            로마자 이름이 섞여 있으면 자동으로는 못 걸러낸다. */
         latin: r.filter(p => /^[A-Za-z][A-Za-z .'-]*$/.test(String(p.name || '').trim()))
@@ -15680,19 +15745,17 @@ function chView(ch, uid) {
 }
 
 /* 도전장 보내기 — 연락처를 몰라도 앱 안에서 끝난다 */
-app.post('/clubs/:id/challenge', auth, (req, res) => {
-  const cid = +req.params.id;
-  if (!isOfficer(cid, req.uid))
-    return res.status(403).json({ error: 'officer_only', message: '운영진만 보낼 수 있어요' });
-  const { to_club, date, start, venue_id, place, msg } = req.body || {};
-  if (!to_club || +to_club === cid) return res.status(400).json({ error: 'bad_req', message: '상대 클럽을 골라주세요' });
+/* 도전장 만들기 — 운영진이 직접 보낼 때 · 회원 제안을 보낼 때 · 초대받은 클럽이 가입했을 때 모두 여기로 */
+function chCreate(cid, uid, body) {
+  const { to_club, date, start, venue_id, place, msg } = body || {};
+  if (!to_club || +to_club === cid) return { status: 400, error: 'bad_req', message: '상대 클럽을 골라주세요' };
   const st = String(start || '19:00');
   const ts = chStartTs(date, st);
-  if (!ts) return res.status(400).json({ error: 'bad_date', message: '날짜를 골라주세요' });
-  if (ts < now()) return res.status(400).json({ error: 'past', message: '지난 시각이에요' });
+  if (!ts) return { status: 400, error: 'bad_date', message: '날짜를 골라주세요' };
+  if (ts < now()) return { status: 400, error: 'past', message: '지난 시각이에요' };
   const dup = db.prepare(`SELECT id FROM challenges WHERE status='sent'
     AND ((from_club=? AND to_club=?) OR (from_club=? AND to_club=?))`).get(cid, +to_club, +to_club, cid);
-  if (dup) return res.status(409).json({ error: 'already', message: '이미 주고받는 도전장이 있어요', id: dup.id });
+  if (dup) return { status: 409, error: 'already', message: '이미 주고받는 도전장이 있어요', id: dup.id };
   const t = now();
   const r = db.prepare(`INSERT INTO challenges
     (from_club,to_club,date,start,venue_id,place,courts,mins,msg,created_by,created_at,
@@ -15700,14 +15763,298 @@ app.post('/clubs/:id/challenge', auth, (req, res) => {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sent')`)
     .run(cid, +to_club, String(date), st, venue_id ? +venue_id : null,
          String(place || '').slice(0, 60) || null, CH_COURTS, CH_MINS,
-         String(msg || '').slice(0, 200) || null, req.uid, t, chReplyBy(ts), cid, t);
+         String(msg || '').slice(0, 200) || null, uid, t, chReplyBy(ts), cid, t);
   const ch = chRow(rid(r));
-  chSys(ch, cid, req.uid, `${ch.from_name || ''}${iga(ch.from_name)} 도전장을 보냈어요`);
+  chSys(ch, cid, uid, `${ch.from_name || ''}${iga(ch.from_name)} 도전장을 보냈어요`);
   if (ch.msg) db.prepare(`INSERT INTO challenge_msgs (challenge_id,club_id,user_id,body,kind,created_at)
-    VALUES (?,?,?,?, 'msg', ?)`).run(ch.id, cid, req.uid, ch.msg, t + 1);
+    VALUES (?,?,?,?, 'msg', ?)`).run(ch.id, cid, uid, ch.msg, t + 1);
   chNotify(+to_club, `${ch.from_name || '어느 클럽'}${iga(ch.from_name || '어느 클럽')} 도전장을 보냈어요`,
     `${chWhen(ch.date, st)}${ch.place ? ' · ' + ch.place : ''} · 운영진이 답해 주세요`, ch.id);
-  res.json({ ok: true, id: ch.id, challenge: chView(ch, req.uid) });
+  return { ch };
+}
+/* 도전장 보내기 — 연락처를 몰라도 앱 안에서 끝난다 */
+app.post('/clubs/:id/challenge', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '운영진만 보낼 수 있어요' });
+  const out = chCreate(cid, req.uid, req.body);
+  if (out.error) return res.status(out.status).json(out);
+  res.json({ ok: true, id: out.ch.id, challenge: chView(out.ch, req.uid) });
+});
+
+/* ══════════ 회원 제안 · 초대장 ══════════════════════════════
+   회원이 <이 클럽과 붙고 싶다>를 올리고 → 같이 갈 사람이 모이면(기본 6명) → 운영진이
+   도전장(맞수 클럽) · 초대장(맞수에 없는 클럽) · 상대 모집(아무 클럽이나)으로 보낸다. */
+db.exec(`CREATE TABLE IF NOT EXISTS xc_proposals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER, user_id INTEGER,
+  mode TEXT, target_club INTEGER, target_name TEXT, target_region TEXT, target_memo TEXT,
+  dates TEXT, venue_id INTEGER, place TEXT, msg TEXT,
+  status TEXT DEFAULT 'gathering', threshold INTEGER DEFAULT 6,
+  created_at INTEGER, closes_at INTEGER, ready_at INTEGER,
+  challenge_id INTEGER, event_id INTEGER, invite_token TEXT,
+  handled_by INTEGER, hold_msg TEXT)`);
+db.exec(`CREATE TABLE IF NOT EXISTS xc_proposal_votes (
+  proposal_id INTEGER, user_id INTEGER, dates TEXT, created_at INTEGER,
+  PRIMARY KEY (proposal_id, user_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS xc_invites (
+  token TEXT PRIMARY KEY, proposal_id INTEGER, from_club INTEGER,
+  date TEXT, start TEXT, venue_id INTEGER, place TEXT, msg TEXT,
+  target_name TEXT, target_region TEXT, created_by INTEGER, created_at INTEGER, expires_at INTEGER,
+  used_club INTEGER, used_at INTEGER, challenge_id INTEGER)`);
+const PR_DAYS = 7, INV_DAYS = 14;
+function prRow(id) { return db.prepare('SELECT * FROM xc_proposals WHERE id=?').get(+id); }
+function prDates(p) { try { const d = JSON.parse(p.dates || '[]'); return Array.isArray(d) ? d : []; } catch (e) { return []; } }
+function prSweep() {
+  const t = now();
+  db.prepare(`UPDATE xc_proposals SET status='closed' WHERE status='gathering' AND closes_at < ?`).run(t);
+}
+setInterval(() => { try { prSweep(); } catch (e) {} }, 30 * 60 * 1000);
+function prView(p, uid) {
+  const dates = prDates(p);
+  const votes = db.prepare(`SELECT v.user_id, v.dates, u.name, COALESCE(u.gender,'') gender
+    FROM xc_proposal_votes v LEFT JOIN users u ON u.id=v.user_id WHERE v.proposal_id=? ORDER BY v.created_at`).all(p.id);
+  const tally = dates.map((d, i) => votes.filter(v => { try { return JSON.parse(v.dates || '[]').includes(i); } catch (e) { return false; } }).length);
+  const mine = votes.find(v => v.user_id === uid);
+  const tc = p.target_club ? db.prepare('SELECT id, name, region FROM clubs WHERE id=?').get(p.target_club) : null;
+  const who = db.prepare('SELECT name FROM users WHERE id=?').get(p.user_id) || {};
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(p.club_id) || {};
+  const inv = p.invite_token ? db.prepare('SELECT token, expires_at, used_club, used_at, challenge_id FROM xc_invites WHERE token=?').get(p.invite_token) : null;
+  const g = x => /^(F|여)/.test(String(x || ''));
+  return { id: p.id, club_id: p.club_id, club_name: club.name, mode: p.mode, status: p.status,
+    target: tc ? { id: tc.id, name: tc.name, region: tc.region } : null,
+    target_name: tc ? tc.name : p.target_name, target_region: tc ? tc.region : p.target_region,
+    target_memo: isOfficer(p.club_id, uid) ? p.target_memo : null,
+    dates, tally, best: tally.length ? tally.indexOf(Math.max(...tally)) : -1,
+    venue_id: p.venue_id, place: p.place, msg: p.msg, threshold: p.threshold,
+    votes: votes.length, voters: votes.map(v => ({ id: v.user_id, name: v.name })),
+    men: votes.filter(v => !g(v.gender)).length, women: votes.filter(v => g(v.gender)).length,
+    my_vote: mine ? JSON.parse(mine.dates || '[]') : null, mine: p.user_id === uid,
+    proposer: who.name || '', created_at: p.created_at, closes_at: p.closes_at,
+    challenge_id: p.challenge_id, event_id: p.event_id, hold_msg: p.hold_msg,
+    invite: inv ? { token: inv.token, expires_at: inv.expires_at, used: !!inv.used_club, challenge_id: inv.challenge_id } : null,
+    officer: isOfficer(p.club_id, uid) };
+}
+app.post('/clubs/:id/proposals', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const b = req.body || {};
+  const mode = ['club', 'invite', 'open'].includes(b.mode) ? b.mode : 'club';
+  let target = null;
+  if (mode === 'club') {
+    target = +b.target_club || 0;
+    if (!target || target === cid || !db.prepare('SELECT 1 FROM clubs WHERE id=?').get(target))
+      return res.status(400).json({ error: 'bad_target', message: '상대 클럽을 골라주세요' });
+  }
+  if (mode === 'invite' && String(b.target_name || '').trim().length < 2)
+    return res.status(400).json({ error: 'bad_target', message: '초대할 클럽 이름을 적어주세요' });
+  const dates = (Array.isArray(b.dates) ? b.dates : []).slice(0, 3)
+    .filter(d => d && chStartTs(d.date, d.start) && chStartTs(d.date, d.start) > now())
+    .map(d => ({ date: String(d.date), start: String(d.start || '19:00') }));
+  if (!dates.length) return res.status(400).json({ error: 'bad_dates', message: '원하는 날을 하나 이상 골라주세요' });
+  const vid = b.venue_id && db.prepare('SELECT 1 FROM venues WHERE id=?').get(+b.venue_id) ? +b.venue_id : null;
+  const t = now();
+  const r = db.prepare(`INSERT INTO xc_proposals (club_id,user_id,mode,target_club,target_name,target_region,target_memo,
+      dates,venue_id,place,msg,created_at,closes_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(cid, req.uid, mode, target, mode === 'invite' ? String(b.target_name).trim().slice(0, 30) : null,
+      mode === 'invite' ? String(b.target_region || '').trim().slice(0, 30) || null : null,
+      mode === 'invite' ? String(b.target_memo || '').trim().slice(0, 60) || null : null,
+      JSON.stringify(dates), vid, String(b.place || '').trim().slice(0, 60) || null,
+      String(b.msg || '').trim().slice(0, 200) || null, t, t + PR_DAYS * 864e5);
+  const id = rid(r);
+  /* 제안한 사람은 당연히 간다 — 되는 날은 후보 전부 */
+  db.prepare('INSERT INTO xc_proposal_votes (proposal_id,user_id,dates,created_at) VALUES (?,?,?,?)')
+    .run(id, req.uid, JSON.stringify(dates.map((_, i) => i)), t);
+  const me = db.prepare('SELECT name FROM users WHERE id=?').get(req.uid) || {};
+  const tn = target ? (db.prepare('SELECT name FROM clubs WHERE id=?').get(target) || {}).name : (mode === 'open' ? '상대 모집' : String(b.target_name).trim());
+  db.prepare('SELECT user_id FROM club_members WHERE club_id=? AND (status IS NULL OR status=\'active\')').all(cid)
+    .forEach(m => { if (m.user_id !== req.uid) sendPush(m.user_id, { icon: '🆚', title: `${me.name || '회원'} 님이 교류전을 제안했어요`,
+      body: `${mode === 'open' ? '상대 모집' : 'vs ' + tn} · 같이 갈 사람을 모아요`, link: `proposal:${id}` }, { skipInbox: false }); });
+  res.json({ ok: true, id, proposal: prView(prRow(id), req.uid) });
+});
+app.get('/clubs/:id/proposals', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  try { prSweep(); } catch (e) {}
+  const rows = db.prepare('SELECT * FROM xc_proposals WHERE club_id=? ORDER BY id DESC LIMIT 30').all(cid).map(p => prView(p, req.uid));
+  res.json({ open: rows.filter(p => p.status === 'gathering' || p.status === 'ready'),
+             ready: rows.filter(p => p.status === 'ready'),
+             past: rows.filter(p => !['gathering', 'ready'].includes(p.status)).slice(0, 10) });
+});
+app.get('/proposals/:id', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  res.json(prView(p, req.uid));
+});
+app.post('/proposals/:id/vote', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
+  if (!['gathering', 'ready'].includes(p.status)) return res.status(409).json({ error: 'closed', message: '이미 끝난 제안이에요' });
+  const n = prDates(p).length;
+  const pick = (Array.isArray((req.body || {}).dates) ? req.body.dates : []).map(Number).filter(i => i >= 0 && i < n);
+  if (!pick.length) {                                       // 비우면 <안 갈래요>
+    db.prepare('DELETE FROM xc_proposal_votes WHERE proposal_id=? AND user_id=?').run(p.id, req.uid);
+  } else {
+    db.prepare(`INSERT INTO xc_proposal_votes (proposal_id,user_id,dates,created_at) VALUES (?,?,?,?)
+      ON CONFLICT(proposal_id,user_id) DO UPDATE SET dates=excluded.dates`).run(p.id, req.uid, JSON.stringify([...new Set(pick)]), now());
+  }
+  const cnt = db.prepare('SELECT COUNT(*) n FROM xc_proposal_votes WHERE proposal_id=?').get(p.id).n;
+  if (p.status === 'gathering' && cnt >= (p.threshold || 6)) {
+    db.prepare("UPDATE xc_proposals SET status='ready', ready_at=? WHERE id=?").run(now(), p.id);
+    const tn = p.target_club ? (db.prepare('SELECT name FROM clubs WHERE id=?').get(p.target_club) || {}).name : (p.target_name || '상대 모집');
+    db.prepare(`SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')`).all(p.club_id)
+      .forEach(o => sendPush(o.user_id, { icon: '🆚', title: '회원 제안 교류전에 6명이 모였어요',
+        body: `${p.mode === 'open' ? '상대 모집' : 'vs ' + tn} · 운영진이 보내 주세요`, link: `proposal:${p.id}` }));
+  }
+  res.json(prView(prRow(p.id), req.uid));
+});
+app.delete('/proposals/:id', auth, (req, res) => {        // 제안한 사람이 거두기
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (p.user_id !== req.uid && !isOfficer(p.club_id, req.uid)) return res.status(403).json({ error: 'forbidden' });
+  if (!['gathering', 'ready'].includes(p.status)) return res.status(409).json({ error: 'closed' });
+  db.prepare("UPDATE xc_proposals SET status='closed' WHERE id=?").run(p.id);
+  res.json({ ok: true });
+});
+function prPickDate(p, body) {
+  const ds = prDates(p); const i = Number((body || {}).date_idx);
+  return ds[Number.isInteger(i) && i >= 0 && i < ds.length ? i : Math.max(0, prView(p, 0).best)] || ds[0];
+}
+/* 운영진 — 도전장으로 보내기(맞수 클럽) */
+app.post('/proposals/:id/send', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(p.club_id, req.uid)) return res.status(403).json({ error: 'officer_only', message: '운영진만 보낼 수 있어요' });
+  if (p.mode !== 'club' || !['gathering', 'ready'].includes(p.status)) return res.status(409).json({ error: 'bad_state' });
+  const d = prPickDate(p, req.body);
+  const out = chCreate(p.club_id, req.uid, { to_club: p.target_club, date: d.date, start: d.start, venue_id: p.venue_id, place: p.place, msg: p.msg });
+  if (out.error) return res.status(out.status).json(out);
+  db.prepare("UPDATE xc_proposals SET status='sent', challenge_id=?, handled_by=? WHERE id=?").run(out.ch.id, req.uid, p.id);
+  sendPush(p.user_id, { icon: '🆚', title: '제안한 교류전을 도전장으로 보냈어요', body: `vs ${out.ch.to_name || ''} · 상대 답을 기다려요`, link: `challenge:${out.ch.id}` });
+  res.json({ ok: true, challenge_id: out.ch.id });
+});
+/* 운영진 — 초대장 만들기(맞수에 없는 클럽) */
+app.post('/proposals/:id/invite', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(p.club_id, req.uid)) return res.status(403).json({ error: 'officer_only', message: '운영진만 보낼 수 있어요' });
+  if (p.mode !== 'invite') return res.status(409).json({ error: 'bad_state' });
+  if (p.invite_token && p.status === 'invited') {
+    const inv = db.prepare('SELECT * FROM xc_invites WHERE token=?').get(p.invite_token);
+    if (inv && inv.expires_at > now() && !inv.used_club) return res.json({ ok: true, token: inv.token, expires_at: inv.expires_at });
+  }
+  if (!['gathering', 'ready', 'invited'].includes(p.status)) return res.status(409).json({ error: 'bad_state' });
+  const d = prPickDate(p, req.body);
+  const token = crypto.randomBytes(9).toString('base64url');
+  const exp = now() + INV_DAYS * 864e5;
+  db.prepare(`INSERT INTO xc_invites (token,proposal_id,from_club,date,start,venue_id,place,msg,target_name,target_region,created_by,created_at,expires_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(token, p.id, p.club_id, d.date, d.start, p.venue_id, p.place, p.msg,
+      p.target_name, p.target_region, req.uid, now(), exp);
+  db.prepare("UPDATE xc_proposals SET status='invited', invite_token=?, handled_by=? WHERE id=?").run(token, req.uid, p.id);
+  res.json({ ok: true, token, expires_at: exp });
+});
+/* 운영진 — 상대 모집으로 올리기(아무 클럽이나) : 9명 교류전을 상대 자리를 비워 연다 */
+app.post('/proposals/:id/open', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(p.club_id, req.uid)) return res.status(403).json({ error: 'officer_only', message: '운영진만 올릴 수 있어요' });
+  if (p.mode !== 'open' || !['gathering', 'ready'].includes(p.status)) return res.status(409).json({ error: 'bad_state' });
+  const d = prPickDate(p, req.body);
+  const ts = chStartTs(d.date, d.start);
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(p.club_id) || {};
+  const r = db.prepare(`INSERT INTO club_events
+      (club_id,title,date,tag,place,venue_id,created_by,created_at,
+       kind,club_slots,per_club,courts,squad_mix,format,match_status,close_at)
+      VALUES (?,?,?,'교류전',?,?,?,?, 'exchange',2,?,?, 'auto9','single','open',?)`)
+    .run(p.club_id, `${club.name || ''} 교류전 · 상대 모집`, chEventDate({ date: d.date, start: d.start, place: p.place }),
+         p.place, p.venue_id, req.uid, now(), CH_PER, CH_COURTS, ts ? ts - 864e5 : null);
+  const eid = rid(r);
+  db.prepare(`INSERT INTO exchange_entries (event_id,club_id,seat_no,status,joined_at) VALUES (?,?,1,'joined',?)`).run(eid, p.club_id, now());
+  db.prepare("UPDATE xc_proposals SET status='sent', event_id=?, handled_by=? WHERE id=?").run(eid, req.uid, p.id);
+  db.prepare('SELECT user_id FROM xc_proposal_votes WHERE proposal_id=?').all(p.id)
+    .forEach(v => sendPush(v.user_id, { icon: '🆚', title: '같이 가기로 한 교류전이 올라갔어요', body: '상대 클럽을 모집 중이에요 · 참석을 눌러주세요', link: 'club' }));
+  res.json({ ok: true, event_id: eid });
+});
+app.post('/proposals/:id/hold', auth, (req, res) => {
+  const p = prRow(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(p.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (!['gathering', 'ready'].includes(p.status)) return res.status(409).json({ error: 'bad_state' });
+  const msg = String((req.body || {}).msg || '').trim().slice(0, 120) || null;
+  db.prepare("UPDATE xc_proposals SET status='held', hold_msg=?, handled_by=? WHERE id=?").run(msg, req.uid, p.id);
+  sendPush(p.user_id, { icon: '🆚', title: '제안한 교류전은 이번엔 보류됐어요', body: msg || '운영진이 다음에 이어가요', link: `proposal:${p.id}` });
+  res.json({ ok: true });
+});
+/* ── 초대장 (로그인 없이 보인다) ── */
+function invView(inv) {
+  const fc = db.prepare('SELECT id, name, region FROM clubs WHERE id=?').get(inv.from_club) || {};
+  const members = db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND (status IS NULL OR status='active')").get(inv.from_club).n;
+  let rec = { w: 0, l: 0, d: 0 };
+  try {
+    db.prepare(`SELECT e.id FROM club_events e JOIN exchange_entries x ON x.event_id=e.id AND x.club_id=? WHERE e.kind='exchange'`).all(inv.from_club)
+      .forEach(ev => { const r = xcResult(ev.id); if (!r || !r.done) return; if (r.winner === inv.from_club) rec.w++; else if (r.winner == null) rec.d++; else rec.l++; });
+  } catch (e) {}
+  const pr = prRow(inv.proposal_id) || {};
+  const dates = prDates(pr);
+  return { token: inv.token, from: { id: fc.id, name: fc.name, region: fc.region, members, record: rec },
+    date: inv.date, start: inv.start, when: chWhen(inv.date, inv.start), more_dates: Math.max(0, dates.length - 1),
+    place: inv.place, msg: inv.msg, target_name: inv.target_name, target_region: inv.target_region,
+    per_club: CH_PER, courts: CH_COURTS, mins: CH_MINS,
+    expires_at: inv.expires_at, expired: inv.expires_at < now(), used: !!inv.used_club };
+}
+app.get('/xinv/:token', (req, res) => {
+  const inv = db.prepare('SELECT * FROM xc_invites WHERE token=?').get(String(req.params.token));
+  if (!inv) return res.status(404).json({ error: 'no_invite', message: '초대장을 찾지 못했어요' });
+  res.json(invView(inv));
+});
+/* 받은 클럽이 답하기 — 그 클럽 운영진이어야 한다. 가입하고 클럽을 만든 직후 앱이 부른다. */
+app.post('/xinv/:token/accept', auth, (req, res) => {
+  const inv = db.prepare('SELECT * FROM xc_invites WHERE token=?').get(String(req.params.token));
+  if (!inv) return res.status(404).json({ error: 'no_invite', message: '초대장을 찾지 못했어요' });
+  if (inv.used_club) return res.status(409).json({ error: 'used', message: '이미 답한 초대장이에요', challenge_id: inv.challenge_id });
+  if (inv.expires_at < now()) return res.status(409).json({ error: 'expired', message: '기간이 지난 초대장이에요' });
+  const cid = +((req.body || {}).club_id || 0);
+  if (!cid || !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only', message: '클럽 운영진만 답할 수 있어요' });
+  if (cid === inv.from_club) return res.status(400).json({ error: 'same_club', message: '제안한 클럽이에요' });
+  /* 날짜가 이미 지났으면 새 클럽이 다시 고르게 하루 뒤 같은 시각으로 둔다 — 조율 대화로 바꾸면 된다 */
+  let date = inv.date;
+  if (!(chStartTs(inv.date, inv.start) > now())) {
+    const t = new Date(now() + 9 * 36e5 + 864e5); date = t.toISOString().slice(0, 10);
+  }
+  const out = chCreate(inv.from_club, inv.created_by, { to_club: cid, date, start: inv.start, venue_id: inv.venue_id, place: inv.place, msg: inv.msg });
+  if (out.error) return res.status(out.status).json(out);
+  db.prepare('UPDATE xc_invites SET used_club=?, used_at=?, challenge_id=? WHERE token=?').run(cid, now(), out.ch.id, inv.token);
+  db.prepare("UPDATE xc_proposals SET status='sent', challenge_id=? WHERE id=?").run(out.ch.id, inv.proposal_id);
+  const nc = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  const pr = prRow(inv.proposal_id);
+  const who = [pr && pr.user_id, inv.created_by].filter(Boolean);
+  [...new Set(who)].forEach(u => sendPush(u, { icon: '🆚', title: `${nc.name || '초대한 클럽'}${iga(nc.name || '클럽')} 맞수에 들어왔어요`,
+    body: '초대장이 이어졌어요 · 도전장 대화에서 조율해요', link: `challenge:${out.ch.id}` }));
+  res.json({ ok: true, challenge_id: out.ch.id });
+});
+/* 이름만 올린 명단 — 그 클럽 운영진만 */
+app.post('/exchange/:id/named', auth, (req, res) => {
+  const eid = +req.params.id, b = req.body || {}, cid = +b.club_id;
+  const ev = xcEvent(eid);
+  if (!ev) return res.status(404).json({ error: 'not_found' });
+  if (!cid || !isOfficer(cid, req.uid) || !xcEntries(eid).some(e => e.club_id === cid))
+    return res.status(403).json({ error: 'officer_only', message: '이 교류전 클럽의 운영진만 채울 수 있어요' });
+  const name = String(b.name || '').trim().slice(0, 12);
+  if (name.length < 2) return res.status(400).json({ error: 'bad_name', message: '이름을 적어주세요' });
+  const gender = b.gender === 'F' ? 'F' : 'M';
+  const started = /^\d{4}(-\d{1,2})?$/.test(String(b.started || '')) ? String(b.started) : null;
+  if (xcRoster(eid, cid).length >= (ev.per_club || CH_PER)) return res.status(409).json({ error: 'full', message: '명단이 다 찼어요' });
+  db.prepare('INSERT INTO xc_named (event_id,club_id,name,gender,started,added_by,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(eid, cid, name, gender, started, req.uid, now());
+  res.json(xcView(xcEvent(eid), req.uid));
+});
+app.delete('/exchange/:id/named/:nid', auth, (req, res) => {
+  const n = db.prepare('SELECT * FROM xc_named WHERE id=? AND event_id=?').get(+req.params.nid, +req.params.id);
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  if (!isOfficer(n.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare('DELETE FROM xc_named WHERE id=?').run(n.id);
+  res.json(xcView(xcEvent(+req.params.id), req.uid));
 });
 
 /* 받은·보낸 도전장 — 운영진 도구 · 홈 띠 · 교류전 페이지가 모두 이걸 읽는다 */
@@ -15816,6 +16163,18 @@ app.post('/challenges/:id/accept', auth, (req, res) => {
   chSys(ch, side, req.uid, `${nm} 운영진이 확정했어요 · 참석을 받기 시작해요`);
   const when = chWhen(ch.date, ch.start || '19:00');
   /* 🆚 의 기본 링크는 오픈매치 탭이다 — 교류전은 클럽 탭에 있으니 도전장 화면(→ 교류전 보기)으로 보낸다 */
+  /* 회원 제안에서 온 도전장이면 <같이 갈래요> 누른 사람들에게는 따로 먼저 알린다 */
+  const prop = db.prepare('SELECT id FROM xc_proposals WHERE challenge_id=?').get(ch.id);
+  const voters = new Set(prop ? db.prepare('SELECT user_id FROM xc_proposal_votes WHERE proposal_id=?').all(prop.id).map(r => r.user_id) : []);
+  if (prop) {
+    db.prepare("UPDATE xc_proposals SET status='done', event_id=? WHERE id=?").run(eid, prop.id);
+    voters.forEach(u => sendPush(u, { icon: '🆚', title: '같이 가기로 한 교류전이 잡혔어요',
+      body: `vs ${ch.to_name || ''} · ${when} · 참석을 눌러주세요`, link: `challenge:${ch.id}` }));
+  }
+  db.prepare('SELECT user_id FROM club_members WHERE club_id=?').all(ch.from_club)
+    .forEach(r => { if (!voters.has(r.user_id)) sendPush(r.user_id, { icon: '🆚', title: '교류전이 잡혔어요',
+      body: `vs ${ch.to_name || ''} · ${when} · 참석을 눌러주세요`, link: `challenge:${ch.id}` }); });
+  if (false)
   notifyClub(ch.from_club, null, '🆚', '교류전이 잡혔어요', `vs ${ch.to_name || ''} · ${when} · 참석을 눌러주세요`, `challenge:${ch.id}`);
   notifyClub(ch.to_club, null, '🆚', '교류전이 잡혔어요', `vs ${ch.from_name || ''} · ${when} · 참석을 눌러주세요`, `challenge:${ch.id}`);
   res.json({ ok: true, event_id: eid });
@@ -15843,7 +16202,9 @@ app.post('/clubs/:id/exchange', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isOfficer(cid, req.uid))
     return res.status(403).json({ error: 'officer_only', message: '임원만 교류전을 열 수 있어요' });
-  const { title, date, place, courts, mins, squad_mix, close_at, court_fee } = req.body || {};
+  const { title, date, place, courts, mins, squad_mix, close_at, court_fee, venue_id } = req.body || {};
+  /* 구장 목록에서 골랐으면 그 구장에 잇는다 — 홈코트 화면의 <다가오는 모임> · <있었던 일>에 뜬다 */
+  const vid = venue_id && db.prepare('SELECT 1 FROM venues WHERE id=?').get(+venue_id) ? +venue_id : null;
   const plan = xcPlanFor(courts, mins);
   if (!plan) return res.status(400).json({ error: 'bad_size', message: '코트 수와 시간을 확인해 주세요' });
   const mix = xcMix(squad_mix);
@@ -15851,11 +16212,11 @@ app.post('/clubs/:id/exchange', auth, (req, res) => {
     return res.status(400).json({ error: 'bad_mix',
       message: `${plan.per_club}명에 맞는 종목 구성을 골라주세요` });
   const r = db.prepare(`INSERT INTO club_events
-      (club_id,title,date,tag,place,created_by,created_at,
+      (club_id,title,date,tag,place,venue_id,created_by,created_at,
        kind,club_slots,per_club,courts,squad_mix,format,match_status,close_at,court_fee,dinner_fee)
-      VALUES (?,?,?,?,?,?,?, 'exchange',2,?,?,?, 'single','open',?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?, 'exchange',2,?,?,?, 'single','open',?,?,?)`)
     .run(cid, String(title || '교류전'), String(date || ''), '교류전',
-         String(place || '').trim().slice(0, 60) || null, req.uid, now(),
+         String(place || '').trim().slice(0, 60) || null, vid, req.uid, now(),
          plan.per_club, +courts, String(squad_mix || 'md2,mx4'),
          +close_at || null, +court_fee || 0, +((req.body||{}).dinner_fee) || 0);
   const eid = rid(r);
