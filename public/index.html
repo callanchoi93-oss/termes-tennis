@@ -4124,104 +4124,116 @@
      글자 크기가 통째로 커진다(지난 만남 문단이 그랬다) */
   :root{ --x0:12px; --x1:14px;   --x2:16px;   --x3:20px;   --x4:24px; --xlh:1.618 }
   /* 단계 표시 — 클럽 만들기와 같은 방식 */
-  .schd .tb{ white-space:nowrap;flex:none }
-  .schmine{ display:inline-flex;align-items:center;gap:6px;height:32px;margin:10px 4px 0;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:#fff;
-    font-size:13px;font-weight:700;color:#4e5968;font-family:inherit;cursor:pointer }
-  .schmine i{ font-style:normal;color:var(--coral-d) } .schmine.on{ background:var(--ink);border-color:var(--ink);color:#fff } .schmine.on i{ color:#ffb38a }
-  /* 참석 버튼이 들어오면서 정보 줄이 <나 포…> 로 잘렸다 — 두 줄까지 보여준다 */
-  .psess2 .p2m{ white-space:normal !important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
-  /* ── 클럽 화면 · 시안(C-1~C-5) 모양 ── */
-  .cmcard .chip{ border:0 !important;box-shadow:none !important }
-  /* 일정 카드 글자 — 제목 16 · 인원 · 시간 · 장소는 조각째로만 줄바꿈 */
-  #s-club .psess2 .p2n{ font-size:16px !important;font-weight:700 !important;letter-spacing:-.03em }
-  #s-club .psess2 .p2top{ display:flex;align-items:center;gap:6px }
-  #s-club .psess2 .p2b{ flex:none;font-size:11.5px !important;font-weight:700;border-radius:7px;padding:2px 7px;background:#fff;color:var(--coral-d) }
-  #s-club .psess2:not(.now):not(.xc) .p2b{ background:var(--felt);color:#6b7684 }
-  #s-club .psess2 .p2m{ display:flex !important;flex-wrap:wrap;column-gap:0;font-size:13px !important;margin-top:3px;-webkit-line-clamp:unset }
-  #s-club .psess2 .p2m .pw,#s-club .psess2 .p2m .pt{ white-space:nowrap }
-  #s-club .psess2 .p2m .pt::before{ content:'·';margin:0 5px;color:var(--lgray) }
-  /* 인원은 첫 줄, 시간 · 장소는 둘째 줄 한 줄로(넘치면 …) — 줄 머리에 <·>가 오지 않게 */
-  #s-club .psess2 .p2m .pl{ flex-basis:100%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#8b95a1 }
-  #s-club .psess2 .p2m .pw{ flex-basis:100% }
-  #s-club .psess2 .p2m .pw + .pt::before{ content:none;margin:0 }
-  #s-club .psess2 .p2m .pt{ color:#8b95a1 }
-  #s-club .psess2 .p2m .pw b{ color:var(--coral-d);font-weight:700 }
-  /* 내 기록 카드 — 한 줄에 한 가지 */
-  .cmrec .v{ align-items:baseline } .cmrec .v b em{ font-style:normal;font-size:16px;margin-left:1px }
-  .cmrec .v .of{ font-size:13px;color:#6b7684 } .cmrec .v .avg{ margin-left:auto;font-size:13px;color:#6b7684 } .cmrec .v .avg b{ font-size:20px;color:var(--ink);margin-right:1px }
-  .cmrec .l1{ font-size:13.5px;color:#4e5968;margin-top:8px } .cmrec .l2{ font-size:13px;color:#6b7684;margin-top:3px } .cmrec .l2 b{ color:var(--coral-d) }
-  .chero .cheroop{ border:0 !important;background:var(--felt) !important;color:#4e5968 !important;font-size:12.5px !important;padding:7px 11px !important }
-  .schd .tb2{ flex:none;height:34px;padding:0 13px;border-radius:999px;background:var(--felt);color:#4e5968;font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap;margin-bottom:10px }
+  /* ══ 클럽 화면(홈 · 일정 · 랭킹 · 시트) — 앱 글자 · 간격 기준만 쓴다 ══
+     글자 --t0 12 · --t1 14 · --t2 16 · --t3 20 · --t4 24 / 굵기 400 · 700 (800 은 24px 이상 숫자 하나)
+     간격 --s1 4 · --s2 6 · --s3 10 · --s4 17 · --s5 27. 예전엔 11.5 · 12.5 · 13 · 13.5 · 15 · 17 · 19 가 섞여
+     카드마다 글자 크기와 여백이 달라 붙어 보이거나 작아 보였다. */
+  /* 머리 · 탭 */
+  .chero .cheroop{ border:0 !important;background:var(--felt) !important;color:var(--gray) !important;font-size:var(--t1) !important;font-weight:700 !important;padding:var(--s2) var(--s3) !important }
+  /* 공통 — 칩 · 제목 줄 · 카드 */
+  /* 누르는 칩이 아니라 글자표라서 44px 누름 영역 규칙(.chip min-height)에서 뺀다 */
+  .cmcard .chip,.xhc .chip{ min-height:0 !important;display:inline-flex !important }
+  .cmcard .chip{ display:inline-flex;align-items:center;height:24px;padding:0 var(--s2);border:0 !important;box-shadow:none !important;border-radius:8px;
+    font-size:var(--t0);font-weight:700;line-height:1;background:var(--coral-s);color:var(--coral-d) }
+  .cmcard .chip.ok{ background:#e6f6f0;color:#0b7a5c }
+  .cmlbl{ font-size:var(--t1);font-weight:700;color:var(--gray);margin:var(--s5) 0 var(--s3) }
+  .cmlbl2{ display:flex;justify-content:space-between;align-items:baseline;margin:var(--s5) 0 var(--s3);font-size:var(--t1);font-weight:700;color:var(--gray) }
+  .cmlbl2 em{ font-style:normal;color:var(--coral-d) }
+  .cmcard{ border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);padding:var(--s4);margin-top:var(--s3) }
+  .cmcard .k{ display:flex;justify-content:space-between;align-items:center;font-size:var(--t1);color:var(--gray) }
+  .cmcard .t{ display:block;font-size:var(--t3);font-weight:700;letter-spacing:-.03em;line-height:1.3;margin-top:var(--s3);cursor:pointer }
+  .cmcard .s{ display:block;font-size:var(--t1);color:var(--gray);margin-top:var(--s1) }
+  .cmcard .who{ display:flex;align-items:center;margin-top:var(--s3) }
+  .cmcard .who i{ font-style:normal;width:28px;height:28px;border-radius:50%;background:#d7dce2;color:var(--gray);font-size:var(--t0);font-weight:700;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff }
+  .cmcard .who i+i{ margin-left:-8px }
+  .cmcard .who span{ font-size:var(--t1);color:var(--gray);margin-left:var(--s3) }
+  .cmcard .acts{ display:flex;gap:var(--s3);margin-top:var(--s4) }
+  .cmcard .acts button{ flex:0 0 88px;height:48px;border:0;border-radius:14px;background:var(--felt);font-size:var(--t2);font-weight:700;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmcard .acts button.go{ flex:1;background:var(--coral);color:#fff } .cmcard .acts button.go.on{ background:#e6f6f0;color:#0b7a5c }
+  .cmgray{ width:100%;height:48px;margin-top:var(--s4);border:0;border-radius:14px;background:var(--felt);font-size:var(--t2);font-weight:700;color:var(--ink);font-family:inherit;cursor:pointer }
+  /* 홈 — 공지 · 내 상태 · 교류전 · 제안 */
+  .cmnt{ width:100%;display:flex;align-items:center;gap:var(--s3);border:0;border-radius:14px;background:#f7f8fa;padding:var(--s3) var(--s4);margin-top:var(--s3);
+    min-height:48px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmnt em{ flex:none;font-style:normal;font-size:var(--t0);font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:6px;padding:var(--s1) var(--s2);line-height:1 }
+  .cmnt span{ flex:1;min-width:0;font-size:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis } .cmnt i{ font-style:normal;color:#bec5cc }
+  .cmtiles{ display:grid;gap:var(--s3);margin-top:var(--s3) }
+  .cmtiles button{ border:0;border-radius:14px;background:#f7f8fa;padding:var(--s4) var(--s1);font-family:inherit;cursor:pointer;color:var(--ink);line-height:1.3 }
+  .cmtiles b{ display:block;font-size:var(--t2);font-weight:700 } .cmtiles b.rd{ color:#d93434 } .cmtiles b.mu{ color:var(--lgray);font-weight:700 }
+  .cmtiles span{ display:block;font-size:var(--t0);color:var(--gray);margin-top:var(--s1) }
+  .cmx{ width:100%;display:flex;align-items:center;gap:var(--s3);border:0;border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);
+    padding:var(--s4);margin-top:var(--s3);text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmx .chav{ flex:none;width:40px !important;height:40px !important;border-radius:12px;font-size:var(--t1) !important }
+  .cmx .c{ flex:1;min-width:0 } .cmx .c b{ display:block;font-size:var(--t2);font-weight:700 } .cmx .c span{ display:block;font-size:var(--t1);color:var(--gray);margin-top:2px }
+  .cmx em{ flex:none;font-style:normal;height:36px;padding:0 var(--s3);border-radius:10px;background:var(--felt);font-size:var(--t1);font-weight:700;color:var(--gray);display:flex;align-items:center }
+  .cmprop{ width:100%;display:flex;align-items:center;gap:var(--s3);border:0;border-radius:16px;background:var(--coral-s);padding:var(--s4);margin-top:var(--s3);text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmprop i{ display:flex;color:var(--coral) } .cmprop b{ flex:1;font-size:var(--t2);font-weight:700 } .cmprop span{ color:#d9b4a0;font-size:var(--t3) }
+  .live.green{ background:#e6f6f0 !important;color:#0b7a5c !important } .live.green i{ background:#0b7a5c !important }
+  /* 새 회원 안내 */
+  .cmbar{ display:block;height:6px;border-radius:6px;background:var(--felt);overflow:hidden;margin:var(--s3) 0 var(--s1) } .cmbar u{ display:block;height:100%;background:var(--coral) }
+  .cmck{ width:100%;display:flex;align-items:center;gap:var(--s3);border:0;background:none;border-bottom:1px solid var(--line2);padding:var(--s3) 0;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmck .b{ flex:none;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line);color:#fff;font-size:var(--t0);display:flex;align-items:center;justify-content:center }
+  .cmck.ok .b{ background:#0b7a5c;box-shadow:none } .cmck.ok .c b{ color:var(--lgray);text-decoration:line-through }
+  .cmck .c{ flex:1 } .cmck .c b{ display:block;font-size:var(--t1);font-weight:700 } .cmck .c span{ display:block;font-size:var(--t0);color:var(--gray);margin-top:2px } .cmck .ar{ color:#bec5cc }
+  .cmrest{ width:100%;display:flex;align-items:center;gap:var(--s3);border:0;border-radius:16px;background:#f7f8fa;padding:var(--s4);margin-top:var(--s3);text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
+  .cmrest .c{ flex:1 } .cmrest b{ display:block;font-size:var(--t2);font-weight:700 } .cmrest .c span{ display:block;font-size:var(--t0);color:var(--gray);margin-top:2px } .cmrest .ar{ color:#bec5cc;font-size:var(--t3) }
+  /* 일정 — 머리 칩 줄 · 카드 */
+  .schd{ align-items:center !important;gap:var(--s2) !important;margin:var(--s3) 0 var(--s4) !important }
+  .schd .tb2{ flex:none;height:36px;padding:0 var(--s4);border-radius:999px;background:var(--felt);color:var(--gray);font-size:var(--t1);font-weight:700;display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap }
   .schd .tb2.on{ background:var(--ink);color:#fff }
-  .schd{ align-items:center !important;gap:6px !important }
-  .schd .schplus{ margin-left:auto;margin-bottom:10px;flex:none;width:34px;height:34px;border:0;border-radius:11px;background:var(--coral);color:#fff;font-size:19px;font-weight:700;font-family:inherit;cursor:pointer }
+  .schd .schplus{ margin-left:auto;flex:none;width:36px;height:36px;border:0;border-radius:12px;background:var(--coral);color:#fff;font-size:var(--t3);font-weight:700;font-family:inherit;cursor:pointer;line-height:1 }
   .schd .schplus.guest{ background:#e8f3ff;color:#3182f6 }
-  #s-club .psess2{ background:#fbf7f2 !important;border:0 !important;box-shadow:none !important;border-radius:16px !important }
+  #s-club .p2place{ font-size:var(--t1);margin:0 0 var(--s3) }
+  #s-club .plan2{ gap:var(--s3) !important }
+  #s-club .psess2{ align-items:center;gap:var(--s4) !important;padding:var(--s4) !important;margin:0 !important;background:#fbf7f2 !important;border:0 !important;box-shadow:none !important;border-radius:16px !important }
   #s-club .psess2.now{ background:#fff1e8 !important }
   #s-club .psess2.xc{ background:#fff1e8 !important;box-shadow:inset 0 0 0 1.5px var(--coral) !important }
-  .live.green{ background:#e6f6f0 !important;color:#0b7a5c !important } .live.green i{ background:#0b7a5c !important }
-  .rsv{ padding:4px 2px 2px } .rsv .t{ display:block;font-size:19px;font-weight:800;letter-spacing:-.03em } .rsv .s{ display:block;font-size:13px;color:#6b7684;margin-top:4px }
-  .rsv label{ display:block;font-size:12.5px;font-weight:700;color:#4e5968;margin:16px 0 6px } .rsv label span{ font-weight:400;color:var(--lgray) }
-  .rsv .note2{ margin-top:10px;border-radius:12px;background:#f7f8fa;padding:11px 13px;font-size:12.5px;color:#6b7684;line-height:1.55 }
-  .rsv .btn{ margin-top:14px }
-  .seg3{ display:flex;background:var(--felt);border-radius:13px;padding:3px;margin-top:14px }
-  .seg3 button{ flex:1;height:38px;border:0;border-radius:11px;background:none;font-size:14px;font-weight:700;color:#6b7684;font-family:inherit;cursor:pointer }
+  #s-club .psess2 .p2d{ width:36px }
+  #s-club .psess2 .p2d b{ font-size:var(--t3) !important;font-weight:700 !important;line-height:1.2 }
+  #s-club .psess2 .p2d i{ font-size:var(--t0) !important;margin-top:2px }
+  #s-club .psess2 .p2top{ display:flex;align-items:center;justify-content:flex-start;gap:var(--s2) }
+  #s-club .psess2 .p2n{ flex:0 1 auto !important;min-width:0;font-size:var(--t2) !important;font-weight:700 !important;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  #s-club .psess2 .p2b{ flex:none;height:22px;display:inline-flex;align-items:center;font-size:var(--t0) !important;font-weight:700;border-radius:7px;padding:0 var(--s2) !important;background:var(--felt);color:var(--gray) }
+  #s-club .psess2.now .p2b,#s-club .psess2.xc .p2b{ background:#fff;color:var(--coral-d) }
+  #s-club .psess2 .p2m{ display:flex !important;flex-direction:column;font-size:var(--t1) !important;color:var(--gray);margin-top:var(--s1);line-height:1.4;-webkit-line-clamp:unset;white-space:normal !important;overflow:visible }
+  #s-club .psess2 .p2m .pw b{ color:var(--coral-d);font-weight:700 }
+  #s-club .psess2 .p2m .pl{ font-size:var(--t0);color:var(--lgray);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .p2go{ flex:none;align-self:center;height:36px;padding:0 var(--s4);border:0;border-radius:10px;background:var(--coral);color:#fff;font-size:var(--t1);font-weight:700;font-family:inherit;cursor:pointer }
+  .p2go.on{ background:#e6f6f0;color:#0b7a5c;padding:0 var(--s3) }
+  /* 참석 시트 · 세 칸 선택 */
+  .rsv{ padding:var(--s1) 0 0 } .rsv .t{ display:block;font-size:var(--t3);font-weight:700;letter-spacing:-.03em } .rsv .s{ display:block;font-size:var(--t1);color:var(--gray);margin-top:var(--s1) }
+  .rsv label{ display:block;font-size:var(--t1);font-weight:700;color:var(--ink);margin:var(--s4) 0 var(--s2) } .rsv label span{ font-weight:400;color:var(--lgray);margin-left:var(--s1) }
+  .rsv .note2{ margin-top:var(--s3);border-radius:12px;background:#f7f8fa;padding:var(--s3) var(--s4);font-size:var(--t1);color:var(--gray);line-height:1.5 }
+  .rsv .btn{ margin-top:var(--s4) }
+  .seg3{ display:flex;background:var(--felt);border-radius:14px;padding:var(--s1);margin-top:var(--s4) }
+  .seg3 button{ flex:1;height:40px;border:0;border-radius:11px;background:none;font-size:var(--t1);font-weight:700;color:var(--gray);font-family:inherit;cursor:pointer }
   .seg3 button.on{ background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(33,40,52,.14) }
-  .cmgray{ width:100%;height:46px;margin-top:12px;border:0;border-radius:13px;background:var(--felt);font-size:14px;font-weight:700;color:var(--ink);font-family:inherit;cursor:pointer }
-  .cmlbl2{ display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 8px;font-size:13px;font-weight:700;color:var(--lgray) } .cmlbl2 em{ font-style:normal;color:var(--coral-d) }
-  .cmtiles b.mu{ color:var(--lgray);font-weight:700;font-size:13.5px }
-  .cmx{ width:100%;display:flex;align-items:center;gap:12px;border:0;border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);
-    padding:13px 14px;margin-top:10px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmx .c{ flex:1;min-width:0 } .cmx .c b{ display:block;font-size:15px;font-weight:700 } .cmx .c span{ display:block;font-size:12.5px;color:#6b7684;margin-top:2px }
-  .cmx em{ flex:none;font-style:normal;height:32px;padding:0 12px;border-radius:10px;background:var(--felt);font-size:13px;font-weight:700;color:#4e5968;display:flex;align-items:center }
-  .cmprop{ width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:16px;background:var(--coral-s);padding:14px 16px;margin-top:10px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmprop i{ display:flex;color:var(--coral) } .cmprop b{ flex:1;font-size:14.5px } .cmprop span{ color:#d9b4a0;font-size:18px }
-  .mst{ border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);padding:14px 16px;margin-top:10px }
-  .mst .h{ display:block;font-size:15px;font-weight:800 } .mst .s{ display:block;font-size:12.5px;color:#6b7684;margin-top:3px;line-height:1.5 }
-  .mst .r{ display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line2);font-size:14px }
-  .mst .r em{ font-style:normal;font-size:12px;font-weight:700;border-radius:7px;padding:3px 8px } .mst .r em.ok{ background:#e6f6f0;color:#0b7a5c } .mst .r em.rd{ background:#fdecec;color:#d93434 }
-  .mst .big{ display:flex;align-items:baseline;gap:8px;margin-top:8px } .mst .big b{ font-size:22px;font-weight:800;letter-spacing:-.03em } .mst .big span{ font-size:12.5px;color:#6b7684 }
-  .mst .bars{ display:flex;gap:4px;margin-top:10px } .mst .bars i{ flex:1;height:8px;border-radius:4px;background:var(--felt) } .mst .bars i.on{ background:var(--coral) }
-  .cis .hd{ display:flex;align-items:center;gap:12px;padding:4px 0 2px } .cis .hd b{ display:block;font-size:18px;font-weight:800 } .cis .hd span{ display:block;font-size:12.5px;color:#6b7684;margin-top:2px }
-  .cis .r{ display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line2);font-size:14px } .cis .r span{ color:#6b7684 } .cis .r b{ text-align:right }
-  .cis .lk{ display:flex;justify-content:center;gap:18px;margin-top:12px;font-size:13px;font-weight:700;color:#6b7684 } .cis .lk span{ cursor:pointer }
-  .cmrec{ width:100%;border:0;border-radius:18px;background:var(--coral-s);padding:14px 16px;margin-top:10px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmrec .k{ display:flex;justify-content:space-between } .cmrec .k b{ font-size:13.5px;color:var(--coral-d) } .cmrec .k span{ font-size:12.5px;color:var(--coral-d) }
-  .cmrec .v{ display:flex;align-items:baseline;gap:10px;margin-top:6px } .cmrec .v b{ font-size:26px;font-weight:800;letter-spacing:-.03em } .cmrec .v span{ font-size:13px;color:#4e5968 }
-  .cmchips button.on{ background:var(--ink);border-color:var(--ink);color:#fff }
-  /* ── 클럽 화면 · 회원 편의 (C-1 ~ C-5) ── */
-  .p2go{ flex:none;align-self:center;height:32px;padding:0 12px;border:0;border-radius:10px;background:var(--coral);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;margin-left:8px }
-  .p2go.on{ background:#e6f6f0;color:#0b7a5c }
-  .cmseg{ display:flex;gap:8px;margin-top:6px } .cmseg button{ flex:1;height:46px;border:0;border-radius:13px;background:var(--felt);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;color:#4e5968 }
+  .cmseg{ display:flex;gap:var(--s3);margin-top:var(--s2) } .cmseg button{ flex:1;height:48px;border:0;border-radius:14px;background:var(--felt);font-size:var(--t2);font-weight:700;font-family:inherit;cursor:pointer;color:var(--gray) }
   .cmseg button.on{ background:var(--ink);color:#fff }
-  .cmcrumb{ font-size:13px;font-weight:700;color:var(--gray);margin:10px 2px 4px;cursor:pointer } .cmcrumb span{ font-weight:400;color:var(--lgray);margin-left:4px }
-  .cmcard{ border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);padding:14px 16px;margin-top:10px }
-  .cmcard .k{ display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#6b7684 }
-  .cmcard .chip{ display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:8px;font-size:11.5px;font-weight:700;background:var(--coral-s);color:var(--coral-d) }
-  .cmcard .chip.ok{ background:#e6f6f0;color:#0b7a5c }
-  .cmcard .t{ display:block;font-size:17px;font-weight:800;letter-spacing:-.03em;margin-top:8px;cursor:pointer } .cmcard .s{ display:block;font-size:12.5px;color:#6b7684;margin-top:2px }
-  .cmcard .who{ display:flex;align-items:center;margin-top:10px } .cmcard .who i{ font-style:normal;width:26px;height:26px;border-radius:50%;background:#d7dce2;color:#4e5968;
-    font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff } .cmcard .who i+i{ margin-left:-7px }
-  .cmcard .who span{ font-size:12px;color:#6b7684;margin-left:8px }
-  .cmcard .acts{ display:flex;gap:8px;margin-top:12px } .cmcard .acts button{ flex:0 0 80px;height:44px;border:0;border-radius:13px;background:var(--felt);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmcard .acts button.go{ flex:1;background:var(--coral);color:#fff } .cmcard .acts button.go.on{ background:#e6f6f0;color:#0b7a5c }
-  .cmcard .btn{ margin-top:8px }
-  .cmlbl{ font-size:12px;font-weight:700;color:var(--lgray);margin:16px 2px 0 }
-  .cmnt{ width:100%;display:flex;align-items:center;gap:8px;border:0;border-radius:14px;background:#f7f8fa;padding:11px 12px;margin-top:10px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmnt em{ flex:none;font-style:normal;font-size:11px;font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:6px;padding:2px 6px }
-  .cmnt span{ flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis } .cmnt i{ font-style:normal;color:#bec5cc }
-  .cmtiles{ display:grid;gap:6px;margin-top:10px } .cmtiles button{ border:0;border-radius:14px;background:#f7f8fa;padding:11px 4px;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmtiles b{ display:block;font-size:15px;font-weight:800 } .cmtiles b.rd{ color:#d93434 } .cmtiles span{ font-size:11px;color:#6b7684 }
-  .cmbar{ display:block;height:6px;border-radius:6px;background:var(--felt);overflow:hidden;margin:10px 0 4px } .cmbar u{ display:block;height:100%;background:var(--coral) }
-  .cmck{ width:100%;display:flex;align-items:center;gap:10px;border:0;background:none;border-bottom:1px solid var(--line2);padding:9px 0;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmck .b{ flex:none;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center }
-  .cmck.ok .b{ background:#0b7a5c;box-shadow:none } .cmck.ok .c b{ color:var(--lgray);text-decoration:line-through }
-  .cmck .c{ flex:1 } .cmck .c b{ display:block;font-size:13.5px } .cmck .c span{ display:block;font-size:12px;color:#6b7684 } .cmck .ar{ color:#bec5cc }
-  .cmrest{ width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:16px;background:#f7f8fa;padding:13px 14px;margin-top:12px;text-align:left;font-family:inherit;cursor:pointer;color:var(--ink) }
-  .cmrest .c{ flex:1 } .cmrest b{ display:block;font-size:14px } .cmrest .c span{ display:block;font-size:12px;color:#6b7684;margin-top:1px } .cmrest .ar{ color:#bec5cc;font-size:20px }
-  .cmchips{ display:flex;gap:6px;margin:10px 0 4px } .cmchips button{ height:32px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;color:#4e5968 }
-  .cmdue{ display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line2) } .cmdue span{ flex:1;font-size:14px } .cmdue b{ font-size:14px }
-  .cmdue em{ font-style:normal;font-size:12px;font-weight:700;border-radius:7px;padding:3px 8px } .cmdue em.ok{ background:#e6f6f0;color:#0b7a5c } .cmdue em.rd{ background:#fdecec;color:#d93434 }
+  /* 내 상태 · 클럽 정보 · 내 회비 */
+  .mst{ border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2),0 4px 14px rgba(23,28,37,.05);padding:var(--s4);margin-top:var(--s3) }
+  .mst .h{ display:block;font-size:var(--t2);font-weight:700 } .mst .s{ display:block;font-size:var(--t1);color:var(--gray);margin-top:var(--s1);line-height:1.5 }
+  .mst .r{ display:flex;align-items:center;justify-content:space-between;padding:var(--s3) 0;border-bottom:1px solid var(--line2);font-size:var(--t1) }
+  .mst .r em{ font-style:normal;font-size:var(--t0);font-weight:700;border-radius:7px;padding:var(--s1) var(--s2) } .mst .r em.ok{ background:#e6f6f0;color:#0b7a5c } .mst .r em.rd{ background:#fdecec;color:#d93434 }
+  .mst .big{ display:flex;align-items:baseline;gap:var(--s2);margin-top:var(--s3) } .mst .big b{ font-size:var(--t4);font-weight:700;letter-spacing:-.03em } .mst .big span{ font-size:var(--t1);color:var(--gray) }
+  .mst .bars{ display:flex;gap:var(--s1);margin-top:var(--s3) } .mst .bars i{ flex:1;height:8px;border-radius:4px;background:var(--felt) } .mst .bars i.on{ background:var(--coral) }
+  .cis .hd{ display:flex;align-items:center;gap:var(--s3);padding:var(--s1) 0 } .cis .hd b{ display:block;font-size:var(--t3);font-weight:700 } .cis .hd span{ display:block;font-size:var(--t1);color:var(--gray);margin-top:2px }
+  .cis .r{ display:flex;justify-content:space-between;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line2);font-size:var(--t1);min-height:44px;align-items:center }
+  .cis .r span{ color:var(--gray) } .cis .r b{ text-align:right;font-weight:700 }
+  .cis .lk{ display:flex;justify-content:center;gap:var(--s5);margin-top:var(--s4);font-size:var(--t1);font-weight:700;color:var(--gray) } .cis .lk span{ cursor:pointer;padding:var(--s2) 0 }
+  .cmdue{ display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line2) } .cmdue span{ flex:1;font-size:var(--t1) } .cmdue b{ font-size:var(--t1);font-weight:700 }
+  .cmdue em{ font-style:normal;font-size:var(--t0);font-weight:700;border-radius:7px;padding:var(--s1) var(--s2) } .cmdue em.ok{ background:#e6f6f0;color:#0b7a5c } .cmdue em.rd{ background:#fdecec;color:#d93434 }
+  /* 랭킹 — 내 기록 카드 (내 순위는 800 을 쓰는 다섯 곳 중 하나) */
+  .cmrec{ width:100%;border:0;border-radius:18px;background:var(--coral-s);padding:var(--s4);margin:var(--s3) 0 var(--s4);text-align:left;font-family:inherit;cursor:pointer;color:var(--ink);display:block }
+  .cmrec .k{ display:flex;justify-content:space-between;align-items:center } .cmrec .k b{ font-size:var(--t1);font-weight:700;color:var(--coral-d) } .cmrec .k span{ font-size:var(--t1);color:var(--coral-d) }
+  .cmrec .v{ display:flex;align-items:baseline;gap:var(--s3);margin-top:var(--s3) }
+  .cmrec .v b{ font-size:var(--t4);font-weight:800;letter-spacing:-.03em;line-height:1 } .cmrec .v b em{ font-style:normal;font-size:var(--t2);font-weight:700;margin-left:2px }
+  .cmrec .v .of{ font-size:var(--t1);color:var(--gray) }
+  .cmrec .v .avg{ margin-left:auto;font-size:var(--t1);color:var(--gray) } .cmrec .v .avg b{ font-size:var(--t3);font-weight:700;color:var(--ink);margin-right:2px }
+  .cmrec .l1{ font-size:var(--t1);color:var(--ink);margin-top:var(--s3) } .cmrec .l2{ font-size:var(--t1);color:var(--gray);margin-top:var(--s1) } .cmrec .l2 b{ color:var(--coral-d);font-weight:700 }
+  .cmchips{ display:flex;gap:var(--s2);margin:var(--s3) 0 var(--s1) } .cmchips button{ height:36px;padding:0 var(--s4);border:1px solid var(--line);border-radius:999px;background:#fff;font-size:var(--t1);font-weight:700;font-family:inherit;cursor:pointer;color:var(--gray) }
+  .cmchips button.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .cmcrumb{ font-size:var(--t1);font-weight:700;color:var(--gray);margin:var(--s3) 0 var(--s1);cursor:pointer } .cmcrumb span{ font-weight:400;color:var(--lgray);margin-left:var(--s1) }
   /* ── 회원 목록 줄 · 회원 카드 (시안 M-1 · M-2) ── */
   .mbq{ width:100%;box-sizing:border-box;height:42px;border:0;border-radius:12px;background:#f2f4f6;padding:0 14px;font-size:14px;font-family:inherit;margin:0 0 6px;outline:none }
   .mrow2{ display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line2);cursor:pointer }
@@ -4272,17 +4284,17 @@
   .live.blue{ background:#eaf3ff;color:#1b64da } .live.blue i{ background:#1b64da }
   /* ── 내 경기 · 홈 교류전 카드 · 복귀일 지남 ── */
   .xcmine{ margin-top:12px }
-  .xmh{ display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 10px } .xmh b{ font-size:16px;font-weight:800 }
-  .xmh span{ font-size:12.5px;font-weight:700;color:var(--coral-d) }
+  .xmh{ display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 10px } .xmh b{ font-size:var(--t2);font-weight:700 }
+  .xmh span{ font-size:var(--t1);font-weight:700;color:var(--coral-d) }
   .xm{ display:flex;gap:12px;position:relative;padding-bottom:14px }
   .xm:not(:last-child)::before{ content:'';position:absolute;left:14px;top:32px;bottom:2px;width:2px;background:var(--line2) }
-  .xm .n{ flex:none;width:30px;height:30px;border-radius:50%;background:#9aa3ae;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center }
+  .xm .n{ flex:none;width:30px;height:30px;border-radius:50%;background:#9aa3ae;color:#fff;font-size:var(--t0);font-weight:700;display:flex;align-items:center;justify-content:center }
   .xm.done .n{ background:#c9ced4 } .xm.next .n{ background:var(--coral) } .xm.rest .n{ background:#e3e6ea;color:#8b95a1 }
   .xm.rest .c{ opacity:.6 }
-  .xm .c{ flex:1;min-width:0;padding-top:4px } .xm .c > b{ display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700 }
-  .xm .c > b em{ font-style:normal;font-size:10.5px;font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:6px;padding:1px 6px }
-  .xm .c > b i{ font-style:normal;margin-left:auto;font-size:12px;font-weight:400;color:var(--lgray) }
-  .xm .c > span{ display:block;font-size:12.5px;color:#6b7684;margin-top:2px } .xm .c > span b.w{ color:var(--coral-d) } .xm .c > span b.l{ color:#6b7684 }
+  .xm .c{ flex:1;min-width:0;padding-top:4px } .xm .c > b{ display:flex;align-items:center;gap:var(--s2);font-size:var(--t2);font-weight:700 }
+  .xm .c > b em{ font-style:normal;font-size:var(--t0);font-weight:700;color:var(--coral-d);background:var(--coral-s);border-radius:6px;padding:1px 6px }
+  .xm .c > b i{ font-style:normal;margin-left:auto;font-size:var(--t0);font-weight:400;color:var(--lgray) }
+  .xm .c > span{ display:block;font-size:var(--t1);color:var(--gray);margin-top:2px } .xm .c > span b.w{ color:var(--coral-d) } .xm .c > span b.l{ color:#6b7684 }
   .xhc{ margin:0 16px 12px;border-radius:16px;background:#f7f8fa;padding:14px;cursor:pointer }
   .xhc .k{ display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:#6b7684 }
   .xhc .chip{ display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:8px;font-size:11.5px;font-weight:700;background:var(--coral-s);color:var(--coral-d) }
