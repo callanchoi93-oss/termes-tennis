@@ -12519,10 +12519,49 @@ app.post('/admin/reports/:id/resolve', admin, (req, res) => {
 // ── 운영자 삭제 권한 ──
 // 이용약관 위반 게시물을 운영자가 직접 지운다.
 // x-admin-key 헤더 또는 ?key= 로 인증. ADMIN_KEY 는 Railway Variables 에 있다.
+/* 글 관리 — 라운지(posts)와 구장톡·전국톡(court_posts)을 한 화면에서 훑고 지운다.
+   신고가 안 들어온 글도 운영자가 먼저 볼 수 있어야 한다. */
+app.get('/admin/posts', admin, (req, res) => {
+  const kind = req.query.kind === 'talk' ? 'talk' : 'lounge';
+  const q = String(req.query.q || '').trim();
+  const like = '%' + q + '%';
+  if (kind === 'lounge') {
+    const rows = db.prepare(`SELECT p.id, p.title, p.body, p.category, p.created_at, p.hidden, p.user_id,
+        COALESCE(u.name, p.anon_nick, '') who,
+        (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comments
+      FROM posts p LEFT JOIN users u ON u.id=p.user_id
+      ${q ? 'WHERE (p.title LIKE ? OR p.body LIKE ? OR u.name LIKE ?)' : ''}
+      ORDER BY p.created_at DESC LIMIT 100`).all(...(q ? [like, like, like] : []));
+    return res.json(rows.map(r => ({ ...r, body: String(r.body || '').slice(0, 160) })));
+  }
+  const rows = db.prepare(`SELECT p.id, p.title, p.body, p.scope, p.created_at, p.hidden, p.user_id,
+      u.name who, c.name club, v.name venue,
+      (SELECT COUNT(*) FROM court_comments cc WHERE cc.post_id=p.id) comments,
+      (SELECT COUNT(*) FROM court_reports r WHERE r.kind='post' AND r.target_id=p.id) reports
+    FROM court_posts p LEFT JOIN users u ON u.id=p.user_id
+      LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN venues v ON v.id=p.venue_id
+    ${q ? 'WHERE (p.title LIKE ? OR p.body LIKE ? OR u.name LIKE ?)' : ''}
+    ORDER BY p.created_at DESC LIMIT 100`).all(...(q ? [like, like, like] : []));
+  res.json(rows.map(r => ({ ...r, body: String(r.body || '').slice(0, 160) })));
+});
 app.delete('/admin/posts/:id', admin, (req, res) => {
   const id = +req.params.id;
+  const p = db.prepare('SELECT title, user_id FROM posts WHERE id=?').get(id);
   db.prepare('DELETE FROM comments WHERE post_id=?').run(id);
   const r = db.prepare('DELETE FROM posts WHERE id=?').run(id);
+  /* 되돌릴 수 없는 일일수록 <누가 언제> 가 남아야 한다 */
+  if (r.changes) alog(req, '라운지 글 삭제', 'post', id, { title: p && p.title, user_id: p && p.user_id }, null);
+  res.json({ ok: true, deleted: !!(r.changes) });
+});
+app.delete('/admin/talk/:id', admin, (req, res) => {
+  const id = +req.params.id;
+  const p = db.prepare('SELECT title, body, user_id, venue_id FROM court_posts WHERE id=?').get(id);
+  if (!p) return res.json({ ok: true, deleted: false });
+  db.prepare('DELETE FROM court_comments WHERE post_id=?').run(id);
+  const r = db.prepare('DELETE FROM court_posts WHERE id=?').run(id);
+  try { db.prepare("UPDATE court_reports SET state='removed' WHERE kind='post' AND target_id=?").run(id); } catch (e) {}
+  if (r.changes) alog(req, '구장톡 글 삭제', 'talk', id,
+    { title: p.title || String(p.body || '').slice(0, 40), user_id: p.user_id, venue_id: p.venue_id }, null);
   res.json({ ok: true, deleted: !!(r.changes) });
 });
 app.delete('/admin/comments/:id', admin, (req, res) => {
