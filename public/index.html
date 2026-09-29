@@ -585,13 +585,14 @@
      탭은 지도다 — 지도가 움직이면 안 된다. 이름을 두 글자로 줄이고(대진기준→기준,
      클럽소개→소개) 남는 폭을 space-between 이 간격으로 나눠 갖게 해서 스크롤을 없앤다.
      간격이 고정값이 아니라 남는 만큼이므로 좁은 기기에서도 넘치지 않는다. */
-  .ctabs{display:flex;justify-content:space-between;gap:0;border-bottom:1px solid var(--line);
+  /* 여섯 칸 같은 너비 · 글자 가운데 — <홈> 이 한 글자라 양끝 정렬에선 왼쪽에 붙고 간격이 어긋났다 */
+  .ctabs{display:flex;justify-content:stretch;gap:0;border-bottom:1px solid var(--line);
     position:sticky;top:0;z-index:6;background:var(--cream);
     margin:0 -16px 12px;padding:0 16px;overflow:hidden}
-  .ctabs div{flex:0 0 auto;white-space:nowrap;padding:13px 0 12px;font-size:15px;font-weight:700;
+  .ctabs div{flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;padding:13px 0 12px;font-size:15px;font-weight:700;
     color:#a3abb4;letter-spacing:-.045em;position:relative;cursor:pointer;transition:color .15s}
   .ctabs div.on{color:var(--ink);font-weight:700}
-  .ctabs div.on:after{content:'';position:absolute;left:-3px;right:-3px;bottom:-1px;height:2.5px;
+  .ctabs div.on:after{content:'';position:absolute;left:50%;transform:translateX(-50%);width:28px;bottom:-1px;height:2.5px;
     background:var(--coral);border-radius:3px}
   /* 지금 무언가 돌고 있는 탭에만 점 하나 — 없는 데이터로 뱃지를 만들지는 않는다 */
   .ctabs div u{position:absolute;top:9px;right:-7px;width:5px;height:5px;border-radius:50%;
@@ -23378,7 +23379,8 @@ function clubTabRecords(){
   h+=`<div class="recseg">${SEASON_SPANS.map(([k,l])=>
     `<div class="${CLUBREC_SPAN===k?'on':''}" onclick="setClubRecSpan('${k}')">${l}</div>`).join('')}</div>`;
 
-  if(!games.length) return h+`<div class="card" style="text-align:center;padding:30px 20px">
+  /* 이 기간에 경기가 없을 때도 자리표(%%CMREC%%)를 그대로 내보내면 안 된다 — 상반기 탭에서 글자 그대로 보였다 */
+  if(!games.length) return h.replace('%%CMREC%%','')+`<div class="card" style="text-align:center;padding:30px 20px">
     <span class="gt1 gmute">이 기간에는 확정된 경기가 없어요</span></div>`;
 
 
