@@ -186,6 +186,19 @@ function auth(req, res, next) {
     next();
   } catch { return res.status(401).json({ error: 'bad_token' }); }
 }
+/* ── 둘러보기(로그인 전) ──
+   앱을 처음 깐 사람이 로그인 없이 라운지 · 코트 화면 · 코트 지도를 구경할 수 있게,
+   <읽기만 하는> 몇 곳은 토큰이 없어도 통과시킨다.
+   토큰이 있으면 평소처럼 auth 를 그대로 태운다(만료 · 정지 · 전체 로그아웃 처리 동일).
+   토큰이 없으면 req.uid = null 로 넘긴다 — 핸들러는 <내 것> 을 전부 비어 있는 것으로 본다.
+   쓰기(POST · PATCH · DELETE)에는 절대 쓰지 않는다. */
+function optAuth(req, res, next) {
+  const h = req.headers.authorization || '';
+  if (h.startsWith('Bearer ')) return auth(req, res, next);
+  req.uid = null; req.guest = true;
+  next();
+}
+const GUEST_TALK_PAGE = 20;   // 로그인 전에는 최신 20개만 — 더 보려면 로그인
 // 토큰이 있으면 uid, 없거나 무효면 null (공개 엔드포인트에서 joined 여부 판단용)
 const MIN_AGE = 14;   // 만 14세 미만 가입 제한
 function tryUid(req) {
@@ -10435,6 +10448,13 @@ function venueWins(venueId, since) {
   return out;
 }
 
+/* 클럽 전체 회원 수 — /clubs 목록의 members 와 같은 기준(활동 중 · 테스트 계정 제외) */
+function clubMemberCount(clubId) {
+  try {
+    return db.prepare(`SELECT COUNT(*) n FROM club_members m JOIN users mu ON mu.id=m.user_id
+      WHERE m.club_id=? AND (m.status IS NULL OR m.status='active') AND COALESCE(mu.is_test,0)=0`).get(clubId).n;
+  } catch (e) { return 0; }
+}
 function venueShares(venueId) {
   const rows = db.prepare(`SELECT vc.club_id, vc.set_at, c.name, c.region
     FROM venue_clubs vc JOIN clubs c ON c.id=vc.club_id
@@ -10455,6 +10475,9 @@ function venueShares(venueId) {
     r.events = evMap[r.club_id] || 0;
     r.wins = winMap[r.club_id] || 0;
     r.size = shareActiveMembers(r.club_id, t - SHARE_ACT_DAYS * 864e5);
+    /* 화면에 적는 <회원 N명> — size 는 최근에 나온 사람 수(지분 계산용)라 클럽 화면 숫자와 달랐다.
+       클럽 목록(/clubs)과 같은 기준의 전체 회원 수를 따로 준다 */
+    r.members = clubMemberCount(r.club_id);
     r.score = SHARE_BASE + SHARE_SIZE * Math.sqrt(r.size)
       + SHARE_EVENT * r.events + SHARE_WIN * r.wins;
   });
@@ -10890,7 +10913,7 @@ app.get('/venues/pick', auth, (req, res) => {
 });
 
 /* 빈 구장을 눌렀을 때 — 그 구장에서 잡을 수 있는 타임 */
-app.get('/venues/:id/open-slots', auth, (req, res) => {
+app.get('/venues/:id/open-slots', optAuth, (req, res) => {
   const rows = db.prepare(`SELECT id, date, start, end, price, court_ids FROM venue_slots
     WHERE venue_id=? AND status='open' AND date >= ? ORDER BY date, start LIMIT 8`)
     .all(+req.params.id, new Date().toISOString().slice(0, 10));
@@ -10964,7 +10987,7 @@ app.get('/clubs/:id/land-seasons', auth, (req, res) => {
 /* 지도를 열 때 <어디서 시작할지>. 위치 권한이 없거나 늦으면 앱은 여기로 온다.
    예전에는 위치 실패 시 용인 좌표가 박혀 있어서 송파 클럽 회원도 용인 지도를 봤다.
    순서: 내 클럽 홈코트 → 내가 낀 아무 코트 → 없음(앱이 안내를 띄운다). */
-app.get('/land/center', auth, (req, res) => {
+app.get('/land/center', optAuth, (req, res) => {
   const cid = +req.query.club_id || 0;
   let row = null;
   if (cid) row = db.prepare(`SELECT v.lat, v.lng, v.name FROM venue_clubs vc JOIN venues v ON v.id=vc.venue_id
@@ -10974,7 +10997,7 @@ app.get('/land/center', auth, (req, res) => {
       WHERE cm.user_id=? AND v.lat IS NOT NULL ORDER BY vc.set_at LIMIT 1`).get(req.uid);
   res.json(row ? { lat: row.lat, lng: row.lng, name: row.name, from: 'court' } : { lat: null, lng: null, from: 'none' });
 });
-app.get('/land/map', auth, (req, res) => {
+app.get('/land/map', optAuth, (req, res) => {
   const lat = +req.query.lat, lng = +req.query.lng;
   const km = Math.min(60, +req.query.km || 12);
   const d = km / 111;
@@ -11024,13 +11047,14 @@ app.get('/land/map', auth, (req, res) => {
 /* ── 구장 지분 · 홈 걸기 ──────────────────────────────────────── */
 
 /* 이 구장에 어느 클럽이 있고 누가 대표인가 */
-app.get('/venues/:id/clubs', auth, (req, res) => {
+app.get('/venues/:id/clubs', optAuth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare('SELECT id,name,addr,sigungu,indoor,source,kind FROM venues WHERE id=?').get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
   const s = venueShares(vid);
-  /* 내 클럽이 여기 걸려 있나 · 내가 운영진인가 — 버튼을 뭘 보여줄지 정한다 */
-  const cid = +req.query.club_id || 0;
+  /* 내 클럽이 여기 걸려 있나 · 내가 운영진인가 — 버튼을 뭘 보여줄지 정한다.
+     로그인 전(둘러보기)에는 club_id 를 무시한다 — 남의 클럽 번호로 <우리 홈> 을 흉내 내지 못하게 */
+  const cid = req.uid ? (+req.query.club_id || 0) : 0;
   const mine = cid ? s.clubs.find(c => c.club_id === cid) : null;
   res.json({ venue: v, clubs: s.clubs, top: s.top, total: s.total,
     my_share: mine ? mine.pct : null,
@@ -11569,7 +11593,7 @@ app.post('/venues/:id/talk/seen', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/venues/:id/talk', auth, (req, res) => {
+app.get('/venues/:id/talk', optAuth, (req, res) => {
   const vid = +req.params.id || 0;
   /* 구장을 안 고른 채로 오면(클럽이 없는 사람) 전국톡만 본다 —
      전국톡은 클럽에 안 든 사람도 낄 수 있는 자리다. */
@@ -11587,9 +11611,9 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   /* ── 더 보기 ──
      예전에는 최신 50건만 주고 끝이라, 글이 50개를 넘는 순간 오래된 글은 볼 길이 없었다.
      before=<글 id> 를 받으면 그보다 오래된 것부터 50건. 51건을 뽑아 하나 남으면 has_more. */
-  const before = +req.query.before || 0;
+  const before = req.uid ? (+req.query.before || 0) : 0;   // 둘러보기는 더 보기 없음
   const beforeSql = before ? ' AND p.id < ? ' : '';
-  const PAGE = 50;
+  const PAGE = req.uid ? 50 : GUEST_TALK_PAGE;
   /* 가려진 글과 안 보기로 한 사람의 글은 뺀다.
      내 글은 가려져도 나에게는 보인다 — 왜 반응이 없는지 알 수 있어야 한다. */
   const bl = blockedBy(req.uid);
@@ -11612,8 +11636,10 @@ app.get('/venues/:id/talk', auth, (req, res) => {
         LEFT JOIN clubs c ON c.id=p.club_id LEFT JOIN users u ON u.id=p.user_id
         LEFT JOIN venues v ON v.id=p.venue_id
         WHERE ${scopeSql} ${catSql} ${hideSql} ${beforeSql} ORDER BY p.id DESC LIMIT ${PAGE + 1}`).all(...[...(cat ? [cat] : []), ...(before ? [before] : [])]);
-  const has_more = rows.length > PAGE;
+  let has_more = rows.length > PAGE;
   if (has_more) rows.pop();
+  const guest_more = !req.uid && has_more;        // 로그인하면 더 볼 수 있다는 표시만 준다
+  if (!req.uid) has_more = false;
   rows.forEach(r => {
     r.cat_name = catName(scope, r.cat);
     r.from_court = (scope === 'all' && r.scope === 'court') ? 1 : 0;
@@ -11628,7 +11654,7 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   /* 전국톡은 코트가 저마다 달라 글쓴이의 홈구장 기준으로 이름을 만든다 */
   const posts = rows.map(r => talkWho(postRow(r), r.venue_id || vid, req.uid));
   /* 내가 이 코트에서 어떤 이름으로 보이는지 — 글쓰기 화면에서 미리 보여준다 */
-  const myNick = courtNick(vid || 0, req.uid);
+  const myNick = req.uid ? courtNick(vid || 0, req.uid) : '';   // 둘러보기 사람 몫의 별명은 만들지 않는다
   /* 오늘의 픽 — 사람이 고르는 자리를 만들어두면 매일 같은 글이 박혀 있게 된다.
      최근 이레 안에서 많이 읽힌 순으로 자동으로 뽑는다. 아무도 안 만져도 굴러간다. */
   let picks = [];
@@ -11642,7 +11668,8 @@ app.get('/venues/:id/talk', auth, (req, res) => {
   }
   res.json({ scope, locked: false, posts, venue: v.name || '', clubs: who, my_nick: myNick,
     cats: scope === 'all' ? CAT_ALL : CAT_COURT, picks, total: rows.length,
-    has_more, next_before: rows.length ? rows[rows.length - 1].id : null });
+    has_more, next_before: rows.length ? rows[rows.length - 1].id : null,
+    guest: req.uid ? 0 : 1, guest_more: guest_more ? 1 : 0 });
 });
 
 app.post('/venues/:id/talk', auth, (req, res) => {
@@ -11694,7 +11721,7 @@ app.post('/venues/:id/talk', auth, (req, res) => {
   res.json({ ok: true, id: pid });
 });
 
-app.get('/talk/:pid/comments', auth, (req, res) => {
+app.get('/talk/:pid/comments', optAuth, (req, res) => {
   const pid = +req.params.pid;
   const p = db.prepare('SELECT venue_id, scope FROM court_posts WHERE id=?').get(pid);
   if (!p) return res.status(404).json({ error: 'no_post' });
@@ -11703,7 +11730,7 @@ app.get('/talk/:pid/comments', auth, (req, res) => {
   const author = db.prepare('SELECT user_id FROM court_posts WHERE id=?').get(pid).user_id;
   /* 글을 열 때 조회로 센다 — 댓글을 부르는 시점이 곧 글을 여는 시점이다.
      같은 사람은 한 번만. 두 번째부터는 INSERT 가 막혀 조용히 지나간다. */
-  try {
+  if (req.uid) try {                                  // 둘러보기(로그인 전)는 세지 않는다
     db.prepare('INSERT INTO court_views (post_id,user_id,at) VALUES (?,?,?)').run(pid, req.uid, now());
     db.prepare('UPDATE court_posts SET views=COALESCE(views,0)+1 WHERE id=?').run(pid);
   } catch (e) { /* 이미 본 글 */ }
@@ -11749,7 +11776,7 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
 
 /* 구장 한 페이지에 필요한 것을 한 번에 준다 —
    코트 정보·최근에 있었던 일·구장톡 미리보기를 따로 부르면 페이지 하나에 네 번 왕복한다. */
-app.get('/venues/:id/detail', auth, (req, res) => {
+app.get('/venues/:id/detail', optAuth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
     courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id,photos FROM venues WHERE id=?`).get(vid);
