@@ -6843,6 +6843,11 @@
      사진은 누를 대상이 아니다 — 탭은 로고 칸을 지나 그 줄(클럽 열기)로 간다.
      컴퓨터에서 사진을 끄는(드래그) 동작도 막는다. */
   .clogo img{ pointer-events:none; -webkit-user-drag:none; user-select:none; -webkit-touch-callout:none; }
+  /* 심볼 3D 그림 — 칸 크기에 맞춰 줄고 늘어난다 */
+  .symimg{ display:block; width:76%; height:76%; object-fit:contain; pointer-events:none;
+           -webkit-user-drag:none; user-select:none; -webkit-touch-callout:none; }
+  .cw-ic .symimg{ width:72%; height:72% } .lopt .symimg{ width:70%; height:70% }
+  .cw-emb .symimg{ width:68%; height:68% }
   .clabel{ display:inline-flex; align-items:center; gap:8px; min-width:0; }
   .clabel>span:last-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .lgrid{ display:grid; grid-template-columns:repeat(6,1fr); gap:9px; }
@@ -7659,6 +7664,28 @@ const clubLogoOpts = () => {
 }
 const CLUB_LOGO_OPTS=CLUB_LOGO_OPTS_ALL;
 const CLUB_LOGO_BGS=['#f1631a','#5b3fd6','#3f9e6e','#484f56','#14171a','#a56a00'];
+/* 심볼 3D 그림 — 저장값은 예전처럼 이모지 그대로 두고, 그릴 때만 그림으로 바꾼다.
+   그래서 이미 심볼로 로고를 만든 클럽도 서버를 고치지 않고 바로 3D 로 보인다.
+   그림이 없는 기호(다른 종목 공 등)는 이모지 글자로 그린다. */
+const SYM_IMG={
+  '🎾':IMG('sym_tennis.a5937e4e.webp'),
+  '🔥':IMG('sym_fire.b8a94606.webp'),
+  '⭐':IMG('sym_star.2f260257.webp'),
+  '🚀':IMG('sym_rocket.68235420.webp'),
+  '🤖':IMG('sym_robot.196502de.webp'),
+  '🦅':IMG('sym_eagle.f183159f.webp'),
+  '🐯':IMG('sym_tiger.16e3142d.webp'),
+  '🐺':IMG('sym_wolf.e51e4410.webp'),
+  '⚡':IMG('sym_bolt.9e7e1554.webp'),
+  '🛡':IMG('sym_shield.366338f8.webp'),
+  '👑':IMG('sym_crown.5e27b57c.webp'),
+  '🏆':IMG('sym_trophy.db5d6ac5.webp'),
+  '🍀':IMG('sym_clover.89407c78.webp'),
+  '🌙':IMG('sym_moon.dd27bf98.webp'),
+  '🌊':IMG('sym_wave.989c00e5.webp')
+};
+function symImg(ic){ return SYM_IMG[String(ic||'').replace(/\uFE0F/g,'')]||null; }
+function symHTML(ic){ const u=symImg(ic); return u?`<img class="symimg" src="${u}" alt="" draggable="false">`:esc(ic||''); }
 function clubLogoOf(name){ return (state.clubLogos||{})[name]||null; }
 /* 금액 축약 — 30000 → "3만원", 35000 → "3.5만원", 8000 → "8천원" */
 function won0(n){
@@ -7687,7 +7714,7 @@ function clubAvatar(name, size, cls){
       onerror="this.remove()"></span>`;
   }
   if(!L.ic) return '';
-  return `<span class="clogo${k}" style="width:${size}px;height:${size}px;background:${L.bg};font-size:${Math.round(size*0.52)}px">${L.ic}</span>`;
+  return `<span class="clogo${k}" style="width:${size}px;height:${size}px;background:${L.bg};font-size:${Math.round(size*0.52)}px">${symHTML(L.ic)}</span>`;
 }
 function clubLabel(name, size){
   const a=clubAvatar(name,size||24);
@@ -7699,7 +7726,7 @@ function openClubLogoEdit(name){
     <div class="sd"><b>${name}</b>의 로고를 정해요. 로고가 없으면 어디에서든 <b>클럽명만</b> 표시돼요.</div>
     <div style="display:flex;justify-content:center;margin:6px 0 18px">
       ${cur.img?`<span style="width:76px;height:76px;border-radius:22px;background:url('${cur.img.startsWith('http')?cur.img:API_BASE+cur.img}') center/cover;display:inline-block"></span>`
-              :cur.ic?`<span class="clogo" style="width:76px;height:76px;background:${cur.bg};font-size:30px">${cur.ic}</span>`
+              :cur.ic?`<span class="clogo" style="width:76px;height:76px;background:${cur.bg};font-size:30px">${symHTML(cur.ic)}</span>`
               :`<span style="font-size:20px;font-weight:700;color:var(--ink);padding:22px 0;letter-spacing:-.02em">${name}</span>`}</div>
     <div class="ch" style="font-size:15px;font-weight:700;margin:0 4px 9px">이미지 올리기</div>
     <input type="file" id="clubLogoFile" accept="image/*" style="display:none" onchange="uploadClubLogo('${name}', this.files[0])">
@@ -7711,7 +7738,7 @@ function openClubLogoEdit(name){
         <div style="font-size:12px;font-weight:400;color:var(--lgray);margin-top:2px">정사각형 이미지가 가장 잘 나와요</div></div>
       <span style="color:var(--lgray);font-weight:700">›</span></div>
     <div class="ch" style="font-size:15px;font-weight:700;margin:17px 4px 9px">또는 아이콘 고르기</div>
-    <div class="lgrid">${clubLogoOpts().map(ic=>`<div class="lopt ${cur.ic===ic?'on':''}" onclick="setClubLogo('${name}','${ic}',null)">${ic}</div>`).join('')}</div>
+    <div class="lgrid">${clubLogoOpts().map(ic=>`<div class="lopt ${cur.ic===ic?'on':''}" onclick="setClubLogo('${name}','${ic}',null)">${symHTML(ic)}</div>`).join('')}</div>
     <div class="ch" style="font-size:15px;margin:16px 4px 10px">배경색</div>
     <div class="lgrid">${CLUB_LOGO_BGS.map(bg=>`<div class="lopt bgopt ${cur.bg===bg?'on':''}" style="background:${bg}" onclick="setClubLogo('${name}',null,'${bg}')"></div>`).join('')}</div>
     <button class="btn felt" style="margin-top:18px" onclick="closeOv();toast('클럽 로고를 저장했어요');renderClub()">저장</button>
@@ -14145,7 +14172,7 @@ function openCreateClub(){
         <span class="cw-tab ${c.logoMode==='sym'?'on':''}" onclick="cwSet('logoMode','sym')">심볼로 만들기</span></div>
       <div class="cw-emb" style="${c.logoMode==='img'&&c.logoImg
           ?`background:url('${c.logoImg}') center/cover`
-          :`background:${c.logoBg};font-size:48px;color:#fff`}">${c.logoMode==='img'&&c.logoImg?'':c.logoIc}</div>
+          :`background:${c.logoBg};font-size:48px;color:#fff`}">${c.logoMode==='img'&&c.logoImg?'':symHTML(c.logoIc)}</div>
       ${c.logoMode==='img'
         ? `<input id="cwLogoFile" type="file" accept="image/*" style="display:none" onchange="cwLogoPick(this)">
            <button class="btn ghost" onclick="document.getElementById('cwLogoFile').click()">
@@ -14156,7 +14183,7 @@ function openCreateClub(){
              ${CLUB_LOGO_BGS.map(b=>`<i class="cw-sw ${c.logoBg===b?'on':''}" style="background:${b}" onclick="cwSet('logoBg','${b}')"></i>`).join('')}</div>
            <label>심볼</label>
            <div style="display:flex;gap:7px;flex-wrap:wrap">
-             ${clubLogoOpts().map(o=>`<div class="cw-ic ${c.logoIc===o?'on':''}" onclick="cwSet('logoIc','${o}')">${o}</div>`).join('')}</div>
+             ${clubLogoOpts().map(o=>`<div class="cw-ic ${c.logoIc===o?'on':''}" onclick="cwSet('logoIc','${o}')">${symHTML(o)}</div>`).join('')}</div>
            <div class="hint" style="margin-top:10px">나중에 클럽 설정에서 바꿀 수 있어요</div>`}`;
   } else if(st===3){
     const sgs=REGIONS[c.sido]||[];
@@ -44527,7 +44554,7 @@ function _renderHomeCore(){
     if(rc){
       h+=`<div class="ch" style="font-size:20px;margin:18px 4px 12px;display:flex;justify-content:space-between;align-items:center"><span>대전 상대 추천</span><span onclick="openTeamChallenge()" style="font-size:14px;color:var(--coral-d);font-weight:400;cursor:pointer">더보기 →</span></div>
         <div class="card" style="display:flex;align-items:center;gap:13px;cursor:pointer" onclick="openTeamChallenge()">
-          ${clubLogoOf(rc.n)?`<span class="clogo" style="width:46px;height:46px;background:${clubLogoOf(rc.n).bg};font-size:24px">${clubLogoOf(rc.n).ic}</span>`
+          ${clubLogoOf(rc.n)?`<span class="clogo" style="width:46px;height:46px;background:${clubLogoOf(rc.n).bg};font-size:24px">${symHTML(clubLogoOf(rc.n).ic)}</span>`
             :`<span class="clogo" style="width:46px;height:46px;background:var(--cream2);color:var(--gray);font-size:20px;font-weight:700;box-shadow:none">${rc.n[0]}</span>`}
           <div style="flex:1;min-width:0"><div style="font-weight:400;font-size:15px">${rc.n.replace(' 클럽','')} <span style="font-size:14px;color:var(--lgray);font-weight:400">· ${rc.div}</span></div>
             <div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:2px">전력 비슷 · ${rc.w}승 ${rc.l}패 · 승점 ${rc.pt}</div></div>
