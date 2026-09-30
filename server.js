@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import http2 from 'node:http2';        // iOS 알림(APNs) 전송에 쓴다
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';          // index.html 압축 (새 패키지 없이 Node 기본 기능)
 
 /* 웹 푸시. VAPID 키가 없으면 조용히 꺼진다.
    키 만들기:  npx web-push generate-vapid-keys  */
@@ -16820,7 +16821,53 @@ function xcDraw9(eid, ev, ent) {
 
 /* ── 마지막: 정적 파일 · 에러 핸들러 · 서버 시작 ──────────────────── */
 // 연결된 웹 클라이언트 (public/) 서빙 — npm start 하면 http://localhost:PORT 에서 바로 동작
-app.use(express.static(new URL('./public', import.meta.url).pathname));
+const PUBLIC_DIR = new URL('./public', import.meta.url).pathname;
+
+/* ── 그림 (public/img) ──
+   파일 이름에 내용 지문이 붙어 있다(medal_gold.840cf2f0.webp). 그림이 바뀌면 이름이 바뀌므로
+   한 번 받은 그림은 1년 동안 다시 묻지 않아도 된다. 없는 그림은 바로 404. */
+app.use('/img', express.static(path.join(PUBLIC_DIR, 'img'), {
+  maxAge: '365d', immutable: true, fallthrough: false, index: false,
+}));
+
+/* ── index.html ──
+   3MB 가 넘는 한 파일인데 대부분 코드라 압축하면 크게 준다.
+   요청마다 압축하면 느리니, 한 번 압축해 메모리에 두고 파일이 바뀌면(배포) 다시 만든다.
+   브라우저가 br 을 받으면 br, 아니면 gzip, 둘 다 아니면 원본. 내용이 같으면 304 로 끝낸다. */
+const INDEX_FILE = path.join(PUBLIC_DIR, 'index.html');
+let _indexC = null;
+function indexCache() {
+  const st = fs.statSync(INDEX_FILE);
+  if (_indexC && _indexC.mtime === st.mtimeMs && _indexC.size === st.size) return _indexC;
+  const raw = fs.readFileSync(INDEX_FILE);
+  _indexC = {
+    mtime: st.mtimeMs, size: st.size, raw,
+    etag: '"' + crypto.createHash('sha1').update(raw).digest('hex').slice(0, 20) + '"',
+    br: zlib.brotliCompressSync(raw, { params: {
+      [zlib.constants.BROTLI_PARAM_QUALITY]: 9,
+      [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length } }),
+    gz: zlib.gzipSync(raw, { level: 9 }),
+  };
+  console.log(`[web] index.html ${Math.round(raw.length / 1024)}KB → br ${Math.round(_indexC.br.length / 1024)}KB · gzip ${Math.round(_indexC.gz.length / 1024)}KB`);
+  return _indexC;
+}
+app.get(['/', '/index.html'], (req, res, next) => {
+  let c;
+  try { c = indexCache(); } catch (e) { return next(); }        // 파일이 없으면 예전처럼 static 에 맡긴다
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-cache',          // 매번 확인하되, 안 바뀌었으면 304 (새 배포가 바로 보인다)
+    ETag: c.etag,
+    Vary: 'Accept-Encoding',
+  });
+  if (String(req.headers['if-none-match'] || '').split(/\s*,\s*/).includes(c.etag)) return res.status(304).end();
+  const ae = String(req.headers['accept-encoding'] || '');
+  if (/\bbr\b/.test(ae)) { res.set('Content-Encoding', 'br'); return res.send(c.br); }
+  if (/\bgzip\b/.test(ae)) { res.set('Content-Encoding', 'gzip'); return res.send(c.gz); }
+  res.send(c.raw);
+});
+
+app.use(express.static(PUBLIC_DIR));
 // 에러는 JSON으로 — 라우트가 터져도 화면이 원인을 읽을 수 있게
 app.use((err, req, res, _next) => {
   console.error(err);
@@ -16855,4 +16902,8 @@ function cupBackfillPairs() {
 
 cupBackfillPairs();
 
-app.listen(PORT, () => console.log(`MATSU API on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`MATSU API on http://localhost:${PORT}`);
+  /* 첫 방문자가 압축을 기다리지 않게 미리 한 번 만들어 둔다 */
+  setTimeout(() => { try { indexCache(); } catch (e) {} }, 500);
+});
