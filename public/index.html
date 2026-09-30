@@ -180,6 +180,12 @@
   .pvbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 18px 12px}
   .pvfoot{flex:none;padding:12px 18px calc(18px + env(safe-area-inset-bottom, 0px))}
   .pvfoot .btn{width:100%}
+  .pvf2{display:flex;gap:8px} .pvf2 .btn{flex:1} .pvf2 .btn.ghost{flex:0 0 38%;background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .pvg{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f2f4f6}
+  .pvg .d{flex:none;width:46px;height:50px;border-radius:13px;background:var(--coral-s);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--coral-d)}
+  .pvg .d span{font-size:11px;font-weight:700} .pvg .d b{font-size:18px;font-weight:800;line-height:1.1}
+  .pvg .c{flex:1;min-width:0} .pvg .c b{display:block;font-size:15px;font-weight:700} .pvg .c span{display:block;font-size:13px;color:#6b7684;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pvg button{flex:none;height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--coral);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
 
 
 
@@ -4696,6 +4702,7 @@
   /* ── 홈코트 윗부분 A안 ── */
   .vclub{ border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-s);padding:16px;background:#fff }
   .vclub .r{ display:flex;align-items:center;gap:12px }
+  .vclub .r.tap{ cursor:pointer } .vclub .r .go{ margin-left:auto;flex:none;font-style:normal;color:#bec5cc;font-size:20px }
   .vclub .c{ flex:1;min-width:0 }
   .vclub .t{ display:flex;align-items:center;gap:6px }
   .vclub .t b{ font-size:17px;font-weight:800;letter-spacing:-.04em }
@@ -5981,7 +5988,7 @@
     box-shadow:0 0 0 3.5px rgba(241,99,26,.15) }
   /* 자간을 음수로 주면 상자가 마지막 글자 폭보다 좁아져 overflow:hidden 에 끝 글자(19:00 의 0)가 잘린다.
      오른쪽에 그만큼 여백을 돌려준다. */
-  .mcbig .c .t b{ font-weight:700;color:var(--ink);letter-spacing:-.02em;
+  .mcbig .c .t b{ font-weight:700;color:var(--coral-d);letter-spacing:-.02em;   /* 다음 모임 일시 — 브랜드 주황 */
     font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;padding-right:.08em }
   .mcbig .c .t em{ flex:none;font-style:normal;color:#d1d6db;font-size:11px }
@@ -5989,7 +5996,7 @@
     font-variant-numeric:tabular-nums }
   /* 점은 언제나 주황 — 다음 모임이 오늘이든 아니든 같은 표시로 둔다.
      오늘이 아니면 시간 글자만 회색으로 한 단계 낮춘다. */
-  .mcbig .c .t.later b{ color:var(--gray) }
+  .mcbig .c .t.later b{ color:var(--coral-d) }   /* 오늘이 아니어도 같은 주황 */
   .mcbig .go{ flex:none;color:var(--lgray);font-size:20px }
   .mcadd{ display:flex;align-items:center;gap:9px;width:100%;border:1px dashed #d2d7dc;
     border-radius:16px;padding:13px 14px;font-size:14px;font-weight:700;color:var(--gray);
@@ -6954,6 +6961,7 @@
   .megf{ display:flex;justify-content:center;gap:16px;margin-top:26px } .megf a{ font-size:13px;color:var(--lgray);text-decoration:none }
   /* 둘러보는 중(로그인 전)에 뜨는 로그인 화면 — 맨 처음 화면 그대로, 오른쪽 위 × 로 닫는다 */
   #auth .auth-x{ display:none }
+  #auth.on.ask{ z-index:460 }   /* 클럽 둘러보기 · 초대 화면 위로 */
   body.browsing #auth .auth-x, #auth.ask .auth-x{ display:flex;align-items:center;justify-content:center;position:absolute;z-index:2;
     top:calc(env(safe-area-inset-top, 0px) + 10px);right:12px;width:40px;height:40px;border:0;border-radius:20px;
     background:rgba(255,255,255,.9);font-size:26px;line-height:1;color:#6b7684;cursor:pointer;font-family:inherit }
@@ -14838,8 +14846,52 @@ function drawClubPreview(){
   }else{
     foot=`<button class="btn" onclick="closeClubPreview();openClubDetail('${esc(n)}')">가입 신청하기</button>`;
   }
+  /* 게스트 — 게스트를 받는 클럽이면 회원이 아니어도 다음 모임에 한 번 나와 볼 수 있다.
+     코트 지도 → 클럽 둘러보기로 온 사람이 <가입>보다 먼저 하고 싶은 게 이것이다 */
+  if(st!=='member' && pvGuestOK()){
+    const closed=(PV.pub||PV.c||{}).join_open===0;
+    foot = closed
+      ? `<button class="btn" onclick="pvGuestPick()">게스트로 신청하기</button>
+         <div style="text-align:center;font-size:14px;color:var(--gray);margin-top:9px">지금은 회원을 받지 않아요 · 게스트로는 올 수 있어요</div>`
+      : `<div class="pvf2"><button class="btn ghost" onclick="pvGuestPick()">게스트 신청</button>${foot}</div>`;
+  }
   document.getElementById('pvfoot').innerHTML=foot;
   document.getElementById('clubpv').style.display='flex';
+}
+/* 게스트를 받는 클럽인가 — 서버 공개 정보의 guest_cap(모임당 게스트 자리) */
+function pvGuestOK(){ const P=(PV&&(PV.pub||PV.c))||{}; return +(P.guest_cap||P.guestReq||0)>0; }
+/* 앞으로 있을 모임 — 교류전은 뺀다(게스트 자리가 아니다) */
+function pvUpcoming(){
+  const list=((PV&&PV.pub&&PV.pub.events)||(PV&&PV.events)||[]).filter(e=>e && e.tag!=='교류전');
+  const t0=new Date(); t0.setHours(0,0,0,0);
+  return list.map(e=>{ const m=String(e.date||'').match(/(\d{1,2})\/(\d{1,2})/); if(!m) return null;
+      const d=new Date(t0.getFullYear(), +m[1]-1, +m[2]); if((d-t0)/864e5<-200) d.setFullYear(d.getFullYear()+1);
+      return d>=t0 ? {e,d} : null; }).filter(Boolean).sort((a,b)=>a.d-b.d).slice(0,5);
+}
+/* 게스트로 갈 모임 고르기 */
+function pvGuestPick(){
+  if(needLogin('게스트 신청은 로그인이 필요해요')) return;
+  const P=(PV&&(PV.pub||PV.c))||{}, fee=+(P.guest_fee||P.guestFee||0);
+  const up=pvUpcoming(), W='일월화수목금토';
+  const cond=[guestCondText(P.guest_min_months, P.guest_visits), fee?`게스트비 ${fee.toLocaleString()}원`:'게스트비 없음'].filter(Boolean).join(' · ');
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>어느 모임에 가볼까요?</h3>
+      <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
+    <div style="font-size:14px;color:var(--gray);margin:-4px 0 12px">${esc(PV.n)} · ${esc(cond)}</div>
+    ${up.length ? up.map(({e,d})=>`<div class="pvg">
+        <span class="d"><span>${d.getMonth()+1}월</span><b>${d.getDate()}</b></span>
+        <span class="c"><b>${esc(e.title||'모임')}</b><span>${W[d.getDay()]} ${esc(String(e.date||'').replace(/^\d{1,2}\/\d{1,2}\s*\([^)]*\)\s*/,''))}${e.count!=null?` · ${e.count}명 참석`:''}</span></span>
+        <button onclick="pvGuestApply(${+e.id}, ${esc(jsArg(e.title||'모임'))}, ${fee})">신청</button></div>`).join('')
+      : '<div class="pvempty" style="padding:24px 0">지금은 잡힌 모임이 없어요<br><span style="font-size:13px">모임이 열리면 여기서 신청할 수 있어요</span></div>'}
+    <div style="font-size:13px;color:var(--lgray);margin-top:12px;line-height:1.6">신청하면 운영진에게 알림이 가고, 채팅으로 안내해 드려요.</div>`;
+  document.getElementById('ov').classList.add('on');
+}
+async function pvGuestApply(eid, title, fee){
+  if(needLogin('게스트 신청은 로그인이 필요해요')) return;
+  if(!confirm(`${title}에 게스트로 신청할까요?${fee?`\n게스트비 ${Number(fee).toLocaleString()}원은 현장에서 내요.`:''}\n운영진이 채팅으로 안내해 드려요.`)) return;
+  try{ await api(`/events/${eid}/guest-apply`,{method:'POST',body:'{}'});
+    try{ track('preview:guest'); }catch(e){}
+    closeOv(); toast('신청했어요 · 운영진이 곧 연락드려요');
+  }catch(e){ toast(xcErr(e,'신청하지 못했어요')); }
 }
 function togglePhoto(){const el=document.getElementById('postText');if(el)state._draft=el.value;state._photo=!state._photo;renderClub();}
 /* 내가 쓴 글 — 라운지 글, 댓글, 클럽 소식을 한곳에서 */
@@ -17222,6 +17274,13 @@ function homeCourtSection(){
 }
 /* 코트 화면의 클럽 회원 수 — 서버의 size 는 <최근에 나온 사람> 수(지분 계산용)라 클럽 화면(35명)과 달랐다.
    클럽 목록과 같은 전체 회원 수(members)를 먼저 쓰고, 없으면 클럽 목록에서 찾는다 */
+/* 코트 화면에서 클럽을 누르면 — 우리 클럽이면 클럽 화면으로, 남의 클럽이면 그 클럽 소개(회원 · 모임 · 전적)로.
+   코트 지도로 들어온 사람이 <대표 클럽이 어떤 클럽인지> 바로 볼 수 있어야 한다 */
+function venueClubOpen(id, name){
+  const mine = id && String(id)===String(clubId()||'');
+  if(mine){ try{ hcExit(); }catch(e){} return openClubFromHome(name); }
+  openClubPreview(name, id||0);
+}
 function venueClubMembers(c){
   if(!c) return 0;
   if(c.members) return c.members;
@@ -22095,10 +22154,10 @@ async function venuePageMount(vid){
     if(clubs.length===1){
       const c=clubs[0];
       h+=`<div class="vclub">
-        <div class="r">${chAv(c.name,46)}<div class="c"><div class="t"><b>${esc(c.name)}</b><em>대표 클럽</em></div>
-          <span>${venueClubMembers(c)?`회원 ${venueClubMembers(c)}명 · `:''}이 코트에서 모임 ${c.events||0}번</span></div></div>
+        <div class="r tap" onclick="venueClubOpen(${+c.club_id||0},${esc(jsArg(c.name))})">${chAv(c.name,46)}<div class="c"><div class="t"><b>${esc(c.name)}</b><em>대표 클럽</em></div>
+          <span>${venueClubMembers(c)?`회원 ${venueClubMembers(c)}명 · `:''}이 코트에서 모임 ${c.events||0}번</span></div><i class="go">›</i></div>
         <div class="nt">${me?'지금은 우리 클럽만 이 코트를 홈으로 쓰고 있어요':`${esc(c.name)}${josa(c.name,'이','가')} 혼자 쓰고 있어요`}</div>
-        ${!(cs&&cs.joined)?`<button class="vclubgo" onclick="openClubPreview('${esc(c.name)}')">클럽 둘러보기</button>`:''}</div>`;
+        ${!(cs&&cs.joined)?`<button class="vclubgo" onclick="venueClubOpen(${+c.club_id||0},${esc(jsArg(c.name))})">클럽 둘러보기</button>`:''}</div>`;
     } else {
       const COL=['#2d6fb3','#f1631a','#1d9a5b','#7b61ff','#c9ced4'];
       const col=i=>clubs[i].club_id==cid?'#f1631a':COL[i===1&&clubs[0].club_id!=cid?0:i%COL.length];
@@ -22106,7 +22165,7 @@ async function venuePageMount(vid){
         <div class="hd"><span>대표 클럽</span><span>${clubs.length}개 클럽이 함께 써요</span></div>
         <div class="top"><b>${esc(top.name)}</b><b style="color:${col(0)}">${top.pct}%</b></div>
         <div class="bar">${clubs.map((c,i)=>`<i style="width:${c.pct}%;background:${col(i)}"></i>`).join('')}</div>
-        ${clubs.map((c,i)=>`<div class="sr${!(cs&&cs.joined)?' tap':''}" ${!(cs&&cs.joined)?`onclick="openClubPreview('${esc(c.name)}')"`:''}><i style="background:${col(i)}"></i>
+        ${clubs.map((c,i)=>`<div class="sr tap" onclick="venueClubOpen(${+c.club_id||0},${esc(jsArg(c.name))})"><i style="background:${col(i)}"></i>
           <b>${esc(c.name)}${c.club_id==cid?'<em>우리</em>':''}</b>
           <span>모임 ${c.events||0}${c.wins?` · ${c.wins}승`:''}</span><strong>${c.pct}%</strong></div>`).join('')}
         <div class="ft">비율은 이 코트에서 연 모임과 교류전 승리로 쌓여요</div></div>`;
@@ -22123,8 +22182,9 @@ async function venuePageMount(vid){
   }
   /* 도전장 줄 — 크게 차지하던 <여기서 교류전 열기> 대신. 운영진에게만 보인다.
      이 코트에 다른 클럽이 있으면 그 클럽들 중에서, 없으면 근처 클럽 중에서 고른다. */
-  if(cs&&cs.joined&&!cs.can_set){
-    /* 회원 — 도전장 자리에 제안. 구장이 채워진 채로, 이 코트 클럽이 하나면 상대까지 */
+  if(cs&&!cs.can_set&&cid&&(cs.joined||clubs.some(c=>c.club_id!=cid))){
+    /* 회원 — 도전장 자리에 제안. 구장이 채워진 채로, 이 코트 클럽이 하나면 상대까지.
+       코트 지도로 남의 코트에 들어온 회원도 그 코트 클럽과의 교류전을 운영진에게 제안할 수 있다 */
     const others=clubs.filter(c=>c.club_id!=cid);
     const tg=others.length===1?`,target:{id:${others[0].club_id},name:'${esc(others[0].name)}'}`:'';
     h+=`<button class="vchrow" onclick="openPrForm({venue:{id:${vid},name:'${esc(v.name||'')}'}${tg}})">
@@ -22133,11 +22193,13 @@ async function venuePageMount(vid){
   if(cs&&cs.can_set){
     const others=clubs.filter(c=>c.club_id!=cid);
     let t='다른 클럽에 교류전 신청하기', sub=CH_FMT_TXT;
+    const names=others.length===1?others[0].name:others.length?`${others[0].name} 외 ${others.length-1}곳`:'';
     if(others.length && me && top && me.club_id!==top.club_id){
       const n=Math.ceil((top.score-me.score)/12)+1;
       t=`교류전 <b>${n}승</b>이면 대표 클럽이 돼요`; sub='이 코트 클럽에 도전장 보내기';
-    } else if(others.length){ sub=`이 코트 클럽 ${others.length}곳 · ${CH_FMT_TXT}`; }
-    h+=`<button class="vchrow" onclick="${others.length?`chStartPick({vid:${vid},vname:'${esc(v.name||'')}'})`:'chStartPick({})'}">
+    } else if(others.length){ t='이 코트 클럽에 교류전 신청하기'; sub=`${names} · ${CH_FMT_TXT}`; }
+    /* 코트 화면에서 누르면 늘 <이 코트의 클럽>부터 보여준다. 다른 클럽이 없으면 거기서 근처 클럽으로 넘어간다 */
+    h+=`<button class="vchrow" onclick="chStartPick({vid:${vid},vname:${esc(jsArg(v.name||''))}})">
       <span class="vs vsimg"><img src="${XC_ICON}" alt=""></span><span class="c"><b>${t}</b><span>${esc(sub)}</span></span><span class="ar">›</span></button>`;
   }
 
