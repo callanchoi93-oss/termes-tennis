@@ -2943,8 +2943,12 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS event_comments (
   id INTEGER PRIMARY KEY, event_id INTEGER, user_id INTEGER, body TEXT, created_at INTEGER)`); } catch (e) {}
 try { db.exec('ALTER TABLE event_comments ADD COLUMN parent_id INTEGER'); } catch (e) {}   // 대댓글
 app.get('/events/:id/comments', auth, (req, res) => {
-  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, c.parent_id, u.name, u.photos
-    FROM event_comments c JOIN users u ON u.id=c.user_id WHERE c.event_id=? ORDER BY c.id ASC LIMIT 200`).all(+req.params.id);
+  /* 이름은 클럽 명단 이름(cm.alias)을 먼저 — 계정 이름은 소셜 로그인 닉네임이라
+     참석 명단에는 <이인애>, 댓글에는 <Inae Lee> 로 같은 사람이 둘로 보였다 */
+  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, c.parent_id,
+      COALESCE((SELECT NULLIF(alias,'') FROM club_members WHERE club_id=(SELECT club_id FROM club_events WHERE id=c.event_id) AND user_id=c.user_id LIMIT 1), u.name) AS name, u.photos
+    FROM event_comments c JOIN users u ON u.id=c.user_id
+    WHERE c.event_id=? ORDER BY c.id ASC LIMIT 200`).all(+req.params.id);
   res.json(rows);
 });
 app.post('/events/:id/comments', auth, limitWrite, (req, res) => {
@@ -3986,10 +3990,12 @@ app.get('/clubs/:id/feed', auth, (req, res) => {
   const myLike = db.prepare('SELECT 1 FROM feed_likes WHERE post_id=? AND user_id=?');
   const nCmts  = db.prepare('SELECT COUNT(*) n FROM feed_comments WHERE post_id=?');
   // '홍길동 님 외 2명이 좋아해요' 를 만들려면 이름이 필요하다 — 최근 순 3명만
-  const likers = db.prepare(`SELECT u.name FROM feed_likes fl JOIN users u ON u.id=fl.user_id
+  const likers = db.prepare(`SELECT COALESCE((SELECT NULLIF(alias,'') FROM club_members WHERE club_id=(SELECT club_id FROM club_posts WHERE id=fl.post_id) AND user_id=fl.user_id LIMIT 1), u.name) AS name
+    FROM feed_likes fl JOIN users u ON u.id=fl.user_id
     WHERE fl.post_id=? ORDER BY fl.rowid DESC LIMIT 3`);
   /* 목록에서 <최근 댓글 한 줄> · <어느 모임 이야기인지> 를 보여준다 */
-  const lastCmt = db.prepare(`SELECT c.body, u.name FROM feed_comments c JOIN users u ON u.id=c.user_id
+  const lastCmt = db.prepare(`SELECT c.body, COALESCE((SELECT NULLIF(alias,'') FROM club_members WHERE club_id=(SELECT club_id FROM club_posts WHERE id=c.post_id) AND user_id=c.user_id LIMIT 1), u.name) AS name
+    FROM feed_comments c JOIN users u ON u.id=c.user_id
     WHERE c.post_id=? ORDER BY c.id DESC LIMIT 1`);
   const evOf = db.prepare('SELECT id, title, date FROM club_events WHERE id=? AND club_id=?');
   res.json(rows.map(p => { const ev = p.event_id ? evOf.get(p.event_id, cid) : null; const lc = lastCmt.get(p.id);
@@ -4037,8 +4043,9 @@ app.get('/feed/:id/comments', auth, (req, res) => {
   const pid = +req.params.id;
   const p = db.prepare('SELECT club_id FROM club_posts WHERE id=?').get(pid);
   if (!p || !isMember(p.club_id, req.uid)) return res.status(403).json({ error: 'member_only' });
-  res.json(db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, u.name FROM feed_comments c
-    JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.id`).all(pid)
+  res.json(db.prepare(`SELECT c.id, c.body, c.created_at, c.user_id, COALESCE((SELECT NULLIF(alias,'') FROM club_members WHERE club_id=? AND user_id=c.user_id LIMIT 1), u.name) AS name FROM feed_comments c
+    JOIN users u ON u.id=c.user_id
+    WHERE c.post_id=? ORDER BY c.id`).all(p.club_id, pid)
     .map(c => ({ ...c, mine: c.user_id === req.uid })));
 });
 
@@ -8497,7 +8504,7 @@ app.get('/clubs/:id/chat', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
   const since = intOrNull(req.query.since) || 0;
-  const rows = db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, u.name
+  const rows = db.prepare(`SELECT c.id, c.user_id, c.body, c.created_at, COALESCE((SELECT NULLIF(alias,'') FROM club_members WHERE club_id=c.club_id AND user_id=c.user_id LIMIT 1), u.name) AS name
     FROM club_chat c JOIN users u ON u.id=c.user_id
     WHERE c.club_id=? AND c.id>? ORDER BY c.id DESC LIMIT 100`).all(cid, since).reverse();
   // 메시지별 '안 읽은 사람 수' — 활성 회원 중 읽음 커서가 이 메시지에 못 미친 인원
@@ -14775,7 +14782,9 @@ app.get('/exchange/:id/comments', auth, (req, res) => {
   /* 어느 클럽 사람인지 함께 — 뱃지 색을 나누기 위해서다 */
   const ent = xcEntries(eid);
   const of = uid => { const e = ent.find(x => cbRole(x.club_id, uid)); return e ? e.club_id : 0; };
-  res.json(rows.map(r => ({ ...r, club_id: of(r.user_id) })));
+  const aliasOf = db.prepare("SELECT NULLIF(alias,'') a FROM club_members WHERE club_id=? AND user_id=?");
+  res.json(rows.map(r => { const cid = of(r.user_id); const al = cid ? aliasOf.get(cid, r.user_id) : null;
+    return { ...r, name: (al && al.a) || r.name, club_id: cid }; }));
 });
 app.post('/exchange/:id/comments', auth, limitWrite, (req, res) => {
   const eid = +req.params.id;
