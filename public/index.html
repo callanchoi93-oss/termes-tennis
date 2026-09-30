@@ -7685,7 +7685,7 @@ const SYM_IMG={
   '🌊':IMG('sym_wave.989c00e5.webp')
 };
 function symImg(ic){ return SYM_IMG[String(ic||'').replace(/\uFE0F/g,'')]||null; }
-function symHTML(ic){ const u=symImg(ic); return u?`<img class="symimg" src="${u}" alt="" draggable="false">`:esc(ic||''); }
+function symHTML(ic){ const u=symImg(ic); return u?`<img class="symimg" src="${u}" alt="" draggable="false" data-ic="${esc(ic)}">`:esc(ic||''); }
 function clubLogoOf(name){ return (state.clubLogos||{})[name]||null; }
 /* 금액 축약 — 30000 → "3만원", 35000 → "3.5만원", 8000 → "8천원" */
 function won0(n){
@@ -8124,10 +8124,15 @@ const API_BASE = (()=>{
 function IMG(name){ return 'img/'+name; }
 document.addEventListener('error', function(ev){
   const el=ev.target;
-  if(!el || el.tagName!=='IMG' || el.dataset.imgfb) return;
-  const m=String(el.getAttribute('src')||'').match(/(?:^|\/)img\/([A-Za-z0-9._-]+)$/);
-  if(!m || /^https?:\/\//.test(el.getAttribute('src'))) return;
-  el.dataset.imgfb='1'; el.src=REMOTE_API+'/img/'+m[1];
+  if(!el || el.tagName!=='IMG') return;
+  const src=String(el.getAttribute('src')||'');
+  const m=src.match(/(?:^|\/)img\/([A-Za-z0-9._-]+)$/);
+  if(!m) return;
+  if(!el.dataset.imgfb && !/^https?:\/\//.test(src)){ el.dataset.imgfb='1'; el.src=REMOTE_API+'/img/'+m[1]; return; }
+  /* 서버에도 아직 없다(img 폴더를 올리기 전) — 깨진 그림 표시를 남기지 않는다.
+     심볼은 원래 이모지 글자로, 나머지 그림은 자리만 비운다. */
+  if(el.dataset.ic){ const t=document.createElement('span'); t.className='symtxt'; t.textContent=el.dataset.ic; el.replaceWith(t); }
+  else el.style.visibility='hidden';
 }, true);
 const TOKEN_KEY = 'matsu_jwt';
 /* 어느 앱으로 들어왔나 — 'ios' | 'android' | 'web'.
