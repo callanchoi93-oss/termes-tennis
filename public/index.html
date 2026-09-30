@@ -6846,6 +6846,10 @@
   /* 심볼 3D 그림 — 칸 크기에 맞춰 줄고 늘어난다 */
   .symimg{ display:block; width:76%; height:76%; object-fit:contain; pointer-events:none;
            -webkit-user-drag:none; user-select:none; -webkit-touch-callout:none; }
+  /* 색 바탕의 로고 안 — 바탕색과 갈리도록 그림자를 살짝 깐다
+     (주황 바탕에 연두 공처럼 비슷한 밝기끼리 붙으면 흐릿해 보였다) */
+  .clogo .symimg{ width:56%; height:56%; filter:drop-shadow(0 .05em .07em rgba(0,0,0,.25)) }   /* 예전 이모지와 같은 크기감(칸의 절반) */
+  .cw-emb .symimg{ filter:drop-shadow(0 3px 5px rgba(0,0,0,.25)) }
   .cw-ic .symimg{ width:72%; height:72% } .lopt .symimg{ width:70%; height:70% }
   .cw-emb .symimg{ width:68%; height:68% }
   .clabel{ display:inline-flex; align-items:center; gap:8px; min-width:0; }
@@ -7668,21 +7672,21 @@ const CLUB_LOGO_BGS=['#f1631a','#5b3fd6','#3f9e6e','#484f56','#14171a','#a56a00'
    그래서 이미 심볼로 로고를 만든 클럽도 서버를 고치지 않고 바로 3D 로 보인다.
    그림이 없는 기호(다른 종목 공 등)는 이모지 글자로 그린다. */
 const SYM_IMG={
-  '🎾':IMG('sym_tennis.a5937e4e.webp'),
-  '🔥':IMG('sym_fire.b8a94606.webp'),
-  '⭐':IMG('sym_star.2f260257.webp'),
-  '🚀':IMG('sym_rocket.68235420.webp'),
-  '🤖':IMG('sym_robot.196502de.webp'),
-  '🦅':IMG('sym_eagle.f183159f.webp'),
-  '🐯':IMG('sym_tiger.16e3142d.webp'),
-  '🐺':IMG('sym_wolf.e51e4410.webp'),
-  '⚡':IMG('sym_bolt.9e7e1554.webp'),
-  '🛡':IMG('sym_shield.366338f8.webp'),
-  '👑':IMG('sym_crown.5e27b57c.webp'),
-  '🏆':IMG('sym_trophy.db5d6ac5.webp'),
-  '🍀':IMG('sym_clover.89407c78.webp'),
-  '🌙':IMG('sym_moon.dd27bf98.webp'),
-  '🌊':IMG('sym_wave.989c00e5.webp')
+  '🎾':IMG('sym_tennis.38fd3b32.webp'),
+  '🔥':IMG('sym_fire.53e99c8d.webp'),
+  '⭐':IMG('sym_star.8c741bfd.webp'),
+  '🚀':IMG('sym_rocket.67c06c45.webp'),
+  '🤖':IMG('sym_robot.575ab5a4.webp'),
+  '🦅':IMG('sym_eagle.9f12bbee.webp'),
+  '🐯':IMG('sym_tiger.75371139.webp'),
+  '🐺':IMG('sym_wolf.8b2dc88c.webp'),
+  '⚡':IMG('sym_bolt.d5a71e07.webp'),
+  '🛡':IMG('sym_shield.b64a95b1.webp'),
+  '👑':IMG('sym_crown.3f682b40.webp'),
+  '🏆':IMG('sym_trophy.bfcea2b7.webp'),
+  '🍀':IMG('sym_clover.b4030d18.webp'),
+  '🌙':IMG('sym_moon.9995bd7c.webp'),
+  '🌊':IMG('sym_wave.247ad5be.webp')
 };
 function symImg(ic){ return SYM_IMG[String(ic||'').replace(/\uFE0F/g,'')]||null; }
 function symHTML(ic){ const u=symImg(ic); return u?`<img class="symimg" src="${u}" alt="" draggable="false" data-ic="${esc(ic)}">`:esc(ic||''); }
@@ -36081,7 +36085,7 @@ async function openEventDetail(id){
   if(ev && ev.tag==='교류전'){ state._xcOpen=1; go('club'); return openXc(id); }
   if(!ev){ try{ const list=await api(`/clubs/${cid}/events`); SRV_EVENTS=list; ev=list.find(e=>String(e.id)===String(id)); }catch(e){} }
   if(!ev){ toast('모임을 찾지 못했어요'); return; }
-  EVD={ev, comments:[], photoMap:{}, guestMap:{}, replyTo:null, reactions:[], pickFor:null, bk:undefined};
+  EVD={ev, comments:[], photoMap:{}, guestMap:{}, nameById:{}, replyTo:null, reactions:[], pickFor:null, bk:undefined};
   const token=EVD;                       // 뒤로 가면 EVD 가 null 이 된다 — 늦게 온 응답이 덮어쓰지 않게
   drawEventDetail();
   /* 참석자·대진·댓글을 한꺼번에 부른다. 하나씩 await 하면 대진 응답이 느릴 때
@@ -36097,6 +36101,10 @@ async function openEventDetail(id){
         if(evHasPhoto(m.photos) || !(m.name in pm)) pm[m.name]=m.photos;
         if(m.role==='guest') gs[m.name]=1; else member[m.name]=1; });
       Object.keys(member).forEach(n=>{ delete gs[n]; });   // 같은 이름의 정회원이 있으면 게스트 표시를 붙이지 않는다
+      /* 댓글 작성자 이름도 클럽 명단 이름으로 — 계정 이름은 소셜 로그인 닉네임(예: Inae Lee)이라
+         참석 명단(이인애)과 같은 사람인데 다른 사람처럼 보였다 */
+      const nb={}; (ms||[]).forEach(m=>{ if(m.user_id!=null && m.role!=='guest' && m.name) nb[m.user_id]=m.name; });
+      put('nameById',nb);
       /* 이 모임 참석자 명단(계정 기준)에서도 사진을 채운다 — 회원 목록에서 빠진 계정도 참석자로는 잡힌다 */
       try{ const r=await api(`/clubs/${cid}/roster?event=${id}`);
         ((r&&r.members)||[]).forEach(m=>{ if(evHasPhoto(m.photos) && !evHasPhoto(pm[m.name])) pm[m.name]=m.photos; }); }catch(e){}
@@ -36300,12 +36308,13 @@ function drawEventDetail(){
   if(!roots.length) h+=`<div style="font-size:14px;font-weight:400;color:#98a0aa;margin-top:12px;line-height:1.6">첫 댓글을 남겨보세요 · 준비물이나 카풀 이야기 어때요?</div>`;
   const line=(c,depth)=>{
     const mine=(state.serverUser||{}).id===c.user_id;
+    const who=(EVD.nameById||{})[c.user_id]||c.name;          // 클럽에서 쓰는 이름을 먼저
     const kids=EVD.comments.filter(x=>x.parent_id===c.id);
     let s=`<div style="display:flex;gap:10px;padding:13px 0 0;${depth?'margin-left:26px':''}">
-      ${evAvatar(c.name,c.photos,depth?26:32)}
+      ${evAvatar(who,c.photos,depth?26:32)}
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:7px">
-          <span onclick="openMemberCard('${esc(c.name)}')" style="font-size:14px;font-weight:400;cursor:pointer">${esc(c.name)}</span>
+          <span onclick="openMemberCard('${esc(who)}')" style="font-size:14px;font-weight:400;cursor:pointer">${esc(who)}</span>
           <span style="font-size:14px;font-weight:400;color:#a3abb4">${fmtAgo(c.created_at)}</span></div>
         <div style="font-size:15px;font-weight:400;color:#3d444b;margin-top:4px;line-height:1.65;word-break:break-word">${esc(c.body)}</div>
         ${(()=>{ const rc=evReactCounts(c.id); const keys=Object.keys(rc);
@@ -36318,7 +36327,7 @@ function drawEventDetail(){
             <div style="font-size:13px;color:var(--lgray);margin-top:4px">${esc(evReactWho(rc))}</div>`:''; })()}
         <div style="display:flex;gap:12px;margin-top:6px;align-items:center">
           <span onclick="evPick(${c.id})" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">반응</span>
-          <span onclick="evReply(${c.id},'${esc(c.name)}')" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">답글</span>
+          <span onclick="evReply(${c.id},'${esc(who)}')" style="font-size:14px;font-weight:400;color:#79828d;cursor:pointer">답글</span>
           ${mine?`<span onclick="evDelComment(${c.id})" style="font-size:14px;font-weight:400;color:#a3abb4;cursor:pointer">삭제</span>`:''}</div>
         ${EVD.pickFor===c.id?`<div style="display:flex;gap:2px;margin-top:7px;background:#fff;border:1px solid #e5e8eb;border-radius:14px;padding:4px;width:fit-content">
           ${EV_EMOJI.map(em=>`<button onclick="evReact(${c.id},'${em}')" aria-label="반응 남기기" style="width:44px;height:44px;border:0;border-radius:10px;background:${(evReactCounts(c.id)[em]||{}).mine?'#fff0e8':'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer">${evFace(em,28)}</button>`).join('')}</div>`:''}
