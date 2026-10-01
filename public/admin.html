@@ -384,6 +384,14 @@ body{background:var(--paper);color:var(--ink);
   .xb button.danger{color:#c2410c;border-color:#f3d9c5}
   .ut i.dv{color:#b3aea4;font-weight:600}
   .ut i.dv.ios{color:#161412}
+  .ut i.dv.and{color:#2f6b3f}
+  /* 앱 버전 — 최신은 기기 글자색 그대로, 옛 버전은 주황 */
+  .ut i.dv em{font-style:normal;font-variant-numeric:tabular-nums;margin-left:4px}
+  .ut i.dv em.old{color:#cf5418}
+  .vsum{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px;color:#7d7870;
+    margin:-2px 2px 12px}
+  .vsum b{color:#161412;font-weight:700;font-variant-numeric:tabular-nums}
+  .vsum b.old{color:#cf5418}
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -1046,7 +1054,7 @@ async function drawStats(){
     </div>
     ${(s.byPlat||[]).length ? `<div class="card"><div class="ct">어느 기기로 쓰나</div>
       ${s.byPlat.map(p=>{
-        const NM={ios:'아이폰 앱', web:'웹'};
+        const NM={ios:'아이폰 앱', android:'안드로이드 앱', web:'웹'};
         const tot=s.byPlat.reduce((a,b)=>a+b.n,0)||1;
         const w=Math.round(p.n/tot*100);
         return `<div class="prow"><span class="l">${NM[p.p]||p.p}</span>
@@ -1136,10 +1144,39 @@ async function drawStats(){
 
 /* ── 회원 ── 이름만 굵게, 나머지는 회색 한 줄. 성별은 세 칸 토글. */
 let USEEN='';                    // 접속 기간 필터
+/* ── 앱 버전 ──
+   앱(iOS · Android)이 요청마다 스토어 버전을 알려준다 — 예: '1.2.1 (28)'.
+   웹은 늘 최신 화면이라 버전이 없다. 버전을 알려주는 앱이 나오기 전 앱을 쓰는 회원은
+   값이 비어 있다 — 같은 기기에서 버전이 잡힌 회원이 하나라도 있으면 그 사람은 옛 버전이다. */
+const PLAT_NM={ios:'아이폰', android:'안드로이드', web:'웹'};
+const platNm=p=>PLAT_NM[p]||(p?String(p):'');
+const verShort=v=>String(v||'').replace(/\s*\(.*\)\s*$/,'');          // '1.2.1 (28)' → '1.2.1'
+const verBuild=v=>{ const m=String(v||'').match(/\((\w+)\)/); return m?m[1]:''; };
+function verCmp(a,b){
+  const pa=verShort(a).split('.').map(n=>+n||0), pb=verShort(b).split('.').map(n=>+n||0);
+  for(let i=0;i<Math.max(pa.length,pb.length,3);i++){ const d=(pa[i]||0)-(pb[i]||0); if(d) return d; }
+  return (+verBuild(a)||0)-(+verBuild(b)||0);
+}
+/* 기기마다 지금 쓰이는 가장 새 버전 */
+function latestVers(rows){
+  const L={};
+  rows.forEach(u=>{ if(!u.app_ver||!u.app_plat) return;
+    if(!L[u.app_plat] || verCmp(u.app_ver, L[u.app_plat])>0) L[u.app_plat]=u.app_ver; });
+  return L;
+}
+/* 이 회원의 앱 — {plat, ver, old}. 앱을 안 쓰는 회원(웹만)은 null */
+function appOf(u, L){
+  const plat=u.app_plat || (u.last_plat==='ios'||u.last_plat==='android' ? u.last_plat : '');
+  if(!plat) return null;
+  const top=L[plat];
+  if(u.app_ver) return {plat, ver:u.app_ver, old: !!top && verCmp(verShort(u.app_ver), verShort(top))<0};
+  return {plat, ver:'', old: !!top};          // 버전을 안 알려주는 옛 앱
+}
 async function drawUsers(){
   const rows=await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
   const noG=rows.filter(u=>!gLabel(u.gender)).length;
   const D=864e5, now=Date.now();
+  const LV=latestVers(rows);
   /* 접속 기간으로 거르기 — 관리자가 이 화면을 보는 진짜 이유는
      <이 사람이 언제 왔나>가 아니라 <안 오는 사람이 누구인가>다. */
   const F={
@@ -1149,7 +1186,9 @@ async function drawUsers(){
     old:     u=>u.last_seen && now-u.last_seen >= 30*D,
     never:   u=>!u.last_seen,
     ios:     u=>u.last_plat==='ios',
-    web:     u=>u.last_plat && u.last_plat!=='ios',
+    android: u=>u.last_plat==='android',
+    web:     u=>u.last_plat==='web',
+    oldv:    u=>{ const a=appOf(u, LV); return !!(a && a.old); },
     nog:     u=>!gLabel(u.gender),
   };
   const list=rows.filter(F[USEEN]||F['']);
@@ -1166,7 +1205,10 @@ async function drawUsers(){
         border:1px solid var(--line)">내려받기</button></div>
 
     <div class="fbar">${chip('','전체')}${chip('today','오늘')}${chip('week','7일')}
-      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('ios','아이폰')}${chip('web','웹')}${chip('nog','성별 없음',1)}</div>
+      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('ios','아이폰')}${
+        cnt('android')?chip('android','안드로이드'):''}${chip('web','웹')}${
+        Object.keys(LV).length?chip('oldv','옛 버전',1):''}${chip('nog','성별 없음',1)}</div>
+    ${vSummary(rows, LV, USEEN)}
 
     ${USEEN==='nog'&&noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
       <u onclick="fillGender()">클럽 값으로 채우기</u></div>`:''}
@@ -1188,8 +1230,7 @@ async function drawUsers(){
           <div class="ut"><b>${esc(u.name||'이름 없음')}</b>${
             g ? `<i class="${g==='여성'?'f':'m'}">${g[0]}</i>`
               : `<i class="none">성별 없음</i>`}<s>·</s><i class="p">${esc(pv)}</i>${
-            u.last_plat ? `<s>·</s><i class="dv ${u.last_plat==='ios'?'ios':''}">${
-              u.last_plat==='ios'?'아이폰':u.last_plat==='web'?'웹':esc(u.last_plat)}</i>`:''}${
+            devTag(u, LV)}${
             /* 어느 동네에서 들어왔는지 — 접속할 때 한 번씩 지역만 남긴다 */
             (u.club_region||u.region) ? `<s>·</s><i>${esc(u.club_region||u.region)}</i>` : ''}</div>
           <span class="us">#${u.id} · 티어 ${fmt(u.rating_doubles||1000)}${
@@ -1200,6 +1241,45 @@ async function drawUsers(){
       : `<div class="empty">${UQ?'찾는 회원이 없어요':'해당하는 회원이 없어요'}</div>`}
     </div>
     <div class="note">회원을 누르면 성별을 고치거나 알림을 보낼 수 있어요</div>`);
+}
+/* 목록 한 줄의 기기 — '아이폰 1.2.1'. 웹으로 들어왔어도 앱을 쓴 적이 있으면 앱 버전을 따로 붙인다 */
+function devTag(u, L){
+  const a=appOf(u, L);
+  const cls=p=>p==='ios'?'ios':p==='android'?'and':'';
+  const ver=a ? (a.ver ? `<em class="${a.old?'old':''}">${esc(verShort(a.ver))}</em>`
+                       : a.old ? `<em class="old">옛 버전</em>` : '') : '';
+  if(!u.last_plat && !a) return '';
+  if(a && (u.last_plat===a.plat || !u.last_plat))
+    return `<s>·</s><i class="dv ${cls(a.plat)}">${platNm(a.plat)}${ver}</i>`;
+  return `<s>·</s><i class="dv ${cls(u.last_plat)}">${esc(platNm(u.last_plat))}</i>${
+    a&&ver ? `<s>·</s><i class="dv ${cls(a.plat)}">${platNm(a.plat)} 앱${ver}</i>` : ''}`;
+}
+/* 기기별 버전 분포 — 아이폰 · 안드로이드 · 옛 버전 거르기를 눌렀을 때만 */
+function vSummary(rows, L, f){
+  if(!['ios','android','oldv'].includes(f) || !Object.keys(L).length) return '';
+  return Object.keys(L).filter(p=>f==='oldv'||p===f).map(p=>{
+    const by={}; let none=0;
+    rows.forEach(u=>{ const a=appOf(u, L); if(!a||a.plat!==p) return;
+      if(!a.ver){ none++; return; } const k=verShort(a.ver); by[k]=(by[k]||0)+1; });
+    const top=verShort(L[p]);
+    const parts=Object.keys(by).sort((a,b)=>verCmp(b,a)).map(k=>
+      `<span><b class="${k===top?'':'old'}">${esc(k)}</b> ${by[k]}명</span>`);
+    if(none) parts.push(`<span><b class="old">버전 기록 전</b> ${none}명</span>`);
+    return `<div class="vsum"><span>${platNm(p)} 앱</span>${parts.join('')}</div>`;
+  }).join('');
+}
+/* 상세 — 앱 버전 한 줄 */
+function appRow(u, L){
+  const a=appOf(u, L);
+  if(!a) return '';
+  if(!a.ver) return `<div class="ur"><span>앱 버전</span><b style="color:#cf5418">기록 전</b></div>
+    <div class="unote">버전을 알려주는 앱으로 업데이트한 뒤 한 번 열면 여기에 버전이 나와요.${
+      L[a.plat]?` 지금 가장 새 버전은 <b>${esc(verShort(L[a.plat]))}</b>이에요.`:''}</div>`;
+  const b=verBuild(a.ver);
+  return `<div class="ur"><span>앱 버전</span><b${a.old?' style="color:#cf5418"':''}>${platNm(a.plat)} ${
+      esc(verShort(a.ver))}${b?` <i style="font-style:normal;font-weight:500;color:#9a948a">빌드 ${esc(b)}</i>`:''}${
+      a.old?` · 최신 ${esc(verShort(L[a.plat]))} 아님`:' · 최신'}</b></div>${
+    u.app_seen?`<div class="unote" style="margin-top:-4px">${stamp(u.app_seen)}에 이 버전으로 들어왔어요</div>`:''}`;
 }
 /* 회원 하나 — 목록에서 버튼을 다 빼고 여기로 모은다.
    100명 줄마다 버튼 네 개가 달려 있으면 정작 봐야 할 게 안 보인다. */
@@ -1220,7 +1300,8 @@ async function openU(id){
       u.last_seen?'':`<div class="unote">접속 기록은 2026년 8월 28일부터 쌓입니다.
         그 전에 다녀간 분도 값이 비어 있어요.</div>`}
     <div class="ur"><span>기기</span><b>${
-      u.last_plat==='ios'?'아이폰 앱':u.last_plat==='web'?'웹':u.last_plat?esc(u.last_plat):'모름'}</b></div>
+      u.last_plat==='ios'?'아이폰 앱':u.last_plat==='android'?'안드로이드 앱':u.last_plat==='web'?'웹':u.last_plat?esc(u.last_plat):'모름'}</b></div>
+    ${appRow(u, latestVers(rows))}
     <div class="ur"><span>티어 레이팅</span><b>${fmt(u.rating_doubles||1000)}${
       (u.tier_games||0)<TIER_MIN ? ` · 배치까지 ${TIER_MIN-(u.tier_games||0)}경기` : ` · ${u.tier_games}경기`}</b></div>
     <div class="ur"><span>성별</span><b>${g||'없음'}${
@@ -1343,7 +1424,7 @@ async function drawTrack(){
       ${(t.actions||[]).length ? t.actions.map(x=>bar(nm(x.name),x.n,x.u,maxA,'#2b62c9')).join('')
         : '<div class="empty">아직 기록이 없어요</div>'}</div>
     ${(t.platforms||[]).length?`<div class="card"><div class="ct">기기</div>
-      ${t.platforms.map(p=>bar(p.p==='ios'?'아이폰':p.p==='web'?'웹':p.p, p.n, p.n,
+      ${t.platforms.map(p=>bar(p.p==='ios'?'아이폰':p.p==='android'?'안드로이드':p.p==='web'?'웹':p.p, p.n, p.n,
         Math.max(1,...t.platforms.map(x=>x.n)), '#1f7d4d')).join('')}</div>`:''}
     <div class="note">기록은 우리 서버에만 쌓아요 · 화면 이름과 행동만 남고 내용은 담지 않습니다</div>`);
 }
