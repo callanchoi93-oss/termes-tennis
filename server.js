@@ -1131,6 +1131,10 @@ app.post('/clubs', auth, (req, res) => {
          (req.body.recruiting === 0 || req.body.recruiting === false) ? 0 : 1);
   db.prepare(`INSERT INTO club_members (club_id,user_id,role,is_captain) VALUES (?,?,?,1)`)
     .run(rid(r), req.uid, 'owner');
+  /* 만들 때 고른 코트를 그대로 홈으로 건다 — 예전에는 이름만 적어 두어서
+     코트 화면에 <아직 이 코트를 홈으로 건 클럽이 없어요>가 떴다 */
+  try { autoHomeVenue(rid(r), req.body.home_venue_id, hc.venue, region || '', req.uid); }
+  catch (e) { console.error('[auto home]', e.message); }
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(rid(r)));
 });
 /* 종목별 구력(개월). sport_started 는 {"tennis":"2019-05"} 형태 */
@@ -4778,6 +4782,15 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
     pick('logo', 300), pick('logo_ic', 8), pick('logo_bg', 12),
     pick('meet_time', 30), pick('age_bands', 40), pick('gender_pref', 10),
     _yr, _rec, _gm, _gvis, _entry, _season, _gfee, _gcap, _jopen, _jre, c.id);
+  /* 홈구장을 새로 골랐으면(코트 목록에서 고름 · 이름이 바뀜) 그 코트를 홈으로 건다.
+     다른 걸 고칠 때마다 걸지는 않는다 — <홈 내려놓기>를 한 클럽이 저절로 다시 걸리면 안 된다. */
+  if (has('home_court') && _hc.venue) {
+    const nm = x => String(x || '').replace(/\s/g, '');
+    if (+req.body.home_venue_id || nm(_hc.venue) !== nm(c.home_court)) {
+      try { autoHomeVenue(c.id, req.body.home_venue_id, _hc.venue, c.region || '', req.uid, c.home_court); }
+      catch (e) { console.error('[auto home]', e.message); }
+    }
+  }
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
 // 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
@@ -10414,6 +10427,104 @@ try {
 } catch (e) { console.error('[schema venue_clubs]', e.message); }
 
 const HOME_MAX = 2;               // 한 클럽이 걸 수 있는 홈 구장 수
+
+/* 시·도 이름을 두 글자로 — <대구광역시> · <대구> 를 같은 곳으로, <충청북도> 는 <충북> 으로 */
+const SIDO_SHORT = { 충청북도: '충북', 충청남도: '충남', 전라북도: '전북', 전북특별자치도: '전북',
+  전라남도: '전남', 경상북도: '경북', 경상남도: '경남', 강원특별자치도: '강원', 제주특별자치도: '제주' };
+function sidoKey(t) {
+  const w = String(t || '').trim().split(/\s+/)[0] || '';
+  return SIDO_SHORT[w] || w.slice(0, 2);
+}
+
+/* 클럽이 적어 둔 홈구장 이름으로 코트를 찾는다 — 띄어쓰기는 무시.
+   같은 이름이 여러 곳이면 클럽 지역(시·도)과 맞는 곳만, 그래도 여럿이면 잡지 않는다(엉뚱한 곳에 걸면 더 나쁘다). */
+/* 코트 이름의 <알맹이> — 띄어쓰기 · 괄호 속 · 코트 번호 · <테니스장/테니스코트/코트> 꼬리를 떼고 비교한다.
+   <포곡 테니스장(실외)> · <포곡테니스코트 1~4번> · <포곡테니스장> 이 모두 <포곡> 으로 같아진다. */
+function courtCore(t) {
+  return String(t || '')
+    .replace(/[(\[（【][^)\]）】]*[)\]）】]/g, '')
+    .replace(/\s/g, '')
+    .replace(/[0-9][0-9,.·~\-]*(번|면)(코트)?$/g, '')
+    .replace(/(테니스장|테니스코트|테니스클럽|테니스|코트|구장)$/g, '')
+    .replace(/(테니스장|테니스코트|테니스|코트|구장)$/g, '');
+}
+
+function venueByName(name, region) {
+  const key = String(name || '').replace(/\s/g, '');
+  if (key.length < 2) return null;
+  let rows = db.prepare(`SELECT id, sido FROM venues WHERE active=1 AND REPLACE(name,' ','')=?`).all(key);
+  /* 똑같은 이름이 없으면 알맹이로 — 같은 지역에서 딱 한 곳일 때만 잡는다 */
+  if (!rows.length) {
+    const core = courtCore(name);
+    if (core.length < 2) return null;
+    const cand = db.prepare(`SELECT id, sido, name FROM venues WHERE active=1
+      AND REPLACE(name,' ','') LIKE ? LIMIT 60`).all('%' + core + '%');
+    rows = cand.filter(v => courtCore(v.name) === core);
+    if (!rows.length) return null;
+    const rk0 = sidoKey(region);
+    const same = rk0 ? rows.filter(v => sidoKey(v.sido) === rk0) : rows;
+    return same.length === 1 ? same[0].id : null;
+  }
+  const rk = sidoKey(region);
+  if (rk) {
+    const same = rows.filter(v => sidoKey(v.sido) === rk);
+    if (same.length === 1) return same[0].id;
+    if (same.length > 1) return null;
+    /* 지역이 다른 곳만 있으면 — 코트 쪽 지역이 비어 있는 한 곳일 때만 잡는다 */
+    const blank = rows.filter(v => !v.sido);
+    return rows.length === 1 && blank.length === 1 ? rows[0].id : null;
+  }
+  return rows.length === 1 ? rows[0].id : null;
+}
+
+/* 클럽이 고른 홈구장을 실제로 <홈으로 걸기> 한다.
+   이미 걸려 있으면 그대로, 두 곳이 다 찼으면 예전 홈구장(oldName)을 새 곳으로 바꾼다. */
+function autoHomeVenue(cid, vidRaw, name, region, uid, oldName) {
+  let vid = +vidRaw || 0;
+  if (vid && !db.prepare('SELECT 1 FROM venues WHERE id=? AND active=1').get(vid)) vid = 0;
+  if (!vid) vid = venueByName(name, region);
+  if (!vid) return null;
+  if (db.prepare('SELECT 1 FROM venue_clubs WHERE venue_id=? AND club_id=?').get(vid, cid)) return vid;
+  const count = () => db.prepare('SELECT COUNT(*) n FROM venue_clubs WHERE club_id=?').get(cid).n;
+  if (count() >= HOME_MAX && oldName) {
+    const ok = String(oldName).replace(/\s/g, '');
+    const prev = db.prepare(`SELECT vc.venue_id FROM venue_clubs vc JOIN venues v ON v.id=vc.venue_id
+      WHERE vc.club_id=? AND REPLACE(v.name,' ','')=?`).get(cid, ok);
+    if (prev) {
+      db.prepare('DELETE FROM venue_clubs WHERE venue_id=? AND club_id=?').run(prev.venue_id, cid);
+      try { db.prepare('UPDATE land SET is_home=0 WHERE venue_id=? AND club_id=?').run(prev.venue_id, cid); } catch (e) {}
+    }
+  }
+  if (count() >= HOME_MAX) return null;
+  db.prepare('INSERT INTO venue_clubs (venue_id,club_id,set_by,set_at) VALUES (?,?,?,?)').run(vid, cid, uid || null, now());
+  try {
+    db.prepare(`INSERT INTO land (venue_id,club_id,depth,is_home,last_at) VALUES (?,?,1,1,?)
+      ON CONFLICT(venue_id,club_id) DO UPDATE SET is_home=1, last_at=?`).run(vid, cid, now(), now());
+  } catch (e) {}
+  return vid;
+}
+
+/* 이미 만들어진 클럽 소급 — 홈구장 이름은 적혀 있는데 아무 코트에도 안 걸린 클럽.
+   클럽마다 한 번만 한다(onceOnly). 일부러 내려놓은 클럽(land 에 is_home=0 이 남아 있음)은 건드리지 않는다. */
+(function backfillAutoHome() {
+  let rows = [];
+  try {
+    rows = db.prepare(`SELECT c.id, c.home_court, c.region, c.owner_id FROM clubs c
+      WHERE COALESCE(c.ghost,0)=0 AND COALESCE(c.home_court,'')<>''
+        AND NOT EXISTS (SELECT 1 FROM venue_clubs vc WHERE vc.club_id=c.id)`).all();
+  } catch (e) { return; }
+  let n = 0;
+  rows.forEach(c => {
+    try {
+      const vid = venueByName(c.home_court, c.region);
+      if (!vid) return;
+      if (db.prepare('SELECT 1 FROM land WHERE venue_id=? AND club_id=? AND is_home=0').get(vid, c.id)) return;
+      if (!onceOnly('auto_home', String(c.id))) return;
+      if (autoHomeVenue(c.id, vid, c.home_court, c.region, c.owner_id)) n++;
+    } catch (e) {}
+  });
+  if (n) console.log(`[migrate] 적어 둔 홈구장을 코트에 걸었어요 · ${n}개 클럽`);
+})();
 
 /* 클럽의 홈 구장 — 운영진이 걸어 둔 곳을 먼저 본다.
    안 걸었으면 최근 1년 정기모임을 세어 예전처럼 자동으로 잡는다.
