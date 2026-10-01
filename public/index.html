@@ -2015,6 +2015,36 @@
   .lpin.empty{ color:var(--gray);border:1px solid #e0e4e8 }
   /* ── 홈코트 지도 ── */
   .landwrap{ position:relative;margin-top:4px }
+  /* 코트 표시 (시안 B) */
+  .lmk{ position:relative;width:0;height:0;cursor:pointer;-webkit-tap-highlight-color:transparent }
+  /* 색 — 우리 = 브랜드 주황 · 다른 클럽 = 파랑(한국인이 가장 좋아하는 색이자 하드코트 색) · 빈 코트 = 초록 */
+  /* 3D 코트 그림 — 가운데(네트)가 지도 위 점에 오게. 흰 테두리로 지도에서 떠 보이게 */
+  .lct{ position:absolute;display:block;width:27px;height:30px;left:-13.5px;top:-15px;
+    filter:drop-shadow(0 0 .8px #fff) drop-shadow(0 0 .8px #fff) drop-shadow(0 2px 2px rgba(20,30,45,.28)) }
+  .lct.rv{ width:30px;height:34px;left:-15px;top:-17px }
+  .lct.big{ width:45px;height:50px;left:-22.5px;top:-25px;
+    filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff) drop-shadow(0 4px 5px rgba(217,80,10,.35)) }
+  /* 3D 왕관 — 우리가 대표인 코트 위에 살짝 기울여 얹는다 */
+  .lcrown{ position:absolute;left:-14px;top:-54px;width:30px;height:30px;display:block;z-index:2;
+    transform:rotate(-8deg);filter:drop-shadow(0 3px 3px rgba(80,50,0,.28)) }
+  .lnm{ position:absolute;left:17px;top:-9px;white-space:nowrap;font-size:12px;font-weight:700;color:#3d4652;line-height:18px;
+    text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff }
+  .lnm i{ font-style:normal;font-weight:600;color:#9aa3ad;font-size:11px;margin-left:4px }
+  .ltag{ position:absolute;left:19px;top:-14px;display:flex;align-items:stretch;white-space:nowrap;background:#fff;border-radius:9px;
+    box-shadow:0 2px 8px rgba(20,30,50,.18);overflow:hidden;font-size:12px;line-height:16px }
+  .ltag b{ padding:6px 8px;font-weight:700;color:#1d2530 }
+  .ltag em{ font-style:normal;padding:6px 8px;font-weight:700;color:#fff;background:#2f7cf0 }
+  .lmk.me .ltag{ left:26px;top:-15px;font-size:13px } .lmk.me .ltag em{ background:#f1631a }
+  .lmk.pl .lnm{ left:auto;right:17px } .lmk.pl .ltag{ left:auto;right:19px } .lmk.me.pl .ltag{ right:26px }
+  /* 아래 — 코트 밑 가운데에 매단다 */
+  .lmk.pb .lnm,.lmk.pb .ltag{ left:0;transform:translateX(-50%);top:19px }
+  .lmk.rv.pb .ltag{ top:21px } .lmk.me.pb .ltag{ top:28px }
+  /* 바탕 지도는 조금 흐리게 — 그 위의 코트 색이 먼저 읽히게 */
+  .landmap img:not(.lct):not(.lcrown){ filter:saturate(.6) brightness(1.03) }
+  .lkey2{ display:flex;flex-wrap:wrap;gap:4px 16px }
+  .lkey2 span{ display:inline-flex;align-items:center;gap:7px;margin:0;font-weight:600 }
+  .lkey2 .lct{ position:relative;left:0;top:0;width:18px;height:20px;flex:none;margin:-2px -1px -2px 0;
+    filter:drop-shadow(0 1px 1.2px rgba(20,30,45,.25)) }
   .landmap{ position:relative;width:100%;height:380px;border-radius:16px;overflow:hidden;
     background:#eef1f3 }
   /* 지도 위에 떠 있는 버튼 — 지도를 가리지 않는다 */
@@ -2037,6 +2067,9 @@
     mask-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><path d='M20 11a8 8 0 1 0-2.3 5.7'/><path d='M20 4v7h-7'/></svg>") }
   /* 아이콘 — 육각형 테두리를 clip-path 로 그렸더니 선이 뭉개져 촌스러웠고,
      벌집을 없앤 지금은 뜻도 안 맞는다. 거르기니까 깔때기로 바꾼다. */
+  /* 3D 집 아이콘 — 켜졌을 때(어두운 버튼)도 그대로 보인다 */
+  .landbtn .lbhome{ width:22px;height:22px;display:block;flex:none;margin:-3px -1px -3px -3px;
+    filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.18)) }
   .landbtn i{ width:15px;height:15px;display:block;background:var(--ink);
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain;
@@ -2045,6 +2078,32 @@
   .landbtn.on{ background:var(--ink);color:#fff }
   .landbtn.on i{ background:#fff }
   .landsheet{ margin-top:12px }
+  /* 전국 코트 찾기 */
+  .lsrch{ display:flex;flex-direction:column;gap:8px;margin-bottom:12px }
+  .lsq{ display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:12px;
+    padding:0 12px;background:#fff;height:46px }
+  .lsq:focus-within{ border-color:var(--coral) }
+  .lsq i{ width:17px;height:17px;flex:none;background:var(--lgray);
+    -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>") center/contain no-repeat;
+    mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>") center/contain no-repeat }
+  .lsq input{ flex:1;min-width:0;border:0;outline:0;font-family:inherit;font-size:15.5px;background:transparent;color:var(--ink) }
+  .lsq input::-webkit-search-cancel-button{ display:none }
+  .lsq b{ flex:none;width:22px;height:22px;border-radius:50%;background:#e9ebee;color:var(--gray);
+    font-size:15px;line-height:22px;text-align:center;font-weight:400;cursor:pointer }
+  .lsq b.off{ visibility:hidden }
+  .lsrep{ align-self:flex-start;border:1px solid var(--line);background:#fff;color:var(--ink2);
+    border-radius:16px;padding:6px 12px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer }
+  .lsrep.on{ background:var(--ink);border-color:var(--ink);color:#fff }
+  .lrh em{ font-style:normal;font-weight:600;color:#b0b8c1;margin-left:4px }
+  .lfnote{ text-align:center;color:var(--lgray);font-size:14px;padding:16px 8px;line-height:1.7 }
+  .lfnote b{ color:var(--ink2) }
+  .lfnote span{ font-size:13px }
+  .lfound{ margin:0 0 6px }
+  .lrep{ flex:none;max-width:44%;text-align:right;line-height:1.3 }
+  .lrep em{ display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--coral-d) }
+  .lrep b{ display:block;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .lrep s{ display:block;text-decoration:none;font-size:11.5px;color:var(--lgray) }
+  .lrep.none{ font-size:12.5px;color:#b0b8c1;font-weight:500 }
   /* flex-end 로 맞추면 32px 짜리 <1곳> 과 두 줄짜리 곁줄이 아래 끝만 맞아서
      <용인시 1위> 가 위로 떠 보인다. 가운데로 맞춘다. */
   .landsheet .lhd{ display:flex;align-items:center;gap:10px }
@@ -2060,6 +2119,8 @@
   .lnudge{ display:flex;gap:10px;align-items:flex-start;background:var(--felt);
     border-radius:12px;padding:12px 14px;margin-bottom:2px }
   .lnudge .ic{ width:18px;height:18px;flex:none;margin-top:1px }
+  /* 지도 그림 — 두 줄 글 옆에 걸맞게 크게, 글 가운데에 맞춘다 */
+  .lnudge .lnmap{ width:40px;height:40px;flex:none;display:block;object-fit:contain;align-self:center }
   .lnudge .tx{ font-size:14px;font-weight:400;color:var(--ink2);line-height:1.6 }
   .lnudge .tx b{ font-weight:700;color:var(--ink) }
   .lnudge .tx s{ text-decoration:none;display:block;color:var(--lgray);
@@ -2288,6 +2349,14 @@
   /* 제목 안에 넣을 때는 글자 옆에 앉아야 한다 — block 이면 혼자 한 줄을 차지한다 */
   .cuptr.inl{ display:inline-block;vertical-align:-3px;margin-right:5px }
   .cupcard.done .cuptr{ filter:grayscale(1);opacity:.6 }
+  /* 왼쪽 3D 우승컵 — 카드 높이는 글 쪽이 정하고, 컵은 바닥에 맞춰 선다.
+     (.mk 같은 짧은 이름은 로고 규칙과 겹쳐서 cup- 으로 시작하는 이름만 쓴다) */
+  .cupcard .b.cupflex{ display:flex;gap:12px;padding-left:10px }
+  .cupcard .cupart{ flex:none;width:66px;display:flex;align-items:flex-end;justify-content:center }
+  .cupcard .cupart img{ display:block;height:128px;width:auto;
+    filter:drop-shadow(0 4px 5px rgba(30,35,45,.22)) }
+  .cupcard .cupbody{ flex:1;min-width:0 }
+  .cupcard.done .cupart img{ filter:grayscale(1);opacity:.6 }
   .cupcard .t .ic{ width:16px;height:16px;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
@@ -7293,7 +7362,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.0-0917c';   // 등급 통일·KDK 수정 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1001g';   // 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -8150,6 +8219,32 @@ function appPlat(){
   }catch(e){ return 'web'; }
 }
 const IS_ANDROID_APP = appPlat()==='android';
+/* ── 앱 버전 ──
+   관리자 화면에서 <누가 옛 앱을 쓰고 있나>를 보려고, 앱(iOS · Android)은 요청마다
+   스토어 버전(예: 1.2.1 (28))을 헤더로 함께 보낸다. 웹은 늘 최신이라 보내지 않는다.
+   버전은 앱 껍데기(App.getInfo)에서 읽는다 — 이 파일의 BUILD 는 고쳐 넣는 걸 잊을 수 있다.
+   읽기 전에 나간 요청은 버전 없이 가고, 서버는 다음 요청에서 채운다. */
+let APP_VER='';
+(function readAppVer(){
+  if(appPlat()==='web') return;
+  const fromBuild=()=>{ try{ const m=String(BUILD||'').match(/(\d+(?:\.\d+)+)/); if(m) APP_VER=m[1]; }catch(e){} };
+  try{
+    const A=window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App;
+    if(!A || !A.getInfo) return fromBuild();
+    A.getInfo().then(i=>{
+      const v=String((i&&i.version)||'').trim(), b=String((i&&i.build)||'').trim();
+      if(v) APP_VER=(b && b!==v) ? `${v} (${b})` : v; else fromBuild();
+    }).catch(fromBuild);
+  }catch(e){ fromBuild(); }
+})();
+/* 요청에 붙이는 앱 표시 — 기기 종류와 버전 */
+function appHeaders(){
+  const p=appPlat();
+  if(p==='web' && !(typeof IS_IOS_APP!=='undefined' && IS_IOS_APP)) return {};
+  const h={'X-Client-Platform': p==='android' ? 'android' : 'ios'};
+  if(APP_VER) h['X-App-Version']=APP_VER;
+  return h;
+}
 /* 스토어 이름과 주소도 갈린다 */
 function storeName(){ return IS_ANDROID_APP ? 'Play 스토어' : 'App Store'; }
 function storeUrl(){
@@ -8252,7 +8347,7 @@ async function api(path, opts){
     r = await fetch(API_BASE + path, {
       ...opts, signal: ctl.signal,
       headers: { 'Content-Type':'application/json',
-        ...(IS_IOS_APP?{'X-Client-Platform':'ios'}:{}),
+        ...appHeaders(),
         ...(t?{Authorization:'Bearer '+t}:{}) , ...((opts&&opts.headers)||{}) },
     });
   } catch(e){
@@ -15972,7 +16067,7 @@ function cupApplyDraw(){
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
     ${(()=>{ const m=String(c.date||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      const dd=m?`${+m[2]}월 ${+m[3]}일`:'날짜 미정';
+      const dd=m?`${+m[2]}월 ${+m[3]}일`:'일자 미정';
       const wd=m?WD_KO[new Date(+m[1],+m[2]-1,+m[3]).getDay()]:'';
       return `<div class="cupbig"><span class="d">${dd}</span>
         ${wd?`<span class="w">${wd}</span>`:''}
@@ -16486,12 +16581,13 @@ function cupYearsText(p){
   const t=p.years==null?'구력 없음':`구력 ${p.years}년`;
   return p.g ? `${t} · ${p.w}승 ${p.l}패` : t;
 }
+/* 컵은 은빛 — 맞수 리그 우승컵이 은컵이다 */
 function cupTrophy(cls){
   return `<svg class="cuptr ${cls||''}" viewBox="0 0 48 48" aria-hidden="true">
-    <path d="M13 7h22c0 15.5-4.4 21.8-7.6 24h-6.8C17.4 28.8 13 22.5 13 7z" fill="#e9b44c"/>
-    <path d="M24 7h11c0 15.5-4.4 21.8-7.6 24H24z" fill="#d99c3d"/>
-    <rect x="20.6" y="29" width="6.8" height="5.4" fill="#e9b44c"/>
-    <rect x="24" y="29" width="3.4" height="5.4" fill="#d99c3d"/>
+    <path d="M13 7h22c0 15.5-4.4 21.8-7.6 24h-6.8C17.4 28.8 13 22.5 13 7z" fill="#c4cbd4"/>
+    <path d="M24 7h11c0 15.5-4.4 21.8-7.6 24H24z" fill="#9ea8b5"/>
+    <rect x="20.6" y="29" width="6.8" height="5.4" fill="#c4cbd4"/>
+    <rect x="24" y="29" width="3.4" height="5.4" fill="#9ea8b5"/>
     <path d="M14.5 41.5l3.4-7.4h12.2l3.4 7.4z" fill="#5fae52"/>
     <path d="M24 34.1h6.1l3.4 7.4H24z" fill="#4e9744"/></svg>`;
 }
@@ -16515,7 +16611,8 @@ function cupCardSection(){
   /* ISO 날짜는 안 읽힌다 — ymdKo 가 '10월 31일 (토)' 로 바꿔 준다.
      참가비와 입금 마감일은 카드에서 뺐다 — 카드는 <들어올지 말지>만 정하면 되고,
      숫자는 신청 화면에 다 있다. */
-  const line=[ymdKo(c.date), c.place, '팀당 9매치'].filter(Boolean).join(' · ');
+  /* 일자 · 장소는 <미정>으로 먼저 열 수 있다 — 빈칸으로 두면 줄이 짧아져 뭐가 빠졌는지 모른다 */
+  const line=[c.date?ymdKo(c.date):'일자 미정', c.place||'장소 미정', '팀당 9매치'].join(' · ');
 
   /* 8팀 중 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
      칸이 적으면 점을 그대로 센다. 12칸이 넘으면 점이 뭉개지므로 바로 돌아간다. */
@@ -16563,11 +16660,15 @@ function cupCardSection(){
   /* 오늘이 대회날이면 카드가 대진으로 바뀐다 — 클럽 탭에 카드를 또 만들면
      대회 기간에 카드가 세 장씩 쌓인다. 한 장이 단계마다 옷을 갈아입는다. */
   const today = c.date && c.date===ymd();
-  const lbl = today ? '오늘 경기' : paid ? '참가 확정' : e ? '참가 신청함' : '참가 모집';
+  /* 신청 안 한 클럽인데 추첨이 이미 끝났으면 신청은 닫혔다 — 대진만 볼 수 있다.
+     예전에는 글자는 <참가 신청하기>인데 누르면 대진 화면(대회 당일)이 열렸다. */
+  const viewOnly = !e && !!c.drawn;
+  const lbl = today ? '오늘 경기' : paid ? '참가 확정' : e ? '참가 신청함' : viewOnly ? '대진 공개' : '참가 모집';
   const act = today ? '대진·점수 보기'
     : drawn ? '우리 조 대진 보기'
     : paid ? '참가 클럽 보기'
-    : e ? (done?'엔트리 보기':'엔트리 채우기') : '참가 신청하기';
+    : e ? (done?'엔트리 보기':'엔트리 채우기')
+    : viewOnly ? '대진 보기' : '참가 신청하기';
   /* 추첨이 끝났으면 날짜와 상관없이 대진을 볼 수 있어야 한다.
      예전에는 drawn 이면 신청 화면으로 떨어져서 <우리 조 대진 보기>가 엔트리 화면을 열었다. */
   const tap = (today || drawn) ? 'cupDay()'
@@ -16575,18 +16676,22 @@ function cupCardSection(){
     : (!clubId() || !e) && c.drawn ? 'cupDay()'
     : !clubId() ? 'cupTeams()' : 'cupApply()';
   const state2 = !e ? ''
-    : today ? `${drawn?`${e.group_label}조 ${e.seat}번 · `:''}오늘 ${esc(c.place||'')}`
+    : today ? `${drawn?`${e.group_label}조 ${e.seat}번 · `:''}오늘 ${esc(c.place||'장소 미정')}`
     : drawn ? `${e.group_label}조 ${e.seat}번 · 엔트리 ${e.roster_n}/${need}명`
     : paid ? `입금 확인 · 입금이 다 모이면 조 추첨을 해요`
     : `입금 대기 · 엔트리 ${e.roster_n}/${need}명`;
+  /* 왼쪽에 3D 우승컵 — 무엇을 걸고 하는 대회인지 한눈에 */
   return `<div class="cupcard${over?' done':''}" onclick="${tap}">
-    <div class="b">
+    <div class="b cupflex">
+      <div class="cupart"><img src="${IMG('cup_league.faa2861f.webp')}" alt="" draggable="false"></div>
+      <div class="cupbody">
       <div class="t">${cupTrophy()}MATSU League ${lbl}
         ${dd&&!paid?`<em>${dd}</em>`:''}</div>
       <div class="n">${esc(c.title||'초청 클럽대항전')}</div>
       <div class="s">${esc(line)}</div>
       ${today?'':fill}
       ${state2?`<div class="m">${state2}</div>`:''}
+      </div>
     </div>
     <div class="go">${act}</div>
   </div>`;
@@ -16641,7 +16746,7 @@ async function cupTeams(){
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top"><h3>참가 클럽</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="sd">${esc(c.date?ymdKo(c.date):'')}${c.place?` · ${esc(c.place)}`:''}</div>
+    <div class="sd">${esc(c.date?ymdKo(c.date):'일자 미정')} · ${esc(c.place||'장소 미정')}</div>
     <div class="cupseat">
       <div class="hd"><span class="n">${teams.length}<em> / ${max}팀</em></span>
         <span class="g">${goal}</span></div>
@@ -21779,12 +21884,22 @@ function landPageHtml(){
   return `<div class="landwrap">
       <div id="landMap" class="landmap"></div>
       <button class="landbtn" onclick="landToggleEmpty()">
-        <i></i><span id="landBtnT">${LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기'}</span></button>
+        <img class="lbhome" src="${IMG('icon_home3d.ceb0572c.webp')}" alt="" draggable="false"><span id="landBtnT">${LAND_MINE_ONLY?'주변 구장 보기':'우리 코트만 보기'}</span></button>
       <button class="landre" id="landRe" onclick="landHere()">
         <i></i>이 지역에서 다시 찾기</button>
     </div>
-    <div class="lkey"><span class="w">원 크기는 클럽 규모예요 · 진한 원이 우리 코트</span></div>
+    <div class="lkey lkey2"><span>${courtImg('me')}우리 코트</span><span>${courtImg('rv')}다른 클럽 대표</span><span>${courtImg('e')}빈 코트</span></div>
     <div class="landsheet">
+      <!-- 전국 코트 찾기 — 지도는 지금 화면 둘레만 그린다. 다른 동네 코트의 대표 클럽을 보려고
+           지도를 끌고 다니지 않게, 이름 · 지역으로 바로 찾는다. -->
+      <div class="lsrch">
+        <div class="lsq"><i></i><input id="landQ" type="search" enterkeyhint="search" autocomplete="off"
+          placeholder="전국 코트 찾기 · 이름이나 지역" value="${esc(LAND_Q)}"
+          oninput="landSearchSoon(this.value)" onkeydown="if(event.key==='Enter'){this.blur();landSearch(this.value)}">
+          <b id="landQx" class="${LAND_Q?'':'off'}" role="button" aria-label="지우기" onclick="landSearchClear()">×</b></div>
+        <button class="lsrep${LAND_Q==='*'?' on':''}" onclick="landSearch('*')">대표 클럽 있는 코트</button>
+      </div>
+      <div id="landFound"></div>
       <!-- 순위 블록을 뺐다. 클럽이 하나뿐일 때 <용인시 1위>는 참가상이고,
            코트 1곳은 거의 모든 클럽이 같아서 아무것도 안 알려준다.
            d.my_rank / d.flags 는 계속 내려오니 클럽이 늘면 그때 다시 켠다. -->
@@ -21820,6 +21935,7 @@ function landPageHtml(){
     </div>` : ''}`;
 }
 async function landPageMount(){
+  try{ landFoundDraw(); }catch(e){}            // 코트 화면에 갔다 돌아와도 찾은 목록이 그대로 있게
   /* landDraw 를 기다리지 않으면 그 안의 오류가 <오류(P)> 토스트로 샜다 */
   try{ await loadKakaoMap(); await landDraw(); }
   catch(e){ const m=document.getElementById('landMap');
@@ -21995,7 +22111,7 @@ async function landDraw(){
     const top=owners.sort((a,b)=>b.depth-a.depth)[0];
     const rep=(m.reps||{})[v.id];
     const isMine=(rep&&rep.club_id===myId2)||top.club_id===myId2;
-    const col='#f1631a';                    // 색은 하나 — 진하기로만 우리 것을 가른다
+    const col=isMine?'#f1631a':'#2f7cf0';   // 코트 표시와 같은 색 — 우리 주황 · 다른 클럽 파랑
     /* 옅어지는 중이면 흐리게 — 지도에 시간이 담긴다 */
     const fade = (!top.is_home && top.days_left!=null && top.days_left<120);
     const R = top.radius_m || Math.round(nearestGap(v, near)/2*1000) || 800;
@@ -22034,58 +22150,87 @@ async function landDraw(){
   });
 }
 
-/* 이름표 붙이기 — 겹치는 건 버린다.
-   버릴 순서는 <가까운 곳·우리 코트가 먼저 자리를 잡는다>. */
+/* 코트 표시 (시안 B) — 표시 자체가 작은 테니스 코트다. 색으로 셋을 가른다.
+     주황 = 우리 코트(대표면 왕관) · 남색 = 다른 클럽이 대표인 코트 · 초록 = 빈 코트
+   대표 클럽이 있는 곳만 흰 이름표에 클럽 색 칸이 붙고, 빈 코트는 이름만 지도 위에 띄운다.
+   (흰 알약을 모든 코트에 똑같이 달았더니 우리 홈 · 남의 홈 · 빈 코트가 한눈에 안 갈렸다)
+   겹치는 건 버린다 — 우리 코트 · 대표 있는 곳 · 가까운 곳이 먼저 자리를 잡는다. */
+/* 3D 코트 그림 — 우리 = 주황(클레이) · 다른 클럽 대표 = 파랑(하드) · 빈 코트 = 초록 */
+const COURT3D={me:IMG('court3d_me.4e4f03af.webp'), rv:IMG('court3d_rv.c7e35867.webp'), e:IMG('court3d_e.547b7180.webp')};
+function courtImg(k, big){
+  return `<img class="lct ${k}${big?' big':''}" src="${COURT3D[k]||COURT3D.e}" alt="" draggable="false">`;
+}
+function landMarkState(v, byVenue, reps){
+  const myId=+clubId();
+  if(v._k) return {k:'e'};
+  const owners=byVenue[v.id]||[];
+  const rep=reps&&reps[v.id];
+  const top=owners.slice().sort((a,b)=>b.depth-a.depth)[0];
+  if((rep&&rep.club_id===myId) || (top&&top.club_id===myId))
+    return {k:'me', crown:!!(rep&&rep.club_id===myId), club:(rep&&rep.club_id===myId)?rep.name:(top.club||'우리 클럽')};
+  if(rep) return {k:'rv', club:rep.name};
+  if(top) return {k:'rv', club:top.club||''};
+  return {k:'e'};
+}
 function landPins(near, byVenue, clubIdx, reps){
   LAND_PINS.forEach(p=>p.setMap(null)); LAND_PINS=[];
   const pj=LAND_MAP.getProjection && LAND_MAP.getProjection();
+  const el=document.getElementById('landMap');
+  const MW=(el&&el.clientWidth)||360, MH=(el&&el.clientHeight)||380;
   const boxes=[];
-  const fits=(pt,w)=>{
-    if(!pt) return true;
-    const r={x1:pt.x-w/2, x2:pt.x+w/2, y1:pt.y-14, y2:pt.y+14};
-    for(const b of boxes)
-      if(r.x1<b.x2 && r.x2>b.x1 && r.y1<b.y2 && r.y2>b.y1) return false;
-    boxes.push(r); return true;
-  };
-  /* 우리 코트가 먼저, 그다음 가까운 순 */
-  const order=near.slice().sort((a,b)=>{
-    const oa=(byVenue[a.id]||[]).length?0:1, ob=(byVenue[b.id]||[]).length?0:1;
-    return oa-ob || a.km-b.km;
-  });
-  order.forEach(v=>{
-    const owners=v._k?[]:(byVenue[v.id]||[]);
-    if(LAND_MINE_ONLY && !owners.length) return;
+  const hit=r=>boxes.some(b=>r.x1<b.x2 && r.x2>b.x1 && r.y1<b.y2 && r.y2>b.y1);
+  const inside=r=>r.x1>=4 && r.x2<=MW-4 && r.y1>=2 && r.y2<=MH-2;
+  /* 지도 위 버튼(우리 코트만 보기 · 이 지역에서 다시 찾기) 자리는 비워 둔다 */
+  try{
+    const mr=el.getBoundingClientRect();
+    document.querySelectorAll('.landbtn, .landre.on').forEach(bt=>{
+      const r=bt.getBoundingClientRect(); if(!r.width) return;
+      boxes.push({x1:r.left-mr.left-4, x2:r.right-mr.left+4, y1:r.top-mr.top-4, y2:r.bottom-mr.top+4});
+    });
+  }catch(e){}
+  const rank=st=>st.k==='me'?0:st.k==='rv'?1:2;
+  const list=near.map(v=>({v, st:landMarkState(v, byVenue, reps)}))
+    .sort((a,b)=>rank(a.st)-rank(b.st) || a.v.km-b.v.km);
+  list.forEach(({v, st})=>{
+    if(LAND_MINE_ONLY && st.k!=='me') return;
     const pos=new kakao.maps.LatLng(v.lat,v.lng);
     const dist=v.km<1?`${Math.round(v.km*1000)}m`:`${v.km.toFixed(1)}km`;
-    const rep=reps&&reps[v.id];
-    /* 이름표 너비를 어림해 겹침을 본다 — 한글 한 자 ≈ 12px */
-    const label=String(v.name||'');
-    let w=label.length*12+dist.length*8+42;
-    if(rep) w+=String(rep.name).length*10+16;
+    const name=String(v.name||'');
+    const big=st.k==='me';
     let pt=null; try{ pt=pj&&pj.containerPointFromCoords(pos); }catch(e){}
-    if(!fits(pt,w)) return;
-    let content, mine=false;
-    if(v._k){
-      content=`<div class="lpin priv" onclick="landKakaoOpen('${esc(v.kakao_id)}')">
-        <span>${esc(label)}</span><em>${dist}</em></div>`;
-    } else if(!owners.length){
-      content=`<div class="lpin${rep?' rep':' empty'}" onclick="landVenue(${v.id})">
-        <span>${esc(label)}</span>${rep?`<b>${esc(rep.name)}</b>`:''}<em>${dist}</em></div>`;
-    } else {
-      mine=true;
-      content=`<div class="lpin on" onclick="landVenue(${v.id})">
-        <span>${esc(label)}</span>${rep?`<b>${esc(rep.name)}</b>`:''}</div>`;
+    /* 코트 자체가 먼저 자리를 잡는다 — 겹치면 그 코트는 이번 축척에서 건너뛴다(우리 코트는 늘 그린다) */
+    const half=big?23:st.k==='rv'?15:14, tall=big?25:st.k==='rv'?17:15;
+    if(pt){
+      const cr={x1:pt.x-half, x2:pt.x+half, y1:pt.y-tall-(st.crown?28:0), y2:pt.y+tall};
+      if(hit(cr) && !big) return;
+      boxes.push(cr);
     }
-    /* 점은 코트 자리에 따로 찍고 이름표는 그 아래에 매단다.
-       점을 이름표 안에 넣었더니 알약이 가운데 정렬되면서 점이 왼쪽으로 밀려
-       원 한가운데가 아닌 것처럼 보였다. */
-    if(mine){
-      const dot=new kakao.maps.CustomOverlay({position:pos, content:'<div class="ldot"></div>',
-        yAnchor:.5, xAnchor:.5, zIndex:3});
-      dot.setMap(LAND_MAP); LAND_PINS.push(dot);
+    /* 이름표 너비 어림 — 한글 한 자 ≈ 12px. 오른쪽 → 왼쪽 → 아래 순서로 빈자리를 찾는다.
+       세 곳 다 막히면 코트만 남긴다(눌러서 볼 수 있다). */
+    const lw = st.k==='e' ? name.length*11.5+dist.length*6.5+6
+      : name.length*(big?13:12.5)+String(st.club||'').length*(big?13:12)+34;
+    const lh = st.k==='e' ? 18 : (big?30:28);
+    const gap=big?27:19;
+    let place='r';
+    if(pt){
+      const cand={
+        r:{x1:pt.x+gap-2, x2:pt.x+gap+lw, y1:pt.y-lh/2, y2:pt.y+lh/2},
+        l:{x1:pt.x-gap-lw, x2:pt.x-gap+2, y1:pt.y-lh/2, y2:pt.y+lh/2},
+        b:{x1:pt.x-lw/2, x2:pt.x+lw/2, y1:pt.y+tall+3, y2:pt.y+tall+3+lh},
+      };
+      place=['r','l','b'].find(k=>inside(cand[k]) && !hit(cand[k])) || '';
+      if(place) boxes.push(cand[place]);
     }
-    const ov=new kakao.maps.CustomOverlay({position:pos, content,
-      yAnchor:mine?0:.5, xAnchor:.5, clickable:true});
+    const tap = v._k ? `landKakaoOpen('${esc(v.kakao_id)}')` : `landVenue(${v.id})`;
+    const court=courtImg(st.k, big);
+    const label = !place ? '' : st.k==='e'
+      ? `<span class="lnm">${esc(name)}<i>${dist}</i></span>`
+      : `<span class="ltag"><b>${esc(name)}</b>${st.club?`<em>${esc(st.club)}</em>`:''}</span>`;
+    const content=`<div class="lmk ${st.k}${place?' p'+place:''}" onclick="${tap}">
+      ${st.crown?`<img class="lcrown" src="${IMG('sym_crown.3f682b40.webp')}" alt="" draggable="false">`:''}
+      ${court}${label}</div>`;
+    const ov=new kakao.maps.CustomOverlay({position:pos, content, xAnchor:0, yAnchor:0,
+      zIndex:st.k==='me'?5:st.k==='rv'?4:3, clickable:true});
     ov.setMap(LAND_MAP); LAND_PINS.push(ov);
   });
 }
@@ -22108,12 +22253,9 @@ function landNearList(){
   const nb=document.getElementById('landNudge');
   if(nb) nb.innerHTML = (ours.length && all.length)
     ? `<div class="lnudge">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f1631a" stroke-width="1.8"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 21.2c4.6-4.7 7-8 7-10.7a7 7 0 1 0-14 0c0 2.7 2.4 6 7 10.7z"/>
-          <circle cx="12" cy="10.3" r="2.4"/></svg>
-        <div class="tx"><b>근처에 테니스장 ${all.length}곳${all.length>=24?' 넘게':''}이 있어요</b>
-          <s>교류전에서 남의 홈에 가서 이기면 그 둘레가 우리 색이 돼요</s></div></div>`
+        <img class="lnmap" src="${IMG('icon_map.fff61239.webp')}" alt="" draggable="false">
+        <div class="tx"><b>근처 테니스장 ${all.length}곳${all.length>=24?'+':''}</b>
+          <s>남의 홈에서 이기면 우리 색이 돼요</s></div></div>`
     : '';
 
   if(!box) return;
@@ -23201,10 +23343,60 @@ function landToggleEmpty(){
   landDraw().catch(e=>toast('지도를 그리지 못했어요 · '+String((e&&e.message)||'').slice(0,30)));
 }
 /* 지도에서 구장을 누르면 그 구장 페이지로 — 시트를 덮어씌우지 않는다 */
-function landVenue(vid){
+/* ── 전국 코트 찾기 ── 결과 줄을 누르면 그 코트 화면(대표 클럽 · 쓰는 클럽)이 열린다 */
+let LAND_Q='', LAND_FOUND=null, _landQT=null, _landQN=0;
+function landSearchSoon(v){
+  clearTimeout(_landQT);
+  const x=document.getElementById('landQx'); if(x) x.classList.toggle('off', !String(v||'').trim());
+  _landQT=setTimeout(()=>landSearch(v), 350);
+}
+function landSearchClear(){
+  LAND_Q=''; LAND_FOUND=null; clearTimeout(_landQT);
+  const i=document.getElementById('landQ'); if(i){ i.value=''; }
+  const x=document.getElementById('landQx'); if(x) x.classList.add('off');
+  landFoundDraw();
+}
+async function landSearch(v){
+  const q=String(v||'').trim();
+  const rep=q==='*';
+  if(!rep && q.length<2){ LAND_Q=q; LAND_FOUND=null; return landFoundDraw(); }   // 한 글자는 너무 많이 걸린다
+  LAND_Q=q; const my=++_landQN;
+  const box=document.getElementById('landFound');
+  if(box) box.innerHTML='<div class="lfnote">찾는 중…</div>';
+  let r=null;
+  try{ r=await api(rep ? '/venues/search?rep=1' : `/venues/search?q=${encodeURIComponent(q)}`); }
+  catch(e){ if(my===_landQN && box) box.innerHTML='<div class="lfnote">찾지 못했어요 · 잠시 후 다시 해주세요</div>'; return; }
+  if(my!==_landQN) return;                       // 그 사이 다른 걸 쳤다
+  LAND_FOUND=(r&&r.rows)||[];
+  if(rep){ const i=document.getElementById('landQ'); if(i) i.value=''; }
+  landFoundDraw();
+}
+function landFoundDraw(){
+  const box=document.getElementById('landFound'); if(!box) return;
+  document.querySelectorAll('.lsrep').forEach(b=>b.classList.toggle('on', LAND_Q==='*'));
+  if(!LAND_FOUND){ box.innerHTML=''; return; }
+  const rows=LAND_FOUND, rep=LAND_Q==='*';
+  if(!rows.length){
+    box.innerHTML=`<div class="lfnote">${rep?'아직 대표 클럽이 있는 코트가 없어요'
+      :`<b>${esc(LAND_Q)}</b>에 맞는 코트가 없어요<br><span>지역 이름(예: 송파, 수원)으로도 찾아보세요</span>`}</div>`;
+    return;
+  }
+  const KIND={public:'공공', private:'사설', school:'학교', apt:'아파트'};
+  box.innerHTML=`<div class="lrh">${rep?'대표 클럽이 있는 코트':'찾은 코트'} <em>${rows.length>=40?'40곳 넘게':rows.length+'곳'}</em></div>
+    <div class="lvs lfound">${rows.map(v=>{
+      const where=[v.sido, v.sigungu].filter(Boolean).join(' ') || String(v.addr||'').split(' ').slice(0,2).join(' ');
+      const sub=[where, KIND[v.kind]||''].filter(Boolean).join(' · ');
+      const r=v.rep;
+      return `<div class="lv" onclick="landVenue(${+v.id},${esc(jsArg(v.name||''))})" style="cursor:pointer">
+        <span class="c"><b>${esc(v.name)}</b><span>${esc(sub)}</span></span>
+        ${r ? `<span class="lrep"><em>대표</em><b>${esc(r.name)}</b>${r.n>1?`<s>${r.n}개 클럽 중</s>`:''}</span>`
+            : `<span class="lrep none">대표 클럽 없음</span>`}
+        <span class="r chev">›</span></div>`; }).join('')}</div>`;
+}
+function landVenue(vid, name){
   const v=(LAND_NEAR||[]).find(x=>x.id===vid) ||
     ((LAND&&LAND.venues)||[]).find(x=>x.venue_id===vid) || {};
-  hcOpen({k:'venue', id:vid, name:v.name||'구장'});
+  hcOpen({k:'venue', id:vid, name:v.name||name||(LAND_FOUND||[]).find(x=>x.id===vid)?.name||'구장'});
 }
 
 /* ── 안 나오는 회원 ────────────────────────────────────────────────

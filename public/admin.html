@@ -197,6 +197,12 @@ body{background:var(--paper);color:var(--ink);
 .cupt .ct{color:var(--lgray);font-size:var(--t0)}
 .frm{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .frm label{display:block;font-size:var(--t0);color:var(--lgray)}
+/* 일자 · 장소 <미정> — 켜면 칸이 흐려지고 비워서 저장된다 */
+.frm label.tbdl{position:relative}
+.frm .tbd{position:absolute;right:0;top:-2px;display:inline-flex;align-items:center;gap:4px;
+  font-size:var(--t0);color:var(--gray);cursor:pointer;user-select:none}
+.frm .tbd input{width:auto;margin:0;padding:0;accent-color:#161412}
+.frm label.tbdl.on > input{opacity:.35;pointer-events:none;background:#f6f5f2}
 .frm input{width:100%;box-sizing:border-box;margin-top:4px;border:1px solid var(--line);
   border-radius:9px;padding:9px 11px;font-size:var(--t1);font-family:inherit}
 .hint{font-size:var(--t0);color:var(--lgray);margin-top:10px;line-height:1.6}
@@ -1450,7 +1456,7 @@ async function drawCup(){
           <span class="b" onclick="cupNew()">＋ 대회 열기</span></div>
         <div class="cuptabs">${rows.map(r =>
           `<span class="${r.id===CUPSEL?'on':''}" onclick="CUPSEL=${r.id};drawCup()">
-            ${esc(r.title||'대회')} <em>${esc(r.date||'')}</em></span>`).join('')}</div>
+            ${esc(r.title||'대회')} <em>${esc(r.date||'일자 미정')}</em></span>`).join('')}</div>
       </div>`
     : (rows.length ? '' : `<div class="card">
         <div class="hd"><b>MATSU CUP</b>
@@ -1489,7 +1495,7 @@ async function drawCup(){
       </div>
       ${cupLedger(d, fixed.length)}
       <div class="cuppay">
-        <div><span>날짜</span><b>${esc(d.date||'')} ${esc(d.start||'')}</b></div>
+        <div><span>날짜</span><b>${d.date?`${esc(d.date)} ${esc(d.start||'')}`:'미정'}</b></div>
         <div><span>장소</span><b>${esc(d.place||'미정')}</b></div>
         <div><span>코트</span><b>${d.courts||4}면</b></div>
         <div><span>참가비</span><b>${fmt(d.fee)}원</b></div>
@@ -1566,9 +1572,9 @@ function cupNew(){
     <div class="frm">
       <label>대회 이름<input id="cuTitle" value="제1회 MATSU CUP 초청 클럽대항전"></label>
       <label>주최 클럽 번호<input id="cuHost" inputmode="numeric" placeholder="예) 1"></label>
-      <label>날짜<input id="cuDate" type="date" value="${iso}"></label>
+      <label class="tbdl">날짜${tbdBox('cuDate')}<input id="cuDate" type="date" value="${iso}"></label>
       <label>시작<input id="cuStart" type="time" value="09:00"></label>
-      <label>장소<input id="cuPlace" placeholder="용인테니스파크"></label>
+      <label class="tbdl">장소${tbdBox('cuPlace')}<input id="cuPlace" placeholder="용인테니스파크"></label>
       <label>참여 클럽 정원<input id="cuMax" inputmode="numeric" value="8"></label>
       <label>최소 팀 (손익분기)<input id="cuMin" inputmode="numeric" value="6"></label>
       <label>참가비 (원)<input id="cuFee" inputmode="numeric" value="350000"></label>
@@ -1582,12 +1588,22 @@ function cupNew(){
     <div class="hint">주최 클럽은 스코어 입력 권한을 갖습니다. 그 클럽 회원이 당일 운영해요.</div>
   </div>`);
 }
+/* 일자 · 장소 <미정> 체크 — 켜면 입력 칸을 흐리게 하고, 저장할 때 비운다 */
+function tbdBox(id, on){
+  return `<span class="tbd" onclick="event.preventDefault();tbdToggle('${id}')"><input type="checkbox" id="${id}Tbd"${on?' checked':''} tabindex="-1">미정</span>`;
+}
+function tbdToggle(id){
+  const c=$(id+'Tbd'); if(!c) return; c.checked=!c.checked;
+  const l=c.closest('label'); if(l) l.classList.toggle('on', c.checked);
+}
+function isTbd(id){ const c=$(id+'Tbd'); return !!(c&&c.checked); }
 async function cupCreate(){
   const g=id=>($(id)||{}).value||'';
   try{
     const r=await api('/admin/cups',{method:'POST',body:JSON.stringify({
       title:g('cuTitle'), host_club_id:g('cuHost'), date:g('cuDate'), start:g('cuStart'),
-      place:g('cuPlace'), bank:g('cuBank'), account:g('cuAcc'), holder:g('cuHolder') })});
+      place:g('cuPlace'), bank:g('cuBank'), account:g('cuAcc'), holder:g('cuHolder'),
+      date_tbd:isTbd('cuDate'), place_tbd:isTbd('cuPlace') })});
     CUPSEL=r.id;
     /* 만들자마자 정원·참가비를 함께 저장한다 — 두 번 들어가게 하지 않는다 */
     await cupAct({act:'setup', max_teams:g('cuMax'), min_teams:g('cuMin'),
@@ -1680,9 +1696,9 @@ function cupSetupDraw(){
       <div class="cig">대회</div>
       <div class="frm">
         <label style="grid-column:1/-1">이름<input id="csTitle" value="${esc(d.title||'')}"></label>
-        <label>날짜<input id="csDate" type="date" value="${esc(d.date||'')}"></label>
+        <label class="tbdl${d.date?'':' on'}">날짜${tbdBox('csDate', !d.date)}<input id="csDate" type="date" value="${esc(d.date||'')}"></label>
         <label>시작<input id="csStart" type="time" value="${esc(d.start||'09:00')}"></label>
-        <label style="grid-column:1/-1">장소<input id="csPlace" value="${esc(d.place||'')}"
+        <label class="tbdl${d.place?'':' on'}" style="grid-column:1/-1">장소${tbdBox('csPlace', !d.place)}<input id="csPlace" value="${esc(d.place||'')}"
           placeholder="용인테니스파크"></label>
       </div>
 
@@ -1849,6 +1865,7 @@ async function cupSetupSave(){
   const g=id=>($(id)||{}).value||'';
   const r=await cupAct({act:'setup',
     title:g('csTitle'), date:g('csDate'), start:g('csStart'), place:g('csPlace'),
+    date_tbd:isTbd('csDate'), place_tbd:isTbd('csPlace'),
     courts:g('csCourts'), max_teams:g('csMax'), min_teams:g('csMin'),
     match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
     prize_pct:g('csPct'), fee:g('csFee'), deposit:g('csDep'),
