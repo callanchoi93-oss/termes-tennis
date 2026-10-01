@@ -203,7 +203,7 @@ body{background:var(--paper);color:var(--ink);
   font-size:var(--t0);color:var(--gray);cursor:pointer;user-select:none}
 .frm .tbd input{width:auto;margin:0;padding:0;accent-color:#161412}
 .frm label.tbdl.on > input{opacity:.35;pointer-events:none;background:#f6f5f2}
-.frm input{width:100%;box-sizing:border-box;margin-top:4px;border:1px solid var(--line);
+.frm input,.frm select{width:100%;box-sizing:border-box;margin-top:4px;border:1px solid var(--line);
   border-radius:9px;padding:9px 11px;font-size:var(--t1);font-family:inherit}
 .hint{font-size:var(--t0);color:var(--lgray);margin-top:10px;line-height:1.6}
 .card{background:#fff;border-radius:16px;padding:var(--s3) var(--s4) var(--s4);
@@ -1705,7 +1705,10 @@ function cupSetupDraw(){
       <div class="cig">경기</div>
       <div class="frm f3">
         <label>코트<input id="csCourts" inputmode="numeric" value="${d.courts||4}"></label>
-        <label>매치 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||1200)/60)}"></label>
+        <label>매치 방식<select id="csSet">
+          <option value="pro6"${(cfg.set_fmt||((cfg.match_sec||2100)>1500?'pro6':'timed'))==='pro6'?' selected':''}>1세트 6게임 노애드</option>
+          <option value="timed"${(cfg.set_fmt||((cfg.match_sec||2100)>1500?'pro6':'timed'))==='timed'?' selected':''}>단타임</option></select></label>
+        <label>매치 제한 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||2100)/60)}"></label>
         <label>입금 마감 (대회 며칠 전)<input id="csDue" inputmode="numeric"
           value="${cfg.due_days||14}"></label>
         <label>전환 (분)<input id="csTurn" inputmode="numeric" value="${Math.round((cfg.turn_sec||300)/60)}"></label>
@@ -1867,7 +1870,7 @@ async function cupSetupSave(){
     title:g('csTitle'), date:g('csDate'), start:g('csStart'), place:g('csPlace'),
     date_tbd:isTbd('csDate'), place_tbd:isTbd('csPlace'),
     courts:g('csCourts'), max_teams:g('csMax'), min_teams:g('csMin'),
-    match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
+    set_fmt:g('csSet'), match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
     prize_pct:g('csPct'), fee:g('csFee'), deposit:g('csDep'),
     fixed_items:CUPCFG.fixed.filter(x=>x.n), var_items:CUPCFG.varr.filter(x=>x.n),
     bank:g('csBank'), holder:g('csHolder'), account:g('csAcc') });
