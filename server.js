@@ -149,6 +149,13 @@ function sign(user) {
   return jwt.sign({ id: user.id, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '30d' });
 }
 const SEEN = new Map();          // uid → 마지막으로 DB 에 쓴 시각
+const APPV = new Map();          // uid → 마지막으로 DB 에 쓴 앱 버전
+/* 앱(iOS · Android)이 헤더로 보내는 스토어 버전 — 예: '1.2.1 (28)'.
+   웹은 보내지 않는다. 모양이 이상하면 버린다(관리자 화면에 그대로 찍히므로). */
+function appVerOf(req) {
+  const v = String(req.headers['x-app-version'] || '').trim().slice(0, 24);
+  return /^\d+(\.\d+){0,3}( \(\w{1,10}\))?$/.test(v) ? v : '';
+}
 function auth(req, res, next) {
   const h = req.headers.authorization || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -179,9 +186,23 @@ function auth(req, res, next) {
         /* 어느 기기로 들어왔는지도 함께 — iOS 앱은 헤더를 보내고, 없으면 웹이다 */
         const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
         db.prepare('UPDATE users SET last_seen=?, last_plat=? WHERE id=?').run(t0, plat, req.uid);
+        /* 앱 버전 — 앱에서 들어왔을 때만. 웹으로 들어와도 앱 버전 기록은 지우지 않는다 */
+        const av = appVerOf(req);
+        if (av) {
+          APPV.set(req.uid, av);
+          db.prepare('UPDATE users SET app_ver=?, app_plat=?, app_seen=? WHERE id=?').run(av, plat, t0, req.uid);
+        }
         /* 어느 지역에서 들어왔는지 — 조회는 절대 요청을 막지 않는다(fire and forget).
            IP 자체는 저장하지 않고 지역 이름만 남긴다. */
         try { geoTouch(req.uid, clientIp(req)); } catch (e) {}
+      } else {
+        /* 5분 안이라도 앱 버전이 바뀌었으면(업데이트 직후 · 앱이 버전을 늦게 읽은 경우) 바로 적는다 */
+        const av = appVerOf(req);
+        if (av && APPV.get(req.uid) !== av) {
+          APPV.set(req.uid, av);
+          const plat = String(req.headers['x-client-platform'] || 'web').slice(0, 12);
+          db.prepare('UPDATE users SET app_ver=?, app_plat=?, app_seen=? WHERE id=?').run(av, plat, t0, req.uid);
+        }
       }
     } catch (e) {}
     next();
@@ -6496,6 +6517,9 @@ function cupDraw(entries, seed) {
 const CUP_FEE = 450000, CUP_DEPOSIT = 100000, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
 
 /* 이 대회의 설정 — data 에 없으면 기본값 */
+/* 추첨이 끝났는가 — drawn_at 만 보면 안 된다. 시험용 유령 팀을 지우면 대진(rounds)은 비는데
+   drawn_at 은 남아서, 신청도 안 한 클럽의 <참가 신청하기>가 빈 <대회 당일> 화면을 열었다. */
+function cupDrawn(d) { return !!(d && d.drawn_at && Array.isArray(d.rounds) && d.rounds.length); }
 function cupCfg(b) {
   let d = {};
   try { d = typeof b === 'string' ? JSON.parse(b || '{}') : (b || {}); } catch (e) {}
@@ -7048,7 +7072,7 @@ app.get('/admin/cups', admin, (_req, res) => {
     return { id: r.id, date: r.date, open: !!r.published,
       title: d.title || '맞수 리그', place: d.place || '', pay: d.pay || null,
       host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
-      host_id: r.club_id, teams: live, paid, drawn: !!d.drawn_at,
+      host_id: r.club_id, teams: live, paid, drawn: cupDrawn(d),
       income: paid * cupCfg(d).fee, money: cupMoney(cupCfg(d), paid),
       min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams,
       fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
@@ -7065,13 +7089,14 @@ app.post('/admin/cups', admin, (req, res) => {
   const cid = +b.host_club_id;
   if (!cid || !db.prepare('SELECT 1 FROM clubs WHERE id=?').get(cid))
     return res.status(400).json({ error: 'no_club', message: '주최 클럽을 골라주세요' });
-  const date = String(b.date || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
-    return res.status(400).json({ error: 'bad_date', message: '날짜를 골라주세요' });
+  /* 일자 · 장소는 미정으로 먼저 열 수 있다 — 모집부터 시작하고 정해지면 고친다 */
+  const date = b.date_tbd ? null : String(b.date || '').slice(0, 10);
+  if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return res.status(400).json({ error: 'bad_date', message: '날짜를 고르거나 <미정>을 눌러주세요' });
   const data = { mode: 'cup', cfg: Object.assign({}, CUP_DEFAULT),
     title: String(b.title || '제1회 MATSU CUP 초청 클럽대항전').slice(0, 60),
     start: String(b.start || '09:00').slice(0, 5),
-    place: String(b.place || '').trim().slice(0, 40),
+    place: b.place_tbd ? '' : String(b.place || '').trim().slice(0, 40),
     pay: { bank: String(b.bank || '').trim().slice(0, 20),
       no: String(b.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
       holder: String(b.holder || '').trim().slice(0, 20) },
@@ -7094,7 +7119,7 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
   });
   res.json({ id: b.id, date: b.date, open: !!b.published, title: d.title || '',
     place: d.place || '', pay: d.pay || null, start: d.start || '09:00',
-    drawn: !!d.drawn_at, rounds: d.rounds || [], teams: d.teams || [],
+    drawn: cupDrawn(d), rounds: d.rounds || [], teams: d.teams || [],
     entries: rows, courts: b.courts,
     fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
     fixed_items: cupCfg(d).fixed_items, var_items: cupCfg(d).var_items,
@@ -7125,6 +7150,7 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     if (q.title != null) d.title = String(q.title).trim().slice(0, 60);
     if (q.start != null) d.start = String(q.start).slice(0, 5);
     if (q.place != null) d.place = String(q.place).trim().slice(0, 40);
+    if (q.place_tbd) d.place = '';                     // 장소 미정
     if (q.bank != null || q.account != null || q.holder != null) {
       d.pay = { bank: String(q.bank || '').trim().slice(0, 20),
         no: String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
@@ -7160,6 +7186,8 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     db.prepare(`UPDATE brackets SET data=?, date=COALESCE(NULLIF(?,''),date),
         courts=COALESCE(?,courts), updated_at=? WHERE id=?`)
       .run(JSON.stringify(d), /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', courts, now(), b.id);
+    /* 일자 미정 — 날짜를 비운다(입금 마감 D-day 도 함께 사라진다) */
+    if (q.date_tbd) db.prepare('UPDATE brackets SET date=NULL WHERE id=?').run(b.id);
     return res.json({ ok: true });
   }
   if (act === 'invite') {
@@ -7317,7 +7345,7 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
       /* 대진도 지운다 — 유령이 빠진 대진은 뜻이 없다 */
       db.prepare('DELETE FROM bracket_scores WHERE bracket_id=?').run(b.id);
       db.prepare('DELETE FROM bracket_timers WHERE bracket_id=?').run(b.id);
-      const d2 = Object.assign({}, d); delete d2.rounds; delete d2.teams;
+      const d2 = Object.assign({}, d); delete d2.rounds; delete d2.teams; delete d2.drawn_at; delete d2.seed;
       db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
         .run(JSON.stringify(d2), now(), b.id);
       db.prepare(`UPDATE cup_entries SET group_label=NULL, seat=NULL WHERE bracket_id=?`).run(b.id);
@@ -7380,7 +7408,7 @@ app.get('/cup/open', (req, res) => {
     max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - live), dday, due_date, event_dday,
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
-    cap: cupCap(b.data), drawn: !!d.drawn_at, live: cupLiveNow(b),
+    cap: cupCap(b.data), drawn: cupDrawn(d), live: cupLiveNow(b),
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
   }, entry: null });
 });
@@ -7418,7 +7446,7 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
     due_date, event_dday,
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
-    cap: cupCap(b.data), drawn: !!d.drawn_at,
+    cap: cupCap(b.data), drawn: cupDrawn(d),
     live: cupLiveNow(b),
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
     is_host: b.club_id === cid,
@@ -9999,7 +10027,7 @@ app.get('/admin/export/:what', admin, (req, res) => {
   let rows, cols, name;
   if (what === 'users') {
     rows = db.prepare(`SELECT u.id, u.name, u.email, u.gender, u.provider,
-        u.created_at, u.last_seen, u.last_plat, u.last_region,
+        u.created_at, u.last_seen, u.last_plat, u.last_region, u.app_ver, u.app_plat,
         (SELECT GROUP_CONCAT(c.name, ' / ') FROM club_members m
           LEFT JOIN clubs c ON c.id=m.club_id WHERE m.user_id=u.id) clubs
       FROM users u ORDER BY u.id`).all()
@@ -10007,7 +10035,7 @@ app.get('/admin/export/:what', admin, (req, res) => {
         gender: r.gender === 'F' ? '여성' : r.gender === 'M' ? '남성' : '' }));
     cols = [['id','번호'],['name','이름'],['email','이메일'],['gender','성별'],
       ['provider','가입경로'],['clubs','클럽'],['created_at','가입일'],
-      ['last_seen','마지막접속'],['last_plat','기기'],['last_region','지역']];
+      ['last_seen','마지막접속'],['last_plat','기기'],['app_plat','앱'],['app_ver','앱버전'],['last_region','지역']];
     name = 'members';
   } else if (what === 'payouts') {
     rows = db.prepare('SELECT * FROM payouts ORDER BY id DESC LIMIT 5000').all();
@@ -11050,6 +11078,35 @@ app.get('/land/map', optAuth, (req, res) => {
     });
   }
   res.json({ venues, land, my_homes: mine, reps });
+});
+
+/* ── 전국 코트 찾기 ──
+   코트 지도는 지금 화면 둘레만 그린다. <저 동네 코트는 어느 클럽이 대표인가>를 보려면
+   지도를 거기까지 끌고 가야 했다. 이름 · 지역으로 전국 등록 코트를 찾고, 대표 클럽을 함께 준다.
+   ?rep=1 이면 검색어 없이 <대표 클럽이 있는 코트>만 모아 준다.
+   읽기만 하므로 로그인 전(둘러보기)에도 연다. */
+app.get('/venues/search', optAuth, (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 40);
+  const repOnly = req.query.rep === '1';
+  /* 띄어쓰기는 무시하고(용인 테니스파크 = 용인테니스파크), 낱말마다 이름 · 시도 · 시군구 · 주소 어딘가에 있으면 된다 */
+  const toks = q.split(/\s+/).map(t => t.replace(/[%_]/g, '')).filter(Boolean).slice(0, 4);
+  if (!toks.length && !repOnly) return res.json({ q, rows: [] });
+  const hay = `REPLACE(v.name||' '||COALESCE(v.sido,'')||' '||COALESCE(v.sigungu,'')||' '||COALESCE(v.addr,''),' ','')`;
+  const where = ['v.active=1'].concat(toks.map(() => `${hay} LIKE ?`));
+  if (repOnly) where.push('v.id IN (SELECT venue_id FROM venue_clubs)');
+  const rows = db.prepare(`SELECT v.id, v.name, v.sido, v.sigungu, v.addr, v.lat, v.lng, v.kind,
+      (SELECT COUNT(*) FROM venue_clubs vc WHERE vc.venue_id=v.id) AS clubs
+    FROM venues v WHERE ${where.join(' AND ')}
+    ORDER BY clubs DESC, (v.name LIKE ?) DESC, v.name LIMIT 40`)
+    .all(...toks.map(t => '%' + t + '%'), (toks[0] || '') + '%');
+  rows.forEach(r => {
+    r.rep = null;
+    if (r.clubs) {
+      const s = venueShares(r.id);
+      if (s.top) r.rep = { club_id: s.top.club_id, name: s.top.name, pct: s.top.pct, n: s.clubs.length };
+    }
+  });
+  res.json({ q, rows });
 });
 
 /* ── 구장 지분 · 홈 걸기 ──────────────────────────────────────── */
@@ -12581,7 +12638,7 @@ app.get('/admin/users', admin, (req, res) => {
   /* club_region — 그 사람이 든 클럽의 지역. IP 로 잡은 last_region 은 통신사 게이트웨이 위치라
      용인 회원이 전주·대구로 찍힌다. 관리자 화면은 이걸 쓴다. */
   const cols = `u.id, u.name, u.provider, u.region, u.sport, u.rating, u.cash, u.premium, u.created_at,
-    u.last_seen, u.last_plat, u.last_region,
+    u.last_seen, u.last_plat, u.last_region, u.app_ver, u.app_plat, u.app_seen,
     (SELECT c.region FROM club_members cm JOIN clubs c ON c.id=cm.club_id
       WHERE cm.user_id=u.id ORDER BY cm.joined_at LIMIT 1) AS club_region,
     COALESCE(u.rating_doubles,1000) AS rating_doubles,
@@ -15500,6 +15557,9 @@ try { db.exec("ALTER TABLE club_events ADD COLUMN mins INTEGER"); } catch (e) {}
 try { db.exec("ALTER TABLE club_events ADD COLUMN dinner_fee INTEGER"); } catch (e) {}  // 회식비(전체)
 try { db.exec("ALTER TABLE users ADD COLUMN last_seen INTEGER"); } catch (e) {}        // 마지막 접속
 try { db.exec("ALTER TABLE users ADD COLUMN last_plat TEXT"); } catch (e) {}          // 마지막에 쓴 기기
+try { db.exec("ALTER TABLE users ADD COLUMN app_ver TEXT"); } catch (e) {}            // 마지막에 쓴 앱 버전 (예: 1.2.1 (28))
+try { db.exec("ALTER TABLE users ADD COLUMN app_plat TEXT"); } catch (e) {}           // 그 앱의 기기 (ios · android)
+try { db.exec("ALTER TABLE users ADD COLUMN app_seen INTEGER"); } catch (e) {}        // 그 버전을 마지막으로 확인한 시각
 try { db.exec("ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0"); } catch (e) {}  // 테스트용 가짜 회원
 try { db.exec("ALTER TABLE users ADD COLUMN test_key TEXT"); } catch (e) {}           // 이름#클럽 — 클럽마다 다른 사람
 try { db.exec("ALTER TABLE club_events ADD COLUMN started_at INTEGER"); } catch (e) {}  // 교류전 시작 시각
