@@ -2087,6 +2087,8 @@
     -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>") center/contain no-repeat;
     mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/></svg>") center/contain no-repeat }
   .lsq input{ flex:1;min-width:0;border:0;outline:0;font-family:inherit;font-size:15.5px;background:transparent;color:var(--ink) }
+  /* 바깥 칸이 이미 주황 테두리로 포커스를 보여 준다 — 안쪽 입력칸의 키보드 포커스 고리는 겹쳐 보여 뺀다 */
+  .lsq input:focus,.lsq input:focus-visible{ outline:none;box-shadow:none;border-radius:0 }
   .lsq input::-webkit-search-cancel-button{ display:none }
   .lsq b{ flex:none;width:22px;height:22px;border-radius:50%;background:#e9ebee;color:var(--gray);
     font-size:15px;line-height:22px;text-align:center;font-weight:400;cursor:pointer }
@@ -2238,6 +2240,17 @@
     font-size:12.5px;color:var(--gray);line-height:1.6 }
   .shnext b{ color:var(--coral-d);font-weight:700 }
   .hnote{ font-size:12.5px;color:var(--lgray);text-align:center;margin-top:7px }
+  /* 코트 화면 빈 상태 — 가운데 큰 회색 두 줄 대신 짧게 */
+  .vgnone{ font-size:13.5px;color:var(--gray);line-height:1.5;padding:12px 14px;background:#f4f6f8;border-radius:12px }
+  .vhomecta{ border:1px solid var(--line2);border-radius:20px;background:#fff;padding:16px;box-shadow:var(--shadow-s) }
+  .vhomecta .r{ display:flex;align-items:center;gap:12px }
+  .vhomecta .r img{ width:44px;height:44px;flex:none;display:block }
+  .vhomecta .c{ display:flex;flex-direction:column;gap:3px;min-width:0 }
+  .vhomecta .c b{ font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.02em }
+  .vhomecta .c span{ font-size:13px;color:var(--gray) }
+  .vhomecta .btn{ margin-top:14px }
+  .vhomecta .btn[disabled]{ opacity:.45 }
+  .vhomecta .hnote{ margin-top:8px }
   /* 코트 화면에 당연히 있어야 할 것들 — 없어서 지도 앱을 따로 켜야 했다 */
   .vtools{ display:flex;gap:7px;margin-top:12px }
   .vt{ flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
@@ -2352,11 +2365,14 @@
   /* 왼쪽 3D 우승컵 — 카드 높이는 글 쪽이 정하고, 컵은 바닥에 맞춰 선다.
      (.mk 같은 짧은 이름은 로고 규칙과 겹쳐서 cup- 으로 시작하는 이름만 쓴다) */
   .cupcard .b.cupflex{ display:flex;gap:12px;padding-left:10px }
-  .cupcard .cupart{ flex:none;width:66px;display:flex;align-items:flex-end;justify-content:center }
-  .cupcard .cupart img{ display:block;height:128px;width:auto;
-    filter:drop-shadow(0 4px 5px rgba(30,35,45,.22)) }
+  .cupcard .cupart{ flex:none;width:66px;display:flex;align-items:flex-end;justify-content:center;position:relative }
+  /* 그림에 filter(그림자)를 걸면 아이폰 웹뷰가 그림을 낮은 해상도로 한 번 그려 버려 흐려진다.
+     그림자는 그림 밑에 따로 깐 타원으로 낸다. */
+  .cupcard .cupart::after{ content:'';position:absolute;left:50%;bottom:-3px;width:58px;height:9px;margin-left:-29px;
+    border-radius:50%;background:radial-gradient(closest-side,rgba(30,35,45,.26),rgba(30,35,45,0));z-index:0 }
+  .cupcard .cupart img{ display:block;height:128px;width:auto;position:relative;z-index:1 }
   .cupcard .cupbody{ flex:1;min-width:0 }
-  .cupcard.done .cupart img{ filter:grayscale(1);opacity:.6 }
+  .cupcard.done .cupart img{ filter:grayscale(1);opacity:.6 }  /* 끝난 리그는 흐려도 된다 */
   .cupcard .t .ic{ width:16px;height:16px;display:block;background:currentColor;
     -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
     -webkit-mask-size:contain;mask-size:contain }
@@ -2693,6 +2709,87 @@
   .cupfx .v s{ text-decoration:none;font-size:12px;color:var(--lgray);
     font-weight:400;margin-left:4px }
   /* 안내는 곁줄이다 — ◆ 는 화면에서 제일 진한 색이라 버튼보다 먼저 읽혔다 */
+  /* ── 리그 참가 신청 (시안 C 티켓 + A 자리) ── */
+  .cuptk{ position:relative;margin-top:2px;border-radius:22px;color:#fff;
+    background:radial-gradient(120% 90% at 85% 10%,#3a4557 0%,#232b38 55%,#1a2029 100%) }
+  .cuptk .up{ position:relative;padding:20px 20px 18px;min-height:164px }
+  /* 컵 뒤에 옅은 빛 — filter 그림자는 아이폰에서 그림을 흐리게 만들어 쓰지 않는다 */
+  .cuptk .up::after{ content:'';position:absolute;right:-4px;top:6px;width:150px;height:160px;
+    background:radial-gradient(closest-side,rgba(255,255,255,.13),rgba(255,255,255,0));pointer-events:none }
+  .cuptk small{ font-size:11.5px;font-weight:800;letter-spacing:.12em;color:#ff9a62 }
+  .cuptk h2{ font-size:21px;font-weight:800;line-height:1.3;margin:7px 0 0;letter-spacing:-.03em;color:#fff;
+    max-width:calc(100% - 92px);word-break:keep-all }
+  .cuptk .date{ margin-top:14px;display:flex;align-items:baseline;gap:7px }
+  .cuptk .date b{ font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1.1 }
+  .cuptk .date b.tbd{ font-size:22px }
+  .cuptk .date span{ font-size:13px;font-weight:700;color:#ff9a62 }
+  .cuptk .pl{ font-size:13px;color:#aab3c0;margin-top:3px }
+  .cuptk .cup{ position:absolute;right:20px;bottom:12px;height:136px;width:auto;z-index:1 }
+  .cuptk .perf{ position:relative;height:0;border-top:2px dashed rgba(255,255,255,.18);margin:0 16px }
+  .cuptk .perf::before,.cuptk .perf::after{ content:'';position:absolute;top:-12px;width:22px;height:22px;border-radius:50%;background:#fff }
+  .cuptk .perf::before{ left:-28px } .cuptk .perf::after{ right:-28px }
+  .cuptk .dn{ display:flex;padding:13px 6px 15px }
+  .cuptk .dn div{ flex:1;text-align:center;border-left:1px solid rgba(255,255,255,.1) }
+  .cuptk .dn div:first-child{ border-left:0 }
+  .cuptk .dn span{ display:block;font-size:11.5px;color:#aab3c0 }
+  .cuptk .dn b{ display:block;font-size:15px;font-weight:800;margin-top:4px;color:#fff }
+  .cuptk .dn b.o{ color:#ff9a62 }
+  .cupref{ font-size:12.5px;color:var(--lgray);text-align:center;margin-top:10px }
+  /* 경기 방식 — 단계 · 한 경기 세 매치 · 숫자 셋을 카드 하나로 */
+  .cupfmt{ border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff }
+  .cupfmt .road{ display:flex;padding:16px 6px 14px;position:relative }
+  .cupfmt .road::before{ content:'';position:absolute;left:16.7%;right:16.7%;top:28px;height:2px;background:var(--line) }
+  .cupfmt .st{ flex:1;text-align:center;position:relative }
+  .cupfmt .st i{ width:26px;height:26px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;
+    font-style:normal;font-size:12px;font-weight:800;background:#fff;border:2px solid var(--line);color:var(--lgray);box-sizing:border-box }
+  .cupfmt .st.on i{ background:var(--coral);border-color:var(--coral);color:#fff;box-shadow:0 0 0 4px var(--coral-s) }
+  .cupfmt .st b{ display:block;font-size:13.5px;font-weight:700;margin-top:8px }
+  .cupfmt .st.on b{ color:var(--coral-d) }
+  .cupfmt .st span{ display:block;font-size:11.5px;color:var(--lgray);margin-top:1px }
+  .cupfmt .tie{ border-top:1px solid var(--line2);padding:13px 16px 5px }
+  .cupfmt .th{ display:flex;align-items:baseline;font-size:13.5px;font-weight:700;margin-bottom:4px }
+  .cupfmt .th span{ margin-left:auto;font-size:12px;font-weight:500;color:var(--lgray) }
+  .cupfmt .mr{ display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px dashed #edf0f2 }
+  .cupfmt .th + .mr{ border-top:0 }
+  .cupfmt .mr .no{ width:22px;height:22px;border-radius:7px;background:var(--felt);font-size:11.5px;font-weight:800;color:var(--gray);
+    display:flex;align-items:center;justify-content:center;flex:none }
+  .cupfmt .mr b{ font-size:14.5px;font-weight:700;width:34px;flex:none }
+  .cupfmt .mr .pp{ display:flex;gap:3px }
+  .cupfmt .mr .pp i{ font-style:normal;font-size:11px;font-weight:700;width:22px;height:22px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;background:#e8efff;color:#2b62d6 }
+  .cupfmt .mr .pp i.f{ background:#fdeaf3;color:#c93f83 }
+  .cupfmt .mr .cp{ margin-left:auto;font-size:12.5px;color:var(--gray) }
+  .cupfmt .stats{ display:flex;background:var(--felt) }
+  .cupfmt .stats div{ flex:1;padding:12px 4px 11px;text-align:center }
+  .cupfmt .stats div+div{ border-left:1px solid #e3e7eb }
+  .cupfmt .stats b{ font-size:21px;font-weight:800;color:var(--ink);letter-spacing:-.02em }
+  .cupfmt .stats b small{ font-size:12.5px;font-weight:700;margin-left:1px }
+  .cupfmt .stats span{ display:block;font-size:11.5px;color:var(--lgray);margin-top:1px }
+  /* 엔트리 — 자리 */
+  .cuplu{ display:grid;grid-template-columns:repeat(4,1fr);gap:8px 6px }
+  .cuplu .gl{ grid-column:1/-1;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px;margin-top:6px }
+  .cuplu .gl:first-child{ margin-top:0 }
+  .cuplu .gl i{ width:7px;height:7px;border-radius:50%;background:#2f6fe4 }
+  .cuplu .gl.m{ color:#2b62d6 } .cuplu .gl.f{ color:#c93f83 } .cuplu .gl.f i{ background:#d0498b }
+  .cuplu .gl em{ font-style:normal;color:var(--lgray);font-weight:600 }
+  .cuplp{ text-align:center;min-width:0 }
+  .cuplp .av{ overflow:visible;position:relative;width:52px;height:52px;border-radius:18px;margin:0 auto;display:flex;align-items:center;justify-content:center;
+    font-size:18px;font-weight:700;color:#fff;background:#8f9aa8;box-sizing:border-box }
+  .cuplp.f .av{ background:#c98aa8 }
+  .cuplp.e[role=button]{ cursor:pointer }
+  .cuplp.e .av{ background:#fff;border:1.5px dashed #b9c7e6;color:#8aa3d6;font-size:22px;font-weight:500 }
+  .cuplp.e.f .av{ border-color:#ecc1d7;color:#d991b6 }
+  .cuplp.bad .av{ box-shadow:0 0 0 2px #e5484d }
+  .cuplp .av em{ position:absolute;right:-7px;top:-7px;width:22px;height:22px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 4px rgba(20,30,45,.22);cursor:pointer }
+  /* 빼기 × — 글자 대신 두 줄로 그린다(글꼴마다 × 모양이 달라 작게 뭉개졌다) */
+  .cuplp .av em::before,.cuplp .av em::after{ content:'';position:absolute;left:6px;right:6px;top:10px;height:2px;border-radius:1px;
+    background:var(--gray);transform:rotate(45deg) }
+  .cuplp .av em::after{ transform:rotate(-45deg) }
+  .cuplp b{ display:block;font-size:13px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .cuplp span{ display:block;font-size:11.5px;color:var(--lgray);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .cuplp.e b{ color:var(--lgray);font-weight:600 }
+  .cuplugo{ text-align:center;font-size:13.5px;font-weight:700;color:var(--coral-d);margin-top:14px;cursor:pointer }
   .cuphint.plain{ padding-left:0;border-left:0;color:var(--lgray);text-align:center;
     display:block;font-size:13px }
   /* 제목 옆 트로피 — 제목이 20px 인데 20px 이면 붙은 점처럼 보인다 */
@@ -7362,7 +7459,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1001g';   // 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1001l';   // 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -14447,7 +14544,7 @@ function kakaoSearchByName(q){
 }
 function cwCourtSet(id, name){
   if(CWV.back==='cbe'){                       // 클럽 수정에서 부른 것
-    CBE.court=name; CBE.court_id=id; CWV.back=null;
+    CBE.court=name; CBE.court_id=id; CBE.court_idName=name; CWV.back=null;
     closeOv(); openClubBasicEdit(); return;
   }
   const c=cw(); c.court=name; c.court_id=id;
@@ -16063,58 +16160,83 @@ function cupApplyDraw(){
     : f<needF ? `여자 ${needF-f}명이 더 필요해요` : '';
 
   document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${cupTrophy('inl')}${esc(c.title||'맞수 리그')}</h3>
+    <div class="sh-top"><h3>리그 참가 신청</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
 
-    ${(()=>{ const m=String(c.date||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      const dd=m?`${+m[2]}월 ${+m[3]}일`:'일자 미정';
+    ${(()=>{ /* 시안 C — 대회 입장권. 컵은 작게, 숫자 셋(참가비 · 입금 마감 · 남은 기간)은 아래 칸에 */
+      const m=String(c.date||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
       const wd=m?WD_KO[new Date(+m[1],+m[2]-1,+m[3]).getDay()]:'';
-      return `<div class="cupbig"><span class="d">${dd}</span>
-        ${wd?`<span class="w">${wd}</span>`:''}
-        <span class="p">${esc(c.place||'장소 미정')}</span></div>`; })()}
-    <div class="cupfx">
-      <div class="cell"><div class="k">참가비</div>
-        <div class="v">${(c.fee/10000)}만원<s>클럽당</s></div></div>
-      <div class="cell"><div class="k">입금 마감</div>
-        <div class="v">${c.due_date?esc(ymdKo(c.due_date)):'미정'}</div></div>
-    </div>
-    <div class="cuphint plain">${c.min_teams}팀이 안 모이면 열지 않고 참가비는 전액 환불돼요</div>
+      const dm=String(c.due_date||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      const due=dm?`${+dm[2]}/${+dm[3]} ${WD_KO[new Date(+dm[1],+dm[2]-1,+dm[3]).getDay()]}`:'미정';
+      const dd=c.dday==null?'—':c.dday>0?`D-${c.dday}`:c.dday===0?'오늘 마감':'마감';
+      return `<div class="cuptk">
+        <div class="up">
+          <small>MATSU LEAGUE</small>
+          <h2>${esc(c.title||'맞수 리그')}</h2>
+          <div class="date">${m?`<b>${+m[2]}.${+m[3]}</b><span>${wd}요일</span>`:'<b class="tbd">일자 미정</b>'}</div>
+          <div class="pl">${esc(c.place||'장소 미정')}</div>
+          <img class="cup" src="${IMG('cup_league.718db332.webp')}" alt="" draggable="false">
+        </div>
+        <div class="perf"></div>
+        <div class="dn">
+          <div><span>참가비</span><b>${(c.fee||0)/10000}만원</b></div>
+          <div><span>입금 마감</span><b>${esc(due)}</b></div>
+          <div><span>남은 기간</span><b class="o">${dd}</b></div>
+        </div>
+      </div>`; })()}
+    <div class="cupref">${c.min_teams||6}팀이 안 모이면 열지 않고 참가비는 전액 환불돼요</div>
 
     ${c.pay&&c.pay.no?`<div class="cupacc" style="margin-top:12px">
       <div class="a">${esc(c.pay.bank||'')} ${esc(c.pay.no)}</div>
       <div class="b">예금주 ${esc(c.pay.holder||'')}</div></div>`:''}
 
-    <div class="vsec2" style="margin-top:20px"><b>이렇게 세 매치를 칩니다</b></div>
-    <div class="cupmx">${[[1,'남복'],[2,'혼복'],[3,'혼복']].map(([no,kd])=>{
-      const lim=(c.cap||{})[no];
-      return `<div class="m"><div class="no">MATCH ${no}</div><div class="kd">${kd}</div>
-        <div class="cp">${lim?`구력 합 ${lim}년`:'제한 없음'}</div>
-        <div class="wh"><s></s><s class="${no===1?'':'f'}"></s></div></div>`;}).join('')}
+    <div class="vsec2" style="margin-top:22px"><b>경기 방식</b></div>
+    <div class="cupfmt">
+      <div class="road">
+        <div class="st on"><i>1</i><b>조별리그</b><span>세 팀과 한 번씩</span></div>
+        <div class="st"><i>2</i><b>준결승</b><span>조 1·2위</span></div>
+        <div class="st"><i>3</i><b>결승</b><span>3위전 포함</span></div>
+      </div>
+      <div class="tie">
+        <div class="th">한 경기에 세 매치<span>남 ${needM} · 여 ${needF}가 한 매치씩</span></div>
+        ${[[1,'남복'],[2,'혼복'],[3,'혼복']].map(([no,kd])=>{
+          const lim=(c.cap||{})[no];
+          return `<div class="mr"><span class="no">${no}</span><b>${kd}</b>
+            <span class="pp"><i>남</i><i class="${no===1?'':'f'}">${no===1?'남':'여'}</i></span>
+            <span class="cp">${lim?`구력 합 ${lim}년 이하`:'구력 제한 없음'}</span></div>`;}).join('')}
+      </div>
+      <div class="stats">
+        <div><b>3<small>경기</small></b><span>조별리그</span></div>
+        <div><b>9<small>매치</small></b><span>팀당 최소</span></div>
+        <div><b>3<small>매치</small></b><span>한 사람당</span></div>
+      </div>
     </div>
-    <div class="cuphint plain">남 ${needM} · 여 ${needF}가 정확히 한 매치씩 뜁니다</div>
 
-    <div class="vsec2" style="margin-top:20px"><b>엔트리 ${need}명</b>
+    <div class="vsec2" style="margin-top:22px"><b>엔트리 ${need}명</b>
+      ${officer&&!full?'<em>빈자리를 눌러 넣어요</em>':''}
       <span class="${full?'ok':''}">${picked.length}/${need}명</span></div>
-    <div class="cupcnt">
-      <div class="c mm"><div class="lb">남자</div>
-        <div class="nm">${m} / ${needM}${m===needM?'<em>✓</em>':''}</div></div>
-      <div class="c ff"><div class="lb">여자</div>
-        <div class="nm">${f} / ${needF}${f===needF?'<em>✓</em>':''}</div></div>
-    </div>
+    ${(()=>{ /* 시안 A — 자리로 보여준다. 남자 줄 · 여자 줄, 빈자리를 누르면 명단이 열린다 */
+      const men=picked.filter(p=>p.gender!=='F'), wom=picked.filter(p=>p.gender==='F');
+      const seat=(p,isF)=>{
+        if(!p) return officer
+          ? `<div class="cuplp e${isF?' f':''}" role="button" tabindex="0" onclick="cupPool()"><div class="av">+</div><b>${isF?'여자':'남자'}</b><span>&nbsp;</span></div>`
+          : `<div class="cuplp e${isF?' f':''}"><div class="av"></div><b>빈자리</b><span>&nbsp;</span></div>`;
+        const yr=p.years==null?'구력 없음':`${p.years}년`;
+        return `<div class="cuplp${isF?' f':''}${p.years==null?' bad':''}"><div class="av">${esc(p.name.slice(0,1))}${officer
+            ?`<em role="button" aria-label="빼기" onclick="cupPick(${p.user_id})"></em>`:''}</div>
+          <b>${esc(p.name)}</b><span>${esc(yr)}${p.wr!=null?` · ${p.wr}%`:''}</span></div>`;
+      };
+      const row=(list,n,isF)=>Array.from({length:Math.max(n,list.length)},(_,i)=>seat(list[i],isF)).join('');
+      return `<div class="cuplu">
+        <div class="gl m"><i></i>남자<em>${men.length}/${needM}</em></div>${row(men,needM,false)}
+        <div class="gl f"><i></i>여자<em>${wom.length}/${needF}</em></div>${row(wom,needF,true)}
+      </div>`; })()}
 
     ${noExp.length?`<div class="cupwarn" style="margin-top:12px">구력을 안 적은 회원은 못 넣어요<br>
       <span>${noExp.map(p=>esc(p.name)).join(' · ')}</span></div>`:''}
-
-    ${picked.length?picked.map(p=>`<div class="cupp">
-      <span class="cupav${p.gender==='F'?' f':''}">${esc(p.name.slice(0,1))}</span>
-      <span class="c"><b>${esc(p.name)}</b>
-        <span>${p.gender==='F'?'여':'남'} · ${esc(cupYearsText(p))}</span></span>
-      ${cupFormHtml(p)}
-      ${officer?`<span class="x" onclick="cupPick(${p.user_id})">×</span>`:''}
-    </div>`).join(''):`<div class="vnone" style="padding:16px 10px">아직 아무도 안 넣었어요</div>`}
     ${full?cupPairHtml(picked,c):''}
 
-    ${officer?`<div class="cupadd" onclick="cupPool()">＋ 회원 고르기</div>`:''}
+    ${officer&&full?`<div class="cuplugo" role="button" tabindex="0" onclick="cupPool()">명단에서 바꾸기 ›</div>`:''}
 
     ${!officer
       ? `<div class="hnote" style="margin-top:16px">
@@ -16612,7 +16734,8 @@ function cupCardSection(){
      참가비와 입금 마감일은 카드에서 뺐다 — 카드는 <들어올지 말지>만 정하면 되고,
      숫자는 신청 화면에 다 있다. */
   /* 일자 · 장소는 <미정>으로 먼저 열 수 있다 — 빈칸으로 두면 줄이 짧아져 뭐가 빠졌는지 모른다 */
-  const line=[c.date?ymdKo(c.date):'일자 미정', c.place||'장소 미정', '팀당 9매치'].join(' · ');
+  /* <팀당 9매치>만 적었더니 6명이 한 경기에 9매치를 치는 줄 알았다 — 조별 3경기(경기마다 3매치)다 */
+  const line=[c.date?ymdKo(c.date):'일자 미정', c.place||'장소 미정', '조별 3경기'].join(' · ');
 
   /* 8팀 중 1팀이면 진행 바가 13% 라 고장 난 것처럼 보인다.
      칸이 적으면 점을 그대로 센다. 12칸이 넘으면 점이 뭉개지므로 바로 돌아간다. */
@@ -16683,7 +16806,7 @@ function cupCardSection(){
   /* 왼쪽에 3D 우승컵 — 무엇을 걸고 하는 대회인지 한눈에 */
   return `<div class="cupcard${over?' done':''}" onclick="${tap}">
     <div class="b cupflex">
-      <div class="cupart"><img src="${IMG('cup_league.faa2861f.webp')}" alt="" draggable="false"></div>
+      <div class="cupart"><img src="${IMG('cup_league.718db332.webp')}" alt="" draggable="false"></div>
       <div class="cupbody">
       <div class="t">${cupTrophy()}MATSU League ${lbl}
         ${dd&&!paid?`<em>${dd}</em>`:''}</div>
@@ -22332,8 +22455,8 @@ async function venuePageMount(vid){
   if(!(cs&&cs.joined)){
     const go=(det&&det.guest_open)||[];
     h+=`<div class="vsec2"><b>여기서 칠 수 있어요</b><em>게스트 받는 모임</em></div>`;
-    if(!go.length) h+=`<div class="vnone" style="padding:16px 10px">지금은 게스트를 받는 모임이 없어요<br>
-      <span>아래 클럽을 둘러보거나 가입 신청을 해보세요</span></div>`;
+    /* 한 줄로 끝낸다 — 클럽이 있으면 바로 아래 카드에 <클럽 둘러보기>가 있다 */
+    if(!go.length) h+=`<div class="vgnone">지금은 게스트를 받는 모임이 없어요</div>`;
     h+=go.map(g=>{
       const dt=new Date(g.ts);
       const wd='일월화수목금토'[dt.getDay()];
@@ -22373,15 +22496,24 @@ async function venuePageMount(vid){
           <span>모임 ${c.events||0}${c.wins?` · ${c.wins}승`:''}</span><strong>${c.pct}%</strong></div>`).join('')}
         <div class="ft">비율은 이 코트에서 연 모임과 교류전 승리로 쌓여요</div></div>`;
     }
-  } else {
-    h+=`<div class="vnone" style="padding:18px 10px">아직 이 코트를 홈으로 건 클럽이 없어요<br>
-      <span>먼저 걸면 대표 클럽이 돼요</span></div>`;
   }
-
-  if(cs&&cs.can_set&&!cs.joined){
-    h+=`<button class="btn" style="margin-top:16px" onclick="landHomeOn(${vid})">
+  /* 홈 걸기 — 남은 자리를 한 줄로. 다 찼으면 <더는 걸 수 있어요> 같은 어색한 말 대신 어떻게 하면 되는지 */
+  const canHome=!!(cs&&cs.can_set&&!cs.joined);
+  const homeLeft=cs?+cs.home_left||0:0;
+  const homeNote=homeLeft>0?`홈은 ${homeLeft}곳 더 걸 수 있어요`:'홈 2곳이 다 찼어요 · 한 곳을 내려놓으면 걸 수 있어요';
+  if(!clubs.length){
+    /* 아무도 안 건 코트 — 빈 안내 두 줄 + 버튼 + 회색 글이 따로 놀던 것을 카드 하나로 */
+    h+=`<div class="vsec2"><b>이 코트를 쓰는 클럽</b></div>
+      <div class="vhomecta">
+        <div class="r"><img src="${IMG('icon_home3d.ceb0572c.webp')}" alt="" draggable="false">
+          <div class="c"><b>아직 홈으로 건 클럽이 없어요</b>
+            <span>${canHome?'먼저 걸면 이 코트의 대표 클럽이 돼요':'클럽 운영진이 먼저 걸면 대표 클럽이 돼요'}</span></div></div>
+        ${canHome?`<button class="btn" onclick="landHomeOn(${vid})"${homeLeft>0?'':' disabled'}>우리 홈구장으로 걸기</button>
+          <div class="hnote">${homeNote}</div>`:''}</div>`;
+  } else if(canHome){
+    h+=`<button class="btn" style="margin-top:16px" onclick="landHomeOn(${vid})"${homeLeft>0?'':' disabled'}>
         여기를 우리 홈구장으로 걸기</button>
-      <div class="hnote">홈은 ${cs.home_left>0?`${cs.home_left}곳 더`:'더는'} 걸 수 있어요</div>`;
+      <div class="hnote">${homeNote}</div>`;
   }
   /* 도전장 줄 — 크게 차지하던 <여기서 교류전 열기> 대신. 운영진에게만 보인다.
      이 코트에 다른 클럽이 있으면 그 클럽들 중에서, 없으면 근처 클럽 중에서 고른다. */
@@ -22400,7 +22532,8 @@ async function venuePageMount(vid){
     if(others.length && me && top && me.club_id!==top.club_id){
       const n=Math.ceil((top.score-me.score)/12)+1;
       t=`교류전 <b>${n}승</b>이면 대표 클럽이 돼요`; sub='이 코트 클럽에 도전장 보내기';
-    } else if(others.length){ t='이 코트 클럽에 교류전 신청하기'; sub=`${names} · ${CH_FMT_TXT}`; }
+    } else if(others.length===1){ t=`${esc(others[0].name)}에 교류전 신청하기`; sub=`이 코트 클럽 · ${CH_FMT_TXT}`; }
+    else if(others.length){ t='이 코트 클럽에 교류전 신청하기'; sub=`${names} · ${CH_FMT_TXT}`; }
     /* 코트 화면에서 누르면 늘 <이 코트의 클럽>부터 보여준다. 다른 클럽이 없으면 거기서 근처 클럽으로 넘어간다 */
     h+=`<button class="vchrow" onclick="chStartPick({vid:${vid},vname:${esc(jsArg(v.name||''))}})">
       <span class="vs vsimg"><img src="${XC_ICON}" alt=""></span><span class="c"><b>${t}</b><span>${esc(sub)}</span></span><span class="ar">›</span></button>`;
@@ -25669,6 +25802,9 @@ async function saveClubBasic(){
   cbeStash();
   const n=state.activeClub||''; const cid=clubId();
   const region=(CBE.region||'').trim(), court=(CBE.court||'').trim();
+  /* 코트 목록에서 골랐으면 그 코트 번호도 보낸다 — 서버가 그 코트를 홈으로 건다.
+     고른 뒤 이름을 손으로 고쳤으면 번호는 버린다(다른 곳일 수 있다). */
+  const courtId = (CBE.court_id && court===String(CBE.court_idName||'').trim()) ? CBE.court_id : null;
   const mtime=CBE.time||'';
   const gender=CBE.gender||'남녀 모두';
   /* 요일 칸에 시간대가 섞여 들어와도 여기서 한 번 걸러낸다.
@@ -25708,7 +25844,7 @@ async function saveClubBasic(){
   CBE=null; closeOv(); renderClub();
   if(SERVER_OK && cid){
     try{ const saved = await api(`/clubs/${cid}/profile`,{method:'PATCH',
-      body: JSON.stringify({ home_court:court, meet_days:days, meet_time:mtime, gender_pref:gender,
+      body: JSON.stringify({ home_court:court, home_venue_id:courtId, meet_days:days, meet_time:mtime, gender_pref:gender,
         founded_year: yr||null, recruiting: recruit?1:0, guest_min_months: gmin||null,
         guest_visits: gvis||null, join_open: jopen?1:0, join_reopen: jre,
         entry_fee: entry, season_fee: season, guest_fee: gfee, guest_cap: gcap })});
