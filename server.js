@@ -6169,7 +6169,7 @@ function cupGroupSizes(n) {
 /* 코트와 슬롯은 배치기가 나중에 넣는다 — 여기서는 자리만 만든다 */
 function tieMatches(tieId, opt) {
   const fin = !!(opt && opt.final);
-  const fmt = fin ? (opt.fmt || 'timed') : 'timed';
+  const fmt = fin ? (opt.fmt || 'timed') : (opt.gfmt || 'timed');
   return [
     { no: 1, kind: 'free',  court: 0, slot: 0, key: `${tieId}m1`, fmt },
     { no: 2, kind: 'mixed', court: 0, slot: 0, key: `${tieId}m2`, fmt },
@@ -6189,9 +6189,14 @@ function addMin(hhmm, min) {
 }
 
 const CUP_DEFAULT = {
-  /* 20분 단타임. 25분이면 4면에서 6시간이 걸린다.
-     20분이면 5~6게임이 나와 승부를 가리기에 충분하다. */
-  match_sec: 1200,
+  /* 매치 방식 — 1세트 6게임 노애드(5:5면 한 게임 더 · 6:5 로 끝).
+     예전엔 20분 단타임이었다. 동호인에게 익숙한 <6게임 한 세트>로 바꾸고,
+     참가비를 인당 3.5만(팀당 21만)으로 내리면서 하루 일정 · 비용을 거기에 맞췄다.
+     'timed' 로 두면 예전처럼 match_sec 단타임. */
+  set_fmt: 'pro6',
+  /* 한 매치에 잡는 시간(제한). 6게임 노애드 복식은 평균 30분 안팎 — 35분이면 거의 다 끝난다.
+     슬롯 = 35분 + 전환 5분 = 40분. 8팀이면 09:00 → 17:40, 6팀이면 → 15:40 */
+  match_sec: 2100,
   /* 전환 5분 — 앞 팀이 나가고 다음 팀이 들어와 자리 잡는 시간. 워밍업 포함.
      3분은 지연됐을 때 당기는 카드로 남겨둔다(명세 2.6). */
   turn_sec: 300,
@@ -6206,7 +6211,7 @@ const CUP_DEFAULT = {
   /* 본선(준결승·결승·3위전) 포맷.
      'timed' — 조별과 같은 20분 단타임
      'pro6'  — 6게임 프로세트 노애드. 승부는 확실하지만 평균 35분이라 더 길다 */
-  final_fmt: 'timed',
+  final_fmt: 'pro6',
   /* 본선에서 2:0 이 되면 3복식을 생략한다.
      조별은 게임 득실과 출전 인원을 세야 해서 반드시 쳐야 하지만,
      본선은 이긴 팀만 올라가면 되므로 칠 이유가 없다. 라운드마다 25분이 빈다. */
@@ -6325,7 +6330,7 @@ function buildCupBracket(opt) {
     return { id, group: g, kind: kind || null,
       home: home.entry_id, away: away.entry_id,
       home_name: home.name, away_name: away.name,
-      matches: tieMatches(id, { final: kind ? 1 : 0, fmt: cfg.final_fmt, skip: cfg.skip_dead }) };
+      matches: tieMatches(id, { final: kind ? 1 : 0, fmt: cfg.final_fmt, gfmt: cfg.set_fmt, skip: cfg.skip_dead }) };
   };
 
   /* 조별 타이를 만든다 — 두 조를 번갈아 늘어놓아 한 조가 몰리지 않게 */
@@ -6527,7 +6532,12 @@ function cupDraw(entries, seed) {
 
 /* 기본값 — 대회마다 바꿀 수 있다.
    상수로 두면 두 번째 대회에서 참가비나 팀 수를 못 고친다. */
-const CUP_FEE = 450000, CUP_DEPOSIT = 100000, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
+/* 참가비 — 인당 3.5만 × 6명 = 팀당 21만. (예전 45만 · 보증금 10만 포함)
+   보증금은 기본 0 — 참가비 안에서 떼어 두는 구조라 21만 안에 두면 쓸 돈이 모자란다.
+   노쇼가 걱정되는 대회만 관리자 화면에서 따로 넣는다. */
+const CUP_FEE = 210000, CUP_DEPOSIT = 0, CUP_MIN_TEAMS = 6, CUP_MAX_TEAMS = 8;
+/* 예전 기본값 — 아직 안 연 대회를 새 값으로 옮길 때 <손대지 않은 값>인지 알아보려고 남긴다 */
+const CUP_OLD_FIXED = [480000, 360000, 200000, 180000, 180000];
 
 /* 이 대회의 설정 — data 에 없으면 기본값 */
 /* 추첨이 끝났는가 — drawn_at 만 보면 안 된다. 시험용 유령 팀을 지우면 대진(rounds)은 비는데
@@ -6543,6 +6553,9 @@ function cupCfg(b) {
     pay: d.pay || null,
     fee: d.fee != null ? +d.fee : CUP_FEE,
     deposit: d.deposit != null ? +d.deposit : CUP_DEPOSIT,
+    /* 매치 방식 — 화면이 <1세트 6게임 노애드> / <20분 단타임> 을 고른다 */
+    set_fmt: (d.cfg && d.cfg.set_fmt) || CUP_DEFAULT.set_fmt,
+    match_min: Math.round(((d.cfg && +d.cfg.match_sec) || CUP_DEFAULT.match_sec) / 60),
     /* cfg 안쪽 값이라 여기서 꺼내 주지 않으면 화면과 계산이 서로 다른 값을 본다 */
     due_days: (d.cfg && +d.cfg.due_days > 0) ? +d.cfg.due_days : CUP_DEFAULT.due_days,
     min_teams: d.min_teams ? +d.min_teams : CUP_MIN_TEAMS,
@@ -6551,17 +6564,47 @@ function cupCfg(b) {
     /* 비용은 항목으로 갖는다 — 합계 한 칸만 두면 견적이 바뀌었을 때
        그 안에 뭐가 들었는지 몰라 통째로 다시 계산해야 한다. */
     fixed_items: Array.isArray(d.fixed_items) && d.fixed_items.length ? d.fixed_items : [
-      { n: '코트 대관', h: '4면 × 8시간', v: 480000 },
-      { n: '운영 인력', h: '2명 × 18만', v: 360000 },
-      { n: '단체 상해보험', h: '80명', v: 200000 },
-      { n: '트로피·메달', h: '', v: 180000 },
-      { n: '현수막·비품·구급함', h: '', v: 180000 },
+      /* 인당 3.5만에 맞춘 비용 — 8팀 기준 손익: 쓸 돈 168만 − 비용 139만 = 29만 (상금 85% ≈ 24만).
+         6팀이면 하루가 15:40 에 끝나 코트를 7시간만 잡으면 된다(관리자에서 코트 줄 v 를 42만으로). */
+      { n: '코트 대관', h: '4면 × 9시간', v: 540000 },
+      { n: '운영 인력', h: '1명', v: 180000 },
+      { n: '단체 상해보험', h: '50명', v: 120000 },
+      { n: '트로피·메달', h: '', v: 150000 },
+      { n: '비품·구급함', h: '', v: 80000 },
     ],
     var_items: Array.isArray(d.var_items) && d.var_items.length ? d.var_items : [
       { n: '공', h: '타이당 1통', v: 22000 },
       { n: '음료·간식', h: '', v: 18000 },
     ],
   };
+}
+
+/* 인당 3.5만 · 6게임으로 옮기기 — 아직 추첨 전이고, 입금한 클럽이 없고,
+   참가비가 예전 기본값(45만) 그대로인 대회만. 관리자가 직접 바꾼 값은 그대로 둔다. */
+function cupMigrate35k() {
+  let rows = [];
+  try { rows = db.prepare(`SELECT id, data FROM brackets WHERE fmt='cup'`).all(); } catch (e) { return; }
+  let n = 0;
+  rows.forEach(b => {
+    let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) { return; }
+    if (cupDrawn(d)) return;
+    if (d.fee != null && +d.fee !== 450000) return;
+    let paid = 0;
+    try { paid = db.prepare(`SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND fee_paid=1`).get(b.id).n; } catch (e) {}
+    if (paid) return;
+    if (!onceOnly('cup_35k', String(b.id))) return;
+    d.fee = CUP_FEE;
+    if (d.deposit == null || +d.deposit === 100000) d.deposit = CUP_DEPOSIT;
+    d.cfg = d.cfg || {};
+    if (!d.cfg.match_sec || +d.cfg.match_sec === 1200) d.cfg.match_sec = CUP_DEFAULT.match_sec;
+    if (!d.cfg.set_fmt) d.cfg.set_fmt = CUP_DEFAULT.set_fmt;
+    if (!d.cfg.final_fmt || d.cfg.final_fmt === 'timed') d.cfg.final_fmt = CUP_DEFAULT.final_fmt;
+    const fx = Array.isArray(d.fixed_items) ? d.fixed_items.map(i => +i.v || 0) : null;
+    if (fx && fx.length === CUP_OLD_FIXED.length && fx.every((v, i) => v === CUP_OLD_FIXED[i])) delete d.fixed_items;
+    db.prepare('UPDATE brackets SET data=? WHERE id=?').run(JSON.stringify(d), b.id);
+    n++;
+  });
+  if (n) console.log(`[migrate] 리그 참가비를 인당 3.5만 · 6게임으로 옮겼어요 · ${n}개 대회`);
 }
 
 /* 정산 — 여기가 틀리면 대회가 끝나고 돈이 모자란다.
@@ -7185,6 +7228,8 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     /* 본선 포맷 — 대진이 이미 짜였으면 다시 추첨해야 반영된다 */
     d.cfg = d.cfg || {};
     if (q.final_fmt === 'timed' || q.final_fmt === 'pro6') d.cfg.final_fmt = q.final_fmt;
+    /* 매치 방식 — 조별 · 본선 모두 같은 방식으로 */
+    if (q.set_fmt === 'timed' || q.set_fmt === 'pro6') { d.cfg.set_fmt = q.set_fmt; d.cfg.final_fmt = q.set_fmt; }
     if (q.skip_dead != null) d.cfg.skip_dead = q.skip_dead ? true : false;
     const ms = num(q.match_min, 10, 60);   if (ms != null) d.cfg.match_sec = ms * 60;
     const dd = num(q.due_days, 3, 60);     if (dd != null) d.cfg.due_days = dd;
@@ -7417,7 +7462,7 @@ app.get('/cup/open', (req, res) => {
   }
   res.json({ cup: {
     id: b.id, date: b.date, title: C.title, place: C.place,
-    fee: C.fee, deposit: C.deposit, teams: live,
+    fee: C.fee, deposit: C.deposit, teams: live, set_fmt: C.set_fmt, match_min: C.match_min,
     max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - live), dday, due_date, event_dday,
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
@@ -7453,7 +7498,7 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
   }
   res.json({ cup: {
     id: b.id, date: b.date, title: d.title || '맞수 리그', place: d.place || '',
-    pay: C.pay, fee: C.fee, deposit: C.deposit,
+    pay: C.pay, fee: C.fee, deposit: C.deposit, set_fmt: C.set_fmt, match_min: C.match_min,
     teams: live, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - live), dday,
     /* 정원을 서버가 내려준다 — 화면에 10 이 박혀 있으면 바꿀 때 또 찾아다녀야 한다 */
@@ -7931,7 +7976,8 @@ app.get('/brackets/:id/live', (req, res) => {
   /* 남은 시간을 기기 시계로 세면 코트마다 다르게 보인다.
      서버 시각을 같이 내려서 started_at + match_sec - server_now 로 세게 한다. */
   let cfg = null;
-  if (b.fmt === 'cup') { try { cfg = (JSON.parse(b.data || '{}').cfg) || null; } catch (e) {} }
+  /* 기본값과 합쳐서 보낸다 — 화면이 매치 방식(6게임 노애드/단타임)과 제한 시간을 서버 타이머와 같게 읽는다 */
+  if (b.fmt === 'cup') { try { cfg = Object.assign({}, CUP_DEFAULT, (JSON.parse(b.data || '{}').cfg) || {}); } catch (e) {} }
   res.json({ id: b.id, updated_at: b.updated_at, scores: p.scores, timers: p.timers,
     server_now: Date.now(), cfg });
 });
@@ -9623,6 +9669,8 @@ function onceOnly(kind, ref) {                     // 같은 알림을 두 번 �
   try { db.prepare('INSERT INTO sent_reminders (kind,ref,sent_at) VALUES (?,?,?)').run(kind, ref, now()); return true; }
   catch { return false; }
 }
+/* 아직 안 연 대회를 인당 3.5만 · 6게임으로 — sent_reminders 표가 생긴 뒤라야 한 번만 돌릴 수 있다 */
+try { cupMigrate35k(); } catch (e) { console.error('[cup 35k]', e.message); }
 
 function remindUnpaidDues() {
   const rows = db.prepare(`SELECT d.id, d.user_id, d.period, d.amount, c.name club
