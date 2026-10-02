@@ -1704,11 +1704,17 @@ function cupSetupDraw(){
 
       <div class="cig">경기</div>
       <div class="frm f3">
-        <label>코트<input id="csCourts" inputmode="numeric" value="${d.courts||4}"></label>
+        <label>코트<input id="csCourts" inputmode="numeric" value="${(cfg.courts||d.courts||3)}"></label>
+        <label>본선 방식<select id="csKo">
+          <option value="place"${(cfg.ko||'place')==='place'?' selected':''}>순위전 (1-1 결승 · 2-2 · 3-3)</option>
+          <option value="ko"${cfg.ko==='ko'?' selected':''}>4강 › 결승 · 3위전</option></select></label>
         <label>매치 방식<select id="csSet">
-          <option value="pro6"${(cfg.set_fmt||((cfg.match_sec||2100)>1500?'pro6':'timed'))==='pro6'?' selected':''}>1세트 6게임 노애드</option>
-          <option value="timed"${(cfg.set_fmt||((cfg.match_sec||2100)>1500?'pro6':'timed'))==='timed'?' selected':''}>단타임</option></select></label>
-        <label>매치 제한 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||2100)/60)}"></label>
+          <option value="timed"${(cfg.set_fmt||'timed')==='timed'?' selected':''}>단타임 (시간 끝나면 그 스코어)</option>
+          <option value="pro6"${cfg.set_fmt==='pro6'?' selected':''}>1세트 6게임 노애드</option></select></label>
+        <label>매치 시간 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||1500)/60)}"></label>
+        <label>진행 방식<select id="csFlow">
+          <option value="slot"${(cfg.flow||'slot')==='slot'?' selected':''}>모든 코트 함께 시작 (시간표대로)</option>
+          <option value="roll"${cfg.flow==='roll'?' selected':''}>코트별 이어치기</option></select></label>
         <label>입금 마감 (대회 며칠 전)<input id="csDue" inputmode="numeric"
           value="${cfg.due_days||14}"></label>
         <label>전환 (분)<input id="csTurn" inputmode="numeric" value="${Math.round((cfg.turn_sec||300)/60)}"></label>
@@ -1717,7 +1723,12 @@ function cupSetupDraw(){
         <label>점심 (분)<input id="csLunch" inputmode="numeric" value="${cfg.lunch_min!=null?cfg.lunch_min:40}"></label>
       </div>
       <div class="cinote">정원 ${d.max_teams}팀이면 ${d.min_teams}팀만 모여도 열립니다.
-        6팀은 3+3조, 7팀은 4+3조, 8팀은 4+4조로 나뉘고 조별 뒤에 4팀 토너먼트를 합니다.</div>
+        6팀은 3+3조, 7팀은 4+3조, 8팀은 4+4조로 나뉩니다. 순위전은 조 순위끼리(1-1 결승 · 2-2 3위전 · 3-3 5위전) 붙어
+        모든 팀이 3경기 9매치를 칩니다. 4강 방식은 조 1·2위만 본선에 갑니다.<br>
+        이어치기: 첫 경기만 함께 시작하고, 점수가 들어오면 그 코트 다음 경기가 전환 시간 뒤 저절로 시작합니다.<br>
+        기본: 25분 단타임 + 전환 5분, 모든 코트 함께 시작 — 6팀 · 3면이면 한 경기의 세 매치를 세 코트에서 동시에 쳐서
+        9칸 × 30분 = 4시간 30분(09:00 → 13:30). 승 3 · 무 1 · 패 0, 순위전이 비기면 게임 합 › 7포인트 타이브레이크.<br>
+        6게임 노애드 + 이어치기로 바꾸면 보통 5시간 25분(09~15시).</div>
 
       <div class="cig">고정비 <em>팀 수와 상관없이 드는 돈</em></div>
       ${d.fixed.map((x,i)=>row('fixed',i,x)).join('')}
@@ -1870,7 +1881,7 @@ async function cupSetupSave(){
     title:g('csTitle'), date:g('csDate'), start:g('csStart'), place:g('csPlace'),
     date_tbd:isTbd('csDate'), place_tbd:isTbd('csPlace'),
     courts:g('csCourts'), max_teams:g('csMax'), min_teams:g('csMin'),
-    set_fmt:g('csSet'), match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
+    set_fmt:g('csSet'), flow:g('csFlow'), ko:g('csKo'), match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
     prize_pct:g('csPct'), fee:g('csFee'), deposit:g('csDep'),
     fixed_items:CUPCFG.fixed.filter(x=>x.n), var_items:CUPCFG.varr.filter(x=>x.n),
     bank:g('csBank'), holder:g('csHolder'), account:g('csAcc') });
