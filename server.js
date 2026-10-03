@@ -5900,8 +5900,10 @@ app.get('/clubs/:id/brackets/history', auth, (req, res) => {
 app.get('/clubs/:id/my-summary', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  /* season_days · mates — 홈 카드 한 줄(<이번 시즌 8번 나와서 17명과 쳤어요>)에 쓴다.
+     순위처럼 남과 견주는 숫자가 아니라, 나오기만 하면 늘어나는 숫자다. 시즌 = 올해(랭킹의 '연간'). */
   const out = { rank: null, total: 0, w: 0, l: 0, d: 0, wr: null, clubWr: null,
-                days: 0, weekMeets: 0 };
+                days: 0, weekMeets: 0, season_days: 0, season_g: 0, mates: 0 };
   try {
     /* 이 클럽에서 내가 불리는 이름 — 별명이 있으면 별명으로 대진에 적힌다 */
     const meRow = db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) name
@@ -5909,9 +5911,13 @@ app.get('/clubs/:id/my-summary', auth, (req, res) => {
       WHERE cm.club_id=? AND cm.user_id=?`).get(cid, req.uid);
     const myName = meRow && meRow.name;
 
-    const brs = db.prepare(`SELECT id, date, data FROM brackets
+    const brs = db.prepare(`SELECT id, date, data, created_at FROM brackets
       WHERE club_id=? AND published=1 ORDER BY id DESC LIMIT 60`).all(cid);
     const st = {};                       // 이름 → 성적
+    const YEAR = String(new Date().getFullYear());
+    const yearOf = b => { const m = String(b.date || '').match(/^(\d{4})/);
+      if (m) return m[1]; const t = new Date(b.created_at || 0); return isNaN(+t) ? '' : String(t.getFullYear()); };
+    const sDays = new Set(), sMates = new Set(); let sG = 0;
     const pick = n => (st[n] = st[n] || { g:0, w:0, d:0, gf:0, ga:0, days:new Set() });
     brs.forEach(b => {
       let data = {}; try { data = JSON.parse(b.data); } catch (e) { return; }
@@ -5924,6 +5930,10 @@ app.get('/clubs/:id/my-summary', auth, (req, res) => {
         const half = Math.floor(r.names.length / 2);
         const A = r.names.slice(0, half), B = r.names.slice(half);
         const draw = s2.a === s2.b;
+        if (myName && yearOf(b) === YEAR && r.names.includes(myName)) {
+          sG++; sDays.add(b.date || String(b.id));
+          r.names.forEach(n => { if (n && n !== myName) sMates.add(n); });
+        }
         [[A, s2.a, s2.b], [B, s2.b, s2.a]].forEach(([side, mine, opp]) => {
           side.forEach(n => { if (!n) return;
             const t = pick(n);
@@ -5951,6 +5961,7 @@ app.get('/clubs/:id/my-summary', auth, (req, res) => {
     if (me) { out.w = me.w; out.l = me.g - me.w - me.d; out.d = me.d;
               out.wr = me.wr; out.days = me.dayN; }
     if (i >= 0) { out.rank = i + 1; out.total = rank.length; }
+    out.season_days = sDays.size; out.season_g = sG; out.mates = sMates.size;
     if (rank.length) out.clubWr = Math.round(
       rank.reduce((a, r) => a + r.wr, 0) / rank.length);
 
@@ -6626,16 +6637,13 @@ function cupCfg(b) {
        그 안에 뭐가 들었는지 몰라 통째로 다시 계산해야 한다. */
     fixed_items: Array.isArray(d.fixed_items) && d.fixed_items.length ? d.fixed_items : [
       /* 6팀 36명 · 3면 · 25분 단타임 — 9칸 × 30분 = 4시간 30분(09:00 → 13:30) → 코트 5시간(09~14시).
-         수입 126만 − 비용 96.5만 = 29.5만 (상금 85% ≈ 25만). 운영을 임원이 맡고 트로피를 8만으로 줄이면 +58.5만. */
+         보험 · 트로피 · 비품 · 음료는 예산으로 잡지 않는다(그만큼 상금으로).
+         수입 126만 − 비용 53.7만 = 72.3만 → 상금 85% ≈ 61만, 승자독식. */
       { n: '코트 대관', h: '3면 × 5시간', v: 225000 },
       { n: '운영 인력', h: '1명', v: 180000 },
-      { n: '단체 상해보험', h: '36명', v: 90000 },
-      { n: '트로피·메달', h: '', v: 150000 },
-      { n: '비품·구급함', h: '', v: 80000 },
     ],
     var_items: Array.isArray(d.var_items) && d.var_items.length ? d.var_items : [
       { n: '공', h: '타이당 1통', v: 22000 },
-      { n: '음료·간식', h: '', v: 18000 },
     ],
   };
 }
@@ -6679,6 +6687,31 @@ function cupMigrate35k() {
   if (n) console.log(`[migrate] 리그를 6팀 · 3면 · 25분 단타임 · 순위전으로 옮겼어요 · ${n}개 대회`);
 }
 
+/* 예산에서 보험 · 트로피 · 비품 · 음료를 뺀다 — 비용 항목이 예전 기본값 그대로인 대회만.
+   (보험 9만 · 트로피 15만 · 비품 8만이 든 표, 비품 8만만 남은 표, 팀당 공 2.2만 + 음료 1.8만 표)
+   관리자가 항목을 직접 고친 대회는 그대로 둔다. 뺀 만큼 잔액이 늘어 상금이 다시 계산된다. */
+const CUP_OLD_BUDGET_FIXED = [[225000, 180000, 90000, 150000, 80000], [225000, 180000, 80000]];
+const CUP_OLD_BUDGET_VAR = [[22000, 18000]];
+function cupMigrateBudget() {
+  let rows = [];
+  try { rows = db.prepare(`SELECT id, data FROM brackets WHERE fmt='cup'`).all(); } catch (e) { return; }
+  const vals = a => Array.isArray(a) ? a.map(i => +i.v || 0).join() : null;
+  let n = 0;
+  rows.forEach(b => {
+    let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) { return; }
+    const fx = vals(d.fixed_items), vx = vals(d.var_items);
+    const oldF = fx != null && CUP_OLD_BUDGET_FIXED.some(o => o.join() === fx);
+    const oldV = vx != null && CUP_OLD_BUDGET_VAR.some(o => o.join() === vx);
+    if (!oldF && !oldV) return;
+    if (!onceOnly('cup_budget_prize', String(b.id))) return;
+    if (oldF) delete d.fixed_items;
+    if (oldV) delete d.var_items;
+    db.prepare('UPDATE brackets SET data=? WHERE id=?').run(JSON.stringify(d), b.id);
+    n++;
+  });
+  if (n) console.log(`[migrate] 리그 예산에서 보험 · 트로피 · 비품 · 음료를 뺐어요(상금으로) · ${n}개 대회`);
+}
+
 /* 정산 — 여기가 틀리면 대회가 끝나고 돈이 모자란다.
 
    보증금은 수입이 아니다. 완주하면 돌려줄 돈이라 처음부터 빼고 세야 한다.
@@ -6703,9 +6736,10 @@ function cupMoney(C, teams) {
   const prize = Math.max(0, Math.round(left * C.prize_pct / 100));
   return { gross, deposits, net, cost, left, prize,
     rest: left - prize,                        // 대회 끝나고 남는 돈
-    first: Math.round(prize * 0.5 / 10000) * 10000,
-    second: Math.round(prize * 0.3 / 10000) * 10000,
-    third: Math.round(prize * 0.2 / 10000) * 10000 };
+    /* 승자독식 — 상금은 우승팀이 다 가져간다(준우승 · 3위 상금 없음).
+       만원 단위는 내림 — 반올림하면 상금 비율 100%일 때 남은 돈보다 많이 줄 수 있다 */
+    first: Math.floor(prize / 10000) * 10000,
+    second: 0, third: 0 };
 }
 /* 구력 합산 상한 — 1복식은 제한 없음, 혼복 20년, 3복식 16년.
    NTRP 로 잡았다가 구력으로 바꿨다. 앱에 NTRP 칸이 없어 등급을 환산해야 했는데,
@@ -9889,6 +9923,7 @@ function onceOnly(kind, ref) {                     // 같은 알림을 두 번 �
 }
 /* 아직 안 연 대회를 인당 3.5만 · 6게임으로 — sent_reminders 표가 생긴 뒤라야 한 번만 돌릴 수 있다 */
 try { cupMigrate35k(); } catch (e) { console.error('[cup 35k]', e.message); }
+try { cupMigrateBudget(); } catch (e) { console.error('[cup budget]', e.message); }
 
 function remindUnpaidDues() {
   const rows = db.prepare(`SELECT d.id, d.user_id, d.period, d.amount, c.name club
@@ -11127,6 +11162,31 @@ const SIDO_BOX = {
   경북: [127.80, 35.70, 129.60, 37.55], 경남: [127.55, 34.55, 129.25, 35.92],
   제주: [126.14, 33.10, 126.98, 33.60],
 };
+
+/* 카카오 장소 검색 대신 묻기 — iOS 앱 지도(iframe)는 장소 검색 SDK 를 쓸 수 없어서
+   서버가 REST 키로 묻고 결과(카카오 SDK 와 같은 모양의 documents)를 돌려준다. 테니스 코트 찾기에만 쓴다. */
+const limitPlaces = rateLimit({ windowMs: 60_000, max: 90 });
+app.get('/kakao/places', auth, limitPlaces, async (req, res) => {
+  const key = process.env.KAKAO_REST_KEY;
+  if (!key) return res.json({ documents: [] });
+  const q = String(req.query.q || '').trim().slice(0, 40);
+  if (!q) return res.json({ documents: [] });
+  const p = new URLSearchParams({ query: q, size: String(Math.min(15, Math.max(1, +req.query.size || 15))) });
+  const x = +req.query.x, y = +req.query.y;
+  if (Number.isFinite(x) && Number.isFinite(y) && x && y) {
+    p.set('x', String(x)); p.set('y', String(y));
+    const r = +req.query.radius;
+    if (Number.isFinite(r) && r > 0) p.set('radius', String(Math.min(20000, Math.round(r))));
+    if (req.query.sort === 'distance') p.set('sort', 'distance');
+  }
+  try {
+    const r = await fetch('https://dapi.kakao.com/v2/local/search/keyword.json?' + p,
+      { headers: { Authorization: 'KakaoAK ' + key } });
+    if (!r.ok) return res.json({ documents: [] });
+    const j = await r.json();
+    res.json({ documents: (j && j.documents) || [] });
+  } catch (e) { res.json({ documents: [] }); }
+});
 
 app.post('/admin/venues/search', admin, async (req, res) => {
   const key = process.env.KAKAO_REST_KEY;
@@ -17311,6 +17371,17 @@ app.get(['/', '/index.html'], (req, res, next) => {
   if (/\bbr\b/.test(ae)) { res.set('Content-Encoding', 'br'); return res.send(c.br); }
   if (/\bgzip\b/.test(ae)) { res.set('Content-Encoding', 'gzip'); return res.send(c.gz); }
   res.send(c.raw);
+});
+
+/* ── iOS 앱 지도 창 ──
+   iOS 앱(capacitor://localhost)은 카카오에 주소를 등록할 수 없어 지도 SDK 가 막힌다.
+   앱이 이 페이지를 iframe 으로 띄워 지도만 여기(등록된 https 주소)서 그린다.
+   다른 화면은 X-Frame-Options: DENY 그대로 — 이 한 장만 앱 안에 감쌀 수 있게 연다.
+   (페이지는 앱 주소에서 온 메시지만 받고, 받은 HTML 은 스크립트를 지운 뒤 넣는다) */
+app.get('/kmap.html', (_req, res) => {
+  res.removeHeader('X-Frame-Options');
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(PUBLIC_DIR, 'kmap.html'));
 });
 
 app.use(express.static(PUBLIC_DIR));
