@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>MATSU 코트 지도</title>
+<!--
+  iOS 앱 전용 지도 창.
+  iOS 앱은 capacitor://localhost 에서 돌아서 카카오 개발자 콘솔에 주소를 등록할 수 없다.
+  (카카오는 http/https 주소만 받는다 — 안드로이드는 https://localhost 라서 됐다)
+  그래서 iOS 앱은 지도만 이 페이지(등록된 https 주소)를 iframe 으로 띄워 그리고,
+  원 · 코트 표시 · 화면 이동은 앱이 postMessage 로 시킨다. 코트를 누르면 앱으로 알려 준다.
+  보안: 앱 주소(capacitor://localhost 등)에서 온 메시지만 받고, 받은 HTML 은 스크립트 · on* 속성을 지운 뒤 넣는다.
+-->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#eef1f4;
+    font-family:'Pretendard Variable',Pretendard,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
+  #landMap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important;margin:0!important}
+  #kmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
+    font-size:14px;color:#6b7684;line-height:1.6;padding:0 24px}
+</style>
+<style id="appcss"></style>
+</head>
+<body>
+<div id="landMap" class="landmap"></div>
+<div id="kmsg"></div>
+<script>
+(function(){
+  /* 앱 주소만 — 다른 사이트가 이 페이지를 감싸 메시지를 보내도 무시한다 */
+  var OK = /^(capacitor|ionic):\/\/localhost$|^https?:\/\/localhost(:\d+)?$|^http:\/\/matsu\.test$/;
+  var parentOrigin = null, map = null, ready = false, booting = false, queue = [];
+  var circles = [], pins = [];
+
+  /* 웹뷰에 따라 앱 주소가 'null' 로 보이는 일이 있다 — 그때는 바로 위 창(앱)에만 '*' 로 답한다(지도 위치 · 누른 코트뿐) */
+  function send(m){ try{ if(parentOrigin) window.parent.postMessage(m, parentOrigin === 'null' ? '*' : parentOrigin); }catch(e){} }
+  function fail(msg){
+    var k = document.getElementById('kmsg'); k.style.display = 'flex'; k.textContent = msg;
+    send({ t:'error', msg:msg });
+  }
+  function LL(p){ return new kakao.maps.LatLng(+p.lat, +p.lng); }
+
+  /* 받은 HTML 을 깨끗이 — 스크립트 · 다른 창 · on* 속성 · javascript: 주소를 지운다 */
+  function clean(html){
+    var t = document.createElement('template'); t.innerHTML = String(html || '');
+    t.content.querySelectorAll('script,iframe,object,embed,link,style,form,base,meta').forEach(function(n){ n.remove(); });
+    t.content.querySelectorAll('*').forEach(function(n){
+      for(var i = n.attributes.length - 1; i >= 0; i--){
+        var a = n.attributes[i], nm = a.name.toLowerCase();
+        if(nm.indexOf('on') === 0 || nm === 'srcdoc') n.removeAttribute(a.name);
+        else if((nm === 'src' || nm === 'href' || nm === 'xlink:href') && /^\s*(javascript|data:text)/i.test(a.value)) n.removeAttribute(a.name);
+      }
+    });
+    var box = document.createElement('div'); box.appendChild(t.content); return box;
+  }
+
+  function idle(){
+    if(!map) return;
+    var c = map.getCenter(), b = map.getBounds(), sw = b.getSouthWest(), ne = b.getNorthEast();
+    var el = document.getElementById('landMap');
+    send({ t:'idle', center:{ lat:c.getLat(), lng:c.getLng() }, level:map.getLevel(),
+      sw:{ lat:sw.getLat(), lng:sw.getLng() }, ne:{ lat:ne.getLat(), lng:ne.getLng() },
+      w:el.clientWidth, h:el.clientHeight });
+  }
+
+  function run(m){
+    if(m.t === 'center'){ map.setCenter(LL(m)); }
+    else if(m.t === 'level'){ map.setLevel(+m.level); }
+    else if(m.t === 'bounds'){
+      var b = new kakao.maps.LatLngBounds();
+      (m.pts || []).forEach(function(p){ b.extend(LL(p)); });
+      if(!b.isEmpty()){ var p = m.pad || [40,40,40,40]; map.setBounds(b, p[0], p[1], p[2], p[3]); }
+    }
+    else if(m.t === 'circles'){
+      circles.forEach(function(c){ c.setMap(null); }); circles = [];
+      (m.list || []).forEach(function(o){
+        var c = new kakao.maps.Circle({ center:LL(o), radius:+o.radius || 0,
+          strokeWeight:+o.strokeWeight || 0, strokeColor:String(o.strokeColor || '#f1631a'),
+          strokeOpacity:+o.strokeOpacity || 0, fillColor:String(o.fillColor || '#f1631a'), fillOpacity:+o.fillOpacity || 0 });
+        c.setMap(map); circles.push(c);
+      });
+    }
+    else if(m.t === 'pins'){
+      pins.forEach(function(p){ p.setMap(null); }); pins = [];
+      (m.list || []).forEach(function(o){
+        var ov = new kakao.maps.CustomOverlay({ position:LL(o), content:clean(o.html),
+          xAnchor:o.xa == null ? 0.5 : +o.xa, yAnchor:o.ya == null ? 0.5 : +o.ya, zIndex:+o.z || 0, clickable:true });
+        ov.setMap(map); pins.push(ov);
+      });
+    }
+  }
+
+  function boot(m){
+    if(booting) return; booting = true;
+    if(m.css) document.getElementById('appcss').textContent = String(m.css);
+    fetch('/config').then(function(r){ return r.json(); }).then(function(cfg){
+      var key = cfg && cfg.kakao_js_key;
+      if(!key) return fail('지도 키가 없어요');
+      var sc = document.createElement('script');
+      sc.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
+      sc.onerror = function(){ fail('지도를 불러오지 못했어요'); };
+      sc.onload = function(){
+        try{
+          kakao.maps.load(function(){
+            map = new kakao.maps.Map(document.getElementById('landMap'),
+              { center:LL(m.center || { lat:37.5665, lng:126.978 }), level:+m.level || 5 });
+            kakao.maps.event.addListener(map, 'idle', idle);
+            ready = true;
+            var q = queue; queue = [];
+            q.forEach(run);
+            send({ t:'ready' });
+            idle();
+          });
+        }catch(e){ fail('지도를 불러오지 못했어요'); }
+      };
+      document.head.appendChild(sc);
+    }).catch(function(){ fail('지도를 불러오지 못했어요'); });
+  }
+
+  window.addEventListener('message', function(e){
+    if(e.source !== window.parent) return;
+    if(!OK.test(e.origin) && e.origin !== 'null') return;
+    if(!parentOrigin) parentOrigin = e.origin;
+    if(e.origin !== parentOrigin) return;
+    var m = e.data || {};
+    if(m.t === 'init') return boot(m);
+    if(!ready) queue.push(m); else run(m);
+  });
+
+  /* 코트를 누르면 앱에 알린다 — 앱이 정해 둔 동작(landVenue · landKakaoOpen)만 */
+  document.addEventListener('click', function(e){
+    var n = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+    if(!n) return;
+    e.preventDefault(); e.stopPropagation();
+    send({ t:'tap', act:String(n.getAttribute('data-act')), arg:String(n.getAttribute('data-arg') || '') });
+  }, true);
+
+  /* 화면 크기가 바뀌면 지도도 다시 맞춘다 */
+  window.addEventListener('resize', function(){ if(map){ map.relayout(); idle(); } });
+})();
+</script>
+</body>
+</html>

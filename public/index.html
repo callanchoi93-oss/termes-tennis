@@ -7,7 +7,24 @@
      이름과 점수를 붙여 쓰는 화면이 많아 통째로 꺼 둔다. -->
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<script>
+/* 글꼴 — 앱 안에서는 앱에 든 파일(fonts/)로 읽는다. 켤 때마다 인터넷에서 받으면
+   처음 몇 초는 다른 글꼴로 보였다가 바뀌어(깜빡임) 웹페이지처럼 보였다. 웹은 그대로 CDN. */
+(function(){
+  var nat=false; try{ nat=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()); }catch(e){}
+  var h=document.head||document.getElementsByTagName('head')[0];
+  if(nat){
+    var st=document.createElement('style');
+    st.textContent="@font-face{font-family:'Pretendard Variable';font-weight:45 920;font-style:normal;font-display:block;"
+      +"src:url('fonts/PretendardVariable.woff2') format('woff2-variations'),url('fonts/PretendardVariable.woff2') format('woff2')}";
+    h.appendChild(st);
+  } else {
+    var l=document.createElement('link'); l.rel='stylesheet';
+    l.href='https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css';
+    h.appendChild(l);
+  }
+})();
+</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
 <!-- 대진 공유 이미지 전용 — 화면 본문에는 쓰지 않는다 -->
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -150,7 +167,7 @@
   .pvhd{flex:none;background:var(--cream);padding:0 18px}
   /* height 를 쓰면 box-sizing 때문에 안전영역 여백이 높이 안으로 먹혀
      노치와 제목이 겹친다. min-height 로 두어야 여백이 위에 더해진다. */
-  .pvbar{display:flex;align-items:center;gap:8px;min-height:52px;
+  .pvbar{display:flex;align-items:center;gap:8px;min-height:56px;position:relative;
          padding-top:env(safe-area-inset-top,0px)}
   /* 뒤로가기는 손가락 끝으로 누르는 것이라 32px 로는 작다.
      보이는 크기는 그대로 두고 누를 수 있는 넓이만 44px 로 넓힌다 —
@@ -163,11 +180,22 @@
   .backb::after{content:'';position:absolute;top:50%;left:50%;width:46px;height:46px;
     transform:translate(-50%,-50%)}
   .backb:active{background:var(--felt)}
-  .pvback{width:32px;height:32px;border:none;background:none;font-size:24px;color:var(--gray);
-          font-family:inherit;cursor:pointer;padding:0;flex:none;position:relative}
-  .pvback::after{content:'';position:absolute;top:50%;left:50%;width:44px;height:44px;
+  /* 뒤로가기는 앱 어디서나 한 모양 — 맨 위 줄 ‹(.backb)와 같은 흰 동그라미.
+     예전에는 화면마다 회색 글자 ‹ · 테두리 없는 ‹ · ‹ 모임 정보 처럼 제각각이었다. */
+  .pvback,.shb{width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid var(--line);
+    display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;font-weight:700;
+    color:var(--ink);font-family:inherit;padding:0 0 2px;flex:none;position:relative;line-height:1;
+    -webkit-tap-highlight-color:transparent}
+  .pvback::after,.shb::after{content:'';position:absolute;top:50%;left:50%;width:46px;height:46px;
     transform:translate(-50%,-50%)}
-  .pvttl{font-size:16px;font-weight:700;letter-spacing:-.02em}
+  .pvback:active,.shb:active{background:var(--felt)}
+  /* 시트 안 뒤로가기 — 같은 모양을 시트 크기에 맞춰 조금 작게, 늘 제목 왼쪽 */
+  .shb{width:36px;height:36px;font-size:19px;margin-right:10px}
+  .sh-top .shb + h3{flex:1;min-width:0}
+  /* 들어간 화면의 제목은 맨 위 줄처럼 가운데 작게 — 화면 안에 큰 제목이 있으면 아예 쓰지 않는다 */
+  .pvttl{position:absolute;left:66px;right:66px;text-align:center;font-size:17px;font-weight:700;letter-spacing:-.03em;
+    color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+  .pvttl small{display:block;font-size:12px;font-weight:500;color:var(--lgray);margin-top:1px;letter-spacing:-.01em}
   .pvhero{display:flex;align-items:center;gap:13px;padding:6px 0 14px}
   /* button 은 브라우저 기본 테두리가 붙는다 — 로고에 검은 링으로 보이므로 지운다 */
   .pvav{width:58px;height:58px;border-radius:0;clip-path:var(--squircle);flex:none;display:flex;align-items:center;
@@ -201,8 +229,9 @@
 
 
   #clubops{z-index:125}
-  .opshd{flex:none;background:var(--cream);padding:0 18px;border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:8px;min-height:52px;padding-top:env(safe-area-inset-top,0px)}
+  .opshd{flex:none;background:var(--cream);padding:0 16px;border-bottom:1px solid var(--line);position:relative;
+    display:flex;align-items:center;gap:8px;min-height:56px;padding-top:env(safe-area-inset-top,0px)}
+  .opshd .pvttl, .pvbar .pvttl{bottom:0;height:56px;display:flex;flex-direction:column;justify-content:center}
   .opsclub{margin-left:auto;font-size:14px;color:var(--lgray);font-weight:400}
   .opsbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
     padding:14px 18px calc(24px + env(safe-area-inset-bottom, 0px))}
@@ -968,8 +997,9 @@
   /* 앱(노치·다이나믹 아일랜드)에서는 이 오버레이가 상태바 밑에서 시작한다.
      .appbar 처럼 안전영역을 더해주지 않으면 '‹ 뒤로'가 상태바에 가려 안 보인다. */
   .evtop{position:sticky;top:0;z-index:5;background:var(--cream);
-    padding:calc(16px + env(safe-area-inset-top,0px)) 20px 12px;
+    padding:calc(8px + env(safe-area-inset-top,0px)) 16px 8px;min-height:56px;box-sizing:border-box;
     display:flex;align-items:center;gap:12px;border-bottom:1px solid #e8ebee}
+  .evtop .pvttl{bottom:8px;top:auto;height:40px;display:flex;align-items:center;justify-content:center}
   .fullov.on{display:flex}
   .auth-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;background:linear-gradient(160deg,#14171a,#24282c);color:#fff;position:relative;overflow:hidden}
   .auth-hero .court{position:absolute;inset:0;opacity:.08}
@@ -1209,7 +1239,8 @@
   .ci2{flex:1;min-width:0}.cn2{font-size:15px;font-weight:400}.cl2{font-size:13px;color:var(--gray);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .unread{background:var(--coral);color:#fff;font-size:13px;white-space:nowrap;font-weight:700;border-radius:10px;padding:2px 8px}
   .chead{display:flex;align-items:center;gap:10px;padding:4px 0 14px;border-bottom:1px solid var(--line);margin-bottom:14px}
-  .chead .bk{font-size:24px;font-weight:700;cursor:pointer;width:26px;color:var(--ink)}
+  .chead .bk{width:40px;height:40px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;
+    align-items:center;justify-content:center;font-size:20px;font-weight:700;cursor:pointer;color:var(--ink);flex:none;padding-bottom:2px}
   .chead .ti{font-size:20px;font-weight:700}.chead .su{font-size:14px;color:var(--gray);font-weight:400}
   .msgs{display:flex;flex-direction:column;gap:9px;padding-bottom:6px}
   .msg{width:auto;max-width:76%;padding:10px 13px;border-radius:15px;font-size:15px;
@@ -2041,6 +2072,8 @@
   .lmk.rv.pb .ltag{ top:21px } .lmk.me.pb .ltag{ top:28px }
   /* 바탕 지도는 조금 흐리게 — 그 위의 코트 색이 먼저 읽히게 */
   .landmap img:not(.lct):not(.lcrown){ filter:saturate(.6) brightness(1.03) }
+  /* iOS 앱 지도 창(kmap.html) — 지도 칸을 꽉 채운다 */
+  .landmap iframe.kmapfr{ position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#eef1f4 }
   .lkey2{ display:flex;flex-wrap:wrap;gap:4px 16px }
   .lkey2 span{ display:inline-flex;align-items:center;gap:7px;margin:0;font-weight:600 }
   .lkey2 .lct{ position:relative;left:0;top:0;width:18px;height:20px;flex:none;margin:-2px -1px -2px 0;
@@ -5733,32 +5766,30 @@
   .hsskel i.b{ width:62%;height:22px;margin-top:13px }
   .hsskel i.c{ width:100%;height:44px;border-radius:13px;margin-top:16px }
   @keyframes hsk{ 0%,100%{opacity:1} 50%{opacity:.55} }
-  .hstart{ border:1px solid var(--line);border-radius:20px;padding:16px 16px 13px;background:#fff;
-    box-shadow:0 1px 2px rgba(23,28,37,.04);margin-top:4px }
-  .hstart .hd{ display:flex;align-items:baseline;gap:8px }
-  .hstart .hd b{ font-size:16px;font-weight:700;letter-spacing:-.035em }
-  .hstart .hd span{ margin-left:auto;font-size:14px;font-weight:700;color:var(--lgray);
-    font-variant-numeric:tabular-nums }
-  .hstart .rail{ display:flex;gap:3px;margin:12px 0 4px }
-  .hstart .rail i{ flex:1;height:6px;border-radius:3px;background:var(--felt-d) }
-  .hstart .rail i.on{ background:var(--coral) }
-  .hstart .hsrow{ display:flex;align-items:flex-start;gap:11px;padding:11px 0;
-    border-top:1px solid #eff1f3 }
-  .hstart .hsrow:first-of-type{ border-top:0 }
-  .hstart .hsrow .n{ flex:none;width:22px;height:22px;border-radius:50%;background:var(--felt);
-    color:var(--gray);font-size:13px;font-weight:700;display:flex;align-items:center;
-    justify-content:center;margin-top:1px }
-  .hstart .hsrow.done .n{ background:#e4f8f1;color:#03a273 }
-  .hstart .hsrow.now .n{ background:var(--coral);color:#fff }
-  .hstart .hsrow .c{ flex:1;min-width:0 }
-  .hstart .hsrow .c b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em }
-  .hstart .hsrow.done .c b{ color:var(--lgray);text-decoration:line-through;
-    text-decoration-color:#cad0d6 }
-  .hstart .hsrow .c span{ display:block;font-size:14px;color:var(--gray);font-weight:400;
-    margin-top:3px;line-height:1.55 }
-  .hstart .hsrow .go{ flex:none;font-size:14px;font-weight:700;color:#fff;background:var(--coral);
-    border-radius:10px;padding:8px 12px;align-self:center;cursor:pointer }
-  .hstart .hsrow.done .go{ background:none;color:#03a273;padding:8px 2px }
+  /* ── 홈 · 시작하기 (클럽이 없는 사람) ──
+     위에 세 단계를 동그라미 · 선으로 잇고(어디까지 왔나), 아래에 지금 할 일 하나와 버튼 하나.
+     예전에는 버튼이 오른쪽에 붙어 설명이 두 줄로 눌렸고, 끝낸 단계에 초록 <완료> 글자가 한 번 더 붙었다. */
+  .hstart{ border:1px solid var(--line);border-radius:20px;padding:18px 18px 16px;background:#fff;
+    box-shadow:0 1px 2px rgba(23,28,37,.04),0 6px 18px rgba(23,28,37,.05);margin-top:4px }
+  .hstart .hst-trk{ display:flex;align-items:flex-start;margin:2px 4px 18px }
+  .hstart .hst-nd{ display:flex;flex-direction:column;align-items:center;gap:7px;width:64px;flex:none }
+  .hstart .hst-nd i{ width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-style:normal;font-size:13px;font-weight:700;color:#a3abb5;background:#fff;box-shadow:inset 0 0 0 2px #dfe3e8 }
+  .hstart .hst-nd.ok i{ background:var(--coral);box-shadow:none }
+  .hstart .hst-nd.cur i{ color:var(--coral);box-shadow:inset 0 0 0 2px var(--coral) }
+  .hstart .hst-nd span{ font-size:12.5px;font-weight:600;color:#a3abb5;white-space:nowrap }
+  .hstart .hst-nd.ok span{ color:var(--gray) }
+  .hstart .hst-nd.cur span{ color:var(--ink);font-weight:700 }
+  .hstart .hst-ln{ flex:1;height:2px;border-radius:1px;background:#e6e9ed;margin-top:12px }
+  .hstart .hst-ln.ok{ background:var(--coral) }
+  .hstart .hst-box{ background:#f7f8fa;border-radius:16px;padding:16px 16px 15px }
+  .hstart .hst-k{ display:block;font-size:12.5px;font-weight:700;color:var(--gray) }
+  .hstart .hst-t{ display:block;font-size:19px;font-weight:700;letter-spacing:-.045em;color:var(--ink);
+    line-height:1.3;margin-top:5px }
+  .hstart .hst-d{ display:block;font-size:14px;color:var(--gray);line-height:1.6;margin-top:5px;word-break:keep-all }
+  .hstart .hst-go{ display:block;width:100%;height:48px;margin-top:14px;border:0;border-radius:14px;
+    background:var(--coral);color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer }
+  .hstart .hst-go:active{ filter:brightness(.95) }
 
   /* 시즌 랭킹 머리와 같은 구조다 — 가운데 설명이 길면 제목과 링크가 눌려 갈라진다.
      제목과 링크는 줄을 안 바꾸고, 밀리는 쪽은 가운데 설명이어야 한다. */
@@ -5922,6 +5953,37 @@
     background:none;font-family:inherit;cursor:pointer }
   .mycadd b{ flex:none;width:24px;height:24px;border-radius:9px;background:var(--felt);
     display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--gray) }
+  /* 홈 세 칸 — 다음 모임 카드 안 참석 버튼 · 내 클럽 카드의 띠 · 다른 클럽 한 줄 */
+  .hstoday{ position:relative }
+  .hstoday .more{ position:absolute;right:17px;top:21px;font-size:13px;font-weight:700;color:var(--gray) }
+  .hsrsvp{ display:flex;gap:6px;margin-top:14px }
+  .hsrsvp button{ flex:1;min-width:0;height:44px;border:0;border-radius:13px;font-family:inherit;font-size:15px;
+    font-weight:700;background:var(--felt);color:#4b5563;cursor:pointer }
+  .hsrsvp button.on.going{ background:#e9f7ef;color:#1f8f4e }
+  .hsrsvp button.on.absent, .hsrsvp button.on.undecided{ background:#e3e7ec;color:var(--ink) }
+  .myc.hm{ margin:12px 0 0 }
+  .myc .c .s b{ font-weight:700;color:var(--ink) }
+  .myc .live.soft, .myc .live.amber, .myc .live.blue{ background:#f3f5f7 }
+  .myc .live.soft i, .myc .live.amber i, .myc .live.blue i{ background:#9aa3ae }
+  .myc .live.soft b, .myc .live.amber b, .myc .live.blue b{ color:var(--ink) }
+  .myc .live.soft span, .myc .live.amber span, .myc .live.blue span{ color:var(--gray) }
+  .myc .live.soft .v, .myc .live.amber .v, .myc .live.blue .v{ color:var(--ink) }
+  .myc .live b, .myc .live span:not(.v){ white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0 }
+  .myc .live b{ flex:none;max-width:70% }
+  .myc .live span:not(.v){ flex:1 }
+  .myc .live .v{ flex:none }
+  .myc .oth{ display:flex;align-items:center;gap:11px;padding:12px 16px;border-top:1px solid var(--line);
+    background:#fbfbfa;cursor:pointer;min-width:0 }
+  /* 클럽 관리 — 아이콘 없이 글자만. 위 바로가기(오늘 대진 · 시즌 랭킹 · 일정)와 같은 굵기 · 색 */
+  .myc .oth.swc{ gap:10px;padding:13px 16px }
+  .myc .oth.swc b{ font-size:14px;color:var(--gray) }
+  .myc .oth .cnt{ margin-left:auto;font-size:14px;font-weight:600;color:var(--lgray) }
+  .myc .oth .cnt + .arr{ margin-left:6px }
+  .myc .oth b{ font-size:15px;font-weight:700;letter-spacing:-.03em;color:var(--ink);white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;min-width:0 }
+  .myc .oth .s{ font-size:13px;color:var(--lgray);white-space:nowrap }
+  .myc .oth .arr{ margin-left:auto;flex:none;color:#d3d8de;font-size:20px }
+  .myc .oth:active{ background:var(--felt) }
   .hsoon{ display:flex;align-items:center;gap:12px;border:1px dashed #d2d7dc;border-radius:18px;
     padding:15px;background:#fbfbfc }
   .hsoon .ic{ flex:none;width:38px;height:38px;border-radius:13px;background:var(--felt);
@@ -7255,8 +7317,8 @@
       radial-gradient(60% 300px at 6% 40px,rgba(60,140,255,.30),transparent 70%),
       radial-gradient(80% 600px at 100% 100%,rgba(150,50,240,.28),transparent 70%),
       linear-gradient(172deg,#0b1d6e 0%,#141a6b 30%,#1f1366 68%,#2a0f5c 100%) }
-  .ndb .ndcourt{ position:absolute;left:-60px;top:10px;width:520px;height:1100px;transform:rotate(-14deg);opacity:.09;pointer-events:none }
-  .ndb > *:not(.ndcourt){ position:relative }
+  /* 코트 줄은 깔지 않는다 — 판 위 글자 · 컵과 겹쳐 지저분했다 */
+  .ndb > *{ position:relative }
   .ndhero{ text-align:center;padding:18px 0 2px }
   .ndhero img{ height:70px;width:auto;display:block;margin:0 auto }
   .ndhero small{ display:block;margin-top:9px;font-size:11px;font-weight:800;letter-spacing:.32em;padding-left:.32em;color:var(--nd-hd) }
@@ -7580,6 +7642,80 @@ html.is-native .app{margin:0 auto!important;height:100vh!important;height:100dvh
 /* 기기 글자 크기 설정이 커도 줄이 잘게 끊기지 않게 — 안드로이드는 네이티브에서 100% 로 고정한다.
    웹뷰가 그 설정을 무시하는 경우를 위해 브라우저 쪽 자동 확대도 끈다. */
 html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+
+/* ── 앱처럼 움직이기 · 확인 창 ── */
+html.navfx .screen{animation:none}
+html.navfx,html.navfx body{overscroll-behavior-x:none}
+html.navfx .fullov.on:not(#auth){animation:nfxIn .34s cubic-bezier(.22,.9,.26,1) both}
+html.navfx #clubfilter.on,html.navfx #regionpick.on,html.navfx #eventpick.on{animation:nfxUp .34s cubic-bezier(.22,.9,.26,1) both}
+@keyframes nfxIn{from{transform:translateX(100%);box-shadow:-12px 0 30px rgba(20,25,35,.14)}to{transform:none;box-shadow:-12px 0 30px rgba(20,25,35,0)}}
+@keyframes nfxUp{from{transform:translateY(100%)}to{transform:none}}
+.nfx-still,.nfx-still *{animation:none!important;transition:none!important}
+.nfx-snap{pointer-events:none}
+.nfx-snap .nfx-dim{position:absolute;inset:0;background:rgba(14,18,26,.12);opacity:0;pointer-events:none}
+.mconf{position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;padding:0 36px;
+  background:rgba(14,18,26,.42);animation:mcFade .18s ease both}
+.mconf.out{animation:mcOut .16s ease both}
+.mconf .mcbox{width:100%;max-width:300px;background:#fff;border-radius:22px;padding:24px 18px 16px;text-align:center;
+  box-shadow:0 22px 50px rgba(10,14,22,.28);animation:mcPop .24s cubic-bezier(.2,.9,.3,1.15) both}
+.mconf .mct{font-size:17px;font-weight:800;color:var(--ink);line-height:1.45;letter-spacing:-.02em;word-break:keep-all}
+.mconf .mcs{margin-top:8px;font-size:14px;color:var(--gray);line-height:1.55;white-space:pre-line;word-break:keep-all}
+.mconf .mcb{display:flex;gap:8px;margin-top:20px}
+.mconf .mcb button{flex:1;height:48px;border:0;border-radius:14px;font:inherit;font-size:15px;font-weight:800;letter-spacing:-.01em;
+  transition:transform .08s ease}
+.mconf .mcb button:active{transform:scale(.96)}
+.mconf .no{background:#f0f2f5;color:#4b5563}
+.mconf .ok{background:var(--coral);color:#fff}
+.mconf .ok.dg{background:#e5484d}
+@keyframes mcFade{from{opacity:0}to{opacity:1}}
+@keyframes mcOut{to{opacity:0}}
+@keyframes mcPop{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}
+
+/* ── 맨 위 줄 · 클럽 바꾸기 · 당겨서 새로고침 · 글자 선택 ── */
+html.tb .appbar{position:relative}
+html.tb .tb-dup{display:none!important}
+.tbt{margin-right:auto;min-width:0;font-size:28px;font-weight:800;letter-spacing:-.05em;color:var(--ink);line-height:1.15;
+  padding-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbt.club{display:flex;align-items:center;gap:10px;font-size:23px;cursor:pointer;padding-left:0}
+.tbt.club b{font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tbt.club svg{flex:none;margin-left:-3px}
+.tbt.club .clogo{width:34px!important;height:34px!important;font-size:14px!important;flex:none}
+.tbt.venue{gap:6px;cursor:default}.tbt.venue[role=button]{cursor:pointer}
+.tbav{width:34px;height:34px;flex:none;clip-path:var(--squircle);display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:15px;font-weight:800;background:linear-gradient(150deg,#00b884,#03a273)}
+.tbav.big{width:42px;height:42px;font-size:17px}
+.tbmid{position:absolute;left:112px;right:112px;bottom:4px;height:42px;display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:700;letter-spacing:-.03em;color:var(--ink);pointer-events:none;white-space:nowrap;overflow:hidden}
+.cmeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.cmeta>span{font-size:13px;padding:7px 12px;border-radius:999px;background:#f1f3f5;color:#4b5563;font-weight:600;letter-spacing:-.02em;cursor:pointer}
+.cmeta>span b{color:var(--ink);font-weight:800}
+.csw{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.csw-row{display:flex;align-items:center;gap:12px;padding:11px 8px;border-radius:14px;cursor:pointer}
+.csw-row.on{background:var(--coral-s,#fff0e8)}
+.csw-row .clogo{width:42px!important;height:42px!important;flex:none}
+.csw-row .c{flex:1;min-width:0}.csw-row .c b{display:block;font-size:17px;font-weight:800;letter-spacing:-.03em}
+.csw-row .c span{font-size:13px;color:var(--gray)}
+.csw-row .ck{font-style:normal;color:var(--coral);font-size:19px;font-weight:900}
+.csw-ln{height:1px;background:var(--line);margin:10px 4px}
+.csw-act{display:flex;align-items:center;gap:12px;padding:12px 8px;font-size:16px;font-weight:700;color:var(--ink);cursor:pointer;border-radius:14px}
+.csw-act i{width:42px;height:42px;border-radius:13px;background:#f1f3f5;display:flex;align-items:center;justify-content:center;
+  font-style:normal;font-size:20px;color:#4b5563}
+.csw-act em{margin-left:auto;font-style:normal;color:var(--lgray);font-size:18px}
+.csw-row:active,.csw-act:active{background:#f4f5f7}
+.ptr{height:46px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.ptr i{width:24px;height:24px;border-radius:50%;border:2.5px solid #d6dbe1;border-top-color:var(--coral);transition:border-color .15s}
+.ptr.ready i{border-color:var(--coral);border-top-color:transparent}
+.ptr.spin i{animation:ptrspin .7s linear infinite}
+@keyframes ptrspin{to{transform:rotate(360deg)}}
+/* 앱에서는 카드 · 버튼 글자가 꾹 누르면 복사용으로 잡히지 않게. 글 본문 · 대화 · 입력칸은 그대로 고를 수 있다 */
+html.is-native .app{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.is-native .app input,html.is-native .app textarea,html.is-native .app [contenteditable],
+html.is-native .app .tkbody,html.is-native .app .msg,html.is-native .app .msgc,html.is-native .app .npbody2,
+html.is-native .app .sel{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+@media (prefers-reduced-motion: reduce){
+  html.navfx .fullov.on:not(#auth),html.navfx #clubfilter.on,html.navfx #regionpick.on,html.navfx #eventpick.on,
+  .mconf,.mconf .mcbox{animation:none}
+}
 </style>
 </head>
 <body>
@@ -7666,7 +7802,10 @@ html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   <div class="appbar">
     <div id="backBtn" onclick="goBack()" role="button" aria-label="뒤로" class="backb" style="display:none">‹</div>
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
+    <div class="tbt" id="tbTitle" style="display:none"></div>
+    <div class="tbmid" id="tbMid" style="display:none"></div>
     <div style="display:flex;align-items:center;gap:9px">
+      <div class="bell" id="tbGear" role="button" tabindex="0" aria-label="운영진 도구" onclick="openClubOps()" style="display:none"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
       <div class="bell" id="chatBtn" role="button" tabindex="0" aria-label="대화" onclick="goChat()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg><span id="chatCnt" class="tbadge" style="display:none">0</span></div>
       <div class="bell" id="notifBtn" role="button" tabindex="0" aria-label="알림" onclick="toggleNotif(event)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
     </div>
@@ -7686,11 +7825,11 @@ html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
     <section class="screen" id="s-me"></section>
   </div>
   <div class="tabbar">
-    <div class="tab on" data-s="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
-    <div class="tab" data-s="match" onclick="go('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>오픈매치</div>
-    <div class="tab" data-s="talk" onclick="go('talk')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>라운지<em class="tdot" id="talkDot"></em></div>
-    <div class="tab" data-s="club" onclick="navClub()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
-    <div class="tab" data-s="me" onclick="go('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
+    <div class="tab on" data-s="home" onclick="tabGo('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>홈</div>
+    <div class="tab" data-s="match" onclick="tabGo('match')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/><path d="M3 12h18"/></svg>오픈매치</div>
+    <div class="tab" data-s="talk" onclick="tabGo('talk')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>라운지<em class="tdot" id="talkDot"></em></div>
+    <div class="tab" data-s="club" onclick="tabGo('club')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>클럽</div>
+    <div class="tab" data-s="me" onclick="tabGo('me')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>내정보</div>
   </div>
   <div id="rtmore" style="display:none;position:fixed;inset:0;z-index:160"></div>
   <div class="fullov" id="mystats"></div>
@@ -7699,7 +7838,7 @@ html.is-native{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   <div class="fullov" id="eventpick"></div>
   <div class="fullov" id="clubfilter"></div>
   <div class="fullov" id="regionpick"></div>
-  <div class="fullov" id="clubops"><div class="opshd"><button class="pvback" onclick="closeClubOps()" aria-label="뒤로">‹</button><span class="pvttl">운영진 도구</span><span class="opsclub" id="opsClub"></span></div><div class="opsbody" id="opsBody"></div></div>
+  <div class="fullov" id="clubops"><div class="opshd"><button class="pvback" onclick="closeClubOps()" aria-label="뒤로">‹</button><span class="pvttl">운영진 도구<small id="opsClub"></small></span></div><div class="opsbody" id="opsBody"></div></div>
   <div class="fullov" id="clubsall"><div class="pvhd" id="caHd"></div><div class="pvbody" id="caBody"></div></div>
   <div class="fullov" id="clubpv"><div class="pvhd" id="pvhd"></div><div class="pvbody" id="pvbody"></div><div class="pvfoot" id="pvfoot"></div></div>
   <div class="fullov on" id="auth"><div class="auth2">
@@ -7832,7 +7971,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1002n';   // 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1003j';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10046,7 +10185,7 @@ function openMemberEdit(uid){
   const jdTxt = jd ? `${jd.getFullYear()}.${String(jd.getMonth()+1).padStart(2,'0')}.${String(jd.getDate()).padStart(2,'0')}` : '';
   let career=''; try{ const ym=JSON.parse(m.sport_started||'{}')[state.sport]; career=careerTextFrom(ym)||''; }catch(e){}
   /* 머리 — 누구인지 먼저. 예전엔 이름이 시트 제목에만 있어 운영진 화면 안에서는 안 보였다 */
-  let h=`<div class="sh-top"><h3>회원 정보</h3><div class="cl" role="button" tabindex="0" onclick="openMembers()">‹</div></div>
+  let h=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openMembers()">‹</button><h3>회원 정보</h3></div>
     <div class="mbpro"><span class="av" style="background:${role==='owner'?'#e8a33c':role==='officer'?'#181a1c':m.resting?'#bfc6cd':'#98a3af'}">${esc(String(m.name||'?')[0])}</span>
       <div><b>${esc(m.name)}</b><span>${[ROLE_LABEL[role]+(m.title?` · ${esc(m.title)}`:''), jdTxt?`가입 ${jdTxt}`:'', career?`구력 ${career}`:''].filter(Boolean).join(' · ')}</span>
       ${m.phone?`<span>${esc(m.phone)}</span>`:''}</div></div>`;
@@ -10153,7 +10292,7 @@ function rsSpan(n){ rsKeep(); RS.span=n;
 function drawRestSheet(){
   const chip=(n,t)=>`<span class="tchip ${RS.span===n?'on':''}" onclick="rsSpan(${n})">${t}</span>`;
   document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${esc(RS.name)} · ${RS.edit?'휴회 기간 고치기':'휴회 기록'}</h3><div class="cl" role="button" tabindex="0" onclick="openMemberEdit(${RS.uid})">‹</div></div>
+    <div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openMemberEdit(${RS.uid})">‹</button><h3>${esc(RS.name)} · ${RS.edit?'휴회 기간 고치기':'휴회 기록'}</h3></div>
     <div class="fld"><label>시작일 <span style="color:var(--lgray);font-weight:400">· 지난 날짜도 돼요</span></label>
       <input id="rsFrom" type="date" value="${esc(RS.from)}" onchange="rsKeep();if(RS.span)rsSpan(RS.span)"></div>
     <div class="fld"><label>복귀 예정일</label>
@@ -10185,7 +10324,7 @@ function exKeep(){ const g=id=>document.getElementById(id);
 function drawExitSheet(){
   const m=MB_CACHE.find(x=>x.user_id===EXS.uid)||{};
   document.getElementById('sheet').innerHTML=`
-    <div class="sh-top"><h3>${esc(EXS.name)} · 탈퇴 처리</h3><div class="cl" role="button" tabindex="0" onclick="openMemberEdit(${EXS.uid})">‹</div></div>
+    <div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openMemberEdit(${EXS.uid})">‹</button><h3>${esc(EXS.name)} · 탈퇴 처리</h3></div>
     <div class="fld"><label>탈퇴일 <span style="color:var(--lgray);font-weight:400">· 실제로 나간 날</span></label>
       <input id="exDate" type="date" value="${esc(EXS.date)}" max="${kstYmd()}"></div>
     <div class="fld"><label>구분</label>
@@ -10247,7 +10386,7 @@ async function submitRestApply(){
 /* 임원: 휴회·복회 신청 처리 */
 async function openRestRequests(){
   let rs=[]; try{ rs=await api(`/clubs/${clubId()}/rest-requests`); }catch(e){ toast('불러오지 못했어요'); return; }
-  let h=`<div class="sh-top"><h3>휴회·복회 신청</h3><div class="cl" role="button" tabindex="0" onclick="openMembers()">‹</div></div>`;
+  let h=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openMembers()">‹</button><h3>휴회·복회 신청</h3></div>`;
   if(!rs.length) h+=`<div class="empty" style="padding:36px 20px"><div class="et">대기 중인 신청이 없어요</div></div>`;
   rs.forEach(r=>{
     h+=`<div class="card" style="padding:14px 15px">
@@ -11631,7 +11770,7 @@ function openHistMeet(bi){
   const ME=meName();
   const gs=HIST_GAMES.filter(g=>g.bi===bi);
   const b=HIST_ROWS[bi]||{};
-  let h=`<div class="sh-top"><h3>${esc(b.date||'모임')} 경기</h3><div class="cl" role="button" tabindex="0" onclick="openHistory()">‹</div></div>
+  let h=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openHistory()">‹</button><h3>${esc(b.date||'모임')} 경기</h3></div>
     <div class="sd">${esc(HFMT[b.fmt]||b.fmt||'대진')} · ${gs.length}경기 · 선수 이름을 탭하면 전적이 나와요</div>`;
   gs.forEach(g=>{
     const aWin=g.a>g.b, margin=Math.abs(g.a-g.b);
@@ -11677,7 +11816,7 @@ function openPlayerStats(ni){
   const revenge=Object.entries(opps).map(([n,r])=>({n,...r})).filter(r=>r.l>r.w)
     .sort((a,b)=>(b.l-b.w)-(a.l-a.w)).slice(0,3);
   const bar=(w,l,c)=>{ const t=w+l||1; return `<div style="height:5px;border-radius:3px;background:#e8eaed;overflow:hidden;margin-top:5px"><div style="width:${Math.round(w/t*100)}%;height:100%;background:${c}"></div></div>`; };
-  let h=`<div class="sh-top"><h3>${esc(P)}${isMe?' (나)':''}</h3><div class="cl" role="button" tabindex="0" onclick="openHistory()">‹</div></div>
+  let h=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openHistory()">‹</button><h3>${esc(P)}${isMe?' (나)':''}</h3></div>
     <div class="sd">${esc(state.activeClub)} · 발행 대진 기준 전적</div>
     <div class="card" style="padding:14px;display:flex;justify-content:space-around;text-align:center">
       <div><div style="font-size:20px;font-weight:700;color:var(--coral-d)">${W}승 ${L}패</div><div style="font-size:12px;color:var(--gray);font-weight:400">클럽 전적</div></div>
@@ -12571,7 +12710,7 @@ function drawWithdraw(){
   const ok=(p.amount||0)>0 && (!(p.bankPart>0) || !!bank);
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top">
-      <span onclick="openWallet()" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="openWallet()">‹</button>
       <h3>통장으로 출금</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">등록한 계좌로 보내드려요</div>
     <div class="fld"><label>출금 금액</label>
@@ -14614,7 +14753,7 @@ function previewMyCard(){
     played: su.played!=null ? su.played : (state.played||0),
   });
   const h=`<div class="sh-top">
-      <span onclick="openEditProfile()" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="openEditProfile()">‹</button>
       <h3>내 카드 미리보기</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">개인리그에서 상대에게 <b>이렇게 보여요</b> · 지금 입력 중인 값 기준이에요 (아직 저장 전).</div>
     ${leaguePlayerCard(u)}
@@ -15071,11 +15210,11 @@ const INTRO_TPL=[
   {k:'다', n:'실력을 겨루는 클럽', tag:'중급 이상',
    b:'게임 위주로 운영합니다. 랠리가 이어지는 분이면 좋겠습니다.\n월례대회로 조를 나누고 승강이 있습니다.\n\n구력 2년 이상을 권해드려요.'},
 ];
-function introUseTpl(i){
+async function introUseTpl(i){
   const t=INTRO_TPL[i]; if(!t) return;
   const ta=document.getElementById('introTa'); if(!ta) return;
   /* 이미 쓴 글이 있으면 확인한다 — 눌렀다가 날리면 다시 쓸 마음이 안 든다 */
-  if(ta.value.trim() && !confirm('지금 쓴 글을 지우고 이 글로 바꿀까요?')) return;
+  if(ta.value.trim() && !await askConfirm('지금 쓴 글을 지우고 이 글로 바꿀까요?')) return;
   ta.value=t.b; introCount(); ta.focus();
   toast('넣었어요 · 클럽에 맞게 고쳐주세요');
 }
@@ -15401,7 +15540,6 @@ function drawClubPreview(){
   document.getElementById('pvhd').innerHTML = `
     <div class="pvbar">
       <button class="pvback" onclick="closeClubPreview()" aria-label="뒤로">‹</button>
-      <span class="pvttl">${esc(n)}</span>
     </div>
     <div class="pvhero">
       <button class="pvav${pvCanEdit()?' ed':''}" ${pvCanEdit()?`onclick="openClubLogoEdit('${esc(n)}')"`:''}
@@ -15495,7 +15633,7 @@ function pvGuestPick(){
 }
 async function pvGuestApply(eid, title, fee){
   if(needLogin('게스트 신청은 로그인이 필요해요')) return;
-  if(!confirm(`${title}에 게스트로 신청할까요?${fee?`\n게스트비 ${Number(fee).toLocaleString()}원은 현장에서 내요.`:''}\n운영진이 채팅으로 안내해 드려요.`)) return;
+  if(!await askConfirm(`${title}에 게스트로 신청할까요?${fee?`\n게스트비 ${Number(fee).toLocaleString()}원은 현장에서 내요.`:''}\n운영진이 채팅으로 안내해 드려요.`)) return;
   try{ await api(`/events/${eid}/guest-apply`,{method:'POST',body:'{}'});
     try{ track('preview:guest'); }catch(e){}
     closeOv(); toast('신청했어요 · 운영진이 곧 연락드려요');
@@ -17701,10 +17839,6 @@ function cupDayDraw(){
     return;
   }
   el.innerHTML=`<div class="ndb">
-      <svg class="ndcourt" viewBox="0 0 520 1100" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="3">
-        <rect x="60" y="40" width="400" height="1020"/><line x1="110" y1="40" x2="110" y2="1060"/><line x1="410" y1="40" x2="410" y2="1060"/>
-        <line x1="110" y1="310" x2="410" y2="310"/><line x1="110" y1="790" x2="410" y2="790"/><line x1="260" y1="310" x2="260" y2="790"/>
-        <line x1="30" y1="550" x2="490" y2="550" stroke-width="5"/></g></svg>
       <div class="ndhero"><img src="${IMG('cup_league.b6c070be.webp')}" alt="" draggable="false">
         <small>MATSU LEAGUE</small><b>${esc(cupT.title||'맞수 리그')}</b>${meta?`<span>${meta}</span>`:''}</div>
       <div class="xclk${clk.cls}"><div class="ndclt">${parts.top}</div><div class="ndclr">${parts.rest}</div></div>
@@ -17828,7 +17962,7 @@ async function cupSlotStart(sl){
 }
 async function cupSlotStop(sl){
   const D=CUPD; if(!D) return;
-  if(!confirm('이 칸부터 뒤 칸까지 예약을 모두 풉니다.\n잘못 눌렀을 때 쓰세요 · 점수는 그대로 남아요.')) return;
+  if(!await askConfirm('이 칸부터 뒤 칸까지 예약을 모두 풉니다.\n잘못 눌렀을 때 쓰세요 · 점수는 그대로 남아요.')) return;
   try{ await api(`/brackets/${D.cup.id}/slot/${sl}/reset`,{method:'POST',body:'{}'}); }
   catch(e){ return toast(apiWhy(e,'되돌리지 못했어요')); }
   cupDay();
@@ -17973,7 +18107,7 @@ function cupScore(key,tieId,no){
   CUPSC={key,tieId,no,a:(s2.a!=null?s2.a:0),b:(s2.b!=null?s2.b:0)};
   cupScoreDraw();
 }
-function cupScStep(side,d){ if(!CUPSC) return;
+function cupScStep(side,d){ if(!CUPSC) return; buzz(6);
   CUPSC[side]=Math.max(0,Math.min(9,(CUPSC[side]||0)+d)); cupScoreDraw(); }
 function cupScQuick(a,b){ if(!CUPSC) return; CUPSC.a=a; CUPSC.b=b; cupScoreDraw(); }
 function cupScoreDraw(){
@@ -18027,6 +18161,7 @@ async function cupCardLoad(cid){
   catch(e){ d={cup:null}; }
   CUPC={cid, ...d};
   if(state.view==='club') renderClub();
+  else if(state.view==='home') renderHome();      // 홈 내 클럽 카드의 대회 띠
   /* 도는 중이면 20초마다 다시 — 남은 시간과 스코어가 굳어 있으면 안 본다 */
   clearTimeout(window._cupCardT);
   if(d && d.cup && d.cup.live && d.cup.live.on)
@@ -18412,7 +18547,7 @@ async function prVote(pick){
 function prBestIdx(){ const p=PRX.data; return Math.max(0,p.best); }
 async function prSend(){
   const p=PRX.data, i=prBestIdx();
-  if(!confirm(`${prDateTxt(p.dates[i])}로 ${p.target_name}에 도전장을 보낼까요?\n구장 · 한마디가 채워진 채로 보내져요.`)) return;
+  if(!await askConfirm(`${prDateTxt(p.dates[i])}로 ${p.target_name}에 도전장을 보낼까요?\n구장 · 한마디가 채워진 채로 보내져요.`)) return;
   try{ const r=await api(`/proposals/${p.id}/send`,{method:'POST',body:JSON.stringify({date_idx:i})});
     chInvalidate(clubId()); delete PRL[clubId()]; toast('도전장을 보냈어요'); openChDetail(r.challenge_id);
   }catch(e){ toast(xcErr(e,'보내지 못했어요')); }
@@ -18434,7 +18569,7 @@ function prCopy(token){ const url=prInviteUrl(token);
   try{ navigator.clipboard.writeText(url); toast('초대장 링크를 복사했어요'); }catch(e){ toast(url); } }
 async function prOpen(){
   const p=PRX.data;
-  if(!confirm(`${prDateTxt(p.dates[prBestIdx()])}로 상대 모집을 올릴까요?`)) return;
+  if(!await askConfirm(`${prDateTxt(p.dates[prBestIdx()])}로 상대 모집을 올릴까요?`)) return;
   try{ const r=await api(`/proposals/${p.id}/open`,{method:'POST',body:JSON.stringify({date_idx:prBestIdx()})});
     delete PRL[clubId()]; XC_LIST=null; toast('상대 모집을 올렸어요 · 초대장을 보내 상대를 찾아보세요');
     openXc(r.event_id); setTimeout(()=>{ try{ xcShare(r.event_id); }catch(e){} }, 500);
@@ -18447,7 +18582,7 @@ async function prHold(){
   catch(e){ toast(xcErr(e,'처리하지 못했어요')); }
 }
 async function prCancel(){
-  if(!confirm('이 제안을 거둘까요?')) return;
+  if(!await askConfirm('이 제안을 거둘까요?')) return;
   try{ await api(`/proposals/${PRX.id}`,{method:'DELETE'}); delete PRL[clubId()]; toast('거뒀어요'); xcBack(); }
   catch(e){ toast(xcErr(e,'처리하지 못했어요')); }
 }
@@ -18640,7 +18775,7 @@ async function openRestDue(uid){
     document.getElementById('ov').classList.add('on'); return;
   }
   const opt=(t,d,act,cls)=>`<button class="rdopt ${cls||''}" onclick="${act}"><span class="c"><b>${t}</b><span>${d}</span></span><span class="ar">›</span></button>`;
-  sheet.innerHTML=`<div class="sh-top"><h3>${esc(m.name)} 님 · 복귀일 지남</h3><div class="cl" role="button" tabindex="0" onclick="${L.length>1?'openRestDue()':'closeOv()'}">${L.length>1?'‹':'×'}</div></div>
+  sheet.innerHTML=`<div class="sh-top">${L.length>1?'<button class="shb" aria-label="뒤로" onclick="openRestDue()">‹</button>':''}<h3>${esc(m.name)} 님 · 복귀일 지남</h3>${L.length>1?'':'<div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div>'}</div>
     <div class="sd">${rdMD(m.rest_from)}부터 휴회 · ${rdMD(m.rest_until)} 복귀 예정이었어요${m.rest_reason?` · ${esc(m.rest_reason)}`:''}</div>
     ${opt('지금 복회','오늘부터 다시 활동 · 다음 대진부터 들어가요',`rdBack(${m.user_id})`,'co')}
     ${opt('기간 늘리기','1개월 · 2개월 · 3개월',`rdExtend(${m.user_id})`)}
@@ -18655,7 +18790,7 @@ async function rdBack(uid){
 }
 function rdExtend(uid){
   const m=((RDUE[clubId()]||{}).data||[]).find(x=>x.user_id===uid); if(!m) return;
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${esc(m.name)} 님 · 기간 늘리기</h3><div class="cl" role="button" tabindex="0" onclick="openRestDue(${uid})">‹</div></div>
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openRestDue(${uid})">‹</button><h3>${esc(m.name)} 님 · 기간 늘리기</h3></div>
     <div class="sd">오늘부터 얼마나 더 쉬나요?</div>
     ${[1,2,3].map(n=>`<button class="rdopt" onclick="rdExtendGo(${uid},${n})"><span class="c"><b>${n}개월 더</b><span>${(()=>{ const d=new Date(); d.setMonth(d.getMonth()+n); return `${d.getMonth()+1}/${d.getDate()}까지`; })()}</span></span><span class="ar">›</span></button>`).join('')}`;
 }
@@ -18737,7 +18872,7 @@ async function mbHistFill(uid){
 let MB_NOTES={};
 function openMemoSheet(uid){
   const m=(MB_CACHE||[]).find(x=>x.user_id===uid)||{}; const N=MB_NOTES[uid]||[];
-  document.getElementById('sheet').innerHTML=`<div class="sh-top"><h3>${esc(m.name||'')} · 운영진 메모</h3><div class="cl" role="button" tabindex="0" onclick="openMemberEdit(${uid})">‹</div></div>
+  document.getElementById('sheet').innerHTML=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="openMemberEdit(${uid})">‹</button><h3>${esc(m.name||'')} · 운영진 메모</h3></div>
     <div class="sd">회원 본인에게는 보이지 않아요. 인수인계할 때 남겨두세요.</div>
     <textarea id="mbMemo" class="xs-in chta" maxlength="300" placeholder="예) 11월 초 복귀 예정 · 복귀하면 B조로"></textarea>
     <button class="btn" style="margin-top:10px" onclick="saveMemo(${uid})">메모 저장</button>
@@ -18803,7 +18938,7 @@ async function ntPin(id,v){
   catch(e){ toast('처리하지 못했어요'); }
 }
 async function ntDel(id){
-  closeOv(); if(!confirm('이 공지를 지울까요?')) return;
+  closeOv(); if(!await askConfirm('이 공지를 지울까요?')) return;
   try{ await api(`/notices/${id}`,{method:'DELETE'}); CLUB_NOTICES=null; NT_I=0; toast('공지를 지웠어요'); renderClub(); }
   catch(e){ toast('지우지 못했어요'); }
 }
@@ -18980,7 +19115,7 @@ function nwToNotice(id){
   const p=(CLUB_FEED||[]).find(x=>x.id===id); if(!p) return;
   openClubPost({notice:1}); NP.title=p.title||''; NP.body=p.body||''; drawClubPost();
 }
-async function nwDel(id){ closeOv(); if(!confirm('이 글을 지울까요?')) return; await delClubPost(id); nwBack(); }
+async function nwDel(id){ closeOv(); if(await delClubPost(id)) nwBack(); }   // 묻는 것은 delClubPost 한 번만
 
 /* ── 홈 — 답 안 한 모임 · 모으는 중인 교류전 · 클럽 소식 ── */
 function cmUnansweredHTML(up, nx){
@@ -20390,7 +20525,11 @@ function openClubPage(n){
   try{ updBackBtn(); }catch(e){}
 }
 function closeClubPage(){
-  state.clubOpen=null; renderClub();
+  /* 홈에서 바로 들어왔으면 홈으로 돌아간다 — 앱은 들어온 길로 나간다 */
+  const from=state._clubFrom; state._clubFrom=null;
+  state.clubOpen=null;
+  if(from && from!=='club' && state.view==='club'){ go(from, true); return; }
+  renderClub();
   try{ updBackBtn(); }catch(e){}
 }
 /* 서버 모임(SRV_EVENTS)과 기기 저장 모임(AC().events)을 합쳐서 본다.
@@ -20783,6 +20922,8 @@ function clubTabHome(){
   if(LR) st.push([LR.rec||'미참석','지난 모임',`setClubSub('bracket')`,!LR.rec,'co']);
   else if(T&&(T.w+T.l+T.d)) st.push([`${T.w}승 ${T.l}패`,'교류전',`openXcAll('rec')`,false]);
   if(dRow) st.push([dRow.status==='paid'?'완납':'미납','회비',`openMyStatus()`,false,dRow.status==='paid'?'':'rd']);
+  /* 대회 카드는 클럽 첫 화면에 두지 않는다 — 홈 내 클럽 카드의 띠(모집 · 신청 · 진행 중)와
+     클럽 둘러보기 화면에 있다. 같은 카드를 세 곳에 두면 클럽 홈이 길어지기만 한다. */
   h+=`<div class="hast">${st.map(([v,k,a,mute,cls])=>`<button onclick="${a}"><b class="${mute?'mu':cls||''}">${v}</b><span>${k}</span></button>`).join('')}</div>`;
   /* 초대 배너 — 회원 초대와 이번 모임 게스트 초대를 한 자리에서. 초대 링크는 임원만 만들 수 있어 운영진에게만 보인다.
      복식은 넷이 있어야 굴러간다 — 빈자리를 채우는 쪽으로 말을 건다. 누르면 둘 중 하나를 고른다. */
@@ -20977,6 +21118,15 @@ function clubHeroTabs(){
     return (typeof CB2!=='undefined' && CB2 && CB2.date===ymd() && (CB2.games||[]).length)
       ? 'bracket' : ''; }catch(e){ return ''; } })();
   const cur=clubSub();
+  const tbHead = (typeof TB_ON!=='undefined' && TB_ON);
+  if(tbHead){
+    const H=hcMine();
+    return `<div class="cmeta"><span onclick="openClubInfoSheet()">${esc(d.region||c.r||'')} · 회원 <b>${memberCount()||d.members||c.m||1}</b>명 ›</span>${
+        H?`<span onclick="landVenue(${+H.venue_id})">홈코트 <b>${esc(H.name)}</b> ›</span>`:''}${clubGenderChip(c)}</div>
+    <div class="ctabs" id="ctabs">${tabs.map(([k,l])=>
+      `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}${
+        liveTab===k&&cur!==k?'<u></u>':''}</div>`).join('')}</div>`;
+  }
   return `<div class="chero">
       ${clubAvatar(n,52)||`<div class="cheroav">${esc(n.slice(0,1))}</div>`}
       <div style="flex:1;min-width:0;cursor:pointer" onclick="openClubInfoSheet()">
@@ -22304,7 +22454,7 @@ async function chProposeSend(){
 }
 async function chAccept(id){
   const x=CHX&&CHX.data;
-  if(x && !confirm(`${chDateOnly(x.when)} ${x.start}~${chEnd(x.start)}로 확정할까요?\n두 클럽에 교류전이 만들어지고 참석을 받기 시작해요.`)) return;
+  if(x && !await askConfirm(`${chDateOnly(x.when)} ${x.start}~${chEnd(x.start)}로 확정할까요?\n두 클럽에 교류전이 만들어지고 참석을 받기 시작해요.`)) return;
   try{ await api(`/challenges/${id}/accept`,{method:'POST',body:'{}'});
     try{ track('ch:accept'); }catch(e){}
     chInvalidate(clubId()); toast('교류전이 잡혔어요 · 참석을 받아주세요');
@@ -22314,7 +22464,7 @@ async function chAccept(id){
 async function chDecline(id){
   const x=CHX&&CHX.data;
   const decline = x ? x.can_answer : true;
-  if(!confirm(decline?'이번 도전장을 거절할까요?\n상대에게는 「이번엔 어렵대요」로만 전해져요.':'보낸 도전장을 거둬들일까요?')) return;
+  if(!await askConfirm(decline?'이번 도전장을 거절할까요?\n상대에게는 「이번엔 어렵대요」로만 전해져요.':'보낸 도전장을 거둬들일까요?')) return;
   try{ await api(`/challenges/${id}/decline`,{method:'POST',body:'{}'});
     chInvalidate(clubId()); toast(decline?'전했어요':'거둬들였어요');
     if(CHX) await chReload();
@@ -22493,7 +22643,106 @@ let _kakaoP = null;
 function kakaoReady(){
   return !!(window.kakao && kakao.maps && kakao.maps.LatLng && kakao.maps.Map);
 }
+/* ── iOS 앱 지도 ──
+   iOS 앱은 capacitor://localhost 에서 돈다. 카카오 개발자 콘솔은 http/https 주소만 받아서
+   이 주소를 등록할 수 없고, 그래서 iOS 앱에서만 지도가 안 떴다(안드로이드는 https://localhost 라 됐다).
+   iOS 앱에서는 지도만 서버의 kmap.html(등록된 https 주소)을 iframe 으로 띄워 그린다.
+   지도 코드는 그대로 두고, 쓰는 만큼의 kakao.maps 를 흉내 내 iframe 으로 넘긴다.
+   장소 검색(Places)은 서버가 REST 키로 대신 묻는다(/kakao/places). */
+const KMAP_FRAME = (()=>{ try{
+  if(window.__KMAP_FRAME!=null) return !!window.__KMAP_FRAME;          // 테스트에서 켠다
+  return location.protocol!=='http:' && location.protocol!=='https:';
+}catch(e){ return false; } })();
+/* 코트 표시의 onclick 을 iframe 이 읽는 표시(data-act)로 바꾼다 — iframe 은 스크립트를 실행하지 않는다 */
+function kmapHtml(content){
+  return String(content||'').replace(/onclick="(landVenue|landKakaoOpen)\((?:'([^']*)'|(\d+))\)"/g,
+    (_,f,a,b)=>`data-act="${f}" data-arg="${esc(a!=null?a:b)}"`);
+}
+/* 지도 위 표시에 쓰는 앱 CSS 만 골라 iframe 에 넘긴다 */
+function kmapCss(){
+  const want=/\.(lmk|lct|ltag|lnm|lcrown|landmap)\b/;
+  const out=[];
+  [...document.styleSheets].forEach(sh=>{ let rules; try{ rules=sh.cssRules; }catch(e){ return; }
+    [...(rules||[])].forEach(r=>{ if(r.selectorText && want.test(r.selectorText)) out.push(r.cssText); }); });
+  return out.join('\n');
+}
+function kmapPlaces(q, opt){
+  const p=new URLSearchParams({q:String(q||'')});
+  if(opt&&opt.location){ p.set('x',opt.location.getLng()); p.set('y',opt.location.getLat()); }
+  if(opt&&opt.radius) p.set('radius',opt.radius);
+  if(opt&&opt.sort) p.set('sort',opt.sort);
+  if(opt&&opt.size) p.set('size',opt.size);
+  return api('/kakao/places?'+p.toString())
+    .then(r=>{ const d=(r&&r.documents)||[]; return {data:d, status:d.length?'OK':'ZERO_RESULT'}; })
+    .catch(()=>({data:[], status:'ERROR'}));
+}
+let KMAP=null;
+function kmapShim(){
+  if(window.kakao && window.kakao.__shim) return;
+  const ORIGIN=new URL(REMOTE_API).origin;
+  const F=KMAP={frame:null, ready:false, q:[], center:null, level:5, sw:null, ne:null, w:0, h:0,
+    idle:[], circles:new Set(), pins:new Set(), t:null, err:null};
+  const post=m=>{ if(F.ready && F.frame && F.frame.contentWindow) F.frame.contentWindow.postMessage(m, ORIGIN); else F.q.push(m); };
+  class LatLng{ constructor(a,b){ this.a=+a; this.b=+b; } getLat(){ return this.a; } getLng(){ return this.b; } }
+  class LatLngBounds{ constructor(){ this.pts=[]; } extend(ll){ this.pts.push({lat:ll.getLat(), lng:ll.getLng()}); } isEmpty(){ return !this.pts.length; } }
+  /* 원 · 표시는 setMap 이 여러 번 불려도 한 번에 모아 보낸다 */
+  const flush=()=>{ clearTimeout(F.t); F.t=setTimeout(()=>{
+    post({t:'circles', list:[...F.circles].map(x=>x.o)});
+    post({t:'pins', list:[...F.pins].map(x=>x.o)}); },0); };
+  class Circle{ constructor(o){ this.o={lat:o.center.getLat(), lng:o.center.getLng(), radius:o.radius,
+      strokeWeight:o.strokeWeight, strokeColor:o.strokeColor, strokeOpacity:o.strokeOpacity,
+      fillColor:o.fillColor, fillOpacity:o.fillOpacity}; }
+    setMap(m){ if(m) F.circles.add(this); else F.circles.delete(this); flush(); } }
+  class CustomOverlay{ constructor(o){ this.o={lat:o.position.getLat(), lng:o.position.getLng(),
+      html:kmapHtml(o.content), z:o.zIndex||0, xa:o.xAnchor, ya:o.yAnchor}; }
+    setMap(m){ if(m) F.pins.add(this); else F.pins.delete(this); flush(); } }
+  class Map{
+    constructor(el, o){
+      el.querySelectorAll('iframe.kmapfr').forEach(x=>x.remove());
+      const fr=document.createElement('iframe');
+      fr.className='kmapfr'; fr.title='코트 지도';
+      fr.src=`${REMOTE_API}/kmap.html?v=${encodeURIComponent(BUILD)}`;
+      Object.assign(F,{frame:fr, ready:false, q:[], center:o.center, level:o.level||5, sw:null, ne:null, idle:[], err:null});
+      F.circles.clear(); F.pins.clear();
+      fr.addEventListener('load',()=>{ try{ fr.contentWindow.postMessage({t:'init',
+        center:{lat:F.center.getLat(), lng:F.center.getLng()}, level:F.level, css:kmapCss()}, ORIGIN); }catch(e){} });
+      el.appendChild(fr);
+    }
+    getCenter(){ return F.center; }
+    setCenter(ll){ F.center=ll; post({t:'center', lat:ll.getLat(), lng:ll.getLng()}); }
+    getLevel(){ return F.level; }
+    setLevel(l){ F.level=l; post({t:'level', level:l}); }
+    setBounds(b,t,r,bt,l){ post({t:'bounds', pts:b.pts, pad:[t||0,r||0,bt||0,l||0]}); }
+    /* 이름표 겹침을 재는 데만 쓴다 — 지도가 알려준 화면 범위로 비례해서 센다(동네 크기에선 오차가 1~2px) */
+    getProjection(){ return { containerPointFromCoords:ll=>{
+      if(!F.sw || !F.ne) return null;
+      const my=v=>Math.log(Math.tan(Math.PI/4+v*Math.PI/360));
+      return { x:(ll.getLng()-F.sw.lng)/((F.ne.lng-F.sw.lng)||1)*F.w,
+               y:(my(F.ne.lat)-my(ll.getLat()))/((my(F.ne.lat)-my(F.sw.lat))||1)*F.h }; } }; }
+  }
+  window.addEventListener('message', e=>{
+    if(e.origin!==ORIGIN || !F.frame || e.source!==F.frame.contentWindow) return;
+    const m=e.data||{};
+    if(m.t==='ready'){ F.ready=true; const q=F.q; F.q=[]; q.forEach(x=>F.frame.contentWindow.postMessage(x, ORIGIN)); }
+    else if(m.t==='idle'){
+      F.center=new LatLng(m.center.lat, m.center.lng); F.level=m.level; F.sw=m.sw; F.ne=m.ne; F.w=m.w; F.h=m.h;
+      F.idle.slice().forEach(fn=>{ try{ fn(); }catch(err){} });
+    }
+    else if(m.t==='tap'){
+      const act={ landVenue:a=>landVenue(+a), landKakaoOpen:a=>landKakaoOpen(String(a)) }[m.act];
+      if(act) act(m.arg);
+    }
+    else if(m.t==='error'){ F.err=m.msg; }
+  });
+  function Places(){}
+  Places.prototype.keywordSearch=function(q, cb, opt){ kmapPlaces(q, opt).then(r=>cb(r.data, r.status, null)); };
+  window.kakao={ __shim:true, maps:{ LatLng, LatLngBounds, Map, Circle, CustomOverlay,
+    load:cb=>cb(),
+    event:{ addListener:(map,ev,fn)=>{ if(ev==='idle') F.idle.push(fn); } },
+    services:{ Places, Status:{ OK:'OK', ZERO_RESULT:'ZERO_RESULT', ERROR:'ERROR' } } } };
+}
 function loadKakaoMap(){
+  if(KMAP_FRAME){ kmapShim(); return Promise.resolve(); }      // iOS 앱 — iframe 지도
   if(kakaoReady()) return Promise.resolve();
   if(_kakaoP) return _kakaoP;
   _kakaoP = new Promise((ok,no)=>{
@@ -22715,14 +22964,19 @@ async function landKakaoOpen(kid){
   if(r&&r.venue) landVenue(r.venue.id);
 }
 
+/* landDraw 는 중간에 여러 번 기다린다(위치 · 지도 · 카카오 검색). 그 사이 또 불리면
+   두 번째가 먼저 원을 지우고, 늦게 끝난 첫 번째가 원을 한 벌 더 얹어 겹쳐 그려졌다(원이 진해짐).
+   부를 때마다 번호를 올리고, 기다린 뒤 번호가 바뀌었으면 그 회차는 그리지 않고 끝낸다. */
+let LAND_GEN=0;
 async function landDraw(){
+  const gen=++LAND_GEN, stale=()=>gen!==LAND_GEN;
   const el=document.getElementById('landMap'); if(!el) return;
   /* 필터 버튼·<이 지역에서 다시 찾기>는 준비 확인 없이 여기로 온다.
      앱(WKWebView)에서는 SDK 가 늦게 채워지는 일이 있어 매번 확인한다. */
   if(!kakaoReady()) await loadKakaoMap();
   /* <이 지역에서 다시 찾기>를 눌렀으면 그 자리를 쓴다 */
   const c = LAND_FORCE ? {lat:LAND_FORCE.lat, lng:LAND_FORCE.lng} : await landCenter();
-  if(!el.isConnected) return;     // 기다리는 사이 화면이 다시 그려졌다 — 새 화면이 따로 그린다
+  if(!el.isConnected || stale()) return;     // 기다리는 사이 화면이 다시 그려졌다 — 새 화면이 따로 그린다
   /* 화면을 다시 그리면 #landMap 이 새 요소가 된다 — 옛 지도 객체에 그리면 아무것도 안 보인다 */
   if(LAND_MAP && window._landMapEl!==el) LAND_MAP=null;
   const ctr=new kakao.maps.LatLng(c.lat, c.lng);
@@ -22737,7 +22991,7 @@ async function landDraw(){
   let m=null;
   try{ m=await api(`/land/map?lat=${c.lat}&lng=${c.lng}&km=15&club_id=${clubId()}`); }
   catch(e){ return; }
-  LAND_SHAPES.forEach(s=>s.setMap(null)); LAND_SHAPES=[];
+  if(stale()) return;
   const byVenue={}; (m.land||[]).forEach(l=>{ (byVenue[l.venue_id]=byVenue[l.venue_id]||[]).push(l); });
   const clubIdx={}; let ci=0;
   const myId=+clubId();
@@ -22758,6 +23012,9 @@ async function landDraw(){
       if(r&&r.ids) kk.forEach(p=>{ if(r.ids[p.kakao_id]) p.vid=r.ids[p.kakao_id]; });
     }catch(e){}
   }
+  if(stale()) return;
+  /* 기다리는 게 다 끝난 뒤에 지우고 바로 그린다 — 사이에 다른 회차가 끼어들 틈이 없다 */
+  LAND_SHAPES.forEach(s=>s.setMap(null)); LAND_SHAPES=[];
   const nrm=x=>String(x||'').replace(/\s/g,'');
   /* 같은 곳이 두 번 찍히지 않게 — 이름이 같고 300m 안이면 하나로 본다 */
   const fresh=kk.filter(p=>!dbNear.some(v=>
@@ -23208,7 +23465,7 @@ async function venuePageMount(vid){
 }
 /* ⑤ 코트 화면에서 바로 게스트 신청 — 운영진에게 알림이 가고, 채팅으로 안내받는다 */
 async function venueGuestApply(vid, eid, club, fee){
-  if(!confirm(`${club} 모임에 게스트로 신청할까요?${fee?`\n게스트비 ${Number(fee).toLocaleString()}원은 현장에서 내요.`:''}\n운영진이 채팅으로 안내해 드려요.`)) return;
+  if(!await askConfirm(`${club} 모임에 게스트로 신청할까요?${fee?`\n게스트비 ${Number(fee).toLocaleString()}원은 현장에서 내요.`:''}\n운영진이 채팅으로 안내해 드려요.`)) return;
   try{ await api(`/events/${eid}/guest-apply`,{method:'POST',body:'{}'});
     try{ track('venue:guest'); }catch(e){}
     toast('신청했어요 · 운영진이 곧 연락드려요'); await venuePageMount(vid);
@@ -23300,7 +23557,7 @@ async function landHomeOn(vid){
 }
 async function landHomeOff(vid){
   const cid=clubId(); if(!cid) return;
-  if(!confirm('홈구장에서 내려놓을까요? 지분도 함께 빠져요')) return;
+  if(!await askConfirm('홈구장에서 내려놓을까요? 지분도 함께 빠져요')) return;
   try{ await api(`/venues/${vid}/home?club_id=${cid}`,{method:'DELETE'}); }
   catch(e){ return toast('내려놓지 못했어요'); }
   toast('내려놓았어요'); HC=null; hcLoad(); venuePageMount(vid);
@@ -23981,7 +24238,7 @@ async function sendReport(kind, id, reason){
   if(TALK.post) talkPostMount(TALK.post); else openCourtTalk(TALK.vid, TALK.scope);
 }
 async function blockWriter(kind, id){
-  if(!confirm('이 사람 글을 앞으로 안 볼까요?')) return;
+  if(!await askConfirm('이 사람 글을 앞으로 안 볼까요?')) return;
   try{ await api('/talk/block',{method:'POST',body:JSON.stringify({kind, id})}); }
   catch(e){ return toast('차단하지 못했어요'); }
   closeOv(); toast('이제 이 사람 글은 안 보여요');
@@ -23993,14 +24250,14 @@ async function blockWriter(kind, id){
    목록에서 누르면 카드가 열리지 않게 이벤트를 멈춘다. */
 async function delTalk(ev, pid, back){
   if(ev&&ev.stopPropagation) ev.stopPropagation();
-  if(!confirm('이 글을 지울까요? 댓글도 함께 지워져요')) return;
+  if(!await askConfirm('이 글을 지울까요? 댓글도 함께 지워져요')) return;
   try{ await api(`/talk/${pid}`,{method:'DELETE'}); }
   catch(e){ return toast('지우지 못했어요'); }
   toast('지웠어요');
   if(back) hcBack(); else openCourtTalk(TALK.vid, TALK.scope);
 }
 async function delComment(cid, pid){
-  if(!confirm('이 댓글을 지울까요?')) return;
+  if(!await askConfirm('이 댓글을 지울까요?')) return;
   try{ await api(`/talk/comments/${cid}`,{method:'DELETE'}); }
   catch(e){ return toast('지우지 못했어요'); }
   talkPostMount(pid);
@@ -24400,8 +24657,7 @@ function renderMskDetail(){
     .slice(0,3);
 
   const top = mates[0];
-  let h=`<div class="sh-top"><h3>${esc(me.name)}</h3>
-    <div class="cl" role="button" tabindex="0" onclick="MSK_WHO=null;renderMemberSkill()">‹</div></div>`;
+  let h=`<div class="sh-top"><button class="shb" aria-label="뒤로" onclick="MSK_WHO=null;renderMemberSkill()">‹</button><h3>${esc(me.name)}</h3></div>`;
 
   /* 목록과 같은 방식으로 — 실제 수준이 크고, 등록은 곁말이다.
      여기서만 세 기준(구력·성적·월례대회)을 펼친다. 목록에서는 훑는 데 방해가 됐다. */
@@ -25593,7 +25849,7 @@ function clubTabMe(){
   const canRename = !isMe && (cb2Officer() || String(uid)===String(meId));
   const act=(label,ic,fn)=>`<button class="mact" onclick="${fn}">${ic}<span>${label}</span></button>`;
   const backBar = isMe ? '' : `<div style="display:flex;align-items:center;gap:9px;padding:2px 2px 12px">
-    <span onclick="clubMeBack()" style="cursor:pointer;font-size:20px;color:var(--lgray);line-height:1">‹</span>
+    <button class="pvback" aria-label="뒤로" onclick="clubMeBack()">‹</button>
     <span class="gt3">${esc(CLUBME_WHO.name)}</span>
     ${(()=>{ const L=who?memberLabel(who):''; return L
       ? `<span class="pvrole ${memberLabelCls(who)}" style="margin-left:8px">${esc(L)}</span>` : ''; })()}
@@ -26422,7 +26678,15 @@ async function saveClubBasic(){
 }
 /* 클럽 리그는 아직 운영 준비 중이라 감춰둔다. true 로 바꾸면 탭이 다시 나온다. */
 const LEAGUE_CLUB_ON = false;
-function setClubTab(t){state.clubTab=t;renderClub();}
+function setClubTab(t){
+  state.clubTab=t;
+  /* <클럽 찾아보기> → 둘러보기(들어간 화면), <내 클럽> → 우리 클럽 첫 화면 */
+  if(typeof TB_ON!=='undefined' && TB_ON){
+    if(t==='find'){ if((state.myClubs||[]).length) return clubBrowse(); state.clubOpen=null; }
+    else if((state.myClubs||[]).length){ state.clubBrowse=false; state.clubOpen=tbMyClub(); }
+  }
+  renderClub(); try{ updBackBtn(); }catch(e){}
+}
 function setRegion(r){state.region=r;renderClub();}
 function searchClub(v){state._q=v;renderClub();const el=document.getElementById('cq');if(el){el.focus();const L=el.value.length;el.setSelectionRange(L,L);}}
 /* 클럽을 바꿀 때는 activeClub 만 옮기면 안 된다 — renderClub 맨 위에서
@@ -26630,22 +26894,12 @@ function adminSuspend(uid, repId){
     .catch(()=>toast('처리하지 못했어요'));
 }
 // iPad/Capacitor 에서 네이티브 confirm·alert 이 동작하지 않아 앱 내 모달로 대체한다.
+// 모양은 askConfirm 과 같은 창(mconfShow)을 쓴다 — 확인 창이 두 가지로 보이지 않게.
 function appConfirm(html, okLabel){
-  return new Promise(res=>{
-    const ov=document.createElement('div');
-    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(12,15,19,.42);display:flex;align-items:center;justify-content:center;padding:24px';
-    ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;padding:20px 20px 16px;box-shadow:0 18px 50px rgba(0,0,0,.3)">'
-      +'<div style="font-size:15px;line-height:1.6;color:#181a1c;white-space:pre-line">'+html+'</div>'
-      +'<div style="display:flex;gap:8px;margin-top:18px">'
-      +'<button id="_acN" style="flex:1;padding:11px;border-radius:10px;border:1px solid #dce0e4;background:#fff;font-size:15px;font-weight:700;color:#5c646e">취소</button>'
-      +'<button id="_acY" style="flex:1;padding:11px;border-radius:10px;border:0;background:#ec7c30;color:#fff;font-size:15px;font-weight:700">'+(okLabel||'확인')+'</button>'
-      +'</div></div>';
-    document.body.appendChild(ov);
-    const done=v=>{ try{ov.remove();}catch(e){} res(v); };
-    ov.querySelector('#_acN').onclick=()=>done(false);
-    ov.querySelector('#_acY').onclick=()=>done(true);
-    ov.onclick=e=>{ if(e.target===ov) done(false); };
-  });
+  const t=String(html==null?'':html), i=t.indexOf('\n');
+  const title=i<0?t:t.slice(0,i), sub=i<0?'':t.slice(i+1).replace(/^\n+/,'');
+  const plain=t.replace(/<[^>]*>/g,'');
+  return mconfShow(title, sub, mconfOpts(plain, okLabel?{ok:okLabel}:{}));
 }
 /* 네이티브 웹뷰에서는 prompt() 를 믿을 수 없다 — 창이 안 뜨거나 곧바로
    null 을 돌려준다. 그러면 renameClub 처럼 값을 받아야 하는 자리가
@@ -26754,7 +27008,10 @@ function skelCards(n){
     <div class="skel skel-line w60"></div></div>`).join('');
 }
 /* 가벼운 햅틱 — 지원 기기에서만 */
-function buzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms||8); }catch(e){} }
+function buzz(ms){
+  try{ const H=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Haptics;
+    if(H&&H.impact){ H.impact({style:(ms||8)>=12?'MEDIUM':'LIGHT'}).catch(()=>{}); return; } }catch(e){}
+  try{ if(navigator.vibrate) navigator.vibrate(ms||8); }catch(e){} }
 
 /* 오프라인 감지 */
 window.addEventListener('offline', ()=>{ const b=document.getElementById('offline'); if(b) b.classList.add('on'); });
@@ -26780,18 +27037,21 @@ new MutationObserver(muts=>{
     if(y0==null) return;
     pulled = e.touches[0].clientY - y0;
     if(pulled>36 && !spin){
-      spin=document.createElement('div');
-      spin.style.cssText='text-align:center;padding:10px;color:var(--lgray);font-size:13px;font-weight:700';
-      spin.textContent='놓으면 새로고침';
+      spin=document.createElement('div'); spin.className='ptr'; spin.innerHTML='<i></i>';
       sc.prepend(spin);
     }
-    if(spin) spin.textContent = pulled>72 ? '↻ 놓으면 새로고침' : '↓ 더 당겨주세요';
+    if(spin){
+      spin.style.opacity=String(Math.min(1,(pulled-36)/40));
+      spin.firstChild.style.transform=`rotate(${Math.round(pulled*4)}deg)`;
+      if(spin.classList.toggle('ready', pulled>72) && !spin._bz){ spin._bz=1; buzz(6); }
+    }
   }, {passive:true});
   sc.addEventListener('touchend', async ()=>{
     const go72 = pulled>72; y0=null; pulled=0;
-    if(spin){ spin.remove(); spin=null; }
-    if(!go72 || !SERVER_OK) return;
-    buzz();
+    const sp=spin; spin=null;
+    if(!go72 || !SERVER_OK){ if(sp) sp.remove(); return; }
+    if(sp){ sp.classList.add('spin'); sp.style.opacity='1'; sp.firstChild.style.transform=''; }
+    const t0=Date.now();
     const v=state.view;
     try{
       if(v==='match'){ window.OM_LOADED=false; renderMatch(); }   // renderMatch 가 자체 로드
@@ -26799,8 +27059,9 @@ new MutationObserver(muts=>{
       else if(v==='league'){ await loadClubLeague(); renderLeague(); }
       else if(v==='chat'){ await loadDMThreads(); renderChat(); }
       else if(v==='home'){ await loadMyNext(); renderHome(); }
-      toast('새로고침했어요');
     }catch(e){}
+    /* 너무 빨리 끝나면 돌아간 줄도 모른다 — 0.5초는 보여 준다 */
+    setTimeout(()=>{ if(sp) sp.remove(); }, Math.max(0, 500-(Date.now()-t0)));
   }, {passive:true});
 })();
 
@@ -26991,9 +27252,9 @@ async function loadClubFeed(){
   window.FEED_LOADED = true;
 }
 async function delClubPost(id){
-  if(!await appConfirm('이 글을 삭제할까요?')) return;
-  try{ await api(`/clubs/${clubId()}/feed/${id}`,{method:'DELETE'}); closeOv(); await loadClubFeed(); renderClub(); toast('삭제했어요'); }
-  catch(e){ toast('삭제하지 못했어요'); }
+  if(!await appConfirm('이 글을 삭제할까요?')) return false;
+  try{ await api(`/clubs/${clubId()}/feed/${id}`,{method:'DELETE'}); closeOv(); await loadClubFeed(); renderClub(); toast('삭제했어요'); return true; }
+  catch(e){ toast('삭제하지 못했어요'); return false; }
 }
 
 /* ===== 대진 ===== */
@@ -27187,7 +27448,7 @@ function drawArchiveOne(){
   const tab=state._archTab||'rank';
   const gs=archGames(b), rk=archRank(b);
   let h=`<div class="sh-top">
-      <span onclick="drawArchive()" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="drawArchive()">‹</button>
       <h3>${esc(b.date||'모임')}</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">✕</div></div>
     <div class="t-bdy-r" style="color:var(--lgray);margin:0 2px 12px">${esc(b.fmt||'대진')}<span style="color:#c9cfd5"> · </span>${archStats(b).players}명 참가</div>
     <div style="display:flex;gap:7px;margin:0 0 14px">
@@ -33490,7 +33751,7 @@ function drawCB2Step2(){
   const games=cb2GameCount();
   let h=`<div class="om-detail" id="cb2b">
     <div class="sh-top" style="align-items:center">
-      <span onclick="cb2GoStep(1)" style="cursor:pointer;font-size:24px;color:var(--lgray);line-height:1;margin-right:8px">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="cb2GoStep(1)">‹</button>
       <h3 class="gt4" style="flex:1">대진 방식</h3>
       <span class="gt1 gmute">${n}명 · ${courts}코트</span></div>
     ${cbBannerHTML()}
@@ -36132,7 +36393,7 @@ function cb2SwapPick(gi){
   const g=(CB2&&CB2.games||[])[gi]; if(!g) return;
   const others=(CB2.games||[]).map((x,i)=>({x,i})).filter(({x})=>x.c===g.c && x!==g && x.sa==null && !x.startedAt);
   let h=`<div class="om-detail"><div class="sh-top">
-      <span onclick="cb2Menu(${gi})" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="cb2Menu(${gi})">‹</button>
       <h3>순서 바꾸기</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">${g.r}게임과 자리를 맞바꿀 게임을 골라주세요 · ${g.c}코트</div>`;
   h+= others.length ? others.map(({x,i})=>
@@ -36202,7 +36463,7 @@ function cb2Reteam(gi){
   const [a,b,c,d]=four;
   const opts=[[[a,b],[c,d]],[[a,c],[b,d]],[[a,d],[b,c]]];
   let h=`<div class="om-detail"><div class="sh-top">
-      <span onclick="cb2Menu(${gi})" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="cb2Menu(${gi})">‹</button>
       <h3>선수 변경</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">네 명은 그대로예요 · 편만 바꿔요. 모두 4경기는 그대로 유지돼요.</div>`;
   const scored=opts.map((sp,i)=>{
@@ -36483,7 +36744,7 @@ function cb2Score(gi){                                   // 스테퍼 시트로 
   SC_EDIT={gi, a:(g.sa!=null?g.sa:0), b:(g.sb!=null?g.sb:0)};
   drawScoreSheet();
 }
-function scStep(side,delta){
+function scStep(side,delta){ buzz(6);
   if(!SC_EDIT) return;
   SC_EDIT[side]=Math.max(0,Math.min(9,(SC_EDIT[side]||0)+delta)); drawScoreSheet();
 }
@@ -36728,8 +36989,8 @@ async function openPlayerReport(uid, name){
     <div style="font-size:20px;font-weight:700;color:${c||'#181a1c'}">${v}</div>
     <div style="font-size:12px;font-weight:400;color:#79828d;margin-top:3px">${l}</div></div>`;
   let h=`<div class="evtop">
-      <span onclick="closeEventPage()" style="cursor:pointer;font-size:24px;color:#79828d;line-height:1">‹</span>
-      <span style="font-size:15px;font-weight:400">${esc(name)} 리포트</span></div>
+      <button class="pvback" aria-label="뒤로" onclick="closeEventPage()">‹</button>
+      <span class="pvttl">${esc(name)} 리포트</span></div>
     <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
     <div style="font-size:13px;font-weight:400;color:#79828d">종료된 경기 <b style="font-weight:400;color:#181a1c">${S.g}게임</b> · 참여 모임 ${S.days.size}회 분석</div>
     <div style="background:#fff;border:1px solid #e8ebee;border-radius:18px;padding:14px;margin-top:14px">${svg}</div>
@@ -37136,9 +37397,9 @@ function drawEventDetail(){
       ${evAvatar(n,ph,30)}<span style="font-size:14.5px;font-weight:500;color:#2e343a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>${isGuest(n)?gtag:''}</span>`;
   const nameTag=n=>esc(n)+(isGuest(n)?' G':'');
 
+  /* 맨 위는 ‹ 하나 — 바로 아래 큰 제목(모임 이름)이 있으니 <모임 정보> 글자는 쓰지 않는다 */
   let h=`<div class="evtop">
-      <span onclick="closeEventPage()" style="cursor:pointer;font-size:24px;color:#79828d;line-height:1">‹</span>
-      <span style="font-size:15px;font-weight:400">모임 정보</span></div>
+      <button class="pvback" aria-label="뒤로" onclick="closeEventPage()">‹</button></div>
     <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
     ${isXc?evXcHero(e):''}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -40504,7 +40765,7 @@ function openManagerGuide(){
     ['취소',    '참가비는 신청 시 결제 · 30분 안에 취소하지 않으면 확정'],
   ];
   document.getElementById('sheet').innerHTML=`<div class="sh-top">
-      <span onclick="closeOv();go('match')" style="cursor:pointer;font-size:24px;color:#79828d;margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="closeOv();go('match')">‹</button>
       <h3>매니저 가이드</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="mgl-hero">
       <div class="mgl-kick">MANAGER GUIDE</div>
@@ -42702,7 +42963,7 @@ function duelRow(d){
 /* ── 상대 찾기 ── */
 async function openDuelFind(){
   document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top">
-    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:24px;color:var(--lgray);margin-right:8px">‹</span>
+    <button class="shb" aria-label="뒤로" onclick="drawDuelHub()">‹</button>
     <h3 class="gt4" style="flex:1">상대 찾기</h3></div>
     <div class="card" style="text-align:center;color:var(--lgray);padding:26px">찾는 중…</div></div>`;
   try{ await api('/duel/open',{method:'POST',body:'{}'}); }catch(e){}
@@ -42713,7 +42974,7 @@ async function openDuelFind(){
 function drawDuelFind(){
   const c=DUEL_CAND||{}, w=c.window||{}, me=c.me||{}, list=c.list||[];
   let h=`<div class="om-detail"><div class="sh-top">
-    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:24px;color:var(--lgray);margin-right:8px">‹</span>
+    <button class="shb" aria-label="뒤로" onclick="drawDuelHub()">‹</button>
     <h3 class="gt4" style="flex:1">상대 찾기</h3></div>
 
     <div style="padding:12px 2px 14px;border-bottom:1px solid var(--line)">
@@ -42802,7 +43063,7 @@ function drawDuelOne(){
   const canScore=['accepted','scored'].includes(d.status);
   const [lab,col]=duelStatus(d);
   let h=`<div class="om-detail"><div class="sh-top">
-    <span onclick="drawDuelHub()" style="cursor:pointer;font-size:24px;color:var(--lgray);margin-right:8px">‹</span>
+    <button class="shb" aria-label="뒤로" onclick="drawDuelHub()">‹</button>
     <h3 class="gt4" style="flex:1">${esc(d.opponent||'상대')}</h3>
     <span class="gt1" style="font-weight:400;color:${col}">${lab}</span></div>`;
 
@@ -43569,7 +43830,7 @@ async function dmReport(uid, i){
   closeOv(); toast('신고가 접수됐어요 · 운영자가 확인해요');
 }
 async function dmBlock(uid, fromReport){
-  if(!fromReport && !confirm('이 사용자를 차단할까요?\n상대가 나에게 메시지를 보낼 수 없게 돼요.')) return;
+  if(!fromReport && !await askConfirm('이 사용자를 차단할까요?\n상대가 나에게 메시지를 보낼 수 없게 돼요.')) return;
   try{ await api('/block',{method:'POST',body:JSON.stringify({user_id:+uid})}); }
   catch(e){ toast('차단하지 못했어요 · 잠시 후 다시 시도해 주세요'); return; }
   DM_BLOCKED.add(+uid);
@@ -44335,7 +44596,7 @@ function drawNameSheet(keepFocus){
   const ready=!!v;
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top">
-      <span onclick="NM=null;renderProfileEditSrv()" style="cursor:pointer;font-size:20px;color:var(--lgray);margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="NM=null;renderProfileEditSrv()">‹</button>
       <h3 style="flex:1">이름</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">클럽 명단·대진·1:1 경기에 <b>이 이름</b>으로 나와요.</div>
@@ -44407,7 +44668,7 @@ function drawPhoneSheet(keepFocus){
   const ok=phoneOk(v), empty=!v;
   document.getElementById('sheet').innerHTML=`
     <div class="sh-top">
-      <span onclick="PH=null;renderProfileEditSrv()" style="cursor:pointer;font-size:20px;color:var(--lgray);margin-right:9px;line-height:1">‹</span>
+      <button class="shb" aria-label="뒤로" onclick="PH=null;renderProfileEditSrv()">‹</button>
       <h3 style="flex:1">연락처</h3>
       <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
     <div class="sd">클럽 <b>임원에게만</b> 보여요. 연명부·긴급 연락에 쓰여요.</div>
@@ -44720,6 +44981,10 @@ function _renderMeCore(){
   </div>
   ${(()=>{const n=Object.keys(rivalList()).length;return `${DEMO ? `<div class="card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="openRivals()">
     <div><div style="font-size:15px;font-weight:400">함께 친 사람 · 라이벌 🔥</div><div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:3px">${n}명과의 상대 전적 · 재대결 신청</div></div><div style="color:var(--coral-d);font-weight:700;font-size:20px">→</div></div>` : ``}`;})()}
+    <div class="card"><div class="ch">홈 화면</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 2px">
+      <div><div style="font-size:15px;font-weight:400">홈에 내 순위 보기</div><div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:1px">켜면 클럽 카드에 시즌 순위와 전적이 나와요</div></div>
+      <div role="switch" aria-checked="${!!state.homeRank}" aria-label="홈에 내 순위 보기" tabindex="0" onclick="toggleHomeRank()" style="width:50px;height:30px;border-radius:16px;background:${state.homeRank?'var(--coral)':'#c9cdd2'};position:relative;cursor:pointer;transition:.15s;flex-shrink:0"><div style="width:24px;height:24px;border-radius:50%;background:#fff;position:absolute;top:3px;left:${state.homeRank?'23px':'3px'};transition:.15s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div></div></div></div>
     <div class="card"><div class="ch">접근성</div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px">
       <div><div style="font-size:15px;font-weight:400">큰 글씨</div><div style="font-size:14px;color:var(--gray);font-weight:400;margin-top:1px">화면 요소를 키워 읽기 쉽게</div></div>
@@ -44904,7 +45169,12 @@ function loadMySummary(cid){
   api(`/clubs/${cid}/my-summary`).then(r=>{ MYSUM[cid]=r||null;
     if(state.view==='home') renderHome(); }).catch(()=>{ MYSUM[cid]=null; });
 }
-function myClubCard(nm){
+/* 홈 두 번째 칸 · 내 클럽 카드 — 클럽 이름 줄 · 띠 한 줄 · 바로가기 셋 · (다른 클럽 한 줄씩).
+   예전 가운데 줄(시즌 순위 · 내 전적 · 클럽 평균 대비)은 뺐다. 홈은 앱을 열 때마다 보는 곳이라
+   하위권 회원은 열 때마다 <28위 · 평균보다 −20%p>를 보게 된다. 대신 이름 아래 한 줄에
+   나오기만 하면 늘어나는 숫자(나온 모임 · 함께 친 회원)를 적는다.
+   순위는 내정보 <홈에 내 순위 보기>를 켠 사람에게만 — 기본은 꺼짐. */
+function myClubCard(nm, others, stripShown){
   const c=(state.clubs||[]).find(x=>x.n===nm)||{};
   const d=(state.clubData||{})[nm]||{};
   const cid=d.id||c.id||(nm===state.activeClub?clubId():null);
@@ -44912,64 +45182,126 @@ function myClubCard(nm){
   const sm=cid?MYSUM[cid]:null;
   const av=clubAvatar(nm,48);
   const cnt=(nm===state.activeClub?memberCount():0)||c.m||d.members||0;
-  const sub=[cnt?`회원 ${cnt}명`:'',
-    sm&&sm.weekMeets ? `이번 주 모임 ${sm.weekMeets}회` : (c.r||d.region||'')]
-    .filter(Boolean).join(' · ');
-  /* 지금 벌어지는 일 — 없으면 띠도 없다 */
+  const B=v=>`<b>${v}</b>`;
+  const sub = (state.homeRank && sm && sm.rank)
+      ? `시즌 ${B(sm.rank+'위')} · ${sm.w}승 ${sm.l}패`
+    : (sm && sm.season_days>0)
+      ? (sm.mates>0 ? `이번 시즌 ${B(sm.season_days+'번')} 나와서 ${B(sm.mates+'명')}과 쳤어요`
+                    : `이번 시즌 ${B(sm.season_days+'번')} 나왔어요`)
+    : esc([cnt?`회원 ${cnt}명`:'',
+        sm&&sm.weekMeets ? `이번 주 모임 ${sm.weekMeets}회` : (c.r||d.region||'')]
+        .filter(Boolean).join(' · '));
+  /* 띠는 한 줄만 — 급한 것부터. 카드를 갈아끼우지 않으니 바로가기가 사라지지 않는다.
+     ① 지금 경기(홈 맨 위에 오늘 경기 띠가 이미 있으면 건너뛴다) ② 답할 일 ③ 대회 ④ 알림 */
   if(nm===state.activeClub) cbHomeRefresh();        // 30초에 한 번만 실제로 받아온다
   const live=(()=>{
     if(nm!==state.activeClub) return null;
-    try{
-      if(typeof tbIsOn==='function' && tbIsOn()){
-        const n=tbNow();
-        if(n && !n.done) return {t:`${n.round}회차 ${n.playing?'경기 중':'자리 바꾸는 중'}`,
-          d:`· ${tbMMSS(n.left)} 남음`, v:'대진 보기', act:`openClubSub('bracket')`};
-      }
-    }catch(e){}
-    { const M=(typeof cbMine==='function')?cbMine():null;
-      if(M && M.next) return {green:1, t:`다음 경기 · ${M.next.round}회차 ${M.next.court}번 코트`, d:'', v:'내 경기', act:`go('club');setClubSub('home')`}; }
-    if(d.officer && cid){
-      const CL=chList(cid), td=((CL&&CL.todo)||[]);
-      if(td.length) return {ink:1, t:`도전장 ${td.length}건`,
-        d:`· ${chOther(td[0],cid)} · ${chMD(td[0].reply_by)}까지`, v:'답하기', act:`openChDetail(${td[0].id})`};
-      const RD=rdList(cid);
-      if(RD && RD.length) return {amber:1, t:`복귀일 지난 휴회 ${RD.length}명`,
-        d:`· ${RD[0].name}${RD.length>1?` 외 ${RD.length-1}명`:''}`, v:'확인', act:`openRestDue()`};
-      const ON=(opnList(cid)||[]).find(x=>x.same_court);
-      if(ON) return {blue:1, t:'우리 홈코트에서 상대를 찾아요', d:`· ${ON.club_name}`, v:'보기', act:`openXc(${ON.id})`};
+    if(!stripShown){
+      try{
+        if(typeof tbIsOn==='function' && tbIsOn()){
+          const n=tbNow();
+          if(n && !n.done) return {t:`${n.round}회차 ${n.playing?'경기 중':'자리 바꾸는 중'}`,
+            d:`· ${tbMMSS(n.left)} 남음`, v:'대진 보기', act:`openClubSub('bracket')`};
+        }
+      }catch(e){}
+      { const M=(typeof cbMine==='function')?cbMine():null;
+        if(M && M.next) return {t:`다음 경기 · ${M.next.round}회차 ${M.next.court}번 코트`, d:'', v:'내 경기', act:`go('club');setClubSub('home')`}; }
     }
     const pend=((AC()||{}).pending||[]).length;
-    if(pend && d.officer) return {ink:1, t:`가입 신청 ${pend}건`, d:'· 운영진',
-      v:'처리하기', act:`openClubOps()`};
+    if(d.officer && cid){
+      const CL=chList(cid), td=((CL&&CL.todo)||[]);
+      if(td.length) return {k:'ink', t:`도전장 ${td.length}건`,
+        d:`· ${chOther(td[0],cid)} · ${chMD(td[0].reply_by)}까지`, v:'답하기', act:`openChDetail(${td[0].id})`};
+    }
+    if(pend && d.officer) return {k:'ink', t:`가입 신청 ${pend}건`, d:'· 운영진', v:'처리하기', act:`openClubOps()`};
+    if(d.officer && cid){
+      const RD=rdList(cid);
+      if(RD && RD.length) return {k:'soft', t:`복귀일 지난 휴회 ${RD.length}명`,
+        d:`· ${RD[0].name}${RD.length>1?` 외 ${RD.length-1}명`:''}`, v:'확인', act:`openRestDue()`};
+    }
+    { const cb=homeCupBand(); if(cb) return cb; }
+    if(d.officer && cid){
+      const ON=(opnList(cid)||[]).find(x=>x.same_court);
+      if(ON) return {k:'soft', t:'우리 홈코트에서 상대를 찾아요', d:`· ${ON.club_name}`, v:'보기', act:`openXc(${ON.id})`};
+    }
+    const u=state.serverUser||{};
+    if(SERVER_OK && !isGuest() && u.id && !(u.gender && u.sport_started))
+      return {k:'soft', t:'구력 · 성별 알려주기', d:'· 대진 짤 때 써요', v:'입력', act:`openEditProfile()`};
     return null;
   })();
-  const st=(()=>{
-    if(!sm || (!sm.rank && !sm.w && !sm.l)) return '';
-    const gap = (sm.wr!=null && sm.clubWr!=null) ? sm.wr-sm.clubWr : null;
-    return `<div class="st">
-      <div><b>${sm.rank?`${sm.rank}<em>위</em>`:'—'}</b>
-        <span>${sm.rank?`${sm.total}명 중`:'시즌 순위'}</span></div>
-      <div><b>${sm.w}<em>승</em> ${sm.l}<em>패</em></b><span>내 전적</span></div>
-      <div><b style="color:${gap==null?'var(--lgray)':gap>=0?'var(--green)':'var(--coral-d)'}">${
-        gap==null?'—':`${gap>=0?'+':'−'}${Math.abs(gap)}<em>%p</em>`}</b>
-        <span>클럽 평균 대비</span></div></div>`;
-  })();
-  return `<div class="myc">
+  /* 카드 맨 아래 한 줄 <클럽 관리> — 누르면 클럽 관리 창(내 클럽 바꾸기 · 새 클럽 만들기 · 둘러보기).
+     맨 위 클럽 이름을 눌렀을 때와 같은 창이다. 클럽이 하나뿐인 사람도 여기서 새 클럽을 만들 수 있게 늘 둔다.
+     클럽이 둘 이상이면 오른쪽에 몇 곳인지. 이름 · 로고는 늘어놓지 않는다. */
+  const OT=others||[];
+  const oth = `<div class="oth swc" role="button" tabindex="0" onclick="clubSwitchOpen()" aria-label="클럽 관리${OT.length?` · ${OT.length+1}곳`:''}">
+      <b>클럽 관리</b>${OT.length?`<span class="cnt">${OT.length+1}곳</span>`:''}<span class="arr">›</span></div>`;
+  return `<div class="myc hm">
     <div class="top" onclick="openClubFromHome(${esc(jsArg(nm))})">
       ${av||`<span class="lg">${esc(String(nm).slice(0,1))}</span>`}
       <span class="c"><span class="n"><b>${esc(nm)}</b>
         ${d.officer?'<span class="role">운영진</span>':''}</span>
-        <span class="s">${esc(sub)}</span></span>
+        <span class="s">${sub}</span></span>
       <span class="arr">›</span></div>
-    ${live?`<div class="live${live.ink?' ink':''}${live.amber?' amber':''}${live.blue?' blue':''}${live.green?' green':''}" onclick="${live.act}">
+    ${live?`<div class="live${live.k?' '+live.k:''}" onclick="${live.act}">
       <i></i><b>${esc(live.t)}</b><span>${esc(live.d)}</span>
-      <span class="v">${esc(live.v)} ›</span></div>`:''}
-    ${st}
+      <span class="v">${esc(live.v)} ›</span></div>`:''}
     <div class="nav">
       <button onclick="openClubSub('bracket')">오늘 대진</button>
       <button onclick="openClubSub('rec')">시즌 랭킹</button>
       <button onclick="openClubSub('sched')">일정</button></div>
+    ${oth}
   </div>`;
+}
+/* 대회 띠 — 큰 대회 카드는 클럽 탭에 있다. 홈에는 지금 할 일 한 줄만.
+   D-day 는 대회일이 아니라 입금 마감이라 띠에는 적지 않는다(카드 쪽 주석 참고). */
+function homeCupBand(){
+  try{
+    if(!SERVER_OK) return null;
+    const cid=clubId()||0;
+    if(CUPC===null || CUPC.cid!==cid){ cupCardLoad(cid); return null; }
+    const c=CUPC.cup; if(!c) return null;
+    const today=ymd();
+    if(c.date && c.date<today) return null;
+    const e=CUPC.entry, LV=c.live;
+    if(LV && (LV.on||LV.between)) return {t:'맞수 리그 진행 중', d:`· ${LV.played||0}/${LV.total||0}매치`, v:'대진 보기', act:'cupDay()'};
+    if(!e){
+      if(c.drawn || (c.date && c.date===today)) return null;   // 신청이 닫혔고 우리 클럽은 안 나간다
+      return {t:'맞수 리그 참가 모집 중', d:`· ${c.teams||0}/${c.max_teams||8}팀`, v:'보기', act: clubId()?'cupApply()':'cupTeams()'};
+    }
+    if(c.date && c.date===today) return {t:'오늘 맞수 리그', d:c.place?`· ${c.place}`:'', v:'대진 보기', act:'cupDay()'};
+    if(e.group_label) return {t:`맞수 리그 ${e.group_label}조`, d:c.date?`· ${ymdKo(c.date)}`:'', v:'우리 조', act:'cupDay()'};
+    if(e.fee_paid) return {t:'맞수 리그 참가 확정', d:c.date?`· ${ymdKo(c.date)}`:'', v:'보기', act:'cupTeams()'};
+    return {t:'맞수 리그 신청함', d:`· 엔트리 ${e.roster_n||0}/${c.roster_need||10}명`, v:'채우기', act:'cupApply()'};
+  }catch(e){ return null; }
+}
+/* 홈 · 다음 모임 카드에서 바로 참석 응답 — 같은 버튼을 다시 누르면 응답을 지운다 */
+async function homeRsvp(id, v){
+  if(homeRsvp._busy) return;
+  const ev=(SRV_EVENTS||[]).find(e=>String(e.id)===String(id));
+  const cur=ev && (ev.my_status || (ev.joined?'going':null));
+  const next = cur===v ? 'none' : v;
+  homeRsvp._busy=true;
+  try{
+    await api(`/events/${id}/rsvp`,{method:'POST',body:JSON.stringify({status:next})});
+    if(ev){
+      const was=cur==='going';
+      ev.my_status = next==='none'?null:next; ev.joined = next==='going';
+      if(ev.count!=null) ev.count=Math.max(0, ev.count + (ev.joined?1:0) - (was?1:0));
+    }
+    try{ buzz(6); }catch(e){}
+    toast(next==='going'?'참석했어요':next==='absent'?'불참으로 저장했어요':next==='undecided'?'미정으로 저장했어요':'응답을 지웠어요');
+    try{ track('rsvp:home'); }catch(e){}
+    try{ XCN={data:undefined,ts:0,loading:false}; }catch(e){}
+    if(state.view==='home') renderHome();
+    try{ const L=await api(`/clubs/${clubId()}/events`); if(Array.isArray(L)){ SRV_EVENTS=L; if(state.view==='home') renderHome(); } }catch(e){}
+  }catch(e){ toast('저장하지 못했어요'); }
+  finally{ homeRsvp._busy=false; }
+}
+/* 내정보 · 홈에 내 순위 보기 — 기본은 꺼짐 */
+function toggleHomeRank(){
+  state.homeRank=!state.homeRank;
+  try{ saveMatsu(); }catch(e){}
+  if(state.view==='me') renderMe();
 }
 /* 홈의 내 클럽 카드 → 그 클럽 홈.
    openClubPage 는 클럽 탭 안에서만 화면을 바꾼다 — 홈에서 부르면 보이지 않는 클럽 화면만 다시 그리고
@@ -44977,20 +45309,33 @@ function myClubCard(nm){
 function openClubFromHome(n){
   n=n||state.activeClub||(state.myClubs||[])[0];
   if(!n){ go('club'); return; }
+  /* 우리 클럽은 클럽 탭의 첫 화면이다 — 홈에서 누르면 클럽 탭으로 넘어간다(뒤로가기 없이) */
+  if(typeof TB_ON!=='undefined' && TB_ON && (state.myClubs||[]).includes(n)){
+    if(n!==state.activeClub){ try{ switchClub(n); }catch(e){ state.activeClub=n; } }
+    tabGo('club'); return;
+  }
+  const from=state.view;
   go('club', true);
   try{ openClubPage(n); }catch(e){ renderClub(); }
+  state._clubFrom = from!=='club' ? from : null;   // 뒤로가면 왔던 화면(홈)으로 — 클럽 목록이 아니라
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
 }
 /* 홈에서 클럽 안쪽 탭으로 바로 — 클럽 탭 → 클럽 → 탭 세 번 누르던 길을 한 번으로 */
 function openClubSub(sub){
   const n=state.activeClub||(state.myClubs||[])[0];
   if(!n){ go('club'); return; }
+  if(typeof TB_ON!=='undefined' && TB_ON){
+    tabGo('club'); state.clubSub=sub; renderClub();
+    const sc0=document.getElementById('scroll'); if(sc0) sc0.scrollTop=0; return;
+  }
   /* 순서가 중요하다.
      ① go('club') 은 isBack 이 아니면 state.clubOpen 을 지운다 — 클럽 <목록>으로 나가버린다.
      ② openClubPage 는 clubSub 을 'sched' 로 되돌린다.
      그래서 화면부터 옮기고, 클럽을 열고, 마지막에 탭을 정한다. */
+  const from=state.view;
   go('club', true);
   try{ openClubPage(n); }catch(e){ renderClub(); return; }
+  state._clubFrom = from!=='club' ? from : null;
   state.clubSub=sub;
   renderClub();
   const sc=document.getElementById('scroll'); if(sc) sc.scrollTop=0;
@@ -45059,7 +45404,13 @@ function homeStarter(){
   if(loading){
     h+=`<div class="hsskel" aria-hidden="true"><i class="a"></i><i class="b"></i><i class="c"></i></div>`;
   }
+  /* 경기 날 — 오늘 내 경기 띠가 맨 위 칸을 맡는다(다음 모임 카드 대신). 칸이 늘지 않게 */
+  let topStrip='';
   if(hasClub && !loading){
+    try{ const hc=(typeof cbHomeCard==='function') ? cbHomeCard() : null; if(hc) topStrip=cbHomeStrip(hc); }catch(e){}
+  }
+  if(topStrip) h+=topStrip;
+  if(hasClub && !loading && !topStrip){
     const nx=homeNextEvent();
     if(nx){
       const n=nx.e.count!=null?nx.e.count:((nx.e.attendees||[]).length);
@@ -45069,13 +45420,19 @@ function homeStarter(){
       const when = nx.today ? `오늘${nx.t?' '+nx.t:''}`
         : `${nx.d.getMonth()+1}/${nx.d.getDate()} (${W[nx.d.getDay()]})${nx.t?' '+nx.t:''}`;
       const place=esc(nx.e.place||(AC()||{}).court||'');
+      /* 참석 · 불참 · 미정을 홈에서 바로 — 예전에는 모임 화면에 들어가야 눌렀다 */
+      const srvEv = SERVER_OK && !!clubId() && /^\d+$/.test(String(nx.e.id));
+      const my = nx.e.my_status || (nx.e.joined?'going':null);
+      const RB=(v,t)=>`<button class="${my===v?'on '+v:''}" aria-pressed="${my===v}"
+          onclick="event.stopPropagation();homeRsvp('${nx.e.id}','${v}')">${t}${v==='going'&&my==='going'?' ✓':''}</button>`;
+      const hint = my ? '' : '참석을 누르면 대진에 들어가요';
       h+=`<div class="hstoday" onclick="homeGoEvent('${nx.e.id}')">
-        <span class="k${nx.today?'':' soon'}">${nx.today?'<i></i>':''}${when}</span>
+        <span class="k${nx.today?'':' soon'}">${nx.today?'<i></i>':''}${when}</span><span class="more">모임 보기 ›</span>
         <b>${esc(title)}<br>${n?`${n}명이 참석해요`:'아직 참석한 사람이 없어요'}</b>
-        <span class="m">${place}${place?' · ':''}${
-          nx.e.joined?'참석 체크가 끝났어요':'참석을 누르면 대진에 들어가요'}</span>
-        <button class="go" onclick="event.stopPropagation();homeGoEvent('${nx.e.id}')">${
-          nx.e.joined?(nx.today?'오늘 대진 보기':'모임 보기'):'참석 체크하기'}</button></div>`;
+        ${place||hint?`<span class="m">${place}${place&&hint?' · ':''}${hint}</span>`:''}
+        ${srvEv ? `<div class="hsrsvp">${RB('going','참석')}${RB('absent','불참')}${RB('undecided','미정')}</div>`
+          : `<button class="go" onclick="event.stopPropagation();homeGoEvent('${nx.e.id}')">${
+          nx.e.joined?(nx.today?'오늘 대진 보기':'모임 보기'):'참석 체크하기'}</button>`}</div>`;
     } else {
       h+=`<div class="hstoday quiet">
         <span class="k soon">예정된 모임 없음</span>
@@ -45104,39 +45461,38 @@ function homeStarter(){
 
   /* 둘러보는 사람 — <못 불러왔어요> · <시작하기 할 일>은 로그인한 사람 몫이라 건너뛴다 */
   /* ② 시작하기 — 빈 화면을 <할 일>로 바꾼다 */
-  if(step>=0 && !loading && !clubUnknown && !isGuest()){
+  if(step>=0 && !hasClub && !loading && !clubUnknown && !isGuest()){
+    /* [제목, 위 줄 짧은 이름, 설명, 버튼, 누르면] */
     const STEPS=[
-      ['구력과 성별 알려주기','대진이 실력을 섞어 짜는 데 쓰여요 · 1분이면 끝나요','입력하기',"openEditProfile()"],
-      ['클럽 찾거나 만들기','맞수는 클럽 단위로 굴러가요 · 초대 링크를 받았다면 그걸 눌러도 돼요','클럽 찾기',"go('club')"],
-      ['첫 모임에 참석 누르기','참석만 누르면 그날 대진에 자동으로 들어가요','일정 보기',"go('club')"],
+      ['구력과 성별 알려주기','구력 · 성별','대진이 실력을 섞어 짜는 데 쓰여요. 1분이면 끝나요.','구력 · 성별 입력하기',"openEditProfile()"],
+      ['클럽 찾거나 만들기','클럽','맞수는 클럽 단위로 굴러가요. 초대 링크를 받았다면 그걸 눌러도 돼요.','우리 동네 클럽 찾기',"go('club')"],
+      ['첫 모임에 참석 누르기','첫 모임','참석만 누르면 그날 대진에 자동으로 들어가요.','일정 보기',"go('club')"],
     ];
-    h+=`<div class="hstart"${hasClub?' style="margin-top:10px"':''}>
-      <div class="hd"><b>시작하기</b><span>${done.filter(Boolean).length}/3 완료</span></div>
-      <div class="rail">${STEPS.map((_,i)=>`<i class="${done[i]?'on':''}"></i>`).join('')}</div>
-      ${STEPS.map(([t,d,btn,act],i)=>{
+    const CK='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    const cur=STEPS[step];
+    h+=`<div class="hstart" role="group" aria-label="시작하기 · 3단계 중 ${done.filter(Boolean).length}단계 끝">
+      <div class="hst-trk">${STEPS.map(([,lb],i)=>{
         const ok=done[i], now=i===step;
-        return `<div class="hsrow${ok?' done':now?' now':''}">
-          <span class="n">${ok?'✓':i+1}</span>
-          <span class="c"><b>${t}</b>${now?`<span>${d}</span>`:''}</span>
-          ${now?`<span class="go" onclick="event.stopPropagation();${act}">${btn}</span>`
-               :ok?'<span class="go">완료</span>':''}</div>`;
-      }).join('')}</div>`;
+        return `${i?`<div class="hst-ln${done[i-1]?' ok':''}"></div>`:''}<div class="hst-nd${ok?' ok':now?' cur':''}"><i>${ok?CK:i+1}</i><span>${lb}</span></div>`;
+      }).join('')}</div>
+      <div class="hst-box"><span class="hst-k">지금 할 일</span><b class="hst-t">${cur[0]}</b><span class="hst-d">${cur[2]}</span></div>
+      <button class="hst-go" onclick="event.stopPropagation();${cur[4]}">${cur[3]}</button></div>`;
   }
 
   /* ③ 볼 것이 있는 곳으로 — 지금 이 앱에서 실제로 굴러가는 건 클럽뿐이다.
      이미 클럽이 있는 사람에게 <우리 동네 클럽을 찾아보세요>는 남의 말이다.
      내 클럽을 먼저 보여주고, 클럽이 없을 때만 찾기를 권한다. */
   if(hasClub){
-    h+=`<div class="hsect"><b>내 클럽</b><span>${mine.length}곳</span>
-      <span class="go" onclick="go('club')">클럽 탭 ›</span></div>`;
-    mine.slice(0,3).forEach(nm=>h+=myClubCard(nm));
-    h+=`<button class="mycadd" onclick="state._cw=null;openCreateClub()">
-      <b>＋</b>새 클럽 만들기</button>`;
+    /* 홈은 세 칸 — 다음 모임 · 내 클럽 · 클럽 찾기. 클럽이 여럿이면 지금 클럽만 큰 카드,
+       나머지는 같은 카드 맨 아래 한 줄씩. 머리(<내 클럽 1곳 · 클럽 탭 ›>)와
+       <새 클럽 만들기> 버튼은 뺐다 — 카드를 누르면 클럽 탭이고, 만들기는 클럽 이름 창에 있다. */
+    const cur=(typeof tbMyClub==='function' && tbMyClub()) || mine[0];
+    h+=myClubCard(cur, mine.filter(n=>n!==cur), !!topStrip);
     /* 내 클럽 아래 — 우리 지역의 다른 클럽을 가로 카드로. 전체는 <모두 보기> 한 페이지에서 세로로 본다.
        (예전 이 자리의 <오픈매치 알림 신청했어요> 한 줄을 대신한다) */
     const L=clubListFor('auto', mine);
     if(L.list.length){
-      h+=`<div class="hsect" style="margin-top:30px"><b>${esc(L.title)}</b><span>${L.list.length}곳</span>
+      h+=`<div class="hsect" style="margin-top:26px"><b>${esc(L.title)}</b><span>${L.list.length}곳</span>
         <span class="go" onclick="openClubsAll()">모두 보기 ›</span></div>
         <div class="hcards">${L.list.slice(0,8).map(clubCardHTML).join('')}</div>`;
     }
@@ -45336,7 +45692,7 @@ function _renderHomeCore(){
     }
 
   /* 오늘 대진이 도는 동안만 — 배너 아래에 한 줄. 누르면 대진 화면으로 */
-  { const hc=(typeof cbHomeCard==='function') ? cbHomeCard() : null;
+  if(homeOmLive()){ const hc=(typeof cbHomeCard==='function') ? cbHomeCard() : null;
     if(hc) h+=cbHomeStrip(hc); }
   /* 바로가기 타일 — 아래 탭바에 오픈매치·클럽이 이미 있고, 리그·신청이력은
      오픈매치가 열려야 쓸모가 생긴다. 같은 곳으로 가는 문을 두 개 두면 화면만 길어진다.
@@ -45781,15 +46137,19 @@ function goBack(){
     TALK.post=null; TALK.writing=0; renderTalkTab(); return;
   }
   if(HCV){ hcBack(); return; }
-  if(state.view==='club' && state.clubOpen){ closeClubPage(); return; }
+  if(typeof TB_ON!=='undefined' && TB_ON && state.view==='club' && state.clubBrowse && !state.clubOpen && (state.myClubs||[]).length){ clubBrowseClose(); return; }
+  if(state.view==='club' && state.clubOpen && !(typeof TB_ON!=='undefined' && TB_ON)){ closeClubPage(); return; }
   const prev=NAV_HIST.pop() || 'home';
   go(prev, true);
 }
 function updBackBtn(){
   const b=document.getElementById('backBtn');
-  const show = state.view!=='home' || (state.view==='club' && state.clubOpen)
-    || (state.view==='talk' && (TALK.post||TALK.writing));
+  /* 탭 첫 화면(홈 · 오픈매치 · 라운지 · 클럽 · 내정보)에는 뒤로가기를 두지 않는다 — 앱은 들어간 화면에만 있다 */
+  const show = (typeof NFX_ON!=='undefined' && NFX_ON) ? !nfxRoot()
+    : (state.view!=='home' || (state.view==='club' && state.clubOpen)
+    || (state.view==='talk' && (TALK.post||TALK.writing)));
   if(b) b.style.display = show ? 'flex' : 'none';
+  try{ tbUpdate(); }catch(e){}
   // 대화 화면에서는 대화 버튼을 숨긴다 — 이미 와 있는 곳으로 가는 버튼은 혼란만 준다
   const c=document.getElementById('chatBtn');
   if(c) c.style.display = state.view==='chat' ? 'none' : 'flex';
@@ -45856,8 +46216,11 @@ function go(v, isBack){
   if(v==='venue') v='match';
   if(v==='club'){
     try{ ensureClubEvents(); }catch(e){}
-    /* 탭으로 들어오면 항상 목록부터. 상세에 머물러 있으면 다른 클럽을 못 찾는다 */
-    if(!isBack) state.clubOpen=null;
+    /* 탭으로 들어오면 우리 클럽 첫 화면 — 다른 클럽은 클럽 이름 ▾ 의 <둘러보기>에서.
+       (예전에는 늘 목록부터였다. 클럽이 하나뿐인 대부분은 매번 한 번 더 눌러야 했다)
+       가입한 클럽이 없으면 목록(찾기)이 첫 화면이다. */
+    if(!isBack){ state.clubBrowse=false;
+      state.clubOpen = (typeof TB_ON!=='undefined' && TB_ON && (state.myClubs||[]).length) ? tbMyClub() : null; }
   }
   /* 다른 탭으로 가면 홈코트에서 나온다 — 돌아왔을 때 지도가 남아 있으면
      클럽 탭을 눌렀는데 클럽이 안 보인다. hcOpen 이 부르는 go 는 건드리지 않는다. */
@@ -46292,7 +46655,7 @@ function closeTopLayer(){
     const b=[...top.querySelectorAll('.pvback,[aria-label="뒤로"]')].find(x=>x.getClientRects().length);
     if(b) b.click(); else top.classList.remove('on'); return true; }
   if(state.view==='club' && state._xcOpen){
-    const b=[...document.querySelectorAll('#s-club [aria-label="뒤로"]')].find(x=>x.getClientRects().length);
+    const b=document.querySelector('#s-club [data-tbback]') || [...document.querySelectorAll('#s-club [aria-label="뒤로"]')].find(x=>x.getClientRects().length);
     if(b) b.click(); else { state._xcOpen=0; renderClub(); }
     return true;
   }
@@ -46300,7 +46663,7 @@ function closeTopLayer(){
 }
 /* 아래 탭 <클럽> — 언제 눌러도 클럽 홈에서 시작 */
 function navClub(){
-  state.clubSub='home'; state._xcOpen=0;
+  state.clubSub='home'; state._xcOpen=0; state._clubFrom=null; state.clubBrowse=false;
   try{ HCV=null; HCSTACK=[]; }catch(e){}
   go('club');
 }
@@ -46316,6 +46679,7 @@ function navBackStep(){
   /* 홈코트 안이면 한 칸씩 되짚는다 — 기기 뒤로가기가 탭을 통째로 벗어나면
      지도까지 들어온 사람이 클럽 탭 밖으로 튕긴다. */
   if(HCV){ hcBack(); return true; }
+  if(typeof TB_ON!=='undefined' && TB_ON && state.view==='club' && state.clubBrowse && !state.clubOpen && (state.myClubs||[]).length){ clubBrowseClose(); return true; }
   if(NAV_HIST.length){ goBack(); return true; }
   if(state.view!=='home'){ go('home', true); return true; }
   return false;
@@ -46351,6 +46715,7 @@ window.addEventListener('popstate', ()=>{
       document.body.appendChild(v); }
     return v; };
   addEventListener('touchstart', ev=>{
+    if(window.NFX_ON && IS_NATIVE) return;       // 앱에서는 화면이 손가락을 따라오는 새 밀기가 대신한다
     if(ev.touches.length!==1) return;
     const t=ev.touches[0];
     const L=appLeft();
@@ -46398,6 +46763,576 @@ try{
     });
   }
 }catch(e){}
+/* ── 앱처럼 움직이기 ───────────────────────────────────────────
+   웹처럼 느껴지던 까닭은 화면이 <그냥 바뀌는> 데 있었다. 링크를 누른 것처럼 내용만 갈아끼워지고,
+   돌아오면 목록 맨 위로 튀고, 탭 첫 화면에도 뒤로가기가 떠 있었다.
+
+   - 들어가기: 새 화면이 오른쪽에서 밀려 들어오고, 보던 화면은 왼쪽으로 살짝 밀리며 어두워진다.
+   - 나오기: 반대로. 돌아온 화면은 보던 자리(스크롤)를 그대로 기억한다.
+   - 탭 바꾸기: 움직임 없이 바로. 탭마다 보던 자리를 기억하고, 같은 탭을 다시 누르면 맨 위로.
+   - 왼쪽 가장자리를 밀면 화면이 손가락을 따라오고, 밑에 이전 화면이 보인다. 덜 밀면 제자리로.
+   - 탭 첫 화면(홈 · 오픈매치 · 라운지 · 클럽 · 내정보)에는 뒤로가기가 없다.
+
+   보던 화면은 <사진처럼 복제>해서 움직인다. 복제는 맨 뒤에 붙이므로 같은 id 가 있어도
+   getElementById 는 진짜를 먼저 찾는다. 이름 있는 입력칸(라디오 묶음)은 이름을 지워 진짜를 건드리지 않는다.
+   <움직임 줄이기>를 켠 기기에서는 움직임만 빼고 나머지(자리 기억 · 뒤로가기 규칙)는 그대로 한다. */
+var NFX_ON = true;
+var NFX = { depth: 0, pending: 0, off: true, stack: [], tabY: {}, tabNav: false, anim: null, clickPop: 0, touchedAt: 0 };
+var NFX_ROOTS = ['home', 'match', 'talk', 'club', 'me'];
+var NFX_EASE = 'cubic-bezier(.22,.9,.26,1)';
+var NFX_MS = 340;
+document.documentElement.classList.add('navfx');
+window.addEventListener('load', () => setTimeout(() => { NFX.off = false; }, 600));
+addEventListener('touchstart', () => { NFX.touchedAt = Date.now(); }, { passive: true, capture: true });
+
+function nfxReduced() { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } }
+function nfxTopOv() {
+  const f = [...document.querySelectorAll('.fullov.on')].filter(x => x.id !== 'auth' && !x.classList.contains('nfx-snap'));
+  return f.length ? f[f.length - 1] : null;
+}
+function nfxKey() {
+  let k = state.view;
+  if (state.view === 'club') k += '|' + (state.clubOpen || '') + '|' + (state.clubSub || '') + '|' + (state._xcOpen ? 1 : 0) + (state.clubBrowse ? '|b' : '');
+  try { if (HCV) k += '|hc' + HCSTACK.length + ':' + (HCV.k || '') + (HCV.id || ''); } catch (e) {}
+  try { if (state.view === 'talk' && (TALK.post || TALK.writing)) k += '|tp' + (TALK.post || 'w'); } catch (e) {}
+  return k;
+}
+/* 탭 첫 화면인가 — 여기서는 뒤로가기를 보이지 않고, 가장자리 밀기도 받지 않는다 */
+function nfxRoot() {
+  if (['home', 'match', 'talk', 'club', 'me'].indexOf(state.view) < 0) return false;
+  try { if (HCV) return false; } catch (e) {}
+  if (state.view === 'club') {
+    if (state._xcOpen) return false;
+    if (typeof TB_ON !== 'undefined' && TB_ON) return state.clubOpen ? true : !(state.clubBrowse && (state.myClubs || []).length);
+    if (state.clubOpen) return false;
+  }
+  try { if (state.view === 'talk' && (TALK.post || TALK.writing)) return false; } catch (e) {}
+  return true;
+}
+function nfxClone(el) {
+  const c = el.cloneNode(true);
+  c.querySelectorAll('input[name],select[name],textarea[name]').forEach(x => x.removeAttribute('name'));
+  c.querySelectorAll('iframe,video,audio').forEach(x => {
+    const d = document.createElement('div'); d.className = x.className; d.style.cssText = x.style.cssText;
+    d.style.background = '#e9eee6'; x.replaceWith(d);
+  });
+  const oc = el.querySelectorAll('canvas'), cc = c.querySelectorAll('canvas');
+  cc.forEach((x, i) => { try { x.getContext('2d').drawImage(oc[i], 0, 0); } catch (e) {} });
+  c.classList.add('nfx-still');
+  return c;
+}
+function nfxPlace(box, sc) {
+  box.style.position = 'absolute'; box.style.left = sc.offsetLeft + 'px'; box.style.top = sc.offsetTop + 'px';
+  box.style.width = sc.offsetWidth + 'px'; box.style.height = sc.offsetHeight + 'px';
+}
+/* 지금 보이는 화면(#scroll 안)을 사진처럼 — 스크롤 위치까지 박아 둔다 */
+function nfxSnapScroll() {
+  const sc = document.getElementById('scroll'); if (!sc) return null;
+  const scr = sc.querySelector(':scope > .screen.on'); if (!scr) return null;
+  const box = document.createElement('div'); box.className = 'nfx-snap nfx-still';
+  box.style.cssText = 'overflow:hidden;background:var(--cream);pointer-events:none';
+  nfxPlace(box, sc);
+  const inner = document.createElement('div'); inner.className = 'scroll';
+  inner.style.cssText = 'overflow:visible;display:block;height:auto;flex:none;transform:translateY(' + (-sc.scrollTop) + 'px)';
+  inner.appendChild(nfxClone(scr));
+  const dim = document.createElement('i'); dim.className = 'nfx-dim';
+  box.appendChild(inner); box.appendChild(dim);
+  return box;
+}
+/* 전체 화면 창(.fullov)을 사진처럼 — 안쪽 스크롤 위치도 옮긴다 */
+function nfxSnapOv(ov) {
+  const c = nfxClone(ov); c.classList.add('nfx-snap'); c.classList.remove('on'); c.style.display = 'flex';
+  c.style.zIndex = String((parseInt(getComputedStyle(ov).zIndex) || 90) + 1); c.style.pointerEvents = 'none';
+  ov.parentNode.appendChild(c);
+  const A = [ov, ...ov.querySelectorAll('*')], B = [c, ...c.querySelectorAll('*')];
+  for (let i = 0; i < A.length && i < B.length; i++) {
+    const st = A[i].scrollTop, sl = A[i].scrollLeft;
+    if (st || sl) { B[i].scrollTop = st; B[i].scrollLeft = sl; }
+  }
+  return c;
+}
+function nfxLayer(on) {
+  const tb = document.querySelector('.tabbar'), sc = document.getElementById('scroll');
+  if (on) {
+    if (tb) tb.style.zIndex = '30';
+    if (sc) { sc.style.zIndex = '2'; sc.style.background = 'var(--cream)'; sc.style.boxShadow = '-12px 0 30px rgba(20,25,35,.14)'; }
+  } else {
+    if (tb) tb.style.zIndex = '';
+    if (sc) { sc.style.zIndex = ''; sc.style.background = ''; sc.style.boxShadow = ''; sc.style.transform = ''; }
+  }
+}
+function nfxDimEl(sc, z) {
+  const d = document.createElement('div'); d.className = 'nfx-snap';
+  d.style.cssText = 'background:rgba(14,18,26,.12);pointer-events:none;z-index:' + z;
+  nfxPlace(d, sc); return d;
+}
+function nfxFinish(fn) { NFX.anim = null; try { fn(); } catch (e) {} }
+function nfxCancelAnim() { if (NFX.anim) { try { NFX.anim.forEach(a => a.finish()); } catch (e) {} } }
+/* 들어가기 — 새 화면이 오른쪽에서, 보던 화면은 왼쪽으로 30% 밀리며 어두워진다 */
+function nfxPushAnim(snap) {
+  const sc = document.getElementById('scroll'), app = document.querySelector('.app'); if (!sc || !app) return;
+  nfxCancelAnim();
+  snap.style.zIndex = '1'; snap.style.transform = ''; app.appendChild(snap);
+  const dim = snap.querySelector('.nfx-dim');
+  nfxLayer(true);
+  const W = sc.offsetWidth, o = { duration: NFX_MS, easing: NFX_EASE, fill: 'both' };
+  const a1 = sc.animate([{ transform: `translateX(${W}px)` }, { transform: 'translateX(0)' }], o);
+  const a2 = snap.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${-W * 0.3}px)` }], o);
+  const a3 = dim ? dim.animate([{ opacity: 0 }, { opacity: 1 }], o) : null;
+  NFX.anim = [a1, a2, a3].filter(Boolean);
+  a1.finished.then(() => nfxFinish(() => {
+    [a1, a2, a3].forEach(a => a && a.cancel());
+    snap.remove(); snap.style.transform = ''; if (dim) dim.style.opacity = ''; nfxLayer(false);
+  })).catch(() => {});
+}
+/* 나오기 — 보던 화면이 오른쪽으로 빠지고, 밑의 화면이 왼쪽에서 제자리로 */
+function nfxPopAnim(snap) {
+  const sc = document.getElementById('scroll'), app = document.querySelector('.app'); if (!sc || !app) return;
+  nfxCancelAnim();
+  snap.style.zIndex = '3'; snap.style.boxShadow = '-12px 0 30px rgba(20,25,35,.14)'; app.appendChild(snap);
+  const dim = nfxDimEl(sc, 2); app.appendChild(dim);
+  const sd = snap.querySelector('.nfx-dim'); if (sd) sd.remove();
+  if (document.querySelector('.tabbar')) document.querySelector('.tabbar').style.zIndex = '30';
+  sc.style.zIndex = '1';
+  const W = sc.offsetWidth, o = { duration: NFX_MS, easing: NFX_EASE, fill: 'both' };
+  const a1 = snap.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${W}px)` }], o);
+  const a2 = sc.animate([{ transform: `translateX(${-W * 0.3}px)` }, { transform: 'translateX(0)' }], o);
+  const a3 = dim.animate([{ opacity: 1 }, { opacity: 0 }], o);
+  NFX.anim = [a1, a2, a3];
+  a1.finished.then(() => nfxFinish(() => {
+    [a2].forEach(a => a.cancel()); snap.remove(); dim.remove(); nfxLayer(false);
+  })).catch(() => {});
+}
+/* 전체 화면 창 닫기 — 복제한 창이 오른쪽으로 빠진다 */
+function nfxOvOut(snap) {
+  const o = { duration: NFX_MS - 40, easing: NFX_EASE, fill: 'both' };
+  const a = snap.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(100%)' }], o);
+  a.finished.then(() => snap.remove()).catch(() => snap.remove());
+}
+/* 다시 그리면서 스크롤이 줄어드는 일이 있다 — 손대지 않았으면 몇 번 더 맞춘다 */
+function nfxKeepY(y) {
+  const t0 = Date.now(), k = nfxKey();
+  [80, 260, 600].forEach(ms => setTimeout(() => {
+    const sc = document.getElementById('scroll');
+    if (sc && nfxKey() === k && NFX.touchedAt < t0 && Math.abs(sc.scrollTop - y) > 4) sc.scrollTop = y;
+  }, ms));
+}
+function nfxRun(kind, fn, self, args) {
+  if (NFX.depth > 0 || NFX.pending > 0 || !document.querySelector('.app')) return fn.apply(self, args);
+  const sc = document.getElementById('scroll');
+  const anim = !NFX.off && !nfxReduced();
+  if (kind === 'go') {
+    const v = args[0] === 'venue' ? 'match' : args[0];
+    kind = NFX.tabNav ? 'tab' : args[1] ? 'pop' : (NFX_ROOTS.indexOf(v) >= 0 ? 'tab' : 'push');
+  }
+  NFX.tabNav = false;
+  const k0 = nfxKey(), ov0 = nfxTopOv(), y0 = sc ? sc.scrollTop : 0, root0 = nfxRoot(), view0 = state.view;
+  if (kind === 'tab' && root0) NFX.tabY[view0] = y0;
+  let snap = null, ovSnap = null;
+  if (anim && kind === 'push' && !ov0) snap = nfxSnapScroll();
+  if (anim && kind === 'pop') {
+    if (ov0) { if (Date.now() - NFX.clickPop > 80) ovSnap = nfxSnapOv(ov0); }
+    else snap = nfxSnapScroll();
+  }
+  NFX.depth++;
+  let r;
+  try { r = fn.apply(self, args); } finally { NFX.depth--; }
+  const done = () => nfxAfter(kind, k0, ov0, y0, snap, ovSnap, view0);
+  if (r && typeof r.then === 'function') {
+    NFX.pending++;
+    r.then(() => { NFX.pending--; done(); }, () => { NFX.pending--; done(); });
+  } else done();
+  return r;
+}
+function nfxAfter(kind, k0, ov0, y0, snap, ovSnap, view0) {
+  const sc = document.getElementById('scroll'), k1 = nfxKey(), ov1 = nfxTopOv();
+  try { updBackBtn(); } catch (e) {}
+  if (ovSnap) { if (ov1 !== ov0) nfxOvOut(ovSnap); else ovSnap.remove(); }
+  if (kind === 'tab') {
+    if (snap) snap.remove();
+    NFX.stack = [];
+    if (sc) {
+      if (view0 === state.view) sc.scrollTo({ top: 0, behavior: nfxReduced() ? 'auto' : 'smooth' });
+      else { const y = nfxRoot() ? (NFX.tabY[state.view] || 0) : 0; sc.scrollTop = y; if (y) nfxKeepY(y); }
+    }
+    if (view0 !== state.view) buzz(6);
+    return;
+  }
+  if (k1 === k0 && ov1 === ov0) { if (snap) snap.remove(); return; }
+  if (kind === 'push' && nfxRoot() && !(ov1 && ov1 !== ov0)) {
+    if (snap) snap.remove(); NFX.stack = [];
+    if (sc) sc.scrollTop = 0;
+    if (view0 !== state.view) buzz(6);
+    return;
+  }
+  if (kind === 'push') {
+    if (ov1 && ov1 !== ov0) { if (snap) snap.remove(); return; }   // 전체 화면 창은 CSS 가 밀어 넣는다
+    if (sc) sc.scrollTop = 0;
+    const ent = { key: k0, y: y0, snap };
+    NFX.stack.push(ent); if (NFX.stack.length > 8) NFX.stack.shift();
+    if (snap) nfxPushAnim(snap);
+    return;
+  }
+  /* 나오기 — 그 화면을 떠날 때의 스크롤로 돌려놓는다 */
+  let ent = null;
+  for (let i = NFX.stack.length - 1; i >= 0; i--) {
+    if (NFX.stack[i].key === k1) { ent = NFX.stack[i]; NFX.stack.length = i; break; }
+  }
+  if (sc && ent) { sc.scrollTop = ent.y; nfxKeepY(ent.y); }
+  if (snap && !ov0) nfxPopAnim(snap); else if (snap) snap.remove();
+}
+function nfxWrap(name, kind) {
+  const f = window[name]; if (typeof f !== 'function' || f._nfx) return;
+  const w = function () { return nfxRun(kind, f, this, arguments); };
+  w._nfx = true; window[name] = w;
+}
+['go'].forEach(n => nfxWrap(n, 'go'));
+['openClubPage', 'openClubFromHome', 'openClubSub', 'hcOpen', 'openTalkPost', 'openXcAll', 'openXc', 'landVenue', 'openLand']
+  .forEach(n => nfxWrap(n, 'push'));
+['goBack', 'navBackStep', 'closeClubPage', 'hcBack', 'hcExit', 'xcBack', 'nwBack'].forEach(n => nfxWrap(n, 'pop'));
+/* 아래 탭 — 탭 바꾸기로 알린다(밀려 들어오지 않는다) */
+function tabGo(v) { NFX.tabNav = true; try { if (v === 'club') navClub(); else go(v); } finally { NFX.tabNav = false; } }
+
+/* 전체 화면 창 안의 <‹> — 누르기 직전 모습을 복제해 두었다가, 창이 닫히면 오른쪽으로 빼 준다 */
+document.addEventListener('click', e => {
+  if (NFX.off || nfxReduced() || NFX.depth > 0) return;
+  const b = e.target && e.target.closest ? e.target.closest('.pvback,[aria-label="뒤로"]') : null; if (!b) return;
+  const ov = b.closest('.fullov.on'); if (!ov || ov.id === 'auth' || ov.classList.contains('nfx-snap')) return;
+  NFX.clickPop = Date.now();
+  const snap = nfxSnapOv(ov);
+  setTimeout(() => { if (!ov.classList.contains('on') || nfxTopOv() !== ov) nfxOvOut(snap); else snap.remove(); }, 0);
+}, true);
+
+/* 왼쪽 가장자리에서 밀기 — 화면이 손가락을 따라오고, 밑에는 이전 화면이 보인다 */
+(function () {
+  const EDGE = 30;
+  let s = null;
+  const appEl = () => document.querySelector('.app');
+  addEventListener('touchstart', ev => {
+    if (!NFX_ON || !IS_NATIVE || ev.touches.length !== 1 || NFX.anim) return;
+    const a = appEl(); if (!a) return;
+    const r = a.getBoundingClientRect(), t = ev.touches[0];
+    if (t.clientX < r.left - 4 || t.clientX > r.left + EDGE) return;
+    s = { x0: t.clientX, y0: t.clientY, decided: false, W: r.width, lx: t.clientX, lt: performance.now(), v: 0, dx: 0 };
+  }, { passive: true });
+  addEventListener('touchmove', ev => {
+    if (!s) return;
+    const t = ev.touches[0], dx = t.clientX - s.x0, dy = Math.abs(t.clientY - s.y0);
+    if (!s.decided) {
+      if (dy > 10 && dy > Math.abs(dx)) { s = null; return; }
+      if (Math.abs(dx) < 8) return;
+      if (dx < 0) { s = null; return; }
+      s.decided = true;
+      if (!nfxSwipeBegin(s)) { s = null; return; }
+    }
+    const now = performance.now();
+    s.v = (t.clientX - s.lx) / Math.max(1, now - s.lt); s.lx = t.clientX; s.lt = now;
+    s.dx = Math.max(0, dx); nfxSwipeMove(s);
+  }, { passive: true });
+  addEventListener('touchend', () => { if (!s) return; const st = s; s = null; if (st.decided) nfxSwipeEnd(st); }, { passive: true });
+  addEventListener('touchcancel', () => { if (!s) return; const st = s; s = null; if (st.decided) { st.cancel = true; nfxSwipeEnd(st); } }, { passive: true });
+})();
+function nfxSwipeBegin(s) {
+  const ov = document.getElementById('ov');
+  if ((ov && ov.classList.contains('on')) || document.getElementById('notifDrop')) { s.mode = 'plain'; return true; }
+  const g = document.getElementById('guestOv');
+  if (g && g.classList.contains('on')) { s.mode = 'plain'; return true; }
+  const app = appOf();
+  const top = nfxTopOv();
+  const reduced = nfxReduced();
+  if (top) {
+    if (reduced) { s.mode = 'plain'; return true; }
+    s.mode = 'ov'; s.target = top; top.style.animation = 'none';
+    top.style.boxShadow = '-12px 0 30px rgba(20,25,35,.14)';
+    return true;
+  }
+  if (nfxRoot()) return false;
+  if (reduced) { s.mode = 'plain'; return true; }
+  const sc = document.getElementById('scroll');
+  s.mode = 'scroll'; s.target = sc;
+  nfxLayer(true);
+  const ent = NFX.stack[NFX.stack.length - 1];
+  if (ent && ent.snap && !ent.snap.isConnected) {
+    const u = ent.snap; nfxPlace(u, sc); u.style.zIndex = '0';
+    u.style.transform = `translateX(${-s.W * 0.3}px)`; app.appendChild(u); s.under = u;
+    s.udim = u.querySelector('.nfx-dim'); if (s.udim) s.udim.style.opacity = '1';
+  }
+  return true;
+}
+function appOf() { return document.querySelector('.app'); }
+function nfxSwipeMove(s) {
+  const p = Math.min(1, s.dx / s.W);
+  if (s.mode === 'ov' || s.mode === 'scroll') s.target.style.transform = `translateX(${s.dx}px)`;
+  if (s.under) s.under.style.transform = `translateX(${-s.W * 0.3 * (1 - p)}px)`;
+  if (s.udim) s.udim.style.opacity = String(1 - p);
+}
+function nfxSwipeEnd(s) {
+  const commit = !s.cancel && (s.dx > s.W * 0.33 || (s.v > 0.45 && s.dx > 24));
+  if (s.mode === 'plain') { if (commit) { try { navBackStep(); } catch (e) {} } return; }
+  const left = commit ? s.W - s.dx : s.dx;
+  const ms = Math.max(140, Math.min(320, left / s.W * 360));
+  const o = { duration: ms, easing: 'cubic-bezier(.2,.8,.25,1)', fill: 'forwards' };
+  const to = commit ? s.W : 0;
+  const anims = [s.target.animate([{ transform: `translateX(${s.dx}px)` }, { transform: `translateX(${to}px)` }], o)];
+  if (s.under) anims.push(s.under.animate([{ transform: s.under.style.transform }, { transform: commit ? 'translateX(0)' : `translateX(${-s.W * 0.3}px)` }], o));
+  if (s.udim) anims.push(s.udim.animate([{ opacity: s.udim.style.opacity }, { opacity: commit ? 0 : 1 }], o));
+  NFX.anim = anims;
+  anims[0].finished.then(() => nfxFinish(() => {
+    if (s.mode === 'ov') {
+      if (commit) { NFX.depth++; try { navBackStep(); } catch (e) {} finally { NFX.depth--; } }
+      anims.forEach(a => a.cancel()); s.target.style.transform = ''; s.target.style.animation = ''; s.target.style.boxShadow = '';
+      try { updBackBtn(); } catch (e) {}
+      return;
+    }
+    if (commit) {
+      const k0 = nfxKey();
+      NFX.depth++; try { navBackStep(); } catch (e) {} finally { NFX.depth--; }
+      const sc = document.getElementById('scroll'), k1 = nfxKey();
+      let ent = null;
+      for (let i = NFX.stack.length - 1; i >= 0; i--) { if (NFX.stack[i].key === k1) { ent = NFX.stack[i]; NFX.stack.length = i; break; } }
+      if (sc && ent) { sc.scrollTop = ent.y; nfxKeepY(ent.y); }
+      try { updBackBtn(); } catch (e) {}
+      void k0;
+    }
+    anims.forEach(a => a.cancel());
+    if (s.under) { s.under.remove(); s.under.style.transform = ''; if (s.udim) s.udim.style.opacity = ''; }
+    nfxLayer(false);
+  })).catch(() => {});
+}
+
+/* ── 맨 위 줄 ───────────────────────────────────────────────────
+   앱은 맨 위에 <지금 어디에 있는지>를 적는다. 맞수 로고는 홈에만 둔다.
+   - 탭 첫 화면: 화면 이름을 크게(오픈매치 · 라운지 · 내정보). 클럽 탭은 우리 클럽 이름 + 펼침 화살표.
+   - 들어간 화면: ‹ + 가운데 작은 제목. 화면 안의 같은 제목(h2)은 숨긴다.
+   - 클럽 탭을 누르면 클럽 목록이 아니라 우리 클럽 첫 화면. 다른 클럽 둘러보기는 이름을 눌러 나오는 시트에서. */
+var TB_ON = true;
+document.documentElement.classList.add('tb');
+var TB_INNER = { league: '리그', bracket: '대진', duel: '신청 내역', sched: '일정', lounge: '라운지', chat: '대화' };
+var TB_CHEV = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7684" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+function tbMyClub() {
+  const m = state.myClubs || [];
+  return (state.activeClub && m.includes(state.activeClub)) ? state.activeClub : (m[0] || null);
+}
+/* 들어간 화면의 제목 — 화면 안 머리에서 읽고, 없으면 화면 이름 */
+function tbInnerTitle(scr) {
+  const v = state.view;
+  if (v === 'club') {
+    try { if (HCV) return ''; } catch (e) {}                 // 홈코트 · 구장 · 지도는 화면 안에 큰 머리가 있다
+    if (state.clubBrowse && !state.clubOpen) return '클럽 둘러보기';
+  }
+  if (v === 'talk') { try { if (TALK.writing) return '글쓰기'; if (TALK.post) return ''; } catch (e) {} }
+  if (scr) {
+    const row = scr.querySelector(':scope > .xf > div:first-child');
+    if (row && row.querySelector('h2')) return row.querySelector('h2').textContent.trim();
+    const h2 = scr.querySelector(':scope > h2.t:first-child');
+    if (h2) return h2.textContent.trim();
+  }
+  return v === 'club' && state._xcOpen ? '교류전' : (TB_INNER[v] || '');
+}
+/* 화면 안에서 위 줄과 겹치는 머리를 숨긴다 — 다시 그려져도(서버 응답) 다시 숨긴다 */
+function tbSync(scr, root) {
+  if (!scr) return;
+  const h2 = scr.querySelector(':scope > h2.t:first-child');
+  if (h2) h2.classList.add('tb-dup');
+  if (root && state.view === 'talk') {
+    const u = scr.querySelector(':scope > .hcp-top > .up'); if (u) u.classList.add('tb-dup');
+    /* 구장 이름은 맨 위 줄로 올라간다 — 화면 안 큰 이름은 숨긴다(이름을 모를 때는 그대로) */
+    const b = scr.querySelector(':scope > .hcp-top > b');
+    if (b) b.classList.toggle('tb-dup', !!tbTalkName());
+  }
+  if (!root) {
+    const row = scr.querySelector(':scope > .xf > div:first-child');
+    if (row && row.querySelector('h2') && row.querySelector('.cl')) {
+      row.classList.add('tb-dup');
+      row.querySelector('.cl').setAttribute('data-tbback', '1');   // 위 줄 ‹ 가 이 버튼을 대신 누른다
+    }
+  }
+}
+/* 라운지 맨 위 줄 — 라운지라는 이름은 아래 탭에 이미 있다. 맨 위는 지금 있는 구장 이름(클럽 탭이 클럽 이름이듯).
+   전국톡으로 바꿔도 구장 이름은 그대로 — 구장톡 · 전국톡은 그 아래 탭이 가른다. */
+function tbTalkName() {
+  try {
+    const list = TALK_COURTS || [], cur = list.find(x => x.venue_id === TALK.vid);
+    const n = (TALK.venue && TALK.venue !== '구장톡') ? TALK.venue : ((cur && cur.name) || '');
+    return String(n || '').trim();
+  } catch (e) { return ''; }
+}
+function tbUpdate() {
+  if (!TB_ON) return;
+  const ab = document.querySelector('.appbar'); if (!ab) return;
+  const logo = ab.querySelector('.logo'), tt = document.getElementById('tbTitle'),
+    mid = document.getElementById('tbMid'), gear = document.getElementById('tbGear');
+  if (!tt || !mid) return;
+  const root = nfxRoot(), v = state.view;
+  const scr = document.querySelector('#scroll > .screen.on');
+  tbSync(scr, root);
+  let showLogo = false, big = '', club = null, midT = '', venue = '';
+  if (root) {
+    if (v === 'home') showLogo = true;
+    else if (v === 'club' && state.clubOpen) club = state.clubOpen;
+    else if (v === 'talk' && (venue = tbTalkName())) {}
+    else big = { match: '오픈매치', talk: '라운지', club: '클럽', me: '내정보' }[v] || '';
+  } else midT = tbInnerTitle(scr);
+  if (logo) logo.style.display = showLogo ? '' : 'none';
+  if (club) {
+    const key = 'c:' + club;
+    if (tt.dataset.k !== key) {
+      tt.innerHTML = `${clubAvatar(club, 34) || `<span class="tbav">${esc(String(club).slice(0, 1))}</span>`}<b>${esc(club)}</b>${TB_CHEV}`;
+      tt.dataset.k = key;
+    }
+    tt.className = 'tbt club'; tt.setAttribute('role', 'button'); tt.setAttribute('aria-label', club + ' · 클럽 바꾸기');
+    tt.onclick = clubSwitchOpen;
+  } else if (venue) {
+    /* 구장이 둘 이상이면 이름을 눌러 바꾼다(화면 안 구장 고르기 목록이 열린다) */
+    const many = (TALK_COURTS || []).length > 1;
+    const key = 'v:' + venue + (many ? ':m' : '');
+    if (tt.dataset.k !== key) { tt.innerHTML = `<b>${esc(venue)}</b>${many ? TB_CHEV : ''}`; tt.dataset.k = key; }
+    tt.className = 'tbt club venue';
+    if (many) { tt.setAttribute('role', 'button'); tt.setAttribute('aria-label', venue + ' · 구장 바꾸기'); tt.onclick = toggleVenuePick; }
+    else { tt.removeAttribute('role'); tt.setAttribute('aria-label', venue); tt.onclick = null; }
+  } else {
+    if (tt.dataset.k !== 't:' + big) { tt.textContent = big; tt.dataset.k = 't:' + big; }
+    tt.className = 'tbt'; tt.removeAttribute('role'); tt.removeAttribute('aria-label'); tt.onclick = null;
+  }
+  tt.style.display = (club || big || venue) ? '' : 'none';
+  if (mid.textContent !== midT) mid.textContent = midT;
+  mid.style.display = midT ? '' : 'none';
+  const off = club && ((state.clubData || {})[club] || {}).officer;
+  if (gear) gear.style.display = off ? '' : 'none';
+}
+/* 화면이 다시 그려지면(서버 응답 · 탭 안 탭 바꾸기) 위 줄도 맞춘다 — 한 번에 몰아서 */
+(function () {
+  const sc = document.getElementById('scroll'); if (!sc) return;
+  let q = false;
+  new MutationObserver(() => {
+    if (q) return; q = true;
+    requestAnimationFrame(() => { q = false; try { tbUpdate(); } catch (e) {} });
+  }).observe(sc, { childList: true, subtree: true });
+})();
+
+/* 클럽 바꾸기 시트 — 내 클럽 · 새 클럽 만들기 · 다른 클럽 둘러보기 */
+function clubSwitchOpen() {
+  const mine = state.myClubs || [];
+  const meta = n => {
+    const s = (typeof SRV_MYCLUBS !== 'undefined' && SRV_MYCLUBS || []).find(c => c.name === n) || {};
+    const d = (state.clubData || {})[n] || {};
+    const role = s.role === 'owner' ? '클럽장' : (s.role === 'officer' || d.officer) ? '운영진' : '회원';
+    const cnt = s.member_count || s.members || d.m || '';
+    return role + (cnt ? ` · 회원 ${cnt}명` : '');
+  };
+  const cur = tbMyClub();
+  let h = `<div class="sh-top"><h3>클럽 관리</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div><div class="csw">`;
+  mine.forEach(n => {
+    h += `<div class="csw-row${n === cur ? ' on' : ''}" role="button" tabindex="0" onclick="clubSwitchTo(${esc(jsArg(n))})">
+      ${clubAvatar(n, 42) || `<span class="tbav big">${esc(n.slice(0, 1))}</span>`}
+      <div class="c"><b>${esc(n)}</b><span>${esc(meta(n))}</span></div>${n === cur ? '<i class="ck">✓</i>' : ''}</div>`;
+  });
+  h += `</div><div class="csw-ln"></div>
+    <div class="csw-act" role="button" tabindex="0" onclick="closeOv();state._cw=null;openCreateClub()"><i>＋</i>새 클럽 만들기</div>
+    <div class="csw-act" role="button" tabindex="0" onclick="closeOv();clubBrowse()"><i><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></i>다른 클럽 둘러보기<em>›</em></div>`;
+  document.getElementById('sheet').innerHTML = h;
+  document.getElementById('ov').classList.add('on');
+}
+function clubSwitchTo(n) {
+  closeOv();
+  if (state.view !== 'club') { openClubFromHome(n); return; }   // 홈 카드의 <다른 클럽 N곳>에서 고를 때
+  if (n === state.clubOpen) return;
+  openClubPage(n);
+}
+function clubBrowse() {
+  if (state.view !== 'club') go('club');
+  state.clubBrowse = true; state.clubOpen = null; state._xcOpen = 0;
+  try { HCV = null; HCSTACK = []; } catch (e) {}
+  renderClub(); updBackBtn();
+}
+function clubBrowseClose() {
+  state.clubBrowse = false;
+  state.clubOpen = tbMyClub();
+  renderClub(); updBackBtn();
+}
+nfxWrap('clubBrowse', 'push');
+nfxWrap('clubBrowseClose', 'pop');
+
+/* ── 아래에서 올라온 창(시트)을 끌어내려 닫기 ── */
+(function () {
+  let s = null;
+  const sheet = () => document.getElementById('sheet'), ov = () => document.getElementById('ov');
+  document.addEventListener('touchstart', e => {
+    const o = ov(), el = sheet();
+    if (!o || !el || !o.classList.contains('on') || e.touches.length !== 1 || !el.contains(e.target)) return;
+    if (e.target.closest('input,textarea,select,[contenteditable],.noswipe')) return;
+    /* 안쪽이 스크롤된 상태면 끌어내리기가 아니라 스크롤이다 */
+    for (let n = e.target; n && n !== o; n = n.parentNode) { if (n.scrollTop > 0) return; }
+    const t = e.touches[0];
+    s = { y0: t.clientY, x0: t.clientX, dy: 0, decided: false, v: 0, ly: t.clientY, lt: performance.now() };
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!s) return;
+    const t = e.touches[0], dy = t.clientY - s.y0, dx = Math.abs(t.clientX - s.x0);
+    if (!s.decided) {
+      if (Math.abs(dy) < 7 && dx < 7) return;
+      if (dy <= 0 || dx > Math.abs(dy)) { s = null; return; }
+      s.decided = true; const el = sheet(); el.style.transition = 'none'; el.style.animation = 'none';
+    }
+    const now = performance.now(); s.v = (t.clientY - s.ly) / Math.max(1, now - s.lt); s.ly = t.clientY; s.lt = now;
+    s.dy = Math.max(0, dy); sheet().style.transform = `translateY(${s.dy}px)`;
+  }, { passive: true });
+  const end = () => {
+    if (!s) return; const st = s; s = null; if (!st.decided) return;
+    const el = sheet(), H = el.offsetHeight;
+    const close = st.dy > Math.min(140, H * 0.3) || (st.v > 0.6 && st.dy > 30);
+    el.style.transition = 'transform .22s cubic-bezier(.2,.8,.25,1)';
+    el.style.transform = close ? `translateY(${H}px)` : '';
+    setTimeout(() => {
+      el.style.transition = ''; el.style.animation = '';
+      if (close) { closeOv(); el.style.transform = ''; }
+    }, 230);
+  };
+  document.addEventListener('touchend', end, { passive: true });
+  document.addEventListener('touchcancel', end, { passive: true });
+})();
+
+/* 확인 창 — 브라우저 기본 창(회색 시스템 창)과 예전 appConfirm 을 한 모양으로.
+   첫 줄은 굵은 제목, 나머지는 회색 설명. 지우기 · 차단 같은 것은 빨간 버튼, 버튼 글자는 하는 일로(<지우기>, <신청하기>). */
+function mconfLabel(m){
+  return /지울|지워/.test(m) ? '지우기' : /삭제/.test(m) ? '삭제하기' : /차단/.test(m) ? '차단하기' : /거절/.test(m) ? '거절하기'
+    : /거둘|거둬/.test(m) ? '거두기' : /내려놓/.test(m) ? '내려놓기' : /풉니다/.test(m) ? '풀기' : /안 볼/.test(m) ? '안 보기'
+    : /취소할까요/.test(m) ? '취소하기' : /신청할까요/.test(m) ? '신청하기' : /보낼까요/.test(m) ? '보내기' : /올릴까요/.test(m) ? '올리기'
+    : /확정할까요/.test(m) ? '확정하기' : /바꿀까요/.test(m) ? '바꾸기' : '확인';
+}
+function mconfShow(titleHtml, subHtml, o){
+  o=o||{};
+  return new Promise(res=>{
+    const w=document.createElement('div'); w.className='mconf'; w.setAttribute('role','alertdialog'); w.setAttribute('aria-modal','true');
+    w.innerHTML=`<div class="mcbox"><div class="mct">${titleHtml}</div>${subHtml?`<div class="mcs">${subHtml}</div>`:''}
+      <div class="mcb"><button type="button" class="no">${esc(o.cancel||'취소')}</button><button type="button" class="ok${o.danger?' dg':''}">${esc(o.ok||'확인')}</button></div></div>`;
+    let closed=false;
+    const close=v=>{
+      if(closed) return; closed=true;
+      if(v) buzz(o.danger?14:8);
+      w.classList.add('out');
+      setTimeout(()=>w.remove(), nfxReduced()?0:160);
+      res(v);
+    };
+    w.querySelector('.no').onclick=()=>close(false);
+    w.querySelector('.ok').onclick=()=>close(true);
+    w.onclick=e=>{ if(e.target===w) close(false); };
+    document.body.appendChild(w);
+  });
+}
+function mconfOpts(m, o){
+  o=o||{};
+  const danger = o.danger!=null ? o.danger : /지울|지워|삭제|탈퇴|차단|거절|거둘|거둬|내려놓|풉니다|안 볼|내보|취소할까요/.test(m);
+  /* <모임을 취소할까요?> 에 [취소][취소하기] 가 나란히 서지 않게 */
+  const cancel = o.cancel || (/취소할까요/.test(m) ? '아니요' : '취소');
+  return { danger, cancel, ok: o.ok || mconfLabel(m) };
+}
+function askConfirm(msg, o){
+  const m=String(msg==null?'':msg), lines=m.split('\n');
+  const title=lines.shift(), sub=lines.join('\n').replace(/^\n+/,'');
+  return mconfShow(esc(title), sub?esc(sub):'', mconfOpts(m, o));
+}
+
 if(PWA_ON){
 window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
