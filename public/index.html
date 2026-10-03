@@ -622,8 +622,10 @@
      간격이 고정값이 아니라 남는 만큼이므로 좁은 기기에서도 넘치지 않는다. */
   /* 여섯 칸 같은 너비 · 글자 가운데 — <홈> 이 한 글자라 양끝 정렬에선 왼쪽에 붙고 간격이 어긋났다 */
   .ctabs{display:flex;justify-content:stretch;gap:0;border-bottom:1px solid var(--line);
-    position:sticky;top:0;z-index:6;background:var(--cream);
+    position:sticky;top:-4px;z-index:6;background:var(--cream);
     margin:0 -16px 12px;padding:0 16px;overflow:hidden}
+  /* top:-4px — 스크롤 칸(.scroll) 위 여백이 4px 이라 top:0 이면 맨 위 줄과 탭 사이에 4px 틈이 생기고
+     그 틈으로 밑에 지나가는 카드가 비쳐 <화면이 중간에 잘린> 것처럼 보였다. 여백만큼 끌어올려 맞붙인다. */
   .ctabs div{flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;padding:13px 0 12px;font-size:15px;font-weight:700;
     color:#a3abb4;letter-spacing:-.045em;position:relative;cursor:pointer;transition:color .15s}
   .ctabs div.on{color:var(--ink);font-weight:700}
@@ -5977,6 +5979,8 @@
   /* 클럽 관리 — 아이콘 없이 글자만. 위 바로가기(오늘 대진 · 시즌 랭킹 · 일정)와 같은 굵기 · 색 */
   .myc .oth.swc{ gap:10px;padding:13px 16px }
   .myc .oth.swc b{ font-size:14px;color:var(--gray) }
+  /* 앞에 작은 3D 방패(클럽 로고 고를 때 쓰는 그 방패) — 클럽을 뜻하는 그림 */
+  .myc .oth .ic3{ flex:none;width:22px;height:22px;object-fit:contain;margin:-2px -2px -2px -1px }
   .myc .oth .cnt{ margin-left:auto;font-size:14px;font-weight:600;color:var(--lgray) }
   .myc .oth .cnt + .arr{ margin-left:6px }
   .myc .oth b{ font-size:15px;font-weight:700;letter-spacing:-.03em;color:var(--ink);white-space:nowrap;
@@ -7671,6 +7675,33 @@ html.navfx #clubfilter.on,html.navfx #regionpick.on,html.navfx #eventpick.on{ani
 @keyframes mcOut{to{opacity:0}}
 @keyframes mcPop{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}
 
+/* ── 빈 틀 (.skf — 예전 .skel 과 이름이 겹치지 않게) — 둥근 모서리 · 은은하게 반짝 · 0.3초 뒤에 나타남 ── */
+.skf{animation:skIn .2s ease .3s both;padding:2px 0}
+@keyframes skIn{from{opacity:0}to{opacity:1}}
+.skf i{display:block;background:linear-gradient(90deg,#eceef1 0%,#f6f7f9 50%,#eceef1 100%);background-size:200% 100%;
+  animation:skSh 1.3s ease-in-out infinite}
+@keyframes skSh{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.skf .sk-l{height:13px;border-radius:6px;margin:8px 0}
+.skf .sk-l.t{height:17px;border-radius:7px}
+.skf .skr{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #f1f3f5}
+.skf .skr:last-child{border-bottom:0}
+.skf .skr.nb{display:block;padding:14px 0}
+.skf .sk-av{width:40px;height:40px;border-radius:12px;flex:none}
+.skf .sk-c{flex:1;min-width:0}
+.skf .sk-card{border:1px solid var(--line);border-radius:18px;padding:14px 16px;background:#fff}
+.skf .sk-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 8px}
+.skf .sk-stats i{height:64px;border-radius:14px}
+.skf .sk-tabs{display:flex;gap:16px;margin:2px 0 14px}
+.skf .sk-tabs i{width:52px;height:18px;border-radius:7px}
+.skf .sk-box{height:50px;border-radius:14px;margin-bottom:4px}
+@media (prefers-reduced-motion: reduce){ .skf i{animation:none} }
+
+/* ── 누르는 순간의 반응 (스크립트가 .pr · .prw · .prx 를 붙였다 뗀다) ── */
+.pr{scale:.96;transition:scale .1s ease,filter .1s ease}
+.pr.prw{scale:.985;filter:brightness(.97)}
+.prx{transition:scale .18s ease,filter .18s ease}
+@media (prefers-reduced-motion: reduce){ .pr,.pr.prw{scale:none;filter:brightness(.95)} }
+
 /* ── 맨 위 줄 · 클럽 바꾸기 · 당겨서 새로고침 · 글자 선택 ── */
 html.tb .appbar{position:relative}
 html.tb .tb-dup{display:none!important}
@@ -7686,9 +7717,15 @@ html.tb .tb-dup{display:none!important}
 .tbav.big{width:42px;height:42px;font-size:17px}
 .tbmid{position:absolute;left:112px;right:112px;bottom:4px;height:42px;display:flex;align-items:center;justify-content:center;
   font-size:17px;font-weight:700;letter-spacing:-.03em;color:var(--ink);pointer-events:none;white-space:nowrap;overflow:hidden}
-.cmeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
-.cmeta>span{font-size:13px;padding:7px 12px;border-radius:999px;background:#f1f3f5;color:#4b5563;font-weight:600;letter-spacing:-.02em;cursor:pointer}
-.cmeta>span b{color:var(--ink);font-weight:800}
+.cmeta{display:flex;align-items:center;flex-wrap:nowrap;min-width:0;margin:2px 2px 12px;font-size:14px;color:#6b7684;
+  font-weight:500;letter-spacing:-.02em;white-space:nowrap}
+.cmeta>span{cursor:pointer}
+.cmeta>i{font-style:normal;color:#c7cdd4;margin:0 7px;flex:none}
+.cmeta .cm-a i{font-style:normal;color:#c7cdd4;margin:0 7px}
+.cmeta b{color:var(--ink);font-weight:700}
+.cmeta .cm-a{flex:none}
+.cmeta .cm-h{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cmeta .cm-h em{font-style:normal;color:#b4bbc4;margin-left:3px}
 .csw{display:flex;flex-direction:column;gap:2px;margin-top:6px}
 .csw-row{display:flex;align-items:center;gap:12px;padding:11px 8px;border-radius:14px;cursor:pointer}
 .csw-row.on{background:var(--coral-s,#fff0e8)}
@@ -7883,6 +7920,14 @@ html.is-native .app .sel{-webkit-user-select:text;user-select:text;-webkit-touch
   </div>
   <script>setTimeout(function(){ try{ window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen
     && Capacitor.Plugins.SplashScreen.hide({ fadeOutDuration: 350 }); }catch(e){} }, 6000);</script>
+  <script>/* 상태바 — 흰 바탕 위 어두운 시계 · 배터리 글자. @capacitor/status-bar 를 설치한 앱에서만 움직이고,
+     설치 전 앱 · 웹에서는 아무 일도 하지 않는다(코드는 미리 넣어 두고, 설치는 앱 빌드 때). */
+  (function(){ try{
+    var C=window.Capacitor, SB=C && C.Plugins && C.Plugins.StatusBar; if(!SB) return;
+    var q=function(f,a){ try{ var r=SB[f] && SB[f](a); if(r && r.catch) r.catch(function(){}); }catch(e){} };
+    q('setStyle', { style: 'LIGHT' });                         /* LIGHT = 밝은 바탕용(어두운 글자) */
+    if(C.getPlatform && C.getPlatform()==='android') q('setBackgroundColor', { color: '#FFFFFF' });
+  }catch(e){} })();</script>
   <div class="toast" id="toast"></div>
   <div id="offline">오프라인이에요 · 연결되면 자동으로 이어져요</div>
   <div id="busy"><img class="mk" alt=""><span>불러오는 중…</span></div>
@@ -7971,7 +8016,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1003j';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1003q';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -10146,7 +10191,7 @@ async function openMembers(){
   const order = {owner:0, officer:1, member:2, guest:3};
   ms.sort((a,b)=>(a.resting?1:0)-(b.resting?1:0) || (order[a.role]??3)-(order[b.role]??3) || a.name.localeCompare(b.name));
   if(MB_TAB==='past'){
-    h+=`<div id="mbPast"><div class="vnone" style="padding:24px 0">불러오는 중…</div></div>`;
+    h+=`<div id="mbPast">${skel('list',3)}</div>`;
     document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on'); mbPastFill(); return;
   }
   const shown = ms.filter(m=> MB_TAB==='active'?!m.resting : MB_TAB==='rest'?m.resting : MB_TAB==='unpaid'?m.unpaid>0 : true);
@@ -10207,7 +10252,7 @@ function openMemberEdit(uid){
     }
   }
   /* 2 · 이력 · 운영진 메모 */
-  h+=`<div id="mbHist"><div class="vnone" style="padding:10px 0">이력을 불러오는 중…</div></div>`;
+  h+=`<div id="mbHist">${skel('lines')}</div>`;
   /* 3 · 역할 · 직책 */
   h+=`<div class="mbsec" style="margin-top:22px">역할 · 직책</div>`;
   /* 직책은 권한(임원)과 따로 둔다 — 임원이 아니어도 총무를 맡길 수 있다.
@@ -11335,18 +11380,43 @@ async function decideJoin(uid, approve, role, cid){
 async function createClubServer(name, region, sport, extra){
   try{ track('club:create'); }catch(e){}
   if(!SERVER_OK) return null;
+  /* 사진 로고는 만든 뒤 따로 올린다 — 클럽 만들기 칸(logo)은 주소 300자까지만 받아서
+     사진 글자(data:)를 그대로 보내면 잘린 채 저장돼 로고가 깨졌다. */
+  const ex=Object.assign({}, extra||{});
+  const dataLogo = /^data:image\//.test(ex.logo||'') ? ex.logo : null;
+  if(dataLogo) ex.logo=null;
+  let c;
   try{
-    const c = await api('/clubs', {method:'POST', body: JSON.stringify(
-      Object.assign({name, region, sport: sport||state.sport}, extra||{}))});
-    CLUB_IDS[c.name] = c.id;
-    await adoptServerClubs();
-    if(XINV_PENDING && c.id) setTimeout(()=>xinvAccept(c.id), 700);
-    else if(XC_PENDING && c.id) setTimeout(()=>{ try{ go('club'); openXc(XC_PENDING); toast('새 클럽으로 교류전을 받을 수 있어요'); }catch(e){} }, 900);
-    return c;
+    c = await api('/clubs', {method:'POST', body: JSON.stringify(
+      Object.assign({name, region, sport: sport||state.sport}, ex))});
   }catch(e){
     let err=null; try{ err=JSON.parse(e.message); }catch(_){}
-    return { _fail:true, error:(err&&err.error)||'', message:(err&&err.message)||'' };
+    return { _fail:true, error:(err&&err.error)||'', message:(err&&err.message)||'',
+      status:e&&e.status||0, net:!(e&&e.status) };
   }
+  /* 여기부터는 이미 만들어진 뒤다 — 뒷정리가 실패해도 <못 만들었어요>라고 하지 않는다.
+     (예전엔 내 클럽 목록 받기가 실패하면 만들어 놓고도 실패라고 떠, 다시 누르면 <이미 있는 이름>이 됐다) */
+  try{ CLUB_IDS[c.name] = c.id; }catch(e){}
+  if(dataLogo && c && c.id){
+    try{ const r=await api(`/clubs/${c.id}/logo`,{method:'POST',body:JSON.stringify({dataUrl:dataLogo})});
+      if(r&&r.url){ c.logo=r.url; } }catch(e){ console.warn('[club logo]', e&&e.message); }
+  }
+  try{ await adoptServerClubs(); }catch(e){ console.warn('[adopt clubs]', e&&e.message); }
+  try{
+    if(XINV_PENDING && c.id) setTimeout(()=>xinvAccept(c.id), 700);
+    else if(XC_PENDING && c.id) setTimeout(()=>{ try{ go('club'); openXc(XC_PENDING); toast('새 클럽으로 교류전을 받을 수 있어요'); }catch(e){} }, 900);
+  }catch(e){}
+  return c;
+}
+/* 서버와 같은 클럽 이름 규칙 — 보내기 전에 바로 알려준다 */
+function clubNameProblem(n){
+  n=String(n||'').trim();
+  if(!n) return '클럽 이름을 입력해 주세요';
+  if(n.length<2) return '클럽 이름은 2자 이상이어야 해요';
+  if(/^[ㄱ-ㅎㅏ-ㅣ]+$/.test(n)) return '자음·모음만으로는 만들 수 없어요';
+  if(/^(.)\1*$/.test(n)) return '같은 글자만 반복할 수 없어요';
+  if(!/[가-힣a-zA-Z0-9]/.test(n)) return '클럽 이름을 다시 확인해 주세요';
+  return '';
 }
 async function requestJoinServer(name){
   const cid = CLUB_IDS[name];
@@ -11375,7 +11445,11 @@ let SRV_ROSTER = null;      // [{user_id,name,gender,grade,is_captain}]
 let SRV_UID = {};           // 이름 → user_id
 
 (function(){ // 서버 로그인 상태면 안읽음 배지 폴링 시작 (지연 시작으로 부팅 간섭 없음)
-  setTimeout(()=>{ try{ if(SERVER_OK && authToken()) startUnreadPoll(); }catch(e){} }, 3000);
+  /* 서버 확인 · 로그인이 3초 안에 끝나지 않으면 예전엔 집계가 영영 시작되지 않았다 — 될 때까지 다시 본다 */
+  let n=0; const t=()=>{ try{ if(SERVER_OK && authToken()){ startUnreadPoll(); refreshNotifDot(true); return; } }catch(e){} if(++n<40) setTimeout(t, 3000); };
+  setTimeout(t, 3000);
+  /* 앱으로 돌아오면 바로 다시 센다 — 밖에서 받은 대화 · 알림이 점으로 이어지게 */
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ try{ pollUnread(); refreshNotifDot(true); }catch(e){} } });
 })();
 async function loadRoster(eid){
   const cid = clubId();
@@ -13016,7 +13090,7 @@ async function openCompareSrv(uid, name){
 /* 점은 반드시 '알림' 종 아이콘에 붙인다 — querySelector('.bell') 은 앞에 있는
    대화 아이콘을 먼저 잡아 엉뚱한 곳에 점이 찍혔다. */
 function notifBell(){ return document.getElementById('notifBtn'); }
-function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); const bl=notifBell(); if(bl)bl.classList.add('has'); }
+function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); DOT_PUSH=true; paintDots(); }
 let ME_PROF=null, ME_PROF_TS=0;
 async function loadMyProfile(){
   if(!SERVER_OK || !state.serverUser) return null;
@@ -13139,16 +13213,17 @@ function goChat(){
 }
 function paintUnreadBadge(){
   const el=document.getElementById('chatCnt'); if(!el) return;
-  const n=UNREAD.dm||0;                       // 이 버튼은 1:1 대화만 센다
-  if(n>0){ el.style.display='flex'; el.textContent=n>99?'99+':n; }
-  else el.style.display='none';
+  /* 숫자 배지 대신 운영진 도구 · 알림과 같은 주황 점 하나 — 개수는 대화 목록에 있다 */
+  el.style.display='none';
+  paintDots();
 }
 async function pollUnread(){
   if(!SERVER_OK || !authToken()) return;
   try{ const u=await api('/me/unread'); UNREAD={dm:u.dm||0, total:u.total||0}; paintUnreadBadge(); }catch(e){}
+  try{ refreshNotifDot(); }catch(e){}            // 알림 점도 같은 주기로(1분에 한 번만 실제로 묻는다)
 }
 function startUnreadPoll(){
-  if(UNREAD_POLL) return;
+  if(UNREAD_POLL || !SERVER_OK || !authToken()) return;
   pollUnread();
   UNREAD_POLL=setInterval(pollUnread, 30000);
 }
@@ -13233,12 +13308,12 @@ async function toggleNotif(ev){
   if(ev) ev.stopPropagation();
   const cur=document.getElementById('notifDrop');
   if(cur){ cur.remove(); return; }
-  { const bl=notifBell(); if(bl) bl.classList.remove('has'); }
+  DOT_PUSH=false; { const bl=notifBell(); if(bl) bl.classList.remove('has'); }
 
   const d=document.createElement('div');
   d.id='notifDrop';
   d.onclick=e=>e.stopPropagation();
-  d.innerHTML=`<div class="nd-h">알림</div><div class="nd-empty">불러오는 중…</div>`;
+  d.innerHTML=`<div class="nd-h">알림</div><div style="padding:4px 16px 10px">${skel('list',3)}</div>`;
   document.body.appendChild(d);
   setTimeout(()=>document.addEventListener('click', closeNotifDrop, {once:true}), 0);
 
@@ -13246,6 +13321,7 @@ async function toggleNotif(ev){
   if(SERVER_OK && authToken()){
     try{
       if(!NOTIF_CACHE || Date.now()-NOTIF_TS>30e3){ NOTIF_CACHE=await api('/notifications'); NOTIF_TS=Date.now(); }
+      markNotifSeen();
       rows=(NOTIF_CACHE||[]).slice(0,15).map(n=>({t:n.title, s:n.sub, w:timeAgo(n.created_at), link:n.link||'', ic:n.icon||'🔔'}));
     }catch(e){}
     // ① 내가 임원인 클럽들의 가입 신청
@@ -13288,14 +13364,51 @@ async function toggleNotif(ev){
        ${r.s?`<div class="nd-s">${esc(r.s)}</div>`:''}</div>`).join('');
 }
 function closeNotifDrop(){ const d=document.getElementById('notifDrop'); if(d) d.remove(); }
-let _DOT_TS=0;
-async function refreshNotifDot(){
+let _DOT_TS=0, DOT_PUSH=false;
+/* ── 맨 위 주황 점 — 운영진 도구 · 대화 · 알림 ──
+   셋 다 숫자 없이 같은 점 하나. '볼 것 · 처리할 것이 있다'만 알린다.
+   · 운영진 도구: 지금 연 클럽에 처리할 일(가입 신청 · 도전장 · 회원 제안)이 남아 있으면
+   · 대화: 안 읽은 1:1 대화가 있으면
+   · 알림: 알림함을 마지막으로 연 뒤 새 알림이 왔으면
+   예전엔 ① 대화 집계가 앱을 켜고 3초 때 서버가 준비돼 있어야만 시작돼 대개 멈춰 있었고
+   ② 알림 점은 서버 알림함을 보지 않았으며 ③ 운영진 도구엔 점이 없었다. */
+const NOTIF_SEEN_K='notif_seen';
+function notifSeenAt(){ try{ return +localStorage.getItem(NOTIF_SEEN_K)||0; }catch(e){ return 0; } }
+function markNotifSeen(){
+  /* 서버 시계 기준으로 적는다 — 폰 시계가 틀려도 '본 것 · 안 본 것'이 어긋나지 않게 */
+  const top=Math.max(0, ...(NOTIF_CACHE||[]).map(n=>+n.created_at||0));
+  if(top>notifSeenAt()) try{ localStorage.setItem(NOTIF_SEEN_K, String(top)); }catch(e){}
+  DOT_PUSH=false; paintDots();
+}
+function notifHasNew(){
+  const seen=notifSeenAt(), lim=Date.now()-14*864e5;   // 2주 넘은 알림으로 점을 켜지는 않는다
+  return (NOTIF_CACHE||[]).some(n=>{ const t=+n.created_at||0; return t>seen && t>lim; });
+}
+function opsTodoN(){
+  const club=state.clubOpen; if(!club) return 0;
+  const d=(state.clubData||{})[club]||{}; if(!d.officer) return 0;
+  let n=(d.pending||[]).length;
+  if(SERVER_OK && club===state.activeClub) n+=state._joinReqN||0;
+  const cid=CLUB_IDS[club];
+  if(cid){
+    try{ const c=CHL[cid]; n+=((c&&c.data&&c.data.todo)||[]).length; }catch(e){}
+    try{ const p=PRL[cid]; n+=((p&&p.data&&p.data.ready)||[]).length; }catch(e){}
+  }
+  return n;
+}
+function paintDots(){
+  const g=document.getElementById('tbGear'), c=document.getElementById('chatBtn'), b=notifBell();
+  if(g) g.classList.toggle('has', opsTodoN()>0);
+  if(c){ const n=UNREAD.dm||0; c.classList.toggle('has', n>0); c.setAttribute('aria-label', n>0?`대화 · 안 읽은 대화 ${n}개`:'대화'); }
+  if(b) b.classList.toggle('has', !document.getElementById('notifDrop') && (DOT_PUSH || notifHasNew()));
+}
+async function refreshNotifDot(force){
+  paintDots();
   if(!SERVER_OK||!authToken()) return;
-  if(Date.now()-_DOT_TS<60e3) return; _DOT_TS=Date.now();
-  let n=0;
-  try{ for(const c of myOfficerClubs()){ const jr=await api(`/clubs/${c.id}/join-requests`).catch(()=>[]); n+=(jr||[]).length; } }catch(e){}
-  try{ [...(OM_LIST||[]),...(HOME_OM_ALL||[])].forEach(m=>{ if(m&&(m.joined||m.is_host)&&(!m.status||m.status==='open')&&!m.past){ const left=(m.cap||0)-(m.cur||0); if(left>0&&left<=3) n++; } }); }catch(e){}
-  const bl=notifBell(); if(bl) bl.classList.toggle('has', n>0);
+  try{ startUnreadPoll(); }catch(e){}
+  if(!force && Date.now()-_DOT_TS<60e3) return; _DOT_TS=Date.now();
+  try{ const r=await api('/notifications'); if(Array.isArray(r)){ NOTIF_CACHE=r; NOTIF_TS=Date.now(); } }catch(e){}
+  paintDots();
 }
 function openNotif(){ toggleNotif(); }
 /* ===== 결제 수단 ===== */
@@ -14073,7 +14186,7 @@ function renderClub(){
         <b>${esc(dayF)} 일정만 보는 중</b>
         <span class="n" onclick="clubDay('${dayF}')" style="cursor:pointer">전체 보기 ›</span></div>`;
       if(SERVER_OK && clubId() && SRV_EVENTS===null){
-        h+=`<div class="note" style="text-align:left">일정을 불러오는 중이에요…</div>`;
+        h+=skel('list',2);
       } else if(dayF && !evShow.length){
         h+=`<div class="note" style="text-align:left">${dayF}에는 모임이 없어요. ${off?'＋만들기로 이 날 모임을 열 수 있어요.':''}</div>`;
       } else if(!evShow.length){
@@ -14815,12 +14928,13 @@ function cwSet(k,v){ cwStash(); const c=cw();
 function cwTog(k,v){ cwStash(); const c=cw(); const a=c[k];
   const i=a.indexOf(v); i<0?a.push(v):a.splice(i,1); openCreateClub(); }
 function cwGo(n){ cwStash(); const c=cw();
+  if(n>c.step && c.step===1 && c.name.trim() && clubNameProblem(c.name)){ toast(clubNameProblem(c.name)); return; }
   if(n>c.step && !cwCanNext()) return;
   c.step=n; openCreateClub();
   setTimeout(()=>{const e=document.getElementById('sheet');if(e)e.scrollTop=0;},0);
 }
 function cwCanNext(){ const c=cw();
-  if(c.step===1) return !!c.name.trim();
+  if(c.step===1) return !clubNameProblem(c.name);
   if(c.step===3) return !!(c.sido && c.court.trim());
   return true;
 }
@@ -14854,7 +14968,7 @@ function openCreateClub(){
       <div class="fld"><label>클럽 이름 <span style="color:var(--coral-d)">*</span>
         <span style="float:right;font-weight:400;color:var(--lgray)">${c.name.length}/20</span></label>
         <input id="cwName" maxlength="20" placeholder="예) ${clubEg().n}" value="${esc(c.name)}" oninput="cwLive()"></div>
-      <div class="hint">1~20자 · 같은 종목에 같은 이름은 쓸 수 없어요</div>
+      <div class="hint">2~20자 · 같은 종목에 같은 이름은 쓸 수 없어요</div>
       <div class="fld" style="margin-top:14px"><label>한 줄 소개
         <span style="float:right;font-weight:400;color:var(--lgray)">${(c.intro||'').length}/40</span></label>
         <input id="cwIntro" maxlength="40" placeholder="예) 주말 오전에 모이는 편한 분위기예요" value="${esc(c.intro||'')}" oninput="cwLive()"></div>
@@ -15061,7 +15175,7 @@ function cwDone(invite){ state._cw=null; closeOv(); if(invite) setTimeout(openCl
 async function createClub(){
   cwStash(); const c=cw();
   const n=(c.name||'').trim(), r=[c.sido,c.sigungu].filter(Boolean).join(' ').trim(), court=(c.court||'').trim();
-  if(!n){toast('클럽 이름을 입력해 주세요'); c.step=1; openCreateClub(); return;}
+  { const bad=clubNameProblem(n); if(bad){ toast(bad); c.step=1; openCreateClub(); return; } }
   if(!c.sido||!court){toast('활동 지역과 코트를 입력해 주세요'); c.step=3; openCreateClub(); return;}
   { const y=parseInt(c.founded,10)||0, nowY=new Date().getFullYear();
     if(c.founded && (y<1900||y>nowY)){
@@ -15076,18 +15190,25 @@ async function createClub(){
     age_bands:c.ages.join(','), gender_pref:c.gender,
     founded_year: parseInt(c.founded,10)||null };
   // 서버 연결 상태면 서버에 먼저 만든다 — 안 그러면 피드·공지·회비·대진이 전부 데모로 떨어진다
+  let sc0=null;
   if(SERVER_OK){
-    const sc = await createClubServer(n, r, state.sport, extra);
+    const sc = await createClubServer(n, r, state.sport, extra); sc0=sc;
     if(!sc || sc._fail){
       const code = sc && sc.error;
+      /* 서버가 이유를 말해 주면 그대로 보여준다 — 예전엔 이름 규칙에 걸려도 <잠시 후 다시>라고만 떠서 왜 안 되는지 몰랐다 */
       toast(code==='club_limit' ? ((sc&&sc.message)||'클럽은 1인당 3개까지 만들 수 있어요')
         : code==='name_taken' ? '같은 종목에 이미 있는 클럽 이름이에요'
-        : '클럽을 만들지 못했어요 · 잠시 후 다시 시도해 주세요');
+        : (sc&&sc.message) ? sc.message
+        : (sc&&sc.status===401) ? '로그인이 풀렸어요 · 다시 로그인한 뒤 만들어 주세요'
+        : (sc&&sc.status===413) ? '로고 사진이 너무 커요 · 다른 사진으로 골라 주세요'
+        : (sc&&sc.net) ? '연결이 불안정해요 · 다시 눌러 주세요'
+        : `클럽을 만들지 못했어요 · 잠시 후 다시 시도해 주세요${sc&&sc.status?` (오류 ${sc.status})`:''}`);
+      if(code && /^name_/.test(code)){ c.step=1; openCreateClub(); }
       return;
     }
   }
   state.clubLogos=state.clubLogos||{};
-  state.clubLogos[n] = c.logoMode==='img'&&c.logoImg ? {ic:null,bg:CLUB_LOGO_BGS[0],img:c.logoImg}
+  state.clubLogos[n] = c.logoMode==='img'&&c.logoImg ? {ic:null,bg:CLUB_LOGO_BGS[0],img:(SERVER_OK&&sc0&&sc0.logo)||c.logoImg}
                                                      : {ic:c.logoIc,bg:c.logoBg};
   state.clubs.unshift({n,r,m:1,guestFee:0,guestReq:0,entry:0,season:0,court,
     avg_grade:c.grade, meet_days:days, intro:(c.intro||'').trim()});
@@ -15374,7 +15495,7 @@ function drawClubPreview(){
         <div style="font-size:20px;font-weight:700;letter-spacing:-.04em">${esc(dayLabel(D.date))}</div>
         <div style="font-size:14px;color:var(--gray);margin-top:4px">${
           esc(CB2_MODE_NAME[D.mode]||'시간 대진')} · ${courts.length}코트 · ${(D.games||[]).length}게임</div>
-        ${D.loading?'<div class="pvempty">불러오는 중이에요</div>'
+        ${D.loading?skel('lines')
          :!(D.games||[]).length?'<div class="pvempty">그날 점수가 남아 있지 않아요</div>'
          :`<div style="border:1px solid #e5e8eb;border-radius:14px;overflow:hidden;margin-top:14px">
             <div style="display:grid;grid-template-columns:26px repeat(${courts.length},1fr);
@@ -16197,7 +16318,10 @@ function closeOpsPage(){
 function openClubOps(){
   const c=AC()||{}; const n=state.activeClub||'';
   const d=(state.clubData||{})[n]||{};
-  const pend=(c.pending||[]).length;
+  /* 서버 클럽은 가입 신청이 c.pending 이 아니라 서버 목록(_joinReqN)에 있다 — 예전엔 여기서 0으로 보였다 */
+  const srvPend=!(c.pending||[]).length && SERVER_OK;
+  const pend=srvPend ? (state._joinReqN||0) : (c.pending||[]).length;
+  const pendGo=srvPend ? "closeClubOps();openJoinRequests()" : "opsPage('가입 신청',()=>{openAdmin()})";
 
   const att=c.attendRate!=null?c.attendRate:null;
 
@@ -16229,7 +16353,7 @@ function openClubOps(){
       ${prTodo.map(p=>`<button class="tr" onclick="closeClubOps();openPr(${p.id})">
         <span class="c"><span class="t"><em class="bl">회원 제안</em><b>${esc(p.mode==='open'?'상대 모집':'vs '+prTargetName(p))}</b></span>
           <span>${esc(p.proposer)} 님 제안 · 같이 갈래요 ${p.votes}명${p.dates[p.best]?` · ${esc(prDateTxt(p.dates[p.best]))}`:''}</span></span><span class="ar">›</span></button>`).join('')}
-      ${pend?`<button class="tr" onclick="opsPage('가입 신청',()=>{openAdmin()})">
+      ${pend?`<button class="tr" onclick="${pendGo}">
         <span class="c"><span class="t"><em class="bl">가입 신청</em><b>${pend}명이 기다려요</b></span>
           <span>승인하면 바로 명단에 들어가요</span></span><span class="ar">›</span></button>`:''}
     </div>`;
@@ -16241,7 +16365,7 @@ function openClubOps(){
     ? `<div class="opsum hot"><div class="k">지금 처리할 일</div>
         <div class="v">가입 신청 ${pend}건이 기다려요</div>
         <p class="opnote">승인하면 바로 명단에 들어가고, 다음 모임부터 대진에 나옵니다</p>
-        <button class="go" onclick="opsPage('가입 신청',()=>{openAdmin()})">지금 처리하기</button></div>`
+        <button class="go" onclick="${pendGo}">지금 처리하기</button></div>`
     : `<div class="opsum"><div class="k">지금 처리할 일</div>
         <div class="v">밀린 일이 없어요</div>
         <p class="opnote">가입 신청이나 도전장이 오면 여기에 뜹니다</p></div>`;
@@ -17049,13 +17173,18 @@ function renderTalkTab(){
     /* 700ms 마다 영원히 다시 그리면 <불러오는 중>에서 절대 안 벗어난다.
        열 번(=7초) 기다린 뒤에는 정말 안 되는 것으로 보고 손잡이를 준다. */
     TALK_TRY=(TALK_TRY||0)+1;
+    if(TALK_TRY<=10 && el.querySelector(':scope > .skf')){      // 이미 빈 틀이 떠 있으면 다시 그리지 않는다(깜빡임 방지)
+      clearTimeout(TALK_WAIT);
+      TALK_WAIT=setTimeout(()=>{ if(state.view==='talk') renderTalkTab(); }, 700);
+      return;
+    }
     el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
-      <div class="empty">${TALK_TRY>10
-        ? `<div class="et">연결이 안 돼요</div>
+      ${TALK_TRY>10
+        ? `<div class="empty"><div class="et">연결이 안 돼요</div>
            <div class="es">잠시 뒤 다시 눌러주세요</div>
            <button class="btn ghost sm" style="margin-top:12px"
-             onclick="TALK_TRY=0;renderTalkTab()">다시 시도</button>`
-        : '<div class="et">불러오는 중…</div>'}</div>`;
+             onclick="TALK_TRY=0;renderTalkTab()">다시 시도</button></div>`
+        : skel('feed',4)}`;
     if(TALK_TRY<=10){
       clearTimeout(TALK_WAIT);
       TALK_WAIT=setTimeout(()=>{ if(state.view==='talk') renderTalkTab(); }, 700);
@@ -17069,7 +17198,7 @@ function renderTalkTab(){
     /* TALK_TAB 을 먼저 바꾸면, 불러오기가 실패했을 때 <이미 불렀다>고 여겨
        다시 들어와도 빈 화면만 나온다. 성공한 뒤에 openCourtTalk 이 바꾼다. */
     el.innerHTML=`<h2 class="t" style="margin-bottom:14px">라운지</h2>
-      <div class="empty"><div class="et">불러오는 중…</div></div>`;
+      ${skel('feed',4)}`;
     talkTabLoad(cid);
     return;
   }
@@ -18480,7 +18609,7 @@ async function prSubmit(){
 async function openPr(id){
   if(state.view!=='club') go('club');
   PRX={id:+id, data:null};
-  chPage('교류전 제안', `<div class="vnone" style="padding:40px 0">불러오는 중…</div>`, "xcBack()");
+  chPage('교류전 제안', `${skel('list',3)}`, "xcBack()");
   try{ PRX.data=await api(`/proposals/${id}`); }catch(e){ return chPage('교류전 제안', `<div class="vnone">제안을 불러오지 못했어요</div>`, 'xcBack()'); }
   prDraw();
 }
@@ -18592,7 +18721,7 @@ let XINV=null, XINV_PENDING=null;
 async function openXinv(token){
   const el=document.getElementById('guestOv'); if(!el) return;
   el.classList.add('on');
-  el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  el.innerHTML=`<div style="padding:24px 20px">${skel('page',4)}</div>`;
   let d; try{ d=await api(`/xinv/${encodeURIComponent(token)}`); }catch(e){ el.innerHTML=`<div class="xinv"><div class="hd">초대장을 찾지 못했어요</div><button class="btn" onclick="glClose()">닫기</button></div>`; return; }
   XINV={token, d};
   const logged=state.loggedIn && authToken();
@@ -18634,7 +18763,7 @@ async function openXcLink(id){
   if(!id) return;
   if(state.loggedIn && authToken()){ XC_PENDING=id; go('club'); state._xcOpen=1; setTimeout(()=>openXc(id), 300); return; }
   const el=document.getElementById('guestOv'); if(!el) return;
-  el.classList.add('on'); el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  el.classList.add('on'); el.innerHTML=`<div style="padding:24px 20px">${skel('page',4)}</div>`;
   let d; try{ d=await api(`/exchange/${id}/public`); }catch(e){ el.innerHTML=`<div class="xinv"><div class="hd">교류전을 찾지 못했어요</div><button class="btn" style="margin-top:16px" onclick="glClose()">닫기</button></div>`; return; }
   el.innerHTML=`<div class="xinv">
     <button class="x" aria-label="닫기" onclick="glClose()">×</button>
@@ -18977,7 +19106,7 @@ function clubTabNews(){
   }
   if(!window.FEED_LOADED && !window._feedOnce){
     window._feedOnce=true; loadClubFeed().then(()=>{ window._feedOnce=false; if(state.view==='club') renderClub(); });
-    return h+`<div class="vnone" style="padding:26px 0">불러오는 중…</div>`;
+    return h+`${skel('list',3)}`;
   }
   let feed=(typeof CLUB_FEED!=='undefined' && Array.isArray(CLUB_FEED)) ? CLUB_FEED : [];
   if(NEWS_F==='photo') feed=feed.filter(p=>nwPics(p).length);
@@ -19282,7 +19411,7 @@ function xcAllDraw(){
   if(XC_TAB==='ch') h+=chTabHTML(cid);
   else if(XC_TAB==='rec') h+=xcRecHTML(cid);
   else {
-    if(XC_LIST===null) h+=`<div class="vnone" style="padding:30px 0">불러오는 중…</div>`;
+    if(XC_LIST===null) h+=`${skel('list',3)}`;
     else if(!up.length) h+=`<div class="chempty"><b>예정된 교류전이 없어요</b><span>도전장이 확정되면 여기 올라와요</span></div>`;
     else { let mon=null; up.forEach(x=>{ const d=xcDay(x);
       if(d.mon && d.mon!==mon){ mon=d.mon; h+=`<div class="xc-mo">${mon}월</div>`; }
@@ -19645,7 +19774,7 @@ async function openXc(id){
         : (op && !op.ready)
           ? ['상대 클럽이 인원을 모으는 중이에요', `${op.count} / ${x.per_club}명까지 왔어요.`]
           : ['양쪽이 다 모였어요', '대진을 만들면 바로 공개됩니다.'];
-  if(done && mine) h+=`<div id="xcMine" class="xcmine"><div class="vnone" style="padding:14px 0">내 경기를 불러오는 중…</div></div>`;
+  if(done && mine) h+=`<div id="xcMine" class="xcmine">${skel('lines')}</div>`;
   else h+=`<div class="xd-todo"><b>${todo[0]}</b><span>${todo[1]}</span></div>`;
 
   /* 눌러야 할 것 — 한 화면에 코랄은 하나만 */
@@ -19693,11 +19822,11 @@ async function openXc(id){
     ${x.close_at&&!done?`<div class="xd-warn">마감까지 인원이 안 차면 교류전이 자동으로 취소돼요. <b>구장 예약 취소는 직접</b> 해주세요.</div>`:''}`;
 
   if(op) h+=`<div class="xf-l">지난 만남</div>
-    <div class="xd-fine" id="xcVs" style="margin-top:0">불러오는 중…</div>`;
+    <div class="xd-fine" id="xcVs" style="margin-top:0">${skel('lines')}</div>`;
 
   /* 양쪽 클럽이 같은 자리에서 이야기한다 — 카톡방을 따로 파지 않아도 되게 */
   h+=`<div class="xf-l xd-cmh"><span>댓글</span><em>${op?'양쪽 클럽이 같이 봐요':'상대 클럽이 정해지면 같이 봐요'}</em></div>
-    <div id="xcCmt"><div class="xd-fine" style="margin-top:0">불러오는 중…</div></div>
+    <div id="xcCmt">${skel('lines')}</div>
     <div class="xd-write">
       <input id="xcCmtIn" placeholder="주차·도착 시간 같은 걸 남겨보세요" maxlength="300">
       <b onclick="xcSend(${x.id})">등록</b></div>`;
@@ -20559,7 +20688,7 @@ async function openMyClubStats(){
   document.getElementById('mystats').innerHTML=`<div class="opshd">
       <button class="pvback" onclick="closeMyClubStats()" aria-label="뒤로">‹</button>
       <span class="pvttl">내 경기 분석</span></div>
-    <div class="opsbody"><div class="msload">불러오는 중…</div></div>`;
+    <div class="opsbody">${skel('stats',3)}</div>`;
   let rows=[];
   try{ rows = await api(`/clubs/${clubId()}/brackets/history?limit=60`); }catch(e){}
   try{ histParse(rows); }catch(e){}
@@ -20643,6 +20772,16 @@ function drawMyClubStats(){
 }
 function openSeasonRank(){ renderClubStats(); document.getElementById('ov').classList.add('on'); }
 function clubSub(){ return state.clubSub || 'home'; }
+/* 경기도 용인시 처인구 → 용인 처인구 · 서울특별시 강남구 → 서울 강남구 · 경기도 용인시 → 경기 용인시 · 대구광역시 → 대구 */
+function cmRegionShort(r){
+  const t=String(r||'').trim().split(/\s+/).filter(Boolean);
+  if(!t.length) return '';
+  const prov=x=>x.replace(/(특별자치도|특별자치시|특별시|광역시|자치도|도)$/,'');
+  const city=x=>x.length>2?x.replace(/(시|군)$/,''):x;
+  if(t.length>=3) return `${city(t[1])} ${t[2]}`;
+  if(t.length===2) return `${prov(t[0])} ${t[1]}`;
+  return prov(t[0]);
+}
 function setClubSub(v){
   if(v!=='me') CLUBME_WHO=null;
   if(v==='bracket') CB2_LIST=null;          // 다른 기기에서 발행한 대진도 탭을 누르면 보이게
@@ -21121,8 +21260,13 @@ function clubHeroTabs(){
   const tbHead = (typeof TB_ON!=='undefined' && TB_ON);
   if(tbHead){
     const H=hcMine();
-    return `<div class="cmeta"><span onclick="openClubInfoSheet()">${esc(d.region||c.r||'')} · 회원 <b>${memberCount()||d.members||c.m||1}</b>명 ›</span>${
-        H?`<span onclick="landVenue(${+H.venue_id})">홈코트 <b>${esc(H.name)}</b> ›</span>`:''}${clubGenderChip(c)}</div>
+    /* 클럽 이름 아래 한 줄 — 캡슐 없이 글자만, 점으로 나눈다. 굵은 건 회원 수와 홈코트 이름뿐.
+       지역 · 회원은 누르면 클럽 소개, 홈코트는 코트 화면. 지역은 짧게(경기도 용인시 처인구 → 용인 처인구). */
+    const gch=clubGenderChip(c);
+    return `<div class="cmeta"><span class="cm-a" role="button" tabindex="0" onclick="openClubInfoSheet()">${
+        esc(cmRegionShort(d.region||c.r||''))}${(d.region||c.r)?'<i>·</i>':''}회원 <b>${memberCount()||d.members||c.m||1}</b>명</span>${
+        H?`<i>·</i><span class="cm-h" role="button" tabindex="0" onclick="landVenue(${+H.venue_id})">홈코트 <b>${esc(H.name)}</b><em>›</em></span>`:''}${
+        gch?`<i>·</i>${gch}`:''}</div>
     <div class="ctabs" id="ctabs">${tabs.map(([k,l])=>
       `<div class="${cur===k?'on':''}" onclick="setClubSub('${k}')">${l}${
         liveTab===k&&cur!==k?'<u></u>':''}</div>`).join('')}</div>`;
@@ -21161,7 +21305,7 @@ function clubTabBracketToday(){
       ${d.officer?`<button class="btn" style="max-width:220px;margin:14px auto 0" onclick="openEventCreate()">모임 만들기</button>`:''}
     </div>`;
   }
-  if(CB2_LIST===null){ loadBracketList(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+  if(CB2_LIST===null){ loadBracketList(); return `${skel('list',3)}`; }
   const list=CB2_LIST||[];
   if(!list.length){
     return `<div class="card" style="text-align:center;padding:28px 20px">
@@ -22322,7 +22466,7 @@ async function chSend(){
 async function openChDetail(id, mode){
   if(state.view!=='club') go('club');
   CHX={id:+id, mode:mode||'detail', data:null};
-  chPage('도전장', `<div class="vnone" style="padding:40px 0">불러오는 중…</div>`, "openXcAll('ch')");
+  chPage('도전장', `${skel('list',3)}`, "openXcAll('ch')");
   await chReload();
 }
 function openChChat(id){ openChDetail(id,'chat'); }
@@ -22491,7 +22635,7 @@ function chTabHTML(cid){
   let h='';
   if(xcIsOfficer()) h+=`<button class="chnew" onclick="chStartPick({})">＋ 다른 클럽에 교류전 신청하기</button>`;
   else return h+`<div class="chempty" style="margin-bottom:6px"><b>도전장은 운영진이 보내요</b><span>회원은 제안으로 시작해요 · 같이 갈 사람이 모이면 운영진에게 올라가요</span></div>`+prSectionHTML(cid);
-  if(!L) return h+`<div class="vnone" style="padding:30px 0">불러오는 중…</div>`;
+  if(!L) return h+`${skel('list',3)}`;
   const sec=(t,rows)=>rows.length?`<div class="chsec">${t}<span>${rows.length}</span></div>${rows.map(x=>chRowHTML(x,cid)).join('')}`:'';
   h+=sec('답할 차례', L.todo||[]) + sec('상대 답을 기다리는 중', L.active||[]) + sec('지난 도전장', L.done||[]);
   if(!(L.todo||[]).length && !(L.active||[]).length && !(L.done||[]).length)
@@ -22502,7 +22646,7 @@ function chTabHTML(cid){
 /* ── 교류전 페이지 · 기록 탭 ── */
 function xcRecHTML(cid){
   const R=xcRec(cid);
-  if(!R) return `<div class="vnone" style="padding:30px 0">불러오는 중…</div>`;
+  if(!R) return `${skel('list',3)}`;
   const T=R.total||{w:0,d:0,l:0}, N=T.w+T.d+T.l;
   const wr=N?Math.round(T.w/N*100):0;
   const pending=xcPast(XC_LIST||[]).filter(x=>!(R.recent||[]).some(r=>r.event_id===x.id));
@@ -22547,7 +22691,7 @@ function xcRecHTML(cid){
 let XR=null;
 async function openXcResult(eid){
   XR={eid, round:1, data:null, all:false};
-  chPage('교류전 결과', `<div class="vnone" style="padding:40px 0">불러오는 중…</div>`, "openXcAll('rec')");
+  chPage('교류전 결과', `${skel('list',3)}`, "openXcAll('rec')");
   try{ XR.data=await api(`/exchange/${eid}/result`); }catch(e){ return chPage('교류전 결과', `<div class="vnone">불러오지 못했어요</div>`, "openXcAll('rec')"); }
   xrDraw();
 }
@@ -24951,9 +25095,9 @@ function startGuideHTML(){
 }
 function clubTabBalance(){
   if(CLUB_ROSTER===null){ if(typeof loadClubRoster==='function') loadClubRoster();
-    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+    return `${skel('list',3)}`; }
   if(CLUBME_GAMES===null){ if(SERVER_OK && clubId()) loadClubMeGames(); else CLUBME_GAMES=[];
-    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+    return `${skel('list',3)}`; }
   const h=balPanelHTML();
   /* <이 점수를 믿어도 되나요> 카드(balPartnerHTML)는 요청으로 뺐다 — 함수는 남겨 둔다 */
   return h || `<div class="card" style="text-align:center;padding:34px 22px">
@@ -24990,7 +25134,7 @@ function clubTabRecords(){
   if(typeof loadClubRoster==='function' && CLUB_ROSTER===null) loadClubRoster();
   if(CLUBME_GAMES===null){
     if(SERVER_OK && clubId()) loadClubMeGames(); else CLUBME_GAMES=[];
-    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`;
+    return `${skel('list',3)}`;
   }
   const all=CLUBME_GAMES||[];
   if(!all.length) return `<div class="card" style="text-align:center;padding:34px 22px">
@@ -25390,7 +25534,7 @@ function mvRows(){
 }
 function clubTabMembers(){
   const n=state.activeClub||'';
-  if(CLUB_ROSTER===null){ loadClubRoster(); return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`; }
+  if(CLUB_ROSTER===null){ loadClubRoster(); return `${skel('list',3)}`; }
   const list=CLUB_ROSTER||[];
   if(!list.length) return `<div class="card" style="text-align:center;padding:26px">
     <div style="font-size:15px;font-weight:700">${CLUB_ROSTER_ERR?'명단을 불러오지 못했어요':'멤버 정보가 아직 없어요'}</div>
@@ -25825,7 +25969,7 @@ function clubTabMe(){
   if(CLUBME_GAMES===null){
     if(SERVER_OK && clubId()) loadClubMeGames();
     else CLUBME_GAMES=[];
-    return `<div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div>`;
+    return `${skel('list',3)}`;
   }
   const my=(CLUBME_GAMES||[]).map(g=>{
     const inA=(g.teamA||[]).some(p=>p&&String(p.id)===String(uid));
@@ -37079,7 +37223,7 @@ async function openPastMeetings(){
   const cid=clubId(); if(!cid){ toast('클럽에 먼저 들어가 주세요'); return; }
   document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top"><h3 class="gt4">지난 모임</h3>
     <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div></div>`;
+    ${skel('list',3)}</div>`;
   document.getElementById('ov').classList.add('on');
   let logs=[]; try{ logs=await api(`/clubs/${cid}/bracket2/logs`)||[]; }catch(e){}
   PASTM=logs.filter(logCountsForRecord)
@@ -37289,7 +37433,7 @@ function evAvatar(name, photos, size){
    그래서 참석자 바로 아래에 대진을 붙였다. */
 function evBracketBlock(accent){
   if(!EVD) return '';
-  if(EVD.bk===undefined) return `<div style="margin-top:22px;font-size:13px;font-weight:400;color:#98a0aa">대진을 불러오는 중…</div>`;
+  if(EVD.bk===undefined) return `<div style="margin-top:18px">${skel('lines')}</div>`;
   const bk=EVD.bk, gs=(bk&&bk.games)||[];
   if(!gs.length) return '';
   const done=g=>g.sa!=null&&g.sb!=null;
@@ -37344,7 +37488,7 @@ function evOpenBracket(r, c){
 function evXcHero(e){
   const x=EVD && EVD.xc;
   if(!x) return `<div class="xd-hero" style="margin:0 0 16px"><div class="xd-k"><b>교류전</b></div>
-    <div class="xd-ft" style="border:0;margin-top:10px;padding-top:0">불러오는 중…</div></div>`;
+    <div class="xd-ft" style="border:0;margin-top:10px;padding-top:0">${skel('lines')}</div></div>`;
   const cid=clubId();
   const me=(x.clubs||[]).find(c=>c.club_id===cid), op=(x.clubs||[]).find(c=>c.club_id!==cid);
   const L=c=>{ const g=(state.clubLogos||{})[c&&c.name]||{};
@@ -37717,7 +37861,7 @@ const PRETZEL_CHAR = GL_WAVE;   // 히어로 상단 장식 = 물결 패턴
 async function openInviteCard(token){
   const el=document.getElementById('guestOv');
   el.classList.add('on');
-  el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  el.innerHTML=`<div style="padding:24px 20px">${skel('page',4)}</div>`;
   let d;
   try{ d=await api(`/invites/${encodeURIComponent(token)}`); }
   catch(e){ el.classList.remove('on'); return; }        // 만료 등 — 기존 로그인 흐름으로
@@ -37787,7 +37931,7 @@ function acceptInviteCard(token){
 async function openGuestLanding(token){
   const el=document.getElementById('guestOv');
   el.classList.add('on');
-  el.innerHTML=`<div style="padding:60px 20px;text-align:center;color:var(--gray);font-weight:700">불러오는 중…</div>`;
+  el.innerHTML=`<div style="padding:24px 20px">${skel('page',4)}</div>`;
   let d;
   try{ d=await api(`/guest/${encodeURIComponent(token)}`); }
   catch(e){
@@ -38471,7 +38615,7 @@ function renderVenues(){
   let h=`<h2 class="t">구장예약</h2><p class="sub">맞수 캐시로 코트를 바로 빌릴 수 있어요.</p>`;
   h+=vnFilterBar();
 
-  if(VN_OPEN===null){ el.innerHTML=h+`<div class="vncard" style="text-align:center;color:#79828d;padding:26px">불러오는 중…</div>`; return; }
+  if(VN_OPEN===null){ el.innerHTML=h+`${skel('card')}`; return; }
 
   if(!groups.length){
     el.innerHTML=h+`<div class="vncard" style="text-align:center;padding:30px 20px">
@@ -42886,7 +43030,7 @@ async function openDuelHub(){
   if(!SERVER_OK||!authToken()){ toast('로그인이 필요해요'); return; }
   document.getElementById('sheet').innerHTML=`<div class="om-detail"><div class="sh-top"><h3 class="gt4">1:1 랭크</h3>
     <div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div class="card" style="text-align:center;color:var(--lgray);padding:26px">불러오는 중…</div></div>`;
+    ${skel('list',3)}</div>`;
   document.getElementById('ov').classList.add('on');
   await loadDuel(); drawDuelHub();
 }
@@ -43891,7 +44035,7 @@ async function loadRoomMsgs(){
   try{
     const ms = await api(`/dm/with/${+id.slice(3)}`);
     CHAT_MSGS = ms.map(m=>({me:m.mine, t:m.body, at:m.created_at, read:!!m.read}));
-    UNREAD.dm = 0; paintUnreadBadge();
+    setTimeout(pollUnread, 600);                 // 이 방만 읽었다 — 다른 방이 남았을 수 있어 다시 센다
   }catch(e){}
 }
 function roomBubbles(msgs){
@@ -45234,7 +45378,7 @@ function myClubCard(nm, others, stripShown){
      클럽이 둘 이상이면 오른쪽에 몇 곳인지. 이름 · 로고는 늘어놓지 않는다. */
   const OT=others||[];
   const oth = `<div class="oth swc" role="button" tabindex="0" onclick="clubSwitchOpen()" aria-label="클럽 관리${OT.length?` · ${OT.length+1}곳`:''}">
-      <b>클럽 관리</b>${OT.length?`<span class="cnt">${OT.length+1}곳</span>`:''}<span class="arr">›</span></div>`;
+      <img class="ic3" src="${IMG('sym_shield.b64a95b1.webp')}" alt="" aria-hidden="true"><b>클럽 관리</b>${OT.length?`<span class="cnt">${OT.length+1}곳</span>`:''}<span class="arr">›</span></div>`;
   return `<div class="myc hm">
     <div class="top" onclick="openClubFromHome(${esc(jsArg(nm))})">
       ${av||`<span class="lg">${esc(String(nm).slice(0,1))}</span>`}
@@ -45568,9 +45712,10 @@ let CA=null;   // { scope, f, sort, q, qOpen }
 function openClubsAll(){
   CA={ scope:'auto', f:'all', sort:'members', q:'', qOpen:false };
   drawClubsAll();
-  document.getElementById('clubsall').style.display='flex';
+  /* .on 으로 연다 — 기기 뒤로가기 · 가장자리 밀기 · 맨 위 ‹ 가 모두 '맨 위 창 닫기'로 이 창을 찾는다 */
+  const el=document.getElementById('clubsall'); el.style.display=''; el.classList.add('on');
 }
-function closeClubsAll(){ document.getElementById('clubsall').style.display='none'; CA=null; }
+function closeClubsAll(){ const el=document.getElementById('clubsall'); el.classList.remove('on'); el.style.display=''; CA=null; }
 function caSet(k,v){ if(!CA) return; CA[k]=v; drawClubsAll(); }
 function caQuery(v){ if(!CA) return; CA.q=v; const b=document.getElementById('caList'); if(b) b.innerHTML=caListHTML(); }
 function caToggleSearch(){ if(!CA) return; CA.qOpen=!CA.qOpen; if(!CA.qOpen) CA.q=''; drawClubsAll();
@@ -46267,7 +46412,47 @@ function closeOv(){
   try{ if(window._cb2Tick){ clearInterval(window._cb2Tick); window._cb2Tick=null; } }catch(e){}
   document.getElementById('ov').classList.remove('on');
 }
-let tt;function toast(m){if(window._askLoginAt&&Date.now()-window._askLoginAt<1600)return;const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
+/* ── 빈 틀 ──
+   <불러오는 중…> 글자 대신 내용이 들어올 자리 모양을 먼저 그린다. 내용이 오면 그 자리에 채워져 화면이 덜컹이지 않는다.
+   0.3초 안에 오면 아예 보이지 않는다(나타나기 전 0.3초 뜸). 모서리는 앱의 카드 · 버튼처럼 둥글게.
+   list: 동그란 모서리 그림 + 두 줄 · lines: 글 두 줄 · card: 카드 한 장 · stats: 숫자 칸 셋 + 목록 · feed: 탭 · 입력칸 · 글 목록 · page: 제목 + 목록 */
+function skel(kind, n){
+  n=n||3;
+  const L=(w,t)=>`<i class="sk-l${t?' t':''}" style="width:${w}%"></i>`;
+  const row=`<div class="skr"><i class="sk-av"></i><div class="sk-c">${L(55)}${L(82)}</div></div>`;
+  const rep=(x,k)=>Array(k).fill(x).join('');
+  let h;
+  if(kind==='lines') h=L(72)+L(46);
+  else if(kind==='card') h=`<div class="sk-card">${L(38,1)}${L(84)}${L(60)}</div>`;
+  else if(kind==='stats') h=`<div class="sk-stats"><i></i><i></i><i></i></div>${rep(row,n)}`;
+  else if(kind==='feed') h=`<div class="sk-tabs"><i></i><i></i></div><i class="sk-box"></i>${rep(`<div class="skr nb">${L(28)}${L(82,1)}${L(46)}</div>`,n)}`;
+  else if(kind==='page') h=`${L(42,1)}${rep(row,n)}`;
+  else h=rep(row,n);
+  return `<div class="skf" role="status" aria-label="불러오는 중">${h}</div>`;
+}
+/* ── 알림 문구(아래에 잠깐 뜨는 글) ──
+   앱은 <했어요>를 글로 알리지 않는다 — 버튼 · 목록 모양이 바뀌는 걸로 이미 보인다.
+   짧은 성공 확인(<저장했어요 · 지웠어요 · 참석했어요>)은 글 대신 짧은 진동만 주고,
+   오류 · 해야 할 일 · 화면에 안 보이는 일(복사 · 보내기 · 알림 · 신청 대기)과
+   덧붙인 설명이 있는 글은 그대로 띄운다. 꼭 띄워야 하면 toast(글, true).
+   점검할 때는 localStorage toast_all=1 로 전부 보이게 할 수 있다. */
+function toastKind(m){
+  const s=String(m==null?'':m).trim();
+  if(!s) return 'skip';
+  if(/못했|못 했|실패|오류|에러|없어요|없습니다|안 돼|안돼|않아요|않았|잘못|확인해|다시 시도|불러오지|막혔|막혀|부족|넘었|넘어요|초과|만료|권한|먼저|해 주세요|해주세요|하세요|골라|선택해|입력|필요|최대|최소|이미|아직|만 할 수|만 가능|못 |없음|제한|끊|느려|기다려|중이에요|대기|확인 중|준비 중|열리면|곧 /.test(s)) return 'keep';
+  if(/(신청을 거절했어요|신청을 취소했어요|탈퇴 처리했어요|내려놓았어요|다시 뽑았어요|정산 완료 처리했어요|자리를 바꿨어요|로 로그인했어요|대기열에 참여했어요)$/.test(s)) return 'quiet';
+  if(/복사|보냈|보내|공유|알림|초대|신청|요청|전송|전달|발행|내려받|다운로드|사진첩|앨범|캡처|연결|로그|가입|탈퇴|출금|입금|결제|환불|정산|예약|충전|활성화|클럽장|클럽을 지웠|어긋/.test(s)) return 'keep';
+  if(s.length>16 || /[·\n!?]|\(|—/.test(s)) return 'keep';
+  if(/(했어요|했습니다|됐어요|되었어요|바꿨어요|바뀌었어요|지웠어요|넣었어요|뺐어요|고쳤어요|올렸어요|남겼어요|담았어요|걸었어요|껐어요|켰어요|풀었어요|옮겼어요|붙였어요|맞췄어요|돌렸어요|채웠어요|비웠어요|닫았어요|열었어요|숨겼어요|가렸어요|정했어요|골랐어요|만들었어요|저장됨|완료)$/.test(s)) return 'quiet';
+  return 'keep';
+}
+let tt;function toast(m, force){
+  if(window._askLoginAt&&Date.now()-window._askLoginAt<1600)return;
+  if(!force && toastKind(m)==='quiet'){
+    let all=false; try{ all=localStorage.getItem('toast_all')==='1'; }catch(e){}
+    if(!all){ try{ buzz(6); }catch(e){} window._toastQuiet=(window._toastQuiet||0)+1; return; }
+  }
+  const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeOv();});
 // 서버 확인 → 데모 데이터 제거 → 화면 다시 그리기
 if(!state.mainSport && state.sport) state.mainSport=state.sport;   // 기존 유저: 현재 종목을 주종목으로 1회 고정
@@ -46991,7 +47176,31 @@ function nfxWrap(name, kind) {
   .forEach(n => nfxWrap(n, 'push'));
 ['goBack', 'navBackStep', 'closeClubPage', 'hcBack', 'hcExit', 'xcBack', 'nwBack'].forEach(n => nfxWrap(n, 'pop'));
 /* 아래 탭 — 탭 바꾸기로 알린다(밀려 들어오지 않는다) */
-function tabGo(v) { NFX.tabNav = true; try { if (v === 'club') navClub(); else go(v); } finally { NFX.tabNav = false; } }
+function tabGo(v) {
+  const on = document.querySelector('.tab.on');
+  if (on && on.dataset.s === v && tabRetap(v)) return;
+  NFX.tabNav = true; try { if (v === 'club') navClub(); else go(v); } finally { NFX.tabNav = false; }
+}
+/* 지금 탭을 한 번 더 누르면 — 아이폰 앱이 다 그렇듯
+   들어간 화면이면 그 탭 첫 화면으로, 첫 화면이면 맨 위로(부드럽게), 이미 맨 위면 클럽은 홈 탭으로.
+   true 를 돌려주면 여기서 끝, false 면 원래 길(go · navClub)로 간다. */
+function tabRetap(v) {
+  if (!nfxRoot()) {
+    if (v === 'talk') {
+      try { if (TALK.writing) return true; } catch (e) {}       // 쓰던 글은 실수로 날리지 않는다
+      goBack(); return true;
+    }
+    return false;                                               // 클럽 안쪽 화면 → navClub 이 첫 화면으로
+  }
+  const sc = document.getElementById('scroll');
+  if (sc && sc.scrollTop > 4) {
+    sc.scrollTo({ top: 0, behavior: nfxReduced() ? 'auto' : 'smooth' });
+    try { buzz(6); } catch (e) {}
+    return true;
+  }
+  if (v === 'club' && clubSub() !== 'home') { setClubSub('home'); return true; }
+  return true;                                                  // 이미 첫 화면 맨 위 — 다시 그리지 않는다
+}
 
 /* 전체 화면 창 안의 <‹> — 누르기 직전 모습을 복제해 두었다가, 창이 닫히면 오른쪽으로 빼 준다 */
 document.addEventListener('click', e => {
@@ -47002,6 +47211,47 @@ document.addEventListener('click', e => {
   const snap = nfxSnapOv(ov);
   setTimeout(() => { if (!ov.classList.contains('on') || nfxTopOv() !== ov) nfxOvOut(snap); else snap.remove(); }, 0);
 }, true);
+
+/* ── 누르는 순간의 반응 ──
+   카드 · 줄 · 버튼을 누르는 순간 살짝 눌린다. 작은 것은 조금 작아지고(.pr),
+   화면 폭에 가까운 카드 · 줄은 아주 조금만 작아지며 살짝 어두워진다(.pr.prw).
+   스크롤하려고 댄 손가락에는 반응하지 않게 — 40ms 기다렸다 켜고, 8px 넘게 움직이거나 스크롤이 시작되면 끈다.
+   빨리 톡 친 경우에도 보이도록 손을 떼면 잠깐 켰다가 부드럽게 돌아온다. */
+(function () {
+  const SEL = 'button,[onclick],[role="button"],a[href],label[for]';
+  let cur = null, t = 0, x0 = 0, y0 = 0;
+  const appW = () => { const a = document.querySelector('.app'); return a ? a.clientWidth : innerWidth; };
+  const off = (el, soft) => {
+    if (!el) return;
+    el.classList.remove('pr');
+    if (soft) { el.classList.add('prx'); setTimeout(() => el.classList.remove('prx', 'prw'), 180); }
+    else el.classList.remove('prw');
+  };
+  const clear = soft => { clearTimeout(t); const el = cur; cur = null; off(el, soft); };
+  document.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    const el = e.target && e.target.closest ? e.target.closest(SEL) : null;
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+    if (el.closest('input,textarea,select,[contenteditable],.nopress')) return;
+    const r = el.getBoundingClientRect();
+    if (r.height > innerHeight * 0.6) return;                    // 화면을 덮는 바탕(배경 닫기 등)은 빼고
+    clear();
+    cur = el; x0 = e.clientX; y0 = e.clientY;
+    el.classList.toggle('prw', r.width >= appW() * 0.8);
+    t = setTimeout(() => { if (cur === el) el.classList.add('pr'); }, 40);
+  }, { passive: true, capture: true });
+  document.addEventListener('pointermove', e => {
+    if (cur && (Math.abs(e.clientX - x0) > 8 || Math.abs(e.clientY - y0) > 8)) clear();
+  }, { passive: true, capture: true });
+  document.addEventListener('pointerup', () => {
+    if (!cur) return;
+    const el = cur; clearTimeout(t); cur = null;
+    el.classList.add('pr');
+    setTimeout(() => off(el, true), 90);
+  }, { passive: true, capture: true });
+  document.addEventListener('pointercancel', () => clear(), { passive: true, capture: true });
+  addEventListener('scroll', () => { if (cur) clear(); }, { passive: true, capture: true });
+})();
 
 /* 왼쪽 가장자리에서 밀기 — 화면이 손가락을 따라오고, 밑에는 이전 화면이 보인다 */
 (function () {
@@ -47199,6 +47449,7 @@ function tbUpdate() {
   mid.style.display = midT ? '' : 'none';
   const off = club && ((state.clubData || {})[club] || {}).officer;
   if (gear) gear.style.display = off ? '' : 'none';
+  try { paintDots(); } catch (e) {}
 }
 /* 화면이 다시 그려지면(서버 응답 · 탭 안 탭 바꾸기) 위 줄도 맞춘다 — 한 번에 몰아서 */
 (function () {
@@ -47229,7 +47480,7 @@ function clubSwitchOpen() {
   });
   h += `</div><div class="csw-ln"></div>
     <div class="csw-act" role="button" tabindex="0" onclick="closeOv();state._cw=null;openCreateClub()"><i>＋</i>새 클럽 만들기</div>
-    <div class="csw-act" role="button" tabindex="0" onclick="closeOv();clubBrowse()"><i><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></i>다른 클럽 둘러보기<em>›</em></div>`;
+    <div class="csw-act" role="button" tabindex="0" onclick="closeOv();openClubsAll()"><i><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></i>다른 클럽 둘러보기<em>›</em></div>`;
   document.getElementById('sheet').innerHTML = h;
   document.getElementById('ov').classList.add('on');
 }
