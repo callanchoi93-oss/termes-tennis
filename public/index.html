@@ -4573,6 +4573,9 @@
   .nwread .bar{ padding:var(--s3) 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2) }
   .nwread .cm{ display:flex;gap:var(--s3);margin-top:var(--s3) } .nwread .cm .b{ flex:1;border-radius:4px 14px 14px 14px;background:#f7f8fa;padding:var(--s2) var(--s3) }
   .nwread .cm .b b{ font-size:var(--t0);font-weight:700 } .nwread .cm .b span{ font-size:var(--t0);color:var(--lgray);margin-left:var(--s1) } .nwread .cm .b div{ font-size:var(--t1);margin-top:2px;white-space:pre-wrap }
+  /* 글 보기의 댓글 입력칸 — 화면에 붙어 따라다니지 않고, 댓글 맨 아래까지 내려와야 보인다(사진 위를 가리지 않게) */
+  .nwin.nwcin{ margin-top:14px;padding-top:12px;border-top:1px solid var(--line2) }
+  .nwin input{ min-width:0 }   /* 입력칸 기본 너비 때문에 <등록>이 오른쪽 끝을 넘지 않게 */
   .nwin{ display:flex;gap:var(--s2) } .nwin input{ flex:1;height:44px;border:0;border-radius:12px;background:#f7f8fa;padding:0 var(--s4);font-size:var(--t1);font-family:inherit;outline:none }
   .nwin button{ flex:none;height:44px;padding:0 var(--s4);border:0;border-radius:12px;background:var(--coral-s);color:var(--coral-d);font-size:var(--t1);font-weight:700;font-family:inherit;cursor:pointer }
   .nwmenu{ width:100%;height:52px;border:0;border-bottom:1px solid var(--line2);background:none;text-align:left;font-size:var(--t2);font-weight:700;font-family:inherit;color:var(--ink);cursor:pointer }
@@ -5979,8 +5982,8 @@
   /* 클럽 관리 — 아이콘 없이 글자만. 위 바로가기(오늘 대진 · 시즌 랭킹 · 일정)와 같은 굵기 · 색 */
   .myc .oth.swc{ gap:10px;padding:13px 16px }
   .myc .oth.swc b{ font-size:14px;color:var(--gray) }
-  /* 앞에 작은 3D 방패(클럽 로고 고를 때 쓰는 그 방패) — 클럽을 뜻하는 그림 */
-  .myc .oth .ic3{ flex:none;width:22px;height:22px;object-fit:contain;margin:-2px -2px -2px -1px }
+  /* 앞에 작은 로켓(2D 선 아이콘) — 새 클럽 만들기 · 다른 클럽으로 떠나기 · 글자와 같은 회색 */
+  .myc .oth .ic2{ flex:none;color:var(--gray);margin-left:1px }
   .myc .oth .cnt{ margin-left:auto;font-size:14px;font-weight:600;color:var(--lgray) }
   .myc .oth .cnt + .arr{ margin-left:6px }
   .myc .oth b{ font-size:15px;font-weight:700;letter-spacing:-.03em;color:var(--ink);white-space:nowrap;
@@ -8016,7 +8019,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1003q';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1003s';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -19225,7 +19228,7 @@ async function openFeedPost(id){
     <div class="bar"><button class="${p.liked?'on':''}" onclick="likeFeedPost(${p.id})">${icHeart(p.liked)} 좋아요 ${p.likes||0}</button><span>${icChat()} 댓글 ${cmts.length}</span></div>
     ${cmts.length?cmts.map(c=>`<div class="cm">${nwAv(c.name,30)}<div class="b"><b>${esc(c.name)}</b><span>${timeAgo(c.created_at)||''}</span><div>${esc(c.body)}</div></div></div>`).join('')
       :'<div class="vnone" style="padding:16px 0">첫 댓글을 남겨보세요</div>'}
-    <div class="prfoot nwin"><input id="fcIn" placeholder="댓글 달기" maxlength="300" onkeydown="if(enterKey(event))sendFeedCmt(${p.id})"><button onclick="sendFeedCmt(${p.id})">등록</button></div></div>`;
+    <div class="nwin nwcin"><input id="fcIn" placeholder="댓글 달기" maxlength="300" onkeydown="if(enterKey(event))sendFeedCmt(${p.id})"><button onclick="sendFeedCmt(${p.id})">등록</button></div></div>`;
   closeOv();
   chPage('소식', h, 'nwBack()');
 }
@@ -45378,7 +45381,7 @@ function myClubCard(nm, others, stripShown){
      클럽이 둘 이상이면 오른쪽에 몇 곳인지. 이름 · 로고는 늘어놓지 않는다. */
   const OT=others||[];
   const oth = `<div class="oth swc" role="button" tabindex="0" onclick="clubSwitchOpen()" aria-label="클럽 관리${OT.length?` · ${OT.length+1}곳`:''}">
-      <img class="ic3" src="${IMG('sym_shield.b64a95b1.webp')}" alt="" aria-hidden="true"><b>클럽 관리</b>${OT.length?`<span class="cnt">${OT.length+1}곳</span>`:''}<span class="arr">›</span></div>`;
+      <svg class="ic2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/><circle cx="15.6" cy="8.4" r="1.4"/></svg><b>클럽 관리</b>${OT.length?`<span class="cnt">${OT.length+1}곳</span>`:''}<span class="arr">›</span></div>`;
   return `<div class="myc hm">
     <div class="top" onclick="openClubFromHome(${esc(jsArg(nm))})">
       ${av||`<span class="lg">${esc(String(nm).slice(0,1))}</span>`}
