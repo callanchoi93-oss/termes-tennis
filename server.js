@@ -10014,17 +10014,68 @@ const SPORT_NUDGE = {
     body: (ev) => `${ev.club} · ${ev.title} — 경기 결과와 개인 기록을 남기면 아카이브에 쌓여요` },
 };
 
+/* 모임 날짜 — '2026-10-02' 또는 '10/2 (금) 19:00'. 연도가 없으면 올해로 보고,
+   반년 넘게 앞이면 작년 것(1월 1일에 12월 31일 모임을 볼 때). */
+function evDayOf(raw, today) {
+  const S = String(raw || '');
+  let m = S.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = S.match(/(\d{1,2})\/(\d{1,2})/);
+  if (!m) return null;
+  let y = today.getFullYear();
+  if (+m[1] - 1 > today.getMonth() + 6) y--;
+  return new Date(y, +m[1] - 1, +m[2]);
+}
+/* 그 모임 대진에서 점수가 빈 경기 수 — 대진이 없으면 null */
+function bracketMiss(eventId) {
+  const r = db.prepare('SELECT data FROM club_brackets_ev WHERE event_id=?').get(eventId);
+  if (!r) return null;
+  let d = {}; try { d = JSON.parse(r.data); } catch (e) {}
+  const gs = d.games || [];
+  if (!gs.length) return null;
+  return { games: gs.length, miss: gs.filter(g => g.sa == null).length };
+}
+/* 모임 다음 날 알림.
+   테니스 · 배드민턴(대진으로 점수를 넣는 종목)은 점수가 실제로 비었을 때만 보내고, 몇 경기가 비었는지 말한 뒤
+   누르면 그 모임의 대진(점수 넣는 화면)이 바로 열리게 한다. 예전엔 다 넣었어도 같은 알림이 갔고, 누르면 대진 탭 첫 화면이었다.
+   사흘 뒤에도 비어 있으면 운영진에게만 한 번 더 — 참석자는 첫 알림을 흘려보내기 쉽다.
+   이 알림이 앱 대진 탭의 <점수가 비어 있어요> 상자를 대신한다. */
+const SCORE_SPORTS = new Set(['tennis', 'badminton']);
 function remindRecordAfterEvent() {
   const today = new Date();
-  const yst = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const DAY = 864e5;
   const evs = db.prepare(`SELECT e.*, c.name club, c.sport FROM club_events e
-    JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 60`).all();
+    JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 120`).all();
   for (const ev of evs) {
     const cfg = SPORT_NUDGE[ev.sport] || SPORT_NUDGE.tennis;
-    const mm = String(ev.date || '').match(/(\d{1,2})\/(\d{1,2})/);
-    if (!mm) continue;
-    const evDate = new Date(today.getFullYear(), +mm[1] - 1, +mm[2]);
-    if (evDate.getTime() !== yst.getTime()) continue;   // 정확히 어제 모임만
+    const d = evDayOf(ev.date, today);
+    if (!d) continue;
+    const ago = Math.round((t0 - d.getTime()) / DAY);
+    const scored = SCORE_SPORTS.has(ev.sport || 'tennis');
+    if (scored) {
+      if (ago !== 1 && ago !== 3) continue;
+      const bm = bracketMiss(ev.id);
+      if (!bm || !bm.miss) continue;                              // 대진이 없거나 점수를 다 넣었으면 보내지 않는다
+      const link = `cb2:${ev.id}`;
+      if (ago === 1) {
+        db.prepare("SELECT DISTINCT user_id FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").all(ev.id)
+          .forEach(a => {
+            if (!onceOnly('rec_nudge', `${ev.id}:${a.user_id}`)) return;
+            sendPush(a.user_id, { icon: cfg.icon, title: `어제 점수 ${bm.miss}경기가 비었어요`,
+              body: `${ev.club} · ${ev.title} — 점수를 넣으면 시즌 랭킹과 내 기록에 쌓여요`, link });
+          });
+      } else {
+        db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(ev.club_id)
+          .forEach(a => {
+            if (!onceOnly('score_nudge3', `${ev.id}:${a.user_id}`)) return;
+            sendPush(a.user_id, { icon: cfg.icon, title: `점수 ${bm.miss}경기가 아직 비어 있어요`,
+              body: `${ev.club} · ${ev.title} — 운영진이 대신 넣을 수 있어요`, link });
+          });
+      }
+      continue;
+    }
+    if (ago !== 1) continue;                                       // 다른 종목은 예전처럼 어제 모임만
     const targets = cfg.who === 'officers'
       ? db.prepare("SELECT user_id FROM club_members WHERE club_id=? AND role IN ('owner','officer')").all(ev.club_id)
       : db.prepare("SELECT DISTINCT user_id FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").all(ev.id);
