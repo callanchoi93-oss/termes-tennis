@@ -1502,7 +1502,10 @@
   .sbtn{ border-radius:16px; }
 
   /* — FLOATING dark bottom nav, orange active — */
+  /* 떠 있는 탭바는 늘 화면 내용 위 — 예전엔 층(z-index)이 없어 위치를 준 그림(리그 컵 등)이 탭바 위로 비쳤다.
+     시트 · 전체 화면 창(60 이상)보다는 아래 */
   .tabbar{
+    z-index:40;
     left:14px; right:14px; bottom:14px; height:64px;
     background:var(--ink); border:none; border-radius:26px;
     box-shadow:0 14px 32px rgba(18,23,29,.40); padding:0 6px;
@@ -2486,7 +2489,7 @@
       radial-gradient(60% 70% at 0% 0%,rgba(60,140,255,.32),transparent 70%),
       linear-gradient(165deg,#0b1d6e 0%,#141a6b 45%,#2a0f5c 100%) }
   .cupcard.lite .cupart::before, .cupcard.lite .cupart::after{ display:none }
-  .cupcard.lite .cupart img{ height:80px;margin-bottom:4px }
+  .cupcard.lite .cupart img{ height:80px;margin-bottom:4px;position:static;z-index:auto }
   .cupcard.lite .cupbody{ align-self:center }
   .cupcard.lite .t{ color:#4b5bd6;font-size:12.5px;letter-spacing:0;line-height:18px }
   .cupcard.lite .t em{ color:var(--gray);font-size:12.5px;font-weight:600;white-space:nowrap }
@@ -2841,7 +2844,7 @@
   .cuptk .up{ position:relative;padding:20px 20px 18px;min-height:164px }
   /* 컵 뒤에 옅은 빛 — filter 그림자는 아이폰에서 그림을 흐리게 만들어 쓰지 않는다 */
   .cuptk .up::after{ content:'';position:absolute;right:-4px;top:6px;width:150px;height:160px;
-    background:radial-gradient(closest-side,rgba(150,190,255,.22),rgba(150,190,255,0));pointer-events:none }
+    background:radial-gradient(closest-side,rgba(120,150,255,.08),rgba(120,150,255,0));pointer-events:none }   /* 컵이 이미 밤빛을 받아 뒤 빛은 아주 옅게 */
   .cuptk small{ font-size:11.5px;font-weight:800;letter-spacing:.16em;color:#9fd0ff }
   .cuptk h2{ font-size:21px;font-weight:800;line-height:1.3;margin:7px 0 0;letter-spacing:-.03em;color:#fff;
     max-width:calc(100% - 92px);word-break:keep-all }
@@ -4734,6 +4737,16 @@
   .hast span{ display:block;font-size:var(--t0);color:var(--gray);margin-top:2px }
   .hahd{ display:flex;justify-content:space-between;align-items:baseline;margin:var(--s5) 0 var(--s1) }
   .hahd b{ font-size:var(--t3);font-weight:700;letter-spacing:-.035em } .hahd span{ font-size:var(--t1);font-weight:700;color:var(--gray);cursor:pointer }
+  /* 클럽 홈 맨 아래 홈코트 — 위 칸들과 같은 줄 모양: 왼쪽 지분 링 · 가운데 이름 + 회색 한 줄 · 얇은 선 */
+  .hahc{ display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line2);min-height:52px;cursor:pointer }
+  .hcring{ flex:none;position:relative;width:48px;height:48px } .hcring svg{ display:block }
+  .hcring b{ position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;letter-spacing:-.02em;color:var(--ink) }
+  .hahc.empty .hcring b{ color:var(--lgray);font-weight:700 }
+  .hahc .c{ flex:1;min-width:0 }
+  .hahc .c > b{ display:block;font-size:var(--t2);font-weight:700;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .hahc .c > span{ display:block;font-size:var(--t0);color:var(--gray);margin-top:2px;line-height:1.45 }
+  .hahc .c > span em{ font-style:normal;font-weight:700;color:var(--ink) } .hahc .c > span b{ font-weight:inherit;color:inherit }
+  .hahc .ar{ flex:none;font-style:normal;color:#c4cad1;font-size:20px }
   .haro{ display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line2);min-height:52px;cursor:pointer }
   .haro .dt{ flex:none;width:44px;font-size:var(--t1);font-weight:700;color:var(--gray) }
   .haro .c{ flex:1;min-width:0 } .haro .c > b{ display:block;font-size:var(--t2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
@@ -8059,7 +8072,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1005c';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1005h';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -16902,7 +16915,7 @@ function cupApplyDraw(){
           <h2>${esc(c.title||'맞수 리그')}</h2>
           <div class="date">${m?`<b>${+m[2]}.${+m[3]}</b><span>${wd}요일</span>`:'<b class="tbd">일자 미정</b>'}</div>
           <div class="pl">${esc(c.place||'장소 미정')}</div>
-          <img class="cup" src="${IMG('cup_league.0d57926f.webp')}" alt="" draggable="false">
+          <img class="cup" src="${IMG('cup_league.5567e28c.webp')}" alt="" draggable="false">
         </div>
         <div class="dn">
           <div><span>참가비</span><b>${(c.fee||0)/10000}만원</b>${c.fee?`<em>인당 ${Math.round(c.fee/(need||6)/1000)/10}만</em>`:''}</div>
@@ -17450,7 +17463,7 @@ function cupCardSection(){
       :{p:my.pb,y:my.yb,a:my.b,b:my.a}):null;
     return `<div class="cupcard lite live" onclick="cupDay()">
       <div class="b cupflex">
-        <div class="cupart"><img src="${IMG('cup_league.0d57926f.webp')}" alt="" draggable="false"></div>
+        <div class="cupart"><img src="${IMG('cup_league.5567e28c.webp')}" alt="" draggable="false"></div>
         <div class="cupbody">
         <div class="t">${LV.on?`LIVE · ${esc(LV.start||'')}`:'전환 시간'}
           <em>${LV.played} / ${LV.total}매치</em></div>
@@ -17504,7 +17517,7 @@ function cupCardSection(){
      누르면 이어지는 신청 티켓 · 대회 화면은 그대로 밤하늘이라, 타일이 그 입구 역할을 한다. */
   return `<div class="cupcard lite${over?' done':''}" onclick="${tap}">
     <div class="b cupflex">
-      <div class="cupart"><img src="${IMG('cup_league.0d57926f.webp')}" alt="" draggable="false"></div>
+      <div class="cupart"><img src="${IMG('cup_league.5567e28c.webp')}" alt="" draggable="false"></div>
       <div class="cupbody">
       <div class="t">MATSU League ${lbl}
         ${dd&&!paid?`<em>${dd}</em>`:''}</div>
@@ -18026,7 +18039,7 @@ function cupDayDraw(){
     return;
   }
   el.innerHTML=`<div class="ndb">
-      <div class="ndhero"><img src="${IMG('cup_league.0d57926f.webp')}" alt="" draggable="false">
+      <div class="ndhero"><img src="${IMG('cup_league.5567e28c.webp')}" alt="" draggable="false">
         <small>MATSU LEAGUE</small><b>${esc(cupT.title||'맞수 리그')}</b>${meta?`<span>${meta}</span>`:''}</div>
       <div class="xclk${clk.cls}"><div class="ndclt">${parts.top}</div><div class="ndclr">${parts.rest}</div></div>
       <div class="ndbody">${parts.body}</div>
@@ -18355,6 +18368,62 @@ async function cupCardLoad(cid){
     window._cupCardT=setTimeout(()=>cupCardLoad(cid), 20000);
 }
 
+/* 홈코트 지분 막대와 <지금 할 일> 한 줄 — 클럽 탭 목록 화면의 홈코트 칸과 클럽 홈 맨 아래 홈코트가 함께 쓴다 */
+function hcBarLine(){
+  const bars=HC.bars||[];
+  const solo=(HC.clubs||1)<=1;
+  /* 우리 칸만 진하게 — 남의 칸까지 색이 세면 어느 게 우리 건지 안 보인다.
+     혼자 쓰는 중이면 100%를 코랄로 꽉 채우지 않는다.
+     아직 아무도 안 들어온 것뿐인데 자랑처럼 읽힌다. */
+  const bar=solo
+    ? `<i style="width:100%;background:${landTier(HC.wins).c};opacity:.55"></i>`
+    : bars.map(b=>`<i style="width:${Math.max(2,b.pct)}%;
+        background:${b.mine?'var(--coral)':landTier(b.wins).c};opacity:${b.mine?1:.45}"></i>`).join('');
+  /* 지금 할 일을 한 줄로 — 숫자만 보여주면 뭘 해야 할지 모른다 */
+  let line='';
+  if(solo){
+    line = HC.events
+      ? '다른 클럽이 들어오면 지분이 나뉘어요'
+      : '여기서 모임을 열면 지분이 쌓여요';
+  } else if(HC.top&&HC.top.mine){
+    line = '이 코트의 대표 클럽이에요';
+  } else if(HC.need!=null){
+    const nm=HC.top?HC.top.name:'앞 클럽';
+    line = `교류전 <b>${HC.need}승</b>이면 ${esc(nm)}${josa(nm,'을','를')} 넘어요`;
+  }
+  return {bar, line};
+}
+/* 클럽 홈 맨 아래 홈코트 — 코트 지도로 들어가는 문.
+   예전엔 클럽 탭 목록 화면의 홈코트 칸에만 있어서, 목록 화면이 클럽 없는 사람에게만 뜨게 된 뒤로
+   클럽이 있는 사람은 코트 지도에 들어갈 길이 없었다. 다른 칸처럼 제목 · 여백 · 얇은 선으로. */
+/* 지분 링 — 우리 몫을 동그라미로. 혼자 쓰는 중이면 100%를 연한 주황으로(자랑처럼 읽히지 않게) */
+function hcRing(pct, solo){
+  const r=20, C=2*Math.PI*r, p=Math.max(0,Math.min(100,+pct||0)), on=C*p/100;
+  return `<span class="hcring"><svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
+    <circle cx="24" cy="24" r="${r}" fill="none" stroke="#eef0f3" stroke-width="5"/>
+    ${p?`<circle cx="24" cy="24" r="${r}" fill="none" stroke="${solo?'#f5b48f':'var(--coral)'}" stroke-width="5" stroke-linecap="round"
+      stroke-dasharray="${on.toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 24 24)"/>`:''}</svg><b>${p?`${p}%`:'—'}</b></span>`;
+}
+function clubHomeHC(){
+  try{
+    if(!SERVER_OK) return '';
+    const cid=xcMyClubId(); if(!cid) return '';
+    if(HC===null || HC.cid!==cid){ hcLoad(); return ''; }
+    /* 제목 옆 링크는 다른 칸(일정 › · 교류전 신청 ›)처럼 글자만 */
+    let h=`<div class="hahd"><b>홈코트</b><span class="hamap" role="button" tabindex="0" onclick="openLand()">코트 지도 ›</span></div>`;
+    if(!HC.home){
+      return h+`<div class="hahc empty" onclick="openLand()">${hcRing(0)}
+        <div class="c"><b>아직 홈구장이 없어요</b><span>${HC.can_set
+          ? '자주 가는 코트를 홈으로 걸면 지분이 쌓이고 구장톡이 열려요'
+          : '운영진이 홈구장을 걸면 지분과 구장톡이 열려요'}</span></div><i class="ar">›</i></div>`;
+    }
+    const v=HC.home, solo=(HC.clubs||1)<=1, {line}=hcBarLine();
+    const sub = solo ? `아직 우리뿐${line?` · ${line}`:''}`
+      : `<em>${HC.clubs}개 클럽 중 ${HC.rank}위</em>${line?` · ${line}`:''}`;
+    return h+`<div class="hahc" onclick="landVenue(${+v.venue_id})">${hcRing(solo?100:HC.pct, solo)}
+      <div class="c"><b>${esc(v.name)}</b><span>${sub}</span></div><i class="ar">›</i></div>`;
+  }catch(e){ return ''; }
+}
 function homeCourtSection(){
   if(!SERVER_OK) return '';
   const cid=xcMyClubId();
@@ -18400,28 +18469,8 @@ function homeCourtSection(){
       </div></div>`;
   }
 
-  const v=HC.home, bars=HC.bars||[];
-  const solo=(HC.clubs||1)<=1;
-  /* 우리 칸만 진하게 — 남의 칸까지 색이 세면 어느 게 우리 건지 안 보인다.
-     혼자 쓰는 중이면 100%를 코랄로 꽉 채우지 않는다.
-     아직 아무도 안 들어온 것뿐인데 자랑처럼 읽힌다. */
-  const bar=solo
-    ? `<i style="width:100%;background:${landTier(HC.wins).c};opacity:.55"></i>`
-    : bars.map(b=>`<i style="width:${Math.max(2,b.pct)}%;
-        background:${b.mine?'var(--coral)':landTier(b.wins).c};opacity:${b.mine?1:.45}"></i>`).join('');
-
-  /* 지금 할 일을 한 줄로 — 숫자만 보여주면 뭘 해야 할지 모른다 */
-  let line='';
-  if(solo){
-    line = HC.events
-      ? '다른 클럽이 들어오면 지분이 나뉘어요'
-      : '여기서 모임을 열면 지분이 쌓여요';
-  } else if(HC.top&&HC.top.mine){
-    line = '이 코트의 대표 클럽이에요';
-  } else if(HC.need!=null){
-    const nm=HC.top?HC.top.name:'앞 클럽';
-    line = `교류전 <b>${HC.need}승</b>이면 ${esc(nm)}${josa(nm,'을','를')} 넘어요`;
-  }
+  const v=HC.home, solo=(HC.clubs||1)<=1;
+  const {bar, line}=hcBarLine();
 
   const tip = hcTipOff() ? '' : `<div class="hc-tip">
     <span>같은 코트를 쓰는 클럽끼리 지분을 나눠 가져요.
@@ -21182,6 +21231,8 @@ function clubTabHome(){
   h+=clubHomeCup('xc');                  // 평소 자리 — 다른 클럽과 겨루는 일끼리(리그 · 교류전)
   h+=`<div class="hahd"><b>교류전</b><span onclick="${off?'chStartPick({})':'openPrForm()'}">${off?'교류전 신청 ›':'제안하기 ›'}</span></div>`;
   h+= rows.length ? rows.join('') : `<div class="haem">${off?'진행 중인 교류전이 없어요 · 다른 클럽에 신청해 보세요':'붙어보고 싶은 클럽이 있나요? 제안하면 같이 갈 사람을 모아요'}</div>`;
+  /* ⑤ 홈코트 — 코트 지도로 들어가는 문(clubHomeHC) */
+  h+=clubHomeHC();
   /* ⑤ 클럽 소식 — 맨 위 공지 줄로 올렸다(cmRollHTML). 공지와 번갈아 최신 소식이 올라온다. */
   return h;
 }
