@@ -4464,6 +4464,7 @@
   .bk-card .t b{ display:block;font-size:15px;font-weight:700;letter-spacing:-.03em;line-height:1.35;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
   .bk-card .t span{ display:block;font-size:14px;color:var(--gray);margin-top:2px;line-height:1.4 }
+  .bk-card .t span .bkmiss{ font-style:normal;color:var(--coral-d);font-weight:600 }   /* 점수가 빈 대진 — 작은 주황 글씨 하나 */
   .bk-card .w{ flex:none;text-align:right }
   /* 오른쪽은 내 기록 — 뛴 날은 코랄, 안 나간 날은 흐리게.
      목록만 훑어도 내 출석 흐름이 보인다. */
@@ -8092,7 +8093,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1005i';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.2-1005a';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -21478,7 +21479,10 @@ function clubTabBracketToday(){
      서버 값을 쓰되, 옛 서버를 대비해 경기 수로도 한 번 더 본다. */
   const isDone=b=>(b.active===false) || (b.finished===true)
     || ((b.games||0)>0 && (b.done||0)>=(b.games||0));
-  const live=list.filter(b=>!isDone(b)), done=list.filter(isDone);
+  /* 서버는 점수가 하나라도 비면 active 로 보낸다 — 그래서 몇 주 전 대진도 <진행 중>에 남아 있었다.
+     지난 날짜의 대진은 점수가 비어도 <지난 대진>으로 내리고, 그 줄에 <점수 N경기 비었어요>를 작게 붙인다. */
+  const past=b=>isDone(b) || bkIsPastDay(b.date);
+  const live=list.filter(b=>!past(b)), done=list.filter(past);
   const QBTOP = '';
   const row=b=>{
     const tot=b.games||0, fin=b.done||0;
@@ -21523,20 +21527,15 @@ function clubTabBracketToday(){
     /* <불참> 은 신청했다가 빠진 것처럼 읽힌다 — 일정 탭에서 참석을 취소할 때 쓸 말이다.
        여기는 지난 기록을 보는 곳이라 담담한 <미참석> 이 맞다. */
     const rec = played ? `${my.w||0}승${my.d?` ${my.d}무`:''}${my.l?` ${my.l}패`:''}` : '미참석';
-    const sub = `${tot}게임${top?` · 1위 ${esc(top)}`:''}`;
+    const miss=Math.max(0, tot-(b.done||0));
+    /* 점수가 빈 대진 — 예전엔 목록 위 큰 상자로 알렸다. 이제 알림(다음 날 · 사흘 뒤)이 맡고 여기엔 작은 글씨만 */
+    const sub = `${tot}게임${miss?` · <em class="bkmiss">점수 ${miss}경기 비었어요</em>`:(top?` · 1위 ${esc(top)}`:'')}`;
     return `<div class="bk-card${played?'':' off'}" onclick="CB2_EVENT=${b.event_id||0};openClubBracketView()">
       <div class="d"><b>${v.day||'–'}</b><i>${v.wd}</i></div>
       <div class="t"><b>${esc(t)}</b><span>${sub}</span></div>
       <div class="w"><b class="${played?'me':'off'}">${rec}</b>
         ${played?'<i>내 기록</i>':''}</div></div>`;
   };
-  /* 점수가 비어 있으면 알려준다.
-     기록 화면이 허전한 건 지표가 적어서가 아니라 점수가 안 들어가서다 —
-     8/14 모임은 18경기 중 8경기만 들어갔다. 아무도 알려주지 않으면 그냥 넘어간다. */
-  const _today=new Date().toISOString().slice(0,10);
-  const pending = (list||[])
-    .map(b=>({b, miss:Math.max(0,(b.games||0)-(b.done||0)), tot:b.games||0}))
-    .filter(x=>x.tot>0 && x.miss>0 && x.b.date && x.b.date < _today);   // 오늘 것은 아직 진행 중일 수 있다
 
   bkTopLoad();                       // 그날 1위를 채우고 오면 다시 그린다
   /* <대진 짜기>를 여기 두지 않는다 — 모임을 먼저 만들어야 짤 수 있고,
@@ -21559,17 +21558,6 @@ function clubTabBracketToday(){
       <span class="go">›</span></div>`;
   })();
   return `${QBTOP}${noBk}
-    ${pending.length?`<div style="border:1px solid #f0d9c6;background:#f4f7fa;border-radius:14px;
-        padding:13px 15px;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:700;color:#b8460c">점수가 비어 있어요</div>
-      ${pending.slice(0,3).map(x=>`<div onclick="CB2_EVENT=${x.b.event_id||0};openClubBracketView()"
-        style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer">
-        <span style="font-size:14px;font-weight:400;color:#8a5a35;flex:1;min-width:0;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.b.title||x.b.date||'모임')}</span>
-        <span style="font-size:14px;font-weight:700;color:#b8460c;flex:none">${x.miss}경기 ›</span></div>`).join('')}
-      <div style="font-size:14px;color:#a06a3a;margin-top:9px;line-height:1.6">
-        점수를 넣어야 <b>내 정보 · 시즌 랭킹</b>에 기록이 쌓여요.</div>
-    </div>`:''}
     ${live.length?`<div class="bkgl">진행 중 <b>${live.length}</b></div>${live.map(row).join('')}`:''}
     ${done.length?`<div class="bkgl" style="margin-top:21px">지난 대진 <b>${done.length}</b></div>${
       (()=>{ let mon=null,out='';
@@ -21669,6 +21657,15 @@ function bkYMD(d){
   return {y:0, mon:0, day:0, wd:''};
 }
 function bkMonthOf(d){ return bkYMD(d).mon; }
+/* 오늘보다 앞선 날인가 — 대진 날짜는 '2026-10-02' 또는 '10/2 (금) 19:00' 두 꼴로 온다.
+   연도가 없으면 올해로 보고, 반년 넘게 앞이면 작년 것(1월에 보는 12월 모임). 오늘 것은 아직 진행 중일 수 있어 지난 날로 치지 않는다. */
+function bkIsPastDay(d){
+  const v=bkYMD(d); if(!v.mon) return false;
+  const now=new Date(), t0=new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  let y=v.y||now.getFullYear();
+  if(!v.y && v.mon-1 > now.getMonth()+6) y--;
+  return new Date(y, v.mon-1, v.day).getTime() < t0;
+}
 function bkDayKey(d){ const v=bkYMD(d); return v.mon?`${v.mon}-${v.day}`:''; }
 function loadBracketList(){
   const cid=clubId();
