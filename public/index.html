@@ -351,6 +351,26 @@
   .opq .qn.off{color:var(--lgray)}
   .opq .ql{font-size:14px;color:var(--lgray);font-weight:400;margin-top:5px}
   .opgl{font-size:14px;font-weight:700;color:var(--lgray);letter-spacing:.04em;margin:0 2px 8px}
+  /* ── 운영진 도구 · 자주 쓰는 넷 + 묶음 목록 ── */
+  .optz{ display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;background:#f5f6f8;margin:4px 0 12px }
+  .optz > i{ flex:none;width:28px;height:28px;border-radius:50%;background:#e6f6ee;color:#1f9d63;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800;font-size:14px }
+  .optz b{ display:block;font-size:15px;font-weight:700;color:var(--ink) } .optz span{ display:block;font-size:12.5px;color:var(--gray);margin-top:1px }
+  .opquick{ display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:22px }
+  .opq4{ border:0;background:#fff;box-shadow:0 0 0 1px var(--line2);border-radius:16px;padding:14px 2px 12px;display:flex;flex-direction:column;
+    align-items:center;gap:8px;font:inherit;color:var(--ink);cursor:pointer;min-width:0 }
+  .opq4 .ic{ width:40px;height:40px;border-radius:13px;background:#f5f6f8;display:flex;align-items:center;justify-content:center }
+  .opq4 b{ font-size:13px;font-weight:700;letter-spacing:-.03em;white-space:nowrap }
+  .opgrp{ border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--line2);margin-bottom:22px;overflow:hidden }
+  .oprow{ display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;padding:12px 14px;min-height:60px;box-sizing:border-box;
+    font:inherit;color:var(--ink);text-align:left;cursor:pointer }
+  .oprow + .oprow{ border-top:1px solid #f1f3f5 }
+  .oprow .ic{ flex:none;width:36px;height:36px;border-radius:11px;background:#f5f6f8;display:flex;align-items:center;justify-content:center }
+  .oprow .c{ flex:1;min-width:0 } .oprow .c b{ display:block;font-size:15.5px;font-weight:700;letter-spacing:-.03em }
+  .oprow .c span{ display:block;font-size:12.5px;color:var(--gray);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .oprow .ar{ flex:none;font-style:normal;color:#c4cad1;font-size:20px }
+  .oprow .opcnt{ flex:none;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--coral);color:#fff;font-style:normal;
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;box-sizing:border-box }
+  .oprow.dg .c b{ color:#d93434 } .oprow.dg .ic{ background:#fdeeee;color:#d93434 }
   .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
   .optool{position:relative;background:var(--cream);border:1px solid var(--line);
     border-radius:16px;padding:14px;text-align:left;font-family:inherit;cursor:pointer;
@@ -8072,7 +8092,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.1-1005h';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.1-1005i';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -8316,6 +8336,9 @@ const LINE_ICONS = {
      운영진 도구 타일에 필요한 셋을 같은 결(24 그리드 · 1.5 스트로크)로 채운다. */
   card:'<rect x="3" y="5.5" width="18" height="13" rx="2.6"/><path d="M3 10h18"/><path d="M6.8 14.6h4"/>',
   flag:'<path d="M6 21V4.4"/><path d="M6 5.2h9.6l-1.6 3.2 1.6 3.2H6"/>',
+  /* 안 나오는 회원 — 사람에서 한 명 빠진 모양(예전엔 도전장과 같은 별표였다) · 클럽 삭제 — 휴지통(예전엔 방패) */
+  userminus:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 11h5"/>',
+  trash:'<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M5.5 7l1 12a2 2 0 0 0 2 1.8h7a2 2 0 0 0 2-1.8l1-12"/><path d="M9 7V4.5h6V7"/>',
   pencil:'<path d="M4 20h4l10.3-10.3a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14.6 6.4l3 3"/>',
   photo:   '<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="M3.5 17.5l4.7-4.2a2 2 0 0 1 2.7 0l5.3 4.7M14.5 13.2l1.6-1.4a2 2 0 0 1 2.7 0l1.7 1.5"/>',
   calplus: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18M12 13.5v5M9.5 16h5"/>',
@@ -16431,9 +16454,8 @@ function openClubOps(){
         <div class="v">가입 신청 ${pend}건이 기다려요</div>
         <p class="opnote">승인하면 바로 명단에 들어가고, 다음 모임부터 대진에 나옵니다</p>
         <button class="go" onclick="${pendGo}">지금 처리하기</button></div>`
-    : `<div class="opsum"><div class="k">지금 처리할 일</div>
-        <div class="v">밀린 일이 없어요</div>
-        <p class="opnote">가입 신청이나 도전장이 오면 여기에 뜹니다</p></div>`;
+    /* 일이 없으면 큰 상자 대신 회색 한 줄 — 비어 있다는 말이 화면 맨 위를 크게 차지하지 않게 */
+    : `<div class="optz"><i>✓</i><div><b>밀린 일이 없어요</b><span>가입 신청 · 도전장이 오면 여기에 떠요</span></div></div>`;
   h+=doneH;
   h+=`<div class="opq">
       <div><div class="qn ${att!=null?'':'off'}">${att!=null?att:'—'}${att!=null?'<span>%</span>':''}</div>
@@ -16441,34 +16463,33 @@ function openClubOps(){
       <div><div class="qn">${memberCount()||d.members||c.m||0}</div><div class="ql">회원 수</div></div>
       <div><div class="qn ${nextN?'':'off'}">${nextN||'—'}</div><div class="ql">다음 모임 참석</div></div>
     </div>
-    <div class="opgl">경기 운영</div>
-    <div class="opgrid">
-      ${tool('모임 만들기','날짜·코트 정하고 참석 받기','openEventCreate()')}
-      ${tool('대진 짜기','참석자로 자동 편성','openClubBracketBuild()')}
-      ${tool('출석 · 노쇼','당일 체크 · 노쇼 기록','openClubBracketView()')}
-    </div>
-    <div class="opgl">회원 · 클럽</div>
-    <div class="opgrid">
-      ${tool('가입 신청','승인 · 거절','openAdmin()',pend?'hot':'',pend||0)}
-      ${tool('회원 관리','임원 임명 · 클럽장 넘기기','openMembers()')}
-      <!-- 둘은 같은 표를 정렬만 다르게 보여줬다 — 그 화면 안에 이미 정렬 버튼이 있다.
-           한 칸으로 합치고, 빈 자리에는 <할 수 있는 일>을 넣는다. -->
-      ${tool('회원 실력','등록 구력과 실제 · 요즘 오르는 회원','openMemberSkill()')}
-      ${tool('안 나오는 회원','한 달 넘게 안 보이는 분 · 바로 부르기','openLapsed()')}
-      <button class="optool ${chTodo.length?'hot':''}" onclick="openChallenge()">
-        ${chTodo.length?`<span class="opn">${chTodo.length}</span>`:''}
-        <span class="opic">${opIcon('도전장')}</span><span class="opt">도전장</span><span class="opd">보내기 · 받은 것 답하기</span></button>
-      ${tool('클럽 초대장','링크 하나로 바로 가입','openClubInvite()')}
-      ${tool('공지 보내기','소식 맨 위 고정 · 알림','openClubPost({notice:1})')}
-      ${tool('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날','openClubBasicEdit(1)')}
-      ${tool('클럽 소개','소개글 · 게스트 설정','openIntroEditOps()')}
-      ${tool('월례대회 설정','조 나누기 · 승강 인원','openTgSettings()')}
-    </div>
-    ${cb2Owner()?`<div class="opgl">클럽 관리</div>
-    <div class="opgrid">
-      ${tool('클럽 이름 변경','오타·잘못 만든 이름 고치기','renameClub()')}
-      ${tool('클럽 삭제','나 혼자 남았을 때만','deleteClub()')}
-    </div>`:''}`;
+  `;
+  /* 도구 — 매주 쓰는 넷(모임 · 대진 · 출석 · 공지)은 맨 위 버튼, 나머지는 묶음 목록(이름 · 설명 한 줄씩).
+     예전엔 15개가 모두 큰 카드 두 줄이라 설명이 접혀 높이가 들쭉날쭉하고, 무엇이 자주 쓰는 건지 안 보였다. */
+  const opGo=(t,fn)=>`opsPage('${t}',()=>{${fn}})`;
+  const quick=(t,lbl,fn)=>`<button class="opq4" onclick="${opGo(t,fn)}"><span class="ic">${opIcon(t)}</span><b>${lbl}</b></button>`;
+  const row=(t,dsc,on,o)=>`<button class="oprow${o&&o.dg?' dg':''}" onclick="${on}"><span class="ic">${opIcon(t)}</span>
+    <span class="c"><b>${t}</b><span>${dsc}</span></span>${o&&o.n?`<em class="opcnt">${o.n}</em>`:''}<i class="ar">›</i></button>`;
+  const grp=(t,rows)=>`<div class="opgl">${t}</div><div class="opgrp">${rows}</div>`;
+  h+=`<div class="opgl">자주 쓰는 것</div><div class="opquick">
+      ${quick('모임 만들기','모임 만들기','openEventCreate()')}
+      ${quick('대진 짜기','대진 짜기','openClubBracketBuild()')}
+      ${quick('출석 · 노쇼','출석','openClubBracketView()')}
+      ${quick('공지 보내기','공지 보내기','openClubPost({notice:1})')}</div>`;
+  h+=grp('경기', row('월례대회 설정','조 나누기 · 승강 인원',opGo('월례대회 설정','openTgSettings()')));
+  h+=grp('회원',
+      row('가입 신청','승인 · 거절', srvPend?'closeClubOps();openJoinRequests()':opGo('가입 신청','openAdmin()'), {n:pend})
+    + row('회원 관리','임원 임명 · 클럽장 넘기기',opGo('회원 관리','openMembers()'))
+    /* 회원 실력 · 안 나오는 회원은 같은 표를 정렬만 달리 보여주던 둘을 합친 자리 */
+    + row('회원 실력','등록 구력과 실제 · 요즘 오르는 회원',opGo('회원 실력','openMemberSkill()'))
+    + row('안 나오는 회원','한 달 넘게 안 보이는 분 · 바로 부르기',opGo('안 나오는 회원','openLapsed()'))
+    + row('클럽 초대장','링크 하나로 바로 가입',opGo('클럽 초대장','openClubInvite()')));
+  h+=grp('다른 클럽', row('도전장','보내기 · 받은 것 답하기','openChallenge()',{n:chTodo.length}));
+  h+=grp('클럽 정보',
+      row('클럽 기본 정보','모집 · 회비 · 게스트 · 모이는 날',opGo('클럽 기본 정보','openClubBasicEdit(1)'))
+    + row('클럽 소개','소개글 · 게스트 설정',opGo('클럽 소개','openIntroEditOps()'))
+    + (cb2Owner() ? row('클럽 이름 변경','오타 · 잘못 만든 이름 고치기',opGo('클럽 이름 변경','renameClub()'))
+      + row('클럽 삭제','나 혼자 남았을 때만',opGo('클럽 삭제','deleteClub()'),{dg:1}) : ''));
   document.getElementById('opsBody').innerHTML=h;
   document.getElementById('opsClub').textContent=n;
   document.getElementById('clubops').style.display='flex';
@@ -16658,7 +16679,9 @@ function opIcon(t){
     case '클럽 기본 정보': return S('card');
     case '회원 실력':   return S('target');
     case '클럽 이름 변경': return S('pencil');
-    case '클럽 삭제':   return S('shield');
+    case '클럽 삭제':   return S('trash');
+    case '안 나오는 회원': return S('userminus');
+    case '도전장':     return S('flag');
     default:            return S('star');
   }
 }
