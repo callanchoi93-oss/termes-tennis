@@ -6133,6 +6133,16 @@
   .hcard .tg i.rc{ color:var(--coral-d);background:var(--coral-s) }
   .hcard .tg i.nw{ color:var(--gray) }
   .clseed.ca{ margin:22px 0 0 }
+  /* ── 앱 받기 권유 (폰 웹) ── */
+  .anud{ display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 4px 4px }
+  .anud-ic{ width:68px;height:68px;border-radius:18px;background:#fff;border:1px solid var(--line);
+    box-shadow:var(--shadow-s);display:flex;align-items:center;justify-content:center }
+  .anud-ic svg{ width:42px;height:36px;color:var(--coral) }
+  .anud b{ display:block;font-size:22px;font-weight:800;letter-spacing:-.04em;margin-top:18px }
+  .anud > span{ display:block;font-size:15px;color:var(--gray);margin-top:6px;line-height:1.5 }
+  .anud .btn{ display:flex;align-items:center;justify-content:center;width:100%;margin-top:24px;text-decoration:none }
+  .anud-later{ margin-top:6px;min-height:44px;border:0;background:none;font-size:15px;font-weight:600;color:#6b7684;
+    font-family:inherit;cursor:pointer }
   /* ── 클럽 모두 보기 ── */
   #clubsall{ z-index:110 }
   .casearch{ width:44px;height:44px;border:0;background:none;color:var(--ink);display:flex;align-items:center;
@@ -8117,7 +8127,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.2-1007c';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.2-1007d';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -38227,6 +38237,57 @@ function storeCta(){
     <a href="${androidAppUrl()}" target="_blank" rel="noopener"
       style="color:var(--coral-d);font-weight:700;text-decoration:underline">안드로이드</a>` : ''}</div>`;
 }
+/* ── 폰 웹으로 들어온 사람에게 앱 받기 권하기 ──
+   아이폰은 앱스토어에 있다. 안드로이드는 Play 스토어 공개 전이라, 서버에 ANDROID_APP_URL 이
+   들어오는 날부터 안드로이드에도 뜬다(앱을 다시 빌드할 필요 없음).
+   폰 브라우저로 홈을 연 사람에게만, 첫 화면이 뜨고 조금 뒤 한 번 아래에서 올라온다.
+     · 앱 안 · PC 에서는 안 띄운다 (PC 는 받을 앱이 없다)
+     · 초대장 · 게스트 링크 화면은 이미 스토어 버튼이 있어 안 띄운다
+     · 다른 창이 열려 있으면 기다렸다가 한 번만 다시 본다
+     · <웹으로 계속>을 누르면 7일 동안 안 띄우고, 세 번 닫으면 더는 안 띄운다
+     · <받기>를 누른 사람은 30일 동안 안 띄운다 (설치했으면 다시 볼 일이 없다) */
+const APP_NUDGE_KEY='app_nudge_v1';
+function appNudgeState(){ try{ return JSON.parse(localStorage.getItem(APP_NUDGE_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function appNudgeSave(o){ try{ localStorage.setItem(APP_NUDGE_KEY, JSON.stringify(o)); }catch(e){} }
+function appNudgeEligible(){
+  if(nativeNow()) return false;
+  const ios=isIOSWeb(), and=isAndroidWeb();
+  if(!ios && !and) return false;
+  if(and && !androidAppUrl()) return false;          // 안드로이드 앱이 공개되기 전(ANDROID_APP_URL 없음)엔 안 띄운다
+  const s=appNudgeState(), now=Date.now();
+  if((s.n||0)>=3) return false;
+  if(s.until && now<s.until) return false;
+  return true;
+}
+function appNudgeBlocked(){
+  const on=id=>{ const e=document.getElementById(id); return !!(e && e.classList.contains('on')); };
+  return on('guestOv') || on('ov') || on('clubsall') || state.view!=='home' || !!document.getElementById('bootveil')
+    || (typeof phvIsOpen==='function' && phvIsOpen());
+}
+function appNudgeMaybe(retry){
+  if(!appNudgeEligible()) return;
+  if(appNudgeBlocked()){ if(!retry) setTimeout(()=>appNudgeMaybe(1), 20000); return; }
+  appNudgeShow();
+}
+function appNudgeShow(){
+  const ios=isIOSWeb();
+  const store=ios?'App Store':'Play 스토어', url=ios?iosAppUrl():androidAppUrl();
+  document.getElementById('sheet').innerHTML=`<div class="anud">
+      <div class="anud-ic"><svg viewBox="0 0 834 714" aria-hidden="true"><use href="#matsuMark"/></svg></div>
+      <b>맞수 앱이 나왔어요</b>
+      <span>모임 알림을 바로 받고, 홈 화면에서 한 번에 열려요</span>
+      <a class="btn" href="${url}" target="_blank" rel="noopener" onclick="appNudgeDone('go')">${store}에서 받기</a>
+      <button class="anud-later" onclick="appNudgeDone('later')">웹으로 계속 볼게요</button>
+    </div>`;
+  document.getElementById('ov').classList.add('on');
+}
+function appNudgeDone(how){
+  const s=appNudgeState(), now=Date.now();
+  if(how==='go') appNudgeSave({...s, until:now+30*864e5, went:now});
+  else appNudgeSave({...s, n:(s.n||0)+1, until:now+7*864e5});
+  closeOv();
+}
+window.addEventListener('load', ()=>setTimeout(()=>{ try{ appNudgeMaybe(); }catch(e){} }, 2500));
 function acceptInviteCard(token){
   glClose();
   if(state.loggedIn && authToken()) handleInviteToken(token);
