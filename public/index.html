@@ -1020,8 +1020,16 @@
      .appbar 처럼 안전영역을 더해주지 않으면 '‹ 뒤로'가 상태바에 가려 안 보인다. */
   .evtop{position:sticky;top:0;z-index:5;background:var(--cream);
     padding:calc(8px + env(safe-area-inset-top,0px)) 16px 8px;min-height:56px;box-sizing:border-box;
-    display:flex;align-items:center;gap:12px;border-bottom:1px solid #e8ebee}
+    display:flex;align-items:center;gap:12px}   /* 밑줄은 뺐다 — ‹ 동그라미를 가로질러 그어져 보였다 */
   .evtop .pvttl{bottom:8px;top:auto;height:40px;display:flex;align-items:center;justify-content:center}
+  /* 모임 화면 맨 위 — ‹ 와 모임 이름이 한 줄. 밑줄 없음 */
+  .evhd{ position:sticky;top:0;z-index:5;background:var(--cream);display:flex;align-items:center;gap:10px;
+    padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;max-width:552px;margin:0 auto;width:100%;box-sizing:border-box }
+  .evhd .pvback{ flex:none }                       /* 다른 화면과 같은 40px 흰 동그라미 */
+  .evhd h3{ flex:1;min-width:0;margin:0;font-size:22px;font-weight:700;letter-spacing:-.03em;line-height:1.3;word-break:keep-all }
+  .evhd .evact{ flex:none;display:flex;gap:5px }
+  .evhd .evact span{ cursor:pointer;font-size:13.5px;font-weight:700;color:#57606b;border:1px solid #d7dbe0;border-radius:9px;padding:6px 9px;white-space:nowrap }
+  .evhd .evact span.del{ color:#c14545;border-color:#f0d8d8 }
   .fullov.on{display:flex}
   .auth-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;background:linear-gradient(160deg,#14171a,#24282c);color:#fff;position:relative;overflow:hidden}
   .auth-hero .court{position:absolute;inset:0;opacity:.08}
@@ -4634,6 +4642,20 @@
   .nwread .hd{ margin-top:var(--s3) } .nwread .more{ flex:none;width:40px;height:40px;border:0;background:none;font-size:var(--t3);color:var(--lgray);cursor:pointer;letter-spacing:.05em }
   .nwread .tx{ font-size:var(--t2);line-height:1.65;margin-top:var(--s3);white-space:pre-wrap }
   .nwread img{ display:block;width:100%;border-radius:14px;margin-top:var(--s3) }
+  /* 사진 크게 보기 — 검은 화면 · 옆으로 넘기기 · 위에 닫기 / 몇 번째 / 저장 */
+  #phv{ position:fixed;inset:0;z-index:150;background:#000;display:none;flex-direction:column }
+  #phv.on{ display:flex }
+  .phv-top{ flex:none;display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px }
+  .phv-x{ width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:26px;line-height:1;font-family:inherit }
+  .phv-n{ font-size:15px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums }
+  .phv-sv{ height:38px;padding:0 14px;border:0;border-radius:12px;background:rgba(255,255,255,.14);color:#fff;font:inherit;font-size:14px;font-weight:700;
+    display:inline-flex;align-items:center;gap:6px }
+  .phv-track{ flex:1;min-height:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding-bottom:env(safe-area-inset-bottom,0px) }
+  .phv-track::-webkit-scrollbar{ display:none }
+  .phv-pg{ flex:0 0 100%;scroll-snap-align:center;display:flex;align-items:center;justify-content:center;min-width:0 }
+  .phv-pg img{ max-width:100%;max-height:100%;object-fit:contain;display:block;-webkit-user-select:none;user-select:none }
+  .nwread img{ cursor:zoom-in }
   .nwread .bar{ padding:var(--s3) 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2) }
   .nwread .cm{ display:flex;gap:var(--s3);margin-top:var(--s3) } .nwread .cm .b{ flex:1;border-radius:4px 14px 14px 14px;background:#f7f8fa;padding:var(--s2) var(--s3) }
   .nwread .cm .b b{ font-size:var(--t0);font-weight:700 } .nwread .cm .b span{ font-size:var(--t0);color:var(--lgray);margin-left:var(--s1) } .nwread .cm .b div{ font-size:var(--t1);margin-top:2px;white-space:pre-wrap }
@@ -6109,6 +6131,8 @@
   .hcard .tg{ display:flex;gap:5px;margin-top:10px }
   .hcard .tg i{ font-style:normal;font-size:12px;font-weight:700;background:var(--felt);border-radius:6px;padding:3px 7px }
   .hcard .tg i.rc{ color:var(--coral-d);background:var(--coral-s) }
+  .hcard .tg i.nw{ color:var(--gray) }
+  .clseed.ca{ margin:22px 0 0 }
   /* ── 클럽 모두 보기 ── */
   #clubsall{ z-index:110 }
   .casearch{ width:44px;height:44px;border:0;background:none;color:var(--ink);display:flex;align-items:center;
@@ -7918,7 +7942,7 @@ html.is-native .app .sel{-webkit-user-select:text;user-select:text;-webkit-touch
     <div class="logo" style="cursor:pointer" onclick="logoTap()" role="button" aria-label="홈으로"><svg class="mk" viewBox="0 0 834 714" role="img" aria-label="맞수 MATSU"><use href="#matsuMark"/></svg></div>
     <div class="tbt" id="tbTitle" style="display:none"></div>
     <div class="tbmid" id="tbMid" style="display:none"></div>
-    <div style="display:flex;align-items:center;gap:9px">
+    <div style="display:flex;align-items:center;gap:9px;margin-left:auto">
       <div class="bell" id="tbGear" role="button" tabindex="0" aria-label="운영진 도구" onclick="openClubOps()" style="display:none"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
       <div class="bell" id="chatBtn" role="button" tabindex="0" aria-label="대화" onclick="goChat()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L3 21l1.8-4.4A8.3 8.3 0 0 1 3.6 11.5C3.6 6.8 7.5 3 12.3 3S21 6.8 21 11.5z"/></svg><span id="chatCnt" class="tbadge" style="display:none">0</span></div>
       <div class="bell" id="notifBtn" role="button" tabindex="0" aria-label="알림" onclick="toggleNotif(event)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#14171a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
@@ -8093,7 +8117,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.2-1005a';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.2-1007a';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9558,7 +9582,10 @@ async function loadPublicData(){
          여기서 빠뜨리면 '여성 클럽' 배지가 붙을 자리는 있는데 붙을 값이 없다. */
       gender_pref:c.gender_pref||'', meet_time:c.meet_time||'', age_bands:c.age_bands||'',
       /* 성별 구성 — 배지는 선언이 아니라 이 숫자로 판정한다 */
-      g_f:c.g_f||0, g_m:c.g_m||0, g_unknown:c.g_unknown||0 }));
+      g_f:c.g_f||0, g_m:c.g_m||0, g_unknown:c.g_unknown||0,
+      /* 막 만든 클럽을 목록 아래에 따로 놓고, 오래 손 놓은 곳은 빼는 데 쓴다.
+         recruiting 은 예전에 안 받아 와서 목록의 <모집 중>이 운영진 화면에서 고친 뒤에만 보였다 */
+      created:c.created_at||null, active:c.last_active||null, recruiting:c.recruiting }));
     // 서버가 로고를 내려주면 그걸 쓴다. 기기에만 저장된 로고는 재로그인·기기 변경 시 사라진다.
     state.clubLogos = state.clubLogos || {};
     (cs||[]).forEach(c=>{
@@ -11614,7 +11641,7 @@ function openQuickStart(){
   const IC_NEW=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
   const reg=(()=>{ const c=(state.clubs||[])[0]; return c&&c.r ? String(c.r).split(' ').slice(0,2).join(' ') : ''; })();
-  const n=(state.clubs||[]).length;
+  const n=(state.clubs||[]).filter(c=>!clubIsStale(c)).length;   // 오래 손 놓은 클럽은 목록에 없으니 세지도 않는다
   let h=`<div class="sh-top"><h3>클럽부터 찾아볼까요?</h3>
       <div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
     <div class="sd">맞수는 클럽 단위로 굴러가요 · 클럽에 들어가야 대진·기록·랭킹이 생깁니다.</div>
@@ -14447,7 +14474,8 @@ function renderClub(){
     /* 회원이 한둘인 클럽이 목록 위를 차지하면 <이 앱엔 클럽이 없구나>로 읽힌다.
        숨기지는 않되 아래로 갈라, 위쪽에는 실제로 굴러가는 클럽만 남긴다. */
     const SEED=2;
-    const live=list.filter(c=>(c.m||0)>SEED), seed=list.filter(c=>(c.m||0)<=SEED);
+    const live=list.filter(c=>(c.m||0)>SEED), seed=list.filter(c=>(c.m||0)<=SEED && !clubIsStale(c))
+      .sort((a,b)=>clubTs(b.created)-clubTs(a.created));
     /* 모집 중인 클럽을 위로 — 사람을 안 받는 클럽을 먼저 보여주면 헛걸음이 된다.
        숨기지는 않는다. 같은 조건이면 원래 순서(회원 수·최근 활동)를 지킨다. */
     const byRecruit=(a,b)=>(clubRecruiting(b)?1:0)-(clubRecruiting(a)?1:0);
@@ -14462,13 +14490,13 @@ function renderClub(){
             border-radius:50%;background:var(--coral)"></span>모집 중</span>`:''}${
           (c.m||0)<=SEED?'<span class="cltag">새로 생김</span>':''}</div>
         <div class="clr">${esc(c.r)} · 회원 ${c.m}명${
-          (c.m||0)<=SEED ? ' · 아직 모임 기록이 없어요'
+          (c.m||0)<=SEED ? ` · ${esc(clubBornText(c))}`
           : c.meet_days ? ` · ${esc(clubDaysText(c.meet_days))}` : ''}</div>
       </div>
       <span class="clgo">›</span></div>`;
     h+=live.map(clubRow).join('');
     if(seed.length) h+=`<div class="clseed"><span>이제 막 만들어진 클럽</span><i></i></div>
-      <div class="clquiet">${seed.map(clubRow).join('')}</div>`;
+      <div>${seed.map(clubRow).join('')}</div>`;
   }
   document.getElementById('s-club').innerHTML=h;
 }
@@ -19342,6 +19370,52 @@ async function submitClubPost(){
     toast(why);
   }
 }
+/* ── 사진 크게 보기 · 저장 ──
+   소식 글의 사진을 누르면 검은 화면에 크게 뜨고, 옆으로 넘기며 보고, <저장>으로 휴대폰에 담는다.
+   저장은 공유 시트(아이폰: <이미지 저장>)를 쓴다. 공유가 안 되는 기기(안드로이드 앱)는 브라우저로 열어 길게 눌러 저장. */
+const PHV_REG={}; let PHV_SEQ=0, PHV=null;
+function phvReg(list){ const k='p'+(++PHV_SEQ); PHV_REG[k]=(list||[]).slice(); return k; }
+function phvIsOpen(){ const el=document.getElementById('phv'); return !!(el && el.classList.contains('on')); }
+function phvOpen(k, i){
+  const list=PHV_REG[k]||[]; if(!list.length) return;
+  PHV={ list, i:Math.max(0, Math.min(+i||0, list.length-1)) };
+  let el=document.getElementById('phv');
+  if(!el){ el=document.createElement('div'); el.id='phv'; document.body.appendChild(el); }
+  el.innerHTML=`<div class="phv-top">
+      <button class="phv-x" aria-label="닫기" onclick="phvClose()">×</button>
+      <span class="phv-n" id="phvN"></span>
+      <button class="phv-sv" onclick="phvSave()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>저장</button></div>
+    <div class="phv-track" id="phvT" onscroll="phvScroll()">${list.map(u=>`<div class="phv-pg"><img src="${esc(u)}" alt="사진" draggable="false"></div>`).join('')}</div>`;
+  el.classList.add('on');
+  const t=document.getElementById('phvT');
+  requestAnimationFrame(()=>{ t.scrollLeft=t.clientWidth*PHV.i; phvCount(); });
+  phvCount();
+}
+function phvScroll(){ const t=document.getElementById('phvT'); if(!t||!PHV) return;
+  const i=Math.round(t.scrollLeft/Math.max(1,t.clientWidth)); if(i!==PHV.i){ PHV.i=i; phvCount(); } }
+function phvCount(){ const n=document.getElementById('phvN'); if(n&&PHV) n.textContent=PHV.list.length>1?`${PHV.i+1} / ${PHV.list.length}`:''; }
+function phvClose(){ const el=document.getElementById('phv'); if(el){ el.classList.remove('on'); el.innerHTML=''; } PHV=null; }
+async function phvSave(){
+  if(!PHV) return; const url=PHV.list[PHV.i];
+  try{
+    const r=await fetch(url); if(!r.ok) throw new Error('http'+r.status);
+    const blob=await r.blob();
+    const type=blob.type&&blob.type.startsWith('image/')?blob.type:'image/jpeg';
+    const ext=(type.split('/')[1]||'jpg').replace('jpeg','jpg');
+    const file=new File([blob], `matsu-${Date.now()}.${ext}`, {type});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file]}); return; }
+    if(!IS_NATIVE){                                    // 웹 — 바로 내려받기
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+      toast('사진을 내려받았어요'); return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  /* 공유가 안 되는 앱 — 브라우저로 열어 길게 눌러 저장 */
+  try{ const B=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Browser;
+    if(B){ await B.open({url}); toast('사진을 길게 눌러 저장해 주세요', true); return; } }catch(e){}
+  try{ window.open(url, '_blank'); }catch(e){}
+}
 /* ── 글 보기 — 한 화면 · 말풍선 댓글 · 삭제는 ··· 안에 ── */
 async function openFeedPost(id){
   const p=(CLUB_FEED||[]).find(x=>x.id===id);
@@ -19352,7 +19426,7 @@ async function openFeedPost(id){
     <div class="hd">${nwAv(who,40)}<div class="c"><div class="nm"><b>${esc(who)}</b>${memberTag(who)}</div><span class="mt">${timeAgo(p.created_at)||''}${p.event?` · <a onclick="setClubSub('bracket')">모임 후기 · ${esc(nwEvLabel(p.event))} ›</a>`:''}</span></div>
       <button class="more" onclick="openPostMenu(${p.id})" aria-label="더 보기">···</button></div>
     ${p.title?`<div class="tt">${esc(p.title)}</div>`:''}${p.body?`<div class="tx">${esc(p.body)}</div>`:''}
-    ${pics.map(u=>`<img src="${esc(u)}" alt="사진" loading="lazy">`).join('')}
+    ${(()=>{ const k=phvReg(pics); return pics.map((u,i)=>`<img src="${esc(u)}" alt="사진" loading="lazy" onclick="phvOpen('${k}',${i})">`).join(''); })()}
     <div class="bar"><button class="${p.liked?'on':''}" onclick="likeFeedPost(${p.id})">${icHeart(p.liked)} 좋아요 ${p.likes||0}</button><span>${icChat()} 댓글 ${cmts.length}</span></div>
     ${cmts.length?cmts.map(c=>`<div class="cm">${nwAv(c.name,30)}<div class="b"><b>${esc(c.name)}</b><span>${timeAgo(c.created_at)||''}</span><div>${esc(c.body)}</div></div></div>`).join('')
       :'<div class="vnone" style="padding:16px 0">첫 댓글을 남겨보세요</div>'}
@@ -20077,6 +20151,9 @@ function xcPage(title, body){
       <h2 class="t" style="margin:0;font-size:20px;letter-spacing:-.045em">${esc(title)}</h2></div>
     ${body}</div>`;
   window.scrollTo(0,0);
+  /* 클럽 안쪽 화면을 열었으니 위 줄에 ‹ 를 띄운다 — 예전엔 안 불러서 ‹ 가 숨은 채로 남았고,
+     왼쪽이 비자 대화 · 알림 아이콘이 왼쪽으로 붙었다 */
+  try{ updBackBtn(); }catch(e){}
 }
 function xcBack(){ state._xcOpen=0; XC_LIST=null; renderClub(); }
 function xcShare(id){
@@ -22452,6 +22529,7 @@ function chPage(title, body, back){
       <h2 class="t" style="margin:0;font-size:20px;letter-spacing:-.045em">${esc(title)}</h2></div>
     ${body}</div>`;
   window.scrollTo(0,0);
+  try{ updBackBtn(); }catch(e){}       // 위 줄 ‹ 를 띄운다(xcPage 와 같은 이유)
 }
 function chDateStrip(sel, fn){
   const t=new Date(); t.setHours(0,0,0,0);
@@ -28796,12 +28874,26 @@ function hnScheduleAA(plan, courts){
    그래서 순서를 뒤집는다: 라운드마다 <누가 쉬는지>를 먼저 정하고, 뛰는 사람을
    코트 수만큼 게임으로 정확히 나눈다. 코트가 비는 라운드는 마지막(인원이 모자랄 때)뿐이다.
    게임 종류(혼복·여복·남복) 목표, 파트너·상대 중복, 양 팀 실력 합은 그대로 본다. */
+/* 한쪽 성별이 딱 2명일 때 — 혼복은 그 두 사람이 양 팀에 하나씩 서야 성립한다.
+   그래서 혼복만으로 4게임을 채우면 두 사람은 4게임 내내 서로 상대가 된다(실제로 4번 연속으로 나왔다).
+   한울은 <매번 다른 파트너·다른 상대>가 핵심이라, 이때만 이렇게 나눈다.
+     혼복 2게임   — 두 사람이 서로 상대 (2번만, 연달아 붙지 않게)
+     혼성 4게임   — 한 사람씩 (여+남 vs 남+남) · 실력 합을 맞춰 센 쪽과 짝
+   나머지는 많은 쪽 성별끼리. 많은 쪽이 4명은 돼야 자리 수가 맞는다(4M = 2·2 + 3·4 + 4·남복). */
+const HN_MIXW=0.67;
+function cbHanulDuo(Fn, Mn){
+  const minor=Math.min(Fn,Mn), major=Math.max(Fn,Mn);
+  if(minor!==2 || major<4) return null;
+  const n=Fn+Mn, same=n-6;
+  return {X:2, H:4, Y:Fn>Mn?same:0, Z:Mn>Fn?same:0, fewF:Fn<Mn};
+}
 function cbGenderPlanRounds(F, M, past, seed, courts, pref){
   const all=[...F,...M]; const n=all.length; if(n<4) return [];
   const isFi=i=>i<F.length;
   const rnd=_rng((seed||1)*7919+n*31);
-  const {X,Y,Z}=(F.length>0&&M.length>0)?cbGenderMix(F.length,M.length,pref):{X:0,Y:F.length?n:0,Z:M.length?n:0};
-  const quota={'혼복':X,'여복':Y,'남복':Z}, taken={'혼복':0,'여복':0,'남복':0};
+  const duo=cbHanulDuo(F.length, M.length);
+  const {X,Y,Z}=duo || ((F.length>0&&M.length>0)?cbGenderMix(F.length,M.length,pref):{X:0,Y:F.length?n:0,Z:M.length?n:0});
+  const quota={'혼복':X,'여복':Y,'남복':Z,'혼성':duo?duo.H:0}, taken={'혼복':0,'여복':0,'남복':0,'혼성':0};
   const G=n, gpr=Math.min(courts, Math.floor(n/4));
   const rounds=Math.ceil(G/gpr);
   /* 라운드마다 몇 게임·몇 명이 쉬는지는 처음부터 정해져 있다 */
@@ -28810,11 +28902,12 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
   const K=rounds-4;                                       // 1인당 쉬는 횟수 (전원 똑같이)
   const rests=Array(n).fill(0), lastRest=Array(n).fill(-9);
   const cMix=Array(n).fill(0), cSame=Array(n).fill(0);
-  const partner={}, opp={};
+  const partner={}, opp={}, lastMet={}; let curR=0;
   const pk=(a,b)=>hnK(all[a].id, all[b].id);
   const pastN=k=>(past&&past[k])||0;
   const typeOf=(t1,t2)=>{ const f=t1.filter(isFi).length+t2.filter(isFi).length;
     const ok=(t1.filter(isFi).length===1&&t2.filter(isFi).length===1);
+    if(duo && (duo.fewF ? f===1 : f===3)) return '혼성';    // 적은 쪽이 한 명만 낀 게임
     return f===0?'남복':f===4?'여복':(f===2&&ok)?'혼복':null; };
   /* 성별이 어긋난 게임(여남 vs 남남 등)은 예전엔 아예 금지였다. 그런데 여성이 홀수이고
      아무도 안 쉬는 라운드(8명·2코트 등)에서는 금지 조합 없이 짤 방법이 수학적으로 없다.
@@ -28829,17 +28922,28 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
     let c=0;
     if(!type) c+= d>=2 ? WORST : ODD;
     else if(taken[type]>=quota[type]) c+=400;                          // 종류 초과
-    c+=[t1,t2].reduce((s,t)=>s+(partner[pk(t[0],t[1])]||0)*120 + pastN(pk(t[0],t[1]))*30, 0);
-    t1.forEach(a=>t2.forEach(b=>{ c+=(opp[pk(a,b)]||0)*20; }));
-    const g=t=>t.reduce((s,i)=>s+hnG(all[i]),0);
+    /* 같은 파트너 두 번은 상대 두 번보다 더 아깝다 — 120 이던 것을 400 으로 */
+    c+=[t1,t2].reduce((s,t)=>s+(partner[pk(t[0],t[1])]||0)*400 + pastN(pk(t[0],t[1]))*30, 0);
+    /* 상대 중복 — 두 번째 만남은 가볍게, 세 번째부터는 무겁게, 바로 앞 라운드에 붙었으면 또 무겁게.
+       예전엔 한 번 만날 때마다 20점이라 실력 맞추기에 밀려 같은 사람끼리 3~4번 붙었다. */
+    t1.forEach(a=>t2.forEach(b=>{ const k=pk(a,b), m=opp[k]||0;
+      c+= m===0 ? 0 : m===1 ? 60 : 900*m;
+      if(lastMet[k]===curR-1) c+=500; }));
+    /* 혼성(여+남 vs 남+남)은 구력 등급이 같아도 여자 쪽이 불리하다 — 여자를 두 칸(⅔단계) 낮춰 셈해
+       여자 짝으로 센 남자가 오게 한다. 혼복은 양쪽에 여자가 하나씩이라 손댈 필요가 없다. */
+    const g=t=>t.reduce((s,i)=>s+hnG(all[i])-(type==='혼성'&&isFi(i)?HN_MIXW:0),0);
     c+=Math.pow(Math.abs(g(t1)-g(t2)),2)*25;
     if(type){ const cnt=i=>type==='혼복'?cMix[i]:cSame[i];
       c+=[...t1,...t2].reduce((s,i)=>s+cnt(i)*70,0); }
     return c;
   };
   const splits=q=>[[[q[0],q[1]],[q[2],q[3]]],[[q[0],q[2]],[q[1],q[3]]],[[q[0],q[3]],[q[1],q[2]]]];
-  const bestGame=q=>{ let b=null,bc=1e18; splits(q).forEach(([t1,t2])=>{ const c=gameCost(t1,t2)+rnd()*0.5; if(c<bc){bc=c;b=[t1,t2];} });
-    return {g:b,c:bc}; };
+  /* 같은 라운드 안에서는 점수 기준(누가 누구와 몇 번 만났나)이 안 바뀐다 — 4명 묶음별로 한 번만 계산해 둔다.
+     쉬는 사람을 바꿔 여러 번 나눠 보는데, 매번 처음부터 계산하면 13명·3코트가 4초씩 걸렸다. */
+  let memo=new Map();
+  const bestGame=q=>{ const key=q.slice().sort((a,b)=>a-b).join(','); const hit=memo.get(key); if(hit) return hit;
+    let b=null,bc=1e18; splits(q).forEach(([t1,t2])=>{ const c=gameCost(t1,t2)+rnd()*0.5; if(c<bc){bc=c;b=[t1,t2];} });
+    const r={g:b,c:bc}; memo.set(key,r); return r; };
   /* 활동 인원을 k 개의 4인조로 나눈다 — 3조까지는 전수, 그 이상은 탐욕+재시작.
      이제 금지로 막지 않으므로 항상 답이 나온다(벌점만 다르다). */
   function partition(active, k){
@@ -28886,6 +28990,7 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
   const out=[];
   for(let r=0;r<rounds;r++){
     const gr=gOf(r); if(gr<=0) break;
+    curR=r; memo=new Map();
     const restN=restOf(r);
     const left=rounds-r;                                   // 이번 라운드 포함 남은 라운드
     const must=[...Array(n).keys()].filter(i=>need(i)>=left);   // 이번에 안 쉬면 K번을 못 채우는 사람
@@ -28917,7 +29022,8 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
       const act=[...Array(n).keys()].filter(i=>!rs.includes(i));
       const pt=partition(act, gr);
       if(!part || pt.cost<part.cost){ part=pt; chosen=rs.slice(); }
-      if(pt.cost<ODD || restN===0) break;                 // 성별이 어긋난 게임이 없으면 바로 확정
+      /* 성별이 어긋난 게임도, 같은 상대 반복도 없으면 바로 확정. 아니면 쉬는 사람을 바꿔 몇 번 더 본다 */
+      if(restN===0 || pt.cost<250 || (tryN>=6 && pt.cost<ODD)) break;
     }
     if(!part){                                            // 이론상 오지 않는다 — 그래도 K번은 지킨다
       chosen=safest(); part=partition([...Array(n).keys()].filter(i=>!chosen.includes(i)), gr);
@@ -28925,7 +29031,7 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
     part.games.forEach(([t1,t2],ci)=>{
       const type=typeOf(t1,t2); if(type) taken[type]++;
       [t1,t2].forEach(t=>{ partner[pk(t[0],t[1])]=(partner[pk(t[0],t[1])]||0)+1; });
-      t1.forEach(a=>t2.forEach(b=>{ opp[pk(a,b)]=(opp[pk(a,b)]||0)+1; }));
+      t1.forEach(a=>t2.forEach(b=>{ opp[pk(a,b)]=(opp[pk(a,b)]||0)+1; lastMet[pk(a,b)]=r; }));
       [...t1,...t2].forEach(i=>{ if(type==='혼복') cMix[i]++; else cSame[i]++; });
       out.push({r:r+1, c:ci+1, t1:t1.map(i=>all[i]), t2:t2.map(i=>all[i]), label:type||null});
     });
@@ -28939,8 +29045,13 @@ function cbGenderPlanRounds(F, M, past, seed, courts, pref){
 function cbHanulPlan(F, M, past, seed, courts, pref){
   const n=F.length+M.length, tries=n<=12?6:2;
   const fOf=t=>t.filter(p=>F.includes(p)).length;
-  const sum=t=>t.reduce((s,p)=>s+hnG(p),0);
-  const cost=out=>out.reduce((s,g)=>s+Math.pow(Math.abs(sum(g.t1)-sum(g.t2)),2)
+  const sum=(t,g)=>t.reduce((s,p)=>s+hnG(p)-(g&&g.label==='혼성'&&F.includes(p)?HN_MIXW:0),0);
+  /* 같은 두 사람이 상대로 세 번 이상, 또는 바로 다음 라운드에 또 붙는 횟수 */
+  const meets=out=>{ const m={}, last={}; let over=0, back=0;
+    out.slice().sort((a,b)=>a.r-b.r).forEach(g=>g.t1.forEach(a=>g.t2.forEach(b=>{ const k=hnK(a.id,b.id);
+      m[k]=(m[k]||0)+1; if(m[k]>=3) over++; if(last[k]===g.r-1) back++; last[k]=g.r; })));
+    return over*600 + back*120; };
+  const cost=out=>meets(out) + out.reduce((s,g)=>s+Math.pow(Math.abs(sum(g.t1,g)-sum(g.t2,g)),2)
     + (g.label ? 0 : (Math.abs(fOf(g.t1)-fOf(g.t2))>=2 ? 1e6 : 1e4)),0);
   const exact4=out=>{ const c=new Map(); [...F,...M].forEach(p=>c.set(p,0));
     out.forEach(g=>[...g.t1,...g.t2].forEach(p=>c.set(p,(c.get(p)||0)+1)));
@@ -33977,8 +34088,12 @@ function cb2ModePreview(k){
       const all=(typeof cb2All==='function')?cb2All():[];
       const sel=[...CB2_SEL].map(id=>all.find(x=>String(x.user_id)===String(id))).filter(Boolean);
       const Fn=sel.filter(isF).length, Mn=sel.length-Fn;
-      const mix=(Fn>=2&&Mn>=2)?cbGenderMix(Fn,Mn,'auto'):null;
+      const duo=cbHanulDuo(Fn,Mn);
+      const mix=duo ? null : (Fn>=2&&Mn>=2)?cbGenderMix(Fn,Mn,'auto'):null;
+      const few=duo ? (duo.fewF?'여자':'남자') : '';
       return mute(`${rounds}라운드 · 전원 4게임 · 코트를 옮겨 다녀요`)
+        + (duo ? line(`${few} 2명 · 혼복 2게임은 서로 상대, 2게임은 ${duo.fewF?'여+남 vs 남+남':'남+여 vs 여+여'}`)
+               + line(`같은 상대는 최대 2번 · 연달아 만나지 않아요`) : '')
         + (per<c ? line(`${n}명이면 한 번에 ${per}게임만 돌아요 · ${c-per}개 코트는 번갈아 써요`) : '')
         + (mix ? line(`${mix.Z?`남복 ${mix.Z}`:''}${mix.Z&&mix.X?' · ':''}${mix.X?`혼복 ${mix.X}`:''}${(mix.Z||mix.X)&&mix.Y?' · ':''}${mix.Y?`여복 ${mix.Y}`:''} · ${mix.flipped?'여자가 많아 여복 위주':'남자가 많아 남복 위주'} · 양 팀 실력을 맞춰요`) : '');
     }
@@ -34873,7 +34988,10 @@ async function cb2Gen(mode){
     groups=null;
     const rounds=Math.max(...games.map(g=>g.r));
     const mixN=games.filter(g=>g.label==='혼복').length;
-    toast(`한울 ${n}명 · ${rounds}라운드 · 전원 4게임` + (F.length&&M.length ? ` · 혼복 ${mixN}게임` : ''));
+    const duo=cbHanulDuo(F.length, M.length);
+    toast(`한울 ${n}명 · ${rounds}라운드 · 전원 4게임` + (duo
+      ? ` · ${duo.fewF?'여자':'남자'} 2명은 서로 2번만 만나요`
+      : (F.length&&M.length ? ` · 혼복 ${mixN}게임` : '')));
   } else if(mode==='hanul'){
     /* KDK = 조를 코트에 붙여놓고 그 안에서만 돌린다.
        예전 편성은 게임마다 빈 코트를 찾아 넣는 방식이라 한 사람이
@@ -37696,17 +37814,18 @@ function drawEventDetail(){
   const nameTag=n=>esc(n)+(isGuest(n)?' G':'');
 
   /* 맨 위는 ‹ 하나 — 바로 아래 큰 제목(모임 이름)이 있으니 <모임 정보> 글자는 쓰지 않는다 */
-  let h=`<div class="evtop">
-      <button class="pvback" aria-label="뒤로" onclick="closeEventPage()">‹</button></div>
-    <div style="padding:18px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
-    ${isXc?evXcHero(e):''}
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-      <h3 style="font-size:24px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.3">${esc(e.title)}</h3>
-      ${off?`<div style="display:flex;gap:6px;flex:none">
-        <span onclick="copyEvent(${e.id})" style="cursor:pointer;font-size:14px;font-weight:700;color:#57606b;border:1px solid #d7dbe0;border-radius:9px;padding:6px 10px">복제</span>
-        <span onclick="editEvent(${e.id})" style="cursor:pointer;font-size:14px;font-weight:700;color:#57606b;border:1px solid #d7dbe0;border-radius:9px;padding:6px 10px">수정</span>
-        <span onclick="delEvent(${e.id})" style="cursor:pointer;font-size:14px;font-weight:700;color:#c14545;border:1px solid #f0d8d8;border-radius:9px;padding:6px 10px">삭제</span>
+  /* 맨 위 한 줄 = ‹ · 모임 이름 · (운영진) 복제 · 수정 · 삭제. 스크롤해도 붙어 있다.
+     예전엔 ‹ 만 있는 줄이 따로 있고 그 아래 밑줄이 ‹ 동그라미를 가로질러 그어져 이상해 보였다. */
+  let h=`<div class="evhd">
+      <button class="pvback" aria-label="뒤로" onclick="closeEventPage()">‹</button>
+      <h3>${esc(e.title)}</h3>
+      ${off?`<div class="evact">
+        <span onclick="copyEvent(${e.id})">복제</span>
+        <span onclick="editEvent(${e.id})">수정</span>
+        <span class="del" onclick="delEvent(${e.id})">삭제</span>
       </div>`:''}</div>
+    <div style="padding:6px 20px 40px;max-width:520px;margin:0 auto;width:100%;box-sizing:border-box">
+    ${isXc?evXcHero(e):''}
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
       <span style="font-size:13px;white-space:nowrap;font-weight:400;border-radius:8px;padding:3px 9px;background:#fff;border:1px solid ${chipBd};color:${accent}">${esc(e.tag||'정기')}</span>
       <span style="font-size:15px;font-weight:400;color:#57606b">${esc(e.date||'')}</span></div>
@@ -45809,14 +45928,38 @@ function homeStarter(){
 }
 /* ── 클럽 목록 (홈 가로 카드 · 모두 보기 한 페이지 공용) ──
    scope: 'city' 내 시·군 → 'sido' 내 시·도 → 'all' 전국. 'auto' 는 이 순서로 비지 않는 첫 범위.
-   이미 가입한 클럽은 뺀다. 회원 2명 이하 클럽은 예전처럼 목록에 올리지 않는다. */
+   이미 가입한 클럽은 뺀다. 회원 2명 이하 클럽은 맨 뒤에(clubIsNew), 오래 손 놓은 곳은 뺀다(clubIsStale). */
 function clubRegShort(r){ const t=String(r||'').trim().split(/\s+/);
   if(!t[0]) return '';
   return [t[0].replace(/(특별시|광역시|특별자치시|특별자치도|자치도|도)$/,''), t[1]||'']
     .filter(Boolean).join(' '); }
+/* ── 막 만든 클럽 ──
+   회원 2명 이하 클럽은 예전엔 홈 · 모두 보기에서 아예 뺐다. 그런데 앱이 아직 작아
+   막 만든 클럽이야말로 사람을 찾고 있고, 안 보이면 초대 링크 말고는 들어올 길이 없다.
+   이제 보이게 하되 늘 <활동 중인 클럽> 아래에 둔다. 60일 넘게 모임·대화가 없으면 버려진 것으로 보고 뺀다. */
+const CLUB_NEW_MAX=2, CLUB_STALE_DAYS=60;
+function clubIsNew(c){ return (c&&c.m||0)<=CLUB_NEW_MAX; }
+function clubTs(v){
+  if(v==null||v==='') return 0;
+  let t = typeof v==='number' ? v : /^\d+$/.test(String(v)) ? +v : Date.parse(v);
+  if(!t||isNaN(t)) return 0;
+  return t<1e12 ? t*1000 : t;                         // 초 단위로 온 값도 받는다
+}
+function clubIsStale(c){
+  if(!clubIsNew(c)) return false;
+  const t=clubTs(c.active)||clubTs(c.created);
+  return !!t && Date.now()-t > CLUB_STALE_DAYS*864e5;
+}
+/* <3일 전 생김> · <9월 30일 생김> — 막 만든 클럽이 살아 있다는 걸 한 줄로 */
+function clubBornText(c){
+  const t=clubTs(c&&c.created); if(!t) return '새로 생김';
+  const d=Math.floor((Date.now()-t)/864e5);
+  if(d<=0) return '오늘 생김'; if(d===1) return '어제 생김'; if(d<7) return `${d}일 전 생김`;
+  const x=new Date(t); return `${x.getMonth()+1}월 ${x.getDate()}일 생김`;
+}
 function clubListFor(scope, exclude){
   const ex=new Set(exclude||[]);
-  const all=(state.clubs||[]).filter(c=>(c.sport||state.sport)===state.sport && (c.m||0)>2 && !ex.has(c.n));
+  const all=(state.clubs||[]).filter(c=>(c.sport||state.sport)===state.sport && !clubIsStale(c) && !ex.has(c.n));
   const my=state.region?clubRegShort(state.region):'';
   const sido=my?my.split(' ')[0]:'';
   const city=my.split(' ').length>1?my:'';
@@ -45826,7 +45969,9 @@ function clubListFor(scope, exclude){
     all : ()=>all };
   let sc=scope;
   if(sc==='auto') sc=['city','sido','all'].find(k=>pick[k]().length) || 'all';
-  const list=pick[sc]().slice().sort((a,b)=>(b.m||0)-(a.m||0));
+  /* 활동 중인 클럽(회원 많은 순) → 막 만든 클럽(최근에 만든 순) */
+  const list=pick[sc]().slice().sort((a,b)=>(clubIsNew(a)?1:0)-(clubIsNew(b)?1:0)
+    || (clubIsNew(a) ? clubTs(b.created)-clubTs(a.created) : (b.m||0)-(a.m||0)));
   const nm = sc==='city' ? city.split(' ')[1].replace(/(시|군|구)$/,'') : sc==='sido' ? sido : '';
   return { scope:sc, list, city, sido,
     title: sc==='all' ? '클럽 찾기' : `${nm} 클럽`,
@@ -45845,8 +45990,8 @@ function clubCardHTML(c){
   return `<div class="hcard" onclick="openClubPreview('${esc(c.n)}')">
     ${clubInitialAv(c,42)}
     <b>${esc(c.n)}</b>
-    <span class="s">회원 ${c.m||0}명${d?` · ${esc(d)}`:''}</span>
-    <span class="tg"><i style="color:${g.c}">${g.l}</i>${clubRecruiting(c)?'<i class="rc">모집 중</i>':''}</span>
+    <span class="s">회원 ${c.m||0}명${clubIsNew(c) ? ` · ${esc(clubBornText(c))}` : d?` · ${esc(d)}`:''}</span>
+    <span class="tg">${clubIsNew(c) ? '<i class="nw">새로 생김</i>' : `<i style="color:${g.c}">${g.l}</i>`}${clubRecruiting(c)?'<i class="rc">모집 중</i>':''}</span>
   </div>`;
 }
 function clubRowHTML(c){
@@ -45855,8 +46000,9 @@ function clubRowHTML(c){
     ${clubInitialAv(c,46)}
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:8px;min-width:0">
-        <span class="cln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.n)}</span>${clubGenderChip(c)}</div>
-      <div class="clr">${esc(c.r)} · 회원 ${c.m}명${d?` · ${esc(d)}`:''}</div>
+        <span class="cln" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.n)}</span>${
+          clubIsNew(c)?'<span class="cltag">새로 생김</span>':clubGenderChip(c)}</div>
+      <div class="clr">${esc(c.r)} · 회원 ${c.m}명${clubIsNew(c) ? ` · ${esc(clubBornText(c))}` : d?` · ${esc(d)}`:''}</div>
     </div><span class="clgo">›</span></div>`;
 }
 
@@ -45884,14 +46030,18 @@ function caListHTML(){
   if(CA.sort==='name') list=list.slice().sort((a,b)=>String(a.n).localeCompare(String(b.n),'ko'));
   if(!list.length) return `<div class="caempty">${q?`<b>‘${esc(q)}’ 클럽이 없어요</b>`:'<b>조건에 맞는 클럽이 없어요</b>'}
     <span>${CA.f!=='all'||q?'조건을 바꾸거나 지역을 넓혀 보세요':'지역을 넓혀 보세요'}</span></div>`;
-  return list.map(c=>{
-    const g=clubGenderWord(c), d=clubDaysText(c.meet_days);
+  const row=c=>{
+    const g=clubGenderWord(c), d=clubDaysText(c.meet_days), nw=clubIsNew(c);
     const reg=clubRegShort(c.r).split(' ')[1]||clubRegShort(c.r);
     return `<div class="carow" onclick="openClubPreview('${esc(c.n)}')">
       ${clubInitialAv(c,46)}
-      <div class="c"><div class="t"><b>${esc(c.n)}</b><i style="color:${g.c}">${g.l}</i></div>
-        <span>${esc(reg)} · 회원 ${c.m||0}명${d?` · ${esc(d)}`:''}</span></div>
-      ${clubRecruiting(c)?'<em>모집 중</em>':''}</div>`; }).join('');
+      <div class="c"><div class="t"><b>${esc(c.n)}</b>${nw?'':`<i style="color:${g.c}">${g.l}</i>`}</div>
+        <span>${esc(reg)} · 회원 ${c.m||0}명${nw ? ` · ${esc(clubBornText(c))}` : d?` · ${esc(d)}`:''}</span></div>
+      ${clubRecruiting(c)?'<em>모집 중</em>':''}</div>`; };
+  /* 막 만든 클럽은 이름순으로 골라도 늘 아래 묶음에 — 위쪽은 실제로 굴러가는 클럽 */
+  const live=list.filter(c=>!clubIsNew(c)), fresh=list.filter(clubIsNew);
+  return live.map(row).join('')
+    + (fresh.length ? `<div class="clseed ca"><span>이제 막 만들어진 클럽 ${fresh.length}</span><i></i></div>${fresh.map(row).join('')}` : '');
 }
 function caPickRegion(){
   const L=clubListFor('auto', caMine());
@@ -46985,6 +47135,7 @@ try{ history.replaceState({matsu:1},''); history.pushState({matsu:1},''); }catch
 /* 맨 위에 떠 있는 한 겹을 닫는다 — 쓸어서 뒤로 · 상단 ‹ · 안드로이드 뒤로가 모두 이 순서를 따른다.
    예전엔 모임 화면 · 교류전 · 제안 · 소식 쓰기 같은 새 화면을 몰라서 쓸면 탭 밖(홈)으로 튕겼다. */
 function closeTopLayer(){
+  if(phvIsOpen()){ phvClose(); return true; }
   const g=document.getElementById('guestOv');
   if(g && g.classList.contains('on')){ try{ glClose(); }catch(e){ g.classList.remove('on'); } return true; }
   const ev=document.getElementById('evPage');
@@ -47007,6 +47158,7 @@ function navClub(){
   go('club');
 }
 function navBackStep(){
+  if(phvIsOpen()){ phvClose(); return true; }
   const ov=document.getElementById('ov');
   const nd=document.getElementById('notifDrop');
   if(ov && ov.classList.contains('on')){ closeOv(); return true; }
@@ -47424,19 +47576,34 @@ document.addEventListener('click', e => {
     const t = ev.touches[0], dx = t.clientX - s.x0, dy = Math.abs(t.clientY - s.y0);
     if (!s.decided) {
       if (dy > 10 && dy > Math.abs(dx)) { s = null; return; }
+      /* 옆으로 미는 중이면 처음부터 화면 스크롤을 막는다 — 막지 않으면 미는 동안 화면이 위아래로 같이 움직였다 */
+      if (dx > 2 && dx >= dy && ev.cancelable) ev.preventDefault();
       if (Math.abs(dx) < 8) return;
       if (dx < 0) { s = null; return; }
       s.decided = true;
       if (!nfxSwipeBegin(s)) { s = null; return; }
+      nfxScrollLock(s, true);
     }
+    if (ev.cancelable) ev.preventDefault();
     const now = performance.now();
     s.v = (t.clientX - s.lx) / Math.max(1, now - s.lt); s.lx = t.clientX; s.lt = now;
     s.dx = Math.max(0, dx); nfxSwipeMove(s);
-  }, { passive: true });
-  addEventListener('touchend', () => { if (!s) return; const st = s; s = null; if (st.decided) nfxSwipeEnd(st); }, { passive: true });
-  addEventListener('touchcancel', () => { if (!s) return; const st = s; s = null; if (st.decided) { st.cancel = true; nfxSwipeEnd(st); } }, { passive: true });
+  }, { passive: false });
+  addEventListener('touchend', () => { if (!s) return; const st = s; s = null; nfxScrollLock(st, false); if (st.decided) nfxSwipeEnd(st); }, { passive: true });
+  addEventListener('touchcancel', () => { if (!s) return; const st = s; s = null; nfxScrollLock(st, false); if (st.decided) { st.cancel = true; nfxSwipeEnd(st); } }, { passive: true });
 })();
+/* 미는 동안 스크롤 잠그기 — 미는 화면과 그 안에서 스크롤되는 칸을 함께 멈춘다(놓으면 원래대로) */
+function nfxScrollLock(s, on) {
+  if (on) {
+    const els = new Set([document.getElementById('scroll')]);
+    const top = s.target || nfxTopOv();                  // 움직임 줄이기(plain)일 때는 target 이 없다 — 맨 위 창을 직접 찾는다
+    if (top) { els.add(top); top.querySelectorAll('.opsbody,.pvbody').forEach(e => els.add(e)); }
+    s.locked = [...els].filter(Boolean).map(e => [e, e.style.overflowY]);
+    s.locked.forEach(([e]) => { e.style.overflowY = 'hidden'; });
+  } else if (s.locked) { s.locked.forEach(([e, v]) => { e.style.overflowY = v; }); s.locked = null; }
+}
 function nfxSwipeBegin(s) {
+  if (phvIsOpen()) return false;                       // 사진 크게 보기에서는 옆으로 밀면 사진을 넘긴다
   const ov = document.getElementById('ov');
   if ((ov && ov.classList.contains('on')) || document.getElementById('notifDrop')) { s.mode = 'plain'; return true; }
   const g = document.getElementById('guestOv');
