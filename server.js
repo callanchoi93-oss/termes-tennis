@@ -294,6 +294,11 @@ const SRV_BUILD = 'sH-0917a';
    실제로 1.0.9 를 배포한 뒤에도 v1.0.7 기본값 때문에 업데이트하라는 안내가 사라지지 않았다.
    앱을 새로 낼 때마다 이 값을 함께 올린다(Railway 환경변수 WEB_BUILD 로 덮어쓸 수 있다). */
 const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.8';
+/* 아이폰과 안드로이드는 버전이 갈라질 수 있다(예: 아이폰 1.2.3 · 안드로이드 1.2.2).
+   하나만 두면 한쪽에만 나온 새 버전을 다른 쪽 회원에게도 <업데이트하세요>라고 띄운다.
+   따로 넣으면 그 값을, 안 넣으면 WEB_BUILD 를 쓴다. */
+const WEB_BUILD_IOS = process.env.WEB_BUILD_IOS || WEB_BUILD;
+const WEB_BUILD_ANDROID = process.env.WEB_BUILD_ANDROID || WEB_BUILD;
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
@@ -400,7 +405,7 @@ app.get('/config', (_, res) => {
     support_email: process.env.SUPPORT_EMAIL || '',
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
-    web_build: WEB_BUILD,
+    web_build: WEB_BUILD, web_build_ios: WEB_BUILD_IOS, web_build_android: WEB_BUILD_ANDROID,
     /* 점검 중이면 앱이 띠를 띄운다. /config 는 앱이 이미 부르는 곳이라
        새 요청이 늘지 않는다. */
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
