@@ -8117,7 +8117,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.2-1007a';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.2-1007c';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -9563,7 +9563,16 @@ function stripDemoData(){
   state.matches = [];         // 오픈 경기 (서버 /open-matches 사용)
   state.courts = [];          // 코트 지도
   state.clubLogos = {};
-  state.myClubs = []; state.clubData = {}; state.activeClub = null;
+  /* 로그인한 사람의 내 클럽은 데모가 아니다 — 서버 번호(CLUB_IDS)가 있는 클럽은 남겨 둔다.
+     예전에는 켤 때마다 비워서, 서버 응답(/me/clubs)이 오기 전 클럽 탭을 누르면
+     <아직 소속된 클럽이 없어요 · 클럽 찾기> 목록 화면이 떴다(느린 폰 · 느린 망일수록 길게).
+     서버 응답이 오면 adoptServerClubs 가 서버 목록으로 다시 맞춘다. */
+  const keep = (typeof authToken==='function' && authToken())
+    ? (state.myClubs||[]).filter(n=>CLUB_IDS && CLUB_IDS[n]!=null) : [];
+  state.myClubs = keep;
+  if(!keep.includes(state.activeClub)) state.activeClub = keep[0] || null;
+  const cd = {}; keep.forEach(n=>{ if(state.clubData && state.clubData[n]) cd[n]=state.clubData[n]; });
+  state.clubData = cd;
   // 캐러셀은 기능 하이라이트로 다시 그린다
   const sub=document.querySelector('.auth2-sub'); if(sub) sub.textContent='동호회 대진·점수·랭킹을 한 곳에서';
   ['revTrack','revDots'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=''; });
@@ -9952,7 +9961,13 @@ async function adoptServerClubs(){
   }
   MYCLUBS_READY = true;                       // 응답을 받았다 — 이제 없으면 진짜 없는 것이다
   const active = mine.filter(c=>!c.status || c.status==='active');
-  if(!active.length) return;
+  if(!active.length){
+    /* 켤 때 남겨 둔 내 클럽(stripDemoData)이 있었는데 서버엔 없다 — 그사이 탈퇴했거나 클럽이 없어졌다 */
+    if((state.myClubs||[]).length){ state.myClubs=[]; state.activeClub=null; state.clubOpen=null; SRV_MYCLUBS=[]; }
+    mine.filter(c=>c.status==='pending').forEach(c=>{ CLUB_IDS[c.name]=c.id;
+      state.clubStatus=state.clubStatus||{}; state.clubStatus[String(c.id)]='pending'; state.clubStatus[c.name]='pending'; });
+    return;
+  }
   state.clubStatus = state.clubStatus||{}; state.clubData = state.clubData||{};
   active.forEach(c=>{
     CLUB_IDS[c.name] = c.id;
@@ -14176,6 +14191,18 @@ function renderClub(){
     const mc=tbMyClub(); if(mc){ state.clubOpen=mc; state.activeClub=mc; }
   }
   const t = state.clubOpen ? 'my' : 'find';
+  /* 내 클럽을 아직 모르면(서버 응답 전) 목록 화면을 그리지 않는다 — 빈 틀만 두고 기다린다.
+     응답이 오면 loadClubIds 가 다시 그리고, 위의 <클럽이 생기면 바로 우리 클럽으로>가 연다. */
+  if(t==='find' && state.view==='club' && !state.clubBrowse && SERVER_OK && !MYCLUBS_READY
+     && !(typeof isGuest==='function' && isGuest()) && !(state.myClubs||[]).length){
+    const w0 = renderClub._waitAt || (renderClub._waitAt = Date.now());
+    if(Date.now()-w0 < 8000){                  // 8초가 지나도 답이 없으면 그냥 목록을 보여준다(빈 틀에 갇히지 않게)
+      document.getElementById('s-club').innerHTML=`<div class="clwait" aria-busy="true">${skel('page',4)}</div>`;
+      clearTimeout(renderClub._waitT);
+      renderClub._waitT = setTimeout(()=>{ if(state.view==='club') renderClub(); }, 8100-(Date.now()-w0));
+      return;
+    }
+  }
   let h='';
   if(t==='find') h+=`<h2 class="t" style="margin-bottom:14px">클럽</h2>`;
   if(t==='my'){
@@ -36307,9 +36334,9 @@ function cb2ShareText(){
     '· 내 경기 점수를 직접 넣을 수 있어요',
     '· 다음 모임엔 참석만 누르면 대진에 들어가요',
     '· 오늘 친 기록이 내 시즌 기록으로 쌓여요',
-    /* 안드로이드는 앱이 없어서 웹 주소를 줬었다. 이제 스토어로 보낸다. */
+    /* 안드로이드는 Play 스토어에 공개되기 전까지 웹 주소를 준다(서버에 ANDROID_APP_URL 이 들어오면 스토어로) */
     '아이폰 '+iosAppUrl(),
-    '안드로이드 '+androidAppUrl()].join('\n');
+    '안드로이드 '+(androidAppUrl() || REMOTE_API+' (웹에서 바로)')].join('\n');
   return head+'\n'+lines.join('\n')+'\n'+tail;
 }
 function cb2Share(){
@@ -38180,7 +38207,10 @@ function isIOSWeb(){
    예전에는 아이폰만 챙기고 안드로이드는 <아이폰이라면> 이라는 남의 얘기를 봤다.
    폰 종류를 보고 그 사람 스토어를 권한다. */
 function iosAppUrl(){ return (CFG&&CFG.ios_app_url)||'https://apps.apple.com/kr/app/id6793127517'; }
-function androidAppUrl(){ return (CFG&&CFG.android_app_url)||'https://play.google.com/store/apps/details?id=app.matsu'; }
+/* 안드로이드 앱은 아직 Play 스토어에 공개 전이다 — 공개 전 주소로 보내면 회원에게는 <찾을 수 없음>이 뜬다.
+   그래서 기본 주소를 두지 않는다. 공개되면 Railway 에 ANDROID_APP_URL 하나만 넣으면
+   초대장 버튼 · 대진 공유 글 · (나중의) 앱 받기 팝업에 한꺼번에 나온다. 그 전에는 웹으로 안내한다. */
+function androidAppUrl(){ return (CFG&&CFG.android_app_url)||''; }
 function isAndroidWeb(){ try{ return /Android/i.test(navigator.userAgent); }catch(e){ return false; } }
 function storeCta(){
   if(nativeNow()) return '';                        // 이미 앱 안이다
@@ -38189,12 +38219,13 @@ function storeCta(){
   const nm = ios ? 'App Store' : 'Play 스토어';
   if(u) return `<a class="btn ghost" href="${u}" target="_blank" rel="noopener"
     style="display:block;margin-top:8px;text-align:center;text-decoration:none">${nm}에서 앱으로 받기</a>`;
+  if(and) return '';                                // 안드로이드 앱 공개 전 — 지금 보는 웹이 곧 맞수다
   /* PC 등 — 어느 폰인지 모르니 둘 다 알려준다 */
   return `<div class="note" style="text-align:center;margin-top:10px">폰에서는 앱으로 더 편해요 ·
     <a href="${iosAppUrl()}" target="_blank" rel="noopener"
-      style="color:var(--coral-d);font-weight:700;text-decoration:underline">아이폰</a> ·
+      style="color:var(--coral-d);font-weight:700;text-decoration:underline">아이폰</a>${androidAppUrl() ? ` ·
     <a href="${androidAppUrl()}" target="_blank" rel="noopener"
-      style="color:var(--coral-d);font-weight:700;text-decoration:underline">안드로이드</a></div>`;
+      style="color:var(--coral-d);font-weight:700;text-decoration:underline">안드로이드</a>` : ''}</div>`;
 }
 function acceptInviteCard(token){
   glClose();
