@@ -1041,9 +1041,12 @@ app.patch('/me', auth, (req, res) => {
   /* name 이 빠져 있어서 <이름 바꾸기> 가 저장되지 않았다.
      화면은 서버가 돌려준 값을 그대로 믿으므로 잠깐 바뀐 것처럼 보였다가,
      다시 로그인해 /me 를 받으면 구글에서 들어온 영문 이름으로 되돌아갔다. */
-  const allow = ['name','gender','region','sport','exp','photos','phone_verified','real_verified','skill_verified',
+  /* 인증 표시(phone_verified · real_verified · skill_verified)는 여기서 받지 않는다 —
+     예전엔 앱이 보내는 값을 그대로 저장해서 누구나 <인증됨>을 켤 수 있었다.
+     본인 인증(PASS 등)을 붙이면 그 결과를 서버가 직접 적는다. */
+  const allow = ['name','gender','region','sport','exp','photos',
                  'birth_year','handed','backhand','style','phone','sport_started'];
-  const nums = ['birth_year','phone_verified','real_verified','skill_verified'];
+  const nums = ['birth_year'];
   const sets = [], vals = [];
   for (const k of allow) if (k in req.body) {
     /* 이름은 그대로 쓰지 않는다 — 태그 문자·줄바꿈을 걸러 20자로 줄인다.
@@ -3326,6 +3329,7 @@ app.get('/open-matches/:id/result', auth, (req, res) => {
 
   /* 이 매치의 대진에서 내 성적을 센다 — 점수가 들어온 게임만 */
   let win = 0, lose = 0, margin = 0, played = 0;
+  const gamesOut = [];                                    // 판마다 — <1경기 승 · 2경기 승 · 3경기 패>
   const meNm = (getUser(req.uid) || {}).name;
   let br = null; try { br = JSON.parse(m.bracket || 'null'); } catch (e) {}
   const games = [];
@@ -3337,6 +3341,7 @@ app.get('/open-matches/:id/result', auth, (req, res) => {
     played++;
     const my = inA ? g.sa : g.sb, op = inA ? g.sb : g.sa;
     if (my > op) win++; else if (my < op) lose++;
+    gamesOut.push({ win: my > op, draw: my === op, my, op });
     margin += (my - op);
   });
 
@@ -3349,13 +3354,35 @@ app.get('/open-matches/:id/result', auth, (req, res) => {
   const before = after ? logs[logs.indexOf(after) + 1] : null;
   const delta = after ? after.delta : 0;
 
+  /* 티어 구간 — 지금 칸이 몇 점에서 시작해 몇 점에서 다음 칸이 되는지 (복식 점수) */
+  let band = null;
+  try {
+    const me = getUser(req.uid) || {}, cur = me.rating_doubles || 1000;
+    const labelAt = r => { const pct = tierPercentile(r); const i = TIER_CUT.findIndex(t => pct <= t.top);
+      const idx = i < 0 ? TIER_CUT.length - 1 : i, T = TIER_CUT[idx]; const sub = T.subs ? tierSub(pct, idx) : 0;
+      return sub ? `${T.n} ${sub}` : T.n; };
+    if (t.placed) {
+      const L = labelAt(cur);
+      let lo = cur - 400, hi = cur;                       // 이 칸이 시작하는 점수
+      while (hi - lo > 1) { const mid2 = (lo + hi) >> 1; if (labelAt(mid2) === L) hi = mid2; else lo = mid2; }
+      const from = hi;
+      lo = cur; hi = cur + 400;                           // 다음 칸이 되는 점수
+      if (labelAt(hi) === L) band = { label: L, from, to: null, next: null, cur };
+      else { while (hi - lo > 1) { const mid2 = (lo + hi) >> 1; if (labelAt(mid2) === L) lo = mid2; else hi = mid2; }
+        band = { label: L, from, to: hi, next: labelAt(hi), cur }; }
+    }
+  } catch (e) {}
+  const mates = db.prepare(`SELECT j.user_id id, u.name FROM open_match_joins j JOIN users u ON u.id=j.user_id
+    WHERE j.match_id=? AND j.user_id!=? ORDER BY j.id`).all(mid, req.uid).map(p => ({ ...p,
+      partner: gamesOut.length ? games.filter(g => g.sa != null && ((g.a || []).includes(meNm) && (g.a || []).includes(p.name) || (g.b || []).includes(meNm) && (g.b || []).includes(p.name))).length : 0,
+      leader: p.id === m.leader_id || p.id === m.host_id }));
   /* 함께 뛴 사람들의 티어 — 상대가 강했는지 보여주기 위해서 */
   const opponents = db.prepare(`SELECT user_id FROM open_match_joins WHERE match_id=? AND user_id!=?`)
     .all(mid, req.uid).map(r => tierOf(r.user_id).label);
 
   res.json({
     match: { id: m.id, loc: m.loc, dt: m.dt, start_at: m.start_at, mode: m.mode, disc: m.disc },
-    played, win, lose, margin,
+    played, win, lose, margin, games: gamesOut, band, mates,
     tier: t, delta,
     /* 배치가 방금 일어났는가 — "러브 → 퓨처스 2" 를 보여줄지 판단한다 */
     just_placed: t.placed && t.games <= TIER_MIN_GAMES,
@@ -3380,7 +3407,10 @@ function omSettle(mid) {
   if (joins.length < need) {
     db.prepare("UPDATE open_matches SET status='cancelled', refunded_at=? WHERE id=?").run(now(), mid);
     joins.forEach(j => {
-      if (j.paid > 0) cashAdd(j.user_id, j.paid, 'om_cancel_refund');
+      /* 호스트 매치는 실제로 걷힌 돈만 돌려준다 — 결제 전 기록(paid)으로 캐시를 만들지 않는다 */
+      const back = m.mode === 'host' ? omPaidBy(mid, j.user_id) : j.paid;
+      if (back > 0) cashAdd(j.user_id, back, 'om_cancel_refund');
+      if (m.mode === 'host') db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, j.user_id);
       sendPush(j.user_id, { icon: '🔔', title: '매치가 취소됐어요',
         body: `${m.loc} · 인원이 모이지 않아 전액 환불했어요` });
     });
@@ -3421,9 +3451,13 @@ function cashAdd(uid, amount, reason) {
 function omSweep() {
   try {
     const due = db.prepare(`SELECT id FROM open_matches
-      WHERE status='open' AND close_at IS NOT NULL AND close_at <= ?`).all(new Date().toISOString().slice(0, 16));
+      WHERE status='open' AND close_at IS NOT NULL AND close_at <= ?`).all(omKst(Date.now()));
     due.forEach(r => { try { omSettle(r.id); } catch (e) { console.error('[om] 마감 실패', r.id, e.message); } });
     if (due.length) console.log('[om] 마감 처리', due.length, '건');
+    /* 호스트 정산 — 끝나고 12시간이 지났는데 아직 안 받았으면 자동으로 */
+    db.prepare(`SELECT id FROM open_matches WHERE mode='host' AND status='confirmed' AND COALESCE(settled,0)=0
+      AND COALESCE(hold,0)=0 AND end_at IS NOT NULL AND end_at <= ?`).all(omKst(Date.now() - OMH.SETTLE_H * 3600e3))
+      .forEach(r => { try { if (omCollected(r.id) > 0) omHostSettle(r.id); } catch (e) { console.error('[om] 호스트 정산', r.id, e.message); } });
   } catch (e) { console.error('[om] sweep', e.message); }
 }
 setInterval(omSweep, 10 * 60 * 1000);
@@ -3448,6 +3482,12 @@ app.post('/open-matches/:id/manner', auth, (req, res) => {
     targets.forEach(t => { if (t !== req.uid) ins.run(mid, req.uid, t, 'bad', now()); });
   }
   if (intOrNull(b.mvp)) ins.run(mid, req.uid, intOrNull(b.mvp), 'mvp', now());
+  /* 오늘 매치 한 줄 평 — 정해진 낱말만 */
+  const TAGS = ['시간 잘 지켜요', '실력이 비슷했어요', '매너가 좋아요', '공 잘 챙겨요'];
+  if (Array.isArray(b.tags)) { try {
+    db.prepare('DELETE FROM om_tags WHERE match_id=? AND from_id=?').run(mid, req.uid);
+    b.tags.filter(t => TAGS.includes(t)).forEach(t => db.prepare('INSERT OR IGNORE INTO om_tags (match_id,from_id,tag,at) VALUES (?,?,?,?)').run(mid, req.uid, t, Date.now()));
+  } catch (e) {} }
   res.json({ ok: true });
 });
 
@@ -3509,6 +3549,8 @@ app.delete('/open-matches/:id', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
+  if (m.mode === 'host' && db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id!=?').get(m.id, req.uid))
+    return res.status(400).json({ error: 'host_has_guests', message: '신청한 분이 있어 지울 수 없어요 · 매치 취소를 눌러 주세요' });
   db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id)
     .forEach(p => { if (p.user_id !== req.uid) sendPush(p.user_id, { icon: '🗑️', title: '오픈매치가 삭제됐어요', body: `${m.dt} · ${m.loc}` }); });
   db.prepare('DELETE FROM open_match_joins WHERE match_id=?').run(m.id);
@@ -3562,8 +3604,432 @@ function omQuote(court, ball, courts, hours) {
   const per = Math.round((cost + matsu) / cap / 500) * 500;
   return { cap, per, mgr, payout: (+court || 0) + (+ball || 0) + mgr };
 }
+/* ══════════════════════════════════════════════════════════════
+   호스트 매치 — 코트를 잡은 사람이 빈자리를 열고, 같이 뛴다.
+
+   참가비는 <1인 기준>으로 계산한다.
+     코트비 · 공값  ÷ 전체 인원(호스트 포함)   — 실비 그대로, 웃돈 없음
+     + 호스트 수고비  게스트 1인 · 시간당 750원
+     + 맞수 이용료   1인 코트비 몫의 40%
+   그래서 몇 명이 모이든 게스트 참가비가 같고,
+   호스트는 크게 열수록 이득이다(1코트 반값 · 2코트부터 무료).
+
+   예전처럼 <호스트 몫을 게스트 수로 나누면> 인원이 적을수록 게스트가 비싸진다.
+   1코트 6명이 25,900원, 2코트 12명이 23,500원으로 들쑥날쑥했다.
+
+   돈은 맞수가 보관했다가 경기가 끝나면 호스트에게 보낸다.
+   호스트가 안 나오면 참가자는 전액 환불 · 호스트는 정산 없음 · 벌점.
+
+   맞수 몫은 밖에 내보내지 않는다 — 화면 · 응답 · 캐시 장부 어디에도 이용료 줄이나 비율이 없다.
+   게스트에게는 참가비 한 줄, 호스트에게는 <내가 얼마를 쓰고 얼마를 돌려받나>만 준다.
+   계산식도 앱에 두지 않고 서버(POST /open-matches/host-quote)가 값만 돌려준다.
+   ══════════════════════════════════════════════════════════════ */
+const OMH = {
+  PER_COURT: 6,      // 코트당 6명 — 넷이 치고 둘이 쉰다
+  FEE_PH: 750,       // 호스트 수고비 — 게스트 1인 · 시간당 (2시간 1,500 · 3시간 2,250)
+  RATE: 0.4,         // 맞수 이용료 — 1인 코트비 몫의 40%
+  HOUR_MAX: 150000,  // 1면 1시간 대관료 상한 — 잘못 넣은 값으로 참가비가 튀지 않게
+  BALL_MAX: 15000,   // 공 1캔 값 상한
+  CLOSE_H: 3,        // 시작 3시간 전에 모집을 닫는다
+  LEAD_H: 4,         // 지금부터 4시간 뒤 경기부터 열 수 있다 (마감 전에 모일 시간)
+  FAR_D: 60,         // 60일 뒤까지
+  FIRST_N: 3,        // 처음 3번은 1코트까지
+  MIN_GAMES: 3,      // 오픈매치 3경기
+  MANNER: 0.9,       // 매너 좋음 90% 이상
+  STRIKES: 3,        // 30일 안에 호스트 취소 3번이면 못 연다
+  SETTLE_H: 12,      // 끝나고 12시간 뒤 자동 정산 (그 전에 호스트가 직접 받아도 된다)
+  RAIN_BEFORE_H: 6,  // 비 취소는 시작 6시간 전부터
+  RAIN_AFTER_H: 1,   //            시작 1시간 뒤까지 (치다가 쏟아지는 날)
+  RAIN_FREE: 3,      // 30일 안에 비 취소 3번까지는 벌점 없음 — 넘으면 보통 취소와 같다
+  NOSHOW_BLOCK_D: 90,// 호스트 미참석이 확인되면 90일 동안 못 연다
+};
+['hours INTEGER', 'hour_cost INTEGER', 'ball_cost INTEGER', 'host_fee INTEGER', 'proof TEXT', 'venue_id INTEGER']
+  .forEach(c => { try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {} });
+db.exec(`CREATE TABLE IF NOT EXISTS om_host_strikes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, match_id INTEGER, created_at BIGINT)`);
+/* kind: 비어 있음 · cancel = 보통 취소(벌점) · rain = 비 취소(벌점 아님) · noshow = 미참석 확인 */
+try { db.exec('ALTER TABLE om_host_strikes ADD COLUMN kind TEXT'); } catch (e) {}
+['hold INTEGER DEFAULT 0', 'cancel_reason TEXT'].forEach(c => { try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {} });
+/* 호스트가 안 왔어요 — 한 명이라도 알리면 정산을 멈추고 운영팀이 본다 */
+db.exec(`CREATE TABLE IF NOT EXISTS om_host_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  note TEXT, created_at BIGINT, UNIQUE(match_id, user_id))`);
+/* 정산의 실비 · 수고비 나눔은 세금 신고용으로 여기에만 — 호스트 캐시 장부에는 한 줄로 */
+['expense INTEGER', 'fee INTEGER'].forEach(c => { try { db.exec(`ALTER TABLE om_payouts ADD COLUMN ${c}`); } catch (e) {} });
+
+/* 결제가 붙기 전에는 아무나 열 수 없다 — 참가비가 실제로 걷히지 않으면
+   코트비를 먼저 낸 호스트만 손해를 본다. 신청할 때 참가비를 받는 길이 생기면 OM_HOST_LIVE=1.
+   그 전에 미리 써볼 사람은 OM_HOST_BETA=1,2,3 (회원 id).
+   PAYMENTS_LIVE(캐시 충전)와 따로 둔다 — 충전이 열려 있어도 오픈매치 결제는 아직이다. */
+function omHostBeta(uid) {
+  return String(process.env.OM_HOST_BETA || '').split(',').map(s => +s.trim()).filter(Boolean).includes(+uid);
+}
+/* 한국 시간 벽시계 "YYYY-MM-DDTHH:mm" — start_at · end_at · close_at 이 모두 이 모양이다 */
+const omKst = ms => new Date(ms + 9 * 3600e3).toISOString().slice(0, 16);
+
+function omHostQuote(hourCost, ballCost, courts, hours) {
+  const C = Math.min(3, Math.max(1, Math.trunc(+courts || 1)));
+  const H = (+hours === 3) ? 3 : 2;
+  const hour = Math.min(OMH.HOUR_MAX, Math.max(0, Math.round(+hourCost || 0)));
+  const ballEach = Math.min(OMH.BALL_MAX, Math.max(0, Math.round(+ballCost || 0)));
+  const cap = C * OMH.PER_COURT;
+  const court = hour * C * H, ball = ballEach * C;           // 공은 코트당 1캔
+  const share = (court + ball) / cap;                         // 호스트까지 똑같이 나눈 1인 몫
+  const fee = OMH.FEE_PH * H;
+  /* 1e-7 — 나눗셈 끝수(154,499.999…)가 100원 내림 · 올림을 한 칸 틀리게 만들지 않게 */
+  const per = Math.ceil((share + fee + court / cap * OMH.RATE) / 100 - 1e-7) * 100;
+  /* 화면에 적는 줄은 합이 참가비와 꼭 맞아야 한다 — 맞수 줄이 끝수를 받는다 */
+  const court_pp = Math.round(court / cap / 100) * 100;
+  const ball_pp = Math.round(ball / cap / 100) * 100;
+  return { courts: C, hours: H, hour, ball_each: ballEach, cap, court, ball,
+           share, fee, per, court_pp, ball_pp, matsu_pp: per - court_pp - ball_pp - fee };
+}
+/* 호스트가 받는 돈 — 게스트마다 (코트 · 공 몫 + 수고비). 100원 아래는 버린다 */
+function omHostPayout(q, guests) {
+  return Math.floor(Math.max(0, guests) * (q.share + q.fee) / 100 + 1e-7) * 100;
+}
+/* 이 인원이면 호스트가 실제로 쓰는 돈 (음수면 남는다) */
+function omHostCost(q, people) {
+  return q.court + q.ball - omHostPayout(q, Math.max(0, people - 1));
+}
+/* 매치 열기 화면용 견적 — 게스트 참가비와 호스트 결과만. 이용료 · 수고비 · 비율은 싣지 않는다 */
+function omHostQuoteOut(b) {
+  const q = omHostQuote(b.hour_cost, b.ball_cost, b.courts, b.hours);
+  const at = n => ({ people: n, payout: omHostPayout(q, n - 1), cost: omHostCost(q, n) });
+  return { courts: q.courts, hours: q.hours, cap: q.cap, per: q.hour >= 1000 ? q.per : 0,
+           spent: q.court + q.ball, at: [at(q.cap), at(q.cap - 1), at(q.cap - 2)] };
+}
+
+function omHostStatus(uid) {
+  const u = getUser(uid) || {};
+  const nowK = omKst(Date.now());
+  const games = db.prepare(`SELECT COUNT(*) n FROM open_match_joins j JOIN open_matches m ON m.id=j.match_id
+    WHERE j.user_id=? AND m.status='confirmed' AND COALESCE(m.end_at, m.start_at) < ?`).get(uid, nowK).n;
+  /* 매너 — 같이 친 경기 중 <불편했어요>를 한 번도 안 받은 경기의 비율 */
+  let bad = 0;
+  try { bad = db.prepare(`SELECT COUNT(DISTINCT match_id) n FROM om_manner WHERE target_id=? AND kind='bad'`).get(uid).n; } catch (e) {}
+  const manner = games ? Math.max(0, (games - bad) / games) : null;
+  const hosted = db.prepare(`SELECT COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'
+    AND status='confirmed' AND COALESCE(end_at, start_at) < ?`).get(uid, nowK).n;
+  const strikes = db.prepare(`SELECT COUNT(*) n FROM om_host_strikes WHERE user_id=? AND created_at>?
+    AND COALESCE(kind,'cancel')='cancel'`).get(uid, Date.now() - 30 * 864e5).n;
+  const noshow = !!db.prepare(`SELECT 1 FROM om_host_strikes WHERE user_id=? AND kind='noshow' AND created_at>?`)
+    .get(uid, Date.now() - OMH.NOSHOW_BLOCK_D * 864e5);
+  const bank = !!String(u.bank_account || '').trim();
+  const checks = [
+    { k: 'games',  ok: games >= OMH.MIN_GAMES, v: `${games}경기` },
+    { k: 'manner', ok: manner != null && manner >= OMH.MANNER, v: manner == null ? '' : `${Math.round(manner * 100)}%` },
+    { k: 'bank',   ok: bank, v: bank ? '등록됨' : '' },
+  ];
+  const live = process.env.OM_HOST_LIVE === '1' || omHostBeta(uid);
+  const blocked = strikes >= OMH.STRIKES || noshow;
+  /* 자주 가는 코트 — 내가 뛴(연) 오픈매치 장소를 횟수순으로 */
+  let recent = [];
+  try {
+    recent = db.prepare(`SELECT m.loc name, MAX(m.venue_id) venue_id, COUNT(*) n FROM open_match_joins j
+      JOIN open_matches m ON m.id=j.match_id WHERE j.user_id=? AND m.status IN ('open','confirmed')
+      GROUP BY m.loc ORDER BY n DESC, MAX(m.id) DESC LIMIT 4`).all(uid);
+    recent.forEach(r => { if (r.venue_id) { const v = db.prepare('SELECT surface,indoor,kind FROM venues WHERE id=?').get(r.venue_id);
+      if (v) Object.assign(r, { surface: v.surface || null, indoor: !!v.indoor, kind: v.kind || null }); } });
+  } catch (e) {}
+  /* 호스트 평가 — 내가 연 매치에서 같이 친 사람들이 준 별점 평균 */
+  let rating = null, rating_n = 0;
+  try {
+    const r = db.prepare(`SELECT AVG(rv.stars) a, COUNT(*) n FROM om_reviews rv JOIN open_matches m ON m.id=rv.match_id
+      WHERE rv.to_user=? AND m.mode='host' AND m.host_id=?`).get(uid, uid);
+    if (r && r.n) { rating = Math.round(r.a * 10) / 10; rating_n = r.n; }
+  } catch (e) {}
+  const hosted_all = db.prepare(`SELECT COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'
+    AND status IN ('open','confirmed')`).get(uid).n;
+  /* 비율(이용료)은 앱에 보내지 않는다 — 정원 · 마감 · 리드타임만 */
+  return { checks, games, manner, hosted, hosted_all, strikes, noshow, blocked, live, recent, rating, rating_n,
+           max_courts: hosted < OMH.FIRST_N ? 1 : 3, first_n: OMH.FIRST_N,
+           ok: live && !blocked && checks.every(c => c.ok),
+           rules: { per_court: OMH.PER_COURT, close_h: OMH.CLOSE_H, lead_h: OMH.LEAD_H } };
+}
+
+function omHostCreate(uid, b) {
+  const err = (status, error, message, extra) => ({ status, error, message, ...(extra || {}) });
+  const st = omHostStatus(uid);
+  if (!st.live) return err(402, 'payments_not_ready', '결제가 연결되면 열 수 있어요');
+  if (st.blocked) return err(403, 'host_blocked', st.noshow ? '호스트 미참석이 확인돼 한동안 열 수 없어요'
+    : '최근 30일에 호스트 취소가 많아 지금은 열 수 없어요');
+  if (!st.checks.every(c => c.ok)) return err(403, 'host_not_eligible', '호스트 조건을 먼저 채워 주세요', { checks: st.checks });
+  const u = getUser(uid) || {};
+
+  const loc = String(b.loc || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!loc) return err(400, 'loc_required', '코트를 입력해 주세요');
+  const note = String(b.note || '').slice(0, 300);
+  const bad = findContact(`${loc} ${note}`);                 // 공개 모집글 — 연락처는 막는다
+  if (bad) return err(400, 'contact_blocked', `${bad}는 적을 수 없어요`);
+
+  const sa = String(b.start_at || '');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(sa)) return err(400, 'bad_start', '날짜와 시간을 골라 주세요');
+  const stMs = Date.parse(sa + ':00+09:00');
+  if (isNaN(stMs)) return err(400, 'bad_start', '날짜와 시간을 골라 주세요');
+  if (stMs < Date.now() + OMH.LEAD_H * 3600e3) return err(400, 'too_soon', `지금부터 ${OMH.LEAD_H}시간 뒤 경기부터 열 수 있어요`);
+  if (stMs > Date.now() + OMH.FAR_D * 864e5) return err(400, 'too_far', `${OMH.FAR_D}일 안의 경기만 열 수 있어요`);
+
+  const courts = Math.trunc(+b.courts);
+  if (![1, 2, 3].includes(courts)) return err(400, 'bad_courts', '코트 수를 골라 주세요');
+  if (courts > st.max_courts) return err(403, 'first_host_limit', `처음 ${OMH.FIRST_N}번은 1코트까지 열 수 있어요`);
+  const hours = Math.trunc(+b.hours);
+  if (![2, 3].includes(hours)) return err(400, 'bad_hours', '2시간이나 3시간으로 골라 주세요');
+  const hour = Math.round(+b.hour_cost);
+  if (!(hour >= 1000 && hour <= OMH.HOUR_MAX)) return err(400, 'bad_hour_cost', '1면 1시간 대관료를 확인해 주세요');
+  const ballEach = b.ball_cost == null || b.ball_cost === '' ? 0 : Math.round(+b.ball_cost);
+  if (!(ballEach >= 0 && ballEach <= OMH.BALL_MAX)) return err(400, 'bad_ball_cost', '공 1캔 값을 확인해 주세요');
+
+  const disc = ['mixed', 'men', 'women', 'any'].includes(b.disc) ? b.disc : 'mixed';
+  if (!u.gender) return err(400, 'gender_required', '성별을 먼저 입력해 주세요');
+  const courtNo = String(b.court_no || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  if (disc === 'men' && u.gender !== 'M') return err(400, 'host_disc', '남자복식은 남성 호스트만 열 수 있어요');
+  if (disc === 'women' && u.gender !== 'F') return err(400, 'host_disc', '여자복식은 여성 호스트만 열 수 있어요');
+
+  const proof = String(b.proof || '').trim().slice(0, 300);
+  if (!/^(\/uploads\/|https:\/\/)/.test(proof)) return err(400, 'proof_required', '예약 화면을 올려 주세요');
+  if (b.host_plays === false) return err(400, 'host_must_play', '호스트는 같이 뛰어야 해요');
+
+  const q = omHostQuote(hour, ballEach, courts, hours);
+  /* 최소 인원은 호스트가 정한다 — 다 차야 / 빈자리 1개 / 빈자리 2개 */
+  const minCnt = Math.min(q.cap, Math.max(q.cap - 2, Math.trunc(+b.min_cnt) || (q.cap - 1)));
+  const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
+  const tmin = TK.includes(b.tier_min) ? b.tier_min : null;
+  const tmax = TK.includes(b.tier_max) ? b.tier_max : null;
+  const cm = disc === 'men' ? q.cap : disc === 'women' ? 0 : disc === 'any' ? null : q.cap / 2;
+  const cf = cm == null ? null : q.cap - cm;
+  const endAt = omKst(stMs + hours * 3600e3), closeAt = omKst(stMs - OMH.CLOSE_H * 3600e3);
+  /* 코트 화면에서 열었으면 구장과 잇는다 — 이름이 같을 때만(이름을 고쳐 쓰면 연결하지 않는다) */
+  let venue = null;
+  try {
+    const vid = intOrNull(b.venue_id);
+    const v = vid ? db.prepare('SELECT id,name,sido,sigungu FROM venues WHERE id=?').get(vid) : null;
+    if (v && String(v.name || '').replace(/\s+/g, '') === loc.replace(/\s+/g, '')) venue = v;
+  } catch (e) {}
+
+  let mid;
+  tx(() => {
+    const r = db.prepare(`INSERT INTO open_matches (sport,dt,loc,fmt,gd,price,cap,min_cnt,created_at,host_id,status,note,
+        start_at,end_at,sido,sigungu,dong,courts,court_cost) VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?,?)`)
+      .run('tennis', sa.replace('T', ' '), loc, '복식', disc === 'men' ? '남자부' : disc === 'women' ? '여자부' : disc === 'any' ? '무관' : '혼성',
+           q.per, q.cap, minCnt, now(), uid, note, sa, endAt,
+           String(b.sido || (venue && venue.sido) || '').slice(0, 20) || null,
+           String(b.sigungu || (venue && venue.sigungu) || '').slice(0, 20) || null,
+           String(b.dong || '').slice(0, 20) || null, courts, q.court + q.ball);
+    mid = rid(r);
+    db.prepare(`UPDATE open_matches SET mode='host', disc=?, cap_m=?, cap_f=?, tier_min=?, tier_max=?, close_at=?,
+        leader_id=?, base_price=?, hours=?, hour_cost=?, ball_cost=?, host_fee=?, proof=?, venue_id=? WHERE id=?`)
+      .run(disc, cm, cf, tmin, tmax, closeAt, uid, q.per, hours, hour, ballEach, q.fee, proof, venue ? venue.id : null, mid);
+    if (courtNo) db.prepare('UPDATE open_matches SET court_no=? WHERE id=?').run(courtNo, mid);
+    /* 호스트도 한 자리 — 참가비는 없다(코트비를 먼저 냈다) */
+    db.prepare('INSERT INTO open_match_joins (match_id,user_id,joined_at,paid) VALUES (?,?,?,0)').run(mid, uid, now());
+  });
+  return { id: mid, quote: q };
+}
+
+try { db.exec('ALTER TABLE open_matches ADD COLUMN court_no TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN proof_ok INTEGER DEFAULT 0'); } catch (e) {}
+/* 정산 — 끝난 매치에서, 실제로 걷힌 돈 안에서만, 금액은 서버가 다시 계산한다 */
+function omHostSettle(mid) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m || m.mode !== 'host') return { error: 'not_host_match' };
+  if (m.settled) return { error: 'already_settled' };
+  if (m.hold) return { error: 'on_hold', message: '참가자 신고로 정산을 멈췄어요 · 운영팀이 확인하고 있어요' };
+  if (m.status !== 'confirmed') return { error: 'not_confirmed' };
+  const endMs = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
+  if (isNaN(endMs) || Date.now() < endMs) return { error: 'not_finished', message: '경기가 끝난 뒤에 정산돼요' };
+  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours);
+  const guests = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=? AND user_id!=?').get(mid, m.host_id).n;
+  const collected = omCollected(mid);
+  if (collected <= 0) return { error: 'no_payment', message: '걷힌 참가비가 없어 정산할 수 없어요' };
+  const total = Math.min(omHostPayout(q, guests), collected);
+  /* 실비(코트 · 공)와 수고비를 나눠 적는다 — 수고비만 소득이다 */
+  const expense = Math.min(total, Math.floor(guests * q.share / 100 + 1e-7) * 100);
+  const fee = total - expense;
+  const hu = getUser(m.host_id);
+  if (!hu) return { error: 'no_host' };
+  tx(() => {
+    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at,expense,fee) VALUES (?,?,?,?,?,?,?,?)`)
+      .run(mid, m.host_id, total, hu.bank_account || '', 'cash', now(), expense, fee);
+    const bal = (hu.cash || 0) + total;
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(m.host_id, total, 'om_host_payout', bal, now());
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, m.host_id);
+    db.prepare('UPDATE open_matches SET settled=1, manager_fee=? WHERE id=?').run(total, mid);
+  });
+  sendPush(m.host_id, { icon: '💰', title: '호스트 정산이 들어왔어요', link: `match:${mid}`,
+    body: `${m.loc} · ${total.toLocaleString()}원이 캐시로 들어왔어요` });
+  return { ok: true, total, expense, fee, guests, collected };
+}
+
+/* 호스트가 취소한다 — 참가자는 언제나 전액 환불.
+   보통 취소는 벌점 1(게스트가 있었을 때). 비 취소(reason=rain)는 경기 6시간 전 ~ 시작 1시간 뒤에만 고를 수 있고
+   벌점이 없다 — 야외 코트가 많은데 비까지 벌점이면 아무도 안 연다. 30일에 3번을 넘으면 보통 취소로 센다. */
+function omHostCancel(mid, uid, reason) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return { status: 404, error: 'not_found' };
+  if (m.host_id !== uid) return { status: 403, error: 'host_only' };
+  if (m.mode !== 'host') return { status: 400, error: 'not_host_match' };
+  if (!['open', 'confirmed'].includes(m.status || 'open')) return { status: 400, error: 'already_cancelled' };
+  const rain = reason === 'rain';
+  const stMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (rain && !isNaN(stMs)) {
+    if (Date.now() < stMs - OMH.RAIN_BEFORE_H * 3600e3)
+      return { status: 400, error: 'rain_window', message: `비 취소는 경기 ${OMH.RAIN_BEFORE_H}시간 전부터 할 수 있어요` };
+    if (Date.now() > stMs + OMH.RAIN_AFTER_H * 3600e3)
+      return { status: 400, error: 'rain_window', message: '시작하고 1시간이 지나 취소할 수 없어요' };
+  } else if (!isNaN(stMs) && Date.now() >= stMs) return { status: 400, error: 'started', message: '시작한 매치는 취소할 수 없어요' };
+  const guests = db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=? AND user_id!=?').all(mid, uid);
+  const rainUsed = db.prepare(`SELECT COUNT(*) n FROM om_host_strikes WHERE user_id=? AND kind='rain' AND created_at>?`)
+    .get(uid, Date.now() - 30 * 864e5).n;
+  const kind = !rain ? 'cancel' : (rainUsed >= OMH.RAIN_FREE ? 'cancel' : 'rain');
+  let refunded = 0;
+  tx(() => {
+    db.prepare("UPDATE open_matches SET status='cancelled', refunded_at=?, cancel_reason=? WHERE id=?")
+      .run(now(), rain ? 'rain' : 'host', mid);
+    guests.forEach(g => {
+      const back = omPaidBy(mid, g.user_id);                 // 실제로 낸 돈 전부
+      if (back > 0) { cashAdd(g.user_id, back, 'om_host_cancel_refund'); refunded += back; }
+      db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, g.user_id);
+    });
+    if (guests.length) db.prepare('INSERT INTO om_host_strikes (user_id,match_id,created_at,kind) VALUES (?,?,?,?)').run(uid, mid, Date.now(), kind);
+  });
+  guests.forEach(g => sendPush(g.user_id, rain
+    ? { icon: '🌧️', title: '비 때문에 매치가 취소됐어요', body: `${m.loc} · 낸 참가비는 전액 돌려드렸어요` }
+    : { icon: '🔔', title: '호스트가 매치를 취소했어요', body: `${m.loc} · 낸 참가비는 전액 돌려드렸어요` }));
+  return { ok: true, refunded, guests: guests.length, strike: guests.length > 0 && kind === 'cancel', rain };
+}
+
+/* 호스트가 안 왔어요 — 참가한 게스트가 경기 시작 뒤부터 정산 전까지 알릴 수 있다.
+   한 명이라도 알리면 정산을 멈춘다(자동 정산도). 미참석인지는 운영팀이 정한다. */
+function omHostNoshowReport(mid, uid, note) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m || m.mode !== 'host') return { status: 404, error: 'not_found' };
+  if (m.host_id === uid) return { status: 400, error: 'host_self' };
+  if (!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, uid))
+    return { status: 403, error: 'not_joined' };
+  if (m.status !== 'confirmed') return { status: 400, error: 'not_confirmed' };
+  if (m.settled) return { status: 400, error: 'already_settled', message: '정산이 끝난 매치예요 · 문의하기로 알려 주세요' };
+  const stMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (!isNaN(stMs) && Date.now() < stMs) return { status: 400, error: 'not_started', message: '경기 시작 뒤에 알릴 수 있어요' };
+  const first = !m.hold;
+  tx(() => {
+    db.prepare('INSERT OR IGNORE INTO om_host_reports (match_id,user_id,note,created_at) VALUES (?,?,?,?)')
+      .run(mid, uid, String(note || '').slice(0, 200), Date.now());
+    db.prepare('UPDATE open_matches SET hold=1 WHERE id=?').run(mid);
+  });
+  if (first) sendPush(m.host_id, { icon: '⏸️', title: '정산이 잠시 멈췄어요', link: `match:${mid}`,
+    body: `${m.loc} · 참가자가 호스트 미참석을 알렸어요. 운영팀이 확인한 뒤 정산돼요` });
+  const n = db.prepare('SELECT COUNT(*) n FROM om_host_reports WHERE match_id=?').get(mid).n;
+  return { ok: true, reports: n };
+}
+
+/* 운영팀 확인 — release: 왔다(정산 진행) · noshow: 안 왔다(게스트 전액 환불 · 정산 없음 · 90일 막힘) */
+function omHostReview(mid, action) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m || m.mode !== 'host') return { status: 404, error: 'not_found' };
+  if (m.settled) return { status: 400, error: 'already_settled' };
+  if (action === 'release') {
+    db.prepare('UPDATE open_matches SET hold=0 WHERE id=?').run(mid);
+    const r = omHostSettle(mid);                             // 끝났고 돈이 있으면 바로 정산
+    return { ok: true, released: true, settle: r.error ? r.error : r.total };
+  }
+  if (action !== 'noshow') return { status: 400, error: 'bad_action' };
+  const guests = db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=? AND user_id!=?').all(mid, m.host_id);
+  let refunded = 0;
+  tx(() => {
+    db.prepare("UPDATE open_matches SET status='noshow', hold=0, settled=1, manager_fee=0, refunded_at=? WHERE id=?").run(now(), mid);
+    guests.forEach(g => {
+      const back = omPaidBy(mid, g.user_id);
+      if (back > 0) { cashAdd(g.user_id, back, 'om_host_noshow_refund'); refunded += back; }
+      db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, g.user_id);
+    });
+    db.prepare("INSERT INTO om_host_strikes (user_id,match_id,created_at,kind) VALUES (?,?,?,'noshow')").run(m.host_id, mid, Date.now());
+  });
+  guests.forEach(g => sendPush(g.user_id, { icon: '🔔', title: '호스트 미참석이 확인됐어요',
+    body: `${m.loc} · 낸 참가비를 전액 돌려드렸어요. 불편을 드려 죄송해요` }));
+  sendPush(m.host_id, { icon: '⚠️', title: '호스트 미참석으로 처리됐어요',
+    body: `${m.loc} · 정산 없이 참가비를 돌려드렸고, ${OMH.NOSHOW_BLOCK_D}일 동안 매치를 열 수 없어요` });
+  return { ok: true, noshow: true, refunded, guests: guests.length };
+}
+
+/* 화면용 — 참가비가 어디로 가는지 줄마다. 호스트에게는 받을 돈까지 */
+function omHostView(m, uid, people) {
+  if (m.mode !== 'host') return null;
+  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours);
+  const o = { hours: q.hours, courts: q.courts, cap: q.cap, per: q.per, has_proof: !!m.proof, proof_ok: !!m.proof_ok };
+  if (m.court_no) o.court_no = m.court_no;
+  let reports = 0;
+  try { reports = db.prepare('SELECT COUNT(*) n FROM om_host_reports WHERE match_id=?').get(m.id).n; } catch (e) {}
+  if (uid && uid !== m.host_id) {
+    try { o.my_report = !!db.prepare('SELECT 1 FROM om_host_reports WHERE match_id=? AND user_id=?').get(m.id, uid); } catch (e) {}
+  }
+  if (m.cancel_reason === 'rain') o.rain = true;
+  if (uid && uid === m.host_id) {
+    const min = intOrNull(m.min_cnt) || q.cap;
+    Object.assign(o, { spent: q.court + q.ball,
+      payout_now: omHostPayout(q, Math.max(0, people - 1)), payout_full: omHostPayout(q, q.cap - 1),
+      payout_min: omHostPayout(q, min - 1), cost_now: omHostCost(q, people),
+      cost_full: omHostCost(q, q.cap), cost_min: omHostCost(q, min), proof: m.proof || null,
+      hold: !!m.hold, reports });
+    if (m.settled) {
+      try { const p = db.prepare('SELECT amount, created_at FROM om_payouts WHERE match_id=? AND user_id=? ORDER BY id DESC').get(m.id, m.host_id);
+        if (p) Object.assign(o, { paid: p.amount, paid_at: p.created_at }); } catch (e) {}
+    }
+  }
+  return o;
+}
+/* 응답에서 원가 칸을 뺀다 — 대관료 · 공값 · 수고비가 보이면 참가비에서 빼 보면 맞수 몫이 나온다 */
+function omHostHide(m, v, uid) {
+  if (m.mode !== 'host' || (uid && uid === m.host_id)) return v;
+  ['hour_cost', 'ball_cost', 'host_fee', 'court_cost', 'proof', 'manager_fee', 'fee_rate', 'hold'].forEach(k => { delete v[k]; });
+  return v;
+}
+/* ══ 호스트 매치 끝 ══ */
+
+app.get('/me/host', auth, (req, res) => res.json(omHostStatus(req.uid)));
+app.post('/open-matches/host-quote', auth, (req, res) => res.json(omHostQuoteOut(req.body || {})));
+app.post('/open-matches/:id/host-noshow', auth, limitWrite, (req, res) => {
+  const r = omHostNoshowReport(+req.params.id, req.uid, (req.body || {}).note);
+  return r.error ? res.status(r.status || 400).json(r) : res.json(r);
+});
+/* 운영 — 호스트 매치 (정산 보류 · 예약 캡처 확인) */
+app.get('/admin/host-matches', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT * FROM open_matches WHERE mode='host'
+    ORDER BY COALESCE(hold,0) DESC, start_at DESC LIMIT 60`).all();
+  res.json(rows.map(m => ({
+    id: m.id, loc: m.loc, start_at: m.start_at, end_at: m.end_at, status: m.status, hold: !!m.hold,
+    settled: !!m.settled, paid_out: m.manager_fee || 0, cancel_reason: m.cancel_reason || null, proof: m.proof,
+    proof_ok: !!m.proof_ok, court_no: m.court_no || null, hour_cost: m.hour_cost || 0,
+    courts: m.courts, cap: m.cap, price: m.price,
+    host: db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) || null,
+    guests: db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=? AND user_id!=?').get(m.id, m.host_id).n,
+    collected: omCollected(m.id),
+    reports: db.prepare(`SELECT r.note, r.created_at, u.name FROM om_host_reports r LEFT JOIN users u ON u.id=r.user_id
+      WHERE r.match_id=? ORDER BY r.id`).all(m.id),
+  })));
+});
+/* 운영팀이 예약 캡처를 보고 <확인>을 누르면 참가자 화면에 <예약 확인됨>이 뜬다 */
+app.post('/admin/open-matches/:id/proof-ok', admin, (req, res) => {
+  const m = db.prepare("SELECT id, proof FROM open_matches WHERE id=? AND mode='host'").get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (!m.proof) return res.status(400).json({ error: 'no_proof' });
+  const ok = (req.body || {}).ok === false ? 0 : 1;
+  db.prepare('UPDATE open_matches SET proof_ok=? WHERE id=?').run(ok, m.id);
+  res.json({ ok: true, proof_ok: !!ok });
+});
+app.post('/admin/open-matches/:id/host-review', admin, (req, res) => {
+  const r = omHostReview(+req.params.id, (req.body || {}).action);
+  return r.error ? res.status(r.status || 400).json(r) : res.json(r);
+});
+
 app.post('/open-matches', auth, (req, res) => {
   const _b = req.body || {};
+  if (_b.mode === 'host') {                               // 호스트 매치 — 규칙이 따로 있다
+    const r = omHostCreate(req.uid, _b);
+    if (r.error) return res.status(r.status || 400).json(r);
+    return res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(r.id), req.uid));
+  }
   let _courts = Math.min(3, Math.max(0, +_b.courts || 0));
   /* 1코트 자율 매치는 아래 소셜매치 규칙을 타지 않는다.
      그 규칙은 1코트를 2코트로 올리고(매니저 전제) 정원·가격을 자기 공식으로 덮어써서,
@@ -4366,6 +4832,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_manner (
    자율 매치는 매니저가 없어 원가가 낮으므로 마진율을 따로 잡는다. */
 const OMT_MARGIN = { self: 0.33, managed: 0.45 };
 function omPriceFor(m, people) {
+  if (m.mode === 'host') return intOrNull(m.price) || 0;  // 호스트 매치는 참가비가 처음부터 정해져 있다
   const gross = intOrNull(m.court_cost) || 0;             // 코트 정가(대관 전체)
   if (!gross) return intOrNull(m.base_price) || intOrNull(m.price) || 0;
   const fee = (m.fee_rate != null ? m.fee_rate : 0.2);    // 업체 수수료율
@@ -4374,7 +4841,8 @@ function omPriceFor(m, people) {
   const n = Math.max(1, people || omMinCount(m));
   return Math.ceil(cost / (1 - margin) / n / 100) * 100;  // 100원 단위 올림
 }
-const omMinCount = m => (m.mode === 'managed' ? (intOrNull(m.min_cnt) || 8) : 4);
+const omMinCount = m => (m.mode === 'host' ? (intOrNull(m.min_cnt) || intOrNull(m.cap) || 6)
+  : m.mode === 'managed' ? (intOrNull(m.min_cnt) || 8) : 4);
 function omCaps(m) {
   const cap = intOrNull(m.cap) || 4;
   if (m.disc === 'men')   return { m: cap, f: 0 };
@@ -4518,6 +4986,9 @@ app.delete('/om-comments/:id', auth, (req, res) => {
 });
 
 function omView(m, uid) {
+  return omHostHide(m, omViewAll(m, uid), uid);
+}
+function omViewAll(m, uid) {
   /* sport_started(구력)를 함께 보낸다 — 앱은 이 값으로 등급을 계산한다.
      빠뜨리면 참가자 전원이 '구력 미입력'으로 집계에서 빠지고 대진도 못 짠다. */
   const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender, u.sport_started FROM open_match_joins j
@@ -4537,10 +5008,12 @@ function omView(m, uid) {
   const my_late = uid ? (lates.find(x => x.user_id === uid) || null) : null;
   const caps = omCaps(m), fill = omFilled(m.id);
   const need = omMinCount(m);
+  /* 참가자 티어는 한 번만 센다 — 목록 50개 × 참가자마다 여러 번 세면 느려진다 */
+  const TJ = new Map(joins.map(j => [j.user_id, tierOf(j.user_id)]));
   /* 지금 모인 사람들의 티어 — 제한이 아니라 정보다.
      실력차가 부담스러운 사람은 스스로 거르고, 괜찮은 사람은 그냥 들어온다. */
   const tierMix = (() => {
-    const ks = joins.map(j => tierOf(j.user_id).key);
+    const ks = joins.map(j => TJ.get(j.user_id).key);
     const order = ['love', 'fut', 'chal', 'tour', 'gs'];
     const seen = order.filter(k => ks.includes(k));
     if (!seen.length) return null;
@@ -4552,6 +5025,26 @@ function omView(m, uid) {
     /* 화면이 바로 쓰도록 계산해서 내려준다 — 앱이 다시 세면 서버와 어긋난다 */
     mode: m.mode || 'self', disc: m.disc || 'mixed',
     caps, fill, need, tier_mix: tierMix,
+    /* 티어별 인원 — <참여 티어 · 퓨처스 2 · 챌린저 5> */
+    tier_counts: (() => { const c = {}; joins.forEach(j => { const k = TJ.get(j.user_id).key; c[k] = (c[k] || 0) + 1; }); return c; })(),
+    /* 호스트 매치 — 호스트 매너 · 몇 번 열었나 (목록 말고 상세에서도) */
+    ...(m.mode === 'host' && m.host_id ? (() => {
+      let hosted = 0;
+      try { hosted = db.prepare(`SELECT COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'
+        AND status IN ('confirmed','open') AND id<=?`).get(m.host_id, m.id).n; } catch (e) {}
+      /* 호스트 평가 — 호스트가 연 매치에서 같이 친 사람들이 준 별점 평균(5점) */
+      let rating = null;
+      try { const r = db.prepare(`SELECT AVG(rv.stars) a, COUNT(*) n FROM om_reviews rv JOIN open_matches o ON o.id=rv.match_id
+        WHERE rv.to_user=? AND o.mode='host' AND o.host_id=?`).get(m.host_id, m.host_id);
+        if (r && r.n) rating = Math.round(r.a * 10) / 10; } catch (e) {}
+      return { host_fp: fairplayOf(m.host_id).score, host_hosted: hosted, host_rating: rating };
+    })() : {}),
+    /* 지도 — 구장과 이어진 매치는 구장 좌표, 아니면 이름이 같은 구장 */
+    ...(() => { try {
+      const v = m.venue_id ? db.prepare('SELECT lat,lng FROM venues WHERE id=?').get(m.venue_id)
+        : db.prepare(`SELECT lat,lng FROM venues WHERE active=1 AND REPLACE(name,' ','')=REPLACE(?,' ','') AND lat IS NOT NULL LIMIT 1`).get(String(m.loc || ''));
+      return v && v.lat != null ? { lat: v.lat, lng: v.lng } : {};
+    } catch (e) { return {}; } })(),
     left_m: Math.max(0, caps.m - fill.m),
     left_f: Math.max(0, caps.f - fill.f),
     price_now: omPriceFor(m, Math.max(need, fill.n)),
@@ -4564,7 +5057,12 @@ function omView(m, uid) {
     photos: (()=>{ try { const p = m.photos ? JSON.parse(m.photos) : null; return Array.isArray(p) && p.length ? p : (m.photo ? [m.photo] : []); } catch (e) { return m.photo ? [m.photo] : []; } })(),
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: j.name, rating: j.rating, gender: j.gender || '',
-                               sport_started: j.sport_started || null })),
+                               sport_started: j.sport_started || null, tier: TJ.get(j.user_id).name })),
+    /* 모이면 1인 참가비 — 일반 매치는 인원이 늘면 내려간다(차액은 캐시로). 호스트 매치는 늘 같다 */
+    price_by: m.mode === 'host' ? null : (() => { const out = [], cap = Math.min(12, +m.cap || 0);
+      for (let n = Math.max(2, need); n <= cap; n++) out.push({ n, price: omPriceFor(m, n) }); return out; })(),
+    /* 도착했어요 — 경기 30분 전부터 */
+    arrived: (() => { try { return db.prepare('SELECT user_id FROM om_arrivals WHERE match_id=?').all(m.id).map(r => r.user_id); } catch (e) { return []; } })(),
     joined: uid ? joins.some(j => j.user_id === uid) : false,
     is_host: uid ? m.host_id === uid : false,
     /* 최소 인원을 안 적은 매치는 min_cnt 가 비어 있다. 이때 0 으로 보면
@@ -4574,6 +5072,9 @@ function omView(m, uid) {
     min_cnt: omMin(m),
     confirmed: joins.length > 0 && joins.length >= omMin(m),
     full: joins.length >= (m.cap || 0),
+    /* 호스트 매치 — 참가비 내역. 예약 캡처는 호스트에게만(예약자 이름 · 번호가 찍혀 있다) */
+    hq: omHostView(m, uid, joins.length),
+    proof: undefined,
   };
 }
 /* 개최 최소 인원 — 값이 없으면 정원의 절반으로 본다 */
@@ -4584,6 +5085,79 @@ function omMin(m) {
   return cap > 0 ? Math.max(2, Math.ceil(cap / 2)) : 2;
 }
 
+/* ── 내 매치 (이미지 9) · 도착 · 점수 같이 넣기 (이미지 10) ── */
+db.exec(`CREATE TABLE IF NOT EXISTS om_arrivals (match_id INTEGER, user_id INTEGER, at BIGINT, PRIMARY KEY (match_id, user_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS om_score_votes (match_id INTEGER, court INTEGER, round INTEGER, user_id INTEGER,
+  sa INTEGER, sb INTEGER, at BIGINT, PRIMARY KEY (match_id, court, round, user_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS om_tags (match_id INTEGER, from_id INTEGER, tag TEXT, at BIGINT, PRIMARY KEY (match_id, from_id, tag))`);
+app.get('/me/open-matches', auth, (req, res) => {
+  const rows = db.prepare(`SELECT m.* FROM open_matches m JOIN open_match_joins j ON j.match_id=m.id
+    WHERE j.user_id=? AND (m.status IS NULL OR m.status!='cancelled') AND COALESCE(m.end_at, m.start_at) >= ?
+    ORDER BY m.start_at LIMIT 20`).all(req.uid, omKst(Date.now() - 36 * 3600e3));
+  res.json(rows.map(m => omView(m, req.uid)));
+});
+app.post('/open-matches/:id/arrive', auth, limitWrite, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid))
+    return res.status(403).json({ error: 'not_joined' });
+  const st = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (!isNaN(st) && Date.now() < st - 30 * 60e3) return res.status(400).json({ error: 'too_early', message: '경기 30분 전부터 누를 수 있어요' });
+  db.prepare('INSERT OR REPLACE INTO om_arrivals (match_id,user_id,at) VALUES (?,?,?)').run(mid, req.uid, Date.now());
+  db.prepare('DELETE FROM om_lates WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  const to = omLateTarget(m);
+  if (to && to !== req.uid) sendPush(to, { icon: '🏸', title: '도착했어요', body: `${(getUser(req.uid) || {}).name || ''} 님이 도착했어요`, link: `match:${mid}` });
+  res.json({ ok: true, arrived: db.prepare('SELECT user_id FROM om_arrivals WHERE match_id=?').all(mid).map(r => r.user_id) });
+});
+/* 상대가 안 왔어요 — 시작 15분 뒤부터. 모임장(호스트 · 매니저)에게 알리고 기록해 둔다 */
+db.exec(`CREATE TABLE IF NOT EXISTS om_absent (match_id INTEGER, from_id INTEGER, target_id INTEGER, at BIGINT, PRIMARY KEY (match_id, from_id, target_id))`);
+app.post('/open-matches/:id/absent', auth, limitWrite, (req, res) => {
+  const mid = +req.params.id, target = intOrNull((req.body || {}).target);
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const inM = uid => !!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, uid);
+  if (!inM(req.uid)) return res.status(403).json({ error: 'not_joined' });
+  if (!target || target === req.uid || !inM(target)) return res.status(400).json({ error: 'bad_target' });
+  const st = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (isNaN(st) || Date.now() < st + 15 * 60e3) return res.status(400).json({ error: 'too_early', message: '시작 15분 뒤부터 알릴 수 있어요' });
+  db.prepare('INSERT OR REPLACE INTO om_absent (match_id,from_id,target_id,at) VALUES (?,?,?,?)').run(mid, req.uid, target, Date.now());
+  const n = db.prepare('SELECT COUNT(*) n FROM om_absent WHERE match_id=? AND target_id=?').get(mid, target).n;
+  const to = m.leader_id || omLateTarget(m);
+  if (to && to !== req.uid) sendPush(to, { icon: '⏱', title: '안 온 사람이 있대요', body: `${(getUser(target) || {}).name || ''} 님 · 알린 사람 ${n}명`, link: `match:${mid}` });
+  res.json({ ok: true, reports: n });
+});
+/* 4명 매치는 대진이 정해져 있다 — 파트너를 한 번씩 바꿔 3게임 */
+function omAutoBracket(m) {
+  const ps = db.prepare(`SELECT u.name FROM open_match_joins j JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id).map(r => r.name);
+  if (ps.length !== 4) return null;
+  const [a, b, c, d] = ps;
+  return { auto: true, rounds: 3, gpp: 3, courts: [{ rounds: [
+    { a: [a, b], b: [c, d], sa: null, sb: null }, { a: [a, c], b: [b, d], sa: null, sb: null }, { a: [a, d], b: [b, c], sa: null, sb: null }] }] };
+}
+/* 점수는 누구나 넣는다 — 모임장(호스트 · 매니저)이 넣은 점수가 있으면 그것이 남는다 */
+app.post('/open-matches/:id/game-score', auth, limitWrite, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid) && m.host_id !== req.uid)
+    return res.status(403).json({ error: 'not_joined' });
+  const st = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (!isNaN(st) && Date.now() < st - 15 * 60e3) return res.status(400).json({ error: 'not_started', message: '경기가 시작되면 넣을 수 있어요' });
+  const b = req.body || {}, ci = Math.max(0, intOrNull(b.court) || 0), ri = Math.max(0, intOrNull(b.round) || 0);
+  const sa = intOrNull(b.sa), sb = intOrNull(b.sb);
+  if (sa == null || sb == null || sa < 0 || sb < 0 || sa > 30 || sb > 30) return res.status(400).json({ error: 'bad_score' });
+  let br = null; try { br = JSON.parse(m.bracket || 'null'); } catch (e) {}
+  if (!br || !Array.isArray(br.courts)) br = omAutoBracket(m);
+  if (!br) return res.status(400).json({ error: 'no_bracket', message: '대진을 먼저 짜 주세요' });
+  const g = ((br.courts[ci] || {}).rounds || [])[ri];
+  if (!g) return res.status(400).json({ error: 'bad_game' });
+  const lead = [m.leader_id, m.host_id, m.manager_id].includes(req.uid);
+  db.prepare('INSERT OR REPLACE INTO om_score_votes (match_id,court,round,user_id,sa,sb,at) VALUES (?,?,?,?,?,?,?)').run(mid, ci, ri, req.uid, sa, sb, Date.now());
+  if (lead || g.by !== 'lead') { g.sa = sa; g.sb = sb; g.by = lead ? 'lead' : 'player'; }
+  db.prepare('UPDATE open_matches SET bracket=? WHERE id=?').run(JSON.stringify(br).slice(0, 8000), mid);
+  res.json({ ok: true, bracket: br, kept: g.by === 'lead' && !lead ? 'lead' : 'mine' });
+});
 app.get('/open-matches/:id', (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
@@ -4646,6 +5220,12 @@ app.patch('/open-matches/:id', auth, (req, res) => {
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
   const st = ['open', 'closed', 'cancelled'].includes((req.body || {}).status) ? req.body.status : null;
   if (!st) return res.status(400).json({ error: 'bad_status' });
+  if (m.mode === 'host') {                                 // 호스트 매치 — 취소는 환불 · 벌점과 함께, 마감은 서버가 한다
+    if (st !== 'cancelled') return res.status(400).json({ error: 'host_close_auto', message: '모집은 정해진 시각에 저절로 닫혀요' });
+    const r = omHostCancel(m.id, req.uid, (req.body || {}).reason);
+    if (r.error) return res.status(r.status || 400).json(r);
+    return res.json({ ...omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(m.id), req.uid), cancel: r });
+  }
   db.prepare('UPDATE open_matches SET status=? WHERE id=?').run(st, m.id);
   const players = db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id);
   const label = st === 'closed' ? '모집이 마감됐어요' : '모집이 취소됐어요';
@@ -6793,14 +7373,23 @@ function cupGenderShort(cid) {
    대회 전적이 아니라 <우리끼리 친 결과>다 — 상대 클럽과는 비교할 수 없다. */
 function cupMemberForm(cid) {
   const st = {};
-  const pick = n => (st[n] = st[n] || { g: 0, w: 0, d: 0, form: [] });
-  const tally = (side, mine, opp) => {
+  const pick = n => (st[n] = st[n] || { g: 0, w: 0, d: 0, form: [], dates: [] });
+  /* 날짜 — 선수 정보의 <최근 5경기>에 몇 월 며칠 경기였는지 함께 보여준다 */
+  const md = v => {
+    if (v == null || v === '') return '';
+    let d = null;
+    if (typeof v === 'number') d = new Date(v < 1e12 ? v * 1000 : v);
+    else { const m = String(v).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${+m[2]}.${+m[3]}`; d = new Date(v); }
+    return d && !isNaN(d) ? `${d.getMonth() + 1}.${d.getDate()}` : '';
+  };
+  const tally = (side, mine, opp, dt) => {
     const draw = mine === opp;
     side.forEach(n => {
       const nm = String((n && n.name) || n || '').trim();
       if (!nm) return;
       const t = pick(nm);
       t.g++;
+      t.dates.push(dt || '');
       if (draw) { t.d++; t.form.push(0); }
       else if (mine > opp) { t.w++; t.form.push(1); }
       else t.form.push(-1);
@@ -6810,15 +7399,20 @@ function cupMemberForm(cid) {
     /* 대진이 두 군데에 쌓인다.
        club_brackets_ev — 지금 쓰는 시간 대진(data.games 에 팀과 점수가 같이 있다)
        brackets         — 예전 대진(data.reg + bracket_scores 로 나뉘어 있다)
-       한쪽만 보면 승률이 통째로 비어 보인다. 실제로 그랬다. */
-    db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=?').all(cid)
-      .concat(db.prepare('SELECT data FROM club_brackets WHERE club_id=?').all(cid))
+       한쪽만 보면 승률이 통째로 비어 보인다. 실제로 그랬다.
+       두 곳을 날짜순으로 합쳐야 <최근 5경기>가 정말 최근이 된다. */
+    const games = [];
+    const sortKey = v => { const m = String(v || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : (typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v).toISOString().slice(0, 10) : '0000'); };
+    db.prepare(`SELECT b.data, b.updated_at, e.date FROM club_brackets_ev b
+        LEFT JOIN club_events e ON e.id=b.event_id WHERE b.club_id=?`).all(cid)
+      .concat(db.prepare('SELECT data, updated_at, NULL date FROM club_brackets WHERE club_id=?').all(cid))
       .forEach(row => {
         let d = {}; try { d = JSON.parse(row.data || '{}'); } catch (e) { return; }
-        (d.games || []).forEach(g => {
+        const when = row.date || d.date || row.updated_at || '';
+        (d.games || []).forEach((g, i) => {
           if (g.sa == null || g.sb == null) return;
-          tally(g.teamA || [], g.sa, g.sb);
-          tally(g.teamB || [], g.sb, g.sa);
+          games.push({ k: sortKey(when), i, dt: md(when), A: g.teamA || [], B: g.teamB || [], a: g.sa, b: g.sb });
         });
       });
 
@@ -6829,15 +7423,15 @@ function cupMemberForm(cid) {
       const sc = {};
       db.prepare('SELECT court_key, a, b FROM bracket_scores WHERE bracket_id=?').all(b.id)
         .forEach(r => { if (r.a !== null && r.b !== null) sc[r.court_key] = r; });
-      (data.reg || []).forEach(r => {
+      (data.reg || []).forEach((r, i) => {
         const s2 = sc[r.key];
         if (!s2 || !Array.isArray(r.names) || r.names.length < 2) return;
         const half = Math.floor(r.names.length / 2);
-        const A = r.names.slice(0, half), B = r.names.slice(half);
-        tally(A, s2.a, s2.b);
-        tally(B, s2.b, s2.a);
+        games.push({ k: sortKey(b.date), i, dt: md(b.date), A: r.names.slice(0, half), B: r.names.slice(half), a: s2.a, b: s2.b });
       });
     });
+    games.sort((x, y) => (x.k < y.k ? -1 : x.k > y.k ? 1 : x.i - y.i))
+      .forEach(g => { tally(g.A, g.a, g.b, g.dt); tally(g.B, g.b, g.a, g.dt); });
   } catch (e) { console.error('[cup form]', e && e.message); }
   const out = {};
   Object.entries(st).forEach(([n, t]) => {
@@ -6845,7 +7439,7 @@ function cupMemberForm(cid) {
       /* 다섯 경기 미만은 승률을 안 보낸다 — 두 판 뛰고 100% 인 사람이
          맨 위에 오면 순서가 거짓말이 된다. 최근 여덟 판은 그대로 보낸다. */
       wr: t.g >= 5 ? Math.round(t.w / t.g * 100) : null,
-      form: t.form.slice(-8) };
+      form: t.form.slice(-8), form_dates: t.dates.slice(-8) };
   });
   return out;
 }
@@ -6906,6 +7500,20 @@ function cupCheckPairs(rows, cap) {
 }
 
 /* 지금 도는 칸 요약 — 카드가 <참가 확정>에서 <라이브>로 옷을 갈아입으려면 이게 필요하다. */
+/* 대회 화면의 클럽 로고 — 로고 그림이 있으면 그림, 심볼이면 심볼 · 바탕색.
+   둘 다 없으면 앱이 팀 색 원에 머리글자를 그린다. 남의 클럽 로고는 앱에 없어서 서버가 같이 내려준다. */
+function cupClubLogo(c) {
+  if (!c || !(c.logo || c.logo_ic)) return null;
+  return { img: c.logo || null, ic: c.logo ? null : c.logo_ic, bg: c.logo_bg || null };
+}
+function cupEntryLogos(bid) {
+  const out = {};
+  db.prepare(`SELECT e.id eid, c.logo, c.logo_ic, c.logo_bg FROM cup_entries e
+    LEFT JOIN clubs c ON c.id=e.club_id
+    WHERE e.bracket_id=? AND e.status!='cancelled'`).all(bid)
+    .forEach(x => { const L = cupClubLogo(x); if (L) out[x.eid] = L; });
+  return out;
+}
 function cupLiveNow(b) {
   let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) { return null; }
   const cfg = Object.assign({}, CUP_DEFAULT, d.cfg || {});
@@ -6959,7 +7567,7 @@ function cupLiveNow(b) {
       const s2 = sc[z.m.key];
       const A = pair(z.t.home, z.m.no), B = pair(z.t.away, z.m.no);
       const sum = g => g.reduce((k, r) => k + (+r.years || 0), 0);
-      return { court: z.m.court, kind: z.m.kind,
+      return { court: z.m.court, kind: z.m.kind, no: z.m.no, tie: z.t.id,
         a: s2 ? s2.a : null, b: s2 ? s2.b : null,
         home: z.t.home, away: z.t.away,
         home_name: z.t.home_name, away_name: z.t.away_name,
@@ -6968,11 +7576,31 @@ function cupLiveNow(b) {
     });
   return { on: true, start: slot.start, slot: slot.s,
     left_ms: Math.max(0, started + dur - now), match_sec: cfg.match_sec,
-    played: doneN, total: all.length, courts };
+    played: doneN, total: all.length, courts, logos: cupEntryLogos(b.id) };
 }
 
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
+}
+/* 우리 클럽 다음 경기 — 리그 카드의 <다음 경기 10:30 · 2번 코트 · 혼복 · 수지 에이스전> 한 줄.
+   보는 사람이 엔트리에 있으면(앱 회원) 그 사람이 뛰는 매치의 코트를 고른다. */
+function cupMineNext(b, eid, uid) {
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) { return {}; }
+  const me = uid ? db.prepare('SELECT pair FROM cup_roster WHERE entry_id=? AND user_id=?').get(eid, uid) : null;
+  const myNo = me && me.pair ? +me.pair : 0;
+  const sc = {};
+  db.prepare('SELECT court_key, a FROM bracket_scores WHERE bracket_id=?').all(b.id)
+    .forEach(r => { if (r.a != null) sc[r.court_key] = 1; });
+  const ties = [];
+  (d.rounds || []).forEach(r => (r.ties || []).forEach(t => {
+    if (t.home === eid || t.away === eid) ties.push({ r, t }); }));
+  ties.sort((x, y) => String(x.r.start || '').localeCompare(String(y.r.start || '')));
+  const nx = ties.find(z => (z.t.matches || []).some(m => !sc[m.key]));
+  if (!nx) return { my_no: myNo || null, next: null };
+  const m = (nx.t.matches || []).find(x => myNo && +x.no === myNo) || null;
+  return { my_no: myNo || null, next: { tie: nx.t.id, start: nx.r.start || null,
+    opp: (nx.t.home === eid ? nx.t.away_name : nx.t.home_name) || null,
+    court: m ? (m.court || null) : null, kind: m ? (m.kind || null) : null } };
 }
 function cupHost(b, uid) { return b && isOfficer(b.club_id, uid); }
 function cupEntryByToken(tok) {
@@ -7031,6 +7659,7 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
   });
   res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - teams.length),
+    logos: cupEntryLogos(b.id),                     // 참가 클럽 카드에 클럽 로고
     /* 초청장은 주최 클럽 운영진만 만든다 — 화면이 그걸 알아야 버튼을 감춘다 */
     is_host: cupHost(b, req.uid),
     date: b.date, title: C.title });
@@ -7062,7 +7691,7 @@ app.get('/cup/:bid/member', auth, (req, res) => {
   res.json({ name: r.guest_name, gender: r.gender, years: r.ntrp,
     club_name: r.club_name, app_club: !!r.club_id,
     g: f ? f.g : 0, w: f ? f.w : 0, l: f ? f.l : 0,
-    wr: f ? f.wr : null, form: f ? f.form : [] });
+    wr: f ? f.wr : null, form: f ? f.form : [], form_dates: f ? f.form_dates : [] });
 });
 
 /* 대회 초청장 — 클럽 초대장과 전혀 다른 것이다.
@@ -7228,16 +7857,8 @@ app.get('/cup/:bid/standings', (req, res) => {
       });
       return out;
     })(),
-    /* 대진판에 클럽 심볼을 그린다 — 남의 클럽 로고는 앱에 저장돼 있지 않다 */
-    logos: (() => {
-      const out = {};
-      db.prepare(`SELECT e.id eid, c.logo, c.logo_ic, c.logo_bg FROM cup_entries e
-        LEFT JOIN clubs c ON c.id=e.club_id
-        WHERE e.bracket_id=? AND e.status!='cancelled'`).all(b.id).forEach(x => {
-        if (x.logo || x.logo_ic) out[x.eid] = { img: x.logo || null, ic: x.logo ? null : x.logo_ic, bg: x.logo_bg || null };
-      });
-      return out;
-    })(),
+    /* 대진판에 클럽 로고를 그린다 — 남의 클럽 로고는 앱에 저장돼 있지 않다 */
+    logos: cupEntryLogos(b.id),
     /* 내가 어느 클럽 운영진인가 — 점수 버튼을 자기 경기에만 붙이려면 필요하다 */
     my_entries: (() => {
       const uid = tryUid(req); if (!uid) return [];
@@ -7306,6 +7927,9 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
   rows.forEach(r => {
     r.roster_n = db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n;
     r.female_n = db.prepare("SELECT COUNT(*) n FROM cup_roster WHERE entry_id=? AND gender='F'").get(r.id).n;
+    /* 엔트리 명단 — 관리자가 휴대폰으로 <누가 어느 매치에 나오는지>를 바로 본다(대회 당일 문의 대응) */
+    r.roster = db.prepare(`SELECT id, guest_name name, gender, ntrp years, pair FROM cup_roster
+      WHERE entry_id=? ORDER BY COALESCE(pair,9), gender DESC, id`).all(r.id);
   });
   res.json({ id: b.id, date: b.date, open: !!b.published, title: d.title || '',
     place: d.place || '', pay: d.pay || null, start: d.start || '09:00',
@@ -7320,6 +7944,37 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
     money: cupMoney(cupCfg(d),
       rows.filter(r => r.status === 'confirmed').length) });
+});
+
+/* 대회 당일 점수 고치기 — 주최 클럽 운영진이 없거나 잘못 넣었을 때 관리자가 휴대폰으로 바로 고친다.
+   앱의 점수 넣기(PUT /brackets/:id/scores/:key)와 같은 표에 쓰고, 이어치기도 똑같이 굴린다.
+   고치기 전 점수를 작업 기록에 남겨 <되돌리기>로 원래대로 돌릴 수 있다. */
+app.put('/admin/cups/:bid/scores/:key', admin, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const key = String(req.params.key).slice(0, 24);
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  let hit = null;
+  (d.rounds || []).forEach(r => (r.ties || []).forEach(t => (t.matches || []).forEach(m => {
+    if (m.key === key) hit = { t, m }; })));
+  if (!hit) return res.status(404).json({ error: 'no_match', message: '이 대회에 없는 경기예요' });
+  const a = intOrNull((req.body || {}).a), bb = intOrNull((req.body || {}).b);
+  if ((a === null) !== (bb === null))
+    return res.status(400).json({ error: 'half', message: '두 팀 점수를 모두 넣어주세요' });
+  if (a !== null && (a < 0 || bb < 0 || a > 30 || bb > 30))
+    return res.status(400).json({ error: 'range', message: '점수는 0~30 사이로 넣어주세요' });
+  const prev = db.prepare('SELECT a, b FROM bracket_scores WHERE bracket_id=? AND court_key=?').get(b.id, key) || null;
+  if (a === null) db.prepare('DELETE FROM bracket_scores WHERE bracket_id=? AND court_key=?').run(b.id, key);
+  else db.prepare(`INSERT INTO bracket_scores (bracket_id,court_key,a,b,updated_by,updated_at) VALUES (?,?,?,?,?,?)
+    ON CONFLICT(bracket_id,court_key) DO UPDATE SET a=excluded.a,b=excluded.b,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+    .run(b.id, key, a, bb, 0, now());
+  db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), b.id);
+  let rolled = 0;
+  if (a !== null) { try { rolled = cupRollNext(b.id); } catch (e) { console.error('[cup roll]', e.message); } }
+  alog(req, a === null ? '대회 점수 지움' : '대회 점수 고침', 'cup', b.id,
+    { match: `${hit.t.home_name || '?'} vs ${hit.t.away_name || '?'} · ${hit.m.no}번`, from: prev ? `${prev.a}:${prev.b}` : '없음', to: a === null ? '없음' : `${a}:${bb}` },
+    { kind: 'cup_score', bid: b.id, key, a: prev ? prev.a : null, b: prev ? prev.b : null });
+  res.json({ ok: true, rolled });
 });
 
 /* 관리자는 주최 클럽 운영진이 아니어도 손댈 수 있어야 한다 */
@@ -7647,8 +8302,9 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     is_host: b.club_id === cid,
     /* 우리 클럽 남녀 회원 수 — 모자라면 카드와 신청 화면이 <몇 명 더 필요해요>로 막는다 */
     members: cupGenderShort(cid),
-  }, entry: mine ? { id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
-    group_label: mine.group_label, seat: mine.seat, roster_n: roster } : null });
+  }, entry: mine ? Object.assign({ id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
+    group_label: mine.group_label, seat: mine.seat, roster_n: roster },
+    mine.group_label ? cupMineNext(b, mine.id, req.uid) : {}) : null });
 });
 
 /* 신청 — 우리 클럽 이름으로 자리를 잡는다 */
@@ -7825,14 +8481,17 @@ app.get('/cup/invite/:token', (req, res) => {
   if (!e) return res.status(404).json({ error: 'no_invite', message: '초청장을 찾을 수 없어요' });
   const b = db.prepare('SELECT id,date,courts,data,club_id FROM brackets WHERE id=?').get(e.bracket_id);
   let cfg = {}; try { cfg = JSON.parse(b.data || '{}').cfg || {}; } catch (x) {}
-  const host = db.prepare('SELECT name FROM clubs WHERE id=?').get(b ? b.club_id : 0);
+  const host = db.prepare('SELECT name, logo, logo_ic, logo_bg FROM clubs WHERE id=?').get(b ? b.club_id : 0);
   const roster = db.prepare(`SELECT id,user_id,guest_name,gender,ntrp,birth_year,slot,
       guardian_consent,health_declared FROM cup_roster WHERE entry_id=? ORDER BY slot,id`).all(e.id);
   res.json({
     entry: { id: e.id, club_name: e.club_name, status: e.status,
-      contact_name: e.contact_name, fee_paid: e.fee_paid },
+      contact_name: e.contact_name, fee_paid: e.fee_paid, club_id: e.club_id || null },
+    /* 자리를 잡은 클럽의 남녀 수 — 엔트리 단계에서 <몇 명 더>를 막대로 보여준다 */
+    club: e.club_id ? Object.assign({ id: e.club_id, name: e.club_name }, cupClubGender(e.club_id)) : null,
     cup: { date: b ? b.date : null, courts: b ? b.courts : 0,
       host: host ? host.name : '',
+      host_logo: cupClubLogo(host),               // <용인 테르메스가 보낸 초청장> 옆 주최 클럽 로고
       fee: cupCfg(b.data).fee, deposit: cupCfg(b.data).deposit,
       min_teams: cupCfg(b.data).min_teams, max_teams: cupCfg(b.data).max_teams, cfg,
       place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
@@ -7848,7 +8507,9 @@ app.get('/cup/invite/:token', (req, res) => {
       const clubs = db.prepare(`SELECT c.id, c.name, c.region,
           (SELECT COUNT(*) FROM club_members m2 WHERE m2.club_id=c.id) members
         FROM club_members m JOIN clubs c ON c.id=m.club_id
-        WHERE m.user_id=? AND m.role IN ('owner','officer') AND c.sport='tennis'`).all(uid);
+        WHERE m.user_id=? AND m.role IN ('owner','officer') AND c.sport='tennis'`).all(uid)
+        /* 남녀 수를 같이 — 고를 때 <남자 회원이 3명이라 엔트리를 다 못 채워요>를 미리 말해 준다 */
+        .map(c => Object.assign(c, cupGenderShort(c.id)));
       return { signed: true, clubs, taken: !!e.club_id };
     })(),
   });
@@ -9370,6 +10031,10 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id !== req.uid) return res.status(403).json({ error: 'host_only' });
   if (m.settled) return res.status(400).json({ error: 'already_settled' });
+  if (m.mode === 'host') {
+    const r = omHostSettle(m.id);
+    return r.error ? res.status(400).json(r) : res.json({ ok: true, total: r.total });
+  }
   if (!m.manager_id) return res.status(400).json({ error: 'no_manager' });
 
   /* ── 정산 안전장치 ────────────────────────────────────────
@@ -9507,7 +10172,7 @@ app.get('/open-matches/:id/roster', (req, res) => {
 app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
   if (!m) return res.status(404).json({ error: 'not_found' });
-  if (m.manager_id !== req.uid && m.host_id !== req.uid) return res.status(403).json({ error: 'manager_only' });
+  if (m.manager_id !== req.uid && m.host_id !== req.uid && m.leader_id !== req.uid) return res.status(403).json({ error: 'manager_only' });
   const br = JSON.stringify(req.body && req.body.bracket || null).slice(0, 8000);
   const had = !!m.bracket;
   db.prepare('UPDATE open_matches SET bracket=? WHERE id=?').run(br, m.id);
@@ -10210,10 +10875,18 @@ app.post('/admin/push-test', admin, async (req, res) => {
 // 결제와 무관하게 열어주는 유일한 경로. ADMIN_KEY 를 아는 사람만.
 // 운영자용 클럽 목록 — 클럽장·회원까지 함께 (클럽장 변경 UI 용)
 app.get('/admin/clubs', admin, (_req, res) => {
+  /* 클럽이 살아 있는지 — 목록에서 <잠든 클럽>을 바로 거르려면 활동 값이 같이 와야 한다.
+     active: 30일 안에 들어온 회원 · last_act: 마지막으로 모임을 만든 때 · brackets30: 30일 대진 수 */
+  const D30 = Date.now() - 30 * 864e5;
   const clubs = db.prepare(`SELECT c.id, c.name, c.sport, c.region,
       (SELECT COUNT(*) FROM club_members m JOIN users mu ON mu.id=m.user_id
         WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
-          AND COALESCE(mu.is_test,0)=0) members
+          AND COALESCE(mu.is_test,0)=0) members,
+      (SELECT COUNT(*) FROM club_members m JOIN users mu ON mu.id=m.user_id
+        WHERE m.club_id=c.id AND (m.status IS NULL OR m.status='active')
+          AND COALESCE(mu.is_test,0)=0 AND mu.last_seen > ${D30}) active,
+      (SELECT MAX(e.created_at) FROM club_events e WHERE e.club_id=c.id) last_act,
+      (SELECT COUNT(*) FROM club_bracket_logs l WHERE l.club_id=c.id AND l.updated_at > ${D30}) brackets30
     FROM clubs c ORDER BY c.id DESC LIMIT 200`).all();
   res.json(clubs.map(c => ({
     ...c,
@@ -10492,6 +11165,13 @@ app.post('/admin/log/:id/undo', admin, (req, res) => {
     else if (u.kind === 'grade')
       db.prepare('UPDATE club_members SET grade=? WHERE club_id=? AND user_id=?')
         .run(u.value, u.club_id, u.id);
+    else if (u.kind === 'cup_score') {
+      if (u.a == null) db.prepare('DELETE FROM bracket_scores WHERE bracket_id=? AND court_key=?').run(u.bid, u.key);
+      else db.prepare(`INSERT INTO bracket_scores (bracket_id,court_key,a,b,updated_by,updated_at) VALUES (?,?,?,?,?,?)
+        ON CONFLICT(bracket_id,court_key) DO UPDATE SET a=excluded.a,b=excluded.b,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+        .run(u.bid, u.key, u.a, u.b, 0, now());
+      db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), u.bid);
+    }
     else return res.status(400).json({ error: 'unknown_kind' });
   } catch (e) { return res.status(500).json({ error: 'undo_failed' }); }
   db.prepare('UPDATE admin_log SET undone=1 WHERE id=?').run(r.id);
@@ -11602,6 +12282,65 @@ app.get('/venues/search', optAuth, (req, res) => {
   res.json({ q, rows });
 });
 
+/* ── 코트 대관료 ──
+   호스트가 매치를 열 때 넣은 1면 1시간 대관료(예약 화면과 함께 올린 금액)를 코트에 모아 둔다.
+   호스트 매치가 없는 코트는 이용자가 알려준 금액을 쓴다. 1인 참가비는 <2코트 · 2시간 · 12명>으로 맞춰 보여준다. */
+db.exec(`CREATE TABLE IF NOT EXISTS venue_rates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id INTEGER NOT NULL, user_id INTEGER, hour_cost INTEGER NOT NULL, created_at BIGINT)`);
+function venueRate(vid) {
+  if (!vid) return null;
+  try {
+    const hs = db.prepare(`SELECT hour_cost, start_at, COALESCE(proof_ok,0) ok FROM open_matches
+      WHERE venue_id=? AND mode='host' AND hour_cost>0 AND status IN ('open','confirmed') ORDER BY start_at DESC LIMIT 30`).all(vid);
+    if (hs.length) return { hour: hs[0].hour_cost, n: hs.length, ok_n: hs.filter(h => h.ok).length,
+      from: 'host', last: String(hs[0].start_at || '').slice(0, 10) };
+    const us = db.prepare('SELECT hour_cost, created_at FROM venue_rates WHERE venue_id=? ORDER BY id DESC LIMIT 7').all(vid);
+    if (us.length) {
+      const v = us.map(u => u.hour_cost).sort((a, b) => a - b), mid = v[Math.floor(v.length / 2)];
+      return { hour: mid, n: us.length, ok_n: 0, from: 'user', last: new Date(us[0].created_at || Date.now()).toISOString().slice(0, 10) };
+    }
+  } catch (e) {}
+  return null;
+}
+function venueRateOut(v, lat, lng) {
+  const r = venueRate(v.id);
+  const per = r ? omHostQuote(r.hour, 6000, 2, 2).per : null;
+  let dist = null;
+  if (isFinite(lat) && isFinite(lng) && v.lat != null && v.lng != null) {
+    const R = 6371, dLa = (v.lat - lat) * Math.PI / 180, dLo = (v.lng - lng) * Math.PI / 180;
+    const a = Math.sin(dLa / 2) ** 2 + Math.cos(lat * Math.PI / 180) * Math.cos(v.lat * Math.PI / 180) * Math.sin(dLo / 2) ** 2;
+    dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+  }
+  return { id: v.id, name: v.name, sido: v.sido || null, sigungu: v.sigungu || null, lat: v.lat, lng: v.lng,
+    kind: v.kind || null, indoor: !!v.indoor, surface: v.surface || null, dist,
+    hour: r ? r.hour : null, per, rate_n: r ? r.n : 0, rate_ok: r ? r.ok_n : 0, rate_from: r ? r.from : null, rate_last: r ? r.last : null };
+}
+app.get('/venues/rates', optAuth, (req, res) => {
+  const lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
+  const q = String(req.query.q || '').trim().replace(/[%_]/g, '').slice(0, 40);
+  let rows = [];
+  const cols = 'id,name,sido,sigungu,lat,lng,indoor,kind,surface';
+  if (q) rows = db.prepare(`SELECT ${cols} FROM venues WHERE active=1 AND REPLACE(name,' ','') LIKE ? LIMIT 40`)
+    .all('%' + q.replace(/\s+/g, '') + '%');
+  else if (isFinite(lat) && isFinite(lng))
+    rows = db.prepare(`SELECT ${cols} FROM venues WHERE active=1 AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? LIMIT 400`)
+      .all(lat - 0.12, lat + 0.12, lng - 0.15, lng + 0.15);
+  const out = rows.map(v => venueRateOut(v, lat, lng));
+  out.sort((a, b) => (a.dist == null ? 1e9 : a.dist) - (b.dist == null ? 1e9 : b.dist));
+  res.json({ rows: out.slice(0, 30), base: { courts: 2, hours: 2, cap: 12 } });
+});
+/* 대관료 알려주기 — 1면 1시간 금액 */
+app.post('/venues/:id/rate', auth, limitWrite, (req, res) => {
+  const vid = +req.params.id, hour = Math.round(+(req.body || {}).hour_cost);
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'not_found' });
+  if (!(hour >= 5000 && hour <= OMH.HOUR_MAX)) return res.status(400).json({ error: 'bad_hour_cost', message: '1면 1시간 금액을 확인해 주세요' });
+  const prev = db.prepare('SELECT id FROM venue_rates WHERE venue_id=? AND user_id=?').get(vid, req.uid);
+  if (prev) db.prepare('UPDATE venue_rates SET hour_cost=?, created_at=? WHERE id=?').run(hour, Date.now(), prev.id);
+  else db.prepare('INSERT INTO venue_rates (venue_id,user_id,hour_cost,created_at) VALUES (?,?,?,?)').run(vid, req.uid, hour, Date.now());
+  const v = db.prepare('SELECT id,name,sido,sigungu,lat,lng,indoor,kind,surface FROM venues WHERE id=?').get(vid);
+  res.json({ ok: true, venue: venueRateOut(v) });
+});
+
 /* ── 구장 지분 · 홈 걸기 ──────────────────────────────────────── */
 
 /* 이 구장에 어느 클럽이 있고 누가 대표인가 */
@@ -12460,6 +13199,19 @@ app.get('/venues/:id/detail', optAuth, (req, res) => {
     surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean)
       : (v.surface ? [v.surface] : []),
     events: evs, upcoming, talk, talk_locked: talkLocked,
+    /* 대관료 — 호스트가 넣은 금액(없으면 이용자가 알려준 값) · 2코트 2시간 12명일 때 1인 참가비 */
+    rate: (() => { try { const r = venueRateOut(v);
+      return r.hour ? { hour: r.hour, per: r.per, n: r.rate_n, ok_n: r.rate_ok, from: r.rate_from, last: r.rate_last } : null;
+    } catch (e) { return null; } })(),
+    /* 이 코트에서 열린 오픈매치 — 구장과 이어진 것 + 이름이 같은 것(띄어쓰기 무시) */
+    open_matches: (() => {
+      try {
+        return db.prepare(`SELECT * FROM open_matches WHERE status IN ('open','confirmed')
+            AND (venue_id=? OR REPLACE(loc,' ','')=?) AND start_at >= ? ORDER BY start_at LIMIT 5`)
+          .all(vid, String(v.name || '').replace(/\s+/g, ''), omKst(Date.now()))
+          .map(m => omView(m, req.uid));
+      } catch (e) { return []; }
+    })(),
   });
 });
 
@@ -12667,6 +13419,10 @@ app.get('/admin/badges', admin, (_req, res) => {
     const n = db.prepare("SELECT COUNT(*) n FROM reports WHERE status='open'").get().n;
     if (n) out.reports = n;
   } catch (e) {}
+  try {                                       // 호스트 매치 — 참가자가 <호스트가 안 왔어요>를 눌러 정산이 멈춘 것
+    const n = db.prepare("SELECT COUNT(*) n FROM open_matches WHERE mode='host' AND COALESCE(hold,0)=1 AND COALESCE(settled,0)=0").get().n;
+    if (n) out.hosts = n;
+  } catch (e) {}
   res.json(out);
 });
 
@@ -12790,7 +13546,28 @@ app.delete('/admin/errors', admin, (req, res) => {
    업데이트·점검을 알릴 곳이 없었다. push-test 는 나 한 명에게만 갔다.
    대상을 골라 보내고, 보내기 전에 몇 명인지 먼저 보여준다 —
    전체 발송은 되돌릴 수 없으므로 숫자를 보고 손이 멈출 수 있어야 한다. */
+/* 옛 버전 앱 — 기기마다 지금 쓰이는 가장 새 버전보다 낮은 앱(또는 버전을 안 알려주는 옛 앱).
+   관리자 화면 회원 목록의 <옛 버전> 칩과 같은 셈이다(admin.html appOf · latestVers). */
+function appVerCmp(a, b) {
+  const sh = v => String(v || '').replace(/\s*\(.*\)\s*$/, '').split('.').map(n => +n || 0);
+  const bl = v => { const m = String(v || '').match(/\((\w+)\)/); return m ? (+m[1] || 0) : 0; };
+  const pa = sh(a), pb = sh(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length, 3); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+  return bl(a) - bl(b);
+}
+function oldAppUsers(plat) {
+  const rows = db.prepare(`SELECT id, app_ver, app_plat, last_plat FROM users WHERE COALESCE(is_test,0)=0`).all();
+  const P = u => u.app_plat || (u.last_plat === 'ios' || u.last_plat === 'android' ? u.last_plat : '');
+  const top = {};
+  rows.forEach(u => { const p = P(u); if (!p || !u.app_ver) return; if (!top[p] || appVerCmp(u.app_ver, top[p]) > 0) top[p] = u.app_ver; });
+  const short = v => String(v || '').replace(/\s*\(.*\)\s*$/, '');
+  return rows.filter(u => { const p = P(u); if (!p || !top[p] || (plat && p !== plat)) return false;
+    return !u.app_ver || appVerCmp(short(u.app_ver), short(top[p])) < 0; })
+    .map(u => Object.assign(u, { plat: P(u) }));
+}
 function noticeTargets(to, clubId) {
+  if (to === 'oldv' || to === 'oldv_ios' || to === 'oldv_android')
+    return oldAppUsers(to === 'oldv' ? '' : to.slice(5)).map(u => u.id);
   if (to === 'club' && clubId)
     return db.prepare(`SELECT user_id id FROM club_members WHERE club_id=?`).all(+clubId).map(r => r.id);
   if (to === 'dormant')
@@ -12804,7 +13581,17 @@ function noticeTargets(to, clubId) {
   return db.prepare('SELECT id FROM users').all().map(r => r.id);
 }
 app.get('/admin/notify/count', admin, (req, res) => {
-  const n = noticeTargets(String(req.query.to || 'all'), req.query.club).length;
+  const to = String(req.query.to || 'all');
+  const n = noticeTargets(to, req.query.club).length;
+  /* 옛 버전이면 기기별 수와 지금 가장 새 버전도 같이 — 문구에 <1.2.3으로 업데이트>를 바로 쓸 수 있게 */
+  if (to.startsWith('oldv')) {
+    const by = {}, latest = {};
+    oldAppUsers('').forEach(u => { by[u.plat] = (by[u.plat] || 0) + 1; });
+    db.prepare(`SELECT app_ver, app_plat FROM users WHERE app_ver IS NOT NULL AND app_plat IS NOT NULL AND COALESCE(is_test,0)=0`).all()
+      .forEach(u => { if (!latest[u.app_plat] || appVerCmp(u.app_ver, latest[u.app_plat]) > 0) latest[u.app_plat] = u.app_ver; });
+    Object.keys(latest).forEach(k => { latest[k] = String(latest[k]).replace(/\s*\(.*\)\s*$/, ''); });
+    return res.json({ n, by, latest });
+  }
   res.json({ n });
 });
 app.post('/admin/notify', admin, async (req, res) => {
