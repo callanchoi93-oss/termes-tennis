@@ -398,6 +398,300 @@ body{background:var(--paper);color:var(--ink);
     margin:-2px 2px 12px}
   .vsum b{color:#161412;font-weight:700;font-variant-numeric:tabular-nums}
   .vsum b.old{color:#cf5418}
+/* ═══ 관리자 v2 — 휴대폰이 주인 ═══════════════════════════════════════
+   위 칩 두 줄 메뉴 → 아래 탭바 + 메뉴 시트, 찾기 칸 두 개 → 하나(위 단추),
+   목록 한 줄은 두 줄(이름 · 접속 / 세부 · 시각)로 고정해 글자가 겹치지 않게. */
+:root{ --tabh:62px; --sab:env(safe-area-inset-bottom,0px); --hdh:58px; --ok:#1f7d4d }
+.main > .hd .ib{ display:none }
+.tabbar{ display:none }
+body.noscroll{ overflow:hidden }
+/* 섹션 머리 — 카드 밖 작은 제목 */
+.sec{ display:flex;align-items:baseline;gap:8px;margin:20px 4px 8px }
+.sec:first-child{ margin-top:4px }
+.sec b{ font-size:15px;font-weight:700;letter-spacing:-.03em }
+.sec em{ font-style:normal;font-size:13px;font-weight:700;color:var(--gray) }
+.sec em.hot{ color:#fff;background:#cf5418;border-radius:10px;padding:0 7px;line-height:20px }
+.sec span{ margin-left:auto;font-size:12px;color:var(--lgray) }
+/* 목록 카드 — 줄이 카드 끝까지, 줄 사이 실선 */
+.card.list{ padding:2px 0 }
+.trow{ display:flex;align-items:center;gap:12px;padding:14px 16px;border-top:1px solid #f2efe8;cursor:pointer;color:inherit;text-decoration:none }
+.trow:first-child{ border-top:0 }
+.trow:active{ background:#faf8f4 }
+.trow .dot{ width:8px;height:8px;border-radius:50%;flex:none;background:#e09a2b }
+.trow .dot.red{ background:#d64a2b }
+.trow .t{ flex:1;min-width:0 }
+.trow .t b{ display:block;font-size:15px;font-weight:650;letter-spacing:-.03em }
+.trow .t span{ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px;color:var(--lgray);margin-top:2px;line-height:1.45 }
+.trow > em{ flex:none;font-style:normal;font-size:14px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums }
+.trow > em.hot{ color:#cf5418 }
+.trow > svg{ flex:none;color:#cfc9bf }
+.card.calm{ display:flex;flex-direction:column;align-items:center;padding:22px 16px;text-align:center }
+.card.calm b{ font-size:15px;font-weight:650;color:var(--ok) }
+.card.calm span{ font-size:12.5px;color:var(--lgray);margin-top:2px }
+/* 세 숫자 — 오늘 · 이번 주 · 이번 달 */
+.h3c{ display:flex;padding:6px 0 4px }
+.h3c > div{ flex:1;text-align:center;position:relative }
+.h3c > div + div::before{ content:'';position:absolute;left:0;top:8px;bottom:8px;width:1px;background:#efebe3 }
+.h3c b{ display:block;font-size:30px;font-weight:750;letter-spacing:-.04em;line-height:1.15;font-variant-numeric:tabular-nums }
+.h3c b.hot{ color:#cf5418 }
+.h3c span{ display:block;font-size:12.5px;color:var(--lgray);margin-top:2px }
+.h3c.sm{ background:#faf8f4;border-radius:14px;margin:4px 0 10px;padding:12px 0 10px }
+.h3c.sm b{ font-size:22px }
+/* 2주 가입 막대 — 한 계열이라 범례 없음, 제목이 말한다. 칸 사이 2px, 위 끝만 둥글게 */
+.spk{ margin-top:14px;padding-top:12px;border-top:1px solid #f2efe8 }
+.spk .sh{ display:flex;align-items:baseline;font-size:12.5px;color:var(--gray) }
+.spk .sh b{ margin-left:auto;font-size:13px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums }
+.spk .bars{ display:flex;align-items:flex-end;gap:2px;height:46px;margin-top:8px;border-bottom:1px solid #ebe7df }
+.spk .bars i{ flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:pointer }
+.spk .bars s{ display:block;width:100%;max-width:24px;background:#eb6834;border-radius:4px 4px 0 0;text-decoration:none;min-height:0 }
+.spk .bars i:hover s,.spk .bars i.on s{ background:#c84f1f }
+.spk .ax{ display:flex;justify-content:space-between;font-size:11px;color:var(--lgray);margin-top:4px }
+.tot{ display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid #f2efe8;font-size:13px;color:var(--gray) }
+.tot b{ color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums }
+/* 미터 — 이번 달 모임을 연 클럽 */
+.meter{ padding:14px 16px 4px }
+.meter .mh{ display:flex;align-items:baseline;font-size:13.5px;color:var(--gray) }
+.meter .mh b{ margin-left:auto;font-size:20px;font-weight:750;color:var(--ink);letter-spacing:-.03em }
+.meter .mh b i{ font-style:normal;font-size:13px;font-weight:600;color:var(--lgray) }
+.meter .mt{ height:8px;border-radius:5px;background:#fbe3d6;margin-top:8px;overflow:hidden }
+.meter .mt s{ display:block;height:100%;background:#eb6834;border-radius:5px;text-decoration:none }
+.mfoot{ display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 16px 14px;font-size:13px;color:var(--gray) }
+.mfoot b{ color:var(--ink);font-weight:700 }
+.mfoot u{ margin-left:auto;text-decoration:none;color:#cf5418;font-weight:650 }
+/* 몫 막대 + 범례 */
+.shr{ display:flex;gap:2px;height:12px;margin:6px 0 12px }
+.shr s{ display:block;text-decoration:none;min-width:4px }
+.shr s:first-child{ border-radius:4px 0 0 4px } .shr s:last-child{ border-radius:0 4px 4px 0 } .shr s:only-child{ border-radius:4px }
+.lg{ display:flex;flex-wrap:wrap;gap:6px 16px }
+.lg span{ display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2) }
+.lg i{ width:9px;height:9px;border-radius:3px;flex:none }
+.lg b{ font-weight:700;font-variant-numeric:tabular-nums }
+.lg em{ font-style:normal;color:var(--lgray);font-size:12px }
+/* ── 회원 · 클럽 목록 ── */
+.ufl{ position:sticky;top:var(--hdh);z-index:20;background:var(--paper);margin:0 -14px;padding:0 14px 8px }
+.usrch{ display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:0 12px;height:44px;color:var(--lgray) }
+.usrch:focus-within{ border-color:#e0a06a }
+.usrch input{ flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--ink);height:100% }
+.usrch input::-webkit-search-cancel-button{ display:none }
+.usrch u{ display:flex;color:var(--lgray);cursor:pointer }
+.fbar.sc{ flex-wrap:nowrap;overflow-x:auto;margin:8px -14px 0;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch }
+.fbar.sc::-webkit-scrollbar{ display:none }
+.fbar .fchip{ background:#fff;flex:none }
+.fbar .fchip.on,.fbar .fchip.w.on{ background:#161412;color:#fff;border-color:#161412 }
+.fbar .fchip.w{ background:#fffaf6 }
+.uhd{ display:flex;align-items:center;gap:10px;margin:6px 4px 8px;font-size:12.5px;color:var(--gray) }
+.uhd span{ flex:1;min-width:0 }
+.uhd b{ color:var(--ink);font-weight:700 }
+.uhd u{ flex:none;text-decoration:none;color:#cf5418;font-weight:650;cursor:pointer }
+.urw2,.crw{ display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid #f2efe8;cursor:pointer }
+.urw2:first-child,.crw:first-child{ border-top:0 }
+.urw2:active,.crw:active{ background:#faf8f4 }
+.av{ width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;background:#efece6;color:#8a8378 }
+.av.sq{ border-radius:11px;background:#1c1b18;color:#fff }
+.av.sm{ width:32px;height:32px;font-size:13px }
+.av.lg{ width:48px;height:48px;font-size:19px }
+.ub{ flex:1;min-width:0 }
+.ub .l1,.ub .l2{ display:flex;align-items:center;gap:6px;min-width:0 }
+.ub .l1 b{ min-width:0;font-size:15px;font-weight:650;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.ub .l1 em{ margin-left:auto;flex:none;font-style:normal;font-size:13px;font-weight:650;white-space:nowrap }
+.ub .l1 .n{ margin-left:auto;flex:none;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums }
+.ub .l2{ margin-top:3px }
+.ub .l2 .mt{ flex:1;min-width:0;font-size:12.5px;color:var(--lgray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.ub .l2 .mt s{ text-decoration:none;margin:0 5px;color:#ddd8cf }
+.ub .l2 .mt .old,.ub .l2 .mt b.old{ color:#cf5418;font-weight:600 }
+.ub .l2 time{ flex:none;font-size:11.5px;color:#c4beb4;font-variant-numeric:tabular-nums }
+.ub .l2 > em{ flex:none;font-style:normal;font-size:12px;font-weight:650 }
+.gx{ flex:none;font-style:normal;font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 6px;background:#f2efe9;color:var(--gray);line-height:18px }
+.gx.m{ background:#eaf1fd;color:#2b62c9 } .gx.f{ background:#fdeef4;color:#c94378 }
+.gx.none{ background:#fdeee4;color:#cf5418 }
+/* ── 시트(회원 · 클럽 · 메뉴) ── */
+.sheet{ position:relative;padding:8px 18px calc(28px + var(--sab));max-height:92vh;overscroll-behavior:contain }
+.sheet::before{ content:'';display:block;width:38px;height:4px;border-radius:2px;background:#e3dfd7;margin:0 auto 10px }
+.sheet .sh-top{ position:sticky;top:-8px;z-index:3;background:#fff;margin:0 -18px 6px;padding:8px 18px 10px }
+.sh-top.uhead{ justify-content:flex-start;gap:12px }
+.sh-top .uh{ flex:1;min-width:0 }
+.sh-top .uh h3{ white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.sh-top .uh span{ display:block;font-size:13px;color:var(--lgray);margin-top:1px }
+.sh-top .uh span b{ font-weight:650 }
+.sh-top .cl{ width:34px;height:34px;border-radius:50%;background:#f4f1eb;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;padding:0;flex:none }
+.upills{ display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px }
+.upills .gx{ font-size:12.5px;padding:3px 9px }
+.ul{ display:flex;align-items:baseline;gap:8px;font-size:12.5px;font-weight:700;color:#a8a29a;letter-spacing:.06em;margin:22px 0 4px }
+.ul span{ letter-spacing:0;font-weight:500 }
+.ur{ gap:14px;font-size:14.5px }
+.ur > span{ flex:none;max-width:48%;color:#8a847a }
+.ur > b{ min-width:0;text-align:right;font-weight:650;overflow-wrap:anywhere }
+.ur i.sub,.ur span i.sub{ font-style:normal;font-size:11.5px;color:var(--lgray);font-weight:500;margin-left:6px }
+.uact2{ display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px }
+.uact2.one{ grid-template-columns:1fr }
+.uact2 button{ border:1px solid var(--line);background:#fff;border-radius:12px;height:48px;font:inherit;font-size:15px;font-weight:650;color:var(--ink2);cursor:pointer }
+.udel{ display:block;width:100%;margin-top:14px;border:0;background:transparent;color:#c2410c;font:inherit;font-size:14px;font-weight:650;padding:12px 0;cursor:pointer }
+/* 메뉴 시트 */
+.mnu .g{ font-size:12px;font-weight:700;color:#b3aea4;letter-spacing:.08em;margin:16px 2px 6px }
+.mnu .g:first-child{ margin-top:2px }
+.mnu .grp{ background:#faf8f4;border-radius:14px;overflow:hidden }
+.mnu a{ display:flex;align-items:center;gap:8px;padding:13px 14px;border-top:1px solid #f0ece4;font-size:15.5px;font-weight:550;color:var(--ink);cursor:pointer }
+.mnu a:first-child{ border-top:0 }
+.mnu a span{ flex:1 }
+.mnu a em{ font-style:normal;font-size:12px;font-weight:700;color:#fff;background:#cf5418;border-radius:10px;padding:0 7px;line-height:20px }
+.mnu a svg{ color:#cfc9bf }
+.mnu a.on{ background:#1c1b18;color:#fff } .mnu a.on svg{ color:#8b857b }
+.mkey{ display:flex;align-items:center;margin-top:18px;padding:12px 2px 0;border-top:1px solid #f0ece4;font-size:13px;color:var(--lgray) }
+.mkey b{ color:var(--gray) }
+.mkey u{ margin-left:auto;text-decoration:none;color:#c2410c;font-weight:600;cursor:pointer }
+/* 찾기 — 휴대폰은 화면 전체 */
+.srov{ position:fixed;inset:0;z-index:80;background:var(--paper);display:none;flex-direction:column }
+.srov.on{ display:flex }
+.srov .st{ display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 10px;border-bottom:1px solid var(--line);background:#fff }
+.srov .sic{ position:absolute;margin-left:12px;color:var(--lgray);display:flex }
+.srov input{ flex:1;min-width:0;height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px 0 38px;font:inherit;font-size:16px;background:var(--paper);outline:0 }
+.srov input:focus{ border-color:#e0a06a;background:#fff }
+.srov .st button{ border:0;background:none;font:inherit;font-size:15px;font-weight:600;color:var(--ink2);cursor:pointer }
+.gsr2{ flex:1;overflow:auto;padding:6px 14px calc(30px + var(--sab)) }
+.gsr2 .hint2,.gsr2 .none{ text-align:center;color:var(--lgray);font-size:13.5px;padding:40px 0 }
+.gsr2 .g,.gsr .g{ display:flex;align-items:baseline;gap:6px;font-size:12px;font-weight:700;color:#b3aea4;letter-spacing:.07em;padding:14px 4px 6px }
+.gsr2 .g i,.gsr .g i{ font-style:normal;letter-spacing:0;font-weight:600 }
+.gsr2 a,.gsr a{ display:flex;align-items:center;gap:11px;padding:10px 6px;border-radius:12px;cursor:pointer }
+.gsr2 a:active,.gsr a:hover{ background:#f3f0ea }
+.gsr2 a .t,.gsr a .t{ flex:1;min-width:0 }
+.gsr2 a .t b,.gsr a .t b{ display:block;font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.gsr2 a .t span,.gsr a .t span{ display:block;font-size:12.5px;color:var(--lgray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.gsr2 a > em,.gsr a > em{ flex:none;font-style:normal;font-size:12.5px;font-weight:650;color:var(--gray) }
+.gsr:empty{ display:none }
+.gsr a .av,.gsr2 a .av{ display:flex;margin:0;font-size:13px;color:#8a8378 }
+@media (max-width:1000px){
+  body{ padding:0 0 calc(var(--tabh) + var(--sab) + 30px) }
+  .wrap{ display:block;max-width:none }
+  .wrap > .nav{ display:none }                                  /* 위 칩 메뉴 대신 아래 탭바 */
+  .main{ padding:0 14px }
+  .main > .hd{ position:sticky;top:0;z-index:30;align-items:center;margin:0 -14px 10px;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 10px;
+    background:rgba(250,248,245,.94);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px) }
+  .main > .hd h1{ font-size:25px;line-height:1.25 }
+  .main > .hd .gs,.main > .hd .who{ display:none }
+  .main > .hd .ib{ display:flex;align-items:center;justify-content:center;margin-left:auto;width:40px;height:40px;border-radius:50%;
+    border:0;background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(40,30,18,.08);cursor:pointer }
+  .tabbar{ display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:50;
+    height:calc(var(--tabh) + var(--sab));padding:6px 4px var(--sab);background:rgba(255,255,255,.96);
+    -webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);border-top:1px solid #ece8e0 }
+  .tabbar a{ position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#a49e94;cursor:pointer;
+    -webkit-tap-highlight-color:transparent }
+  .tabbar a span{ font-size:11px;font-weight:600;letter-spacing:-.02em;max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  .tabbar a.on{ color:var(--ink) }
+  .tabbar a.on span{ font-weight:750 }
+  .tabbar a em{ position:absolute;top:2px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+    background:#cf5418;color:#fff;font-style:normal;font-size:11px;font-weight:700;line-height:18px;text-align:center;border:2px solid #fff;box-sizing:content-box }
+  .card{ border-radius:18px }
+  .more{ flex-wrap:nowrap;overflow-x:auto;margin-left:-14px;margin-right:-14px;padding:0 14px 2px;scrollbar-width:none }
+  .more::-webkit-scrollbar{ display:none }
+  .more span{ flex:none }
+  .kpi b{ font-size:22px }
+  #toast{ bottom:calc(var(--tabh) + var(--sab) + 14px) }
+  /* 아이폰은 16px 보다 작은 입력칸을 누르면 화면을 확대한다 — 칸 글자를 16px 로 */
+  .fld input,.fld select,.frm input,.frm select,.srch input,.gate input,.cirow input,#roleQ{ font-size:16px }
+  .ov{ z-index:70 }
+}
+@media (min-width:1001px){
+  .ufl{ position:static;margin:0;padding:0 0 8px;background:none }
+  .fbar.sc{ flex-wrap:wrap;overflow:visible;margin:10px 0 0;padding:0 }
+  .main .card.list{ max-width:none }
+}
+/* ── MATSU CUP 휴대폰 운영 ── */
+.cuph{ display:flex;align-items:flex-start;gap:10px;margin:0 4px 12px }
+.cuph > div{ flex:1;min-width:0 }
+.cuph b{ display:block;font-size:17px;font-weight:750;letter-spacing:-.03em }
+.cuph span{ display:block;font-size:12.5px;color:var(--lgray);margin-top:2px }
+.cuph > em{ flex:none;font-style:normal;font-size:12px;font-weight:700;border-radius:10px;padding:3px 9px;background:#efece6;color:var(--gray) }
+.cuph > em.on{ background:#e6f4ec;color:var(--ok) }
+.cprog{ display:flex;align-items:baseline;gap:10px;flex-wrap:wrap }
+.cprog b{ font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1.1 }
+.cprog b i{ font-style:normal;font-size:13px;font-weight:650;color:var(--lgray);margin-left:2px }
+.cprog span{ font-size:12.5px;color:var(--gray) }
+.cbar{ position:relative;height:8px;border-radius:5px;background:#fbe3d6;margin-top:10px }
+.cbar s{ display:block;height:100%;border-radius:5px;background:#eb6834;text-decoration:none }
+.cbar i{ position:absolute;top:-4px;width:2px;height:16px;background:var(--ink);border-radius:1px }
+.cbl{ position:relative;height:16px;font-size:11px;color:var(--lgray);margin-top:3px }
+.cbl span{ position:absolute;top:0 } .cbl span:first-child{ left:0 } .cbl span:last-child{ right:0 }
+.cbl span[style]{ transform:translateX(-50%) }
+.cdet{ padding:0 }
+.cdet > summary{ list-style:none;padding:15px 16px;font-size:15px;font-weight:650;cursor:pointer;display:flex;align-items:center }
+.cdet > summary::-webkit-details-marker{ display:none }
+.cdet > summary::after{ content:'▾';margin-left:auto;color:var(--lgray);font-size:13px }
+.cdet[open] > summary::after{ content:'▴' }
+.cdet > :not(summary){ margin:0 16px 16px }
+.cte{ padding:14px 16px }
+.cte .l1{ display:flex;align-items:center;gap:8px;min-width:0 }
+.cte .l1 b{ min-width:0;font-size:16px;font-weight:700;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.cte .l1 .gl{ flex:none;font-size:12px;font-weight:700;color:#3d4e5f;background:#eef2f7;border-radius:6px;padding:1px 6px }
+.cte .l1 > em{ margin-left:auto;flex:none;font-style:normal;font-size:12px;font-weight:700;border-radius:10px;padding:2px 9px;background:#efece6;color:var(--gray) }
+.cte .l1 > em.ok{ background:#e6f4ec;color:var(--ok) } .cte .l1 > em.wait{ background:#fdeee4;color:#cf5418 }
+.cte .l2{ font-size:12.5px;color:var(--gray);margin-top:4px;line-height:1.55 }
+.cte .l2 b{ color:var(--ink);font-weight:700 } .cte .l2 b.old{ color:#cf5418 }
+.cte .l2 a{ color:#2b62c9;text-decoration:none;font-weight:600 }
+.crt{ display:inline-block;margin-top:8px;font-size:13px;font-weight:650;color:var(--ink2);cursor:pointer }
+.crl{ margin-top:6px;background:#faf8f4;border-radius:12px;padding:6px 12px }
+.crp{ padding:7px 0;border-top:1px solid #f0ece4 } .crp:first-child{ border-top:0 }
+.crp small{ display:block;font-size:11.5px;font-weight:700;color:#a8a29a;letter-spacing:.04em }
+.crp span{ display:block;font-size:14px;font-weight:600;margin-top:2px }
+.crp span i{ font-style:normal;font-size:11.5px;font-weight:500;color:var(--lgray);margin-left:3px }
+.cbtn{ display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;margin-top:12px;border:0;border-radius:13px;
+  background:#1c1b18;color:#fff;font:inherit;font-size:15.5px;font-weight:700;cursor:pointer }
+.cbtn.done{ background:#e6f4ec;color:var(--ok) } .cbtn.done span{ font-size:12px;font-weight:500;color:#5c9b78 }
+.csm{ display:flex;gap:16px;justify-content:center;margin-top:10px;font-size:13px }
+.csm u{ text-decoration:none;color:var(--gray);font-weight:600;cursor:pointer } .csm u.dz{ color:#c2410c }
+.ctie{ padding:12px 16px 6px }
+.ctie .th{ display:flex;align-items:baseline;gap:8px }
+.ctie .th b{ font-size:15px;font-weight:750;font-variant-numeric:tabular-nums }
+.ctie .th span{ font-size:12.5px;color:var(--gray);font-weight:600 }
+.ctie .th em{ margin-left:auto;font-style:normal;font-size:13px;font-weight:700;color:var(--lgray) }
+.ctie .th em.on{ color:#cf5418 } .ctie .th em.ok{ color:var(--ink) }
+.ctie .tv{ display:flex;align-items:center;gap:8px;margin:6px 0 4px;font-size:15px }
+.ctie .tv b{ flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.ctie .tv b:last-child{ text-align:right }
+.ctie .tv i{ font-style:normal;font-size:12px;color:var(--lgray) }
+.ctie .tm{ display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #f2efe8;cursor:pointer }
+.ctie .tm s{ flex:none;width:34px;text-decoration:none;font-size:12px;font-weight:700;color:var(--gray);background:#f4f1eb;border-radius:6px;text-align:center;line-height:22px }
+.ctie .tm span{ flex:1;min-width:0;font-size:12.5px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.ctie .tm span b{ color:var(--ink);font-weight:700 } .ctie .tm span i{ font-style:normal;color:#c9c3b8 }
+.ctie .tm em{ flex:none;font-style:normal;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums }
+.ctie .tm em.go{ font-size:13px;font-weight:700;color:#cf5418 }
+.cst + .cst{ margin-top:12px }
+.cst .sh{ font-size:12px;font-weight:700;color:#a8a29a;letter-spacing:.06em;margin-bottom:4px }
+.cst .sr{ display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #f2efe8;font-size:14px }
+.cst .sr i{ font-style:normal;width:14px;color:var(--lgray);font-weight:700 }
+.cst .sr b{ flex:1;min-width:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.cst .sr span{ font-size:12.5px;color:var(--gray) }
+.cst .sr em{ font-style:normal;font-weight:800;width:24px;text-align:right }
+/* 점수 시트 */
+.scw{ display:flex;align-items:center;gap:6px;margin-top:10px }
+.scw .col{ font-size:26px;font-weight:800;color:#d8d3ca }
+.scs{ flex:1;min-width:0;text-align:center;background:#faf8f4;border-radius:16px;padding:12px 8px }
+.scs b{ display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.scs small{ display:block;font-size:12px;color:var(--lgray);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.stp{ display:flex;align-items:center;justify-content:center;gap:10px;margin-top:10px }
+.stp u{ width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:22px;font-weight:600;
+  background:#fff;border:1px solid var(--line);color:var(--ink2);cursor:pointer;user-select:none }
+.stp u.p{ background:#eb6834;border-color:#eb6834;color:#fff }
+.stp em{ font-style:normal;font-size:36px;font-weight:800;min-width:36px;font-variant-numeric:tabular-nums }
+.scq{ display:grid;grid-template-columns:repeat(3,1fr);gap:8px }
+.scq span{ text-align:center;border:1px solid var(--line);border-radius:12px;padding:11px 0;font-size:15px;font-weight:700;cursor:pointer;background:#fff }
+.scq span.on{ border-color:#eb6834;background:#fff4ee;color:#cf5418 }
+/* 공지 · 옛 버전 */
+.ntold{ display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin-top:10px;font-size:13px;color:var(--gray) }
+.ntold b{ color:var(--ink);font-weight:700 }
+.ntold em{ font-style:normal;flex-basis:100%;font-size:12.5px;color:var(--lgray) }
+
+/* 공지 내용 — 여러 줄 */
+.fld textarea{ width:100%;padding:9px 11px;border:1px solid var(--ln,#e6e3dd);border-radius:10px;font:inherit;font-size:16px;
+  line-height:1.5;background:#fff;color:inherit;resize:vertical;-webkit-appearance:none;appearance:none }
+.fld textarea:focus{ outline:none;border-color:#e0a06a }
+#ntchips{ margin-bottom:0 }
+/* 대진표 — 휴대폰에서는 옆으로 민다 */
+.ct .cgh{ display:none;float:right;font-size:12px;font-weight:500;color:var(--lgray) }
+@media (max-width:720px){ .ct .cgh{ display:inline } }
+.cte .csm u.dz{ color:var(--lgray) }
+.ctie.ctnow{ box-shadow:0 0 0 2px #eb6834 }
+.ctie .th u.nw{ text-decoration:none;font-size:11.5px;font-weight:700;color:#fff;background:#eb6834;border-radius:20px;padding:2px 8px;margin-left:2px }
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -469,7 +763,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -490,6 +784,21 @@ function gLabel(v){ const t=String(v||'').trim();
   return (t==='F'||t.startsWith('여')) ? '여성' : (t==='M'||t.startsWith('남')) ? '남성' : ''; }
 
 function tabLabelAll(k){ for(const [,items] of NAV){ const h=items.find(x=>x[0]===k); if(h) return h[1]; } return HIDDEN[k]||k; }
+/* ── 틀 ── 휴대폰이 주인이다. 위 칩 두 줄 메뉴 대신
+   아래 탭바(현황 · 회원 · 클럽 · 오류 · 메뉴)와 메뉴 시트, 위에는 제목과 찾기 단추 하나.
+   넓은 화면(1000px 넘게)은 예전처럼 왼쪽 세로 메뉴 + 위 찾기 칸. */
+const TABBAR=[['stats','현황','pulse'],['users','회원','users'],['clubs','클럽','shield'],['errors','오류','alert']];
+const ICO={
+  pulse:'<path d="M3 12h4l2.5-6.5 5 13L17 12h4"/>',
+  users:'<circle cx="9" cy="8" r="3.4"/><path d="M2.8 19.5c.7-3.4 3.2-5.2 6.2-5.2s5.5 1.8 6.2 5.2"/><path d="M15.6 4.9a3.2 3.2 0 0 1 0 6.2M17.6 14.6c1.9.6 3.2 2.2 3.6 4.9"/>',
+  shield:'<path d="M12 3.2 19.5 6v5.6c0 4.6-3.1 7.9-7.5 9.2-4.4-1.3-7.5-4.6-7.5-9.2V6z"/>',
+  alert:'<path d="M12 4.2 21 19.5H3z"/><path d="M12 10v4.2"/><circle cx="12" cy="16.9" r=".6" fill="currentColor"/>',
+  grid:'<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  search:'<circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.6 15.6 4.6 4.6"/>',
+  chev:'<path d="m9.5 6 6 6-6 6"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+};
+const ico=(k,s)=>`<svg width="${s||22}" height="${s||22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k]||''}</svg>`;
 function shell(inner){
   const item=([k,l])=>`<a class="${TAB===k?'on':''}" onclick="go('${k}')">${l}${
         BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`;
@@ -501,34 +810,67 @@ function shell(inner){
     }
     return `<div class="g">${g}</div>` + items.map(item).join('');
   }).join('') + (HIDDEN[TAB] ? `<div class="g">숨긴 탭</div>${item([TAB,HIDDEN[TAB]])}` : '');
+  /* 아래 탭바 — 넷은 바로 가고, 나머지는 <메뉴> 시트에서. 메뉴 숫자는 탭바에 없는 곳의 급한 일 합계 */
+  const inBar=TABBAR.some(x=>x[0]===TAB);
+  const restBadge=Object.keys(BADGE).filter(k=>!TABBAR.some(x=>x[0]===k)).reduce((a,k)=>a+(+BADGE[k]||0),0);
+  const bar=`<nav class="tabbar" aria-label="관리자 메뉴">${TABBAR.map(([k,l,ic])=>
+      `<a class="${TAB===k?'on':''}" onclick="go('${k}')">${ico(ic,23)}<span>${l}</span>${BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`).join('')}
+    <a class="${inBar?'':'on'}" onclick="openMenu()">${ico('grid',23)}<span>${inBar?'메뉴':esc(tabLabel(TAB))}</span>${restBadge?`<em>${restBadge}</em>`:''}</a></nav>`;
   return `<div class="nav">${nav}</div><div class="main">
     <div class="hd"><h1>${esc(tabLabel(TAB))}</h1>
       ${gsearchBox()}
-      <span class="who">${esc(key().slice(0,4))}···</span></div>${inner}</div>`;
+      <span class="who">${esc(key().slice(0,4))}···</span>
+      <button class="ib" onclick="openSearch()" aria-label="찾기">${ico('search',21)}</button></div>${inner}</div>${bar}`;
 }
+/* 메뉴 시트 — 모든 화면을 무리 지어 한 장에. 숨긴 탭은 빼고, 지금 화면은 칠한다 */
+function openMenu(){
+  const row=([k,l])=>`<a class="${TAB===k?'on':''}" onclick="closeU();go('${k}')"><span>${l}</span>${
+    BADGE[k]?`<em>${BADGE[k]}</em>`:''}${ico('chev',16)}</a>`;
+  $('sheet').innerHTML=`<div class="sh-top"><h3>메뉴</h3><div class="cl" onclick="closeU()">×</div></div>
+    <div class="mnu">${NAV.map(([g,items])=>`<div class="g">${g}</div><div class="grp">${items.map(row).join('')}</div>`).join('')}</div>
+    <div class="mkey"><span>관리자 열쇠 <b>${esc(key().slice(0,4))}···</b></span>
+      <u onclick="if(confirm('이 기기에서 관리자 열쇠를 지울까요?')){localStorage.removeItem('matsu_admin_key');closeU();render();}">열쇠 지우기</u></div>`;
+  $('ov').classList.add('on','menu');
+}
+/* 휴대폰 찾기 — 화면 전체를 덮는 칸 하나. 이름 · 클럽 · 번호(#234) 무엇이든 */
+function openSearch(){
+  let o=$('srov');
+  if(!o){ o=document.createElement('div'); o.id='srov'; o.className='srov'; document.body.appendChild(o); }
+  o.innerHTML=`<div class="st"><span class="sic">${ico('search',19)}</span>
+      <input id="gsq2" type="search" placeholder="이름 · 클럽 · 번호(#234)" autocomplete="off" oninput="gsearch(this.value,'gsr2')">
+      <button onclick="closeSearch()">닫기</button></div>
+    <div id="gsr2" class="gsr2"><div class="hint2">회원 이름 · 이메일 · 클럽 이름 · 번호로 찾아요</div></div>`;
+  o.classList.add('on'); document.body.classList.add('noscroll');
+  setTimeout(()=>{ const i=$('gsq2'); if(i) i.focus(); }, 30);
+}
+function closeSearch(){ const o=$('srov'); if(o) o.classList.remove('on'); document.body.classList.remove('noscroll'); }
 function navMore(){ NAV_MORE=!NAV_MORE; try{ localStorage.setItem('adm_more', NAV_MORE?'1':'0'); }catch(e){} render(); }
 function gsearchBox(){
   return `<div class="gs">
     <input id="gsq" placeholder="이름 · 클럽 · 번호로 찾기" value="${esc(GSQ)}"
       oninput="gsearch(this.value)" onfocus="gsearch(this.value)">
-    <div id="gsr"></div></div>`;
+    <div id="gsr" class="gsr"></div></div>`;
 }
 let GSQ='', _gsT=null;
-function gsearch(q){
+function gsearch(q, box){
+  box=box||'gsr';
   GSQ=q; clearTimeout(_gsT);
-  const box=$('gsr'); if(!box) return;
-  if(!q.trim()){ box.innerHTML=''; return; }
+  const el=$(box); if(!el) return;
+  if(!q.trim()){ el.innerHTML = box==='gsr2' ? '<div class="hint2">회원 이름 · 이메일 · 클럽 이름 · 번호로 찾아요</div>' : ''; return; }
   /* 한 글자 칠 때마다 부르면 서버가 바쁘다 — 손이 멈추면 그때 찾는다 */
   _gsT=setTimeout(async()=>{
     let d; try{ d=await api('/admin/search?q='+encodeURIComponent(q)); }catch(e){ return; }
-    const b=$('gsr'); if(!b) return;
-    const sec=(t,rows)=>rows.length?`<div class="g">${t}</div>`+rows.join(''):'';
-    const u=d.users.map(x=>`<a onclick="gsPick('user',${x.id})"><b>${esc(x.name||'이름 없음')}</b>
-      <span>#${x.id} · ${esc(x.email||'-')}</span></a>`);
-    const c=d.clubs.map(x=>`<a onclick="gsPick('club',${x.id})"><b>${esc(x.name)}</b>
-      <span>#${x.id} · ${esc([x.sido,x.sigungu].filter(Boolean).join(' ')||'-')} · 회원 ${x.members}명</span></a>`);
-    const m=d.matches.map(x=>`<a onclick="gsPick('match',${x.id})"><b>${esc(x.loc||'매치')}</b>
-      <span>#${x.id} · ${esc(x.dt||'')} · ${esc(x.status||'')}</span></a>`);
+    const b=$(box); if(!b) return;
+    const sec=(t,rows)=>rows.length?`<div class="g">${t}<i>${rows.length}</i></div>`+rows.join(''):'';
+    const u=d.users.map(x=>{ const a=ago(x.last_seen);
+      return `<a onclick="gsPick('user',${x.id})"><span class="av sm">${esc(String(x.name||'?')[0])}</span>
+      <span class="t"><b>${esc(x.name||'이름 없음')}</b><span>#${x.id}${x.email?' · '+esc(x.email):''}</span></span>
+      <em class="${a.cls}">${a.txt}</em></a>`; });
+    const c=d.clubs.map(x=>`<a onclick="gsPick('club',${x.id})"><span class="av sm sq">${esc(String(x.name||'?')[0])}</span>
+      <span class="t"><b>${esc(x.name)}</b><span>#${x.id} · ${esc(shortRegion([x.sido,x.sigungu].filter(Boolean).join(' '))||'지역 없음')}</span></span>
+      <em>${x.members}명</em></a>`);
+    const m=d.matches.map(x=>`<a onclick="gsPick('match',${x.id})"><span class="av sm sq">M</span>
+      <span class="t"><b>${esc(x.loc||'매치')}</b><span>#${x.id} · ${esc(x.dt||'')} · ${esc(x.status||'')}</span></span></a>`);
     b.innerHTML = (u.length||c.length||m.length)
       ? sec('회원',u)+sec('클럽',c)+sec('매치',m)
       : '<div class="none">찾은 게 없어요</div>';
@@ -536,7 +878,8 @@ function gsearch(q){
 }
 function gsPick(kind,id){
   const b=$('gsr'); if(b) b.innerHTML='';
-  GSQ=''; 
+  closeSearch();
+  GSQ='';
   if(kind==='user'){ TAB='users'; render().then(()=>openU(id)); }
   else if(kind==='club'){ TAB='clubs'; render().then(()=>openC(id)); }
   else { TAB='matches'; render(); }
@@ -548,7 +891,14 @@ function tabLabel(k){ if(HIDDEN[k]) return HIDDEN[k];
   for(const [,items] of NAV){ const f=items.find(x=>x[0]===k); if(f) return f[1]; }
   return '맞수 관리자';
 }
-function go(k){ TAB=k; SUB=''; render(); }
+/* 화면 바꾸기 — 주소 끝(#users)도 함께 바꿔 휴대폰 뒤로 가기가 앞 화면으로 돌아오게 한다 */
+function go(k){
+  TAB=k; SUB='';
+  try{ if(location.hash!=='#'+k) history.pushState(null,'','#'+k); }catch(e){}
+  render(); try{ window.scrollTo(0,0); }catch(e){}
+}
+addEventListener('popstate', ()=>{ const k=(location.hash||'').slice(1)||'stats';
+  if(k!==TAB){ TAB=k; SUB=''; closeU(); render(); } });
 function subTabs(list){
   return `<div class="more">${list.map(([k,l])=>
     `<span class="${(SUB||list[0][0])===k?'on':''}" onclick="SUB='${k}';render()">${l}</span>`).join('')}</div>`;
@@ -571,6 +921,8 @@ async function render(){
   try{ await draw(); }
   catch(e){ $('app').innerHTML=shell(`<div class="card"><div class="empty">
     불러오지 못했어요<br><span style="font-size:var(--t0)">${esc(String(e.message).slice(0,80))}</span></div></div>`); }
+  /* 위에 붙는 머리 높이 — 회원 목록의 거르기 줄이 그 바로 아래에 붙는다 */
+  try{ const h=document.querySelector('.main > .hd'); if(h) document.documentElement.style.setProperty('--hdh', h.offsetHeight+'px'); }catch(e){}
 }
 async function saveKey(){ const v=($('k')||{}).value||''; if(!v) return;
   localStorage.setItem('matsu_admin_key', v.trim());
@@ -589,6 +941,7 @@ async function draw(){
   if(TAB==='reports') return drawReports();
   if(TAB==='posts')   return drawPosts();
   if(TAB==='payouts') return drawPayouts();
+  if(TAB==='hosts')   return drawHostMatches();
   if(TAB==='staff')   return drawStaff();
   if(TAB==='banners') return drawBanners();
   if(TAB==='bq')      return drawBQ();
@@ -793,37 +1146,50 @@ async function clearErrors(){
    전체 발송은 되돌릴 수 없다. 그래서 보내기 전에 <몇 명에게 가는지>를
    버튼 바로 옆에 크게 띄운다 — 숫자를 보고 손이 멈출 수 있어야 한다. */
 let NT_TO='dormant', NT_N=null;
+/* 공지 보내기 — 받을 사람 수를 버튼 바로 옆에 크게. <옛 버전 앱>을 고르면 기기별 수와 최신 버전을 보여주고
+   제목 · 내용을 업데이트 안내로 채워 둔다(비어 있을 때만). */
+let NT_INFO=null;
 async function drawNotify(){
   const T=[['all','전체'],['active','최근 30일 접속'],['dormant','30일 이상 잠듦'],
-           ['ghost','가입 후 미접속']];
+           ['ghost','가입 후 미접속'],['oldv','옛 버전 앱']];
   const chips=T.map(([k,l])=>`<span class="${NT_TO===k?'on':''}"
     onclick="NT_TO='${k}';NT_N=null;render()">${l}</span>`).join('');
-  if(NT_N===null){ try{ NT_N=(await api('/admin/notify/count?to='+NT_TO)).n; }catch(e){ NT_N=0; } }
-
+  if(NT_N===null){ try{ NT_INFO=await api('/admin/notify/count?to='+NT_TO); NT_N=NT_INFO.n; }catch(e){ NT_N=0; NT_INFO=null; } }
+  const old=NT_TO==='oldv';
+  const LT=(NT_INFO&&NT_INFO.latest)||{}, BY=(NT_INFO&&NT_INFO.by)||{};
+  const latestTx=Object.keys(LT).map(p=>`${platNm(p)} ${esc(LT[p])}`).join(' · ');
+  const verOne=[...new Set(Object.values(LT))];
+  const upBody=verOne.length===1
+    ? `App Store · Play 스토어에서 맞수를 최신 버전(${verOne[0]})으로 업데이트해 주세요 · 대진과 맞수컵이 더 좋아졌어요`
+    : 'App Store · Play 스토어에서 맞수를 최신 버전으로 업데이트해 주세요';
   $('app').innerHTML=shell(`
     <div class="card"><div class="ct">누구에게</div>
-      <div class="more" style="margin:0">${chips}</div>
+      <div class="more" id="ntchips">${chips}</div>
       <div class="kpi3" style="margin-top:12px">
         <div><b class="${NT_N>200?'warn':''}">${fmt(NT_N)}</b><i>받을 사람</i></div>
       </div>
+      ${old?`<div class="ntold">${Object.keys(BY).length?Object.keys(BY).map(p=>`<span>${platNm(p)} <b>${fmt(BY[p])}명</b></span>`).join(''):''}
+        ${latestTx?`<em>지금 가장 새 버전 · ${latestTx}</em>`:''}</div>
+        <div class="note">앱을 쓰면서 최신이 아닌 회원이에요(버전을 안 알려주는 옛 앱 포함) · 웹으로만 들어오는 회원은 빠져요.</div>`:''}
       ${NT_TO==='all'?`<div class="note">전체 발송은 되돌릴 수 없어요 ·
         정말 모두에게 가야 하는 내용인지 한 번 더 봐주세요.</div>`:''}
     </div>
     <div class="card"><div class="ct">무엇을</div>
       <div class="fld"><label>제목</label>
-        <input id="nt" maxlength="60" placeholder="새 버전이 나왔어요"></div>
+        <input id="nt" maxlength="60" placeholder="새 버전이 나왔어요" value="${old?'새 버전이 나왔어요':''}"></div>
       <div class="fld"><label>내용</label>
-        <input id="nb" maxlength="200" placeholder="대진이 더 공정해졌어요 · 업데이트해 주세요"></div>
+        <textarea id="nb" maxlength="200" rows="3" placeholder="대진이 더 공정해졌어요 · 업데이트해 주세요">${old?esc(upBody):''}</textarea></div>
       <div class="frow">
         <div class="fld"><label>아이콘</label>
-          <input id="ni" maxlength="4" value="📢"></div>
+          <input id="ni" maxlength="4" value="${old?'⬆️':'📢'}"></div>
         <div class="fld"><label>누르면 갈 곳 (비워도 돼요)</label>
           <input id="nl" placeholder="home"></div>
       </div>
       <button class="b on" style="width:100%;padding:14px;margin-top:8px;font-size:var(--t2)"
-        onclick="sendNotice()">${fmt(NT_N)}명에게 보내기</button>
-      <div class="note">알림함에 남고 폰 알림도 함께 갑니다.</div>
+        onclick="sendNotice()" ${NT_N?'':'disabled'}>${NT_N?`${fmt(NT_N)}명에게 보내기`:'받을 사람이 없어요'}</button>
+      <div class="note">알림함에 남고 폰 알림도 함께 갑니다.${old?' 옛 앱은 알림을 눌러도 스토어로 바로 가지 않아요 — 내용에 <b>어디서 업데이트하는지</b>를 꼭 적어 주세요.':''}</div>
     </div>`);
+  const on=document.querySelector('#ntchips span.on'); if(on) on.parentNode.scrollLeft=Math.max(0, on.offsetLeft-on.parentNode.offsetLeft-24);
 }
 async function sendNotice(){
   const title=($('nt')||{}).value||'', body=($('nb')||{}).value||'';
@@ -995,157 +1361,136 @@ async function drawRegions(){
     </div>`);
 }
 
-/* ── 현황 ── 숫자만 보여주고 끝나던 화면에 <손볼 것>을 더한다.
-   관리자가 여는 이유는 대개 할 일을 찾기 위해서다. */
+/* ── 현황 ── 여는 이유는 대개 할 일을 찾기 위해서다. 맨 위에 <손볼 것>,
+   그다음 <지금 쓰는 사람>(오늘 · 이번 주 · 이번 달 + 2주 가입 막대), <챙길 사람>(누르면 공지),
+   <클럽이 돌아가나>, 기기 · 가입 경로, 알림 상태 순. */
 async function drawStats(){
-  /* 알림이 안 올 때 <키·토큰·발송> 중 어디가 문제인지 여기서 바로 본다.
-     예전에는 콘솔을 열어 직접 불러와야 했다. */
+  /* 알림이 안 올 때 <키·토큰·발송> 중 어디가 문제인지 여기서 바로 본다. */
   const [s, users, reps, push, sess] = await Promise.all([
     api('/admin/stats'), api('/admin/users').catch(()=>[]), api('/admin/reports').catch(()=>[]),
     api('/admin/push-status').catch(()=>null), api('/admin/session-health').catch(()=>null)
   ]);
   const noG=users.filter(u=>!gLabel(u.gender)).length;
   const todo=[];
-  /* 로그인 만료 — 서버가 시크릿을 바꿨으면 전 회원이 풀린다. 그 사실을 여기서 바로 본다.
-     7일 안에 접속한 사람은 토큰이 자동 갱신되니 걱정 없고, 30일 넘게 안 온 사람만 다음에 다시 로그인한다. */
+  /* 로그인 만료 — 서버가 시크릿을 바꿨으면 전 회원이 풀린다 */
   if(sess && sess.jwt_changed_at && Date.now()-sess.jwt_changed_at < 7*864e5)
     todo.push(['서버 시크릿이 바뀌었어요','그 시점 이후 모든 회원이 다시 로그인해야 해요 · Railway 변수 JWT_SECRET 확인',
-      new Date(sess.jwt_changed_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}), `go('health')`]);
+      new Date(sess.jwt_changed_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}), `go('health')`,'red']);
   if(sess && sess.expired>0)
-    todo.push(['로그인이 풀린 회원','30일 넘게 안 열어서 다음에 다시 로그인해야 해요 · 공지로 부를 수 있어요',`${sess.expired}명`,`USEEN='dormant';go('users')`]);
-  if(noG) todo.push(['성별이 빈 회원','대진에서 남복·혼복이 잘못 잡혀요',`${noG}명`,`USEEN='nog';go('users')`]);
-  if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`]);
-  /* 여러 사람에게 나는 오류는 신고보다 먼저 봐야 한다 — 제보가 오기 전에 알아야 하니까 */
+    todo.push(['로그인이 풀린 회원','30일 넘게 안 열어서 다음에 다시 로그인해야 해요 · 공지로 부를 수 있어요',`${sess.expired}명`,`USEEN='old';go('users')`,'gold']);
+  if(noG) todo.push(['성별이 빈 회원','대진에서 남복 · 혼복이 잘못 잡혀요',`${noG}명`,`USEEN='nog';go('users')`,'gold']);
+  /* 옛 버전 앱 — 새 기능(맞수컵 · 대진)이 안 보이는 회원. 누르면 그분들에게만 업데이트 안내 */
+  { const LV=latestVers(users); const ov=users.filter(u=>{ const a=appOf(u, LV); return a && a.old; }).length;
+    if(ov) todo.push(['옛 버전 앱을 쓰는 회원','새 기능이 안 보여요 · 누르면 업데이트 안내를 그분들에게만 보내요',`${ov}명`,`NT_TO='oldv';NT_N=null;go('notify')`,'gold']); }
+  if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`,'red']);
+  /* 여러 사람에게 나는 오류는 신고보다 먼저 — 제보가 오기 전에 알아야 하니까 */
   try{ const er=await api('/admin/errors?days=3');
-    /* 통신 실패는 코드 문제가 아니다 — 손볼 것에 섞으면 <할 일>이 아닌 게 올라온다 */
-    const many=(er.groups||[]).filter(g=>g.people>=3
-      && g.kind!=='net' && g.kind!=='timeout').length;
-    if(many) todo.unshift(['여러 사람에게 나는 오류','한 명만 겪는 게 아니면 코드 문제예요',
-      `${many}종류`,`go('errors')`]);
+    const many=(er.groups||[]).filter(g=>g.people>=3 && g.kind!=='net' && g.kind!=='timeout').length;
+    if(many) todo.unshift(['여러 사람에게 나는 오류','한 명만 겪는 게 아니면 코드 문제예요',`${many}종류`,`go('errors')`,'red']);
   }catch(e){}
-  const kpi=[['회원',s.users],['클럽',s.clubs],['오픈매치',s.open_matches!=null?s.open_matches:s.matches]];
 
-  /* ── 살아 있는 앱인지 ──
-     총계만 보면 늘고 있는지 줄고 있는지 알 수 없다.
-     오늘·이번 주·이번 달 들어온 사람이 진짜 지표다. */
+  const todoBlock = todo.length ? `
+    <div class="sec"><b>손볼 것</b><em class="hot">${todo.length}</em></div>
+    <div class="card list">${todo.map(([t,d,n,act,tone])=>
+      `<a class="trow" onclick="${act}"><i class="dot ${tone}"></i>
+        <span class="t"><b>${t}</b><span>${d}</span></span><em>${n}</em>${ico('chev',16)}</a>`).join('')}</div>`
+    : `<div class="card calm"><b>지금 손볼 것이 없어요</b><span>조용한 게 좋은 겁니다</span></div>`;
+
+  /* ── 지금 쓰는 사람 — 총계보다 <오늘 · 이번 주 · 이번 달>이 진짜 지표다 ── */
+  const SU=(s.signups||[]);
+  const dayN={}; SU.forEach(x=>{ dayN[x.d]=x.n; });
+  const today=Math.floor(Date.now()/864e5);
+  const days=Array.from({length:14},(_,i)=>{ const d=today-13+i; return { d, n:dayN[d]||0 }; });
+  const sum14=days.reduce((a,x)=>a+x.n,0), max14=Math.max(1,...days.map(x=>x.n));
+  const md=d=>{ const t=new Date(d*864e5); return `${t.getMonth()+1}.${t.getDate()}`; };
+  const bars = SU.length ? `<div class="spk">
+      <div class="sh"><span>최근 2주 가입</span><b id="spkv">${fmt(sum14)}명</b></div>
+      <div class="bars" onmouseleave="spkTip()">${days.map(x=>`<i data-t="${md(x.d)} · ${x.n}명" onmouseenter="spkTip(this)" onclick="spkTip(this)"
+        ><s style="height:${x.n?Math.max(10,Math.round(x.n/max14*100)):0}%"></s></i>`).join('')}</div>
+      <div class="ax"><span>${md(days[0].d)}</span><span>오늘</span></div></div>` : '';
   const live = s.dau==null ? '' : `
-    <div class="card"><div class="ct">얼마나 쓰고 있나</div>
-      <div class="kpi3">
-        <div><b>${fmt(s.dau)}</b><i>오늘 접속</i></div>
-        <div><b>${fmt(s.wau)}</b><i>이번 주</i></div>
-        <div><b>${fmt(s.mau)}</b><i>이번 달</i></div>
-      </div>
-      <!-- 숫자만 있고 눌러도 아무 일이 없었다. 지표는 행동으로 이어져야 값이 있다.
-           누르면 그 사람들에게 보낼 공지 화면이 대상까지 골라진 채로 열린다. -->
-      <div class="kpi3">
-        <div><b>${fmt(s.newWeek)}</b><i>주간 가입</i></div>
-        <div style="cursor:pointer" onclick="NT_TO='ghost';NT_N=null;go('notify')">
-          <b class="${s.ghost?'warn':''}">${fmt(s.ghost)}</b><i>가입 후 미접속 ›</i></div>
-        <div style="cursor:pointer" onclick="NT_TO='dormant';NT_N=null;go('notify')">
-          <b class="${s.dormant?'warn':''}">${fmt(s.dormant)}</b><i>30일 이상 잠듦 ›</i></div>
-      </div>
-      <div class="note" style="margin-top:8px">
-        가입 후 한 번도 안 들어온 사람이 많으면 첫 화면에서 막히는 것이다.<br>
-        <b>숫자를 누르면</b> 그분들에게 보낼 공지 화면이 열린다.</div>
+    <div class="sec"><b>지금 쓰는 사람</b></div>
+    <div class="card">
+      <div class="h3c">
+        <div><b>${fmt(s.dau)}</b><span>오늘</span></div>
+        <div><b>${fmt(s.wau)}</b><span>이번 주</span></div>
+        <div><b>${fmt(s.mau)}</b><span>이번 달</span></div></div>
+      ${bars}
+      <div class="tot"><span>회원 <b>${fmt(s.users)}</b></span><span>클럽 <b>${fmt(s.clubs)}</b></span><span>오픈매치 <b>${fmt(s.open_matches!=null?s.open_matches:s.matches)}</b></span></div>
     </div>
-    <div class="card"><div class="ct">클럽이 돌아가나</div>
-      <div class="kpi3">
-        <div><b>${fmt(s.clubsAlive)}</b><i>이번 달 활동 클럽</i></div>
-        <div><b>${fmt(s.bracketsMonth)}</b><i>이번 달 대진</i></div>
-        <div><b>${fmt(s.exchanges)}</b><i>교류전</i></div>
-      </div>
-      <div class="note" style="margin-top:8px">
-        전체 클럽 ${fmt(s.clubs)}개 중 ${fmt(s.clubsAlive)}개가 이번 달에 모임을 열었어요.
-        ${s.clubs>s.clubsAlive ? `나머지 ${fmt(s.clubs-s.clubsAlive)}개는 만들어만 두고 안 쓰는 중이에요.` : ''}</div>
+    <div class="sec"><b>챙길 사람</b><span>누르면 그분들에게 보낼 공지가 열려요</span></div>
+    <div class="card list">
+      <a class="trow" onclick="NT_TO='ghost';NT_N=null;go('notify')"><span class="t"><b>가입하고 한 번도 안 들어옴</b>
+        <span>많으면 첫 화면에서 막히는 거예요</span></span><em class="${s.ghost?'hot':''}">${fmt(s.ghost)}명</em>${ico('chev',16)}</a>
+      <a class="trow" onclick="NT_TO='dormant';NT_N=null;go('notify')"><span class="t"><b>30일 넘게 잠듦</b>
+        <span>다시 부를 이유를 만들어 주세요</span></span><em class="${s.dormant?'hot':''}">${fmt(s.dormant)}명</em>${ico('chev',16)}</a>
+      <a class="trow" onclick="USEEN='new';go('users')"><span class="t"><b>이번 주 새로 가입</b>
+        <span>누가 들어왔는지 회원 목록에서 봐요</span></span><em>${fmt(s.newWeek)}명</em>${ico('chev',16)}</a>
     </div>
-    ${(s.byPlat||[]).length ? `<div class="card"><div class="ct">어느 기기로 쓰나</div>
-      ${s.byPlat.map(p=>{
-        const NM={ios:'아이폰 앱', android:'안드로이드 앱', web:'웹'};
-        const tot=s.byPlat.reduce((a,b)=>a+b.n,0)||1;
-        const w=Math.round(p.n/tot*100);
-        return `<div class="prow"><span class="l">${NM[p.p]||p.p}</span>
-          <span class="t"><i style="width:${w}%;background:${p.p==='ios'?'#161412':'#ec6a2e'}"></i></span>
-          <span class="v">${fmt(p.n)}<em>${w}%</em></span></div>`; }).join('')}
-      <div class="note" style="margin-top:8px">한 번이라도 접속한 회원 기준이에요</div>
-    </div>` : ''}
-    ${(s.byProvider||[]).length ? `<div class="card"><div class="ct">어디로 가입했나</div>
-      ${s.byProvider.map(p=>{
-        const NM={kakao:'카카오',google:'구글',apple:'애플',dev:'개발'};
-        const w=Math.round(p.n/s.users*100);
-        return `<div class="prow"><span class="l">${NM[p.p]||p.p}</span>
-          <span class="t"><i style="width:${w}%"></i></span>
-          <span class="v">${fmt(p.n)}<em>${w}%</em></span></div>`; }).join('')}
-    </div>` : ''}`;
+    <div class="sec"><b>클럽이 돌아가나</b></div>
+    <a class="card list" onclick="CF='sleep';go('clubs')" style="display:block">
+      <div class="meter"><div class="mh"><span>이번 달 모임을 연 클럽</span><b>${fmt(s.clubsAlive)}<i> / ${fmt(s.clubs)}곳</i></b></div>
+        <div class="mt"><s style="width:${s.clubs?Math.round(s.clubsAlive/s.clubs*100):0}%"></s></div></div>
+      <div class="mfoot"><span>이번 달 대진 <b>${fmt(s.bracketsMonth)}</b></span><span>교류전 <b>${fmt(s.exchanges)}</b></span>
+        ${s.clubs>s.clubsAlive?`<u>잠든 클럽 ${fmt(s.clubs-s.clubsAlive)}곳 보기 ›</u>`:''}</div></a>
+    ${share('어느 기기로 쓰나', s.byPlat, {ios:'아이폰 앱', web:'웹', android:'안드로이드 앱'}, '한 번이라도 접속한 회원 기준')}
+    ${share('어디로 가입했나', s.byProvider, {kakao:'카카오', google:'구글', apple:'애플', dev:'개발'})}`;
+
   /* 알림 상태 — 준비됐는지, 폰이 몇 대 붙어 있는지 */
   const ios=push ? ((push.devices||[]).find(d=>d.platform==='ios')||{}).n||0 : 0;
   const web=push ? ((push.devices||[]).find(d=>d.platform==='web')||{}).n||0 : 0;
-  /* apns 가 없는 응답(옛 서버·설정 전)이 오면 여기서 화면 전체가 죽었다.
-     현황은 첫 화면이라 한 칸이 비는 것보다 안 열리는 게 훨씬 나쁘다. */
+  /* apns 가 없는 응답(옛 서버·설정 전)이 와도 화면 전체가 죽지 않게 */
   const apns = (push && push.apns) || null;
   const pushBlock = !push ? '' : `
-    <div class="card"><div class="ct">알림</div>
+    <div class="sec"><b>알림</b></div>
+    <div class="card">
       <div class="rw"><div class="nm">
         <b>${!apns?'설정을 읽지 못했어요':apns.ready?'보낼 준비가 됐어요':'아직 설정이 덜 됐어요'}
-          <span class="tag ${apns&&apns.ready?'g':''}">${apns&&apns.ready?'APNs':'미설정'}</span></b>
-        <span>${esc((apns&&apns.bundle_id)||'Bundle ID 없음')}${
-          apns&&apns.key_id?` · 키 ${esc(apns.key_id)}`:''}</span></div></div>
+          <span class="tag ${apns&&apns.ready?'g':'o'}">${apns&&apns.ready?'APNs 켜짐':'미설정'}</span></b>
+        <span>${esc((apns&&apns.bundle_id)||'Bundle ID 없음')}${apns&&apns.key_id?` · 키 ${esc(apns.key_id)}`:''}</span></div></div>
       <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
         <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
         ${ios?'':`<span class="b">확인 필요</span>`}</div>
       ${(()=>{
-        /* 진단(diag)과 실제 등록 요청은 나눠 본다 — 섞으면 요약이 엉뚱해진다 */
         const ALL=push.tries||[];
-        const T=ALL.filter(t=>t.platform!=='diag');
-        const D=ALL.filter(t=>t.platform==='diag');
-        if(!T.length && !D.length) return `<div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
-          <span>아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요</span></div>
-          <span class="b">앱 확인</span></div>`;
-        /* 도착했는데 저장까지 안 갔으면 <어디서 막혔는지>가 답이다 */
+        const T=ALL.filter(t=>t.platform!=='diag'), Dg=ALL.filter(t=>t.platform==='diag');
+        if(!T.length && !Dg.length) return `<div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
+          <span>아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요</span></div><span class="b">앱 확인</span></div>`;
         const done=T.some(t=>t.result==='완료');
         const noAuth=T.some(t=>/로그인 토큰 없음/.test(t.extra||''));
         const t0=T[0];
         const head = !T.length
-          ? `<div class="rw"><div class="nm"><b>등록 요청은 아직 없어요</b>
-              <span>아래 앱 기록에서 어디서 멈췄는지 보세요</span></div>
-              <span class="b">앱 확인</span></div>`
-          : `<div class="rw"><div class="nm"><b>${
-              done?'등록까지 됐어요':noAuth?'요청은 왔는데 로그인이 안 실려 있어요':'요청은 왔는데 저장이 안 됐어요'}</b>
-            <span>${ymd(t0.at)} · ${esc(t0.platform)} · 토큰 ${t0.token_len}자 · ${esc(t0.result)}${
-              t0.extra?' ('+esc(t0.extra)+')':''}${T.length>1?` · 시도 ${T.length}회`:''}</span></div>
+          ? `<div class="rw"><div class="nm"><b>등록 요청은 아직 없어요</b><span>아래 앱 기록에서 어디서 멈췄는지 보세요</span></div><span class="b">앱 확인</span></div>`
+          : `<div class="rw"><div class="nm"><b>${done?'등록까지 됐어요':noAuth?'요청은 왔는데 로그인이 안 실려 있어요':'요청은 왔는데 저장이 안 됐어요'}</b>
+            <span>${ymd(t0.at)} · ${esc(t0.platform)} · 토큰 ${t0.token_len}자 · ${esc(t0.result)}${t0.extra?' ('+esc(t0.extra)+')':''}${T.length>1?` · 시도 ${T.length}회`:''}</span></div>
             ${done?'':`<span class="b">${noAuth?'로그인 확인':'서버 확인'}</span>`}</div>`;
-        return head + D.slice(0,4).map(t=>
-            `<div class="rw"><div class="nm"><b style="font-weight:500">${esc(t.result)}</b>
-              <span>${esc(t.extra||'')}</span></div>
-              <span class="b" style="opacity:.6">${ymd(t.at)}</span></div>`).join('');
+        return head + Dg.slice(0,4).map(t=>`<div class="rw"><div class="nm"><b style="font-weight:500">${esc(t.result)}</b>
+              <span>${esc(t.extra||'')}</span></div><span class="b" style="opacity:.6">${ymd(t.at)}</span></div>`).join('');
       })()}
-      ${(()=>{
-        /* 잠금화면 시계(라이브 액티비티) 토큰은 알림 토큰과 아예 다른 것이다.
-           위의 <등록된 기기>에 섞어 세면 <14대나 되는데 왜 카드가 안 뜨지>가 된다. */
-        const n=(push.live_tokens==null) ? null : push.live_tokens;
-        if(n===null) return '';
-        return `<div class="rw"><div class="nm"><b>잠금화면 시계 ${n}대</b>
-          <span>${n ? '라이브 액티비티가 붙어 있어요'
-            : '앱에서 ActivityKit 토큰이 아직 안 왔어요 · 알림 토큰과는 다른 값이에요'}</span></div>
-          ${n?'':'<span class="b">앱 확인</span>'}</div>`;
-      })()}
+      ${push.live_tokens==null?'':`<div class="rw"><div class="nm"><b>잠금화면 시계 ${push.live_tokens}대</b>
+        <span>${push.live_tokens?'라이브 액티비티가 붙어 있어요':'앱에서 ActivityKit 토큰이 아직 안 왔어요 · 알림 토큰과는 다른 값이에요'}</span></div></div>`}
       ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
         <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
         <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
     </div>`;
-  /* 손볼 것을 맨 위로 올린다. 관리자가 이 화면을 여는 이유가 그것인데
-     예전에는 지표를 다 지나야 나왔다. 아무것도 없는 날은 이 칸이 통째로 사라져
-     <오늘은 조용하다> 는 것 자체가 한눈에 읽힌다. */
-  const todoBlock = todo.length ? `
-    <div class="warn"><b>손볼 것 ${todo.length}</b><u onclick="${todo[0][3]}">첫 번째 보기 ›</u></div>
-    <div class="card">${todo.map(([t,d,n,act])=>
-      `<div class="rw" onclick="${act}" style="cursor:pointer">
-        <div class="nm"><b>${t}</b><span>${d}</span></div><span class="b">${n}</span></div>`).join('')}</div>`
-    : `<div class="card"><div class="empty">지금 손볼 것이 없어요<br>
-        <span style="font-size:var(--t0)">조용한 게 좋은 겁니다</span></div></div>`;
-  $('app').innerHTML=shell(`
-    ${todoBlock}
-    <div class="kpi">${kpi.map(([l,v])=>`<div><b>${fmt(v)}</b><span>${l}</span></div>`).join('')}</div>
-    ${live+pushBlock}`);
+  $('app').innerHTML=shell(`${todoBlock}${live}${pushBlock}`);
+}
+/* 2주 가입 막대 — 누르거나 올리면 그날 숫자 */
+function spkTip(el){ const v=$('spkv'); if(!v) return;
+  document.querySelectorAll('.spk .bars i.on').forEach(x=>x.classList.remove('on'));
+  if(!el){ v.textContent=v.dataset.sum||v.textContent; return; }
+  if(!v.dataset.sum) v.dataset.sum=v.textContent;
+  el.classList.add('on'); v.textContent=el.dataset.t; }
+/* 몫 막대 — 한 줄 막대(칸 사이 2px 틈) + 아래 범례(색 점 · 이름 · 수 · %).
+   색은 정체를 말할 뿐 글자는 늘 먹색. 세 칸까지는 주황 · 파랑 · 청록 순서 고정 */
+function share(title, rows, NM, note){
+  rows=(rows||[]).filter(r=>r.n>0); if(!rows.length) return '';
+  const C=['#eb6834','#2a78d6','#1baf7a','#eda100','#e87ba4'];
+  const tot=rows.reduce((a,b)=>a+b.n,0)||1;
+  return `<div class="sec"><b>${title}</b></div><div class="card">
+    <div class="shr">${rows.map((r,i)=>`<s style="flex:${r.n};background:${C[i%C.length]}" title="${esc(NM[r.p]||r.p)} ${fmt(r.n)}명"></s>`).join('')}</div>
+    <div class="lg">${rows.map((r,i)=>`<span><i style="background:${C[i%C.length]}"></i>${esc(NM[r.p]||r.p)}<b>${fmt(r.n)}</b><em>${Math.round(r.n/tot*100)}%</em></span>`).join('')}</div>
+    ${note?`<div class="note">${note}</div>`:''}</div>`;
 }
 
 /* ── 회원 ── 이름만 굵게, 나머지는 회색 한 줄. 성별은 세 칸 토글. */
@@ -1178,17 +1523,50 @@ function appOf(u, L){
   if(u.app_ver) return {plat, ver:u.app_ver, old: !!top && verCmp(verShort(u.app_ver), verShort(top))<0};
   return {plat, ver:'', old: !!top};          // 버전을 안 알려주는 옛 앱
 }
+/* 지역은 짧게 — <서울특별시 강남구> → <서울 강남구>, <경기도 용인시 처인구> → <용인시 처인구> */
+function shortRegion(r){
+  const s=String(r||'').trim(); if(!s) return '';
+  const p=s.split(/\s+/);
+  const city=p[0].replace(/(특별시|광역시|특별자치시)$/,'');
+  if(/(특별시|광역시|특별자치시)$/.test(p[0])) return [city].concat(p.slice(1)).join(' ');
+  if(/도$/.test(p[0]) && p.length>1) return p.slice(1).join(' ');
+  return s;
+}
+const UFILTER=[
+  ['','전체'],['today','오늘'],['week','7일'],['new','새로 가입'],['old','30일+',1],['never','기록 없음'],
+  ['ios','아이폰'],['android','안드로이드'],['web','웹'],['oldv','옛 버전',1],['nog','성별 없음',1]];
+/* 거른 결과가 무슨 뜻인지 한 줄 + 바로 할 일 */
+const UFNOTE={
+  today:'24시간 안에 들어온 회원', week:'7일 안에 들어온 회원', new:'7일 안에 가입한 회원',
+  old:'30일 넘게 안 들어온 회원 · 다음에 다시 로그인해야 해요', never:'접속 기록이 없는 회원 · 기록은 8/28부터 쌓여요',
+  ios:'마지막에 아이폰 앱으로 들어온 회원', android:'마지막에 안드로이드 앱으로 들어온 회원', web:'마지막에 웹으로 들어온 회원',
+  oldv:'최신이 아닌 앱을 쓰는 회원 · 업데이트 안내를 보내 보세요', nog:'성별이 비어 대진에서 남복 · 혼복이 잘못 잡혀요'};
+let UROWS_ALL=null, ULQ='';
 async function drawUsers(){
   const rows=await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
-  const noG=rows.filter(u=>!gLabel(u.gender)).length;
-  const D=864e5, now=Date.now();
+  UROWS_ALL=rows; UROWS=rows;
   const LV=latestVers(rows);
-  /* 접속 기간으로 거르기 — 관리자가 이 화면을 보는 진짜 이유는
-     <이 사람이 언제 왔나>가 아니라 <안 오는 사람이 누구인가>다. */
-  const F={
+  const cnt=k=>rows.filter(uF(k, LV)).length;
+  const chips=UFILTER.filter(([k])=>!(k==='android'&&!cnt('android'))&&!(k==='oldv'&&!Object.keys(LV).length))
+    .map(([k,l,warn])=>{ const n=cnt(k);
+      return `<span class="fchip ${USEEN===k?'on':''} ${warn&&n?'w':''}" onclick="USEEN='${k}';drawUList()">${l} <em>${n}</em></span>`; }).join('');
+  $('app').innerHTML=shell(`
+    <div class="ufl">
+      <div class="usrch">${ico('search',18)}<input id="uq" type="search" value="${esc(ULQ||UQ)}" placeholder="이름 · 번호로 거르기" autocomplete="off"
+          oninput="ULQ=this.value;drawUList()" onkeydown="if(event.key==='Enter'){UQ=this.value.trim();ULQ='';render()}">
+        ${ULQ||UQ?`<u onclick="ULQ='';UQ='';render()">${ico('x',16)}</u>`:''}</div>
+      <div class="fbar sc" id="ufbar">${chips}</div>
+    </div>
+    <div id="ulist"></div>`);
+  drawUList();
+}
+function uF(k, LV){
+  const D=864e5, now=Date.now();
+  return ({
     '':      ()=>true,
     today:   u=>u.last_seen && now-u.last_seen < D,
     week:    u=>u.last_seen && now-u.last_seen < 7*D,
+    new:     u=>u.created_at && now-u.created_at < 7*D,
     old:     u=>u.last_seen && now-u.last_seen >= 30*D,
     never:   u=>!u.last_seen,
     ios:     u=>u.last_plat==='ios',
@@ -1196,57 +1574,43 @@ async function drawUsers(){
     web:     u=>u.last_plat==='web',
     oldv:    u=>{ const a=appOf(u, LV); return !!(a && a.old); },
     nog:     u=>!gLabel(u.gender),
-  };
-  const list=rows.filter(F[USEEN]||F['']);
-  const cnt=k=>rows.filter(F[k]).length;
-  const chip=(k,l,warn)=>`<span class="fchip ${USEEN===k?'on':''} ${warn&&cnt(k)?'w':''}"
-    onclick="USEEN='${USEEN===k?'':k}';render()">${l} <em>${cnt(k)}</em></span>`;
-
-  $('app').innerHTML=shell(`
-    <div class="srch">
-      <input id="uq" value="${esc(UQ)}" placeholder="이름으로 찾기"
-        onkeydown="if(event.key==='Enter'){UQ=this.value.trim();render()}">
-      <button onclick="UQ=($('uq')||{}).value.trim();render()">찾기</button>
-      <button onclick="dlUsers()" style="background:#fff;color:var(--gray);
-        border:1px solid var(--line)">내려받기</button></div>
-
-    <div class="fbar">${chip('','전체')}${chip('today','오늘')}${chip('week','7일')}
-      ${chip('old','30일+',1)}${chip('never','기록 없음')}${chip('ios','아이폰')}${
-        cnt('android')?chip('android','안드로이드'):''}${chip('web','웹')}${
-        Object.keys(LV).length?chip('oldv','옛 버전',1):''}${chip('nog','성별 없음',1)}</div>
-    ${vSummary(rows, LV, USEEN)}
-
-    ${USEEN==='nog'&&noG?`<div class="warn"><b>성별이 빈 회원 ${noG}명</b>
-      <u onclick="fillGender()">클럽 값으로 채우기</u></div>`:''}
-
-    <div class="card">${list.length? list.map(u=>{
-      const g=gLabel(u.gender);
-      const a=ago(u.last_seen);
-      const PROV={kakao:'카카오', google:'구글', apple:'애플', dev:'개발'};
-      const pv=PROV[u.provider]||u.provider||'';
-      /* 얼굴 색은 이름에서 고정으로 뽑는다 — 새로고침해도 같은 색이어야
-         목록을 훑을 때 사람이 자리로 기억된다 */
-      const HUE=['#e8a87c','#8fbfa8','#c4a8d4','#7fa8c9','#d9a5a5','#b0b88a'];
+  })[k] || (()=>true);
+}
+/* 목록만 다시 — 거르기 칸에 글자를 치는 동안 칸이 다시 그려지면 자판이 내려간다 */
+function drawUList(){
+  const rows=UROWS_ALL||[]; const LV=latestVers(rows);
+  const q=String(ULQ||'').trim().replace(/^#/,'');
+  const list=rows.filter(uF(USEEN, LV)).filter(u=>!q || String(u.name||'').includes(q) || String(u.id)===q);
+  document.querySelectorAll('#ufbar .fchip').forEach(el=>{
+    const k=(el.getAttribute('onclick').match(/USEEN='(\w*)'/)||[])[1]; el.classList.toggle('on', k===USEEN); });
+  const D=864e5, now=Date.now();
+  const PROV={kakao:'카카오', google:'구글', apple:'애플', dev:'개발'};
+  const HUE=['#e8a87c','#8fbfa8','#c4a8d4','#7fa8c9','#d9a5a5','#b0b88a'];
+  const noG=rows.filter(u=>!gLabel(u.gender)).length;
+  const act = USEEN==='nog'&&noG ? `<u onclick="fillGender()">클럽 값으로 채우기</u>`
+    : USEEN==='old' ? `<u onclick="NT_TO='dormant';NT_N=null;go('notify')">공지 보내기 ›</u>`
+    : USEEN==='oldv' ? `<u onclick="NT_TO='oldv';NT_N=null;go('notify')">업데이트 안내 ›</u>`
+    : USEEN==='never' ? `<u onclick="NT_TO='ghost';NT_N=null;go('notify')">공지 보내기 ›</u>`
+    : `<u onclick="dlUsers()">내려받기</u>`;
+  const head=`<div class="uhd"><span><b>${fmt(list.length)}명</b>${UFNOTE[USEEN]?` · ${UFNOTE[USEEN]}`:''}</span>${act}</div>`;
+  const body = list.length ? list.map(u=>{
+      const g=gLabel(u.gender), a=ago(u.last_seen);
       const col=HUE[(String(u.name||'?').charCodeAt(0)||0)%HUE.length];
-      const gone=!u.last_seen || (now-u.last_seen)>=30*D;
-      return `<div class="urw${gone?' gone':''}" onclick="openU(${u.id})">
-        <span class="av" style="background:${g?col:'#f2f1ec'};color:${g?'#fff':'#8a8378'}">${
-          esc(String(u.name||'?')[0])}</span>
+      const ap=appOf(u, LV);
+      const dev = ap ? `<span class="${ap.old?'old':''}">${platNm(ap.plat)}${ap.ver?' '+esc(verShort(ap.ver)):ap.old?' 옛 버전':''}</span>`
+        : u.last_plat ? `<span>${esc(platNm(u.last_plat))}</span>` : '';
+      const meta=[`#${u.id}`, esc(PROV[u.provider]||u.provider||''), dev, esc(shortRegion(u.club_region||u.region))].filter(Boolean).join('<s>·</s>');
+      return `<div class="urw2${(!u.last_seen||(now-u.last_seen)>=30*D)?' gone':''}" onclick="openU(${u.id})">
+        <span class="av" style="background:${g?col:'#efece6'};color:${g?'#fff':'#8a8378'}">${esc(String(u.name||'?')[0])}</span>
         <div class="ub">
-          <div class="ut"><b>${esc(u.name||'이름 없음')}</b>${
-            g ? `<i class="${g==='여성'?'f':'m'}">${g[0]}</i>`
-              : `<i class="none">성별 없음</i>`}<s>·</s><i class="p">${esc(pv)}</i>${
-            devTag(u, LV)}${
-            /* 어느 동네에서 들어왔는지 — 접속할 때 한 번씩 지역만 남긴다 */
-            (u.club_region||u.region) ? `<s>·</s><i>${esc(u.club_region||u.region)}</i>` : ''}</div>
-          <span class="us">#${u.id} · 티어 ${fmt(u.rating_doubles||1000)}${
-            (u.tier_games||0)<TIER_MIN ? ' · 배치 전' : ` · ${u.tier_games}경기`}</span></div>
-        <div class="usn"><b class="${a.cls}">${a.txt}</b><i>${
-          u.last_seen ? stamp(u.last_seen) : '8/28부터 기록'}</i></div>
-        <span class="go">›</span></div>`;}).join('')
-      : `<div class="empty">${UQ?'찾는 회원이 없어요':'해당하는 회원이 없어요'}</div>`}
-    </div>
-    <div class="note">회원을 누르면 성별을 고치거나 알림을 보낼 수 있어요</div>`);
+          <div class="l1"><b>${esc(u.name||'이름 없음')}</b>${g?`<i class="gx ${g==='여성'?'f':'m'}">${g[0]}</i>`:`<i class="gx none">성별 없음</i>`}${
+            u.suspended?'<i class="gx none">정지</i>':''}<em class="${a.cls}">${a.txt}</em></div>
+          <div class="l2"><span class="mt">${meta}</span><time>${u.last_seen?stamp(u.last_seen):''}</time></div>
+        </div></div>`; }).join('')
+    : `<div class="empty">${q||UQ?'찾는 회원이 없어요':'해당하는 회원이 없어요'}</div>`;
+  const el=$('ulist'); if(!el) return;
+  el.innerHTML = head + `<div class="card list">${body}</div>`
+    + (rows.length>=200 && !UQ ? `<div class="note">최근 가입 200명까지 보여요 · 그 밖의 회원은 이름을 치고 <b>Enter</b>로 서버에서 찾아요</div>` : '');
 }
 /* 목록 한 줄의 기기 — '아이폰 1.2.1'. 웹으로 들어왔어도 앱을 쓴 적이 있으면 앱 버전을 따로 붙인다 */
 function devTag(u, L){
@@ -1290,48 +1654,53 @@ function appRow(u, L){
 /* 회원 하나 — 목록에서 버튼을 다 빼고 여기로 모은다.
    100명 줄마다 버튼 네 개가 달려 있으면 정작 봐야 할 게 안 보인다. */
 let UROWS=null;
+/* 회원 하나 — 위는 얼굴 · 이름 · 한 줄 요약, 가운데는 기본 정보 · 성별 · 기록, 맨 아래 손대는 일.
+   정지는 되돌릴 수 있고 삭제는 되돌릴 수 없다 — 그 차이를 버튼 색과 자리로 가른다. */
 async function openU(id){
-  const rows=UROWS || await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
+  const rows=UROWS || UROWS_ALL || await api('/admin/users'+(UQ?('?q='+encodeURIComponent(UQ)):''));
   UROWS=rows;
   const u=rows.find(x=>x.id===id); if(!u) return;
   const g=gLabel(u.gender), a=ago(u.last_seen);
   const PROV={kakao:'카카오', google:'구글', apple:'애플', dev:'개발'};
+  const LV=latestVers(rows), ap=appOf(u, LV);
+  const HUE=['#e8a87c','#8fbfa8','#c4a8d4','#7fa8c9','#d9a5a5','#b0b88a'];
+  const col=HUE[(String(u.name||'?').charCodeAt(0)||0)%HUE.length];
+  const pills=[g?`<i class="gx ${g==='여성'?'f':'m'}">${g}</i>`:'<i class="gx none">성별 없음</i>',
+    `<i class="gx">${esc(PROV[u.provider]||u.provider||'-')}</i>`,
+    ap?`<i class="gx ${ap.old?'none':''}">${platNm(ap.plat)} ${ap.ver?esc(verShort(ap.ver)):'옛 버전'}</i>`:u.last_plat?`<i class="gx">${esc(platNm(u.last_plat))}</i>`:'',
+    u.suspended?'<i class="gx none">정지됨</i>':''].join('');
   $('sheet').innerHTML=`
-    <div class="sh-top"><h3>${esc(u.name||'이름 없음')}</h3>
+    <div class="sh-top uhead"><span class="av lg" style="background:${g?col:'#efece6'};color:${g?'#fff':'#8a8378'}">${esc(String(u.name||'?')[0])}</span>
+      <div class="uh"><h3>${esc(u.name||'이름 없음')}</h3><span>#${u.id} · <b class="${a.cls}">${a.txt} 접속</b></span></div>
       <div class="cl" onclick="closeU()">×</div></div>
-    <div class="ur"><span>번호</span><b>#${u.id}</b></div>
+    <div class="upills">${pills}</div>
+    <div class="ul">기본</div>
     <div class="ur"><span>가입</span><b>${ymd(u.created_at)} · ${esc(PROV[u.provider]||u.provider||'')}</b></div>
-    <div class="ur"><span>마지막 접속</span><b class="${a.cls}">${a.txt}${
-      u.last_seen?` · ${stamp(u.last_seen)}`:''}</b></div>${
-      u.last_seen?'':`<div class="unote">접속 기록은 2026년 8월 28일부터 쌓입니다.
-        그 전에 다녀간 분도 값이 비어 있어요.</div>`}
+    <div class="ur"><span>마지막 접속</span><b class="${a.cls}">${a.txt}${u.last_seen?` · ${stamp(u.last_seen)}`:''}</b></div>${
+      u.last_seen?'':`<div class="unote">접속 기록은 2026년 8월 28일부터 쌓입니다. 그 전에 다녀간 분도 값이 비어 있어요.</div>`}
     <div class="ur"><span>기기</span><b>${
       u.last_plat==='ios'?'아이폰 앱':u.last_plat==='android'?'안드로이드 앱':u.last_plat==='web'?'웹':u.last_plat?esc(u.last_plat):'모름'}</b></div>
-    ${appRow(u, latestVers(rows))}
+    ${appRow(u, LV)}
+    ${(u.club_region||u.region)?`<div class="ur"><span>지역</span><b>${esc(shortRegion(u.club_region||u.region))}
+      <i class="sub">${u.club_region?'클럽 기준':'가입 때 적은 값'}</i></b></div>`:''}
     <div class="ur"><span>티어 레이팅</span><b>${fmt(u.rating_doubles||1000)}${
       (u.tier_games||0)<TIER_MIN ? ` · 배치까지 ${TIER_MIN-(u.tier_games||0)}경기` : ` · ${u.tier_games}경기`}</b></div>
-    <div class="ur"><span>성별</span><b>${g||'없음'}${
-      u.gender_src==='club'?' · 클럽 지정':u.gender_src==='self'?' · 본인 설정':''}</b></div>
-    <div class="ul">성별 바꾸기</div>
+    <div class="ul">성별 <span>${u.gender_src==='club'?'클럽 운영진이 정한 값':u.gender_src==='self'?'본인이 정한 값':'비어 있어요'}</span></div>
     <div class="useg">
       <b class="${g==='남성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','남성')">남성</b>
       <b class="${g==='여성'?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','여성')">여성</b>
       <b class="${!g?'on':''}" onclick="setGender(${u.id},'${esc(u.name)}','')">없음</b></div>
-    ${(u.club_region||u.region)?`<div class="ur"><span>지역</span><b>${esc(u.club_region||u.region)}</b>
-      <i style="font-size:11px;color:var(--lgray);margin-left:6px">${u.club_region?'클럽 기준':'가입 때 적은 값'}</i></div>`:''}
     <div class="unote">바꾼 내용은 <b>작업 기록</b>에 남고 되돌릴 수 있어요</div>
-    <!-- 서버에는 정지·삭제가 다 있었는데 화면에 버튼이 없어 쓸 수가 없었다.
-         정지는 되돌릴 수 있고 삭제는 되돌릴 수 없다 — 그 차이를 버튼 색과 문구로 가른다. -->
-    <div class="uact">
-      <button onclick="pushTest(${u.id},'${esc(u.name)}')">시험 알림 보내기</button>
-      <button onclick="suspendUser(${u.id},'${esc(u.name)}',${u.suspended?0:1})">${
-        u.suspended?'정지 풀기':'계정 정지'}</button>
-      <button class="danger" onclick="delUser(${u.id},'${esc(u.name)}')">회원 삭제</button>
+    <div id="udet"><div class="unote">기록을 불러오는 중…</div></div>
+    <div class="ul">손대기</div>
+    <div class="uact2">
+      <button onclick="pushTest(${u.id},'${esc(u.name)}')">시험 알림</button>
+      <button onclick="suspendUser(${u.id},'${esc(u.name)}',${u.suspended?0:1})">${u.suspended?'정지 풀기':'계정 정지'}</button>
     </div>
-    ${u.suspended?`<div class="unote"><b style="color:#c2410c">정지된 계정</b>이에요 ·
-      로그인하면 처음 화면으로 돌아가요</div>`:''}
-    <div id="udet"><div class="unote">기록을 불러오는 중…</div></div>`;
-  $('ov').classList.add('on');
+    ${u.suspended?`<div class="unote"><b style="color:#c2410c">정지된 계정</b>이에요 · 로그인하면 처음 화면으로 돌아가요</div>`:''}
+    <button class="udel" onclick="delUser(${u.id},'${esc(u.name)}')">회원 삭제 · 되돌릴 수 없어요</button>`;
+  $('ov').classList.remove('menu'); $('ov').classList.add('on');
+  try{ $('sheet').scrollTop=0; }catch(e){}
   /* 상세는 뒤이어 채운다 — 기본 정보를 붙잡아 두면 시트가 늦게 열린다 */
   try{ drawUDetail(await api('/admin/users/'+id+'/detail')); }
   catch(e){ const el=$('udet'); if(el) el.innerHTML='<div class="unote">기록을 불러오지 못했어요</div>'; }
@@ -1374,7 +1743,7 @@ function drawUDetail(d){
   el.innerHTML = sec('소속 클럽', clubs) + sec('최근 대진', games)
     + sec('등급 이동', grades) + sec('겪은 오류', errs);
 }
-function closeU(){ $('ov').classList.remove('on'); UROWS=null; ROLE_Q=''; }
+function closeU(){ const o=$('ov'); if(o) o.classList.remove('on','menu'); UROWS=null; ROLE_Q=''; }
 
 /* ── 분석 ──
    외부 도구를 붙이면 회원 정보가 밖으로 나가므로 우리 서버에 쌓은 것만 본다.
@@ -1442,124 +1811,219 @@ async function drawTrack(){
    플랫폼이 여는 대회다. 클럽 운영진 도구에 두면 클럽마다 <제1회>가 생긴다. */
 let CUPSEL=null;
 
+/* ── MATSU CUP · 휴대폰 운영 ──────────────────────────────
+   대회 날 관리자는 코트 옆에서 휴대폰 하나로 움직인다.
+   요약(할 일 · 설정 · 정산) · 참가 클럽(입금 확인 · 엔트리 명단 · 연락처) · 당일(경기마다 점수 고치기) · 대진표 네 칸.
+   대회 날이고 추첨이 끝났으면 <당일>부터 연다. */
+let CUPV='', CUPTF='', CUPOPEN={}, CUPDAY=null;
+const cupToday=()=>{ const t=new Date(), p=n=>String(n).padStart(2,'0'); return `${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())}`; };
 async function drawCup(){
   const rows=await api('/admin/cups').catch(()=>[]);
   if(!CUPSEL && rows.length) CUPSEL=rows[0].id;
   const d = CUPSEL ? await api('/admin/cups/'+CUPSEL).catch(()=>null) : null;
-
-  /* 대회가 하나뿐이면 목록 카드를 안 그린다.
-     바로 아래 카드에 같은 이름이 또 나와서 <제1회 …>이 두 번 보였다.
-     둘 이상일 때만 고르는 줄이 필요하다. */
-  const head = rows.length > 1
-    ? `<div class="card">
-        <div class="hd"><b>MATSU CUP</b>
-          <span class="b" onclick="cupNew()">＋ 대회 열기</span></div>
-        <div class="cuptabs">${rows.map(r =>
-          `<span class="${r.id===CUPSEL?'on':''}" onclick="CUPSEL=${r.id};drawCup()">
-            ${esc(r.title||'대회')} <em>${esc(r.date||'일자 미정')}</em></span>`).join('')}</div>
-      </div>`
-    : (rows.length ? '' : `<div class="card">
-        <div class="hd"><b>MATSU CUP</b>
-          <span class="b on" onclick="cupNew()">＋ 대회 열기</span></div>
-        <div class="empty">아직 연 대회가 없어요</div></div>`);
-
-  if(!d){ $('app').innerHTML=shell(head); return; }
-
+  const pick = rows.length > 1 ? `<div class="fbar sc" style="margin:0 -14px 10px">${rows.map(r=>
+      `<span class="fchip ${r.id===CUPSEL?'on':''}" onclick="CUPSEL=${r.id};CUPV='';CUPDAY=null;drawCup()">${esc(r.title||'대회')} <em>${esc(r.date||'일자 미정')}</em></span>`).join('')}</div>` : '';
+  if(!d){ $('app').innerHTML=shell(pick+`<div class="card calm"><b style="color:var(--ink)">아직 연 대회가 없어요</b>
+      <span>대회를 열면 신청 · 입금 · 엔트리 · 당일 점수를 여기서 봐요</span>
+      <button class="b on" style="margin-top:14px;padding:11px 18px" onclick="cupNew()">＋ 대회 열기</button></div>`); return; }
   const live=(d.entries||[]).filter(e=>e.status!=='cancelled');
-  /* 대회가 열리느냐는 <확정된 팀>이 몇인가로 정해진다. 신청만 한 팀은 안 온다. */
   const fixed=live.filter(e=>e.status==='confirmed');
+  const need=d.roster_need||6;
+  if(!CUPV) CUPV = d.drawn && d.date===cupToday() ? 'day' : 'sum';
+  if(!d.drawn && (CUPV==='day'||CUPV==='grid')) CUPV='sum';
+  const V=[['sum','요약'],['teams',`참가 클럽 ${live.length}`]].concat(d.drawn?[['day','당일'],['grid','대진표']]:[]);
+  const seg=`<div class="segs">${V.map(([k,l])=>`<div class="seg ${CUPV===k?'on':''}" onclick="CUPV='${k}';drawCup()">${l}</div>`).join('')}</div>`;
+  const head=`<div class="cuph"><div><b>${esc(d.title||'대회')}</b>
+      <span>${d.date?esc(d.date)+' '+esc(d.start||''):'일자 미정'} · ${esc(d.place||'장소 미정')} · 코트 ${d.courts||4}면</span></div>
+      <em class="${d.open?'on':''}">${d.open?'모집 중':'모집 닫힘'}</em></div>`;
+  let body='';
+  if(CUPV==='sum') body=cupSumView(d, live, fixed, need);
+  else if(CUPV==='teams') body=cupTeamsView(d, live, need);
+  else if(CUPV==='grid') body=`<div class="card"><div class="ct">코트별 시간표<span class="cgh">옆으로 밀어 보기 ›</span></div>${cupGrid(d)}</div>
+    <div class="card"><div class="ct">회차별</div>${(d.rounds||[]).map(r=>`<div class="cupr">
+      <div class="rh">${esc(r.start||'')} <em>${r.final?'순위전':esc(r.group||'')+'조'}</em></div>
+      ${(r.ties||[]).map(t=>`<div class="cupt"><span class="vs">${esc(t.home_name||t.title||'?')} <em>vs</em> ${esc(t.away_name||'?')}</span>
+        <span class="ct">${t.matches.map(m=>m.court).filter((v,i,a)=>a.indexOf(v)===i).join('·')}번 코트</span></div>`).join('')}</div>`).join('')}</div>`;
+  else body=`<div id="cupday">${skel(3)}</div>`;
+  $('app').innerHTML=shell(pick+head+seg+body);
+  if(CUPV==='day') cupDayLoad();
+}
+/* 요약 — 할 일을 먼저. 몇 팀이 확정됐나가 이 대회의 유일한 성패 지표다 */
+function cupSumView(d, live, fixed, need){
   const M=d.money||{};
   const pct=Math.min(100, Math.round(fixed.length/d.max_teams*100));
   const minPct=Math.round(d.min_teams/d.max_teams*100);
-  const st={invited:'초청함',applied:'신청함',paid:'입금',confirmed:'확정',cancelled:'취소'};
-  /* 서버가 정한 정원을 쓴다 — 여기 10 을 박아두면 6명으로 바꿔도 <엔트리 낸 팀 0>이 된다 */
-  const need=d.roster_need||6;
-  const ready=fixed.filter(e=>e.roster_n>=need).length;
-
-  $('app').innerHTML=shell(head+`
+  const wait=live.filter(e=>e.status!=='confirmed');
+  const noRos=fixed.filter(e=>(e.roster_n||0)<need);
+  const canDraw=!d.drawn && fixed.length>=d.min_teams && !noRos.length;
+  const todo=[];
+  if(wait.length) todo.push(`<a class="trow" onclick="CUPV='teams';CUPTF='wait';drawCup()"><i class="dot"></i><span class="t"><b>입금 기다리는 팀</b>
+      <span>계좌에 들어온 걸 보고 「입금 확인 · 확정」을 눌러요</span></span><em class="hot">${wait.length}곳</em>${ico('chev',16)}</a>`);
+  if(noRos.length) todo.push(`<a class="trow" onclick="CUPV='teams';CUPTF='noros';drawCup()"><i class="dot"></i><span class="t"><b>엔트리를 덜 낸 확정 팀</b>
+      <span>${noRos.map(e=>esc(e.club_name)).join(' · ')} · 추첨 전에 ${need}명을 채워야 해요</span></span><em class="hot">${noRos.length}곳</em>${ico('chev',16)}</a>`);
+  if(canDraw) todo.push(`<a class="trow" onclick="cupDraw()"><i class="dot red"></i><span class="t"><b>추첨하고 대진 짜기</b>
+      <span>확정 ${fixed.length}팀으로 조와 시간표를 만들어요</span></span>${ico('chev',16)}</a>`);
+  return `
     <div class="card">
-      <div class="hd"><b>${esc(d.title||'')}</b>
-        <span class="b ${d.open?'on':''}" onclick="cupOpen(${!d.open})">
-          ${d.open?'모집 중 · 닫기':'모집 열기'}</span>
-        ${rows.length<=1?`<span class="b" onclick="cupNew()">＋ 새 대회</span>`:''}</div>
-      <div class="cupsum">
-        <div class="n">${fixed.length}<em>/${d.max_teams}팀 확정</em></div>
-        <div class="c">
-          <div class="bar"><i style="width:${pct}%"></i><b style="left:${minPct}%"></b></div>
-          <div class="s">${fixed.length>=d.min_teams
-            ? `열 수 있어요 · 엔트리 낸 팀 ${ready}/${fixed.length}`
-            : `${d.min_teams-fixed.length}팀 더 확정되면 열려요 (손익분기 ${d.min_teams}팀)`}
-            ${live.length>fixed.length?` · 입금 기다리는 팀 ${live.length-fixed.length}곳`:''}</div></div>
-        <div class="m"><span>쓸 수 있는 돈</span><b>${fmt(M.net||0)}원</b></div>
-        <div class="m"><span>우승 상금</span><b>${fmt(M.first||0)}원</b></div>
-      </div>
-      ${cupLedger(d, fixed.length)}
-      <div class="cuppay">
-        <div><span>날짜</span><b>${d.date?`${esc(d.date)} ${esc(d.start||'')}`:'미정'}</b></div>
-        <div><span>장소</span><b>${esc(d.place||'미정')}</b></div>
-        <div><span>코트</span><b>${d.courts||4}면</b></div>
-        <div><span>참가비</span><b>${fmt(d.fee)}원</b></div>
-        <div><span>매치</span><b>${Math.round((d.cfg&&d.cfg.match_sec||1200)/60)}분 · 전환 ${Math.round((d.cfg&&d.cfg.turn_sec||300)/60)}분</b></div>
-        <div><span>입금 마감</span><b>대회 ${(d.cfg&&d.cfg.due_days)||14}일 전</b></div>
-        <div><span>보증금</span><b>${fmt(d.deposit)}원</b></div>
-        <div><span>정원</span><b>${d.max_teams}팀 · 최소 ${d.min_teams}팀</b></div>
-        <div><span>계좌</span><b>${d.pay&&d.pay.no
-          ? esc(`${d.pay.bank||''} ${d.pay.no} ${d.pay.holder||''}`) : '없음'}</b></div>
-        <span class="b" onclick="cupSetup()">설정 고치기</span>
-      </div>
+      <div class="cprog"><b>${fixed.length}<i> / ${d.max_teams}팀 확정</i></b>
+        <span>${fixed.length>=d.min_teams?`열 수 있어요 · 엔트리 낸 팀 ${fixed.length-noRos.length}/${fixed.length}`:`${d.min_teams-fixed.length}팀 더 확정되면 열려요`}</span></div>
+      <div class="cbar"><s style="width:${pct}%"></s><i style="left:${minPct}%" title="최소 ${d.min_teams}팀"></i></div>
+      <div class="cbl"><span>0</span><span style="left:${minPct}%">최소 ${d.min_teams}</span><span>${d.max_teams}</span></div>
+      <div class="h3c sm" style="margin-top:14px">
+        <div><b>${fmt(wait.length)}</b><span>입금 대기</span></div>
+        <div><b>${fmt(Math.round((M.net||0)/10000))}<i style="font-size:13px;font-style:normal">만</i></b><span>쓸 수 있는 돈</span></div>
+        <div><b>${fmt(Math.round((M.first||0)/10000))}<i style="font-size:13px;font-style:normal">만</i></b><span>우승 상금</span></div></div>
     </div>
-
+    ${todo.length?`<div class="sec"><b>할 일</b><em class="hot">${todo.length}</em></div><div class="card list">${todo.join('')}</div>`
+      :`<div class="card calm"><b>지금 할 일이 없어요</b><span>${d.drawn?'대회 날 「당일」에서 점수를 봐요':'입금 · 엔트리가 들어오면 여기 떠요'}</span></div>`}
+    <div class="sec"><b>운영</b></div>
+    <div class="card list">
+      <a class="trow" onclick="cupOpen(${!d.open})"><span class="t"><b>${d.open?'모집 닫기':'모집 열기'}</b>
+        <span>${d.open?'지금 앱에 리그 카드가 떠 있어요':'열면 앱 클럽 화면에 리그 카드가 떠요'}</span></span><em class="${d.open?'':'hot'}">${d.open?'모집 중':'닫힘'}</em>${ico('chev',16)}</a>
+      ${d.drawn?`<a class="trow" onclick="cupLive(${d.id})"><span class="t"><b>관전 링크 복사</b><span>현장 화면 · 단톡방에 올려요</span></span>${ico('chev',16)}</a>`:''}
+      <a class="trow" onclick="cupInvite()"><span class="t"><b>클럽 초청하기</b><span>링크를 만들어 클럽 대표에게 보내요</span></span>${ico('chev',16)}</a>
+      ${d.drawn?`<a class="trow" onclick="cupDraw()"><span class="t"><b>다시 추첨</b><span>짠 대진이 새로 바뀌어요 · 점수가 들어간 뒤엔 누르지 마세요</span></span>${ico('chev',16)}</a>`:''}
+    </div>
+    <div class="sec"><b>설정</b><span onclick="cupSetup()" style="color:#cf5418;font-weight:650;cursor:pointer">고치기 ›</span></div>
     <div class="card">
-      <div class="hd"><b>참가 클럽 ${live.length}곳</b>
-        <span class="b" onclick="cupInvite()">＋ 초청</span></div>
-      ${live.length?live.map(e=>{
-        const on=e.status==='confirmed';
-        return `<div class="cupe${on?' fixed':''}">
-        <span class="dot"></span>
-        <div class="c"><b>${esc(e.club_name)}</b>
-          <span>${st[e.status]||e.status} · ${e.roster_n?`엔트리 ${e.roster_n}명 · 여 ${e.female_n}`:'엔트리 없음'}${
-            e.group_label?` · ${e.group_label}조 ${e.seat}번`:''}${e.club_id?' · 앱 클럽':''}</span></div>
-        <span class="b ${on?'on':''}"
-          onclick="cupConfirm(${e.id},${on?0:1})">${on?'확정됨':'입금 확인 · 확정'}</span>
-        ${e.invite_token?`<span class="b" onclick="cupCopy('${esc(e.invite_token)}')">링크</span>`:''}
-        <span class="b" onclick="cupEntryAct(${e.id},{status:'cancelled'})">취소</span>
-      </div>`;}).join(''):`<div class="empty">아직 참가 클럽이 없어요</div>`}
-      <div class="hint">계좌에 돈이 들어온 걸 확인하면 <b>입금 확인 · 확정</b>을 누르세요.
-        확정된 팀만 대진에 들어갑니다.</div>
-      ${fixed.length>=d.min_teams?`<div class="cupbtns">
-        <span class="b on" onclick="cupDraw()">${d.drawn?'다시 추첨':'추첨하고 대진 짜기'}</span>
-        <span class="b" onclick="cupLive(${d.id})">관전 링크</span></div>`:''}
+      <div class="ur"><span>날짜</span><b>${d.date?`${esc(d.date)} ${esc(d.start||'')}`:'미정'}</b></div>
+      <div class="ur"><span>장소</span><b>${esc(d.place||'미정')} · 코트 ${d.courts||4}면</b></div>
+      <div class="ur"><span>참가비 · 보증금</span><b>${fmt(d.fee)}원 · ${fmt(d.deposit)}원</b></div>
+      <div class="ur"><span>매치</span><b>${Math.round((d.cfg&&d.cfg.match_sec||1200)/60)}분 · 전환 ${Math.round((d.cfg&&d.cfg.turn_sec||300)/60)}분</b></div>
+      <div class="ur"><span>입금 마감</span><b>대회 ${(d.cfg&&d.cfg.due_days)||14}일 전</b></div>
+      <div class="ur"><span>정원</span><b>${d.max_teams}팀 · 최소 ${d.min_teams}팀</b></div>
+      <div class="ur"><span>계좌</span><b>${d.pay&&d.pay.no?esc(`${d.pay.bank||''} ${d.pay.no} ${d.pay.holder||''}`):'없음'}</b></div>
     </div>
-
-    <div class="card ghost">
-      <div class="hd"><b>테스트용 유령 클럽</b>
-        <span class="b" onclick="ghostWipe()">전부 지우기</span></div>
-      <div class="hint" style="margin-top:0">
-        클럽 하나당 회원 ${need}명(남 ${d.roster_male||4} · 여 ${d.roster_female||2})을 만들고
-        <b>신청 · 엔트리 · 입금 확정</b>까지 한 번에 끝냅니다.
-        구력은 1~5년으로 흩뿌립니다. 지우면 회원까지 흔적 없이 사라집니다.</div>
+    <details class="card cdet"><summary>정산 보기</summary>${cupLedger(d, fixed.length)}</details>
+    <details class="card cdet ghost"><summary>테스트용 유령 클럽</summary>
+      <div class="hint" style="margin-top:4px">클럽 하나당 회원 ${need}명(남 ${d.roster_male||4} · 여 ${d.roster_female||2})을 만들고
+        <b>신청 · 엔트리 · 입금 확정</b>까지 한 번에 끝냅니다. 지우면 회원까지 흔적 없이 사라집니다.</div>
       <div class="cupbtns" style="align-items:center">
-        <input id="ghostN" type="number" min="1" max="12"
-          value="${Math.max(1, d.max_teams-live.length)}">
-        <span class="gu">팀</span>
-        <span class="b on" onclick="ghostSeed()">넣기</span>
-        <span class="gm" id="ghostMsg"></span></div>
-    </div>
-
-    ${d.drawn?`<div class="card">
-      <div class="hd"><b>코트별 시간표</b>
-        <span class="b" onclick="window.print()">인쇄</span></div>
-      ${cupGrid(d)}
-    </div>
-    <div class="card"><div class="hd"><b>대진</b></div>
-      ${(d.rounds||[]).map(r=>`<div class="cupr">
-        <div class="rh">R${r.r} <em>${esc(r.start||'')}</em>
-          <span>${r.final?'결승 · 3위전':`${esc(r.group)}조`}</span></div>
-        ${(r.ties||[]).map(t=>`<div class="cupt">
-          <span class="ln">${esc(t.lane)}레인</span>
-          <span class="vs">${esc(t.home_name||'?')} <em>vs</em> ${esc(t.away_name||'?')}</span>
-          <span class="ct">${t.matches.map(m=>m.court).filter((v,i,a)=>a.indexOf(v)===i).join('·')}번 코트</span>
-        </div>`).join('')}</div>`).join('')}</div>`:''}`);
+        <input id="ghostN" type="number" min="1" max="12" value="${Math.max(1, d.max_teams-live.length)}">
+        <span class="gu">팀</span><span class="b on" onclick="ghostSeed()">넣기</span>
+        <span class="b" onclick="ghostWipe()">전부 지우기</span><span class="gm" id="ghostMsg"></span></div>
+    </details>`;
+}
+/* 참가 클럽 — 입금 확인이 이 화면의 알맹이다. 큰 버튼 하나, 나머지(링크 · 취소)는 작은 글자로 */
+function cupTeamsView(d, live, need){
+  const F={ '':()=>true, wait:e=>e.status!=='confirmed', fixed:e=>e.status==='confirmed',
+    noros:e=>(e.roster_n||0)<need };
+  const C=[['','전체'],['wait','입금 대기',1],['fixed','확정'],['noros','엔트리 덜 냄',1]];
+  const chips=C.map(([k,l,w])=>{ const n=live.filter(F[k]).length;
+    return `<span class="fchip ${CUPTF===k?'on':''} ${w&&n?'w':''}" onclick="CUPTF='${k}';drawCup()">${l} <em>${n}</em></span>`; }).join('');
+  const list=live.filter(F[CUPTF]||F['']);
+  const ST={invited:['초청함',''],applied:['입금 대기','wait'],paid:['입금 대기','wait'],confirmed:['확정','ok']};
+  const KD={1:'남복',2:'혼복',3:'혼복'};
+  const card=e=>{
+    const [stx,stc]=ST[e.status]||[e.status,''];
+    const R=e.roster||[], open=!!CUPOPEN[e.id];
+    const byP={}; R.forEach(r=>{ (byP[r.pair||0]=byP[r.pair||0]||[]).push(r); });
+    const ros = !R.length ? `<div class="unote">엔트리를 아직 안 냈어요</div>`
+      : [1,2,3].map(p=>`<div class="crp"><small>MATCH ${p} · ${KD[p]}</small><span>${(byP[p]||[]).map(r=>
+          `${esc(r.name)}<i>${r.gender==='F'?'여':'남'} ${r.years==null?'-':r.years+'년'}</i>`).join(' · ')||'<i>비어 있음</i>'}</span></div>`).join('')
+        + (byP[0]&&byP[0].length?`<div class="crp"><small>짝 미정</small><span>${byP[0].map(r=>esc(r.name)).join(' · ')}</span></div>`:'');
+    const tel=String(e.contact_phone||'').replace(/[^0-9]/g,'');
+    const telTx=tel.length===11?tel.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3'):tel.length===10?tel.replace(/(\d{2,3})(\d{3,4})(\d{4})/,'$1-$2-$3'):esc(e.contact_phone||'');
+    return `<div class="card cte">
+      <div class="l1"><b>${esc(e.club_name)}</b>${e.group_label?`<span class="gl">${esc(e.group_label)}조 ${e.seat}</span>`:''}<em class="${stc}">${stx}</em></div>
+      <div class="l2">엔트리 <b class="${(e.roster_n||0)<need?'old':''}">${e.roster_n||0}/${need}</b> · 여 ${e.female_n||0} · ${e.club_id?'앱 클럽':'초청 링크'}${
+        e.contact_name||tel?` · 대표 ${esc(e.contact_name||'')}${tel?` <a href="tel:${tel}">${telTx}</a>`:''}`:''}</div>
+      <div class="crt" onclick="CUPOPEN[${e.id}]=!CUPOPEN[${e.id}];drawCup()">${open?'엔트리 접기 ▴':'엔트리 보기 ▾'}</div>
+      ${open?`<div class="crl">${ros}</div>`:''}
+      ${e.status==='confirmed'
+        ? `<button class="cbtn done" onclick="cupConfirm(${e.id},0)">확정됨 ✓ <span>눌러서 확정 풀기</span></button>`
+        : `<button class="cbtn" onclick="cupConfirm(${e.id},1)">입금 확인 · 확정</button>`}
+      <div class="csm">${e.invite_token?`<u onclick="cupCopy('${esc(e.invite_token)}')">초청 링크 복사</u>`:''}
+        <u class="dz" onclick="if(confirm('${esc(e.club_name)} 참가를 취소할까요?'))cupEntryAct(${e.id},{status:'cancelled'})">참가 취소</u></div>
+    </div>`; };
+  return `<div class="fbar sc" style="margin:0 -14px 8px">${chips}</div>
+    <div class="uhd"><span><b>${list.length}곳</b>${CUPTF==='wait'?' · 계좌에 들어온 걸 확인하면 확정해요':CUPTF==='noros'?` · 추첨 전에 ${need}명을 채워야 해요`:''}</span>
+      <u onclick="cupInvite()">＋ 클럽 초청</u></div>
+    ${list.length?list.map(card).join(''):`<div class="card"><div class="empty">해당하는 클럽이 없어요</div></div>`}`;
+}
+/* 당일 — 공개 대진(standings)과 점수(live)를 받아 시간 순으로. 경기를 누르면 점수 시트 */
+async function cupDayLoad(){
+  const el=$('cupday'); if(!el) return;
+  let S, L;
+  try{ [S, L]=await Promise.all([api('/cup/'+CUPSEL+'/standings'), api('/brackets/'+CUPSEL+'/live')]); }
+  catch(e){ el.innerHTML=`<div class="card"><div class="empty">대진을 불러오지 못했어요</div></div>`; return; }
+  CUPDAY={ S, L, at:Date.now() };
+  cupDayDraw();
+  clearTimeout(window._cupDayT);
+  window._cupDayT=setTimeout(()=>{ if(TAB==='cup'&&CUPV==='day'&&!$('ov').classList.contains('on')) cupDayLoad(); }, 30000);
+}
+function cupTieR(t, sc){ let a=0,b=0,n=0;
+  (t.matches||[]).forEach(m=>{ const s=sc[m.key]; if(!s||s.a==null) return; n++; if(s.a>s.b) a++; else if(s.b>s.a) b++; });
+  return {a,b,n,done:n===(t.matches||[]).length}; }
+function cupDayDraw(){
+  const el=$('cupday'); if(!el||!CUPDAY) return;
+  const {S,L}=CUPDAY, sc=L.scores||{};
+  const KD={free:'남복',mixed:'혼복'};
+  const P=S.pairs||{};
+  const all=[]; (S.rounds||[]).forEach(r=>(r.ties||[]).forEach(t=>all.push({r,t})));
+  all.sort((x,y)=>String(x.r.start||'').localeCompare(String(y.r.start||'')));
+  const ms=all.reduce((a,x)=>a+(x.t.matches||[]).length,0);
+  const done=all.reduce((a,x)=>a+(x.t.matches||[]).filter(m=>sc[m.key]&&sc[m.key].a!=null).length,0);
+  const nm=(t,side)=>esc((side==='h'?t.home_name:t.away_name)||(side==='h'?t.home_label:t.away_label)||'미정');
+  const pr=(eid,no)=>((P[eid]||{})[no]||[]).map(p=>esc(p.name)).join('·');
+  /* 지금 차례 = 아직 점수가 다 안 들어온 가장 이른 타이 — 코트 옆에서 스크롤을 덜 하게 */
+  const nowI=all.findIndex(x=>!cupTieR(x.t,sc).done);
+  const tieCard=({r,t},i)=>{ const R=cupTieR(t,sc);
+    const lab=r.kind==='place'||r.final?esc(t.title||'순위전'):`${esc(t.group||r.group||'')}조`;
+    return `<div class="card ctie ${i===nowI?'ctnow':''}" ${i===nowI?'id="cupnow"':''}><div class="th"><b>${esc(r.start||'')}</b><span>${lab}</span>${i===nowI?'<u class="nw">지금 차례</u>':''}
+        <em class="${R.done?'ok':R.n?'on':''}">${R.n?`${R.a} : ${R.b}${R.done?'':' 진행'}`:'경기 전'}</em></div>
+      <div class="tv"><b>${nm(t,'h')}</b><i>vs</i><b>${nm(t,'a')}</b></div>
+      ${(t.matches||[]).map(m=>{ const s=sc[m.key], has=s&&s.a!=null;
+        return `<div class="tm" onclick="cupScOpen('${esc(m.key)}')"><s>${m.court?m.court+'번':'M'+m.no}</s>
+          <span><b>${KD[m.kind]||'복식'}</b> ${pr(t.home,m.no)?`${pr(t.home,m.no)} <i>vs</i> ${pr(t.away,m.no)}`:''}</span>
+          ${has?`<em>${s.a} : ${s.b}</em>`:`<em class="go">넣기</em>`}</div>`; }).join('')}
+    </div>`; };
+  const st=S.standings||{};
+  const tbl=Object.keys(st).sort().map(g=>(st[g]||[]).length?`<div class="cst"><div class="sh">${esc(g)}조</div>
+      ${(st[g]||[]).map((x,i)=>`<div class="sr"><i>${i+1}</i><b>${esc(x.name||'')}</b><span>${x.w||0}승 ${x.d||0}무 ${x.l||0}패</span><em>${x.pts||0}</em></div>`).join('')}</div>`:'').join('');
+  el.innerHTML=`<div class="card">
+      <div class="cprog"><b>${done}<i> / ${ms}매치 기록</i></b><span>${new Date(CUPDAY.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})} 기준 · 30초마다 새로</span></div>
+      <div class="cbar"><s style="width:${ms?Math.round(done/ms*100):0}%"></s></div>
+      <div class="note" style="margin-top:8px">경기를 누르면 점수를 넣거나 고쳐요 · 바로 앱에 반영되고 <b>작업 기록</b>에서 되돌릴 수 있어요</div>
+      <div class="cupbtns" style="margin-top:8px"><button class="b" onclick="cupDayLoad()">지금 새로고침</button>
+        ${nowI>0?`<button class="b on" onclick="var e=document.getElementById('cupnow');if(e)window.scrollTo({top:e.getBoundingClientRect().top+scrollY-(parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hdh'))||70)-12,behavior:'smooth'})">지금 차례로 ↓</button>`:''}</div></div>
+    ${all.map(tieCard).join('')||'<div class="card"><div class="empty">대진이 없어요</div></div>'}
+    ${tbl?`<div class="sec"><b>조별 순위</b></div><div class="card">${tbl}</div>`:''}`;
+}
+/* 점수 시트 — 두 팀 · 짝 이름, ± 와 자주 나오는 점수, 저장 · 지우기 */
+let CSC=null;
+function cupScOpen(key){
+  if(!CUPDAY) return;
+  const {S,L}=CUPDAY; let T=null,M=null,R=null;
+  (S.rounds||[]).forEach(r=>(r.ties||[]).forEach(t=>(t.matches||[]).forEach(m=>{ if(m.key===key){T=t;M=m;R=r;} })));
+  if(!T) return;
+  const s=(L.scores||{})[key];
+  CSC={ key, a:s&&s.a!=null?s.a:0, b:s&&s.b!=null?s.b:0, had:!!(s&&s.a!=null), T, M, R };
+  cupScDraw();
+  $('ov').classList.remove('menu'); $('ov').classList.add('on');
+}
+function cupScDraw(){
+  const C=CSC; if(!C) return; const {T,M,R}=C, cfg=(CUPDAY.S&&CUPDAY.S.cfg)||{};
+  const P=CUPDAY.S.pairs||{};
+  const pr=eid=>((P[eid]||{})[M.no]||[]).map(p=>esc(p.name)).join(' · ')||'짝 미정';
+  const QS=cfg.set_fmt==='pro6' ? [[6,2],[6,3],[6,4],[6,5],[5,6],[4,6]] : [[5,2],[4,3],[4,4],[3,3],[3,4],[2,5]];
+  const side=(k,nm,eid)=>`<div class="scs"><b>${esc(nm||'미정')}</b><small>${pr(eid)}</small>
+    <div class="stp"><u onclick="CSC.${k}=Math.max(0,CSC.${k}-1);cupScDraw()">−</u><em>${C[k]}</em><u class="p" onclick="CSC.${k}=Math.min(30,CSC.${k}+1);cupScDraw()">+</u></div></div>`;
+  $('sheet').innerHTML=`<div class="sh-top"><h3>${R.kind==='place'||R.final?esc(T.title||'순위전'):esc(T.group||R.group||'')+'조'} · ${esc(R.start||'')}</h3><div class="cl" onclick="closeU()">×</div></div>
+    <div class="unote" style="padding-top:0">MATCH ${M.no} · ${M.kind==='mixed'?'혼복':'남복'}${M.court?` · ${M.court}번 코트`:''}${C.had?' · 지금 기록 있음':''}</div>
+    <div class="scw">${side('a',T.home_name,T.home)}<span class="col">:</span>${side('b',T.away_name,T.away)}</div>
+    <div class="ul">자주 나오는 점수</div>
+    <div class="scq">${QS.map(([a,b])=>`<span class="${C.a===a&&C.b===b?'on':''}" onclick="CSC.a=${a};CSC.b=${b};cupScDraw()">${a} : ${b}</span>`).join('')}</div>
+    <button class="cbtn" style="margin-top:18px" onclick="cupScSave(false)">${C.a} : ${C.b}${C.a===C.b?' 무승부로':''} 저장</button>
+    ${C.had?`<button class="udel" onclick="cupScSave(true)">이 경기 점수 지우기</button>`:''}`;
+}
+async function cupScSave(clear){
+  const C=CSC; if(!C) return;
+  if(clear && !confirm('이 경기 점수를 지울까요?')) return;
+  try{ await api(`/admin/cups/${CUPSEL}/scores/${encodeURIComponent(C.key)}`,{method:'PUT',
+      body:JSON.stringify(clear?{a:null,b:null}:{a:C.a,b:C.b})});
+    toast(clear?'지웠어요':'저장했어요'); closeU(); CSC=null; cupDayLoad(); }
+  catch(e){ toast(cupWhy(e)); }
 }
 
 /* 만들기 화면에서는 목록 카드를 안 그린다 — <대회 열기>가 두 번 보이면
@@ -1635,14 +2099,20 @@ async function cupDraw(){
   if(!confirm('추첨을 돌릴까요? 이미 짠 대진이 있으면 새로 바뀝니다')) return;
   if(await cupAct({act:'draw'})) drawCup();
 }
+/* 초청 — 이름 하나만 받고 링크는 바로 복사한다(prompt 로 띄우면 휴대폰에서 길게 눌러 복사해야 한다) */
 function cupInvite(){
   const n=prompt('초청할 클럽 이름'); if(!n) return;
   cupAct({act:'invite', club_name:n}).then(r=>{
     if(!r) return;
-    const url=`${location.origin}/?cup=${r.token}`;
-    prompt('이 링크를 클럽 대표에게 보내세요', url);
+    cupClip(`${location.origin}/?cup=${r.token}`, '초청 링크를 복사했어요 · 클럽 대표에게 보내세요');
     drawCup();
   });
+}
+/* 복사 — 되면 알림 한 줄, 안 되면(권한 · 옛 브라우저) 예전처럼 창에 띄운다 */
+function cupClip(t, msg){
+  try{ if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=>toast(msg||'복사했어요'), ()=>prompt('복사해서 쓰세요', t)); return; } }catch(e){}
+  prompt('복사해서 쓰세요', t);
 }
 /* ── 유령 클럽 ──
    여덟 팀을 실제로 굴려보려면 사람을 여덟 클럽 모아야 하는데 그건 불가능하다.
@@ -1663,8 +2133,8 @@ async function ghostWipe(){
   if(el) el.textContent = r ? `${r.n}팀 지웠어요` : '실패했어요';
   drawCup();
 }
-function cupCopy(tok){ prompt('초청 링크', `${location.origin}/?cup=${tok}`); }
-function cupLive(id){ prompt('관전 링크', `${location.origin}/?live=${id}`); }
+function cupCopy(tok){ cupClip(`${location.origin}/?cup=${tok}`, '초청 링크를 복사했어요'); }
+function cupLive(id){ cupClip(`${location.origin}/?live=${id}`, '관전 링크를 복사했어요'); }
 /* 설정 — 한 화면에서 다 고친다. prompt 를 여섯 번 띄우면
    중간에 취소했을 때 절반만 저장된다.
    비용은 항목으로 나눈다 — 합계 한 칸이면 견적이 바뀌었을 때
@@ -2047,18 +2517,53 @@ function errMsg(e, fb){
   return /^\s*\{/.test(m) ? fb : (m||fb);
 }
 
-/* ── 클럽 ── */
+/* ── 클럽 ── 줄마다 <권한 · 삭제> 버튼이 붙어 있으면 휴대폰에서 이름이 잘리고 잘못 누른다.
+   줄은 들여다보기만, 손대는 일은 눌러 들어간 시트로. 위에는 거르기(활동 중 · 잠든 클럽 · 클럽장 없음 · 작은 클럽). */
+let CF='', CQ='';
+const CFILTER=[['','전체'],['alive','활동 중'],['sleep','잠든 클럽',1],['noowner','클럽장 없음',1],['small','5명 이하']];
+function cF(k){ const D=864e5, now=Date.now();
+  return ({ '':()=>true,
+    alive:c=>c.last_act && now-c.last_act<30*D,
+    sleep:c=>!(c.last_act && now-c.last_act<30*D),
+    noowner:c=>!c.owner,
+    small:c=>(c.members||0)<=5 })[k]||(()=>true); }
 async function drawClubs(){
   const rows=await api('/admin/clubs');
   CLUB_ROWS=rows;
-  $('app').innerHTML=shell(`<div class="card">${rows.length? rows.map(c=>`
-    <div class="rw"><div class="nm" style="cursor:pointer" onclick="openC(${c.id})">
-      <b>${esc(c.name)}<span class="tag">${esc(c.sport||'')}</span></b>
-      <span>#${c.id} · ${esc(c.region||'지역 없음')} · 회원 ${c.members}명${
-        c.owner?` · 회장 ${esc(c.owner.name)}`:''}</span></div>
-      <button class="b" onclick="openRoles(${c.id})">권한</button>
-      <button class="b dz" onclick="delClub(${c.id},'${esc(c.name)}')">삭제</button></div>`).join('')
-    : `<div class="empty">클럽이 없어요</div>`}</div>`);
+  const hasAct=rows.some(c=>'last_act' in c);
+  const chips=CFILTER.filter(([k])=>hasAct||!['alive','sleep'].includes(k)).map(([k,l,w])=>{ const n=rows.filter(cF(k)).length;
+    return `<span class="fchip ${CF===k?'on':''} ${w&&n?'w':''}" onclick="CF='${k}';drawCList()">${l} <em>${n}</em></span>`; }).join('');
+  $('app').innerHTML=shell(`
+    <div class="ufl">
+      <div class="usrch">${ico('search',18)}<input id="cq" type="search" value="${esc(CQ)}" placeholder="클럽 이름 · 지역 · 클럽장" autocomplete="off"
+        oninput="CQ=this.value;drawCList()"></div>
+      <div class="fbar sc" id="cfbar">${chips}</div></div>
+    <div id="clist"></div>`);
+  drawCList();
+}
+function drawCList(){
+  const rows=CLUB_ROWS||[]; const q=String(CQ||'').trim();
+  document.querySelectorAll('#cfbar .fchip').forEach(el=>{ const k=(el.getAttribute('onclick').match(/CF='(\w*)'/)||[])[1]; el.classList.toggle('on', k===CF); });
+  const list=rows.filter(cF(CF)).filter(c=>!q || [c.name,c.region,c.owner&&c.owner.name].some(v=>String(v||'').includes(q)))
+    .sort((a,b)=>(b.members||0)-(a.members||0));
+  const D=864e5, now=Date.now();
+  const actTx=c=>{ if(!('last_act' in c)) return '';
+    if(!c.last_act) return '<em class="old">모임 없음</em>';
+    const d=Math.floor((now-c.last_act)/D);
+    return `<em class="${d<7?'now':d<30?'wk':'old'}">${d<1?'오늘':d+'일 전'} 모임</em>`; };
+  const NOTE={alive:'30일 안에 모임을 연 클럽', sleep:'30일 넘게 모임이 없는 클럽 · 클럽장에게 연락해 보세요',
+    noowner:'클럽장이 없어 대진 · 회원 관리가 막힌 클럽 · 눌러서 클럽장을 정해 주세요', small:'회원이 5명 이하 — 복식 대진이 어려워요'};
+  const el=$('clist'); if(!el) return;
+  el.innerHTML=`<div class="uhd"><span><b>${list.length}곳</b>${NOTE[CF]?' · '+NOTE[CF]:''}</span></div>
+    <div class="card list">${list.length? list.map(c=>`
+    <div class="crw" onclick="openC(${c.id})">
+      <span class="av sq">${esc(String(c.name||'?')[0])}</span>
+      <div class="ub">
+        <div class="l1"><b>${esc(c.name)}</b><span class="n">${fmt(c.members)}명</span></div>
+        <div class="l2"><span class="mt">${esc(shortRegion(c.region)||'지역 없음')}<s>·</s>${c.owner?`클럽장 ${esc(c.owner.name)}`:'<b class="old">클럽장 없음</b>'}${
+          c.active!=null?`<s>·</s>30일 접속 ${fmt(c.active)}명`:''}</span>${actTx(c)}</div>
+      </div></div>`).join('')
+    : `<div class="empty">${q?'찾는 클럽이 없어요':'해당하는 클럽이 없어요'}</div>`}</div>`;
 }
 
 /* ── 클럽 권한 관리 ────────────────────────────────────────────
@@ -2156,45 +2661,47 @@ async function roleOwner(id, uid){
   try{ render(); }catch(_){}                 // 뒤의 클럽 목록에 <회장> 이름도 바뀌게
 }
 
-/* ── 클럽 한 곳 들여다보기 ────────────────────────────────────────
-   이 앱은 클럽 단위로 굴러간다. 대진이 잘 짜이는지, 사람이 붙는지,
-   죽어가는지가 전부 클럽에서 갈린다 — 그걸 한 화면에서 본다. */
+/* ── 클럽 한 곳 들여다보기 ── 대진이 잘 짜이는지, 사람이 붙는지, 죽어가는지가 전부 클럽에서 갈린다.
+   권한 관리와 삭제는 여기 맨 아래로(목록 줄에서 뺐다). */
 async function openC(id){
   $('sheet').innerHTML='<div class="unote">불러오는 중…</div>';
-  $('ov').classList.add('on');
+  $('ov').classList.remove('menu'); $('ov').classList.add('on');
   let d; try{ d=await api('/admin/clubs/'+id+'/detail'); }
   catch(e){ $('sheet').innerHTML='<div class="unote">불러오지 못했어요</div>'; return; }
   const when=t=>{ if(!t) return '기록 없음';
-    const dd=Math.floor((Date.now()-t)/864e5);
-    return dd<1?'오늘':dd<30?dd+'일 전':dd+'일 전'; };
+    const dd=Math.floor((Date.now()-t)/864e5); return dd<1?'오늘':dd+'일 전'; };
   /* 성비가 한쪽으로 크게 기울면 혼복이 안 짜인다 — 대진이 막히는 첫 신호다 */
   const fPct = d.members ? Math.round(d.women/d.members*100) : 0;
   const skew = d.members>=8 && (fPct<15 || fPct>85);
+  const row=(CLUB_ROWS||[]).find(x=>x.id===d.id)||{};
   $('sheet').innerHTML=`
-    <div class="sh-top"><h3>${esc(d.name)}</h3><div class="cl" onclick="closeU()">×</div></div>
-    <button class="b" style="width:100%;margin-bottom:8px" onclick="ROLE_Q='';openRoles(${d.id})">클럽장·임원 권한 관리 ›</button>
-    <div class="ur"><span>번호</span><b>#${d.id}</b></div>
-    <div class="ur"><span>지역</span><b>${esc([d.sido,d.sigungu].filter(Boolean).join(' ')||'없음')}</b></div>
-    <div class="ur"><span>회원</span><b>${fmt(d.members)}명 · 최근 30일 ${fmt(d.active)}명</b></div>
+    <div class="sh-top uhead"><span class="av lg sq">${esc(String(d.name||'?')[0])}</span>
+      <div class="uh"><h3>${esc(d.name)}</h3><span>#${d.id} · ${esc(shortRegion([d.sido,d.sigungu].filter(Boolean).join(' '))||'지역 없음')}</span></div>
+      <div class="cl" onclick="closeU()">×</div></div>
+    <div class="h3c sm">
+      <div><b>${fmt(d.members)}</b><span>회원</span></div>
+      <div><b>${fmt(d.active)}</b><span>30일 접속</span></div>
+      <div><b class="${d.gapPct>2?'hot':''}">${d.gapPct==null?'—':d.gapPct+'%'}</b><span>격차 3칸+</span></div></div>
+    <div class="ur"><span>클럽장</span><b>${row.owner?esc(row.owner.name):'<span class="old">없음</span>'}</b></div>
     <div class="ur"><span>성비</span><b${skew?' style="color:#c2410c"':''}>남 ${fmt(d.men)} · 여 ${fmt(d.women)}${
       d.noGender?` <em style="font-style:normal;color:#c2410c">· 미지정 ${d.noGender}</em>`:''}</b></div>
-    ${skew?`<div class="unote">한쪽으로 크게 기울어 혼복이 잘 안 짜여요 ·
-      대진이 막히는 첫 신호예요</div>`:''}
-    ${d.noGender?`<div class="unote">성별이 빈 ${d.noGender}명은 대진에서 남복·혼복이 잘못 잡혀요</div>`:''}
-    <div class="ur"><span>팀 격차 3칸+</span><b${d.gapPct>2?' style="color:#c2410c"':''}>${
-      d.gapPct==null?'대진 없음':d.gapPct+'%'}</b></div>
+    ${skew?`<div class="unote">한쪽으로 크게 기울어 혼복이 잘 안 짜여요 · 대진이 막히는 첫 신호예요</div>`:''}
+    ${d.noGender?`<div class="unote">성별이 빈 ${d.noGender}명은 대진에서 남복 · 혼복이 잘못 잡혀요</div>`:''}
     <div class="ur"><span>30일 등급 이동</span><b>${fmt(d.moves30)}건</b></div>
     <div class="ul">최근 대진</div>
     ${d.brackets.length ? d.brackets.map(b=>`<div class="ur">
       <span>${esc(b.date)}</span><b>${b.games}경기 · 점수 ${b.scored}건${
         b.bad?` <em style="font-style:normal;color:#c2410c">· 격차 ${b.bad}</em>`:''}</b></div>`).join('')
       : '<div class="unote">발행된 대진이 없어요</div>'}
-    <div class="ul">회원 (최근 순)</div>
+    <div class="ul">회원 <span>최근 접속 순</span></div>
     ${d.top.map(m=>`<div class="ur"><span>${esc(m.name||'-')}${
-      m.role&&m.role!=='member'?` · ${esc(m.role)}`:''}</span>
-      <b>${esc(m.grade||'-')} <em style="font-style:normal;color:#b3aea4;font-weight:500"
-        >· ${when(m.last_seen)}</em></b></div>`).join('')}
-    ${d.members>8?`<div class="unote">전체 ${fmt(d.members)}명 중 8명만 보여요</div>`:''}`;
+      m.role&&m.role!=='member'?` <i class="sub">${esc(ROLE_NM[m.role]||m.role)}</i>`:''}</span>
+      <b>${esc(m.grade||'-')} <em style="font-style:normal;color:#b3aea4;font-weight:500">· ${when(m.last_seen)}</em></b></div>`).join('')}
+    ${d.members>8?`<div class="unote">전체 ${fmt(d.members)}명 중 8명만 보여요</div>`:''}
+    <div class="ul">손대기</div>
+    <div class="uact2 one"><button onclick="ROLE_Q='';openRoles(${d.id})">클럽장 · 임원 권한 관리</button></div>
+    <button class="udel" onclick="delClub(${d.id},'${esc(d.name)}')">클럽 삭제 · 되돌릴 수 없어요</button>`;
+  try{ $('sheet').scrollTop=0; }catch(e){}
 }
 
 /* 오픈매치 열기 — 코트가 먼저 열리고 사람들은 신청만 한다.
@@ -2466,6 +2973,38 @@ async function drawReports(){
     : `<div class="empty">처리할 신고가 없어요</div>`}</div>`);
 }
 
+/* ── 호스트 매치 ── 정산 보류(참가자가 <호스트가 안 왔어요>) · 예약 캡처 확인 */
+async function drawHostMatches(){
+  const rows=await api('/admin/host-matches').catch(e=>{ toast(e.message||'불러오지 못했어요'); return []; });
+  const holds=rows.filter(r=>r.hold);
+  BADGE.hosts=holds.length||'';
+  const st=r=>r.hold?'정산 멈춤':r.status==='noshow'?'미참석 확정':r.status==='cancelled'?(r.cancel_reason==='rain'?'비 취소':'호스트 취소')
+    :r.settled?`정산 ${fmt(r.paid_out)}원`:r.status==='confirmed'?'확정':'모집 중';
+  const row=r=>`<div class="rw" style="align-items:flex-start">
+      ${r.proof?`<a href="${esc(r.proof)}" target="_blank" rel="noopener" style="flex:none;margin-right:10px"><img src="${esc(r.proof)}" alt="예약 화면" style="width:52px;height:68px;object-fit:cover;border-radius:8px;display:block"></a>`:''}
+      <div class="nm" style="min-width:0;flex:1"><b style="white-space:normal">${esc(r.loc||'')}<span class="tag">${esc(st(r))}</span></b>
+        <span style="white-space:normal">${esc(String(r.start_at||'').replace('T',' '))} · ${r.courts||1}코트${r.court_no?' · '+esc(r.court_no):''} · 1면 1시간 ${fmt(r.hour_cost)}원 · 호스트 ${esc((r.host&&r.host.name)||'')} · 게스트 ${r.guests}명 · 걷힌 돈 ${fmt(r.collected)}원</span>
+        ${(r.reports||[]).map(x=>`<span style="color:#c8452c;white-space:normal">신고 · ${esc(x.name||'')}${x.note?' · '+esc(x.note):''}</span>`).join('')}</div>
+      ${r.hold?`<div class="seg3" style="flex:none"><button class="b" onclick="hostReview(${+r.id},'release')">왔어요 · 정산</button>
+        <button class="b dz" onclick="hostReview(${+r.id},'noshow')">안 왔어요 · 환불</button></div>`
+        :r.proof&&['open','confirmed'].includes(r.status||'open')?`<button class="b${r.proof_ok?' dz':''}" style="flex:none" onclick="proofOk(${+r.id},${r.proof_ok?'false':'true'})">${r.proof_ok?'확인 취소':'예약 확인'}</button>`:''}</div>`;
+  $('app').innerHTML=shell(`${holds.length?`<div class="card"><div class="note" style="margin:0 0 8px">참가자가 <b>호스트가 안 왔어요</b>를 누른 매치예요. 확인하고 골라 주세요.</div>${holds.map(row).join('')}</div>`:''}
+    <div class="card">${rows.filter(r=>!r.hold).map(row).join('')||'<div class="empty">호스트 매치가 아직 없어요</div>'}</div>
+    <div class="note">예약 화면을 누르면 크게 볼 수 있어요. 날짜 · 면수 · 금액이 매치와 맞으면 <b>예약 확인</b>을 눌러 주세요 — 참가자 화면에 <b>예약 확인됨</b>이 떠요.</div>`);
+}
+/* 예약 화면이 날짜 · 면수 · 금액과 맞으면 <예약 확인> — 참가자 화면에 <예약 확인됨>이 뜬다 */
+async function proofOk(id, ok){
+  try{ await api(`/admin/open-matches/${id}/proof-ok`,{method:'POST',body:JSON.stringify({ok})}); toast(ok?'예약 확인으로 표시했어요':'확인을 풀었어요'); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
+}
+async function hostReview(id, action){
+  const msg=action==='noshow'?'호스트 미참석으로 처리할까요?\n게스트에게 전액 환불하고, 호스트는 90일 동안 매치를 열 수 없어요.'
+    :'호스트가 왔다고 처리할까요?\n정산이 바로 진행돼요.';
+  if(!confirm(msg)) return;
+  try{ await api(`/admin/open-matches/${id}/host-review`,{method:'POST',body:JSON.stringify({action})}); toast('처리했어요'); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
+}
+
 /* ── 정산 ── */
 async function drawPayouts(){
   const rows=await api('/admin/payouts').catch(()=>[]);
@@ -2709,5 +3248,7 @@ async function addBots(){
     toast(`${r.added||0}명을 추가했어요`); render(); }
   catch(e){ toast('추가하지 못했어요'); }
 }
+/* 주소 끝(#users)으로 바로 그 화면을 연다 — 휴대폰 홈 화면에 화면별로 올려 둘 수 있다 */
+try{ const h=(location.hash||'').slice(1); if(/^\w+$/.test(h)) TAB=h; }catch(e){}
 render();
 </script></body></html>
