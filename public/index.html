@@ -9772,7 +9772,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.3-1010b';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.3-1011a';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -15848,6 +15848,7 @@ function renderClub(){
   if(state.view==='club' && !state.clubOpen && !state.clubBrowse && typeof TB_ON!=='undefined' && TB_ON && (state.myClubs||[]).length){
     const mc=tbMyClub(); if(mc){ state.clubOpen=mc; state.activeClub=mc; }
   }
+  clubCacheGuard();           // 열린 클럽이 정해진 다음 — 바뀌었으면 예전 클럽 공지 · 소식을 비운다
   const t = state.clubOpen ? 'my' : 'find';
   /* 내 클럽을 아직 모르면(서버 응답 전) 목록 화면을 그리지 않는다 — 빈 틀만 두고 기다린다.
      응답이 오면 loadClubIds 가 다시 그리고, 위의 <클럽이 생기면 바로 우리 클럽으로>가 연다. */
@@ -18417,9 +18418,12 @@ function xcIsOfficer(){ return !!(state.bcfg && (state.bcfg.role==='officer'||st
 async function xcLoad(){
   const cid=xcMyClubId();
   if(!SERVER_OK || !cid) return;
-  try{ XC_LIST=await api(`/clubs/${cid}/exchange`); }catch(e){ XC_LIST=[]; }
-  if(!XC_PHOTOS){ try{ const ms=await api(`/clubs/${cid}/members`);
-    XC_PHOTOS={}; (ms||[]).forEach(m=>{ XC_PHOTOS[m.name]=m.photos; }); }catch(e){ XC_PHOTOS={}; } }
+  let r; try{ r=await api(`/clubs/${cid}/exchange`); }catch(e){ r=[]; }
+  if(xcMyClubId()!==cid) return;        // 그사이 클럽이 바뀌었으면 버린다
+  XC_LIST=r;
+  if(!XC_PHOTOS){ let ph={}; try{ const ms=await api(`/clubs/${cid}/members`);
+    (ms||[]).forEach(m=>{ ph[m.name]=m.photos; }); }catch(e){}
+    if(xcMyClubId()!==cid) return; XC_PHOTOS=ph; }
   if(state.view==='club') renderClub();
 }
 
@@ -27881,7 +27885,24 @@ function retryClubRoster(){ CLUB_ROSTER=null; CLUB_ROSTER_FOR=null; CLUB_ROSTER_
 let CLUB_NOTICES=null, _ntOnce=false;
 async function loadNotices(){
   const cid=clubId(); if(!SERVER_OK||!cid) return;
-  try{ CLUB_NOTICES=await api(`/clubs/${cid}/notices`)||[]; }catch(e){ CLUB_NOTICES=[]; }
+  let r; try{ r=await api(`/clubs/${cid}/notices`)||[]; }catch(e){ r=[]; }
+  if(clubId()!==cid) return;            // 받는 사이 클럽이 바뀌었으면 버린다 — 예전 클럽 공지가 새 클럽에 앉는다
+  CLUB_NOTICES=r;
+}
+/* 클럽마다 따로인 캐시 — 공지 · 소식 · 교류전 · 승강 배지는 클럽 열쇠 없이 한 칸에 담겨 있었다.
+   그래서 새 클럽을 만들거나 다른 클럽으로 옮기면 예전 클럽 공지가 새 클럽 홈 · 소식에 그대로 떴다.
+   클럽을 바꾸는 길(위 클럽 칩 · 새 클럽 만들기 · 초청 수락 · 나가기 …)이 여러 갈래라
+   하나하나 막지 않고, 클럽 화면을 그리는 입구(renderClub)에서 클럽이 바뀐 걸 보고 한 번에 비운다. */
+let CLUB_CACHE_FOR=null;
+function clubCacheGuard(){
+  const k=(state.activeClub||'')+'|'+(clubId()||'');
+  if(CLUB_CACHE_FOR===k) return;
+  CLUB_CACHE_FOR=k;
+  CLUB_NOTICES=null; _ntOnce=false; NT_I=0; _NPOP_DONE=false;
+  window.FEED_LOADED=false; window._feedOnce=false; window.CLUB_FEED=[];
+  PROMOS=null; window._promoOnce=false;
+  XC_LIST=null; XC_PHOTOS=null;
+  CB2_LIST=null; CLUBME_GAMES=null; CLUBME_MON=null; CLUBME_WHO=null; MB_CACHE=[];
 }
 /* 화면에 그린 공지는 읽은 것으로 친다 — 따로 누르게 하면 아무도 안 누른다 */
 function markNoticeRead(id){
@@ -29644,7 +29665,10 @@ async function sendFeedCmt(id){
 }
 async function loadClubFeed(){
   if(!SERVER_OK || !clubId()){ CLUB_FEED=[]; return; }
-  try{ CLUB_FEED = await api(`/clubs/${clubId()}/feed`); }catch(e){ CLUB_FEED=[]; }
+  const cid=clubId(); let r;
+  try{ r = await api(`/clubs/${cid}/feed`); }catch(e){ r=[]; }
+  if(clubId()!==cid) return;            // 그사이 클럽이 바뀌었으면 버린다
+  CLUB_FEED = r;
   window.FEED_LOADED = true;
 }
 async function delClubPost(id){
@@ -30755,6 +30779,7 @@ async function deleteClub(){
     const m=String(e.message||'');
     console.error('[MATSU] 클럽 삭제 실패:', m);
     toast(m.includes('members_left') ? '아직 회원이 남아 있어요 · 회원 관리에서 모두 내보낸 뒤 지울 수 있어요'
+      : m.includes('cup_entry') ? '맞수컵 참가가 확정된 클럽이라 지금은 지울 수 없어요 · 참가 취소와 환불은 운영자에게 문의해 주세요'
       : m.includes('owner_only') ? '클럽장만 지울 수 있어요'
       : /HTTP 40[45]|Cannot DELETE/i.test(m) ? '서버에 클럽 삭제 기능이 아직 없어요 (관리자 확인 필요)'
       : /HTTP 401|no_token|invalid_token/i.test(m) ? '로그인이 풀렸어요 · 다시 로그인해 주세요'
@@ -38162,7 +38187,9 @@ async function cb2PromoApply(){
 let PROMOS=null;
 async function cb2LoadPromos(){
   const cid=clubId(); if(!cid){ PROMOS=[]; return; }
-  try{ PROMOS=await api(`/clubs/${cid}/promotions`)||[]; }catch(e){ PROMOS=[]; }
+  let r; try{ r=await api(`/clubs/${cid}/promotions`)||[]; }catch(e){ r=[]; }
+  if(clubId()!==cid) return;            // 그사이 클럽이 바뀌었으면 버린다
+  PROMOS=r;
 }
 function promoBadge(nameOrId){
   if(!PROMOS||!PROMOS.length) return '';
@@ -43408,7 +43435,7 @@ async function renderMatch(){
   let h=`<h2 class="t">오픈매치</h2>`;
   /* 오픈 전에는 이 화면 하나만 — 지역·종목 필터, 빈 목록, 첫 방문 안내 시트는 열린 뒤에 보인다 */
   if(OM_PRELAUNCH){ omPreRender();
-    if(!window.OM_LOADED || !(OM_LIST||[]).length || Date.now()-(window.OM_TS||0)>30e3) omLoadHostList();   // 비었으면 매번 새로 본다
+    if(omHostOpen() && (!window.OM_LOADED || !(OM_LIST||[]).length || Date.now()-(window.OM_TS||0)>30e3)) omLoadHostList();   // 비었으면 매번 새로 본다
     return; }
   el.classList.add('omx-on');
   // 페어플레이 평가 창(경기 후 24시간)이 열린 매치 배너
@@ -45087,8 +45114,12 @@ async function omLoadHostList(){
   }catch(e){}
 }
 /* 오픈 전 화면 — 호스트 매치가 있으면 목록(시안), 없으면 안내 */
+/* 오픈 전 — 아직 오픈하지 않았으니 탭에는 <오픈 준비 중> 한 화면만 보인다(호스트 매치 목록 · 매치 열기는 숨김).
+   호스트 매치를 미리 보려면(내부 확인 · 테스트) localStorage 의 om_host_preview 를 1로. 오픈하면 OM_PRELAUNCH 를 false 로. */
+function omHostOpen(){ try{ return localStorage.getItem('om_host_preview')==='1'; }catch(e){ return false; } }
 function omPreRender(){
   const el=document.getElementById('s-match'); if(!el) return;
+  if(!omHostOpen()){ el.classList.remove('omx-on'); el.innerHTML=`<h2 class="t">오픈매치</h2>`+omSoon(); return; }
   const hosted=(OM_LIST||[]).filter(m=>m.mode==='host'&&m.status!=='cancelled');
   el.classList.add('omx-on');
   el.innerHTML = hosted.length
@@ -45098,6 +45129,7 @@ function omPreRender(){
 }
 /* 코트 화면 — 이 코트에서 열린 오픈매치 · 여기서 매치 열기 */
 function venueOmSection(vid, v, list, rate){
+  if(OM_PRELAUNCH && !omHostOpen()) return '';        // 오픈 전 — 코트 화면에서도 <여기서 매치 열기>를 숨긴다
   const L=(list||[]).filter(m=>m&&m.status!=='cancelled');
   L.forEach(m=>{ OM_LIST=(OM_LIST||[]).filter(x=>x.id!==m.id); OM_LIST.push(m); });
   const WD='일월화수목금토';
