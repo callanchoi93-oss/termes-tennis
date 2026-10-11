@@ -2797,6 +2797,11 @@ app.delete('/clubs/:id', auth, (req, res) => {
   if (others > 0)
     return res.status(409).json({ error: 'members_left', count: others,
       message: '아직 회원이 남아 있어요' });
+  /* 맞수컵에 돈을 내고 확정된 클럽은 지우지 않는다 — 지우면 대진에서 팀이 사라지고 환불할 곳도 없어진다 */
+  const paidCup = cupClubPaid(cid);
+  if (paidCup)
+    return res.status(409).json({ error: 'cup_entry', cup: paidCup,
+      message: `${paidCup}에 참가가 확정된 클럽이라 지금은 지울 수 없어요 · 참가 취소와 환불은 운영자에게 문의해 주세요` });
 
   /* 딸린 자료를 손으로 지운다. 표가 없거나 열 이름이 다른 경우가 있어
      한 줄씩 감싼다 — 하나 실패했다고 삭제 전체가 멈추면 반쪽만 지워진다. */
@@ -2829,6 +2834,7 @@ app.delete('/clubs/:id', auth, (req, res) => {
     'notices', 'rest_requests',
   ].forEach(t => wipe(`DELETE FROM ${t} WHERE club_id=?`, cid));
 
+  cupClubGone(cid);                 // 맞수컵 신청(입금 전)은 취소로 — 참가 클럽 목록 · 팀 수에서 빠진다
   db.prepare('DELETE FROM clubs WHERE id=?').run(cid);
   console.log(`[clubs] 삭제 id=${cid} name=${club.name} by uid=${req.uid}`);
   res.json({ ok: true });
@@ -4282,7 +4288,9 @@ app.delete('/me', auth, (req, res) => {
     if (others.length) return res.status(400).json({ error: 'owner_must_transfer', clubs: others.map(o => o.name) });
   }
   tx(() => {
-    // 회원 혼자인 클럽은 함께 정리
+    // 회원 혼자인 클럽은 함께 정리 — 맞수컵 신청도 취소로(지운 클럽이 참가 클럽에 남지 않게)
+    db.prepare(`SELECT id FROM clubs WHERE owner_id=? AND
+      (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id AND user_id<>?)=0`).all(uid, uid).forEach(c => cupClubGone(c.id));
     db.prepare(`DELETE FROM clubs WHERE owner_id=? AND
       (SELECT COUNT(*) FROM club_members WHERE club_id=clubs.id AND user_id<>?)=0`).run(uid, uid);
     /* 계정을 지우면 모든 클럽에서 빠진다 — 클럽마다 <지난 회원>으로 남긴다 */
@@ -4383,12 +4391,15 @@ app.delete('/clubs/:id/leave', auth, (req, res) => {
   if (m.role === 'owner') {
     const others = db.prepare("SELECT COUNT(*) n FROM club_members WHERE club_id=? AND user_id<>?").get(cid, req.uid).n;
     if (others > 0) return res.status(400).json({ error: 'owner_must_transfer' });   // 넘기고 나가야 한다
+    const paidCup = cupClubPaid(cid);     // 혼자 남은 클럽장이 나가면 클럽이 없어진다 — 확정된 맞수컵이 있으면 막는다
+    if (paidCup) return res.status(409).json({ error: 'cup_entry', cup: paidCup,
+      message: `${paidCup}에 참가가 확정된 클럽이라 지금은 나갈 수 없어요 · 운영자에게 문의해 주세요` });
   }
   const unpaid = db.prepare("SELECT COUNT(*) n FROM dues WHERE club_id=? AND user_id=? AND status='unpaid'").get(cid, req.uid).n;
   /* 스스로 나가도 지난 회원에 남긴다 — 예전엔 운영진이 내보낼 때만 기록됐다 */
   if (m.role !== 'owner') memberExit(cid, req.uid, { kind: '본인 요청', memo: '앱에서 직접 탈퇴', source: 'self' });
   db.prepare('DELETE FROM club_members WHERE club_id=? AND user_id=?').run(cid, req.uid);
-  if (m.role === 'owner') db.prepare('DELETE FROM clubs WHERE id=?').run(cid);       // 마지막 사람이면 클럽도 정리
+  if (m.role === 'owner') { cupClubGone(cid); db.prepare('DELETE FROM clubs WHERE id=?').run(cid); }   // 마지막 사람이면 클럽도 정리
   res.json({ ok: true, unpaid_left: unpaid });
 });
 
@@ -6699,6 +6710,13 @@ try {
     applied_at INTEGER, created_at INTEGER)`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_cup_tok ON cup_entries(invite_token)');
   db.exec('CREATE INDEX IF NOT EXISTS ix_cup_br ON cup_entries(bracket_id)');
+  /* 이미 지운 클럽의 신청 — 예전엔 클럽을 지워도 남아 참가 클럽 목록에 떴다. 켤 때 한 번 취소로 내린다. */
+  try {
+    const gone = db.prepare(`UPDATE cup_entries SET status='cancelled' WHERE club_id IS NOT NULL
+      AND status!='cancelled' AND club_id NOT IN (SELECT id FROM clubs)
+      AND bracket_id IN (SELECT id FROM brackets WHERE date IS NULL OR date >= ?)`).run(kstToday()).changes;
+    if (gone) console.log(`[cup] 지운 클럽의 맞수컵 신청 ${gone}건을 취소로 정리`);
+  } catch (e) {}
   db.exec(`CREATE TABLE IF NOT EXISTS cup_roster (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entry_id INTEGER NOT NULL,
@@ -7577,6 +7595,32 @@ function cupLiveNow(b) {
   return { on: true, start: slot.start, slot: slot.s,
     left_ms: Math.max(0, started + dur - now), match_sec: cfg.match_sec,
     played: doneN, total: all.length, courts, logos: cupEntryLogos(b.id) };
+}
+
+/* 클럽이 없어질 때의 맞수컵 신청 — 클럽을 지워도 신청이 남아 참가 클럽 목록 · 팀 수(2/8팀)에 그대로 떴다.
+   cupClubPaid: 아직 안 끝난 대회에 입금 · 확정된 신청이 있으면 그 대회 이름(없으면 null). 지우기 전에 막는 데 쓴다.
+   cupClubGone: 아직 안 끝난 대회의 남은 신청을 취소로 내린다. 끝난 대회 기록(순위 · 명단)은 그대로 둔다. */
+function cupClubPaid(cid) {
+  try {
+    const r = db.prepare(`SELECT b.data FROM cup_entries e JOIN brackets b ON b.id=e.bracket_id
+      WHERE e.club_id=? AND e.status!='cancelled' AND (e.status IN ('paid','confirmed') OR e.fee_paid=1)
+        AND (b.date IS NULL OR b.date >= ?) LIMIT 1`).get(cid, kstToday());
+    if (!r) return null;
+    let d = {}; try { d = JSON.parse(r.data || '{}'); } catch (e) {}
+    return d.title || '맞수컵';
+  } catch (e) { return null; }
+}
+function cupClubGone(cid) {
+  try {
+    const rows = db.prepare(`SELECT e.id, e.bracket_id FROM cup_entries e JOIN brackets b ON b.id=e.bracket_id
+      WHERE e.club_id=? AND e.status!='cancelled' AND (b.date IS NULL OR b.date >= ?)`).all(cid, kstToday());
+    if (!rows.length) return 0;
+    const up = db.prepare("UPDATE cup_entries SET status='cancelled' WHERE id=?");
+    rows.forEach(r => up.run(r.id));
+    [...new Set(rows.map(r => r.bracket_id))].forEach(bid => db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), bid));
+    console.log(`[cup] 클럽 ${cid} 이(가) 없어져 맞수컵 신청 ${rows.length}건을 취소로 내림`);
+    return rows.length;
+  } catch (e) { return 0; }
 }
 
 function cupBracket(id) {
