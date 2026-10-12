@@ -6852,11 +6852,8 @@ const CUP_DEFAULT = {
   /* 구력 합 상한. 동호인 구력이 보통 0~10년인데 20년을 두면 아무것도 안 걸러진다.
      혼복 두 매치를 8년으로 묶는다. 1번(남복)은 에이스 매치라 열어 둔다. */
   cap: { 1: null, 2: 8, 3: 8 },        // 구력 합산 상한(년)
-  lunch_after: 4,
-  /* 점심을 안 잡는다. 하루짜리 대회에서 40분을 통째로 세우면 코트가 놀고,
-     정작 대부분은 밥을 안 먹고 간식으로 때운다. 자기 차례 사이 20~110분이
-     이미 비어 있어서 그때 먹으면 된다. 필요하면 대회 설정에서 켠다. */
-  lunch_min: 0,
+  /* 점심시간은 없다 — 하루짜리 대회에서 40분을 통째로 세우면 코트가 놀고, 대부분 간식으로 때운다.
+     자기 차례 사이가 비어 있어 그때 먹으면 된다. 설정에서도 뺐고, 예전에 넣어 둔 값이 있어도 시간표에 넣지 않는다. */
 };
 
 /* teams: [{entry_id, name, group:'A'|'B', seat:1~4}]
@@ -7030,17 +7027,15 @@ function buildCupBracket(opt) {
 
 /* 슬롯 시각 · 라운드 묶기 — 순위전과 토너먼트가 같이 쓴다 */
 function finishBracket({ cfg, courts, teams, startTime, g, phases, lastSlot, matches, koGaps }) {
-  /* 슬롯마다 시각을 매긴다. 점심은 조별 한가운데 */
+  /* 슬롯마다 시각을 매긴다 — 점심시간 없이 이어서 */
   /* 이어치기면 칸 = 예상 매치 시간 + 전환(34분) — 시간표 시각은 <예상>이다.
      8팀 13칸 × 34분 = 7시간 22분(09:00 → 16:22), 시뮬레이션 중앙값(7시간 20분)과 맞는다 */
   const slotMin = Math.round(((cfg.flow === 'roll' ? (cfg.est_sec || cfg.match_sec) : cfg.match_sec) + cfg.turn_sec) / 60);
-  const lunchAt = Math.floor(g.nextSlot / 2);
   const slots = [];
   let at = startTime;
   for (let sIdx = 0; sIdx <= lastSlot; sIdx++) {
     slots.push({ s: sIdx, start: at });
     at = addMin(at, slotMin);
-    if (sIdx === lunchAt && cfg.lunch_min) at = addMin(at, cfg.lunch_min);
   }
   const slotStart = n => (slots[n] || {}).start || '';
 
@@ -7621,11 +7616,99 @@ function cupClubGone(cid) {
     console.log(`[cup] 클럽 ${cid} 이(가) 없어져 맞수컵 신청 ${rows.length}건을 취소로 내림`);
     return rows.length;
   } catch (e) { return 0; }
+  finally { try { db.prepare("UPDATE cup_waitlist SET status='left', done_at=? WHERE club_id=? AND status='waiting'").run(now(), cid); } catch (e) {} }
 }
 
 function cupBracket(id) {
   return db.prepare("SELECT * FROM brackets WHERE id=? AND fmt='cup'").get(+id);
 }
+
+/* ── 맞수컵 입금 기한 · 대기 ──
+   정원(6팀)이 차면 대기를 3팀까지 받는다. 신청한 팀은 신청 후 3일 안에(대회 입금 마감이 더 빠르면 그날 23:59까지) 입금해야 한다.
+   기한을 넘긴 팀이 있고 대기 팀이 있으면 기한 넘긴 팀의 신청을 내리고 대기 1번을 그 자리에 올린다(올라온 팀도 그때부터 3일).
+   대기 팀이 없으면 기한을 넘겨도 그대로 둔다 — 자리를 기다리는 팀이 없는데 내릴 까닭이 없다. 대기가 생기면 그때 넘어간다.
+   대기는 따로 표에 둔다 — cup_entries 는 <자리를 가진 팀>이라 그걸 세는 곳이 많다. */
+const CUP_PAY_HOURS = 72, CUP_WAIT_MAX = 3;
+try { db.exec('ALTER TABLE cup_entries ADD COLUMN pay_due INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE cup_entries ADD COLUMN cancel_why TEXT'); } catch (e) {}
+try { db.exec(`CREATE TABLE IF NOT EXISTS cup_waitlist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, bracket_id INTEGER NOT NULL, club_id INTEGER NOT NULL, club_name TEXT,
+  uid INTEGER, contact_name TEXT, contact_phone TEXT,
+  status TEXT DEFAULT 'waiting',          -- waiting | promoted | left
+  created_at INTEGER, done_at INTEGER, entry_id INTEGER)`); } catch (e) {}
+/* 대회 입금 마감일 23:59:59(서울) — 날짜가 없으면 null */
+function cupDueEnd(b) {
+  if (!b || !b.date) return null;
+  const day = Date.parse(String(b.date).slice(0, 10) + 'T00:00:00+09:00'); if (isNaN(day)) return null;
+  return day - (cupCfg(b.data).due_days || 14) * 864e5 + 864e5 - 1000;
+}
+/* 이 팀의 입금 기한 — 신청(또는 대기에서 올라온) 때부터 3일, 대회 입금 마감이 더 빠르면 그날 */
+function cupPayDue(b, from) {
+  const f = from || Date.now(), t = f + CUP_PAY_HOURS * 3600e3, end = cupDueEnd(b);
+  return end && end > f && end < t ? end : t;
+}
+function cupDueTxt(ms) {
+  const d = new Date(+ms + 9 * 3600e3), p = n => String(n).padStart(2, '0');
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${'일월화수목금토'[d.getUTCDay()]}) ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+function cupWaitRows(bid) {
+  try { return db.prepare(`SELECT * FROM cup_waitlist WHERE bracket_id=? AND status='waiting' ORDER BY id`).all(bid); } catch (e) { return []; }
+}
+function cupLiveN(bid) {
+  return db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(bid).n;
+}
+/* 대기 → 자리. 그 클럽이 이미 자리를 가졌거나 클럽이 없어졌으면 대기에서만 뺀다 */
+function cupPromote(b, w) {
+  const C = cupCfg(b.data);
+  const club = db.prepare('SELECT id, name FROM clubs WHERE id=?').get(w.club_id);
+  const had = db.prepare("SELECT id FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, w.club_id);
+  if (!club || had) { db.prepare("UPDATE cup_waitlist SET status='left', done_at=? WHERE id=?").run(now(), w.id); return false; }
+  const due = cupPayDue(b, Date.now());
+  const r = db.prepare(`INSERT INTO cup_entries
+    (bracket_id,club_id,club_name,contact_name,contact_phone,status,invite_token,applied_at,created_at,pay_due)
+    VALUES (?,?,?,?,?,'applied',?,?,?,?)`).run(b.id, w.club_id, club.name || w.club_name || '클럽', w.contact_name || null, w.contact_phone || null,
+    crypto.randomBytes(9).toString('base64url'), now(), now(), due);
+  db.prepare("UPDATE cup_waitlist SET status='promoted', done_at=?, entry_id=? WHERE id=?").run(now(), rid(r), w.id);
+  try { notifyClubOfficers(w.club_id, '🏆', `${C.title} 자리가 났어요`,
+    `대기 순번이 돌아왔어요 · ${cupDueTxt(due)}까지 참가비를 입금하면 참가가 확정돼요`); } catch (e) {}
+  console.log(`[cup ${b.id}] 대기 → 자리: ${club.name}`);
+  return true;
+}
+/* 기한 · 대기 정리 — 5분마다, 그리고 대회 화면을 열 때마다(그 대회만) */
+function cupPaySweep(bid) {
+  let list = [];
+  try { list = bid ? [cupBracket(bid)].filter(Boolean) : db.prepare("SELECT * FROM brackets WHERE fmt='cup'").all(); } catch (e) { return; }
+  const today = kstToday(), t = Date.now();
+  list.forEach(b => {
+    let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+    if (cupDrawn(d) || (b.date && b.date < today)) return;
+    let changed = false;
+    /* 기한이 없는 신청 — 이 기능 전에 신청했거나 · 확정을 풀었거나 · 초청 링크로 신청한 팀. 지금부터 3일 */
+    db.prepare(`SELECT id FROM cup_entries WHERE bracket_id=? AND status='applied' AND COALESCE(fee_paid,0)=0 AND pay_due IS NULL`)
+      .all(b.id).forEach(e => { db.prepare('UPDATE cup_entries SET pay_due=? WHERE id=?').run(cupPayDue(b, t), e.id); changed = true; });
+    const waits = cupWaitRows(b.id);
+    if (!waits.length) { if (changed) db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), b.id); return; }
+    const C = cupCfg(b.data);
+    /* 빈자리 — 취소 · 클럽 삭제로 자리가 났으면 대기 순서대로 */
+    let live = cupLiveN(b.id);
+    while (waits.length && live < C.max_teams) { if (cupPromote(b, waits.shift())) live++; changed = true; }
+    /* 기한을 넘긴 신청 ↔ 대기 */
+    const over = db.prepare(`SELECT * FROM cup_entries WHERE bracket_id=? AND status='applied' AND COALESCE(fee_paid,0)=0
+      AND pay_due IS NOT NULL AND pay_due < ? ORDER BY pay_due, id`).all(b.id, t);
+    for (const e of over) {
+      if (!waits.length) break;
+      db.prepare("UPDATE cup_entries SET status='cancelled', cancel_why='unpaid' WHERE id=?").run(e.id);
+      if (e.club_id) try { notifyClubOfficers(e.club_id, '⏰', `${C.title} 자리가 대기 클럽에 넘어갔어요`,
+        `입금 기한(${cupDueTxt(e.pay_due)})이 지나 신청이 취소됐어요 · 다시 참가하려면 대기를 신청해 주세요`); } catch (x) {}
+      console.log(`[cup ${b.id}] 입금 기한 지남: ${e.club_name}`);
+      while (waits.length && !cupPromote(b, waits.shift())) {}
+      changed = true;
+    }
+    if (changed) db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), b.id);
+  });
+}
+setTimeout(() => { try { cupPaySweep(); } catch (e) { console.error('[cup sweep]', e.message); } }, 15000);
+setInterval(() => { try { cupPaySweep(); } catch (e) { console.error('[cup sweep]', e.message); } }, 5 * 60e3);
 /* 우리 클럽 다음 경기 — 리그 카드의 <다음 경기 10:30 · 2번 코트 · 혼복 · 수지 에이스전> 한 줄.
    보는 사람이 엔트리에 있으면(앱 회원) 그 사람이 뛰는 매치의 코트를 고른다. */
 function cupMineNext(b, eid, uid) {
@@ -7688,21 +7771,26 @@ app.get('/cup/:bid/teams', auth, (req, res) => {
   const mine = cid ? db.prepare(`SELECT id FROM cup_entries
     WHERE bracket_id=? AND club_id=? AND status!='cancelled'`).get(b.id, cid) : null;
 
+  cupPaySweep(b.id);
   const C = cupCfg(b.data);
-  const rows = db.prepare(`SELECT id, club_id, club_name, status, fee_paid, group_label, seat
+  const rows = db.prepare(`SELECT id, club_id, club_name, status, fee_paid, group_label, seat, pay_due
     FROM cup_entries WHERE bracket_id=? AND status!='cancelled' ORDER BY id`).all(b.id);
   const teams = rows.map(r => {
     const n = db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(r.id).n;
     const isMine = mine && r.id === mine.id;
     const out = { id: r.id, name: r.club_name, mine: !!isMine,
       status: r.fee_paid ? 'confirmed' : (n >= CUP_ROSTER_N ? 'entered' : 'applied'),
-      roster_n: n, group_label: r.group_label, seat: r.seat };
+      roster_n: n, group_label: r.group_label, seat: r.seat,
+      pay_due: !r.fee_paid && r.status === 'applied' ? r.pay_due || null : null };
     out.roster = db.prepare(`SELECT id, guest_name name, gender, ntrp years, pair
       FROM cup_roster WHERE entry_id=? ORDER BY pair, gender DESC, slot`).all(r.id);
     return out;
   });
   res.json({ teams, max_teams: C.max_teams, min_teams: C.min_teams,
     left: Math.max(0, C.max_teams - teams.length),
+    /* 대기 — 순번 · 클럽 이름만(연락처는 관리자만) */
+    waitlist: cupWaitRows(b.id).map((w, i) => ({ no: i + 1, name: w.club_name, mine: !!(cid && w.club_id === cid) })),
+    wait_max: CUP_WAIT_MAX, pay_hours: CUP_PAY_HOURS,
     logos: cupEntryLogos(b.id),                     // 참가 클럽 카드에 클럽 로고
     /* 초청장은 주최 클럽 운영진만 만든다 — 화면이 그걸 알아야 버튼을 감춘다 */
     is_host: cupHost(b, req.uid),
@@ -7963,7 +8051,48 @@ app.post('/admin/cups', admin, (req, res) => {
   res.json({ ok: true, id: rid(r) });
 });
 
+/* 코트를 몇 시간 빌려야 하나 — 대진표를 실제로 짜는 함수(buildCupBracket)에 빈 팀을 넣어 끝나는 시각을 본다.
+   시간표대로(slot)면 정확하고, 이어치기(roll)면 예상이다. 빌리는 시간은 정시 단위로 올린다
+   (6팀 · 3면 · 25분 + 전환 5분 → 9칸 × 30분 = 4시간 30분 → 5시간). */
+const CUP_COURT_RATE = 15000;          // 1면 1시간 — 기본 견적(3면 × 5시간 = 22.5만)과 같은 값
+function cupPlan(o) {
+  const start = /^\d{2}:\d{2}$/.test(String(o.start || '')) ? o.start : '09:00';
+  const cfg = Object.assign({}, CUP_DEFAULT, o.cfg || {});
+  const courts = Math.max(1, Math.min(12, Math.round(+o.courts) || cfg.courts || 3));
+  const T = Math.max(2, Math.min(12, Math.round(+o.teams) || 6));
+  const a = Math.ceil(T / 2), teams = [];
+  for (let i = 0; i < T; i++) teams.push({ entry_id: i + 1, name: 'T' + (i + 1), group: i < a ? 'A' : 'B', seat: (i < a ? i : i - a) + 1 });
+  const B = buildCupBracket({ teams, startTime: start, cfg, courts });
+  const mm = t => { const [h, m] = String(t || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  let minutes = mm(B.est_end) - mm(start); if (minutes < 0) minutes += 1440;
+  const hours = Math.max(1, Math.ceil(minutes / 60));
+  return { teams: T, courts, start, end: B.est_end, minutes, hours, rent_end: addMin(start, hours * 60),
+    slots: (B.slots || []).length, slot_min: B.slot_min, flow: cfg.flow };
+}
+app.post('/admin/cups/plan', admin, (req, res) => {
+  const q = req.body || {};
+  const n = (v, lo, hi) => { const x = Math.round(+v); return (String(v ?? '') !== '' && x >= lo && x <= hi) ? x : null; };
+  const cfg = {};
+  if (q.set_fmt === 'timed' || q.set_fmt === 'pro6') { cfg.set_fmt = q.set_fmt; cfg.final_fmt = q.set_fmt; }
+  if (q.flow === 'roll' || q.flow === 'slot') cfg.flow = q.flow;
+  if (q.ko === 'place' || q.ko === 'ko') cfg.ko = q.ko;
+  const mm = n(q.match_min, 10, 60);  if (mm != null) cfg.match_sec = mm * 60;
+  const tm = n(q.turn_min, 0, 20);    if (tm != null) cfg.turn_sec = tm * 60;
+  const lo = n(q.min_teams, 2, 12) || CUP_MIN_TEAMS, hi = n(q.max_teams, 2, 12) || lo;
+  const plans = {};
+  for (let t = Math.min(lo, hi); t <= Math.max(lo, hi); t++)
+    plans[t] = cupPlan({ cfg, courts: q.courts, teams: t, start: q.start });
+  const D = cupCfg({});
+  res.json({ plans, max: Math.max(lo, hi),
+    /* 합의한 기본값 — 화면의 <기본값 넣기>가 이 값을 쓴다(서버 기본값 한 곳에서만 정한다) */
+    rec: { courts: CUP_DEFAULT.courts, match_min: Math.round(CUP_DEFAULT.match_sec / 60), turn_min: Math.round(CUP_DEFAULT.turn_sec / 60),
+      flow: CUP_DEFAULT.flow, ko: CUP_DEFAULT.ko, set_fmt: CUP_DEFAULT.set_fmt,
+      max_teams: CUP_MAX_TEAMS, min_teams: CUP_MIN_TEAMS, fee: CUP_FEE, deposit: CUP_DEPOSIT, court_rate: CUP_COURT_RATE,
+      fixed_items: D.fixed_items, var_items: D.var_items } });
+});
+
 app.get('/admin/cups/:bid', admin, (req, res) => {
+  cupPaySweep(+req.params.bid);
   const b = cupBracket(req.params.bid);
   if (!b) return res.status(404).json({ error: 'no_cup' });
   let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
@@ -7986,6 +8115,10 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
     min_teams: cupCfg(d).min_teams, max_teams: cupCfg(d).max_teams,
     /* 엔트리 정원 — admin 화면이 숫자를 박아두지 않게 여기서 내려준다 */
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
+    /* 대기 — 순번대로(연락처 포함) · 몇 팀까지 · 신청 후 며칠 안에 입금 */
+    waitlist: cupWaitRows(b.id).map((w, i) => ({ id: w.id, no: i + 1, club_id: w.club_id, club_name: w.club_name,
+      contact_name: w.contact_name, contact_phone: w.contact_phone, created_at: w.created_at })),
+    wait_max: CUP_WAIT_MAX, pay_hours: CUP_PAY_HOURS,
     money: cupMoney(cupCfg(d),
       rows.filter(r => r.status === 'confirmed').length) });
 });
@@ -8069,6 +8202,8 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     const ms = num(q.match_min, 10, 60);   if (ms != null) d.cfg.match_sec = ms * 60;
     const dd = num(q.due_days, 3, 60);     if (dd != null) d.cfg.due_days = dd;
     const ts = num(q.turn_min, 0, 20);     if (ts != null) d.cfg.turn_sec = ts * 60;
+    /* 1면 1시간 대관료 — 고정비 <코트 대관>을 계산으로 채울 때 쓴다 */
+    if (q.court_rate != null && String(q.court_rate) !== '') { const cr = num(q.court_rate, 0, 1000000); if (cr != null) d.cfg.court_rate = cr; }
     /* 손익분기가 정원보다 크면 영영 못 연다 */
     if (d.min_teams && d.max_teams && d.min_teams > d.max_teams)
       return res.status(400).json({ error: 'bad',
@@ -8097,9 +8232,21 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
       String(q.contact_phone || '').replace(/\D/g, '').slice(0, 11) || null, tok, now());
     return res.json({ ok: true, id: rid(r), token: tok });
   }
+  /* 대기에서 빼기 */
+  if (act === 'wait_del') {
+    db.prepare("UPDATE cup_waitlist SET status='left', done_at=? WHERE id=? AND bracket_id=? AND status='waiting'").run(now(), +q.wait_id, b.id);
+    return res.json({ ok: true });
+  }
   if (act === 'entry') {
     const e = db.prepare('SELECT * FROM cup_entries WHERE id=? AND bracket_id=?').get(+q.entry_id, b.id);
     if (!e) return res.status(404).json({ error: 'no_entry' });
+
+    /* 입금 기한 +3일 — 사정이 있어 늦는 팀(관리자 판단) */
+    if (q.extend) {
+      const due = Math.max(Date.now(), +e.pay_due || 0) + CUP_PAY_HOURS * 3600e3;
+      db.prepare('UPDATE cup_entries SET pay_due=? WHERE id=?').run(due, e.id);
+      return res.json({ ok: true, pay_due: due });
+    }
 
     /* 입금이 들어온 걸 확인하면 그 자리에서 확정한다.
        <입금 확인>과 <확정>을 따로 누르게 하면 하나만 눌러놓고 잊는다.
@@ -8118,8 +8265,10 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
         return res.json({ ok: true,
           warn: ros >= CUP_ROSTER_N ? null : `엔트리 ${CUP_ROSTER_N}명은 아직 안 냈어요` });
       }
+      /* 확정을 풀면 입금 기한은 지금부터 다시 3일(옛 기한이 지나 있으면 바로 대기로 넘어가 버린다) */
       db.prepare(`UPDATE cup_entries SET fee_paid=0, status='applied',
-        deposit_state='none' WHERE id=?`).run(e.id);
+        deposit_state='none', pay_due=NULL WHERE id=?`).run(e.id);
+      cupPaySweep(b.id);
       return res.json({ ok: true });
     }
 
@@ -8128,6 +8277,7 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     db.prepare(`UPDATE cup_entries SET status=COALESCE(?,status),
         fee_paid=COALESCE(?,fee_paid), deposit_state=COALESCE(?,deposit_state) WHERE id=?`)
       .run(st, q.fee_paid == null ? null : (q.fee_paid ? 1 : 0), dep, e.id);
+    if (st === 'cancelled') cupPaySweep(b.id);      // 자리가 났으면 대기 1번이 올라온다
     return res.json({ ok: true });
   }
   /* ── 유령 클럽 · 유령 회원 ──
@@ -8284,6 +8434,7 @@ app.get('/cup/open', (req, res) => {
   const b = db.prepare(`SELECT id,date,data,club_id FROM brackets
     WHERE fmt='cup' AND published=1 ORDER BY id DESC LIMIT 1`).get();
   if (!b) return res.json({ cup: null, entry: null });
+  cupPaySweep(b.id);
   let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
   const C = cupCfg(d);
   const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
@@ -8304,6 +8455,7 @@ app.get('/cup/open', (req, res) => {
     roster_need: CUP_ROSTER_N, roster_male: CUP_ROSTER_M, roster_female: CUP_ROSTER_F,
     cap: cupCap(b.data), drawn: cupDrawn(d), live: cupLiveNow(b),
     host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(b.club_id) || {}).name || '',
+    wait_n: cupWaitRows(b.id).length, wait_max: CUP_WAIT_MAX, pay_hours: CUP_PAY_HOURS,
   }, entry: null });
 });
 
@@ -8314,10 +8466,12 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
   const b = db.prepare(`SELECT id,date,data,club_id FROM brackets
     WHERE fmt='cup' AND published=1 ORDER BY id DESC LIMIT 1`).get();
   if (!b) return res.json({ cup: null });
+  cupPaySweep(b.id);
   let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
   const C = cupCfg(d);
   const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(b.id).n;
   const mine = db.prepare("SELECT * FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  const W = cupWaitRows(b.id), wi = W.findIndex(w => w.club_id === cid);
   const roster = mine
     ? db.prepare('SELECT COUNT(*) n FROM cup_roster WHERE entry_id=?').get(mine.id).n : 0;
   /* 마감까지 며칠 — 입금은 대회 21일 전이다.
@@ -8346,8 +8500,12 @@ app.get('/clubs/:id/cup-open', auth, (req, res) => {
     is_host: b.club_id === cid,
     /* 우리 클럽 남녀 회원 수 — 모자라면 카드와 신청 화면이 <몇 명 더 필요해요>로 막는다 */
     members: cupGenderShort(cid),
-  }, entry: mine ? Object.assign({ id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
-    group_label: mine.group_label, seat: mine.seat, roster_n: roster },
+    /* 대기 — 몇 팀이 기다리나 · 몇 팀까지 받나 · 신청 후 며칠 안에 입금해야 하나 */
+    wait_n: W.length, wait_max: CUP_WAIT_MAX, pay_hours: CUP_PAY_HOURS,
+  }, wait: wi >= 0 ? { no: wi + 1, of: W.length } : null,
+  entry: mine ? Object.assign({ id: mine.id, status: mine.status, fee_paid: mine.fee_paid,
+    group_label: mine.group_label, seat: mine.seat, roster_n: roster,
+    pay_due: !mine.fee_paid && mine.status === 'applied' ? mine.pay_due || null : null },
     mine.group_label ? cupMineNext(b, mine.id, req.uid) : {}) : null });
 });
 
@@ -8372,12 +8530,57 @@ app.post('/cup/:bid/apply', auth, (req, res) => {
     return res.status(400).json({ error: 'full', message: '자리가 다 찼어요' });
   const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
   const u = db.prepare('SELECT name, phone FROM users WHERE id=?').get(req.uid) || {};
+  const due = cupPayDue(b, Date.now());
   const r = db.prepare(`INSERT INTO cup_entries
-    (bracket_id,club_id,club_name,contact_name,contact_phone,status,invite_token,applied_at,created_at)
-    VALUES (?,?,?,?,?,'applied',?,?,?)`)
+    (bracket_id,club_id,club_name,contact_name,contact_phone,status,invite_token,applied_at,created_at,pay_due)
+    VALUES (?,?,?,?,?,'applied',?,?,?,?)`)
     .run(b.id, cid, c.name || '클럽', u.name || null, u.phone || null,
-      crypto.randomBytes(9).toString('base64url'), now(), now());
-  res.json({ ok: true, id: rid(r) });
+      crypto.randomBytes(9).toString('base64url'), now(), now(), due);
+  /* 대기에 올라 있던 클럽이 자리가 나서 직접 신청했으면 대기에서 뺀다 */
+  try { db.prepare("UPDATE cup_waitlist SET status='left', done_at=? WHERE bracket_id=? AND club_id=? AND status='waiting'").run(now(), b.id, cid); } catch (e) {}
+  res.json({ ok: true, id: rid(r), pay_due: due });
+});
+
+/* 대기 — 정원이 찼을 때만. 운영진이 신청하고, 3팀까지 */
+app.post('/cup/:bid/wait', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +(req.body || {}).club_id;
+  if (!cid || !isOfficer(cid, req.uid))
+    return res.status(403).json({ error: 'officer_only', message: '클럽 운영진만 신청할 수 있어요' });
+  let d = {}; try { d = JSON.parse(b.data || '{}'); } catch (e) {}
+  if (cupDrawn(d)) return res.status(400).json({ error: 'drawn', message: '추첨이 끝나 대기를 받지 않아요' });
+  cupPaySweep(b.id);
+  if (db.prepare("SELECT id FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid))
+    return res.status(400).json({ error: 'already', message: '이미 참가 신청한 클럽이에요' });
+  const W = cupWaitRows(b.id), mineW = W.findIndex(w => w.club_id === cid);
+  if (mineW >= 0) return res.json({ ok: true, no: mineW + 1, already: true });
+  if (cupLiveN(b.id) < cupCfg(b.data).max_teams)
+    return res.status(400).json({ error: 'not_full', message: '아직 자리가 있어요 · 바로 참가 신청하세요' });
+  if (W.length >= CUP_WAIT_MAX)
+    return res.status(400).json({ error: 'wait_full', message: `대기도 ${CUP_WAIT_MAX}팀이 다 찼어요` });
+  const gs = cupGenderShort(cid);
+  if (gs.need_m || gs.need_f) {
+    const lack = [gs.need_m ? `남성 ${gs.need_m}명` : '', gs.need_f ? `여성 ${gs.need_f}명` : ''].filter(Boolean).join(' · ');
+    return res.status(400).json({ error: 'need_members', need_m: gs.need_m, need_f: gs.need_f,
+      message: `클럽 회원이 ${lack} 더 있어야 신청할 수 있어요` });
+  }
+  const c = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  const u = db.prepare('SELECT name, phone FROM users WHERE id=?').get(req.uid) || {};
+  db.prepare(`INSERT INTO cup_waitlist (bracket_id,club_id,club_name,uid,contact_name,contact_phone,status,created_at)
+    VALUES (?,?,?,?,?,?,'waiting',?)`).run(b.id, cid, c.name || '클럽', req.uid, u.name || null, u.phone || null, now());
+  cupPaySweep(b.id);                       // 이미 기한을 넘긴 팀이 있으면 바로 넘어온다
+  const mine = db.prepare("SELECT id, pay_due FROM cup_entries WHERE bracket_id=? AND club_id=? AND status!='cancelled'").get(b.id, cid);
+  if (mine) return res.json({ ok: true, promoted: true, id: mine.id, pay_due: mine.pay_due });
+  res.json({ ok: true, no: cupWaitRows(b.id).findIndex(w => w.club_id === cid) + 1 });
+});
+app.delete('/cup/:bid/wait', auth, (req, res) => {
+  const b = cupBracket(req.params.bid);
+  if (!b) return res.status(404).json({ error: 'no_cup' });
+  const cid = +req.query.club_id;
+  if (!cid || !isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  db.prepare("UPDATE cup_waitlist SET status='left', done_at=? WHERE bracket_id=? AND club_id=? AND status='waiting'").run(now(), b.id, cid);
+  res.json({ ok: true });
 });
 
 /* 구력(년) — sport_started 에서 계산한다. 앱이 보낸 값을 안 받는다.
