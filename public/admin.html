@@ -692,6 +692,52 @@ body.noscroll{ overflow:hidden }
 .cte .csm u.dz{ color:var(--lgray) }
 .ctie.ctnow{ box-shadow:0 0 0 2px #eb6834 }
 .ctie .th u.nw{ text-decoration:none;font-size:11.5px;font-weight:700;color:#fff;background:#eb6834;border-radius:20px;padding:2px 8px;margin-left:2px }
+/* 대회 설정 — 코트 시간 계산 */
+.cig2{ display:flex;align-items:baseline;justify-content:space-between;gap:10px }
+.cig2 u{ text-decoration:none;letter-spacing:0;font-size:12.5px;font-weight:650;color:#cf5418;cursor:pointer }
+.cplan{ margin-top:12px;border:1px solid #f1d9c9;background:#fffaf6;border-radius:12px;padding:12px 14px }
+.cpl-h{ display:flex;align-items:flex-start;justify-content:space-between;gap:10px }
+.cpl-h b{ display:block;font-size:16px;font-weight:750;color:var(--ink);letter-spacing:-.02em }
+.cpl-h span{ display:block;font-size:12.5px;color:var(--gray);margin-top:2px }
+.cpl-h em{ font-style:normal;font-size:15px;font-weight:750;color:#cf5418;white-space:nowrap;font-variant-numeric:tabular-nums }
+.cpl-s{ font-size:12.5px;color:var(--gray);margin-top:6px }
+.cpl-r{ display:flex;flex-wrap:wrap;gap:6px;margin-top:8px }
+.cpl-r span{ font-size:12px;color:var(--gray);background:#fff;border:1px solid var(--line);border-radius:14px;padding:3px 9px }
+.cpl-r span.on{ border-color:#e8a17a;color:#cf5418 }
+.cpl-r b{ font-weight:700 }
+.cpl-rate{ display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-top:10px;padding-top:10px;border-top:1px dashed #f1d9c9 }
+.cpl-rate label{ display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--gray);white-space:nowrap }
+.cpl-rate input{ width:100px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;font-size:16px;text-align:right;background:#fff }
+.cpl-rate span{ font-size:12px;color:var(--lgray);flex:1;min-width:180px }
+.cpl-rate span b{ color:var(--ink);font-weight:650 }
+.cpl-e{ font-size:12.5px;color:var(--lgray) }
+.cirow.auto input.h{ color:#cf5418;font-weight:600 }
+/* 대회 설정 — 휴대폰에서 폼이 화면 밖으로 밀리던 것(1fr 은 내용 최소 폭까지 늘어난다) */
+.frm{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+.frm.f3{ grid-template-columns:repeat(3,minmax(0,1fr)) }
+.frm input,.frm select{ min-width:0 }
+@media (max-width:900px){ .cupwrap{ grid-template-columns:minmax(0,1fr) } }
+@media (max-width:560px){
+  .frm.f3{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .cirow{ flex-wrap:wrap;row-gap:6px;padding:8px 0;border-bottom:1px solid var(--line2,#f3f4f5) }
+  .cirow .n{ flex:1 1 100% }
+  .cirow .n input.h{ flex:0 0 42% }
+  .cirow .v{ flex:1;width:auto }
+  .cpl-rate span{ min-width:0;flex-basis:100% }
+}
+/* 맞수컵 — 입금 기한 · 대기 */
+.cte .cpd{ display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--gray) }
+.cte .cpd b{ color:var(--ink);font-weight:700 }
+.cte .cpd.over{ color:#c2410c } .cte .cpd.over b{ color:#c2410c }
+.cte .cpd u{ margin-left:auto;text-decoration:none;color:#cf5418;font-weight:650;cursor:pointer }
+.cwt{ padding:6px 16px 12px }
+.cwt-r{ display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line2,#f3f4f5) }
+.cwt-r em{ flex:none;font-style:normal;font-size:11.5px;font-weight:750;color:#2a78d6;background:#eaf2fc;border-radius:8px;padding:3px 8px }
+.cwt-r .c{ flex:1;min-width:0 } .cwt-r .c b{ display:block;font-size:14.5px;font-weight:700 }
+.cwt-r .c span{ display:block;font-size:12.5px;color:var(--gray);margin-top:1px }
+.cwt-r .c a{ color:#2a78d6;text-decoration:none }
+.cwt-r u{ flex:none;text-decoration:none;font-size:12.5px;color:var(--lgray);cursor:pointer }
+.cwt .hint{ font-size:12px;color:var(--lgray);margin-top:10px;line-height:1.5 }
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -1859,6 +1905,9 @@ function cupSumView(d, live, fixed, need){
   const todo=[];
   if(wait.length) todo.push(`<a class="trow" onclick="CUPV='teams';CUPTF='wait';drawCup()"><i class="dot"></i><span class="t"><b>입금 기다리는 팀</b>
       <span>계좌에 들어온 걸 보고 「입금 확인 · 확정」을 눌러요</span></span><em class="hot">${wait.length}곳</em>${ico('chev',16)}</a>`);
+  const overdue=live.filter(e=>e.status==='applied'&&!e.fee_paid&&e.pay_due&&+e.pay_due<Date.now());
+  if(overdue.length) todo.push(`<a class="trow" onclick="CUPV='teams';CUPTF='wait';drawCup()"><i class="dot red"></i><span class="t"><b>입금 기한이 지난 팀</b>
+      <span>${overdue.map(e=>esc(e.club_name)).join(' · ')} · ${(d.waitlist||[]).length?'곧 대기 팀에게 넘어가요':'대기 팀이 없어 자리를 지키고 있어요'}</span></span><em class="hot">${overdue.length}곳</em>${ico('chev',16)}</a>`);
   if(noRos.length) todo.push(`<a class="trow" onclick="CUPV='teams';CUPTF='noros';drawCup()"><i class="dot"></i><span class="t"><b>엔트리를 덜 낸 확정 팀</b>
       <span>${noRos.map(e=>esc(e.club_name)).join(' · ')} · 추첨 전에 ${need}명을 채워야 해요</span></span><em class="hot">${noRos.length}곳</em>${ico('chev',16)}</a>`);
   if(canDraw) todo.push(`<a class="trow" onclick="cupDraw()"><i class="dot red"></i><span class="t"><b>추첨하고 대진 짜기</b>
@@ -1928,6 +1977,7 @@ function cupTeamsView(d, live, need){
       <div class="l1"><b>${esc(e.club_name)}</b>${e.group_label?`<span class="gl">${esc(e.group_label)}조 ${e.seat}</span>`:''}<em class="${stc}">${stx}</em></div>
       <div class="l2">엔트리 <b class="${(e.roster_n||0)<need?'old':''}">${e.roster_n||0}/${need}</b> · 여 ${e.female_n||0} · ${e.club_id?'앱 클럽':'초청 링크'}${
         e.contact_name||tel?` · 대표 ${esc(e.contact_name||'')}${tel?` <a href="tel:${tel}">${telTx}</a>`:''}`:''}</div>
+      ${cupPdLine(e)}
       <div class="crt" onclick="CUPOPEN[${e.id}]=!CUPOPEN[${e.id}];drawCup()">${open?'엔트리 접기 ▴':'엔트리 보기 ▾'}</div>
       ${open?`<div class="crl">${ros}</div>`:''}
       ${e.status==='confirmed'
@@ -1939,7 +1989,33 @@ function cupTeamsView(d, live, need){
   return `<div class="fbar sc" style="margin:0 -14px 8px">${chips}</div>
     <div class="uhd"><span><b>${list.length}곳</b>${CUPTF==='wait'?' · 계좌에 들어온 걸 확인하면 확정해요':CUPTF==='noros'?` · 추첨 전에 ${need}명을 채워야 해요`:''}</span>
       <u onclick="cupInvite()">＋ 클럽 초청</u></div>
-    ${list.length?list.map(card).join(''):`<div class="card"><div class="empty">해당하는 클럽이 없어요</div></div>`}`;
+    ${list.length?list.map(card).join(''):`<div class="card"><div class="empty">해당하는 클럽이 없어요</div></div>`}
+    ${cupWaitHTML(d)}`;
+}
+/* 입금 기한 — 신청 후 3일(대회 입금 마감이 더 빠르면 그날). 지나고 대기 팀이 있으면 서버가 대기 1번을 올린다 */
+const cupDueA=ms=>{ const t=new Date(+ms), p=n=>String(n).padStart(2,'0');
+  return `${t.getMonth()+1}/${t.getDate()}(${'일월화수목금토'[t.getDay()]}) ${p(t.getHours())}:${p(t.getMinutes())}`; };
+function cupPdLine(e){
+  if(e.status!=='applied'||e.fee_paid||!e.pay_due) return '';
+  const over=+e.pay_due<Date.now();
+  return `<div class="cpd${over?' over':''}">입금 기한 <b>${cupDueA(e.pay_due)}</b>${over?' · 지남 — 대기 팀이 생기면 넘어가요':''}
+    <u onclick="cupExtend(${e.id})">기한 +3일</u></div>`;
+}
+/* 대기 — 순번 · 연락처. 자리가 나거나 앞 팀이 기한을 넘기면 1번부터 저절로 올라간다 */
+function cupWaitHTML(d){
+  const W=d.waitlist||[]; if(!W.length) return '';
+  const fmtTel=t=>{ const x=String(t||'').replace(/[^0-9]/g,''); return x.length===11?x.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3'):x; };
+  return `<div class="sec"><b>대기</b><em>${W.length} / ${d.wait_max||3}</em></div>
+    <div class="card cwt">${W.map(w=>{ const tel=String(w.contact_phone||'').replace(/[^0-9]/g,'');
+      return `<div class="cwt-r"><em>대기 ${w.no}</em><div class="c"><b>${esc(w.club_name||'')}</b>
+        <span>${w.contact_name?`대표 ${esc(w.contact_name)}`:''}${tel?` <a href="tel:${tel}">${fmtTel(tel)}</a>`:''}</span></div>
+        <u onclick="cupWaitDel(${w.id},'${esc(w.club_name||'')}')">대기에서 빼기</u></div>`; }).join('')}
+      <div class="hint">앞 팀이 입금 기한을 넘기거나 참가를 취소하면 대기 1번부터 저절로 올라가고, 그 클럽 운영진에게 알림이 가요.</div></div>`;
+}
+async function cupExtend(id){ if(await cupAct({act:'entry', entry_id:id, extend:1})){ toast('입금 기한을 3일 늘렸어요'); drawCup(); } }
+async function cupWaitDel(id, nm){
+  if(!confirm(`${nm||'이 클럽'}을(를) 대기에서 뺄까요?`)) return;
+  if(await cupAct({act:'wait_del', wait_id:id})){ toast('대기에서 뺐어요'); drawCup(); }
 }
 /* 당일 — 공개 대진(standings)과 점수(live)를 받아 시간 순으로. 경기를 누르면 점수 시트 */
 async function cupDayLoad(){
@@ -2148,17 +2224,144 @@ async function cupSetup(){
     varr:(d.var_items||[]).map(x=>({...x})) };
   cupSetupDraw();
 }
-function cupSetupDraw(){
-  const d=CUPCFG, p=d.pay||{};
-  const cfg=d.cfg||{};
-  const row=(k,i,x)=>`<div class="cirow">
+/* 대회 설정 — 점심시간은 없다(칸에서 뺐다). 코트 · 매치 시간 · 정원을 바꾸면 <코트를 몇 시간 빌려야 하나>를 바로 계산한다(서버의 대진 짜는 함수 그대로).
+   1면 1시간 대관료를 넣으면 고정비 <코트 대관>을 그 계산으로 채운다(3면 × 5시간 × 15,000 = 225,000).
+   예전엔 금액을 다시 그릴 때마다 위 칸들이 저장 전 값으로 되돌아갔다 — 그리기 전에 지금 입력값을 먼저 담는다(cupKeep). */
+let CPLAN=null, CPLAN_T=null, CPLAN_REC=null;
+function cupKeep(){
+  const D=CUPCFG; if(!D||!$('csTitle')) return;
+  const g=id=>{ const e=$(id); return e?e.value:null; };
+  const N=(v,f)=>{ if(v==null) return f; const n=parseInt(String(v).replace(/[^0-9]/g,''),10); return isNaN(n)?f:n; };
+  const c=D.cfg={...(D.cfg||{})};
+  D.title=g('csTitle'); D.date=g('csDate'); D.start=g('csStart')||D.start; D.place=g('csPlace');
+  D._tbdDate=isTbd('csDate'); D._tbdPlace=isTbd('csPlace');
+  c.courts=N(g('csCourts'),c.courts||3); c.ko=g('csKo')||c.ko; c.set_fmt=g('csSet')||c.set_fmt; c.flow=g('csFlow')||c.flow;
+  c.match_sec=N(g('csMatch'),Math.round((c.match_sec||1500)/60))*60; c.turn_sec=N(g('csTurn'),Math.round((c.turn_sec||300)/60))*60;
+  c.due_days=N(g('csDue'),c.due_days||14);
+  if($('csRate')) c.court_rate=String(g('csRate')).trim()===''?0:N(g('csRate'),c.court_rate||0);
+  D.max_teams=N(g('csMax'),D.max_teams); D.min_teams=N(g('csMin'),D.min_teams);
+  D.fee=N(g('csFee'),D.fee); D.deposit=N(g('csDep'),D.deposit); D.prize_pct=N(g('csPct'),D.prize_pct);
+  D.pay={bank:g('csBank')||'', holder:g('csHolder')||'', no:g('csAcc')||''};
+}
+/* 1면 1시간 대관료 — 저장된 값이 없으면 지금 <코트 대관> 항목(4면 × 8시간 · 480,000)에서 거꾸로 구한다 */
+function cupRate(){
+  const c=(CUPCFG&&CUPCFG.cfg)||{};
+  if(c.court_rate!=null) return +c.court_rate||0;
+  const it=(CUPCFG.fixed||[]).find(x=>/코트/.test(x.n||'')), m=it&&String(it.h||'').match(/(\d+)\s*면\D+(\d+)\s*시간/);
+  return m&&+it.v ? Math.round(+it.v/(+m[1]*+m[2])) : 15000;
+}
+function cupPlanArgs(){
+  const D=CUPCFG, c=D.cfg||{};
+  return { courts:c.courts||3, match_min:Math.round((c.match_sec||1500)/60), turn_min:Math.round((c.turn_sec||300)/60),
+    flow:c.flow||'slot', ko:c.ko||'place', set_fmt:c.set_fmt||'timed', start:D.start||'09:00',
+    min_teams:D.min_teams||6, max_teams:D.max_teams||6 };
+}
+function cupPlanSoon(){ clearTimeout(CPLAN_T); CPLAN_T=setTimeout(()=>{ cupKeep(); cupPlanLoad(); }, 280); }
+async function cupPlanLoad(){
+  const a=cupPlanArgs(), sig=JSON.stringify(a);
+  if(!(CPLAN&&CPLAN.sig===sig)){
+    try{ const r=await api('/admin/cups/plan',{method:'POST',body:JSON.stringify(a)}); CPLAN={...r, sig}; CPLAN_REC=r.rec||CPLAN_REC; }
+    catch(e){ const el=$('cplan'); if(el) el.innerHTML=`<div class="cpl-e">코트 시간을 계산하지 못했어요 · ${esc(String(e.message||'').slice(0,60))}</div>`; return; }
+    if(JSON.stringify(cupPlanArgs())!==sig) return;            // 그사이 또 고쳤다 — 다음 답을 기다린다
+  }
+  cupCourtApply();
+  cupPaint();
+}
+/* 고정비 <코트 대관>을 계산으로 — 근거는 늘 <3면 × 5시간>, 금액은 대관료를 넣었을 때만 */
+function cupCourtApply(){
+  const P=CPLAN&&CPLAN.plans&&CPLAN.plans[CPLAN.max]; if(!P||!CUPCFG) return;
+  const rate=cupRate();
+  let it=CUPCFG.fixed.find(x=>/코트/.test(x.n||''));
+  if(!it){ it={n:'코트 대관',h:'',v:0}; CUPCFG.fixed.unshift(it); }
+  it.h=`${P.courts}면 × ${P.hours}시간`;
+  if(rate>0) it.v=P.courts*P.hours*rate;
+}
+const cupHM=m=>`${Math.floor(m/60)}시간${m%60?` ${m%60}분`:''}`;
+function cupPlanTop(){
+  if(!CPLAN||!CPLAN.plans) return `<div class="cpl-e">코트 시간 계산 중…</div>`;
+  const P=CPLAN.plans[CPLAN.max]; if(!P) return '';
+  const rate=cupRate(), all=Object.keys(CPLAN.plans).map(Number).sort((a,b)=>a-b);
+  return `<div class="cpl-h"><div><b>코트 ${P.courts}면 × ${P.hours}시간</b>
+      <span>${esc(P.start)} → ${esc(P.rent_end)} 빌리기 · 정원 ${P.teams}팀 기준</span></div>
+      <em>${rate>0?fmt(P.courts*P.hours*rate)+'원':'금액 직접'}</em></div>
+    <div class="cpl-s">${P.flow==='roll'?'이어치기 예상':'시간표'} ${P.slots}칸 × ${P.slot_min}분
+      = ${cupHM(P.minutes)} (${esc(P.start)} → ${esc(P.end)} 끝)</div>
+    ${all.length>1?`<div class="cpl-r">${all.map(t=>{ const x=CPLAN.plans[t];
+      return `<span class="${t===CPLAN.max?'on':''}">${t}팀 <b>${cupHM(x.minutes)}</b> · ${x.hours}시간</span>`; }).join('')}</div>`:''}`;
+}
+function cupPlanMsg(){
+  const P=CPLAN&&CPLAN.plans&&CPLAN.plans[CPLAN.max], rate=cupRate();
+  if(!P) return '';
+  return rate>0?`고정비 <b>코트 대관</b>을 ${P.courts}면 × ${P.hours}시간 × ${fmt(rate)}원으로 채웠어요`
+    :'비워 두면 코트 대관 금액은 직접 적어요(근거만 채워요)';
+}
+function cupPlanHTML(){
+  const rate=cupRate();
+  return `<div id="cplt">${cupPlanTop()}</div>
+    <div class="cpl-rate"><label>1면 1시간 대관료<input id="csRate" inputmode="numeric" value="${rate||''}" placeholder="직접 적기"
+        oninput="cupPlanSoon()"></label><span id="cplm">${cupPlanMsg()}</span></div>`;
+}
+/* 다시 그리지 않고 바뀐 곳만 — 입력 중인 칸의 커서를 빼앗지 않게 */
+function cupPaint(){
+  const t=$('cplt'), m=$('cplm'), b=$('cfixed'), c=$('cipvb');
+  if(t) t.innerHTML=cupPlanTop();
+  if(m) m.innerHTML=cupPlanMsg();
+  if(b) b.innerHTML=cupFixedHTML();
+  if(c) c.innerHTML=cupPrevHTML();
+}
+/* 합의한 기본값 — 6팀 · 3면 · 25분 단타임 · 전환 5분 · 순위전, 비용은 코트 대관 · 운영 인력 · 공.
+   이미 입금한 클럽이 있으면 참가비 · 보증금은 그대로 둔다(바꾸면 차액을 돌려줘야 한다). 저장을 눌러야 반영된다. */
+async function cupRecFill(){
+  cupKeep();
+  if(!CPLAN_REC){ try{ const r=await api('/admin/cups/plan',{method:'POST',body:JSON.stringify(cupPlanArgs())}); CPLAN_REC=r.rec; }catch(e){ toast('기본값을 불러오지 못했어요'); return; } }
+  const R=CPLAN_REC, D=CUPCFG, c=D.cfg=(D.cfg||{});
+  c.courts=R.courts; c.match_sec=R.match_min*60; c.turn_sec=R.turn_min*60; c.flow=R.flow; c.ko=R.ko; c.set_fmt=R.set_fmt;
+  c.court_rate=R.court_rate; D.max_teams=R.max_teams; D.min_teams=R.min_teams; D.pv=null;
+  D.fixed=(R.fixed_items||[]).map(x=>({...x})); D.varr=(R.var_items||[]).map(x=>({...x}));
+  const paid=(D.entries||[]).filter(e=>e.status!=='cancelled'&&(e.fee_paid||e.status==='confirmed')).length;
+  if(!paid){ D.fee=R.fee; D.deposit=R.deposit; }
+  CPLAN=null; cupSetupDraw({fresh:true});
+  toast(paid?`기본값을 넣었어요 · 입금한 클럽이 ${paid}곳이라 참가비는 그대로 뒀어요 · 저장을 눌러야 반영돼요`:'기본값을 넣었어요 · 저장을 눌러야 반영돼요');
+}
+function cupFixedHTML(){
+  const d=CUPCFG, sum=a=>a.reduce((t,x)=>t+(+x.v||0),0);
+  return d.fixed.map((x,i)=>cupRowHTML('fixed',i,x)).join('')+`<div class="ciadd"><span onclick="cupItemAdd('fixed')">＋ 항목</span><b>${fmt(sum(d.fixed))}</b></div>`;
+}
+function cupRowHTML(k,i,x){
+  const auto=k==='fixed'&&/코트/.test(x.n||'')&&CPLAN;
+  return `<div class="cirow${auto?' auto':''}">
     <span class="n"><input value="${esc(x.n||'')}" oninput="cupItem('${k}',${i},'n',this.value)">
-      <input class="h" value="${esc(x.h||'')}" placeholder="근거" oninput="cupItem('${k}',${i},'h',this.value)"></span>
+      <input class="h" value="${esc(x.h||'')}" placeholder="근거" oninput="cupItem('${k}',${i},'h',this.value)"${auto?' title="코트 시간 계산으로 채워요"':''}></span>
     <input class="v" inputmode="numeric" value="${x.v||0}" oninput="cupItem('${k}',${i},'v',this.value)">
     <span class="x" onclick="cupItemDel('${k}',${i})">×</span></div>`;
-  const sum=a=>a.reduce((t,x)=>t+(+x.v||0),0);
-  const F=sum(d.fixed), V=sum(d.varr);
-
+}
+function cupPrevHTML(){
+  const d=CUPCFG, sum=a=>a.reduce((t,x)=>t+(+x.v||0),0), F=sum(d.fixed), V=sum(d.varr);
+  const opts=[d.min_teams, d.max_teams-1, d.max_teams].filter((v,i,a)=>v>=d.min_teams&&a.indexOf(v)===i);
+  const n=opts.includes(d.pv)?d.pv:d.max_teams;
+  const fee=+d.fee||0, dep=+d.deposit||0, pct=d.prize_pct!=null?+d.prize_pct:85;
+  const gross=n*fee, back=n*dep, net=gross-back, cost=F+n*V, left=net-cost, prize=Math.max(0,Math.round(left*pct/100));
+  const r=x=>Math.round(x/10000)*10000;
+  return `<div class="citab">${opts.map(t=>`<span class="${t===n?'on':''}" onclick="cupKeep();CUPCFG.pv=${t};cupPaint()">${t}팀</span>`).join('')}</div>
+    <div class="ciled">
+      <div class="l"><span>참가비 ${n} × ${fmt(fee)}</span><b>${fmt(gross)}</b></div>
+      <div class="l m"><span>보증금 반환</span><span>−${fmt(back)}</span></div>
+      <div class="l t"><span>쓸 수 있는 돈</span><b>${fmt(net)}</b></div>
+      <div class="l m"><span>고정비</span><span>−${fmt(F)}</span></div>
+      <div class="l m"><span>변동비 ${n} × ${fmt(V)}</span><span>−${fmt(n*V)}</span></div>
+      <div class="l t"><span>남은 돈</span><b>${fmt(left)}</b></div>
+      <div class="l m"><span>상금 ${pct}%</span><span>−${fmt(prize)}</span></div>
+      <div class="l t last"><span>끝나고 남는 돈</span><b class="${left-prize<0?'bad':''}">${fmt(left-prize)}</b></div>
+    </div>
+    <div class="cipz"><div class="h">상금 · 승자독식</div><div class="p"><span>우승팀</span><b>${fmt(r(prize))}</b></div></div>
+    ${left-prize<0?`<div class="cibad">적자입니다 · 참가비를 올리거나 비용을 줄이세요</div>`:''}`;
+}
+function cupSetupDraw(o){
+  if(!(o&&o.fresh)) cupKeep();                     // 기본값 넣기처럼 값을 새로 채웠을 때는 화면의 옛 값을 다시 읽지 않는다
+  const d=CUPCFG, p=d.pay||{}, cfg=d.cfg||{};
+  const sum=a=>a.reduce((t,x)=>t+(+x.v||0),0), V=sum(d.varr);
+  const tD=d._tbdDate!=null?d._tbdDate:!d.date, tP=d._tbdPlace!=null?d._tbdPlace:!d.place;
+  const P='oninput="cupPlanSoon()"', S='onchange="cupPlanSoon()"', Q='oninput="cupKeep();cupPaint()"';
   $('app').innerHTML=shell(`<div class="cupwrap">
     <div class="card">
       <div class="hd"><b>대회 설정</b><span class="b" onclick="drawCup()">취소</span></div>
@@ -2166,55 +2369,49 @@ function cupSetupDraw(){
       <div class="cig">대회</div>
       <div class="frm">
         <label style="grid-column:1/-1">이름<input id="csTitle" value="${esc(d.title||'')}"></label>
-        <label class="tbdl${d.date?'':' on'}">날짜${tbdBox('csDate', !d.date)}<input id="csDate" type="date" value="${esc(d.date||'')}"></label>
-        <label>시작<input id="csStart" type="time" value="${esc(d.start||'09:00')}"></label>
-        <label class="tbdl${d.place?'':' on'}" style="grid-column:1/-1">장소${tbdBox('csPlace', !d.place)}<input id="csPlace" value="${esc(d.place||'')}"
+        <label class="tbdl${tD?' on':''}">날짜${tbdBox('csDate', tD)}<input id="csDate" type="date" value="${esc(d.date||'')}"></label>
+        <label>시작<input id="csStart" type="time" value="${esc(d.start||'09:00')}" ${P}></label>
+        <label class="tbdl${tP?' on':''}" style="grid-column:1/-1">장소${tbdBox('csPlace', tP)}<input id="csPlace" value="${esc(d.place||'')}"
           placeholder="용인테니스파크"></label>
       </div>
 
-      <div class="cig">경기</div>
+      <div class="cig cig2"><span>경기</span><u onclick="cupRecFill()">합의한 기본값 넣기 · 6팀 · 3면 · 25분</u></div>
       <div class="frm f3">
-        <label>코트<input id="csCourts" inputmode="numeric" value="${(cfg.courts||d.courts||3)}"></label>
-        <label>본선 방식<select id="csKo">
+        <label>코트<input id="csCourts" inputmode="numeric" value="${(cfg.courts||d.courts||3)}" ${P}></label>
+        <label>본선 방식<select id="csKo" ${S}>
           <option value="place"${(cfg.ko||'place')==='place'?' selected':''}>순위전 (1-1 결승 · 2-2 · 3-3)</option>
           <option value="ko"${cfg.ko==='ko'?' selected':''}>4강 › 결승 · 3위전</option></select></label>
-        <label>매치 방식<select id="csSet">
+        <label>매치 방식<select id="csSet" ${S}>
           <option value="timed"${(cfg.set_fmt||'timed')==='timed'?' selected':''}>단타임 (시간 끝나면 그 스코어)</option>
           <option value="pro6"${cfg.set_fmt==='pro6'?' selected':''}>1세트 6게임 노애드</option></select></label>
-        <label>매치 시간 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||1500)/60)}"></label>
-        <label>진행 방식<select id="csFlow">
+        <label>매치 시간 (분)<input id="csMatch" inputmode="numeric" value="${Math.round((cfg.match_sec||1500)/60)}" ${P}></label>
+        <label>진행 방식<select id="csFlow" ${S}>
           <option value="slot"${(cfg.flow||'slot')==='slot'?' selected':''}>모든 코트 함께 시작 (시간표대로)</option>
           <option value="roll"${cfg.flow==='roll'?' selected':''}>코트별 이어치기</option></select></label>
-        <label>입금 마감 (대회 며칠 전)<input id="csDue" inputmode="numeric"
-          value="${cfg.due_days||14}"></label>
-        <label>전환 (분)<input id="csTurn" inputmode="numeric" value="${Math.round((cfg.turn_sec||300)/60)}"></label>
-        <label>정원 (팀)<input id="csMax" inputmode="numeric" value="${d.max_teams}"></label>
-        <label>최소 (팀)<input id="csMin" inputmode="numeric" value="${d.min_teams}"></label>
-        <label>점심 (분)<input id="csLunch" inputmode="numeric" value="${cfg.lunch_min!=null?cfg.lunch_min:40}"></label>
+        <label>입금 마감 (대회 며칠 전)<input id="csDue" inputmode="numeric" value="${cfg.due_days||14}"></label>
+        <label>전환 (분)<input id="csTurn" inputmode="numeric" value="${Math.round((cfg.turn_sec!=null?cfg.turn_sec:300)/60)}" ${P}></label>
+        <label>정원 (팀)<input id="csMax" inputmode="numeric" value="${d.max_teams}" ${P}></label>
+        <label>최소 (팀)<input id="csMin" inputmode="numeric" value="${d.min_teams}" ${P}></label>
       </div>
+      <div class="cplan" id="cplan">${cupPlanHTML()}</div>
       <div class="cinote">정원 ${d.max_teams}팀이면 ${d.min_teams}팀만 모여도 열립니다.
         6팀은 3+3조, 7팀은 4+3조, 8팀은 4+4조로 나뉩니다. 순위전은 조 순위끼리(1-1 결승 · 2-2 3위전 · 3-3 5위전) 붙어
         모든 팀이 3경기 9매치를 칩니다. 4강 방식은 조 1·2위만 본선에 갑니다.<br>
         이어치기: 첫 경기만 함께 시작하고, 점수가 들어오면 그 코트 다음 경기가 전환 시간 뒤 저절로 시작합니다.<br>
-        기본: 25분 단타임 + 전환 5분, 모든 코트 함께 시작 — 6팀 · 3면이면 한 경기의 세 매치를 세 코트에서 동시에 쳐서
-        9칸 × 30분 = 4시간 30분(09:00 → 13:30). 승 3 · 무 1 · 패 0, 순위전이 비기면 게임 합 › 7포인트 타이브레이크.<br>
-        6게임 노애드 + 이어치기로 바꾸면 보통 5시간 25분(09~15시).</div>
+        코트는 <b>정원</b>만큼 팀이 왔을 때 끝나는 시각까지, 정시 단위로 올려 빌립니다. 개회 · 정리 시간이 필요하면 시작 시각을 당겨 주세요.</div>
 
       <div class="cig">고정비 <em>팀 수와 상관없이 드는 돈</em></div>
-      ${d.fixed.map((x,i)=>row('fixed',i,x)).join('')}
-      <div class="ciadd"><span onclick="cupItemAdd('fixed')">＋ 항목</span>
-        <b>${fmt(F)}</b></div>
+      <div id="cfixed">${cupFixedHTML()}</div>
 
       <div class="cig">팀당 변동비 <em>팀이 늘면 같이 느는 돈</em></div>
-      ${d.varr.map((x,i)=>row('varr',i,x)).join('')}
-      <div class="ciadd"><span onclick="cupItemAdd('varr')">＋ 항목</span>
-        <b>${fmt(V)}</b></div>
+      ${d.varr.map((x,i)=>cupRowHTML('varr',i,x)).join('')}
+      <div class="ciadd"><span onclick="cupItemAdd('varr')">＋ 항목</span><b>${fmt(V)}</b></div>
 
       <div class="cig">참가비와 계좌</div>
       <div class="frm f3">
-        <label>참가비 (원)<input id="csFee" inputmode="numeric" value="${d.fee}"></label>
-        <label>보증금 (원)<input id="csDep" inputmode="numeric" value="${d.deposit}"></label>
-        <label>상금 비율 %<input id="csPct" inputmode="numeric" value="${d.prize_pct!=null?d.prize_pct:85}"></label>
+        <label>참가비 (원)<input id="csFee" inputmode="numeric" value="${d.fee}" ${Q}></label>
+        <label>보증금 (원)<input id="csDep" inputmode="numeric" value="${d.deposit}" ${Q}></label>
+        <label>상금 비율 %<input id="csPct" inputmode="numeric" value="${d.prize_pct!=null?d.prize_pct:85}" ${Q}></label>
         <label>은행<input id="csBank" value="${esc(p.bank||'')}" placeholder="신한"></label>
         <label>예금주<input id="csHolder" value="${esc(p.holder||'')}" placeholder="최민혁"></label>
         <label>계좌번호<input id="csAcc" value="${esc(p.no||'')}" placeholder="110-436-319929"></label>
@@ -2225,35 +2422,11 @@ function cupSetupDraw(){
 
     <div class="card cipv">
       <div class="cig" style="margin-top:0">정산 미리보기</div>
-      <div class="citab">${[d.min_teams, d.max_teams-1, d.max_teams]
-        .filter((v,i,a)=>v>=d.min_teams && a.indexOf(v)===i)
-        .map(n=>`<span class="${n===(CUPCFG.pv||d.max_teams)?'on':''}"
-          onclick="CUPCFG.pv=${n};cupSetupDraw()">${n}팀</span>`).join('')}</div>
-      ${(()=>{
-        const n=CUPCFG.pv||d.max_teams;
-        const fee=+($('csFee')||{}).value||d.fee, dep=+($('csDep')||{}).value||d.deposit;
-        const pct=+($('csPct')||{}).value||d.prize_pct||85;
-        const gross=n*fee, back=n*dep, net=gross-back;
-        const cost=F+n*V, left=net-cost;
-        const prize=Math.max(0,Math.round(left*pct/100));
-        const r=x=>Math.round(x/10000)*10000;
-        return `<div class="ciled">
-          <div class="l"><span>참가비 ${n} × ${fmt(fee)}</span><b>${fmt(gross)}</b></div>
-          <div class="l m"><span>보증금 반환</span><span>−${fmt(back)}</span></div>
-          <div class="l t"><span>쓸 수 있는 돈</span><b>${fmt(net)}</b></div>
-          <div class="l m"><span>고정비</span><span>−${fmt(F)}</span></div>
-          <div class="l m"><span>변동비 ${n} × ${fmt(V)}</span><span>−${fmt(n*V)}</span></div>
-          <div class="l t"><span>남은 돈</span><b>${fmt(left)}</b></div>
-          <div class="l m"><span>상금 ${pct}%</span><span>−${fmt(prize)}</span></div>
-          <div class="l t last"><span>끝나고 남는 돈</span>
-            <b class="${left-prize<0?'bad':''}">${fmt(left-prize)}</b></div>
-        </div>
-        <div class="cipz"><div class="h">상금 · 승자독식</div>
-          <div class="p"><span>우승팀</span><b>${fmt(r(prize))}</b></div></div>
-        ${left-prize<0?`<div class="cibad">적자입니다 · 참가비를 올리거나 비용을 줄이세요</div>`:''}`;
-      })()}
+      <div id="cipvb">${cupPrevHTML()}</div>
     </div>
   </div>`);
+  const a=JSON.stringify(cupPlanArgs());
+  if(!(CPLAN&&CPLAN.sig===a)) cupPlanLoad();
 }
 /* 코트별 시간표 — 당일 운영자가 보는 표다.
    대진 목록만으로는 <지금 몇 번 코트에서 뭐가 도는지>를 알 수 없다. */
@@ -2335,25 +2508,33 @@ function cupGrid(d){
   </div></div>`;
 }
 
+/* 금액 칸 — 고칠 때마다 다시 그리면 커서가 빠진다. 합계와 미리보기만 고친다 */
 function cupItem(k,i,f,v){
   const a=CUPCFG[k]; if(!a[i]) return;
   a[i][f] = f==='v' ? (parseInt(String(v).replace(/\D/g,''),10)||0) : v;
-  if(f==='v') cupSetupDraw();
+  if(f!=='v') return;
+  const sum=x=>x.reduce((t,y)=>t+(+y.v||0),0);
+  const tot=document.querySelectorAll('.cupwrap .ciadd b');
+  if(tot[0]) tot[0].textContent=fmt(sum(CUPCFG.fixed));
+  if(tot[1]) tot[1].textContent=fmt(sum(CUPCFG.varr));
+  cupKeep(); const c=$('cipvb'); if(c) c.innerHTML=cupPrevHTML();
 }
 function cupItemAdd(k){ CUPCFG[k].push({n:'',h:'',v:0}); cupSetupDraw(); }
 function cupItemDel(k,i){ CUPCFG[k].splice(i,1); cupSetupDraw(); }
 
 async function cupSetupSave(){
-  const g=id=>($(id)||{}).value||'';
+  cupKeep();
+  const g=id=>($(id)||{}).value||'', D=CUPCFG, c=D.cfg||{};
   const r=await cupAct({act:'setup',
     title:g('csTitle'), date:g('csDate'), start:g('csStart'), place:g('csPlace'),
     date_tbd:isTbd('csDate'), place_tbd:isTbd('csPlace'),
     courts:g('csCourts'), max_teams:g('csMax'), min_teams:g('csMin'),
-    set_fmt:g('csSet'), flow:g('csFlow'), ko:g('csKo'), match_min:g('csMatch'), turn_min:g('csTurn'), lunch_min:g('csLunch'), due_days:g('csDue'),
+    set_fmt:g('csSet'), flow:g('csFlow'), ko:g('csKo'), match_min:g('csMatch'), turn_min:g('csTurn'), due_days:g('csDue'),
+    court_rate:c.court_rate!=null?c.court_rate:'',
     prize_pct:g('csPct'), fee:g('csFee'), deposit:g('csDep'),
-    fixed_items:CUPCFG.fixed.filter(x=>x.n), var_items:CUPCFG.varr.filter(x=>x.n),
+    fixed_items:D.fixed.filter(x=>x.n), var_items:D.varr.filter(x=>x.n),
     bank:g('csBank'), holder:g('csHolder'), account:g('csAcc') });
-  if(r) drawCup();
+  if(r){ CPLAN=null; drawCup(); }
 }
 
 /* 설정 — 제목·일시·장소·정원·참가비를 한 화면에서 고친다.
