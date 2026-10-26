@@ -403,6 +403,10 @@ app.get('/config', (_, res) => {
     // APPLE_CLIENT_ID 는 "웹ServicesID,iOS번들ID" 형태 — 웹에는 첫 값만 내려준다
     apple_client_id: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim(),
     support_email: process.env.SUPPORT_EMAIL || '',
+    /* 첫 화면 아래 사업자 정보 — 전자상거래법상 운영자 표시. 비어 있는 값은 앱이 그리지 않는다. */
+    op: { name: process.env.OP_NAME || '', biz: process.env.OP_BIZ || '', tel: process.env.OP_TEL || '',
+          email: process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || '', mailorder: process.env.OP_MAILORDER || '',
+          hosting: process.env.OP_HOSTING || '' },
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
     web_build: WEB_BUILD, web_build_ios: WEB_BUILD_IOS, web_build_android: WEB_BUILD_ANDROID,
@@ -3167,8 +3171,7 @@ app.post('/venues/:id/photos', auth, (req, res) => {
   const v = db.prepare('SELECT owner_id FROM venues WHERE id=?').get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
   if (!v.owner_id || v.owner_id !== req.uid) return res.status(403).json({ error: 'owner_only', message: '계약한 구장 사장님만 올릴 수 있어요' });
-  let photos = (req.body || {}).photos;
-  photos = Array.isArray(photos) ? photos.filter(u => typeof u === 'string' && /^https?:\/\/|^\//.test(u)).slice(0, 12) : [];
+  const photos = venuePhotoList((req.body || {}).photos);
   db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(photos), vid);
   res.json({ ok: true, photos });
 });
@@ -3635,6 +3638,7 @@ const OMH = {
   FEE_PH: 750,       // 호스트 수고비 — 게스트 1인 · 시간당 (2시간 1,500 · 3시간 2,250)
   RATE: 0.4,         // 맞수 이용료 — 1인 코트비 몫의 40%
   HOUR_MAX: 150000,  // 1면 1시간 대관료 상한 — 잘못 넣은 값으로 참가비가 튀지 않게
+  RATE_MIN: 1000,    // 1면 1시간 대관료 하한 — 공공코트는 시간당 2,000원부터 있다
   BALL_MAX: 15000,   // 공 1캔 값 상한
   CLOSE_H: 3,        // 시작 3시간 전에 모집을 닫는다
   LEAD_H: 4,         // 지금부터 4시간 뒤 경기부터 열 수 있다 (마감 전에 모일 시간)
@@ -3782,7 +3786,7 @@ function omHostCreate(uid, b) {
   const hours = Math.trunc(+b.hours);
   if (![2, 3].includes(hours)) return err(400, 'bad_hours', '2시간이나 3시간으로 골라 주세요');
   const hour = Math.round(+b.hour_cost);
-  if (!(hour >= 1000 && hour <= OMH.HOUR_MAX)) return err(400, 'bad_hour_cost', '1면 1시간 대관료를 확인해 주세요');
+  if (!(hour >= OMH.RATE_MIN && hour <= OMH.HOUR_MAX)) return err(400, 'bad_hour_cost', '1면 1시간 대관료를 확인해 주세요');
   const ballEach = b.ball_cost == null || b.ball_cost === '' ? 0 : Math.round(+b.ball_cost);
   if (!(ballEach >= 0 && ballEach <= OMH.BALL_MAX)) return err(400, 'bad_ball_cost', '공 1캔 값을 확인해 주세요');
 
@@ -3795,6 +3799,8 @@ function omHostCreate(uid, b) {
   const proof = String(b.proof || '').trim().slice(0, 300);
   if (!/^(\/uploads\/|https:\/\/)/.test(proof)) return err(400, 'proof_required', '예약 화면을 올려 주세요');
   if (b.host_plays === false) return err(400, 'host_must_play', '호스트는 같이 뛰어야 해요');
+  /* 맞수는 중개만 한다 — 코트 규정 · 예약 양도 · 웃돈의 책임은 호스트에게 있다는 데 동의해야 연다 */
+  if (!(b.agree === true || b.agree === 1 || b.agree === '1')) return err(400, 'agree_required', '호스트 확인 사항에 동의해 주세요');
 
   const q = omHostQuote(hour, ballEach, courts, hours);
   /* 최소 인원은 호스트가 정한다 — 다 차야 / 빈자리 1개 / 빈자리 2개 */
@@ -3827,13 +3833,17 @@ function omHostCreate(uid, b) {
         leader_id=?, base_price=?, hours=?, hour_cost=?, ball_cost=?, host_fee=?, proof=?, venue_id=? WHERE id=?`)
       .run(disc, cm, cf, tmin, tmax, closeAt, uid, q.per, hours, hour, ballEach, q.fee, proof, venue ? venue.id : null, mid);
     if (courtNo) db.prepare('UPDATE open_matches SET court_no=? WHERE id=?').run(courtNo, mid);
+    db.prepare('UPDATE open_matches SET host_agree_at=? WHERE id=?').run(Date.now(), mid);   // 동의한 때 — 분쟁이 나면 이걸 본다
     /* 호스트도 한 자리 — 참가비는 없다(코트비를 먼저 냈다) */
     db.prepare('INSERT INTO open_match_joins (match_id,user_id,joined_at,paid) VALUES (?,?,?,0)').run(mid, uid, now());
   });
+  /* 이 코트에 <치고 싶어요>를 남긴 사람에게 알린다 (시간대가 맞는 사람만) */
+  if (venue && typeof omWishOpened === 'function') { try { omWishOpened(venue.id, mid, sa, uid, venue.name); } catch (e) {} }
   return { id: mid, quote: q };
 }
 
 try { db.exec('ALTER TABLE open_matches ADD COLUMN court_no TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE open_matches ADD COLUMN host_agree_at BIGINT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN proof_ok INTEGER DEFAULT 0'); } catch (e) {}
 /* 정산 — 끝난 매치에서, 실제로 걷힌 돈 안에서만, 금액은 서버가 다시 계산한다 */
 function omHostSettle(mid) {
@@ -9852,6 +9862,7 @@ app.get('/terms', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head>
 <h2>제3조 (가입 자격)</h2><p>만 14세 이상만 가입할 수 있습니다. 만 14세 미만은 관련 법령에 따라 가입이 제한됩니다. 가입 시 입력한 출생 연도가 사실과 다른 경우 이용이 제한될 수 있습니다.</p>
 <h2>제4조 (회원의 의무)</h2><ul><li>타인의 정보를 도용하거나 허위 정보를 등록하지 않습니다.</li><li>다른 회원을 비방·희롱하거나 연락처를 무단 수집하지 않습니다.</li><li>경기 결과·평점을 조작하지 않습니다. 위반 시 이용이 제한될 수 있습니다.</li></ul>
 <h2>제5조 (결제와 환불)</h2><p>현재 서비스는 회원에게 이용료를 받지 않습니다. 회비·참가비 등 회원 간 금전 거래는 당사자 간 책임이며 서비스는 이를 대행하지 않습니다.</p>
+<h2>제5조의2 (오픈매치 중개)</h2><p>오픈매치 참가비 결제를 시작하는 날부터 다음이 적용됩니다.</p><ul><li>서비스는 통신판매중개자로서 회원(호스트)이 연 오픈매치 거래의 당사자가 아닙니다.</li><li>코트 예약, 시설 이용 규정 준수, 경기 운영의 책임은 매치를 연 호스트에게 있습니다. 예약을 넘기거나 웃돈을 받고 파는 행위는 금지되며, 이로 생긴 책임은 호스트가 집니다.</li><li>시설이 예약을 취소하거나 매치가 열리지 않으면 참가자에게 참가비 전액을 돌려드립니다.</li></ul>
 <h2>제6조 (서비스 변경·중단)</h2><p>서비스는 운영상 필요에 따라 기능을 변경할 수 있으며, 중대한 변경은 사전에 공지합니다.</p>
 <h2>제7조 (면책)</h2><p>서비스는 회원 간 경기·모임 중 발생한 사고, 회원 간 분쟁에 대해 고의·중과실이 없는 한 책임을 지지 않습니다.</p>
 <h2>제8조 (게시물의 권리)</h2><ul><li>회원이 작성한 게시물의 저작권은 작성한 회원에게 있습니다.</li><li>회원은 서비스가 해당 게시물을 서비스 운영·노출에 필요한 범위에서 사용하는 것을 허락합니다.</li><li>서비스는 법령이나 이 약관을 위반한 게시물을 삭제하거나 노출을 제한할 수 있습니다.</li><li>회원은 다른 회원을 차단할 수 있으며, 차단한 회원의 게시물과 대화는 표시되지 않습니다.</li></ul>
@@ -12534,8 +12545,39 @@ app.get('/venues/search', optAuth, (req, res) => {
    호스트 매치가 없는 코트는 이용자가 알려준 금액을 쓴다. 1인 참가비는 <2코트 · 2시간 · 12명>으로 맞춰 보여준다. */
 db.exec(`CREATE TABLE IF NOT EXISTS venue_rates (
   id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id INTEGER NOT NULL, user_id INTEGER, hour_cost INTEGER NOT NULL, created_at BIGINT)`);
+/* 정한 대관료 — 코트 대표(구장 사장님 계정) 또는 맞수 운영자가 넣는다.
+   실내 · 실외 금액이 보통 다르고 해마다 오르므로 둘을 따로 두고, 고칠 때마다 기록을 남긴다.
+   정한 금액이 있으면 호스트 · 이용자가 알려준 값보다 먼저 쓴다. */
+['rate_in INTEGER', 'rate_out INTEGER', 'rate_note TEXT', 'rate_by TEXT', 'rate_uid INTEGER', 'rate_at BIGINT']
+  .forEach(c => { try { db.exec(`ALTER TABLE venues ADD COLUMN ${c}`); } catch (e) { /* 이미 있음 */ } });
+db.exec(`CREATE TABLE IF NOT EXISTS venue_rate_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id INTEGER NOT NULL, rate_in INTEGER, rate_out INTEGER,
+  note TEXT, set_by TEXT, uid INTEGER, created_at BIGINT)`);
+function venueOfficial(vid) {
+  try {
+    const v = db.prepare('SELECT rate_in, rate_out, rate_note, rate_by, rate_at FROM venues WHERE id=?').get(vid);
+    if (!v || (v.rate_in == null && v.rate_out == null)) return null;
+    return { in: v.rate_in, out: v.rate_out, note: v.rate_note || null, by: v.rate_by || null, at: v.rate_at || null };
+  } catch (e) { return null; }
+}
+/* 금액 저장 — 비운 칸은 그 종류가 없다는 뜻. 둘 다 비우면 정한 금액을 지운다(참고 값으로 돌아간다). */
+function venueRateSet(vid, b, by, uid) {
+  const num = x => { if (x === '' || x == null) return null; const t = String(x).replace(/[^0-9]/g, ''); return t ? +t : NaN; };
+  const vin = num(b.rate_in), vout = num(b.rate_out);
+  for (const x of [vin, vout]) if (x != null && !(x >= OMH.RATE_MIN && x <= OMH.HOUR_MAX)) return { err: 'bad_rate' };
+  const note = String(b.note == null ? '' : b.note).trim().slice(0, 60) || null;
+  const at = Date.now(), none = vin == null && vout == null;
+  db.prepare('UPDATE venues SET rate_in=?, rate_out=?, rate_note=?, rate_by=?, rate_uid=?, rate_at=? WHERE id=?')
+    .run(vin, vout, none ? null : note, none ? null : by, none ? null : (uid || null), none ? null : at, vid);
+  db.prepare('INSERT INTO venue_rate_log (venue_id,rate_in,rate_out,note,set_by,uid,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(vid, vin, vout, note, by, uid || null, at);
+  return { ok: true };
+}
 function venueRate(vid) {
   if (!vid) return null;
+  const o = venueOfficial(vid);
+  if (o) return { hour: o.out != null ? o.out : o.in, n: 0, ok_n: 0, from: 'official',
+    last: o.at ? new Date(o.at).toISOString().slice(0, 10) : null, off: o };
   try {
     const hs = db.prepare(`SELECT hour_cost, start_at, COALESCE(proof_ok,0) ok FROM open_matches
       WHERE venue_id=? AND mode='host' AND hour_cost>0 AND status IN ('open','confirmed') ORDER BY start_at DESC LIMIT 30`).all(vid);
@@ -12549,8 +12591,17 @@ function venueRate(vid) {
   } catch (e) {}
   return null;
 }
+/* 코트 사진 — 예전엔 주소 글자만, 이제는 {url, thumb}(목록에 쓰는 작은 사진)도 받는다 */
+function venuePhotoList(x) {
+  let a = x;
+  if (typeof a === 'string') { try { a = JSON.parse(a || '[]'); } catch (e) { a = []; } }
+  const ok = u => typeof u === 'string' && /^(https?:\/\/|\/uploads\/)/.test(u) && u.length < 400;
+  return (Array.isArray(a) ? a : []).map(p => typeof p === 'string' ? (ok(p) ? { url: p, thumb: null } : null)
+    : (p && ok(p.url) ? { url: p.url, thumb: ok(p.thumb) ? p.thumb : null } : null)).filter(Boolean).slice(0, 12);
+}
 function venueRateOut(v, lat, lng) {
-  const r = venueRate(v.id);
+  const r = venueRate(v.id), o = r && r.off;
+  const ph = venuePhotoList(v.photos);
   const per = r ? omHostQuote(r.hour, 6000, 2, 2).per : null;
   let dist = null;
   if (isFinite(lat) && isFinite(lng) && v.lat != null && v.lng != null) {
@@ -12560,13 +12611,35 @@ function venueRateOut(v, lat, lng) {
   }
   return { id: v.id, name: v.name, sido: v.sido || null, sigungu: v.sigungu || null, lat: v.lat, lng: v.lng,
     kind: v.kind || null, indoor: !!v.indoor, surface: v.surface || null, dist,
-    hour: r ? r.hour : null, per, rate_n: r ? r.n : 0, rate_ok: r ? r.ok_n : 0, rate_from: r ? r.from : null, rate_last: r ? r.last : null };
+    hour: r ? r.hour : null, per, rate_n: r ? r.n : 0, rate_ok: r ? r.ok_n : 0, rate_from: r ? r.from : null, rate_last: r ? r.last : null,
+    rate_in: o ? o.in : null, rate_out: o ? o.out : null,
+    /* 목록에 보이는 대표 사진(작은 것) · 코트 정보 칩 */
+    photo: ph[0] ? (ph[0].thumb || ph[0].url) : null, photo_n: ph.length, logo: v.logo || null,
+    lights: v.lights || null, parking: v.parking || null,
+    indoor_n: v.indoor_n != null ? v.indoor_n : null, outdoor_n: v.outdoor_n != null ? v.outdoor_n : null,
+    per_in: o && o.in ? omHostQuote(o.in, 6000, 2, 2).per : null, per_out: o && o.out ? omHostQuote(o.out, 6000, 2, 2).per : null,
+    rate_note: o ? o.note : null, rate_by: o ? o.by : null, rate_at: o ? o.at : null };
 }
 app.get('/venues/rates', optAuth, (req, res) => {
-  const lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
+  let lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
+  /* 지역으로 — <지역 직접 고르기 · 용인 수지구>. 그 지역 코트들의 가운데를 기준으로 가까운 순 */
+  let center = null;
+  const sido = String(req.query.sido || '').trim().slice(0, 20), sigungu = String(req.query.sigungu || '').trim().slice(0, 20);
+  if (!(isFinite(lat) && isFinite(lng)) && sido) {
+    /* 카카오로 모은 코트는 sido <경기> · sigungu <용인시>까지만 있다 — 구까지는 주소(addr)로 맞춘다 */
+    const SHORT = { 충청북도: '충북', 충청남도: '충남', 전라북도: '전북', 전북특별자치도: '전북', 전라남도: '전남',
+      경상북도: '경북', 경상남도: '경남', 강원도: '강원', 강원특별자치도: '강원', 제주특별자치도: '제주', 세종특별자치시: '세종' };
+    const sk = SHORT[sido.replace(/\s+/g, '')] || sido.replace(/\s+/g, '').slice(0, 2);
+    const gk = sigungu.replace(/\s+/g, '');
+    const c = db.prepare(`SELECT AVG(lat) lat, AVG(lng) lng, COUNT(*) n FROM venues WHERE active=1 AND lat IS NOT NULL
+      AND (REPLACE(COALESCE(sido,''),' ','') LIKE ? OR REPLACE(COALESCE(addr,''),' ','') LIKE ?)
+      ${gk ? "AND (REPLACE(COALESCE(addr,''),' ','') LIKE ? OR REPLACE(COALESCE(sigungu,''),' ','') = ?)" : ''}`)
+      .get(...[sk + '%', sk + '%'].concat(gk ? ['%' + gk + '%', gk] : []));
+    if (c && c.n && isFinite(c.lat) && isFinite(c.lng)) { lat = c.lat; lng = c.lng; center = { lat, lng, n: c.n }; }
+  }
   const q = String(req.query.q || '').trim().replace(/[%_]/g, '').slice(0, 40);
   let rows = [];
-  const cols = 'id,name,sido,sigungu,lat,lng,indoor,kind,surface';
+  const cols = 'id,name,sido,sigungu,lat,lng,indoor,kind,surface,lights,parking,indoor_n,outdoor_n,photos,logo';
   if (q) rows = db.prepare(`SELECT ${cols} FROM venues WHERE active=1 AND REPLACE(name,' ','') LIKE ? LIMIT 40`)
     .all('%' + q.replace(/\s+/g, '') + '%');
   else if (isFinite(lat) && isFinite(lng))
@@ -12574,18 +12647,219 @@ app.get('/venues/rates', optAuth, (req, res) => {
       .all(lat - 0.12, lat + 0.12, lng - 0.15, lng + 0.15);
   const out = rows.map(v => venueRateOut(v, lat, lng));
   out.sort((a, b) => (a.dist == null ? 1e9 : a.dist) - (b.dist == null ? 1e9 : b.dist));
-  res.json({ rows: out.slice(0, 30), base: { courts: 2, hours: 2, cap: 12 } });
+  const top = out.slice(0, 30);
+  /* 치고 싶어요 — 몇 명이 남겼는지 · 내가 남긴 시간대 (오픈매치가 없는 화면의 <내 주변 코트>) */
+  if (typeof omWishCounts === 'function') {
+    const w = omWishCounts(top.map(v => v.id), req.uid);
+    top.forEach(v => { const c = w[v.id]; v.wish_n = c ? c.n : 0; v.wish_mine = c ? c.mine : null; v.wish_notify = c ? c.notify : null; v.wish_by = c ? c.by : {}; });
+  }
+  res.json({ rows: top, base: { courts: 2, hours: 2, cap: 12 }, center });
 });
 /* 대관료 알려주기 — 1면 1시간 금액 */
 app.post('/venues/:id/rate', auth, limitWrite, (req, res) => {
   const vid = +req.params.id, hour = Math.round(+(req.body || {}).hour_cost);
   if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'not_found' });
-  if (!(hour >= 5000 && hour <= OMH.HOUR_MAX)) return res.status(400).json({ error: 'bad_hour_cost', message: '1면 1시간 금액을 확인해 주세요' });
+  if (!(hour >= OMH.RATE_MIN && hour <= OMH.HOUR_MAX)) return res.status(400).json({ error: 'bad_hour_cost', message: '1면 1시간 금액을 확인해 주세요' });
   const prev = db.prepare('SELECT id FROM venue_rates WHERE venue_id=? AND user_id=?').get(vid, req.uid);
   if (prev) db.prepare('UPDATE venue_rates SET hour_cost=?, created_at=? WHERE id=?').run(hour, Date.now(), prev.id);
   else db.prepare('INSERT INTO venue_rates (venue_id,user_id,hour_cost,created_at) VALUES (?,?,?,?)').run(vid, req.uid, hour, Date.now());
   const v = db.prepare('SELECT id,name,sido,sigungu,lat,lng,indoor,kind,surface FROM venues WHERE id=?').get(vid);
   res.json({ ok: true, venue: venueRateOut(v) });
+});
+/* 대관료 정하기 — 코트 대표(구장 사장님)만. 운영자는 관리자 화면에서 같은 일을 한다. */
+const VRATE_MSG = '1면 1시간 금액을 확인해 주세요 (1,000원 ~ 150,000원)';
+app.put('/venues/:id/rates', auth, limitWrite, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare('SELECT id, owner_id FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  if (!(v.owner_id && v.owner_id === req.uid))
+    return res.status(403).json({ error: 'not_allowed', message: '대관료는 코트 대표나 맞수 운영자만 정할 수 있어요' });
+  const r = venueRateSet(vid, req.body || {}, 'owner', req.uid);
+  if (r.err) return res.status(400).json({ error: r.err, message: VRATE_MSG });
+  const vv = db.prepare('SELECT id,name,sido,sigungu,lat,lng,indoor,kind,surface FROM venues WHERE id=?').get(vid);
+  res.json({ ok: true, venue: venueRateOut(vv) });
+});
+app.get('/admin/venues/:id/rates', admin, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare('SELECT id, name, indoor_n, outdoor_n FROM venues WHERE id=?').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  const log = db.prepare('SELECT rate_in, rate_out, note, set_by, created_at FROM venue_rate_log WHERE venue_id=? ORDER BY id DESC LIMIT 10').all(vid);
+  res.json({ venue: v, official: venueOfficial(vid), log });
+});
+app.put('/admin/venues/:id/rates', admin, (req, res) => {
+  const vid = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'no_venue' });
+  const r = venueRateSet(vid, req.body || {}, 'admin', null);
+  if (r.err) return res.status(400).json({ error: r.err, message: VRATE_MSG });
+  res.json({ ok: true, official: venueOfficial(vid) });
+});
+
+/* ── 치고 싶어요 ── 오픈매치가 없는 코트에 <여기서 치고 싶어요>를 남긴다 (10/26)
+   호스트 조건(오픈매치 3경기 · 매너 · 계좌)이 안 되는 회원도 수요를 남길 수 있게 한다. 30일이 지나면 세지 않는다.
+   · 그 코트에 매치가 열리면 남긴 사람에게 알린다 — 시간대를 골랐으면 그 시간대 매치만, 안 골랐으면 모두
+   · 같은 코트에 4명이 모일 때마다(4 · 8 · 12 …) 그 코트에서 매치를 열어 본 호스트에게 알린다(코트마다 7일에 한 번)
+   · 운영자는 관리자 › 호스트 매치 위 <치고 싶어요>에서 코트 · 시간대별로 본다 */
+db.exec(`CREATE TABLE IF NOT EXISTS om_wish (venue_id INTEGER NOT NULL, user_id INTEGER NOT NULL, slots TEXT,
+  created_at BIGINT, updated_at BIGINT, PRIMARY KEY (venue_id, user_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS om_wish_ping (venue_id INTEGER PRIMARY KEY, n INTEGER, at BIGINT)`);
+/* 알림 받기 — 끄면 수요로만 센다(매치가 열려도 알리지 않는다) */
+try { db.exec('ALTER TABLE om_wish ADD COLUMN notify INTEGER DEFAULT 1'); } catch (e) {}
+const OM_WISH = { DAYS: 30, STEP: 4, PING_GAP_D: 7, SLOTS: ['wd_am', 'wd_pm', 'we_am', 'we_pm'] };
+const OM_WISH_KO = { wd_am: '평일 오전', wd_pm: '평일 저녁', we_am: '주말 오전', we_pm: '주말 오후' };
+function omWishSince() { return Date.now() - OM_WISH.DAYS * 864e5; }
+function omWishSlots(s) { return String(s || '').split(',').filter(x => OM_WISH.SLOTS.includes(x)); }
+/* 코트별 — 남긴 사람 수 · 시간대별 수 · 내가 남긴 시간대(안 남겼으면 null, 아무 때나면 []) · 내 알림 받기 */
+function omWishCounts(ids, uid) {
+  const out = {};
+  ids = (ids || []).map(Number).filter(Boolean);
+  if (!ids.length) return out;
+  db.prepare(`SELECT venue_id, user_id, slots, notify FROM om_wish WHERE venue_id IN (${ids.map(() => '?').join(',')}) AND updated_at > ?`)
+    .all(...ids, omWishSince()).forEach(r => {
+      const o = out[r.venue_id] || (out[r.venue_id] = { n: 0, mine: null, notify: null, by: {} });
+      const sl = omWishSlots(r.slots);
+      o.n++; sl.forEach(k => { o.by[k] = (o.by[k] || 0) + 1; });
+      if (uid && +r.user_id === +uid) { o.mine = sl; o.notify = r.notify == null ? true : !!r.notify; }
+    });
+  return out;
+}
+/* 매치 시작 시각("YYYY-MM-DDTHH:mm" 한국 시간) → 시간대. 오전은 12시 전, 오후 · 저녁은 12 ~ 20시 시작까지.
+   21시 이후 시작은 어느 시간대에도 넣지 않는다 — <아무 때나>로 남긴 사람에게만 알린다(앱의 주황 점과 같은 규칙) */
+function omWishSlotOf(sa) {
+  const d = new Date(String(sa || '').slice(0, 10) + 'T00:00:00Z'), h = parseInt(String(sa || '').slice(11, 13), 10);
+  if (isNaN(d) || isNaN(h) || h > 20) return null;
+  return ([0, 6].includes(d.getUTCDay()) ? 'we_' : 'wd_') + (h < 12 ? 'am' : 'pm');
+}
+function omWishWhen(sa) {
+  const d = new Date(String(sa || '').slice(0, 10) + 'T00:00:00Z');
+  if (isNaN(d)) return '';
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${'일월화수목금토'[d.getUTCDay()]}) ${String(sa).slice(11, 16)}`;
+}
+/* 그 코트에 매치가 열렸다 — 남긴 사람에게 알린다. 보낸 수를 돌려준다. */
+function omWishOpened(vid, mid, sa, hostUid, loc) {
+  const k = omWishSlotOf(sa);
+  let n = 0;
+  db.prepare('SELECT user_id, slots FROM om_wish WHERE venue_id=? AND updated_at > ? AND COALESCE(notify,1)=1')
+    .all(vid, omWishSince()).forEach(r => {
+    if (+r.user_id === +hostUid) return;
+    const sl = omWishSlots(r.slots);
+    if (sl.length && !(k && sl.includes(k))) return;
+    n++;
+    sendPush(r.user_id, { icon: '🎾', title: `${loc}에 매치가 열렸어요`,
+      body: `치고 싶다고 남긴 코트예요 · ${omWishWhen(sa)}`, link: `match:${mid}` });
+  });
+  return n;
+}
+/* 4명이 모일 때마다 — 이 코트에서 매치를 열어 본 호스트에게 (코트마다 7일에 한 번, 줄었다 다시 늘면 또 보내지 않는다) */
+function omWishPingHosts(v) {
+  const n = db.prepare('SELECT COUNT(*) n FROM om_wish WHERE venue_id=? AND updated_at > ?').get(v.id, omWishSince()).n;
+  if (n < OM_WISH.STEP || n % OM_WISH.STEP) return 0;
+  const p = db.prepare('SELECT n, at FROM om_wish_ping WHERE venue_id=?').get(v.id);
+  if (p && (p.n >= n || Date.now() - p.at < OM_WISH.PING_GAP_D * 864e5)) return 0;
+  db.prepare(`INSERT INTO om_wish_ping (venue_id,n,at) VALUES (?,?,?)
+    ON CONFLICT(venue_id) DO UPDATE SET n=excluded.n, at=excluded.at`).run(v.id, n, Date.now());
+  const hosts = db.prepare(`SELECT DISTINCT host_id FROM open_matches WHERE venue_id=? AND mode='host' AND host_id IS NOT NULL`).all(v.id);
+  hosts.forEach(h => sendPush(h.host_id, { icon: '🎾', title: `${v.name}에서 ${n}명이 치고 싶어해요`,
+    body: '이 코트에 매치를 열면 남긴 사람들에게 바로 알림이 가요', link: 'match' }));
+  return hosts.length;
+}
+app.post('/venues/:id/wish', auth, limitWrite, (req, res) => {
+  const vid = +req.params.id;
+  const v = db.prepare('SELECT id, name FROM venues WHERE id=? AND COALESCE(active,1)=1').get(vid);
+  if (!v) return res.status(404).json({ error: 'no_venue', message: '코트를 찾을 수 없어요' });
+  const b = req.body || {};
+  if (b.off) db.prepare('DELETE FROM om_wish WHERE venue_id=? AND user_id=?').run(vid, req.uid);
+  else {
+    const sl = [...new Set((Array.isArray(b.slots) ? b.slots : []).map(String))].filter(x => OM_WISH.SLOTS.includes(x));
+    const t = Date.now(), nt = b.notify === false || b.notify === 0 ? 0 : 1;
+    db.prepare(`INSERT INTO om_wish (venue_id,user_id,slots,notify,created_at,updated_at) VALUES (?,?,?,?,?,?)
+      ON CONFLICT(venue_id,user_id) DO UPDATE SET slots=excluded.slots, notify=excluded.notify, updated_at=excluded.updated_at`)
+      .run(vid, req.uid, OM_WISH.SLOTS.filter(x => sl.includes(x)).join(','), nt, t, t);
+    try { omWishPingHosts(v); } catch (e) {}
+  }
+  const c = omWishCounts([vid], req.uid)[vid] || { n: 0, mine: null, notify: null, by: {} };
+  res.json({ ok: true, venue_id: vid, wish_n: c.n, wish_mine: c.mine, wish_notify: c.notify, wish_by: c.by });
+});
+/* 한 코트의 치고 싶어요 — 매치 열기 첫 화면의 <이 코트에 평일 저녁 3명이 기다려요> */
+app.get('/venues/:id/wish', optAuth, (req, res) => {
+  const vid = +req.params.id;
+  const c = omWishCounts([vid], req.uid)[vid] || { n: 0, mine: null, notify: null, by: {} };
+  res.json({ venue_id: vid, n: c.n, by: c.by, mine: c.mine, notify: c.notify });
+});
+/* 내가 남긴 코트 — <남긴 코트 2곳 · 관리> (멀리 있는 코트도) */
+app.get('/me/wishes', auth, (req, res) => {
+  const rows = db.prepare(`SELECT w.venue_id, w.slots, w.notify, w.updated_at, v.name, v.sido, v.sigungu, v.kind, v.indoor
+    FROM om_wish w JOIN venues v ON v.id=w.venue_id WHERE w.user_id=? AND w.updated_at > ? ORDER BY w.updated_at DESC LIMIT 50`)
+    .all(req.uid, omWishSince());
+  const c = omWishCounts(rows.map(r => r.venue_id), req.uid);
+  res.json({ rows: rows.map(r => ({ id: r.venue_id, name: r.name, sido: r.sido || null, sigungu: r.sigungu || null,
+    kind: r.kind || null, indoor: !!r.indoor, wish_n: (c[r.venue_id] || {}).n || 1, wish_by: (c[r.venue_id] || {}).by || {},
+    wish_mine: omWishSlots(r.slots), wish_notify: r.notify == null ? true : !!r.notify,
+    until: +r.updated_at + OM_WISH.DAYS * 864e5 })) });
+});
+/* 관리자 — 코트별 치고 싶어요 (30일 안) */
+app.get('/admin/om/wishes', admin, (_req, res) => {
+  const rows = db.prepare(`SELECT w.venue_id, v.name, v.sido, v.sigungu, COUNT(*) n, MAX(w.updated_at) last_at,
+      (SELECT COUNT(*) FROM open_matches m WHERE m.venue_id=w.venue_id AND m.mode='host' AND m.status IN ('open','confirmed')
+        AND m.start_at >= ?) open_n
+    FROM om_wish w JOIN venues v ON v.id=w.venue_id WHERE w.updated_at > ?
+    GROUP BY w.venue_id ORDER BY n DESC, last_at DESC LIMIT 100`)
+    .all(new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16), omWishSince());   // 열린 매치 = 아직 안 한 것(한국 시간)
+  const by = omWishCounts(rows.map(r => r.venue_id));
+  res.json({ rows: rows.map(r => ({ ...r, by: (by[r.venue_id] || {}).by || {} })), days: OM_WISH.DAYS, slots: OM_WISH_KO });
+});
+/* ── 치고 싶어요 끝 */
+
+/* ── 코트 사진 · 정보 · 로고 (관리자) ── 관리자 › 구장 › <고치기>. 코트 대표는 앱 코트 화면에서 사진 · 정보를 고친다(/venues/:id/photos · /info) */
+/* 구장 로고 — 코트 화면 맨 위 · 사진이 없는 코트의 목록 작은 그림. 비어 있으면 앱에 넣어 둔 로고 → 코트 그림 */
+try { db.exec('ALTER TABLE venues ADD COLUMN logo TEXT'); } catch (e) {}
+function venueInfoApply(vid, b) {
+  const num = x => (x === '' || x == null) ? null : Math.max(0, Math.min(60, parseInt(x, 10) || 0));
+  const io = num(b.indoor_n), oo = num(b.outdoor_n);
+  const total = (io == null && oo == null) ? num(b.courts_n) : (io || 0) + (oo || 0);
+  const cut = (x, len) => { const t = String(x == null ? '' : x).trim().slice(0, len); return t || null; };
+  const indoorFlag = (io != null || oo != null) ? ((io > 0 && !(oo > 0)) ? 1 : 0) : null;
+  db.prepare(`UPDATE venues SET indoor_n=?, outdoor_n=?, courts_n=?, surface=?, lights=?, parking=?,
+      indoor=COALESCE(?, indoor), kind=COALESCE(?, kind) WHERE id=?`)
+    .run(io, oo, total, cut(b.surface, 20), cut(b.lights, 20), cut(b.parking, 20), indoorFlag,
+      ['public', 'private', 'school', 'apt'].includes(b.kind) ? b.kind : null, vid);
+}
+app.get('/admin/venues/:id/media', admin, (req, res) => {
+  const v = db.prepare(`SELECT id,name,sido,sigungu,kind,indoor_n,outdoor_n,courts_n,surface,lights,parking,photos,owner_id,logo
+    FROM venues WHERE id=?`).get(+req.params.id);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  res.json({ venue: { ...v, photos: venuePhotoList(v.photos) } });
+});
+app.put('/admin/venues/:id/photos', admin, (req, res) => {
+  const vid = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'no_venue' });
+  const photos = venuePhotoList((req.body || {}).photos);
+  db.prepare('UPDATE venues SET photos=? WHERE id=?').run(JSON.stringify(photos), vid);
+  res.json({ ok: true, photos });
+});
+app.put('/admin/venues/:id/logo', admin, (req, res) => {
+  const vid = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'no_venue' });
+  const u = (req.body || {}).logo;
+  const logo = u ? ((venuePhotoList([String(u)])[0] || {}).url || null) : null;
+  if (u && !logo) return res.status(400).json({ error: 'bad_logo', message: '로고 주소를 확인해 주세요' });
+  db.prepare('UPDATE venues SET logo=? WHERE id=?').run(logo, vid);
+  res.json({ ok: true, logo });
+});
+app.post('/admin/venues/:id/info', admin, (req, res) => {
+  const vid = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'no_venue' });
+  venueInfoApply(vid, req.body || {});
+  res.json({ ok: true });
+});
+/* 관리자 사진 올리기 — 앱의 /upload 와 같다(관리자 열쇠로) */
+app.post('/admin/upload', admin, (req, res) => {
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec((req.body && req.body.dataUrl) || '');
+  if (!m) return res.status(400).json({ error: 'bad_image' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'too_large' });
+  const name = 'a_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]);
+  fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
+  res.json({ url: '/uploads/' + name });
 });
 
 /* ── 구장 지분 · 홈 걸기 ──────────────────────────────────────── */
@@ -13323,7 +13597,7 @@ app.post('/talk/:pid/comments', auth, (req, res) => {
 app.get('/venues/:id/detail', optAuth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
-    courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id,photos FROM venues WHERE id=?`).get(vid);
+    courts_n,indoor_n,outdoor_n,surface,lights,parking,owner_id,photos,logo FROM venues WHERE id=?`).get(vid);
   if (!v) return res.status(404).json({ error: 'no_venue' });
 
   /* 면 수와 표면 — 사장님이 등록한 곳에만 있다. 없으면 그 줄을 안 보여준다. */
@@ -13416,7 +13690,7 @@ app.get('/venues/:id/detail', optAuth, (req, res) => {
   /* 코트 사진 — 구장과 계약하면 사장님 쪽 사진(venues.photos · 코트별 사진)이 그대로 여기 뜬다.
      따로 올리는 화면은 두지 않는다. 비어 있으면 앱은 사진 칸을 통째로 뺀다. */
   const jp = x => { try { const a = JSON.parse(x || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
-  const photos = [...jp(v.photos).map(u => ({ url: u, label: '' })),
+  const photos = [...venuePhotoList(v.photos).map(p => ({ url: p.url, thumb: p.thumb, label: '' })),
     ...db.prepare(`SELECT no, label, photos FROM venue_courts WHERE venue_id=? AND status!='paused' ORDER BY no`).all(vid)
       .flatMap(c => jp(c.photos).map(u => ({ url: u, label: c.label || `${c.no}번 코트` })))]
     .filter(p => typeof p.url === 'string' && p.url).slice(0, 12);
@@ -13448,8 +13722,11 @@ app.get('/venues/:id/detail', optAuth, (req, res) => {
     events: evs, upcoming, talk, talk_locked: talkLocked,
     /* 대관료 — 호스트가 넣은 금액(없으면 이용자가 알려준 값) · 2코트 2시간 12명일 때 1인 참가비 */
     rate: (() => { try { const r = venueRateOut(v);
-      return r.hour ? { hour: r.hour, per: r.per, n: r.rate_n, ok_n: r.rate_ok, from: r.rate_from, last: r.rate_last } : null;
+      return r.hour ? { hour: r.hour, per: r.per, n: r.rate_n, ok_n: r.rate_ok, from: r.rate_from, last: r.rate_last,
+        in: r.rate_in, out: r.rate_out, per_in: r.per_in, per_out: r.per_out, note: r.rate_note, by: r.rate_by, at: r.rate_at } : null;
     } catch (e) { return null; } })(),
+    /* 대관료를 정할 수 있는 사람 — 코트 대표(구장 사장님 계정) */
+    can_rate: !!(v.owner_id && v.owner_id === req.uid),
     /* 이 코트에서 열린 오픈매치 — 구장과 이어진 것 + 이름이 같은 것(띄어쓰기 무시) */
     open_matches: (() => {
       try {
