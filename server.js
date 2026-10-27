@@ -410,6 +410,9 @@ app.get('/config', (_, res) => {
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
     web_build: WEB_BUILD, web_build_ios: WEB_BUILD_IOS, web_build_android: WEB_BUILD_ANDROID,
+    /* 오픈매치 오픈 스위치 — 1.2.7 부터 앱은 이 값을 본다. Railway OM_OPEN=1 이면 모든 회원에게 오픈매치 탭 · 홈 칸이 열린다
+       (앱 업데이트 없이). 매치를 실제로 여는 건 여전히 OM_HOST_LIVE · OM_HOST_BETA 가 따로 막는다. 1.2.6 이하 앱은 이 값을 모른다. */
+    om_open: process.env.OM_OPEN === '1',
     /* 점검 중이면 앱이 띠를 띄운다. /config 는 앱이 이미 부르는 곳이라
        새 요청이 늘지 않는다. */
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
