@@ -230,6 +230,11 @@ function tryUid(req) {
   try { return jwt.verify(t, JWT_SECRET).id; } catch { return null; }
 }
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id=?').get(id);
+/* 프로필 대표 사진 한 장 — users.photos(JSON 배열)의 첫 장. 없거나 깨졌으면 null (10/28) */
+function userFace(photos) {
+  try { const a = photos ? JSON.parse(photos) : []; const u = Array.isArray(a) ? a.find(x => typeof x === 'string' && x) : null; return u || null; }
+  catch (e) { return null; }
+}
 
 // 영구 익명 닉네임 생성
 const ADJ = ['깜찍한','신난','용감한','날쌘','엉뚱한','포근한','새침한','든든한','수줍은','호기심많은','씩씩한','상냥한'];
@@ -3266,16 +3271,20 @@ function fairplayOf(uid) {
    남는 것은 그 사람 자신의 기여뿐이다.
    ══════════════════════════════════════════════════════════════ */
 
-// 티어 경계 — 전국 단일 분포. 지역별로 나누면 동네마다 그랜드슬램이 나온다.
+// 티어 경계 — 전국 단일 분포. 지역별로 나누면 동네마다 챌린저가 나온다.
+/* 10/29 — 7단계(챌린저 1% · 다이아 5% · 플래티넘 15% · 골드 30% · 실버 60% · 브론즈 나머지 · 러브 배치 중).
+   세부 단계(1·2·3)는 없다 — 이름 하나로 읽힌다. 예전 키(gs · tour · chal · fut)는 아래에서 한 번 옮긴다. */
 const TIER_CUT = [
-  { k: 'gs',   n: '그랜드슬램', top: 0.01, subs: 0 },
-  { k: 'tour', n: '마스터스',   top: 0.10, subs: 3 },
-  { k: 'chal', n: '챌린저',     top: 0.55, subs: 3 },
-  { k: 'fut',  n: '퓨처스',     top: 1.00, subs: 3 },
+  { k: 'challenger', n: '챌린저',   top: 0.01, subs: 0 },
+  { k: 'diamond',    n: '다이아',   top: 0.05, subs: 0 },
+  { k: 'platinum',   n: '플래티넘', top: 0.15, subs: 0 },
+  { k: 'gold',       n: '골드',     top: 0.30, subs: 0 },
+  { k: 'silver',     n: '실버',     top: 0.60, subs: 0 },
+  { k: 'bronze',     n: '브론즈',   top: 1.00, subs: 0 },
 ];
 const TIER_MIN_GAMES = 2;                 // 이만큼 뛰어야 배치된다 (그 전에는 러브)
-const TIER_ORDER = ['love', 'fut', 'chal', 'tour', 'gs'];
-
+const TIER_ORDER = ['love', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'challenger'];
+const TIER_KO = { love: '러브', bronze: '브론즈', silver: '실버', gold: '골드', platinum: '플래티넘', diamond: '다이아', challenger: '챌린저' };
 /* 복식 오픈매치가 주력이라 rating_doubles 를 본다.
    경기 수는 그 사람이 실제로 뛴 확정 경기만 센다. */
 function tierGames(uid) {
@@ -3325,7 +3334,8 @@ const tierRank = k => Math.max(0, TIER_ORDER.indexOf(k));
 /* 매치가 요구하는 티어 범위 안에 드는가. 러브는 어디든 들어갈 수 있다 —
    배치되려면 2경기를 뛰어야 하는데 못 들어가면 영영 배치되지 않는다. */
 function tierFits(t, lo, hi) {
-  if (!t.placed) return true;
+  if (!t.placed) return !lo && !hi;          // 10/29 — 러브(배치 중)는 <모든 티어> 매치에만
+
   const r = tierRank(t.key);
   if (lo && r < tierRank(lo)) return false;
   if (hi && r > tierRank(hi)) return false;
@@ -3400,7 +3410,7 @@ app.get('/open-matches/:id/result', auth, (req, res) => {
     match: { id: m.id, loc: m.loc, dt: m.dt, start_at: m.start_at, mode: m.mode, disc: m.disc },
     played, win, lose, margin, games: gamesOut, band, mates,
     tier: t, delta,
-    /* 배치가 방금 일어났는가 — "러브 → 퓨처스 2" 를 보여줄지 판단한다 */
+    /* 배치가 방금 일어났는가 — "러브 → 골드" 를 보여줄지 판단한다 */
     just_placed: t.placed && t.games <= TIER_MIN_GAMES,
     prev_rating: before ? before.rating : null,
     opponents,
@@ -3834,9 +3844,18 @@ function omHostCreate(uid, b) {
   /* 최소 인원은 호스트가 정한다 — 단, 호스트가 게스트보다 더 내게 되는 인원은 고를 수 없다(omHostMins) */
   const mins = omHostMins(q, plays);
   const minCnt = Math.min(q.cap, Math.max(mins[mins.length - 1], Math.trunc(+b.min_cnt) || (mins[1] || mins[0])));
-  const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
-  const tmin = TK.includes(b.tier_min) ? b.tier_min : null;
-  const tmax = TK.includes(b.tier_max) ? b.tier_max : null;
+  const TK = TIER_ORDER;
+  let tmin = TK.includes(b.tier_min) && b.tier_min !== 'love' ? b.tier_min : null;
+  let tmax = TK.includes(b.tier_max) && b.tier_max !== 'love' ? b.tier_max : null;
+  /* 10/29 — 같이 치는 호스트의 티어는 범위 안에 꼭 넣는다(호스트가 자기 매치에 못 드는 일이 없게) */
+  if ((tmin || tmax) && plays) {
+    const ht = tierOf(uid);
+    if (ht.placed) {
+      if (tmin && tierRank(ht.key) < tierRank(tmin)) tmin = ht.key;
+      if (tmax && tierRank(ht.key) > tierRank(tmax)) tmax = ht.key;
+    }
+  }
+  if (tmin && tmax && tierRank(tmin) > tierRank(tmax)) { const x = tmin; tmin = tmax; tmax = x; }
   const cm = disc === 'men' ? q.cap : disc === 'women' ? 0 : disc === 'any' ? null : q.cap / 2;
   const cf = cm == null ? null : q.cap - cm;
   const endAt = omKst(stMs + hours * 3600e3), closeAt = omKst(stMs - OMH.CLOSE_H * 3600e3);
@@ -4127,7 +4146,9 @@ app.get('/users/:id/host-profile', optAuth, (req, res) => {
   if (!u) return res.status(404).json({ error: 'not_found' });
   const rows = db.prepare(`SELECT r.from_user, r.stars, r.tags, r.note, r.created_at, u.name FROM om_host_reviews r
     LEFT JOIN users u ON u.id=r.from_user WHERE r.host_id=? AND r.public=1 ORDER BY r.created_at DESC LIMIT 50`).all(hid);
-  const out = { id: hid, name: u.name, tier: tierOf(hid).name, ...hrvStats(hid), good: hrvGood(hid),
+  const tt = tierOf(hid), since = hostSince(hid);
+  const out = { id: hid, name: u.name, photo: userFace(u.photos), tier: tt.name, tier_key: tt.key, ...hrvStats(hid), good: hrvGood(hid),
+    intro: hostIntroOf(hid), since: since.label, months: since.months, open: hostOpenNow(hid), courts: hostCourts(hid),
     public_n: db.prepare('SELECT COUNT(*) n FROM om_host_reviews WHERE host_id=? AND public=1').get(hid).n,
     reviews: rows.map(r => ({ name: hrvMask(r.name), tier: tierOf(r.from_user).name, stars: r.stars, date: hrvMD(r.created_at),
       note: r.note || '', tags: hrvTags(r.tags), mine: !!req.uid && r.from_user === req.uid })) };
@@ -4153,8 +4174,110 @@ function omHostReviewNudge(nowMs) {
   });
   return n;
 }
+/* ── 호스트 소개 · 호스트 페이지 (10/29 시안) ─────────────
+   호스트가 쓰는 소개(150자) — 호스트 페이지와 매치 상세에 보인다.
+   전화번호 · 계좌 · 오픈채팅 링크 · 다른 링크는 쓸 수 없다(참가비와 연락은 맞수 안에서 주고받는다).
+   호스트 페이지에는 <새 호스트 / 호스트 N개월> · 지금 모집 중인 매치 · 자주 여는 코트도 함께 내려준다. */
+try { db.exec('ALTER TABLE users ADD COLUMN host_intro TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN host_intro_at BIGINT'); } catch (e) {}
+const HOST_INTRO_MAX = 150;
+function hostIntroClean(t) {
+  const s = String(t || '').replace(/\r/g, '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return [...s].slice(0, HOST_INTRO_MAX).join('').trim();
+}
+/* 쓸 수 없는 것 — 연락처(전화 · 카톡 · 메신저 · 이메일 · SNS) + 계좌 + 링크 */
+function hostIntroBlocked(t) {
+  const c = findContact(t);
+  if (c) return c;
+  const k = String(t || '').toLowerCase();
+  if (/https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|kr|co|me|ly|io|link)\b/.test(k)) return '링크';
+  if (/계좌|송금|무통장|입금\s*계좌/.test(k)) return '계좌 안내';
+  if (_digitRuns(t).some(r => r.length >= 11)) return '계좌번호';      // 은행 계좌는 11~14자리 (날짜 · 시간 줄은 10자리를 넘지 않는다)
+  return null;
+}
+function hostIntroOf(hid) { try { return (db.prepare('SELECT host_intro FROM users WHERE id=?').get(hid) || {}).host_intro || ''; } catch (e) { return ''; } }
+/* 호스트를 한 지 — 처음 매치를 연 때부터. 한 달이 안 됐거나 연 적이 없으면 <새 호스트> */
+function hostSince(hid, nowMs) {
+  let r = {};
+  try { r = db.prepare(`SELECT MIN(host_agree_at) a, MIN(start_at) s, COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'`).get(hid) || {}; } catch (e) {}
+  if (!r.n) return { months: 0, label: '새 호스트' };
+  const s = r.s ? Date.parse(String(r.s).slice(0, 16) + ':00+09:00') : NaN;
+  const first = Math.min(+r.a > 0 ? +r.a : Infinity, isNaN(s) ? Infinity : s);
+  const mo = isFinite(first) ? Math.floor(((nowMs || Date.now()) - first) / (30.44 * 864e5)) : 0;
+  return mo >= 1 ? { months: mo, label: `호스트 ${mo}개월` } : { months: 0, label: '새 호스트' };
+}
+/* 지금 모집 중 — 아직 시작 전이고 자리가 남은 호스트 매치(가까운 순 5개) */
+function hostOpenNow(hid, nowMs) {
+  try {
+    return db.prepare(`SELECT * FROM open_matches WHERE host_id=? AND mode='host' AND status IN ('open','confirmed') AND start_at > ?
+        ORDER BY start_at LIMIT 8`).all(hid, omKst(nowMs || Date.now()))
+      .map(m => ({ m, n: db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(m.id).n }))
+      .filter(x => x.n < (x.m.cap || 4)).slice(0, 5)
+      .map(({ m, n }) => ({ id: m.id, mode: 'host', status: m.status, start_at: m.start_at, end_at: m.end_at, loc: m.loc || '',
+        court_no: m.court_no || null, disc: m.disc || 'mixed', courts: m.courts || 1, cap: m.cap || 4, cur: n, fill: { n },
+        tier_min: m.tier_min || null, tier_max: m.tier_max || null, price_base: m.base_price || m.price || 0 }));
+  } catch (e) { return []; }
+}
+/* 자주 여는 코트 — 연 횟수 많은 순 3곳 · 바닥 · 실내외 · 대표 사진 */
+function hostCourts(hid) {
+  try {
+    return db.prepare(`SELECT venue_id, MAX(loc) loc, COUNT(*) n, MAX(start_at) last FROM open_matches WHERE host_id=? AND mode='host'
+        GROUP BY COALESCE(CAST(venue_id AS TEXT), 'L:' || REPLACE(COALESCE(loc,''),' ','')) ORDER BY n DESC, last DESC LIMIT 3`).all(hid)
+      .map(r => {
+        const v = r.venue_id ? db.prepare('SELECT * FROM venues WHERE id=?').get(r.venue_id) : null;
+        let photo = null; try { const ps = v ? venuePhotoList(v.photos) : []; photo = ps.length ? (ps[0].thumb || ps[0].url) : null; } catch (e) {}   // 목록 사진은 작은 사진 먼저
+        return { venue_id: v ? v.id : null, name: (v && v.name) || r.loc || '', n: r.n, surface: (v && v.surface) || null,
+          indoor: v ? !!v.indoor : null, photo };
+      }).filter(c => c.name);
+  } catch (e) { return []; }
+}
+app.post('/me/host-intro', auth, limitWrite, (req, res) => {
+  const intro = hostIntroClean((req.body || {}).intro);
+  const bad = intro && hostIntroBlocked(intro);
+  if (bad) return res.status(400).json({ error: 'contact_blocked', message: `${bad}는 쓸 수 없어요 · 참가비와 연락은 맞수 안에서 주고받아요` });
+  db.prepare('UPDATE users SET host_intro=?, host_intro_at=? WHERE id=?').run(intro || null, Date.now(), req.uid);
+  res.json({ ok: true, intro });
+});
 /* ── 호스트 후기 끝 ── */
 app.get('/me/host', auth, (req, res) => res.json(omHostStatus(req.uid)));
+/* 매치 열기 · <누가 신청할 수 있나요> (10/29) — 고른 코트 5km 안에 이 티어 범위 회원이 몇 명인가.
+   <내 주변> = 홈코트가 5km 안인 클럽의 회원 + 5km 안 코트에 <치고 싶어요>를 남긴 사람. 나는 뺀다.
+   티어는 사람마다 따로 세야 해서 10분 동안 같은 질문은 다시 세지 않는다. */
+const TIER_NEAR_CACHE = new Map();
+function tierNearCount(lat, lng, lo, hi, me) {
+  const key = [lat.toFixed(3), lng.toFixed(3), lo || '', hi || '', me].join('|');
+  const c = TIER_NEAR_CACHE.get(key);
+  if (c && Date.now() - c.at < 600e3) return c.n;
+  const d = 5 / 111, dl = d / Math.max(0.2, Math.cos(lat * Math.PI / 180));
+  const box = [lat - d, lat + d, lng - dl, lng + dl];
+  const near = v => { const R = 6371, t = Math.PI / 180, dLa = (v.lat - lat) * t, dLo = (v.lng - lng) * t;
+    const x = Math.sin(dLa / 2) ** 2 + Math.cos(lat * t) * Math.cos(v.lat * t) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x)) <= 5; };
+  const vids = db.prepare('SELECT id, lat, lng FROM venues WHERE lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?').all(...box)
+    .filter(near).map(v => v.id);
+  const ids = new Set();
+  if (vids.length) {
+    const q = vids.map(() => '?').join(',');
+    try { db.prepare(`SELECT DISTINCT cm.user_id FROM club_members cm JOIN venue_clubs vc ON vc.club_id=cm.club_id
+      WHERE vc.venue_id IN (${q}) AND (cm.status IS NULL OR cm.status='active') LIMIT 3000`).all(...vids).forEach(r => ids.add(r.user_id)); } catch (e) {}
+    try { db.prepare(`SELECT DISTINCT user_id FROM om_wish WHERE venue_id IN (${q}) LIMIT 3000`).all(...vids).forEach(r => ids.add(r.user_id)); } catch (e) {}
+  }
+  ids.delete(me);
+  let n = 0;
+  ids.forEach(id => { const t = tierOf(id); if (t.placed && tierFits(t, lo, hi)) n++; });
+  TIER_NEAR_CACHE.set(key, { n, at: Date.now() });
+  if (TIER_NEAR_CACHE.size > 500) TIER_NEAR_CACHE.delete(TIER_NEAR_CACHE.keys().next().value);
+  return n;
+}
+app.get('/open-matches/tier-near', auth, (req, res) => {
+  const lo = TIER_ORDER.includes(req.query.min) && req.query.min !== 'love' ? req.query.min : null;
+  const hi = TIER_ORDER.includes(req.query.max) && req.query.max !== 'love' ? req.query.max : null;
+  let lat = +req.query.lat, lng = +req.query.lng;
+  const vid = +req.query.venue_id || 0;
+  if (vid) { const v = db.prepare('SELECT lat, lng FROM venues WHERE id=?').get(vid); if (v && v.lat != null) { lat = v.lat; lng = v.lng; } }
+  if (!isFinite(lat) || !isFinite(lng) || (!lat && !lng)) return res.json({ n: null });
+  res.json({ n: tierNearCount(lat, lng, lo, hi, req.uid), km: 5 });
+});
 app.post('/open-matches/host-quote', auth, (req, res) => res.json(omHostQuoteOut(req.body || {})));
 app.post('/open-matches/:id/host-noshow', auth, limitWrite, (req, res) => {
   const r = omHostNoshowReport(+req.params.id, req.uid, (req.body || {}).note);
@@ -4261,7 +4384,7 @@ app.post('/open-matches', auth, (req, res) => {
     const nCourts = intOrNull(b2.courts) || 1;
     const mode = (b2.mode === 'managed' || nCourts > 1) ? 'managed' : 'self';
     const disc = ['mixed', 'men', 'women'].includes(b2.disc) ? b2.disc : 'mixed';
-    const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
+    const TK = TIER_ORDER;
     const tmin = TK.includes(b2.tier_min) ? b2.tier_min : null;
     const tmax = TK.includes(b2.tier_max) ? b2.tier_max : null;
     const capN = intOrNull(b2.cap) || (mode === 'managed' ? 8 : 4);
@@ -4306,10 +4429,13 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
     return res.status(403).json({ error: 'men_only',   message: '남자복식 매치예요' });
   if (m.disc === 'women' && me.gender !== 'F')
     return res.status(403).json({ error: 'women_only', message: '여자복식 매치예요' });
-  /* 티어로 막지 않는다 — 초기에는 4명을 모으는 일이 실력을 맞추는 일보다 급하다.
-     제한을 걸면 정원이 안 차 취소되고, 취소가 반복되면 사람이 먼저 떠난다.
-     티어는 카드에 <지금 누가 모였나>로 보여주고 판단은 본인에게 맡긴다.
-     매치가 충분히 많아지면 tier_min/max 를 채워 넣는 것만으로 제한을 켤 수 있다. */
+  /* 티어 — 호스트가 <모든 티어>로 열면 막지 않는다(초기에는 4명을 모으는 일이 실력을 맞추는 일보다 급하다).
+     10/29 — 호스트가 <티어 정하기>로 범위를 걸었으면 그 범위 안만 받는다. 러브(배치 중)는 <모든 티어> 매치에만. */
+  if ((m.tier_min || m.tier_max) && m.host_id !== req.uid && !tierFits(tierOf(req.uid), m.tier_min, m.tier_max)) {
+    const lo = TIER_KO[m.tier_min] || TIER_KO.bronze, hi = TIER_KO[m.tier_max] || TIER_KO.challenger;
+    const t = tierOf(req.uid);
+    return res.status(403).json({ error: 'tier_out', message: t.placed ? `${lo} ~ ${hi}만 신청할 수 있는 매치예요` : '배치 중(러브)에는 모든 티어 매치에만 신청할 수 있어요' });
+  }
 
   // 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다
   try {
@@ -4995,6 +5121,16 @@ app.delete('/notices/:id', auth, (req, res) => {
 ].forEach(c => { try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {} });
 ['paid INTEGER DEFAULT 0', 'refund INTEGER DEFAULT 0'
 ].forEach(c => { try { db.exec(`ALTER TABLE open_match_joins ADD COLUMN ${c}`); } catch (e) {} });
+/* 예전 5단계로 걸어 둔 매치의 티어 범위를 새 이름으로 — 아래 끝(min)과 위 끝(max)을 따로 가장 가까운 쪽으로 */
+try {
+  const MIN = { fut: 'bronze', chal: 'silver', tour: 'platinum', gs: 'challenger' };
+  const MAX = { fut: 'bronze', chal: 'platinum', tour: 'diamond', gs: 'challenger' };
+  const rows = db.prepare(`SELECT id, tier_min, tier_max FROM open_matches
+    WHERE tier_min IN ('fut','chal','tour','gs') OR tier_max IN ('fut','chal','tour','gs')`).all();
+  rows.forEach(r => db.prepare('UPDATE open_matches SET tier_min=?, tier_max=? WHERE id=?')
+    .run(MIN[r.tier_min] || r.tier_min, MAX[r.tier_max] || r.tier_max, r.id));
+  if (rows.length) console.log(`[migrate] 매치 티어 범위를 7단계 이름으로 · ${rows.length}개`);
+} catch (e) {}
 
 /* 매너 확인 — 티어와 완전히 분리한다. 점수가 아니라 신고에 가깝게 받는다.
    기본값이 "다들 괜찮았어요"라 평소에는 한 줄도 안 쌓인다. */
@@ -5259,7 +5395,9 @@ function omViewAll(m, uid) {
      빠뜨리면 참가자 전원이 '구력 미입력'으로 집계에서 빠지고 대진도 못 짠다. */
   const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender, u.sport_started FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
-  const host = m.host_id ? db.prepare('SELECT id,name FROM users WHERE id=?').get(m.host_id) : null;
+  /* 호스트 얼굴 — 프로필 대표 사진(있으면). 매치 상세 · 호스트 페이지 · 후기 화면이 이니셜 대신 쓴다 (10/28) */
+  const host = m.host_id ? (u => u ? { id: u.id, name: u.name, photo: userFace(u.photos) } : null)(
+    db.prepare('SELECT id,name,photos FROM users WHERE id=?').get(m.host_id)) : null;
   const likes = db.prepare('SELECT COUNT(*) n FROM om_likes WHERE match_id=?').get(m.id).n;
   const liked = uid ? !!db.prepare('SELECT 1 FROM om_likes WHERE match_id=? AND user_id=?').get(m.id, uid) : false;
   const comments = db.prepare('SELECT COUNT(*) n FROM om_comments WHERE match_id=?').get(m.id).n;
@@ -5280,10 +5418,10 @@ function omViewAll(m, uid) {
      실력차가 부담스러운 사람은 스스로 거르고, 괜찮은 사람은 그냥 들어온다. */
   const tierMix = (() => {
     const ks = joins.map(j => TJ.get(j.user_id).key);
-    const order = ['love', 'fut', 'chal', 'tour', 'gs'];
+    const order = TIER_ORDER;
     const seen = order.filter(k => ks.includes(k));
     if (!seen.length) return null;
-    const KO = { love: '러브', fut: '퓨처스', chal: '챌린저', tour: '마스터스', gs: '그랜드슬램' };
+    const KO = TIER_KO;
     return { keys: seen, label: seen.length === 1 ? KO[seen[0]] : `${KO[seen[0]]}~${KO[seen[seen.length - 1]]}` };
   })();
   return {
@@ -5311,7 +5449,8 @@ function omViewAll(m, uid) {
         const mine = uid ? db.prepare('SELECT stars, public FROM om_host_reviews WHERE match_id=? AND from_user=?').get(m.id, uid) : null;
         my_hrv = mine ? { stars: mine.stars, public: !!mine.public } : null; } catch (e) {}
       return { host_fp: fairplayOf(m.host_id).score, host_hosted: hosted, host_rating: rating, host_rv: hrv,
-        host_tier: tierOf(m.host_id).name, my_hrv, hrv_open: hrvOpen(m) };
+        host_tier: tierOf(m.host_id).name, my_hrv, hrv_open: hrvOpen(m),
+        host_intro: hostIntroOf(m.host_id), host_since: hostSince(m.host_id).label };
     })() : {}),
     /* 지도 — 구장과 이어진 매치는 구장 좌표, 아니면 이름이 같은 구장 */
     ...(() => { try {
@@ -10437,8 +10576,8 @@ body{margin:0;background:#f6f4f0;color:#191f28;font-family:'Pretendard Variable'
 .g .b{text-align:right}
 .g .w{color:#d9500a}
 .g .pr{display:inline-block;white-space:nowrap}
-.g .sb{display:none;margin-top:3px}
-.g .tm.wbd .pr .wb{display:none}.g .tm.wbd .sb{display:block}
+.g .sb{display:block;margin-top:3px}
+.g .pr .wb{display:none}
 .g .n.me{background:#f1631a;color:#fff;border-radius:.45em;padding:0 .3em}
 .g .wb{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:5px;background:#f1631a;color:#fff;font-size:11.5px;font-style:normal;font-weight:800;margin-right:4px;vertical-align:1px}
 .g .vac{font-style:normal;color:#e5484d}
@@ -10475,15 +10614,12 @@ ${o.mark ? `<svg width="0" height="0" style="position:absolute">${o.mark}</svg>`
   function txt(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
   function fit(){
     [].slice.call(document.querySelectorAll('.g:not(.hide) .tm')).forEach(function(tm){
-      tm.classList.remove('wbd');
       var prs=[].slice.call(tm.querySelectorAll('.pr'));
       prs.forEach(function(p){ p.style.fontSize=''; });
       function over(){ return prs.some(function(p){ return p.parentElement.clientWidth>0 && p.offsetWidth > p.parentElement.clientWidth + .5; }); }
       function shrink(min){ var fs=parseFloat(getComputedStyle(prs[0]).fontSize)||16;
         for(var i=0;i<30&&fs>min&&over();i++){ fs-=.5; prs.forEach(function(p){ p.style.fontSize=fs+'px'; }); } }
       if(!prs.length || !over()) return;
-      if(tm.querySelector('.pr .wb')){ shrink(14); if(!over()) return;
-        tm.classList.add('wbd'); prs.forEach(function(p){ p.style.fontSize=''; }); if(!over()) return; }
       shrink(11);
     });
   }
@@ -10539,6 +10675,88 @@ app.get('/r/:t', (req, res) => {
     ios: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517', android: process.env.ANDROID_APP_URL || '' }));
 });
 /* ── 대진 결과 공유 끝 ── */
+
+/* ── 오픈매치 초대장 (10/29) ───────────────────────────────────────
+   초대장을 만들 때마다 새 코드(초대장마다 링크 · QR 이 다르다). 링크는 /i/<코드>.
+   카톡에 링크를 붙여 넣으면 이 페이지의 미리보기(그림 · 제목 · 설명)가 뜨고, 누르면 앱 웹의 그 매치로 간다.
+   그림은 앱이 그려 올린 PNG(2:1) — 없으면 그림 없이 제목 · 설명만. 몇 번 열렸는지만 센다(누가 열었는지는 모른다). */
+db.exec(`CREATE TABLE IF NOT EXISTS om_invites (
+  code TEXT PRIMARY KEY, match_id INTEGER NOT NULL, user_id INTEGER, created_at BIGINT, img_at BIGINT, opens INTEGER DEFAULT 0)`);
+const OM_INV_MAX = 2.5 * 1024 * 1024;
+const OM_INV_WD = '일월화수목금토';
+/* 미리보기 글 — 앱 초대장과 같은 말 */
+function omInvText(m) {
+  const sa = String(m.start_at || ''), ea = String(m.end_at || '');
+  const d = sa.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/), e = ea.match(/T(\d{2}:\d{2})/);
+  const wd = d ? OM_INV_WD[new Date(Date.UTC(+d[1], +d[2] - 1, +d[3])).getUTCDay()] : '';
+  const when = d ? `${+d[2]}월 ${+d[3]}일 (${wd}) ${d[4]}` : '';
+  const DISC = { mixed: '혼복', men: '남복', women: '여복', any: '상관없음' };
+  const tier = (m.tier_min || m.tier_max)
+    ? [TIER_KO[m.tier_min] || TIER_KO.bronze, TIER_KO[m.tier_max] || TIER_KO.challenger].filter((v, i, a) => a.indexOf(v) === i).join(' ~ ')
+    : '모든 티어';
+  const price = +(m.base_price || m.price || 0);
+  const c = String(m.close_at || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+  const cw = c ? `${OM_INV_WD[new Date(Date.UTC(+c[1], +c[2] - 1, +c[3])).getUTCDay()]} ${c[4]} 마감` : '';
+  const title = [when, m.loc || ''].filter(Boolean).join(' · ') || '오픈매치';
+  const desc = [[DISC[m.disc] || '', tier, price ? `참가비 ${price.toLocaleString('ko-KR')}원` : ''].filter(Boolean).join(' · '),
+    [cw, '안 모이면 전액 환불'].filter(Boolean).join(' · ')].join('\n');
+  return { title, desc, end: e ? e[1] : '' };
+}
+app.post('/open-matches/:id/invites', auth, limitWrite, (req, res) => {
+  const m = db.prepare('SELECT id, status FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (['cancelled', 'noshow'].includes(m.status)) return res.status(400).json({ error: 'closed', message: '취소된 매치예요' });
+  const code = crypto.randomBytes(6).toString('base64url');            // 8자 — 초대장마다 새로
+  let img_at = null;
+  const mm = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String((req.body || {}).image || ''));
+  if (mm) {
+    const buf = Buffer.from(mm[1], 'base64');
+    if (buf.length > 64 && buf.length <= OM_INV_MAX && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      try { fs.writeFileSync(path.join(UPLOAD_DIR, `i_${code}.png`), buf); img_at = Date.now(); }
+      catch (e) { console.error('[invite] 그림 저장 실패:', e.message); }
+    }
+  }
+  db.prepare('INSERT INTO om_invites (code,match_id,user_id,created_at,img_at) VALUES (?,?,?,?,?)').run(code, m.id, req.uid, Date.now(), img_at);
+  res.json({ ok: true, code, url: '/i/' + code, img: img_at ? `/i/${code}.png?v=${img_at}` : '' });
+});
+function omInvMissing() {
+  return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>맞수</title><body style="margin:0;min-height:90vh;display:flex;align-items:center;justify-content:center;background:#f6f4f0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#4e5968;text-align:center">
+<div><div style="font-size:18px;font-weight:700;color:#191f28">초대장을 찾을 수 없어요</div><p style="margin:8px 0 0;font-size:14px">매치가 취소됐거나 주소가 바뀌었어요</p></div></body></html>`;
+}
+app.get('/i/:c', (req, res) => {
+  const t = String(req.params.c || ''), png = /\.png$/i.test(t), code = t.replace(/\.png$/i, '');
+  if (!/^[A-Za-z0-9_-]{6,20}$/.test(code)) return res.status(404).type('html').send(omInvMissing());
+  const inv = db.prepare('SELECT * FROM om_invites WHERE code=?').get(code);
+  if (png) {
+    const f = path.resolve(UPLOAD_DIR, `i_${code}.png`);
+    if (!inv || !fs.existsSync(f)) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.type('png').sendFile(f);
+  }
+  const m = inv && db.prepare('SELECT * FROM open_matches WHERE id=?').get(inv.match_id);
+  if (!m) return res.status(404).type('html').send(omInvMissing());
+  try { db.prepare('UPDATE om_invites SET opens=COALESCE(opens,0)+1 WHERE code=?').run(code); } catch (e) {}
+  const base = `${req.protocol}://${req.get('host')}`;
+  const v = omInvText(m);
+  const go = `/?match=${m.id}&inv=${encodeURIComponent(code)}${req.query.join ? '&join=1' : ''}`;
+  const img = inv.img_at ? `${base}/i/${code}.png?v=${inv.img_at}` : '';
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>${cbH(v.title)} · 맞수 오픈매치</title>
+<meta property="og:type" content="website"><meta property="og:site_name" content="맞수">
+<meta property="og:title" content="${cbH(v.title)}"><meta property="og:description" content="${cbH(v.desc.replace(/\n/g, ' · '))}">
+<meta property="og:url" content="${cbH(base + '/i/' + code)}">
+${img ? `<meta property="og:image" content="${cbH(img)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="600">
+<meta name="twitter:card" content="summary_large_image">` : ''}
+<meta http-equiv="refresh" content="0;url=${cbH(go)}"></head>
+<body style="margin:0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;background:#f6f4f0;color:#191f28;text-align:center;padding:60px 20px">
+<p style="font-size:16px;font-weight:700">${cbH(v.title)}</p><p style="font-size:14px;color:#6b6a65;white-space:pre-line">${cbH(v.desc)}</p>
+<p><a href="${cbH(go)}" style="display:inline-block;margin-top:10px;padding:13px 26px;border-radius:14px;background:#f1631a;color:#fff;text-decoration:none;font-weight:700">매치 보기</a></p>
+<script>location.replace(${JSON.stringify(go)});</script></body></html>`);
+});
+/* ── 오픈매치 초대장 끝 ── */
 
 /* ═══ 홈 배너 — 운영자가 이미지+랜딩 링크 등록, 홈 히어로 자리에 노출 ═══ */
 db.exec(`CREATE TABLE IF NOT EXISTS banners (
@@ -10938,7 +11156,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_assessments (
   id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, manager_id INTEGER,
   user_id INTEGER, level TEXT, created_at TEXT)`);
 const ASSESS_MID = { '퓨처스1':840,'퓨처스2':915,'퓨처스3':975,'챌린저1':1025,'챌린저2':1075,'챌린저3':1125,'챌린저4':1175,'챌린저5':1225,'투어1':1285,'투어2':1355,'투어3':1425,
-  '마스터스1':1285,'마스터스2':1355,'마스터스3':1425,'그랜드슬램':1500 };
+  '마스터스1':1285,'마스터스2':1355,'마스터스3':1425,'그랜드슬램':1500,
+  /* 10/29 7단계 이름 */
+  '브론즈':920,'실버':1050,'골드':1150,'플래티넘':1260,'다이아':1390,'챌린저':1500 };
 try { db.exec('ALTER TABLE open_matches ADD COLUMN bracket TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photo TEXT'); } catch (e) {}
 try { db.exec('ALTER TABLE open_matches ADD COLUMN photos TEXT'); } catch (e) {}
@@ -12428,6 +12648,18 @@ function homeVenues(clubId) {
   if (tot < 10) return [];                      // 기록이 적으면 홈을 정하지 않는다
   return rows.slice(0, 2).filter(r => r.n / tot >= 0.25).map(r => r.venue_id);
 }
+/* 클럽의 대표 홈코트 (10/28) — 홈이 두 곳이면 클럽 정보에 적은 홈구장(clubs.home_court)과 이름이 같은 곳을 먼저.
+   예전엔 먼저 건 곳(set_at)만 봐서, 클럽 정보에서 홈구장을 바꿔도(빈자리가 있으면 예전 곳이 남는다) 예전 곳이 계속 <홈코트>로 잡혔다.
+   latlng 를 주면 지도 좌표가 있는 곳만 고른다(지도 가운데 · 5km 원). */
+function mainHomeVenue(cid, latlng) {
+  const rows = db.prepare(`SELECT vc.venue_id, v.name, v.lat, v.lng FROM venue_clubs vc JOIN venues v ON v.id=vc.venue_id
+    WHERE vc.club_id=? ${latlng ? 'AND v.lat IS NOT NULL' : ''} ORDER BY vc.set_at`).all(cid);
+  if (!rows.length) return null;
+  const c = db.prepare('SELECT home_court FROM clubs WHERE id=?').get(cid) || {};
+  const nm = x => String(x || '').replace(/\s/g, '');
+  const want = nm(c.home_court);
+  return (want && rows.find(r => nm(r.name) === want)) || rows[0];
+}
 
 /* 구장 지분 —
      홈으로 걸어둠              10점
@@ -13049,8 +13281,7 @@ app.get('/clubs/:id/land-seasons', auth, (req, res) => {
 app.get('/land/center', optAuth, (req, res) => {
   const cid = +req.query.club_id || 0;
   let row = null;
-  if (cid) row = db.prepare(`SELECT v.lat, v.lng, v.name FROM venue_clubs vc JOIN venues v ON v.id=vc.venue_id
-      WHERE vc.club_id=? AND v.lat IS NOT NULL ORDER BY vc.set_at LIMIT 1`).get(cid);
+  if (cid) row = mainHomeVenue(cid, true);          // 홈코트 기준 지도 가운데 = 위 <홈코트>와 같은 곳 (10/28)
   if (!row) row = db.prepare(`SELECT v.lat, v.lng, v.name FROM club_members cm
       JOIN venue_clubs vc ON vc.club_id=cm.club_id JOIN venues v ON v.id=vc.venue_id
       WHERE cm.user_id=? AND v.lat IS NOT NULL ORDER BY vc.set_at LIMIT 1`).get(req.uid);
@@ -13982,8 +14213,7 @@ app.get('/clubs/:id/homecourt', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
   const officer = isOfficer(cid, req.uid);
-  const row = db.prepare(`SELECT vc.venue_id, v.name FROM venue_clubs vc
-    JOIN venues v ON v.id=vc.venue_id WHERE vc.club_id=? ORDER BY vc.set_at LIMIT 1`).get(cid);
+  const row = mainHomeVenue(cid);                   // 홈이 둘이면 클럽 정보의 홈구장 쪽 (10/28)
   if (!row) return res.json({ home: null, can_set: officer });
 
   const s = venueShares(row.venue_id);
@@ -15902,7 +16132,7 @@ app.post('/venue-slots/:id/open-match', auth, (req, res) => {
   try { const a = JSON.parse(s.court_ids); if (Array.isArray(a) && a.length) courtN = a.length; } catch (e) {}
   const mode = (b.mode === 'managed' || courtN > 1) ? 'managed' : 'self';
   const disc = ['mixed', 'men', 'women'].includes(b.disc) ? b.disc : 'mixed';
-  const TK = ['love', 'fut', 'chal', 'tour', 'gs'];
+  const TK = TIER_ORDER;
   const tmin = TK.includes(b.tier_min) ? b.tier_min : null;
   const tmax = TK.includes(b.tier_max) ? b.tier_max : null;
   const capN = Math.max(4, Math.min(18, intOrNull(b.cap) || (mode === 'managed' ? courtN * 5 : 4)));
