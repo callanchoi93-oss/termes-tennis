@@ -794,6 +794,17 @@ body.noscroll{ overflow:hidden }
 .vnm-two2 .vrf input{width:0}
 .vnm-log{margin-top:10px;font-size:13px;color:#4e5968}
 .vnm-log summary{cursor:pointer;font-weight:700;padding:4px 0}
+  /* 구장 고치기 — 코트 대표 */
+  .vnm-own{display:flex;align-items:center;gap:10px;background:#f7f6f3;border-radius:14px;padding:11px 12px;margin-top:8px}
+  .vnm-own .av{width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:#1a1a17;color:#fff;font-weight:800;font-size:15px}
+  .vnm-own .c{flex:1;min-width:0}
+  .vnm-own .c b{display:block;font-size:15px;font-weight:750;color:#1a1a17}
+  .vnm-own .c span{display:block;font-size:12.5px;color:#8f8a82;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vnm-own .b{flex:none}
+  .vnm-osr{display:flex;gap:6px;margin-top:8px}
+  .vnm-osr input{flex:1;min-width:0;height:42px;border:1px solid #e5e2dc;border-radius:11px;padding:0 12px;font:inherit;font-size:15px;box-sizing:border-box}
+  .vnm-ores{margin-top:6px;border:1px solid #eeebe6;border-radius:12px;padding:0 10px}
+  .vnm-ores .rw{padding:9px 0}
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -865,7 +876,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치'],['venues','구장']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -873,7 +884,7 @@ const NAV=[
 /* 출시 전이라 숨기는 탭 — 주소로 직접 열 수는 있다(#matches 처럼).
    matches·payouts·venues 는 오픈매치·결제, regions 는 IP 위치라 부정확, track 은 표본 부족,
    health 는 Railway 대시보드가 더 자세함, dead 는 개발자 도구. */
-const HIDDEN={ matches:'매치', payouts:'정산', venues:'구장', regions:'지역',
+const HIDDEN={ matches:'매치', payouts:'정산', regions:'지역',
                track:'분석', health:'서버', dead:'죽은 코드' };
 let NAV_MORE = false;
 try{ NAV_MORE = localStorage.getItem('adm_more')==='1'; }catch(e){}
@@ -3141,7 +3152,7 @@ async function drawVenues(){
   $('app').innerHTML=shell(subTabs(tabs)+ head +
     (editable?`<div class="card flat"><div class="ct">구장 추가</div>
       <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
-        <input id="vn" placeholder="구장 이름" style="flex:1;border:1px solid var(--line);border-radius:10px;
+        <input id="vn" placeholder="구장 이름" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;
           padding:8px 10px;font-size:var(--t2);font-family:inherit;font-weight:500">
         <button class="b on" onclick="addVenue()">추가</button></div></div>`:'')+
     (editable?`<div class="card" style="padding:10px 12px"><input id="vnQ" placeholder="구장 이름으로 찾기" value="${esc(VN_Q)}"
@@ -3186,7 +3197,8 @@ async function vnRateOpen(id){
    로고: 코트 화면 맨 위 · 사진이 없는 코트의 목록 그림(배경이 투명한 PNG 가 가장 깔끔). 512px PNG 로 줄여 올린다.
    사진: 첫 사진이 대표(앱 목록 · 코트 화면 첫 장). 큰 사진 1600px · 목록용 360px 두 장을 올린다. 최대 12장.
    대관료: 실내 · 실외 1면 1시간 — 저장하면 앱에 <맞수가 확인한 금액>. 바꾼 때만 보낸다(고친 기록이 쓸데없이 쌓이지 않게).
-   코트 정보: 면 수 · 바닥 · 야간 조명 · 주차 · 종류 — 앱의 <야간 조명> <주차> 거르기가 이 값을 쓴다. */
+   코트 정보: 면 수 · 바닥 · 야간 조명 · 주차 · 종류 — 앱의 <야간 조명> <주차> 거르기가 이 값을 쓴다.
+   코트 대표: 회원 한 명 — 앱 코트 화면에서 사진 · 대관료를 직접 고친다. 바꾼 때만 보낸다. */
 let VNM=null;
 async function vnEditOpen(id){
   let d=null, rt=null;
@@ -3202,13 +3214,14 @@ async function vnEditOpen(id){
     io:v.indoor_n!=null?v.indoor_n:'', oo:v.outdoor_n!=null?v.outdoor_n:'',
     surf:sm?sm[0].replace(/\s+/g,''):(v.surface||''), light:!lt?'':(yes(lt)?'yes':'no'), lightNote:yes(lt)?rest(lt,/있음|있어요/g):'',
     park:!pk?'':(!yes(pk)?'no':(/유료/.test(pk)?'paid':'free')), parkNote:yes(pk)?rest(pk,/무료|유료/g):'', kind:v.kind||'',
-    rIn:n(o.in), rOut:n(o.out), rNote:o.note||'', r0:[n(o.in),n(o.out),o.note||''].join('|'), log:(rt&&rt.log)||[]};
+    rIn:n(o.in), rOut:n(o.out), rNote:o.note||'', r0:[n(o.in),n(o.out),o.note||''].join('|'), log:(rt&&rt.log)||[],
+    owner:(d&&d.owner)||null, owner0:((d&&d.owner)||{}).id||null, oEdit:false, oq:'', ores:null};
   vnMediaRender(); $('ov').classList.remove('menu'); $('ov').classList.add('on');
 }
 /* 예전 이름 — 같은 창을 연다 */
 function vnMediaOpen(id){ return vnEditOpen(id); }
 function vnMediaKeep(){ const M=VNM; if(!M) return; const g=id=>{ const el=$(id); return el?el.value:null; };
-  [['vmI','io'],['vmO','oo'],['vmLt','lightNote'],['vmPt','parkNote'],['vrIn','rIn'],['vrOut','rOut'],['vrNote','rNote']].forEach(([id,k])=>{ const x=g(id); if(x!=null) M[k]=x; }); }
+  [['vmI','io'],['vmO','oo'],['vmLt','lightNote'],['vmPt','parkNote'],['vrIn','rIn'],['vrOut','rOut'],['vrNote','rNote'],['vnOq','oq']].forEach(([id,k])=>{ const x=g(id); if(x!=null) M[k]=x; }); }
 function vnMediaPick(k,v){ vnMediaKeep(); VNM[k]=VNM[k]===v?'':v; vnMediaRender(); }
 function vnMediaRender(){
   const M=VNM; if(!M) return;
@@ -3244,7 +3257,44 @@ function vnMediaRender(){
     <div class="vnm-l">주차</div>${ch('park',[['free','무료'],['paid','유료'],['no','없어요']])}
     ${M.park&&M.park!=='no'?`<input class="vnm-in" id="vmPt" maxlength="12" placeholder="예) 20대 · 2시간 무료" value="${esc(M.parkNote)}">`:''}
     <div class="vnm-l">종류</div>${ch('kind',[['public','공공'],['private','사설'],['school','학교'],['apt','아파트']])}
+    ${vnOwnerHTML()}
     <div class="cupbtns" style="margin-top:16px"><button class="b on" ${M.busy||M.lbusy?'disabled':''} onclick="vnMediaSave()">저장</button><button class="b" onclick="closeU()">닫기</button></div>`;
+}
+/* 코트 대표 칸 — 지금 대표(바꾸기 · 해제) 또는 회원 찾기(이름 · 이메일 · 회원ID) */
+function vnOwnerHTML(){
+  const M=VNM, o=M.owner;
+  const PV={kakao:'카카오', google:'구글', apple:'애플', naver:'네이버', venue:'사장님 계정', dev:'개발'};
+  const ago=t=>{ if(!t) return '접속 기록 없음'; const d=Math.floor((Date.now()-new Date(t).getTime())/864e5); return d<1?'오늘 접속':d<30?d+'일 전 접속':'한 달 넘게 안 들어옴'; };
+  let h=`<div class="vnm-sec">코트 대표 <span>지정한 회원은 앱 코트 화면에서 사진 · 대관료를 직접 고치고, 예약 · 매치 알림을 받아요 · 한 구장에 한 명</span></div>`;
+  if(o && !M.oEdit){
+    h+=`<div class="vnm-own"><span class="av">${esc(String(o.name||'?').slice(0,1))}</span>
+      <div class="c"><b>${esc(o.name||'회원')}</b><span>#${o.id}${o.provider?' · '+esc(PV[o.provider]||o.provider):''} · ${ago(o.last_seen)}</span></div>
+      <button class="b" onclick="vnMediaKeep();VNM.oEdit=true;vnMediaRender()">바꾸기</button><button class="b" onclick="vnMediaKeep();VNM.owner=null;vnMediaRender()">해제</button></div>`;
+    return h;
+  }
+  h+=`<div class="vnm-osr"><input id="vnOq" autocomplete="off" placeholder="회원 이름 · 이메일 · 회원ID" value="${esc(M.oq||'')}"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();vnOwnerFind()}"><button class="b on" onclick="vnOwnerFind()">찾기</button>
+      ${o?`<button class="b" onclick="vnMediaKeep();VNM.oEdit=false;VNM.ores=null;vnMediaRender()">취소</button>`:''}</div>`;
+  if(M.ores){
+    h+=M.ores.length?`<div class="vnm-ores">${M.ores.map(u=>`<div class="rw"><div class="nm"><b>${esc(u.name||'회원')}</b><span>#${u.id}${u.email?' · '+esc(u.email):''} · ${ago(u.last_seen)}</span></div>
+        <button class="b on" onclick="vnOwnerPick(${+u.id})">지정</button></div>`).join('')}</div>`
+      :`<div class="note" style="margin:8px 2px 0">찾는 회원이 없어요 · 앱에 한 번 로그인한 회원만 지정할 수 있어요</div>`;
+  } else if(!o){
+    h+=`<div class="note" style="margin:8px 2px 0">아직 대표가 없어요 · 구장 사장님(또는 맡길 분)이 앱에 로그인한 뒤 이름으로 찾아 지정하세요</div>`;
+  }
+  return h;
+}
+async function vnOwnerFind(){
+  vnMediaKeep(); const M=VNM; const q=String(M.oq||'').trim();
+  if(!q){ toast('이름이나 회원ID를 넣어 주세요'); return; }
+  try{ const r=await api('/admin/search?q='+encodeURIComponent(q)); if(VNM!==M) return; M.ores=(r&&r.users)||[]; }
+  catch(e){ M.ores=[]; toast('찾지 못했어요'); }
+  vnMediaRender();
+}
+function vnOwnerPick(id){
+  vnMediaKeep(); const M=VNM; const u=(M.ores||[]).find(x=>+x.id===+id); if(!u) return;
+  M.owner={id:u.id, name:u.name, provider:u.provider||'', last_seen:u.last_seen||null}; M.oEdit=false; M.ores=null; M.oq='';
+  vnMediaRender();
 }
 function vnShrink(file, max, q, png){
   return new Promise((ok,no)=>{ const rd=new FileReader();
@@ -3285,6 +3335,8 @@ async function vnMediaSave(){
     if(M.logo!==M.logo0) await api('/admin/venues/'+M.id+'/logo',{method:'PUT',body:JSON.stringify({logo:M.logo||null})});
     await api('/admin/venues/'+M.id+'/photos',{method:'PUT',body:JSON.stringify({photos:M.list})});
     if(rateChanged) await api('/admin/venues/'+M.id+'/rates',{method:'PUT',body:JSON.stringify({rate_in:rin, rate_out:rout, note:String(M.rNote||'').trim()})});
+    const oid=(M.owner&&M.owner.id)||null;
+    if(oid!==M.owner0) await api('/admin/venues/'+M.id+'/owner',{method:'PUT',body:JSON.stringify({user_id:oid})});
     await api('/admin/venues/'+M.id+'/info',{method:'POST',body:JSON.stringify({indoor_n:M.io, outdoor_n:M.oo, surface:M.surf||'',
       lights:M.light==='yes'?join('있음',M.lightNote):M.light==='no'?'없음':'',
       parking:M.park==='free'?join('무료',M.parkNote):M.park==='paid'?join('유료',M.parkNote):M.park==='no'?'없음':'', kind:M.kind})});
