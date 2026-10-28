@@ -410,9 +410,10 @@ app.get('/config', (_, res) => {
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
     web_build: WEB_BUILD, web_build_ios: WEB_BUILD_IOS, web_build_android: WEB_BUILD_ANDROID,
-    /* 오픈매치 오픈 스위치 — 1.2.7 부터 앱은 이 값을 본다. Railway OM_OPEN=1 이면 모든 회원에게 오픈매치 탭 · 홈 칸이 열린다
-       (앱 업데이트 없이). 매치를 실제로 여는 건 여전히 OM_HOST_LIVE · OM_HOST_BETA 가 따로 막는다. 1.2.6 이하 앱은 이 값을 모른다. */
-    om_open: process.env.OM_OPEN === '1',
+    /* 오픈매치 오픈 스위치 — 1.2.7 부터 앱은 이 값을 본다. 10/27 부터 기본은 <열림>(Railway 에 아무것도 안 넣어도).
+       다시 닫으려면 OM_OPEN=0 또는 OM_PRELAUNCH=true — 앱 업데이트 없이 오픈 전 화면으로 돌아간다.
+       매치를 실제로 여는 건 여전히 OM_HOST_LIVE · OM_HOST_BETA 가 따로 막는다. 1.2.6 이하 앱은 이 값을 모른다. */
+    om_open: !(process.env.OM_OPEN === '0' || /^(true|1|on|yes)$/i.test(String(process.env.OM_PRELAUNCH || '').trim())),
     /* 점검 중이면 앱이 띠를 띄운다. /config 는 앱이 이미 부르는 곳이라
        새 요청이 늘지 않는다. */
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
@@ -1042,7 +1043,10 @@ app.get('/me', auth, (req, res) => {
   // 복식 배치 판정용 — rating_log 의 '복식' 기록 수를 센다
   let pd = 0;
   try { pd = db.prepare("SELECT COUNT(*) n FROM rating_log WHERE user_id=? AND reason='복식'").get(req.uid).n; } catch (e) {}
-  res.json({ ...u, played_doubles: pd });
+  /* 내가 코트 대표인 구장 — 내정보에 <내 코트>로 */
+  let venues_rep = [];
+  try { venues_rep = db.prepare('SELECT id,name FROM venues WHERE owner_id=? AND COALESCE(active,1)=1 ORDER BY id LIMIT 5').all(req.uid); } catch (e) {}
+  res.json({ ...u, played_doubles: pd, venues_rep });
 });
 app.patch('/me', auth, (req, res) => {
   /* name 이 빠져 있어서 <이름 바꾸기> 가 저장되지 않았다.
@@ -3420,7 +3424,8 @@ function omSettle(mid) {
     db.prepare("UPDATE open_matches SET status='cancelled', refunded_at=? WHERE id=?").run(now(), mid);
     joins.forEach(j => {
       /* 호스트 매치는 실제로 걷힌 돈만 돌려준다 — 결제 전 기록(paid)으로 캐시를 만들지 않는다 */
-      const back = m.mode === 'host' ? omPaidBy(mid, j.user_id) : j.paid;
+      /* 실제로 걷힌 돈만 돌려준다 — 모든 방식에서. 예전엔 호스트 매치가 아니면 결제 없이 적힌 paid 를 캐시로 만들어 줬다 (10/27) */
+      const back = omPaidBy(mid, j.user_id);
       if (back > 0) cashAdd(j.user_id, back, 'om_cancel_refund');
       if (m.mode === 'host') db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, j.user_id);
       sendPush(j.user_id, { icon: '🔔', title: '매치가 취소됐어요',
@@ -3436,7 +3441,7 @@ function omSettle(mid) {
   tx(() => {
     db.prepare("UPDATE open_matches SET status='confirmed', confirmed_at=? WHERE id=?").run(now(), mid);
     joins.forEach(j => {
-      const diff = (j.paid || 0) - finalPrice;
+      const diff = omPaidBy(mid, j.user_id) - finalPrice;   // 걷힌 돈 기준 — 결제 전 기록(paid)으로 차액 캐시를 만들지 않는다 (10/27)
       if (diff > 0) {
         cashAdd(j.user_id, diff, 'om_price_refund');
         db.prepare('UPDATE open_match_joins SET refund=? WHERE id=?').run(diff, j.id);
@@ -3647,8 +3652,8 @@ const OMH = {
   LEAD_H: 4,         // 지금부터 4시간 뒤 경기부터 열 수 있다 (마감 전에 모일 시간)
   FAR_D: 60,         // 60일 뒤까지
   FIRST_N: 3,        // 처음 3번은 1코트까지
-  MIN_GAMES: 3,      // 오픈매치 3경기
-  MANNER: 0.9,       // 매너 좋음 90% 이상
+  /* 오픈매치 3경기 · 매너 90% 조건은 뺐다(10/27) — 아무도 매치를 못 여는데 3경기를 뛸 수 없고,
+     매너는 80점에서 시작해 처음엔 90% 를 넘을 수 없다. 첫 3번 1코트 · 취소 · 미참석 제한은 그대로. */
   STRIKES: 3,        // 30일 안에 호스트 취소 3번이면 못 연다
   SETTLE_H: 12,      // 끝나고 12시간 뒤 자동 정산 (그 전에 호스트가 직접 받아도 된다)
   RAIN_BEFORE_H: 6,  // 비 취소는 시작 6시간 전부터
@@ -3729,9 +3734,8 @@ function omHostStatus(uid) {
   const noshow = !!db.prepare(`SELECT 1 FROM om_host_strikes WHERE user_id=? AND kind='noshow' AND created_at>?`)
     .get(uid, Date.now() - OMH.NOSHOW_BLOCK_D * 864e5);
   const bank = !!String(u.bank_account || '').trim();
+  /* 호스트 조건은 정산 계좌 하나 — 코트비 · 수고비를 보내 드릴 곳 */
   const checks = [
-    { k: 'games',  ok: games >= OMH.MIN_GAMES, v: `${games}경기` },
-    { k: 'manner', ok: manner != null && manner >= OMH.MANNER, v: manner == null ? '' : `${Math.round(manner * 100)}%` },
     { k: 'bank',   ok: bank, v: bank ? '등록됨' : '' },
   ];
   const live = process.env.OM_HOST_LIVE === '1' || omHostBeta(uid);
@@ -4140,6 +4144,9 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.status && m.status !== 'open') return res.status(400).json({ error: 'not_open' });
+  /* 호스트 매치 — 모집 마감(시작 3시간 전)이 지나면 마감 처리를 기다리는 사이에도 받지 않는다 (10/27) */
+  if (m.mode === 'host' && m.close_at && String(m.close_at).slice(0, 16) <= omKst(Date.now()))
+    return res.status(400).json({ error: 'closed', message: '모집이 마감됐어요' });
   const ns = noShowCount(req.uid);                       // 상습 노쇼는 참가를 막는다
   if (ns >= NOSHOW_LIMIT) return res.status(403).json({ error: 'noshow_blocked', count: ns, limit: NOSHOW_LIMIT });
 
@@ -4183,6 +4190,7 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
     throw e;
   }
   const isNewJoin = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid).joined_at > now() - 3000;
+  try { db.prepare('DELETE FROM om_seat_wait WHERE match_id=? AND user_id=?').run(mid, req.uid); } catch (e) {}   // 대기하다 들어왔으면 대기에서 뺀다
 
   const after = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
   if (isNewJoin && m.host_id && m.host_id !== req.uid)
@@ -5009,6 +5017,93 @@ app.delete('/om-comments/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── 정원이 찬 매치 대기 (10/27) ──
+   내 자리가 없으면(정원 · 혼복이면 내 성별 칸) <대기 신청>. 누가 취소하면 대기 순서대로 3명에게 알린다.
+   자리를 잡아 두지는 않는다 — 알림을 받고 먼저 신청하는 분이 들어간다. 30분이 지나도 자리가 남아 있으면 다음 3명에게.
+   신청하면 대기에서 빠진다. 모집이 끝나면(마감 · 확정 · 취소) 대기는 의미가 없어 보여 주지 않는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS om_seat_wait (id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  created_at BIGINT, notified_at BIGINT, UNIQUE(match_id, user_id));
+CREATE INDEX IF NOT EXISTS ix_omsw ON om_seat_wait(match_id, id);`);
+const OM_WAIT_BATCH = 3, OM_WAIT_GAP = 30 * 60e3;
+function omWaitView(mid, uid) {
+  let rows = [];
+  try { rows = db.prepare('SELECT user_id FROM om_seat_wait WHERE match_id=? ORDER BY id').all(mid); } catch (e) {}
+  const i = uid ? rows.findIndex(r => r.user_id === uid) : -1;
+  return { wait_n: rows.length, wait_mine: i >= 0 ? i + 1 : 0 };
+}
+/* 이 성별의 회원이 들어갈 자리가 있나 — 정원, 혼복이면 성별 칸까지 */
+function omSeatFor(m, gender, fill) {
+  fill = fill || omFilled(m.id);
+  if (fill.n >= (m.cap || 8)) return false;
+  if ((m.disc || 'mixed') === 'mixed') {
+    const caps = omCaps(m);
+    if (gender === 'M') return fill.m < caps.m;
+    if (gender === 'F') return fill.f < caps.f;
+  }
+  return true;
+}
+/* 아직 신청을 받는 매치인가 — 모집 중이고 마감 시각(없으면 시작 시각) 전 */
+function omWaitOpen(m) {
+  if (!m || (m.status && m.status !== 'open')) return false;
+  const close = String(m.close_at || m.start_at || '').slice(0, 16);
+  return !close || close > omKst(Date.now());
+}
+/* "10/28(수) 19:00" — start_at 은 한국 시간 벽시계 */
+function omWhenKo(m) {
+  const x = String(m.start_at || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!x) return m.dt || '';
+  const wd = '일월화수목금토'[new Date(Date.UTC(+x[1], +x[2] - 1, +x[3])).getUTCDay()];
+  return `${+x[2]}/${+x[3]}(${wd}) ${x[4]}:${x[5]}`;
+}
+/* 자리가 났을 때 — 대기 순서대로, 들어갈 수 있는 성별만, 최근 30분 안에 알린 사람도 한 자리로 센다 */
+function omWaitNotify(mid) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!omWaitOpen(m)) return 0;
+  const fill = omFilled(mid);
+  const rows = db.prepare(`SELECT w.id, w.user_id, w.notified_at, u.gender FROM om_seat_wait w
+    JOIN users u ON u.id=w.user_id WHERE w.match_id=? ORDER BY w.id`).all(mid);
+  let slots = 0, sent = 0;
+  for (const r of rows) {
+    if (slots >= OM_WAIT_BATCH) break;
+    if (!omSeatFor(m, r.gender, fill)) continue;
+    slots++;
+    if (r.notified_at && Date.now() - r.notified_at < OM_WAIT_GAP) continue;
+    db.prepare('UPDATE om_seat_wait SET notified_at=? WHERE id=?').run(Date.now(), r.id);
+    sendPush(r.user_id, { icon: '🎾', title: '기다리던 매치에 자리가 났어요', link: `match:${mid}`,
+      body: `${m.loc || ''} · ${omWhenKo(m)} · 먼저 신청하는 분이 들어가요` });
+    sent++;
+  }
+  return sent;
+}
+/* 10분마다 — 자리가 남아 있는데 아직 못 들은 대기자에게 */
+function omWaitSweep() {
+  let n = 0;
+  db.prepare('SELECT DISTINCT match_id FROM om_seat_wait').all().forEach(r => { try { n += omWaitNotify(r.match_id); } catch (e) {} });
+  return n;
+}
+app.post('/open-matches/:id/wait', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  if (!omWaitOpen(m)) return res.status(400).json({ error: 'not_open', message: '모집이 끝난 매치예요' });
+  if (m.host_id === req.uid) return res.status(400).json({ error: 'host', message: '내가 연 매치예요' });
+  if (db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid))
+    return res.status(400).json({ error: 'already_joined', message: '이미 신청한 매치예요' });
+  const me = getUser(req.uid) || {};
+  if (!me.gender && (m.disc || 'mixed') !== 'any')
+    return res.status(400).json({ error: 'gender_required', message: '성별을 먼저 입력해 주세요' });
+  if (m.disc === 'men' && me.gender !== 'M') return res.status(403).json({ error: 'men_only', message: '남자복식 매치예요' });
+  if (m.disc === 'women' && me.gender !== 'F') return res.status(403).json({ error: 'women_only', message: '여자복식 매치예요' });
+  if (omSeatFor(m, me.gender)) return res.status(400).json({ error: 'not_full', message: '자리가 있어요 · 바로 신청해 주세요' });
+  db.prepare('INSERT OR IGNORE INTO om_seat_wait (match_id,user_id,created_at) VALUES (?,?,?)').run(mid, req.uid, Date.now());
+  res.json({ ok: true, ...omWaitView(mid, req.uid) });
+});
+app.delete('/open-matches/:id/wait', auth, (req, res) => {
+  const mid = +req.params.id;
+  db.prepare('DELETE FROM om_seat_wait WHERE match_id=? AND user_id=?').run(mid, req.uid);
+  res.json({ ok: true, ...omWaitView(mid, req.uid) });
+});
+
 function omView(m, uid) {
   return omHostHide(m, omViewAll(m, uid), uid);
 }
@@ -5049,6 +5144,8 @@ function omViewAll(m, uid) {
     /* 화면이 바로 쓰도록 계산해서 내려준다 — 앱이 다시 세면 서버와 어긋난다 */
     mode: m.mode || 'self', disc: m.disc || 'mixed',
     caps, fill, need, tier_mix: tierMix,
+    /* 대기 — 모집 중일 때만 (몇 명 · 내가 몇 번째) */
+    ...(omWaitOpen(m) ? omWaitView(m.id, uid) : { wait_n: 0, wait_mine: 0 }),
     /* 티어별 인원 — <참여 티어 · 퓨처스 2 · 챌린저 5> */
     tier_counts: (() => { const c = {}; joins.forEach(j => { const k = TJ.get(j.user_id).key; c[k] = (c[k] || 0) + 1; }); return c; })(),
     /* 호스트 매치 — 호스트 매너 · 몇 번 열었나 (목록 말고 상세에서도) */
@@ -5236,6 +5333,7 @@ app.delete('/open-matches/:id/join', auth, (req, res) => {
     .run(req.uid, mid, freeGrace, refund, Date.now());
   const me = getUser(req.uid);
   sendPush(m.host_id, { icon: '📣', title: '참가 취소', body: `${me.name} 님이 참가를 취소했어요 · ${m.dt || ''}` });
+  try { omWaitNotify(mid); } catch (e) { console.error('om wait', e.message); }   // 자리가 났다 — 대기자에게
   res.json({ ok: true, refund, pct, cash: me.cash });
 });
 app.patch('/open-matches/:id', auth, (req, res) => {
@@ -10005,6 +10103,285 @@ app.post('/upload', auth, limitUpload, (req, res) => {
   res.json({ url: '/uploads/' + name });
 });
 
+/* ── 대진 결과 공유 (10/28) ─────────────────────────────
+   단톡방에 보낸 링크(/r/토큰)로 앱 없이 전체 결과 · 순위 · 내 경기를 본다.
+   링크는 모임마다 하나 — 다시 공유해도 같은 링크, 점수를 고치면 페이지도 바로 바뀐다(열 때마다 대진을 읽는다).
+   카톡 미리보기 그림(/r/토큰.png)은 앱이 그려 올린 결과 카드 — 공유할 때마다 새로 덮어쓴다.
+   보이는 것은 클럽 · 모임 이름, 날짜 · 장소, 이름과 점수뿐(회원 번호 · 연락처 없음). 검색에는 안 걸리게(noindex). */
+db.exec(`CREATE TABLE IF NOT EXISTS cb_shares (
+  token TEXT PRIMARY KEY, club_id INTEGER NOT NULL, event_id INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER, created_at BIGINT, img_at BIGINT)`);
+try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS cb_shares_ev ON cb_shares(club_id, event_id)'); } catch (e) {}
+const CB_SHARE_MAX = 2.5 * 1024 * 1024;
+function cbShareBracket(cid, eid) {
+  const row = eid
+    ? db.prepare('SELECT data FROM club_brackets_ev WHERE club_id=? AND event_id=?').get(cid, eid)
+    : db.prepare('SELECT data FROM club_brackets WHERE club_id=?').get(cid);
+  if (!row) return null;
+  try { return JSON.parse(row.data) || null; } catch (e) { return null; }
+}
+app.post('/clubs/:id/bracket2/share', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id, eid = evOf(req);
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const data = cbShareBracket(cid, eid);
+  if (!data || !(data.games || []).length) return res.status(404).json({ error: 'no_bracket', message: '공유할 대진이 없어요' });
+  let sh = db.prepare('SELECT token, img_at FROM cb_shares WHERE club_id=? AND event_id=?').get(cid, eid);
+  if (!sh) {
+    sh = { token: crypto.randomBytes(9).toString('base64url'), img_at: null };
+    db.prepare('INSERT INTO cb_shares (token,club_id,event_id,created_by,created_at) VALUES (?,?,?,?,?)')
+      .run(sh.token, cid, eid, req.uid, Date.now());
+  }
+  /* 결과 카드 그림 — PNG 만, 2.5MB 까지 */
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String((req.body || {}).image || ''));
+  if (m) {
+    const buf = Buffer.from(m[1], 'base64');
+    if (buf.length > 64 && buf.length <= CB_SHARE_MAX && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      try {
+        fs.writeFileSync(path.join(UPLOAD_DIR, `r_${sh.token}.png`), buf);
+        sh.img_at = Date.now();
+        db.prepare('UPDATE cb_shares SET img_at=? WHERE token=?').run(sh.img_at, sh.token);
+      } catch (e) { console.error('[share] 결과 그림 저장 실패:', e.message); }
+    }
+  }
+  res.json({ ok: true, token: sh.token, url: '/r/' + sh.token, img: sh.img_at ? `/r/${sh.token}.png?v=${sh.img_at}` : '' });
+});
+const cbH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* 대진 → 공개 페이지에 쓸 값. 순위는 앱(cb2Stats)과 같은 규칙 — 승 3점 · 무 1점, 같으면 득실 · 득점 */
+function cbShareView(data, ev, clubName) {
+  const games = (data.games || []).filter(Boolean).slice().sort((a, b) => (a.c - b.c) || (a.r - b.r));
+  const named = p => p && String(p.name || '').trim();
+  const key = p => (p.id != null && p.id !== '' && p.id !== '-') ? 'i' + p.id : 'n' + String(p.name).trim();
+  const done = g => g.sa != null && g.sb != null;
+  const st = {};
+  games.forEach(g => {
+    if (!done(g)) return;
+    const win = g.sa > g.sb ? 'A' : g.sa < g.sb ? 'B' : 'D';
+    [['A', 'B'], ['B', 'A']].forEach(([me, op]) => (g['team' + me] || []).forEach(p => {
+      if (!named(p)) return;
+      const s = st[key(p)] = st[key(p)] || { name: String(p.name).trim(), w: 0, d: 0, l: 0, gf: 0, ga: 0 };
+      s.gf += +g['s' + me.toLowerCase()] || 0; s.ga += +g['s' + op.toLowerCase()] || 0;
+      if (win === 'D') s.d++; else if (win === me) s.w++; else s.l++;
+    }));
+  });
+  const rank = Object.values(st).map(s => ({ ...s, gd: s.gf - s.ga, p: s.w * 3 + s.d }))
+    .sort((a, b) => b.p - a.p || b.gd - a.gd || b.gf - a.gf);
+  const people = new Map();
+  games.forEach(g => [...(g.teamA || []), ...(g.teamB || [])].forEach(p => { if (named(p)) people.set(key(p), String(p.name).trim()); }));
+  /* 날짜 · 장소 — 모임 날짜 글은 "10/25 07:00 ~ 09:10 · 용인테니스파크 3면" 이나 "10/25 (토) 07:00 · 장소 · 1·2번 코트" */
+  const ds = String((ev && ev.date) || '');
+  const md = ds.match(/(\d{1,2})\/(\d{1,2})/), tm = ds.match(/(\d{1,2}:\d{2})/);
+  const ymd = String(data.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let when = '';
+  if (ymd) when = `${+ymd[2]}/${+ymd[3]} (${'일월화수목금토'[new Date(Date.UTC(+ymd[1], +ymd[2] - 1, +ymd[3])).getUTCDay()]})`;
+  else if (md) when = `${+md[1]}/${+md[2]}`;
+  if (tm) when += ' ' + tm[1];
+  const place = (ds.split('·')[1] || '').replace(/\s*\d+\s*면\s*$/, '').trim();
+  const title = String((ev && ev.title) || (data.event && data.event.title) || '모임').trim().replace(/\s*·?\s*대진$/, '') || '모임';
+  return { club: String(clubName || '클럽'), title, when: when.trim(), place, rank, games,
+    names: [...new Set(people.values())].sort((a, b) => a.localeCompare(b, 'ko')),
+    people: people.size, played: games.filter(done).length, total: games.length };
+}
+/* 맞수 마크 — 앱(index.html)과 같은 벡터를 한 번 읽어 둔다 */
+let CB_MARK = null;
+function cbMarkSymbol() {
+  if (CB_MARK !== null) return CB_MARK;
+  try {
+    const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
+    const m = html.match(/<symbol id="matsuMark" viewBox="([^"]+)">([\s\S]*?)<\/symbol>/);
+    CB_MARK = m ? `<symbol id="mk" viewBox="${m[1]}">${m[2].replace(/var\(--brand\s*,\s*#ED7C30\)/gi, '#F1631A')}</symbol>` : '';
+  } catch (e) { CB_MARK = ''; }
+  return CB_MARK;
+}
+function cbShareHTML(v, o) {
+  const rec = s => [`${s.w}승`, s.d ? `${s.d}무` : '', s.l ? `${s.l}패` : ''].filter(Boolean).join(' ');
+  const done = g => g.sa != null && g.sb != null;
+  const first = v.rank[0];
+  const ogTitle = `${v.club} · ${v.title} 결과`;
+  const ogDesc = [[v.when, v.place].filter(Boolean).join(' · '), `${v.played}게임 · ${v.people}명`, first ? `1위 ${first.name} (${rec(first)})` : '']
+    .filter(Boolean).join(' · ');
+  const live = v.played < v.total;
+  const mk = o.mark ? '<svg class="mk" aria-hidden="true"><use href="#mk"/></svg>' : '';
+  const nm = p => p && String(p.name || '').trim();
+  const team = arr => (arr || []).map(p => nm(p) ? `<span class="n">${cbH(String(p.name).trim())}</span>` : '<i class="vac">빈자리</i>').join('·');
+  const rows = v.rank.map((s, i) => `<li data-n="${cbH(s.name)}"><b class="no${i === 0 ? ' g1' : i < 3 ? ' g2' : ''}">${i + 1}</b>
+      <span class="nm">${cbH(s.name)}</span><span class="rc">${rec(s)}</span><span class="pt">${s.gd >= 0 ? '+' : ''}${s.gd} · <b>${s.p}점</b></span></li>`).join('');
+  const courts = [...new Set(v.games.map(g => g.c))].sort((a, b) => a - b);
+  const gameRow = g => {
+    const wa = done(g) && g.sa > g.sb, wb = done(g) && g.sb > g.sa;
+    const who = [...(g.teamA || []), ...(g.teamB || [])].filter(nm).map(p => cbH(String(p.name).trim())).join('|');
+    return `<div class="g" data-p="${who}"><div class="tp"><span>${+g.r || ''}게임</span>${g.label ? `<em>${cbH(g.label)}</em>` : ''}${done(g) && g.sa === g.sb ? '<span class="dr">무승부</span>' : ''}</div>
+      <div class="tm"><div class="a${wa ? ' w' : ''}"><span class="pr">${wa ? '<i class="wb">승</i>' : ''}${team(g.teamA)}</span>${wa ? '<span class="sb"><i class="wb">승</i></span>' : ''}</div>
+      <div class="sc${done(g) && g.sa !== g.sb ? ' dec' : ''}">${done(g) ? `<b${wa ? ' class="w"' : ''}>${+g.sa}</b><i>:</i><b${wb ? ' class="w"' : ''}>${+g.sb}</b>` : '<i class="todo">－ : －</i>'}</div>
+      <div class="b${wb ? ' w' : ''}"><span class="pr">${wb ? '<i class="wb">승</i>' : ''}${team(g.teamB)}</span>${wb ? '<span class="sb"><i class="wb">승</i></span>' : ''}</div></div></div>`;
+  };
+  const games = courts.map(c => `<div class="ct" data-c="${+c}"><h3>${+c}번 코트</h3>${v.games.filter(g => g.c === c).map(gameRow).join('')}</div>`).join('');
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>${cbH(ogTitle)}</title>
+<meta name="description" content="${cbH(ogDesc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="맞수">
+<meta property="og:title" content="${cbH(ogTitle)}"><meta property="og:description" content="${cbH(ogDesc)}">
+<meta property="og:url" content="${cbH(o.base + '/r/' + o.token)}">
+${o.img ? `<meta property="og:image" content="${cbH(o.img)}"><meta property="og:image:width" content="1600"><meta property="og:image:height" content="800">
+<meta name="twitter:card" content="summary_large_image">` : ''}
+<meta name="theme-color" content="#1c1b19">
+<style>
+@font-face{font-family:'Pretendard Variable';font-weight:45 920;font-style:normal;font-display:swap;src:url('/fonts/PretendardVariable.woff2') format('woff2-variations'),url('/fonts/PretendardVariable.woff2') format('woff2')}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#f6f4f0;color:#191f28;font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;letter-spacing:-.02em;-webkit-font-smoothing:antialiased}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+.mk{width:30px;height:26px;flex:none}
+.hero{background:#1c1b19;color:#fff;border-radius:24px;padding:24px 22px 22px}
+.hero .cl{display:flex;align-items:center;gap:9px;color:#d6d2ca;font-size:15px;font-weight:600}
+.hero h1{margin:16px 0 0;font-size:31px;line-height:1.24;font-weight:800;letter-spacing:-.045em;word-break:keep-all}
+.hero .wh{margin:12px 0 0;color:#cfcac0;font-size:15px}
+.hero .st{display:flex;gap:28px;margin-top:18px}
+.hero .st b{display:block;font-size:22px;font-weight:800}
+.hero .st span{display:block;margin-top:3px;font-size:13px;color:#a9a399}
+.hero .live{margin-top:16px;font-size:13.5px;color:#ffb38a}
+.top3{display:flex;flex-direction:column;margin-top:18px;border-top:1px solid #34332f}
+.top3 div{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #34332f}
+.top3 div:last-child{border-bottom:0}
+.top3 i{flex:none;width:30px;height:30px;border-radius:50%;background:#3a3935;display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800;font-size:15px}
+.top3 div:first-child i{background:#f1631a}
+.top3 b{flex:1;font-size:19px;font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top3 span{color:#d6d2ca;font-size:15px}
+.card{background:#fff;border-radius:22px;padding:20px 18px;margin-top:12px}
+.card h2{margin:0;font-size:19px;font-weight:800;letter-spacing:-.04em;display:flex;align-items:baseline;gap:8px}
+.card h2 small{font-size:13.5px;font-weight:500;color:#8b95a1}
+.hint{margin:6px 0 0;font-size:14px;color:#6b7684}
+.rk{list-style:none;margin:10px 0 0;padding:0}
+.rk li{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid #f0eeea;cursor:pointer}
+.rk li:first-child{border-top:0}
+.rk li.me{background:#fff4ec;border-radius:12px;margin:0 -8px;padding:12px 10px}
+.rk .no{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#8b95a1}
+.rk .no.g1{background:#f1631a;color:#fff}.rk .no.g2{background:#33322e;color:#fff}
+.rk .nm{flex:1;min-width:0;font-size:16.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk .rc{font-size:14.5px;color:#4e5968}
+.rk .pt{flex:none;min-width:84px;text-align:right;font-size:13.5px;color:#8b95a1}
+.rk .pt b{color:#d9500a;font-weight:800}
+.note{margin:10px 0 0;font-size:12.5px;color:#8b95a1}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{border:0;font:inherit;font-size:15px;font-weight:600;color:#333d4b;background:#f2f1ee;border-radius:999px;padding:9px 14px;cursor:pointer;letter-spacing:-.02em}
+.chip.on{background:#f1631a;color:#fff}
+.mine{margin-top:14px;padding:14px 16px;border-radius:16px;background:#fff1e8;font-size:15px;line-height:1.5;display:none}
+.mine.on{display:block}.mine b{font-weight:800}.mine .x{float:right;color:#d9500a;font-weight:700;cursor:pointer}
+.ct h3{margin:18px 0 4px;font-size:15.5px;font-weight:800;color:#4e5968}
+.g{padding:12px 0;border-top:1px solid #f0eeea}
+.ct h3+.g{border-top:0}
+.g.hide,.ct.hide{display:none}
+.g .tp{display:flex;align-items:center;gap:7px;font-size:13.5px;color:#8b95a1}
+.g .tp em{font-style:normal;font-size:12.5px;font-weight:700;color:#4e5968;background:#f2f1ee;border-radius:7px;padding:2px 7px}
+.g .tp .dr{margin-left:auto;font-weight:700}
+.g .tm{display:flex;align-items:center;gap:8px;margin-top:8px}
+.g .a,.g .b{flex:1;min-width:0;font-size:16px;font-weight:700;line-height:1.35;word-break:keep-all}
+.g .b{text-align:right}
+.g .w{color:#d9500a}
+.g .pr{display:inline-block;white-space:nowrap}
+.g .sb{display:none;margin-top:3px}
+.g .tm.wbd .pr .wb{display:none}.g .tm.wbd .sb{display:block}
+.g .n.me{background:#f1631a;color:#fff;border-radius:.45em;padding:0 .3em}
+.g .wb{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:5px;background:#f1631a;color:#fff;font-size:11.5px;font-style:normal;font-weight:800;margin-right:4px;vertical-align:1px}
+.g .vac{font-style:normal;color:#e5484d}
+.g .sc{flex:none;min-width:64px;height:40px;border-radius:13px;background:#f2f1ee;display:flex;align-items:center;justify-content:center;gap:5px;font-size:18px;font-weight:800}
+.g .sc.dec{background:#fff1e8}.g .sc i{font-style:normal;color:#8b95a1}.g .sc .todo{font-size:14px}
+.ft{text-align:center;margin-top:26px;color:#8b95a1;font-size:13.5px}
+.ft .mkr{display:flex;align-items:center;justify-content:center;gap:7px;color:#4e5968;font-size:16px}
+.ft p{margin:6px 0 0}
+.ft a{display:inline-block;margin-top:14px;padding:13px 26px;border-radius:14px;background:#191f28;color:#fff;text-decoration:none;font-weight:700;font-size:15px}
+</style></head><body>
+${o.mark ? `<svg width="0" height="0" style="position:absolute">${o.mark}</svg>` : ''}
+<main class="wrap">
+<header class="hero">
+  <div class="cl">${mk}<span>${cbH(v.club)}</span></div>
+  <h1>${cbH(v.title)} 결과</h1>
+  ${v.when || v.place ? `<p class="wh">${cbH([v.when, v.place].filter(Boolean).join(' · '))}</p>` : ''}
+  <div class="st"><div><b>${v.played}게임</b><span>${live ? `${v.total}게임 중 끝남` : '점수 입력 완료'}</span></div><div><b>${v.people}명</b><span>참석</span></div></div>
+  ${live ? '<div class="live">● 진행 중 · 점수가 들어오면 이 페이지도 바뀌어요</div>' : ''}
+  ${v.rank.length ? `<div class="top3">${v.rank.slice(0, 3).map((s, i) => `<div><i>${i + 1}</i><b>${cbH(s.name)}</b><span>${rec(s)}</span></div>`).join('')}</div>` : ''}
+</header>
+<section class="card" id="rank"><h2>${live ? '지금 순위' : '그날의 순위'} <small>${v.rank.length}명</small></h2>
+  ${v.rank.length ? `<ol class="rk">${rows}</ol><p class="note">승 3점 · 무 1점 · 점수가 같으면 득실 차이로</p>` : '<p class="hint">점수가 들어오면 순위가 보여요</p>'}</section>
+<section class="card" id="me"><h2>내 경기 보기</h2><p class="hint">내 이름을 누르면 내 경기와 기록만 보여요</p>
+  <div class="chips">${v.names.map(n => `<button type="button" class="chip" data-n="${cbH(n)}">${cbH(n)}</button>`).join('')}</div>
+  <div class="mine" id="mine"></div></section>
+<section class="card" id="games"><h2>경기 결과 <small>${courts.length}면 · ${v.total}게임</small></h2>${games}</section>
+<footer class="ft"><div class="mkr">${mk}<b>맞수</b></div><p>우리 클럽 대진 · 점수 · 기록을 한곳에서</p><a id="app" href="/">맞수 앱 열기</a></footer>
+</main>
+<script>
+(function(){
+  var K=${JSON.stringify('matsu_r_me_' + o.token)}, cur='';
+  var chips=[].slice.call(document.querySelectorAll('.chip')), games=[].slice.call(document.querySelectorAll('.g')),
+      cts=[].slice.call(document.querySelectorAll('.ct')), rows=[].slice.call(document.querySelectorAll('.rk li')), mine=document.getElementById('mine');
+  function txt(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  function fit(){
+    [].slice.call(document.querySelectorAll('.g:not(.hide) .tm')).forEach(function(tm){
+      tm.classList.remove('wbd');
+      var prs=[].slice.call(tm.querySelectorAll('.pr'));
+      prs.forEach(function(p){ p.style.fontSize=''; });
+      function over(){ return prs.some(function(p){ return p.parentElement.clientWidth>0 && p.offsetWidth > p.parentElement.clientWidth + .5; }); }
+      function shrink(min){ var fs=parseFloat(getComputedStyle(prs[0]).fontSize)||16;
+        for(var i=0;i<30&&fs>min&&over();i++){ fs-=.5; prs.forEach(function(p){ p.style.fontSize=fs+'px'; }); } }
+      if(!prs.length || !over()) return;
+      if(tm.querySelector('.pr .wb')){ shrink(14); if(!over()) return;
+        tm.classList.add('wbd'); prs.forEach(function(p){ p.style.fontSize=''; }); if(!over()) return; }
+      shrink(11);
+    });
+  }
+  function pick(n, save){
+    cur = (n===cur) ? '' : n;
+    chips.forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-n')===cur); });
+    var cnt=0;
+    games.forEach(function(g){ var on=!cur || (g.getAttribute('data-p')||'').split('|').indexOf(cur)>=0; g.classList.toggle('hide', !on); if(on&&cur) cnt++;
+      [].slice.call(g.querySelectorAll('.n')).forEach(function(s){ s.classList.toggle('me', !!cur && s.textContent===cur); }); });
+    cts.forEach(function(c){ c.classList.toggle('hide', !c.querySelector('.g:not(.hide)')); });
+    var hit=null; rows.forEach(function(r, i){ var me=!!cur && r.getAttribute('data-n')===cur; r.classList.toggle('me', me); if(me) hit={i:i+1, rc:r.querySelector('.rc').textContent, pt:r.querySelector('.pt').textContent}; });
+    if(cur){ mine.innerHTML='<span class="x" role="button">전체 보기</span><b>'+txt(cur)+'</b> · '+cnt+'게임'+(hit?' · <b>'+hit.i+'위</b> · '+txt(hit.rc)+' · 득실 '+txt(hit.pt):''); mine.classList.add('on'); }
+    else { mine.classList.remove('on'); mine.innerHTML=''; }
+    fit();
+    if(save!==false){ try{ cur?localStorage.setItem(K,cur):localStorage.removeItem(K); }catch(e){} }
+  }
+  chips.forEach(function(c){ c.onclick=function(){ pick(c.getAttribute('data-n')); }; });
+  fit(); var ft=0; window.addEventListener('resize', function(){ clearTimeout(ft); ft=setTimeout(fit, 120); });
+  try{ document.fonts && document.fonts.ready.then(fit); }catch(e){}
+  rows.forEach(function(r){ r.onclick=function(){ pick(r.getAttribute('data-n')); document.getElementById('me').scrollIntoView({behavior:'smooth'}); }; });
+  mine.onclick=function(e){ if(e.target.className==='x') pick(cur); };
+  var saved=''; try{ saved=localStorage.getItem(K)||''; }catch(e){}
+  if(saved && chips.some(function(c){ return c.getAttribute('data-n')===saved; })) pick(saved, false);
+  if(/[?&]me=1/.test(location.search)) document.getElementById('me').scrollIntoView();
+  var ua=navigator.userAgent||'', a=document.getElementById('app'), ios=${JSON.stringify(o.ios || '')}, and=${JSON.stringify(o.android || '')};
+  if(/iPhone|iPad|iPod/i.test(ua) && ios) a.href=ios; else if(/Android/i.test(ua) && and) a.href=and;
+})();
+</script></body></html>`;
+}
+function cbShareMissing() {
+  return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>맞수</title><body style="margin:0;min-height:90vh;display:flex;align-items:center;justify-content:center;background:#f6f4f0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#4e5968;text-align:center">
+<div><div style="font-size:18px;font-weight:700;color:#191f28">결과를 찾을 수 없어요</div><p style="margin:8px 0 0;font-size:14px">대진이 지워졌거나 주소가 바뀌었어요</p></div></body></html>`;
+}
+app.get('/r/:t', (req, res) => {
+  const t = String(req.params.t || ''), png = /\.png$/i.test(t), token = t.replace(/\.png$/i, '');
+  if (!/^[A-Za-z0-9_-]{8,40}$/.test(token)) return res.status(404).type('html').send(cbShareMissing());
+  const sh = db.prepare('SELECT * FROM cb_shares WHERE token=?').get(token);
+  if (png) {
+    const f = path.resolve(UPLOAD_DIR, `r_${token}.png`);
+    if (!sh || !fs.existsSync(f)) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.type('png').sendFile(f);
+  }
+  const club = sh && db.prepare('SELECT name FROM clubs WHERE id=?').get(sh.club_id);
+  const data = sh && club && cbShareBracket(sh.club_id, sh.event_id);
+  if (!data || !(data.games || []).length) return res.status(404).type('html').send(cbShareMissing());
+  const ev = sh.event_id ? db.prepare('SELECT title, date FROM club_events WHERE id=? AND club_id=?').get(sh.event_id, sh.club_id) : null;
+  const base = `${req.protocol}://${req.get('host')}`;
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(cbShareHTML(cbShareView(data, ev, club.name), {
+    token, base, img: sh.img_at ? `${base}/r/${token}.png?v=${sh.img_at}` : '', mark: cbMarkSymbol(),
+    ios: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517', android: process.env.ANDROID_APP_URL || '' }));
+});
+/* ── 대진 결과 공유 끝 ── */
+
 /* ═══ 홈 배너 — 운영자가 이미지+랜딩 링크 등록, 홈 히어로 자리에 노출 ═══ */
 db.exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
@@ -10246,10 +10623,20 @@ try { db.exec('ALTER TABLE users ADD COLUMN bank_account TEXT'); } catch (e) {}
 db.exec(`CREATE TABLE IF NOT EXISTS om_payouts (
   id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER, user_id INTEGER,
   amount INTEGER, bank TEXT, status TEXT DEFAULT 'requested', created_at TEXT, paid_at TEXT)`);
+/* 정산 계좌 등록 · 바꾸기 — 앱은 "은행 계좌번호 예금주" 한 줄로 보낸다.
+   바꾸면 아직 보내지 않은 출금 · 정산 신청(requested)도 새 계좌로 — 틀린 계좌를 고친 사람이 옛 계좌로 받지 않게.
+   이미 보낸 것(paid)은 그때 계좌 그대로 남긴다(기록). */
 app.post('/me/bank', auth, (req, res) => {
-  const bank = String((req.body && req.body.bank) || '').trim().slice(0, 80);
-  db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(bank, req.uid);
-  res.json(db.prepare('SELECT * FROM users WHERE id=?').get(req.uid));
+  const bank = String((req.body && req.body.bank) || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  let moved = 0;
+  tx(() => {
+    db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(bank, req.uid);
+    if (bank) {
+      try { moved += db.prepare(`UPDATE cash_withdrawals SET bank=? WHERE user_id=? AND status='requested' AND bank_part>0`).run(bank, req.uid).changes; } catch (e) {}
+      try { moved += db.prepare(`UPDATE om_payouts SET bank=? WHERE user_id=? AND status='requested'`).run(bank, req.uid).changes; } catch (e) {}
+    }
+  });
+  res.json({ ...db.prepare('SELECT * FROM users WHERE id=?').get(req.uid), moved });
 });
 app.get('/admin/payouts', admin, (_req, res) => {
   res.json(db.prepare(`SELECT p.*, u.name FROM om_payouts p JOIN users u ON u.id=p.user_id
@@ -11027,6 +11414,49 @@ function runReminders() {
 if (process.env.REMINDERS !== 'off') {
   setTimeout(runReminders, 30_000);                    // 부팅 직후 한 번
   setInterval(runReminders, 6 * 3600 * 1000).unref?.();  // 6시간마다
+}
+/* ── 오픈매치 경기 알림 (10/27) — 노쇼는 제재보다 예방이 먼저다
+   ① 전날 저녁(한국 시간 19~22시) — 내일 경기에 신청한 사람 · 호스트에게. 아직 모자라면 몇 명 더 모이면 열리는지
+   ② 시작 2시간 전 — 확정된 매치에 신청한 사람 · 호스트에게. 30분도 안 남았으면 보내지 않는다
+   같은 알림은 한 사람에게 한 번만(sent_reminders). 6시간 주기로는 2시간 전을 놓쳐서 10분마다 돈다. */
+function remindOpenMatchPlayers(nowMs) {
+  const t = nowMs || Date.now();
+  const hourK = +omKst(t).slice(11, 13);
+  const who = m => { const s = new Set(db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(m.id).map(j => j.user_id));
+    if (m.host_id) s.add(m.host_id); return [...s]; };
+  let n = 0;
+  if (hourK >= 19 && hourK < 22) {
+    const tomorrow = omKst(t + 864e5).slice(0, 10);
+    db.prepare(`SELECT * FROM open_matches WHERE status IN ('open','confirmed') AND substr(start_at,1,10)=?`).all(tomorrow).forEach(m => {
+      const cnt = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(m.id).n;
+      const need = m.status === 'open' ? Math.max(0, omMinCount(m) - cnt) : 0;
+      who(m).forEach(uid => {
+        if (!onceOnly('om_eve', `${m.id}:${uid}`)) return;
+        const host = uid === m.host_id;
+        sendPush(uid, { icon: '📅', title: host ? '내일 매치를 열어요' : '내일 오픈매치가 있어요', link: `match:${m.id}`,
+          body: `${m.loc || ''} · ${omWhenKo(m)}${need ? ` · ${need}명 더 모이면 열려요` : host ? ' · 코트 · 공을 챙겨 주세요' : ' · 못 오면 미리 알려 주세요'}` });
+        n++;
+      });
+    });
+  }
+  const lo = omKst(t + 30 * 60e3), hi = omKst(t + 2 * 3600e3);
+  db.prepare(`SELECT * FROM open_matches WHERE status='confirmed' AND start_at > ? AND start_at <= ?`).all(lo, hi).forEach(m => {
+    const hm = String(m.start_at).slice(11, 16);
+    who(m).forEach(uid => {
+      if (!onceOnly('om_2h', `${m.id}:${uid}`)) return;
+      const host = uid === m.host_id;
+      sendPush(uid, { icon: '⏰', title: host ? '곧 내 매치가 시작해요' : '곧 경기가 시작해요', link: `match:${m.id}`,
+        body: `${m.loc || ''} · ${hm} 시작${host ? ' · 먼저 가서 코트를 확인해 주세요' : ' · 늦으면 앱에서 <늦어요>를 눌러 주세요'}` });
+      n++;
+    });
+  });
+  return n;
+}
+if (process.env.REMINDERS !== 'off') {
+  const omTick = () => { try { remindOpenMatchPlayers(); } catch (e) { console.error('om remind', e.message); }
+    try { omWaitSweep(); } catch (e) { console.error('om wait sweep', e.message); } };
+  setTimeout(omTick, 45_000);
+  setInterval(omTick, 10 * 60e3).unref?.();
 }
 app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.json({ ok: true }); });  // @external 내가 curl 로 부름
 
@@ -12698,7 +13128,7 @@ app.put('/admin/venues/:id/rates', admin, (req, res) => {
 });
 
 /* ── 치고 싶어요 ── 오픈매치가 없는 코트에 <여기서 치고 싶어요>를 남긴다 (10/26)
-   호스트 조건(오픈매치 3경기 · 매너 · 계좌)이 안 되는 회원도 수요를 남길 수 있게 한다. 30일이 지나면 세지 않는다.
+   매치를 열 수 없는 회원(결제 전 · 계좌 없음)도 수요를 남길 수 있게 한다. 30일이 지나면 세지 않는다.
    · 그 코트에 매치가 열리면 남긴 사람에게 알린다 — 시간대를 골랐으면 그 시간대 매치만, 안 골랐으면 모두
    · 같은 코트에 4명이 모일 때마다(4 · 8 · 12 …) 그 코트에서 매치를 열어 본 호스트에게 알린다(코트마다 7일에 한 번)
    · 운영자는 관리자 › 호스트 매치 위 <치고 싶어요>에서 코트 · 시간대별로 본다 */
@@ -12830,7 +13260,24 @@ app.get('/admin/venues/:id/media', admin, (req, res) => {
   const v = db.prepare(`SELECT id,name,sido,sigungu,kind,indoor_n,outdoor_n,courts_n,surface,lights,parking,photos,owner_id,logo
     FROM venues WHERE id=?`).get(+req.params.id);
   if (!v) return res.status(404).json({ error: 'no_venue' });
-  res.json({ venue: { ...v, photos: venuePhotoList(v.photos) } });
+  /* 코트 대표 — 구장 고치기 창 맨 아래에 누구인지 보여 준다 */
+  const o = v.owner_id ? db.prepare('SELECT id,name,provider,last_seen FROM users WHERE id=?').get(v.owner_id) : null;
+  res.json({ venue: { ...v, photos: venuePhotoList(v.photos) }, owner: o || null });
+});
+/* 코트 대표 지정 · 해제 — 회원(카카오 · 애플 · 구글로 로그인하던 그대로)을 이 구장의 대표로 둔다 (10/27).
+   대표는 앱 코트 화면에서 사진 · 대관료 · 코트 정보를 직접 고치고, 예약 · 매치 알림을 받는다. 한 구장에 한 명.
+   user_id 가 비어 있으면 해제. */
+app.put('/admin/venues/:id/owner', admin, (req, res) => {
+  const v = db.prepare('SELECT id,name,owner_id FROM venues WHERE id=?').get(+req.params.id);
+  if (!v) return res.status(404).json({ error: 'no_venue' });
+  const uid = intOrNull((req.body || {}).user_id);
+  const u = uid ? db.prepare('SELECT id,name,provider,last_seen FROM users WHERE id=?').get(uid) : null;
+  if (uid && !u) return res.status(404).json({ error: 'no_user', message: '그 회원을 찾지 못했어요' });
+  db.prepare('UPDATE venues SET owner_id=? WHERE id=?').run(u ? u.id : null, v.id);
+  try { alog(req, u ? '코트 대표 지정' : '코트 대표 해제', 'venue', v.id, { name: v.name, user: u ? u.name : null, prev: v.owner_id || null }, null); } catch (e) {}
+  if (u && u.id !== v.owner_id)
+    try { sendPush(u.id, { icon: '🎾', title: `${v.name} 코트 대표가 됐어요`, body: '코트 화면에서 사진 · 대관료를 직접 고칠 수 있어요' }); } catch (e) {}
+  res.json({ ok: true, owner: u || null });
 });
 app.put('/admin/venues/:id/photos', admin, (req, res) => {
   const vid = +req.params.id;
@@ -14424,6 +14871,7 @@ app.post('/admin/open-matches/:id/bots', admin, (req, res) => {
 app.delete('/admin/open-matches/:id/bots/:uid', admin, (req, res) => {
   db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?')
     .run(+req.params.id, +req.params.uid);
+  try { omWaitNotify(+req.params.id); } catch (e) {}
   res.json({ ok: true });
 });
 app.get('/admin/users', admin, (req, res) => {
@@ -15585,7 +16033,8 @@ const AUTO_KILL_H = +(process.env.OM_AUTO_KILL_H || 24);      // 0이면 자동 
 const AUTO_WARN_H = +(process.env.OM_AUTO_WARN_H || 48);      // 미리 알려주는 시점
 
 function omStartMs(m) {
-  if (m.start_at) { const t = Date.parse(m.start_at); if (!isNaN(t)) return t; }
+  /* start_at 은 한국 시간 벽시계("YYYY-MM-DDTHH:mm") — 서버(UTC)에서 그냥 읽으면 9시간 늦게 잡힌다 (10/27) */
+  if (m.start_at) { const s0 = String(m.start_at); const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s0) ? s0 : s0.slice(0, 16) + ':00+09:00'); if (!isNaN(t)) return t; }
   if (m.dt) { const t = Date.parse(String(m.dt).replace(' ', 'T')); if (!isNaN(t)) return t; }
   return 0;
 }
@@ -15627,8 +16076,10 @@ function killMatch(m, why) {
 function sweepUnderfilled() {
   if (!AUTO_KILL_H) return;
   const nowMs = Date.now();
+  /* 호스트 매치는 여기서 접지 않는다 — 모집 마감(close_at, 시작 3시간 전)에 omSettle 이 확정 · 취소한다.
+     예전엔 24시간 전부터 최소 인원 미달이면 30분 안에 지워 버려, 마감 전에 매치가 사라졌다 (10/27) */
   const rows = db.prepare(`SELECT * FROM open_matches
-    WHERE (status IS NULL OR status='open') AND (start_at IS NOT NULL OR dt IS NOT NULL)`).all();
+    WHERE (status IS NULL OR status='open') AND (start_at IS NOT NULL OR dt IS NOT NULL) AND COALESCE(mode,'') != 'host'`).all();
   rows.forEach(m => {
     const startMs = omStartMs(m);
     if (!startMs || startMs <= nowMs) return;
