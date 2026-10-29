@@ -1110,7 +1110,9 @@ app.get('/me', auth, (req, res) => {
   /* 내가 코트 대표인 구장 — 내정보에 <내 코트>로 */
   let venues_rep = [];
   try { venues_rep = db.prepare('SELECT id,name FROM venues WHERE owner_id=? AND COALESCE(active,1)=1 ORDER BY id LIMIT 5').all(req.uid); } catch (e) {}
-  res.json({ ...userOut(u), played_doubles: pd, venues_rep });
+  let venue_like_n = 0;
+  try { venue_like_n = db.prepare('SELECT COUNT(*) n FROM venue_likes WHERE user_id=?').get(u.id).n; } catch (e) {}
+  res.json({ ...userOut(u), played_doubles: pd, venues_rep, venue_like_n });
 });
 app.patch('/me', auth, (req, res) => {
   /* name 이 빠져 있어서 <이름 바꾸기> 가 저장되지 않았다.
@@ -14680,6 +14682,31 @@ app.post('/talk/:pid/comments', auth, limitTalkCmt, (req, res) => {
 
 /* 구장 한 페이지에 필요한 것을 한 번에 준다 —
    코트 정보·최근에 있었던 일·구장톡 미리보기를 따로 부르면 페이지 하나에 네 번 왕복한다. */
+/* ── 좋아요 구장 (10/29) ── 코트 화면 오른쪽 위 하트 = 저장. 숫자는 그 코트를 좋아요한 회원 수.
+   <치고 싶어요>(매치 알림)와는 따로 — 좋아요는 알림 없이 모아 두기만 한다. 내정보 › 좋아요한 구장에서 모아 본다 */
+db.exec(`CREATE TABLE IF NOT EXISTS venue_likes (venue_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at BIGINT,
+  PRIMARY KEY (venue_id, user_id))`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_vlike_u ON venue_likes(user_id, created_at)'); } catch (e) {}
+function venueLikeOf(vid, uid) {
+  const n = db.prepare('SELECT COUNT(*) n FROM venue_likes WHERE venue_id=?').get(vid).n;
+  const liked = uid ? !!db.prepare('SELECT 1 FROM venue_likes WHERE venue_id=? AND user_id=?').get(vid, uid) : false;
+  return { n, liked };
+}
+app.post('/venues/:id/like', auth, limitWrite, (req, res) => {
+  const vid = intOrNull(req.params.id);
+  if (!vid || !db.prepare('SELECT 1 FROM venues WHERE id=?').get(vid)) return res.status(404).json({ error: 'not_found' });
+  const on = !(req.body && req.body.on === false);
+  if (on) db.prepare('INSERT OR IGNORE INTO venue_likes (venue_id,user_id,created_at) VALUES (?,?,?)').run(vid, req.uid, Date.now());
+  else db.prepare('DELETE FROM venue_likes WHERE venue_id=? AND user_id=?').run(vid, req.uid);
+  res.json({ ok: true, ...venueLikeOf(vid, req.uid) });
+});
+app.get('/me/venue-likes', auth, (req, res) => {
+  const rows = db.prepare(`SELECT v.id, v.name, v.kind, v.sigungu, v.indoor, v.indoor_n, v.outdoor_n, v.photos, v.logo, l.created_at liked_at,
+      (SELECT COUNT(*) FROM venue_likes x WHERE x.venue_id=v.id) like_n
+    FROM venue_likes l JOIN venues v ON v.id=l.venue_id WHERE l.user_id=? ORDER BY l.created_at DESC LIMIT 200`).all(req.uid)
+    .map(r => { const ph = venuePhotoList(r.photos); const o = { ...r, photo: ph.length ? (ph[0].thumb || ph[0].url) : null, photo_n: ph.length }; delete o.photos; return o; });
+  res.json({ rows });
+});
 app.get('/venues/:id/detail', optAuth, (req, res) => {
   const vid = +req.params.id;
   const v = db.prepare(`SELECT id,name,addr,sido,sigungu,indoor,phone,source,kind,lat,lng,
@@ -14804,6 +14831,7 @@ app.get('/venues/:id/detail', optAuth, (req, res) => {
 
   res.json({
     venue: v, can_edit: canEdit, photos, guest_open: guestOpen,
+    like: (() => { try { return venueLikeOf(vid, req.uid); } catch (e) { return { n: 0, liked: false }; } })(),
     courts: courts.n || v.courts_n || 0,
     surfaces: courts.surfaces ? String(courts.surfaces).split(',').filter(Boolean)
       : (v.surface ? [v.surface] : []),
