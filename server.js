@@ -11391,6 +11391,8 @@ function omBracketClean(b) {
   if (b.made_by != null) out.made_by = txt(b.made_by, 20);
   if (b.at != null) out.at = txt(b.at, 20);
   if (b.auto) out.auto = true;
+  /* 코트 중지 — 호스트가 잠시 안 쓰는 코트 번호 (10/30 · 예전엔 저장 때 빠져서 다시 열면 풀렸다) */
+  if (Array.isArray(b.offCourts)) out.offCourts = [...new Set(b.offCourts.map(x => int(x, 1, 99)).filter(x => x != null))].slice(0, 12);
   return out;
 }
 app.post('/open-matches/:id/bracket', auth, limitWrite, (req, res) => {
