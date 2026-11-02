@@ -417,6 +417,15 @@ function serverCan() {
   };
 }
 
+/* 사업자 정보 — 11/2 대표가 알려준 값을 기본으로 쓰고, Railway Variables(OP_*)가 있으면 그 값이 이긴다.
+   사업장 주소 · 고객센터 전화 · 통신판매업 신고번호는 아직 받지 않았다 — 지어내지 않고 비워 둔다(비면 화면에 줄째로 안 나온다). */
+const OP_DEFAULT = { name: '최민혁', company: '데메테르', regno: '637-21-02479', email: 'callanchoi93@gmail.com' };
+function opInfo() {
+  return { name: process.env.OP_NAME || OP_DEFAULT.name,
+    biz: process.env.OP_BIZ || `상호 ${OP_DEFAULT.company} · 사업자등록번호 ${OP_DEFAULT.regno}`,
+    tel: process.env.OP_TEL || '', email: process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || OP_DEFAULT.email,
+    mailorder: process.env.OP_MAILORDER || '', hosting: process.env.OP_HOSTING || '' };
+}
 app.get('/config', (_, res) => {
   res.set('Cache-Control', 'no-store');   // 브라우저가 옛 응답을 붙잡지 못하게
   res.json({
@@ -435,11 +444,10 @@ app.get('/config', (_, res) => {
     naver_redirect_uri: process.env.NAVER_REDIRECT_URI || '',
     // APPLE_CLIENT_ID 는 "웹ServicesID,iOS번들ID" 형태 — 웹에는 첫 값만 내려준다
     apple_client_id: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim(),
-    support_email: process.env.SUPPORT_EMAIL || '',
+    support_email: process.env.SUPPORT_EMAIL || OP_DEFAULT.email,
     /* 첫 화면 아래 사업자 정보 — 전자상거래법상 운영자 표시. 비어 있는 값은 앱이 그리지 않는다. */
-    op: { name: process.env.OP_NAME || '', biz: process.env.OP_BIZ || '', tel: process.env.OP_TEL || '',
-          email: process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || '', mailorder: process.env.OP_MAILORDER || '',
-          hosting: process.env.OP_HOSTING || '' },
+    op: opInfo(),
+    pg_name: process.env.PG_NAME || '',                    // 결제대행사 이름 — 계약한 곳만(비면 앱이 이름을 안 적는다)
     /* 앱은 index.html 을 통째로 품고 있어서 서버만 올려도 화면이 안 바뀐다.
        서버가 아는 최신 화면 버전을 내려주고, 앱이 자기 것과 다르면 업데이트를 안내한다. */
     web_build: WEB_BUILD, web_build_ios: WEB_BUILD_IOS, web_build_android: WEB_BUILD_ANDROID,
@@ -5837,22 +5845,26 @@ app.get('/open-matches/:id', (req, res) => {
    10/31 — 취소 화면(미리보기)과 실제 취소가 같은 값을 내도록 한 곳으로 모았다 */
 try { db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
   id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`); } catch (e) {}
+/* 11/2 — 규칙은 여기 한 곳. 환불정책 페이지(/refund) · 약관 · 앱 안내가 같은 숫자를 읽는다.
+   날짜는 한국 날짜 기준: 경기 날짜 − 오늘 날짜 ≥ full_days 면 전액 · 1이면 d1_pct · 당일이면 day_pct */
+const OM_CANCEL_RULE = { full_days: 2, d1_pct: 80, day_pct: 20, lock_min: 90, grace_min: 30, grace_per_day: 1 };
 function omCancelCalc(m, uid, joinedAt) {
+  const R = OM_CANCEL_RULE;
   const price = m.price || 0;
   let pct = 100, free = 0, grace = false, used = 0;
   const startMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
   if (price > 0 && !isNaN(startMs)) {
     const minLeft = (startMs - Date.now()) / 60000;
-    if (minLeft <= 90) return { error: 'too_late', message: '매치 시작 90분 이내에는 취소할 수 없어요' };
-    grace = !!joinedAt && (Date.now() - +joinedAt) <= 30 * 60e3;
+    if (minLeft <= R.lock_min) return { error: 'too_late', message: `매치 시작 ${R.lock_min}분 이내에는 취소할 수 없어요` };
+    grace = !!joinedAt && (Date.now() - +joinedAt) <= R.grace_min * 60e3;
     const kstDay = ms => Math.floor((ms + 9 * 3600e3) / 86400e3);
     const dDiff = kstDay(startMs) - kstDay(Date.now());
     used = db.prepare('SELECT COUNT(*) n FROM cancel_logs WHERE user_id=? AND free=1 AND created_at>?')
       .get(uid, Date.now() - 86400e3).n;
-    if (grace && used < 1) { pct = 100; free = 1; }
-    else if (dDiff >= 2) pct = 100;
-    else if (dDiff === 1) pct = 80;
-    else pct = 20;
+    if (grace && used < R.grace_per_day) { pct = 100; free = 1; }
+    else if (dDiff >= R.full_days) pct = 100;
+    else if (dDiff >= 1) pct = R.d1_pct;
+    else pct = R.day_pct;
   }
   const paid = omPaidBy(m.id, uid);                       // 실제로 낸 돈이 없으면 환불도 없다
   /* 돌려주는 돈은 <참가비 × 비율>, 단 실제로 낸 돈보다 많을 수 없다 */
@@ -6837,7 +6849,7 @@ app.get('/icon-512.png', (req, res) => { res.type('png').send(ICON_512); });  //
 app.get('/manifest.json', (req, res) => res.json({  // @external 브라우저가 직접 요청
   name: '맞수 MATSU', short_name: '맞수',
   description: '동호회 운영과 대진, 기록까지 — 맞수',
-  start_url: '/', display: 'standalone',
+  start_url: '/app', display: 'standalone',             // 11/2 — 첫 화면(/)은 홈페이지, 웹 앱은 /app
   background_color: '#f6f1e7', theme_color: '#ec6a2e',
   icons: [
     { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -10509,37 +10521,86 @@ app.get('/clubs/:id/rankings', auth, (req, res) => {
 // ══════════════════════════════════════════════════════════════
 const LEGAL_CSS = `<style>body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:680px;margin:0 auto;padding:34px 22px 80px;color:#1b1813;background:#f5f2e9;line-height:1.75}
 h1{font-size:23px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:14px;color:#4a4237}ul{padding-left:18px}
-.sub{font-size:12px;color:#8a7f70}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:13px;color:#8a7f70;margin-top:30px}</style>`;
+.sub{font-size:12px;color:#8a7f70}table{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:14px}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #e8e1d2;color:#4a4237}th{font-size:12.5px;color:#8a7f70;font-weight:600}td:last-child,th:last-child{text-align:right}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:13px;color:#8a7f70;margin-top:30px}</style>`;
 
 // 법률 문서에 들어갈 운영자 정보. Railway Variables 에서 채운다.
-const OP_NAME  = process.env.OP_NAME  || '';          // 예: 최민혁
-const OP_EMAIL = process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || '';
-const OP_BIZ   = process.env.OP_BIZ   || '';          // 예: 상호 · 사업자등록번호 · 주소
+const OP_NAME  = opInfo().name;                      // 대표자
+const OP_EMAIL = opInfo().email;                     // 문의 이메일
+const OP_BIZ   = opInfo().biz;                       // 상호 · 사업자등록번호 (· 주소 — OP_BIZ 로 통째로 바꿀 수 있다)
+const OP_TEL   = opInfo().tel;
+const OP_MAILORDER = opInfo().mailorder;             // 통신판매업 신고번호
+/* 결제대행사 이름 — 계약한 곳만 적는다(예: 카카오페이). 비어 있으면 <결제대행사(PG사)> */
+const PG_LABEL = process.env.PG_NAME || '결제대행사(PG사)';
 const opBox = (label) => {
   const rows = [];
-  if (OP_NAME)  rows.push(`${label}: ${OP_NAME}`);
-  if (OP_EMAIL) rows.push(`문의: <a href="mailto:${OP_EMAIL}">${OP_EMAIL}</a> · 앱 내 신고 기능`);
-  else          rows.push('문의: 앱 내 신고 기능');
   if (OP_BIZ)   rows.push(OP_BIZ);
+  if (OP_NAME)  rows.push(`${label}: ${OP_NAME}`);
+  if (OP_MAILORDER) rows.push(`통신판매업 신고: ${OP_MAILORDER}`);
+  if (OP_TEL)   rows.push(`고객센터: ${OP_TEL}`);
+  if (OP_EMAIL) rows.push(`문의: <a href="mailto:${OP_EMAIL}">${OP_EMAIL}</a> · 앱 내 문의`);
+  else          rows.push('문의: 앱 내 문의');
   return `<div class="box">${rows.join('<br>')}</div>`;
 };
+/* ── 취소 · 환불 정책 (/refund) ── PG 심사와 회원이 함께 보는 공개 페이지.
+   숫자는 모두 코드에서 읽는다: OM_CANCEL_RULE(참가자 취소) · OMH(모집 마감 · 비 취소 · 열 수 있는 기간) */
+function refundPolicyHTML() {
+  const R = OM_CANCEL_RULE;
+  return `<h1>취소 · 환불 정책</h1><p class="sub">시행일: 2026-11-09 · 판매자: 맞수 · 이 정책은 앱과 웹에 똑같이 적용됩니다.</p>
+<h2>1. 무엇을 파나요</h2><ul>
+<li>맞수는 <b>오픈매치 참가</b>를 판매합니다. 판매자는 맞수이고, 결제와 환불은 맞수가 책임집니다.</li>
+<li>경기는 맞수가 진행을 맡긴 <b>맞수 파트너 호스트</b>가 정해진 일시 · 장소에서 진행합니다.</li>
+<li>참가비에는 코트 · 공 비용의 1인 몫과 진행비가 들어 있으며, 금액과 인원 조건은 신청 화면에 미리 표시합니다.</li>
+<li>결제는 신청할 때 ${PG_LABEL} 결제창에서 카드 · 간편결제로 합니다. 서비스(경기)는 매치 일시에 제공되며, 매치는 최대 ${OMH.FAR_D}일 뒤 일정까지 열립니다.</li>
+<li>클럽 회비 등 클럽 안에서 오가는 돈은 회원 간 거래이며, 맞수는 기록 기능만 제공합니다. 이 정책은 앱에서 결제한 오픈매치 참가비에 적용됩니다.</li></ul>
+<h2>2. 참가자가 취소할 때</h2>
+<table><tr><th>취소 시점 (한국 시간)</th><th>돌려받는 돈</th></tr>
+<tr><td>경기 ${R.full_days}일 전까지</td><td>전액</td></tr>
+<tr><td>경기 1일 전</td><td>참가비의 ${R.d1_pct}%</td></tr>
+<tr><td>경기 당일 ~ 시작 ${R.lock_min}분 전</td><td>참가비의 ${R.day_pct}%</td></tr>
+<tr><td>시작 ${R.lock_min}분 이내</td><td>취소 불가 (환불 없음)</td></tr></table>
+<ul><li>신청하고 <b>${R.grace_min}분 안</b>에 취소하면 날짜와 관계없이 전액 돌려드립니다. 이 혜택은 하루에 ${R.grace_per_day}번 쓸 수 있고, 시작 ${R.lock_min}분 이내에는 적용되지 않습니다.</li>
+<li>날짜는 경기 날짜와 취소한 날짜(자정 기준)로 셉니다. 예: 토요일 경기는 목요일까지 전액, 금요일 ${R.d1_pct}%, 토요일 ${R.day_pct}%.</li>
+<li>돌려받는 돈은 실제로 결제한 금액을 넘지 않습니다. 취소 화면에서 돌려받을 금액을 먼저 보여 드립니다.</li></ul>
+<h2>3. 전액 돌려드리는 경우</h2><ul>
+<li><b>인원 미달</b> — 모집 마감(매치 화면에 표시, 늦어도 시작 ${OMH.CLOSE_H}시간 전)까지 최소 인원이 모이지 않아 매치가 자동 취소될 때</li>
+<li><b>호스트 취소</b> — 호스트가 매치를 취소할 때</li>
+<li><b>비 · 날씨</b> — 비 때문에 경기를 할 수 없어 시작 ${OMH.RAIN_BEFORE_H}시간 전부터 시작 ${OMH.RAIN_AFTER_H}시간 뒤 사이에 취소될 때</li>
+<li><b>시설 사정</b> — 코트 시설이 예약을 취소하거나 이용할 수 없을 때</li>
+<li><b>호스트 미참석</b> — 참가자가 앱에서 알리고 운영팀이 확인했을 때</li></ul>
+<h2>4. 참가비가 내려가는 경우</h2><p>모인 인원에 따라 1인 참가비가 내려가는 매치는, 매치가 확정될 때 이미 낸 금액과 확정 참가비의 차액을 돌려드립니다. 더 내는 일은 없습니다.</p>
+<h2>5. 돌려드리지 않는 경우</h2><ul>
+<li>시작 ${R.lock_min}분 이내의 취소, 연락 없이 오지 않은 경우(불참)</li>
+<li>참가자 본인의 사정으로 경기 도중 빠진 경우</li></ul>
+<h2>6. 돌려받는 방법과 기간</h2><ul>
+<li>결제한 카드 · 간편결제로 취소합니다(일부만 돌려받을 때는 부분 취소). 카드사에 따라 실제 반영까지 영업일 기준 며칠이 걸릴 수 있습니다.</li>
+<li>예전에 캐시로 결제한 참가비는 캐시로 돌려드립니다.</li>
+<li>환불 내역은 앱의 [내정보 → 결제 내역]에서 볼 수 있습니다.</li></ul>
+<h2>7. 그 밖에</h2><ul>
+<li>이 정책에서 정하지 않은 사항은 전자상거래 등에서의 소비자보호에 관한 법률 등 관련 법령에 따르며, 법령이 이용자에게 더 유리하면 법령을 따릅니다.</li>
+<li>문의는 앱의 [내정보 → 설정 → 문의하기] 또는 아래 연락처로 해 주세요.</li></ul>`;
+}
 
 app.get('/terms', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 이용약관</title>${LEGAL_CSS}</head><body>
-<h1>맞수(MATSU) 이용약관</h1><p class="sub">시행일: 2026-07-15</p>
+<h1>맞수(MATSU) 이용약관</h1><p class="sub">시행일: 2026-11-09 · 이전 버전 시행일: 2026-07-15</p>
 <h2>제1조 (목적)</h2><p>이 약관은 맞수(이하 "서비스")가 제공하는 스포츠 동호회 운영·매칭 서비스의 이용 조건과 절차, 회원과 서비스의 권리·의무를 정합니다.</p>
-<h2>제2조 (서비스 내용)</h2><p>서비스는 클럽 운영(모임·대진·회비·출석), 회원 간 매칭·대화, 커뮤니티 기능을 제공합니다. 현재 앱 내 기능은 무료로 제공됩니다. 유료 기능을 도입하는 경우 요금과 조건을 앱 내에 미리 표시합니다.</p>
+<h2>제2조 (서비스 내용)</h2><p>서비스는 클럽 운영(모임·대진·회비·출석), 회원 간 매칭·대화, 커뮤니티 기능과 오픈매치 참가 판매를 제공합니다. 클럽 운영 · 커뮤니티 기능은 무료이며, 오픈매치 참가는 유료입니다. 유료 서비스의 요금과 조건은 신청 화면에 미리 표시합니다.</p>
 <h2>제3조 (가입 자격)</h2><p>만 14세 이상만 가입할 수 있습니다. 만 14세 미만은 관련 법령에 따라 가입이 제한됩니다. 가입 시 입력한 출생 연도가 사실과 다른 경우 이용이 제한될 수 있습니다.</p>
 <h2>제4조 (회원의 의무)</h2><ul><li>타인의 정보를 도용하거나 허위 정보를 등록하지 않습니다.</li><li>다른 회원을 비방·희롱하거나 연락처를 무단 수집하지 않습니다.</li><li>경기 결과·평점을 조작하지 않습니다. 위반 시 이용이 제한될 수 있습니다.</li></ul>
-<h2>제5조 (결제와 환불)</h2><p>현재 서비스는 회원에게 이용료를 받지 않습니다. 회비·참가비 등 회원 간 금전 거래는 당사자 간 책임이며 서비스는 이를 대행하지 않습니다.</p>
-<h2>제5조의2 (오픈매치 중개)</h2><p>오픈매치 참가비 결제를 시작하는 날부터 다음이 적용됩니다.</p><ul><li>서비스는 통신판매중개자로서 회원(호스트)이 연 오픈매치 거래의 당사자가 아닙니다.</li><li>코트 예약, 시설 이용 규정 준수, 경기 운영의 책임은 매치를 연 호스트에게 있습니다. 예약을 넘기거나 웃돈을 받고 파는 행위는 금지되며, 이로 생긴 책임은 호스트가 집니다.</li><li>시설이 예약을 취소하거나 매치가 열리지 않으면 참가자에게 참가비 전액을 돌려드립니다.</li></ul>
+<h2>제5조 (결제와 환불)</h2><ul><li>오픈매치 참가비는 서비스(맞수)가 판매자로서 받습니다. 결제는 ${PG_LABEL} 결제창에서 카드 · 간편결제로 하며, 카드 번호 등 결제수단 정보는 결제대행사가 처리합니다.</li><li>참가비에는 코트 · 공 비용의 1인 몫과 진행비가 들어 있으며, 금액은 신청 전에 화면에 표시합니다.</li><li>취소와 환불은 <a href="/refund">취소 · 환불 정책</a>에 따릅니다. 참가자 취소는 경기 ${OM_CANCEL_RULE.full_days}일 전까지 전액 · 1일 전 ${OM_CANCEL_RULE.d1_pct}% · 당일 시작 ${OM_CANCEL_RULE.lock_min}분 전까지 ${OM_CANCEL_RULE.day_pct}%를 돌려드리고, 매치가 열리지 않으면 전액을 돌려드립니다.</li><li>클럽 회비 등 클럽 안의 금전 거래는 회원 간 책임이며, 서비스는 기록 기능만 제공하고 이를 대행하지 않습니다.</li></ul>
+<h2>제5조의2 (오픈매치 진행)</h2><ul><li>오픈매치 경기는 서비스가 진행을 맡긴 회원(맞수 파트너 호스트, 이하 "호스트")이 정해진 일시 · 장소에서 진행합니다.</li><li>호스트는 코트 예약, 시설 이용 규정 준수, 현장 진행을 맡습니다. 예약을 넘기거나 웃돈을 받고 파는 행위는 금지되며, 위반하면 호스트 자격이 제한됩니다.</li><li>호스트가 오지 않거나 매치가 열리지 않으면(인원 미달, 호스트 취소, 우천, 시설 사정) 참가자에게 낸 참가비 전액을 돌려드립니다.</li></ul>
 <h2>제6조 (서비스 변경·중단)</h2><p>서비스는 운영상 필요에 따라 기능을 변경할 수 있으며, 중대한 변경은 사전에 공지합니다.</p>
 <h2>제7조 (면책)</h2><p>서비스는 회원 간 경기·모임 중 발생한 사고, 회원 간 분쟁에 대해 고의·중과실이 없는 한 책임을 지지 않습니다.</p>
 <h2>제8조 (게시물의 권리)</h2><ul><li>회원이 작성한 게시물의 저작권은 작성한 회원에게 있습니다.</li><li>회원은 서비스가 해당 게시물을 서비스 운영·노출에 필요한 범위에서 사용하는 것을 허락합니다.</li><li>서비스는 법령이나 이 약관을 위반한 게시물을 삭제하거나 노출을 제한할 수 있습니다.</li><li>회원은 다른 회원을 차단할 수 있으며, 차단한 회원의 게시물과 대화는 표시되지 않습니다.</li></ul>
-<h2>제9조 (탈퇴)</h2><p>회원은 언제든 앱 내에서 탈퇴할 수 있습니다. 탈퇴 시 개인정보는 지체 없이 파기되며, 클럽 장부·경기 기록은 무결성을 위해 익명 처리되어 보존됩니다.</p>
+<h2>제9조 (탈퇴)</h2><p>회원은 언제든 앱 내에서 탈퇴할 수 있습니다. 탈퇴 시 개인정보는 지체 없이 파기되며, 클럽 장부·경기 기록은 무결성을 위해 익명 처리되어 보존됩니다. 법령이 보존을 요구하는 결제 기록은 정해진 기간 동안 보관합니다.</p>
+<h2>제10조 (그 밖의 사항)</h2><p>이 약관에서 정하지 않은 사항은 전자상거래 등에서의 소비자보호에 관한 법률 등 관련 법령에 따릅니다.</p>
 ${opBox('운영자')}</body></html>`));
 
+app.get('/refund', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 취소 · 환불 정책</title>${LEGAL_CSS}</head><body>
+${refundPolicyHTML()}
+${opBox('대표')}</body></html>`));
+
 app.get('/privacy', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 개인정보처리방침</title>${LEGAL_CSS}</head><body>
-<h1>개인정보처리방침</h1><p class="sub">시행일: 2026-09-16 · 이전 버전 시행일: 2026-07-15</p>
+<h1>개인정보처리방침</h1><p class="sub">시행일: 2026-11-09 · 이전 버전 시행일: 2026-09-16</p>
 <p>맞수(이하 “서비스”)는 이용자의 개인정보를 소중히 다루며, 아래와 같이 수집·이용·보관합니다. 이 방침은 웹과 iOS·Android 앱에 똑같이 적용됩니다.</p>
 <h2>1. 수집하는 항목</h2>
 <ul>
@@ -10561,7 +10622,7 @@ app.get('/privacy', (_req, res) => res.send(`<!DOCTYPE html><html lang="ko"><hea
 <li>로그인: 카카오, Google, Apple (각 사의 로그인 절차에서 이용자가 동의한 정보만 전달받습니다)</li>
 <li>지도·장소 검색: 카카오맵 (지도 표시와 주변 장소 검색을 위해 좌표가 카카오에 전달됩니다)</li>
 <li>푸시 알림: Google Firebase Cloud Messaging(Android), Apple Push Notification service(iOS), 웹 푸시</li>
-<li>결제: 토스페이먼츠 (결제를 이용하는 경우)</li>
+<li>결제: ${PG_LABEL} (오픈매치 참가비를 결제하는 경우)</li>
 </ul>
 <p>수탁자가 개인정보를 위탁 목적 외로 이용하지 않도록 관리합니다. 일부 수탁자의 서버는 국외에 있을 수 있습니다.</p>
 <h2>6. 이용자의 권리와 계정 삭제</h2>
@@ -10875,7 +10936,7 @@ ${o.mark ? `<svg width="0" height="0" style="position:absolute">${o.mark}</svg>`
   <div class="chips">${v.names.map(n => `<button type="button" class="chip" data-n="${cbH(n)}">${cbH(n)}</button>`).join('')}</div>
   <div class="mine" id="mine"></div></section>
 <section class="card" id="games"><h2>경기 결과 <small>${courts.length}면 · ${v.total}게임</small></h2>${games}</section>
-<footer class="ft"><div class="mkr">${mk}<b>맞수</b></div><p>우리 클럽 대진 · 점수 · 기록을 한곳에서</p><a id="app" href="/">맞수 앱 열기</a></footer>
+<footer class="ft"><div class="mkr">${mk}<b>맞수</b></div><p>우리 클럽 대진 · 점수 · 기록을 한곳에서</p><a id="app" href="/app">맞수 앱 열기</a></footer>
 </main>
 <script>
 (function(){
@@ -17950,14 +18011,14 @@ function omPayPage(res, title, inner, script) {
 </style></head><body><div class="w">${inner}</div>${script ? `<script>${script}</script>` : ''}</body></html>`);
 }
 function omSellerLine() {
-  const op = { name: process.env.OP_NAME || '', biz: process.env.OP_BIZ || '' };
+  const op = opInfo();
   return `판매자 맞수${op.name ? ` · 대표 ${escH(op.name)}` : ''}${op.biz ? ` · ${escH(op.biz)}` : ''} · 결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.`;
 }
 
 app.get('/pay/om-checkout', (req, res) => {  // @external 앱의 인앱 브라우저가 연다
   const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND kind='om'").get(String(req.query.orderId || ''));
   const src = req.query.src === 'app' ? 'app' : 'web';
-  const back = ord ? (src === 'app' ? omAppReturn(req, { order: ord.order_id, ok: 0 }) : '/') : '/';
+  const back = ord ? (src === 'app' ? omAppReturn(req, { order: ord.order_id, ok: 0 }) : '/app') : '/app';
   const backBtn = `<a class="btn ghost" href="${escH(back)}">맞수로 돌아가기</a>`;
   if (!ord) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>주문을 찾지 못했어요</h1><p class="sub">앱에서 다시 신청해 주세요.</p><span class="sp"></span>${backBtn}`);
   if (ord.status !== 'ready') return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>이미 처리된 결제예요</h1><p class="sub">앱에서 신청 결과를 확인해 주세요.</p><span class="sp"></span>${backBtn}`);
@@ -18090,7 +18151,7 @@ async function omPayDone(req, res) {
     else if (b.error === 'in_progress') { h = '결제를 확인하고 있어요'; sub = '잠시 뒤 앱에서 신청 결과를 확인해 주세요.'; }
     else { h = '결제를 확인하지 못했어요'; sub = '카드에서 돈이 빠져나갔다면 자동으로 취소돼요 · 문제가 계속되면 내정보 › 문의하기로 알려 주세요.'; }
   } else { h = '결제 정보를 찾지 못했어요'; sub = '앱에서 신청 결과를 확인해 주세요.'; }
-  const back = src === 'app' ? omAppReturn(req, { order: oid, ok: ok ? 1 : 0 }) : '/';
+  const back = src === 'app' ? omAppReturn(req, { order: oid, ok: ok ? 1 : 0 }) : '/app';
   const icon = ok ? `<span class="ok"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>` : '';
   omPayPage(res, ok ? '신청했어요' : '맞수 결제', `<div class="brand">맞수</div>${icon}<h1>${h}</h1><p class="sub">${sub}</p>
     <span class="sp"></span><a class="btn" href="${escH(back)}">맞수로 돌아가기</a>
@@ -20388,6 +20449,82 @@ app.get('/kmap.html', (_req, res) => {
   res.removeHeader('X-Frame-Options');
   res.set('Cache-Control', 'no-cache');
   res.sendFile(path.join(PUBLIC_DIR, 'kmap.html'));
+});
+
+/* ═══ 웹 홈페이지 (11/2) ═══════════════════════════════════════════════
+   주소 첫 화면(/)은 홈페이지(public/site/index.html), 웹 앱은 /app.
+   · 이미 퍼진 링크는 주소 뒤에 값이 붙어 있다(/?invite= · /?match= · /?cup= · /?xinv= · /?xc= · 로그인 ?code= …)
+     → 값이 붙어 있으면 같은 값 그대로 /app 으로 보낸다(주소가 /app 이 되어 새로 고쳐도 웹 앱에 남는다)
+   · 휴대폰 앱(아이폰 · 안드로이드)은 화면을 앱 안에 품고 있어 이 주소를 쓰지 않는다 — 영향 없음
+   · 홈페이지는 사람 정보를 싣지 않는다 — 매치 목록도 시각 · 코트 · 종목 · 남은 자리 · 조건 · 참가비만 */
+const SITE_FILE = path.join(PUBLIC_DIR, 'site', 'index.html');
+const IOS_URL = () => process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517';
+let SITE_CACHE = { t: 0, html: '' };
+function siteFoot() {
+  const o = opInfo();
+  const rows = [o.biz, o.name ? `대표 ${o.name}` : '', o.mailorder ? `통신판매업 신고 ${o.mailorder}` : '',
+    o.tel ? `고객센터 ${o.tel}` : '', o.email ? `이메일 ${o.email}` : ''].filter(Boolean);
+  return `<p class="biz">${rows.map(escH).join('<i> · </i>')}</p>
+    <p class="biz">판매자 맞수 · 결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</p>`;
+}
+function siteHTML() {
+  let t = 0; try { t = fs.statSync(SITE_FILE).mtimeMs; } catch (e) { return null; }
+  if (t !== SITE_CACHE.t) SITE_CACHE = { t, raw: fs.readFileSync(SITE_FILE, 'utf8') };
+  const o = opInfo();
+  const cfg = { ios: IOS_URL(), android: process.env.ANDROID_APP_URL || '', email: o.email || '' };
+  return SITE_CACHE.raw.replace('<!--SITE_FOOT-->', siteFoot())
+    .replace('/*SITE_CFG*/null', JSON.stringify(cfg).replace(/</g, '\\u003c'));
+}
+function sendWebApp(res) { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(PUBLIC_DIR, 'index.html')); }
+app.get('/', (req, res) => {  // @external 홈페이지 · 예전 링크(/?…)는 웹 앱으로
+  const q = req.originalUrl.indexOf('?');
+  if (q >= 0 && req.originalUrl.length > q + 1) return res.redirect(302, '/app' + req.originalUrl.slice(q));
+  const h = siteHTML();
+  if (!h) return sendWebApp(res);                          // 홈페이지 파일이 없으면 예전처럼 웹 앱
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(h);
+});
+app.get('/app', (req, res) => sendWebApp(res));            // @external 웹 앱 (기존 회원 웹 로그인)
+app.get('/app/', (req, res) => {                           // 끝에 / 가 붙으면 그림 · 글꼴 주소가 어긋난다 — /app 으로
+  const q = req.originalUrl.indexOf('?');
+  res.redirect(301, '/app' + (q >= 0 ? req.originalUrl.slice(q) : ''));
+});
+/* QR · 휴대폰 버튼 — 아이폰은 App Store, 안드로이드는 스토어 주소가 있으면 거기 · 없으면 웹 앱, 컴퓨터는 홈페이지 */
+app.get('/get', (req, res) => {  // @external
+  const ua = String(req.headers['user-agent'] || '');
+  const m = intOrNull(req.query.m);
+  const web = '/app' + (m ? `?match=${m}` : '');
+  if (/iPhone|iPad|iPod/i.test(ua)) return res.redirect(302, IOS_URL());
+  if (/Android/i.test(ua)) return res.redirect(302, process.env.ANDROID_APP_URL || web);
+  res.redirect(302, m ? web : '/');
+});
+/* 홈페이지 <이번 주 오픈매치> — 오늘부터 7일 안 · 아직 자리가 있는 매치만, 사람 정보 없이 */
+const SITE_DISC = { mixed: '혼복', men: '남복', women: '여복', any: '복식' };
+app.get('/site/matches', (req, res) => {  // @external
+  res.set('Cache-Control', 'public, max-age=60');
+  if (process.env.OM_OPEN === '0' || /^(true|1|on|yes)$/i.test(String(process.env.OM_PRELAUNCH || '').trim())) return res.json({ matches: [] });
+  const now = Date.now(), until = now + 7 * 864e5;
+  const rows = db.prepare(`SELECT * FROM open_matches WHERE (status IS NULL OR status IN ('open','confirmed'))
+    AND start_at IS NOT NULL AND COALESCE(sport,'tennis')='tennis' ORDER BY start_at LIMIT 300`).all();
+  const out = [];
+  for (const m of rows) {
+    const st = Date.parse(String(m.start_at).slice(0, 16) + ':00+09:00');
+    if (isNaN(st) || st < now || st > until) continue;
+    let v; try { v = omViewAll(m, null); } catch (e) { continue; }
+    const cap = +v.cap || 0, cur = +v.cur || 0;
+    if (cap && cur >= cap) continue;                       // 꽉 찬 매치는 안 싣는다
+    const mixed = (v.disc || 'mixed') === 'mixed' && v.caps && v.caps.f > 0 && v.caps.m > 0;
+    const lo = TIER_KO[m.tier_min] || null, hi = TIER_KO[m.tier_max] || null;
+    out.push({ id: m.id, start_at: String(m.start_at).slice(0, 16), loc: m.loc || '',
+      area: [m.sido, m.sigungu].filter(Boolean).join(' ').replace(/(특별자치도|특별자치시|특별시|광역시|도)(?=\s|$)/g, '').trim() || null,
+      disc: SITE_DISC[v.disc || 'mixed'] || '복식', courts: +v.courts || null, cap, cur,
+      left: Math.max(0, cap - cur), left_m: mixed ? v.left_m : null, left_f: mixed ? v.left_f : null,
+      tier: lo && hi ? `${lo}~${hi}` : lo ? `${lo} 이상` : hi ? `${hi} 이하` : '모든 티어', tier_key: m.tier_min || null,
+      price: +(v.price_base || v.price || 0), soon: cur > 0 && !v.confirmed && (+v.need || 0) - cur <= 2,
+      lat: v.lat != null ? +v.lat : null, lng: v.lng != null ? +v.lng : null });
+    if (out.length >= 20) break;
+  }
+  res.json({ matches: out, at: now });
 });
 
 app.use(express.static(PUBLIC_DIR));
