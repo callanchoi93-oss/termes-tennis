@@ -231,6 +231,30 @@ body{background:var(--paper);color:var(--ink);
 .b.on{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:600}
 .b.dz{border-color:#f0dcdc;color:var(--red)}
 .b:active{transform:scale(.97)}
+/* 호스트 정산 (10/31) */
+.hpay-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--s3)}
+.hpay-sum .card{margin:0 0 var(--s3)}
+.hpay-sum span{display:block;font-size:var(--t1);color:var(--gray)}
+.hpay-sum span small{font-size:var(--t0)}
+.hpay-sum b{display:block;font-size:24px;font-weight:800;letter-spacing:-.03em;margin-top:4px}
+.hpay-sum b.or{color:var(--coral-d)}
+.hpay-sum em{display:block;font-style:normal;font-size:var(--t0);color:var(--lgray);margin-top:3px;line-height:1.5}
+.hp-hd{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);margin:2px 0 var(--s3)}
+.hp-hd p{flex:1 1 260px;margin:0;font-size:var(--t1);color:var(--gray);line-height:1.55}
+.hp-tw{overflow-x:auto;padding:0}
+.hp-t{width:100%;min-width:900px;border-collapse:collapse;font-size:var(--t1)}
+.hp-t th{text-align:left;font-weight:600;color:var(--gray);padding:12px 10px;border-bottom:1.5px solid #ecebe7;white-space:nowrap}
+.hp-t td{padding:12px 10px;border-bottom:1px solid #f4f1ea;vertical-align:middle}
+.hp-t tr:last-child td{border-bottom:0}
+.hp-t th:first-child,.hp-t td:first-child{padding-left:16px}
+.hp-t td b{font-weight:700}
+.hp-t td span{display:block;font-size:var(--t0);color:var(--lgray);margin-top:2px}
+.hp-t .n{text-align:right;white-space:nowrap}
+.hp-t .tag{margin-left:0;text-decoration:none}
+.hp-t .b{white-space:nowrap}
+.hp-t .b[disabled]{opacity:.6;cursor:default}
+.hp-go{background:#f1631a;border-color:#f1631a;color:#fff;font-weight:600}
+.hp-done{font-size:var(--t1);color:var(--gray);white-space:nowrap}
 .warn{display:flex;align-items:center;gap:var(--s2);background:var(--gold-bg);border-radius:12px;
   padding:var(--s3) var(--s4);margin-bottom:var(--s3);font-size:var(--t1);color:#8a6a3a;font-weight:500}
 .warn b{color:#7a5a1a;font-weight:700}
@@ -876,7 +900,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치'],['venues','구장']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치'],['hostpay','호스트 정산'],['venues','구장']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -1055,6 +1079,7 @@ async function draw(){
   if(TAB==='posts')   return drawPosts();
   if(TAB==='payouts') return drawPayouts();
   if(TAB==='hosts')   return drawHostMatches();
+  if(TAB==='hostpay') return drawHostPay();
   if(TAB==='staff')   return drawStaff();
   if(TAB==='banners') return drawBanners();
   if(TAB==='bq')      return drawBQ();
@@ -3300,8 +3325,16 @@ function vnShrink(file, max, q, png){
   return new Promise((ok,no)=>{ const rd=new FileReader();
     rd.onload=()=>{ const img=new Image(); img.onload=()=>{ const sc=Math.min(1,max/Math.max(img.width,img.height));
       const cv=document.createElement('canvas'); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
-      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); ok(png?cv.toDataURL('image/png'):cv.toDataURL('image/jpeg',q||.85)); }; img.onerror=no; img.src=rd.result; };
+      const cx=cv.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high';
+      cx.drawImage(img,0,0,cv.width,cv.height); ok(png?cv.toDataURL('image/png'):cv.toDataURL('image/jpeg',q||.85)); }; img.onerror=no; img.src=rd.result; };
     rd.onerror=no; rd.readAsDataURL(file); });
+}
+/* 코트 화면 맨 위 큰 사진 — 2400px · 품질 0.9 (10/29). 관리자 올리기 한도 4MB(base64 ≈ 5.3MB)를 넘으면 두 단계로 낮춘다 */
+async function vnBig(f){
+  let u=await vnShrink(f,2400,.9);
+  if(u.length>5_200_000) u=await vnShrink(f,2400,.82);
+  if(u.length>5_200_000) u=await vnShrink(f,2000,.82);
+  return u;
 }
 async function vnLogoAdd(inp){
   const M=VNM, f=inp.files&&inp.files[0]; if(!M||!f) return;
@@ -3316,7 +3349,7 @@ async function vnMediaAdd(inp){
   const files=[...(inp.files||[])].slice(0,12-M.list.length); if(!files.length) return;
   M.busy=files.length; vnMediaRender();
   for(const f of files){
-    try{ const [big,small]=await Promise.all([vnShrink(f,1600,.85), vnShrink(f,360,.8)]);
+    try{ const [big,small]=await Promise.all([vnBig(f), vnShrink(f,480,.82)]);
       const [a,b]=await Promise.all([api('/admin/upload',{method:'POST',body:JSON.stringify({dataUrl:big})}), api('/admin/upload',{method:'POST',body:JSON.stringify({dataUrl:small})})]);
       if(VNM!==M) return; M.list.push({url:a.url, thumb:b.url}); }
     catch(e){ toast('사진 한 장을 올리지 못했어요'); }
@@ -3428,7 +3461,9 @@ async function drawHostMatches(){
       ${r.proof?`<a href="${esc(r.proof)}" target="_blank" rel="noopener" style="flex:none;margin-right:10px"><img src="${esc(r.proof)}" alt="예약 화면" style="width:52px;height:68px;object-fit:cover;border-radius:8px;display:block"></a>`:''}
       <div class="nm" style="min-width:0;flex:1"><b style="white-space:normal">${esc(r.loc||'')}<span class="tag">${esc(st(r))}</span></b>
         <span style="white-space:normal">${esc(String(r.start_at||'').replace('T',' '))} · ${r.courts||1}코트${r.court_no?' · '+esc(r.court_no):''} · 1면 1시간 ${fmt(r.hour_cost)}원 · 호스트 ${esc((r.host&&r.host.name)||'')} · 게스트 ${r.guests}명 · 걷힌 돈 ${fmt(r.collected)}원</span>
-        ${(r.reports||[]).map(x=>`<span style="color:#c8452c;white-space:normal">신고 · ${esc(x.name||'')}${x.note?' · '+esc(x.note):''}</span>`).join('')}</div>
+        ${(r.reports||[]).map(x=>`<span style="color:#c8452c;white-space:normal">신고 · ${esc(x.name||'')}${x.note?' · '+esc(x.note):''}</span>`).join('')}
+        ${r.hrv&&r.hrv.n?`<span style="white-space:normal">호스트 후기 ★${esc(r.hrv.avg)} · ${+r.hrv.n}개</span>`:''}
+        ${(r.notes||[]).map(x=>`<span style="color:#7b61ff;white-space:normal">맞수에만 · ${esc(x.name||'')} · ${esc(x.note||'')}</span>`).join('')}</div>
       ${r.hold?`<div class="seg3" style="flex:none"><button class="b" onclick="hostReview(${+r.id},'release')">왔어요 · 정산</button>
         <button class="b dz" onclick="hostReview(${+r.id},'noshow')">안 왔어요 · 환불</button></div>`
         :r.proof&&['open','confirmed'].includes(r.status||'open')?`<button class="b${r.proof_ok?' dz':''}" style="flex:none" onclick="proofOk(${+r.id},${r.proof_ok?'false':'true'})">${r.proof_ok?'확인 취소':'예약 확인'}</button>`:''}</div>`;
@@ -3472,6 +3507,84 @@ async function drawPayouts(){
       <span>${ymd(p.created_at)} · ${esc(p.status||'')}</span></div>
       <span class="b">${fmt(p.amount)}원</span></div>`).join('')
     : `<div class="empty">정산할 건이 없어요</div>`}</div>`);
+}
+
+/* ── 호스트 정산 지급 (10/31) ──
+   맞수가 판매자 · 지급대행 없이 운영자가 직접 이체한다. 은행 앱에서 보내고 여기서 <이체 완료로 표시> → 호스트에게 입금 알림.
+   보낼 돈 = 코트비 · 공(게스트 몫) + 수고비 − 세금(수고비의 3.3%). 맨 위 맞수 몫은 카드 수수료 · 세금을 빼기 전 값이다
+   (계약 요율을 지어내지 않는다). 대량이체 파일은 지금 목록 그대로 CSV(엑셀) — 은행마다 양식이 달라 열 이름은 바꿔 쓴다. */
+let HPAY=null;
+function hpBankParts(b){
+  const parts=String(b||'').trim().split(/\s+/).filter(Boolean);
+  const bank=parts[0]&&!/\d/.test(parts[0])?parts[0]:'';
+  const last=parts[parts.length-1]||'', holder=parts.length>=2&&!/\d/.test(last)&&last!==bank?last:'';
+  const acct=parts.filter(x=>/\d/.test(x)).join('').replace(/[^0-9]/g,'');   // 대량이체 파일은 숫자만
+  return {bank, acct, holder};
+}
+function hpMD(t, wd){ const d=new Date(+t||0); return !t||isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()}${wd?` (${'일월화수목금토'[d.getDay()]})`:''}`; }
+async function drawHostPay(){
+  const sub=SUB||'due';
+  const tabs=[['due','지급 대기'],['paid','지급 완료'],['refund','카드 환불 실패']];
+  $('app').innerHTML=shell(subTabs(tabs)+skel(3));
+  if(sub==='refund') return drawOmRefunds(tabs);
+  let d; try{ d=await api('/admin/host-payouts'+(sub==='paid'?'?st=paid':'')); }
+  catch(e){ toast(e.message||'불러오지 못했어요'); d={rows:[],summary:{month:{}}}; }
+  HPAY=d;
+  const S=d.summary||{}, M=S.month||{}, rows=d.rows||[];
+  BADGE.hostpay=S.due_n||'';
+  const sum=`<div class="hpay-sum">
+    <div class="card"><span>이번 주 지급 예정</span><b>${fmt(S.due_sum)}원</b><em>${fmt(S.due_n)}건${S.wait_n?` · 계좌 없음 ${fmt(S.wait_n)}건`:''}</em></div>
+    <div class="card"><span>지난주 지급 완료</span><b>${fmt(S.last_sum)}원</b><em>${fmt(S.last_n)}건</em></div>
+    <div class="card"><span>이번 달 맞수 몫 <small>· 카드 수수료 · 세금 빼기 전</small></span><b class="or">${fmt(M.matsu)}원</b>
+      <em>결제 ${fmt(M.paid)} − 환불 ${fmt(M.refund)} − 호스트 지급 ${fmt(M.host)}</em></div></div>`;
+  const warn=S.refund_failed?`<div class="warn">카드 환불이 <b>${fmt(S.refund_failed)}건</b> 실패했어요 · 확인해 주세요<u onclick="SUB='refund';render()">보기</u></div>`:'';
+  const act=r=>{
+    if(r.status==='paid') return `<span class="hp-done">${esc(hpMD(r.paid_at))} 보냄</span>`;
+    if(!r.bank) return `<button class="b" disabled>계좌 받으면 지급</button>`;
+    if(!r.proof) return `<button class="b" disabled>영수증 받으면 지급</button>`;
+    return `<button class="b hp-go" onclick="hpPaid(${+r.id})">이체 완료로 표시</button>`;
+  };
+  const rc=r=>r.proof?`<a class="tag ${r.proof_ok?'g':'o'}" href="${esc(r.proof)}" target="_blank" rel="noopener">${r.proof_ok?'확인':'올림'}</a>`:'<span class="tag">없음</span>';
+  const tbl=rows.length?`<div class="card hp-tw"><table class="hp-t"><thead><tr>
+      <th>경기</th><th>호스트</th><th class="n">코트비</th><th class="n">수고비</th><th class="n">세금 3.3%</th><th class="n">보낼 돈</th><th>계좌</th><th>영수증</th><th>${sub==='paid'?'보낸 날':'지급'}</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td><b>${esc(String(r.start_at||'').replace('T',' ').slice(5))}</b><span>${esc(r.loc||'')} · ${fmt(r.people)}명${r.due_at&&r.status!=='paid'?` · ${esc(hpMD(r.due_at,true))} 예정`:''}</span></td>
+      <td>${esc(r.name||'')}</td><td class="n">${fmt(r.expense)}</td><td class="n">${fmt(r.fee)}</td><td class="n">−${fmt(r.tax)}</td>
+      <td class="n"><b>${fmt(r.amount)}</b></td><td>${r.bank?esc(r.bank):'<span class="tag o">없음</span>'}</td><td>${rc(r)}</td><td>${act(r)}</td></tr>`).join('')}
+    </tbody></table></div>`:`<div class="card"><div class="empty">${sub==='paid'?'보낸 정산이 아직 없어요':'보낼 정산이 없어요'}</div></div>`;
+  $('app').innerHTML=shell(subTabs(tabs)+warn+sum+`<div class="hp-hd"><p>이체는 은행 앱에서 하고, 여기서 <b>이체 완료</b>로 표시해요. 표시하면 호스트에게 입금 알림이 가요.</p>
+      ${sub==='due'&&rows.length?`<button class="b on" onclick="hpCsv()">대량이체 파일 내려받기</button>`:''}</div>`+tbl+
+    `<div class="note">확정된 호스트 매치만 올라와요(경기 끝나고 12시간 뒤 자동 · 호스트가 먼저 받으면 바로). 코트비는 게스트 몫(1인 몫 × 게스트 수), 세금은 수고비에만 떼요 — 원천징수 신고 자료는 내려받은 파일의 수고비 · 세금 열을 쓰면 돼요.</div>`);
+}
+async function hpPaid(id){
+  const r=((HPAY||{}).rows||[]).find(x=>x.id===id); if(!r) return;
+  if(!confirm(`${r.name} 님께 ${fmt(r.amount)}원을 보냈나요?\n${r.bank}\n\n완료로 표시하면 호스트에게 입금 알림이 가요.`)) return;
+  try{ await api(`/admin/payouts/${id}/paid`,{method:'POST',body:'{}'}); toast('이체 완료로 표시했어요'); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
+}
+function hpCsv(){
+  const rows=((HPAY||{}).rows||[]).filter(r=>r.status==='requested');
+  const q=v=>{ const t=String(v==null?'':v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const head=['은행','계좌번호','예금주','보낼 돈','받는 분 통장 표시','호스트','경기','구장','코트비(게스트 몫)','수고비','세금(3.3%)','세전 합계','입금 예정'];
+  const lines=rows.map(r=>{ const b=hpBankParts(r.bank);
+    return [b.bank,b.acct,b.holder||r.name,r.amount,'맞수정산',r.name,String(r.start_at||'').replace('T',' '),r.loc,r.expense,r.fee,r.tax,r.gross,hpMD(r.due_at)].map(q).join(','); });
+  const blob=new Blob(['﻿'+[head.join(','),...lines].join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  const d=new Date(); a.download=`matsu-host-payouts-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+/* 카드 환불 실패 — 토스 취소가 8번 넘게 안 된 것. 사유를 보고 다시 보내거나 토스 관리자에서 직접 취소한다 */
+async function drawOmRefunds(tabs){
+  const rows=await api('/admin/om-refunds?st=failed').catch(e=>{ toast(e.message||'불러오지 못했어요'); return []; });
+  $('app').innerHTML=shell(subTabs(tabs)+`<div class="card">${rows.length?rows.map(r=>`<div class="rw">
+      <div class="nm"><b>${esc(r.name||'')} · ${fmt(r.amount)}원</b><span>${esc(r.loc||'')} · ${esc(r.reason||'')} · ${fmt(r.tries)}번 시도 · ${esc(r.err||'')}</span></div>
+      <button class="b" onclick="hpRetry(${+r.id})">다시 보내기</button></div>`).join('')
+    :'<div class="empty">실패한 카드 환불이 없어요</div>'}</div>
+    <div class="note">다시 보내도 같은 건은 두 번 취소되지 않아요(토스 멱등키). 계속 실패하면 토스페이먼츠 상점관리자에서 그 결제를 직접 취소해 주세요.</div>`);
+}
+async function hpRetry(id){
+  try{ const r=await api(`/admin/om-refunds/${id}/retry`,{method:'POST',body:'{}'});
+    toast(r.status==='done'?'환불했어요':`아직이에요 · ${r.err||'다시 시도할게요'}`); render(); }
+  catch(e){ toast(e.message||'보내지 못했어요'); }
 }
 
 /* ── 계정 ── 스태프·매니저·구장 계정을 한 화면에서 */
