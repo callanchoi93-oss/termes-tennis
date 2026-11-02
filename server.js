@@ -458,6 +458,9 @@ app.get('/config', (_, res) => {
     active_sports: process.env.ACTIVE_SPORTS || 'tennis',
     toss_client_key: process.env.TOSS_CLIENT_KEY || '',
     toss_ready: !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY),
+    /* 오픈매치 참가비 카드 바로 결제 (10/31) — OM_PAY_LIVE=1 이고 토스 키가 둘 다 있을 때만 켜진다. 기본은 꺼짐.
+       꺼져 있으면 지금처럼 결제 없이 신청만 된다(호스트 매치는 OM_HOST_LIVE · OM_HOST_BETA 가 따로 막는다) */
+    om_pay_live: omPayLive(),
     vapid_public: process.env.VAPID_PUBLIC || '',
     phone_auth: !!process.env.SMS_PROVIDER,     // 문자 인증 업체가 붙어 있는가
   });
@@ -854,6 +857,43 @@ function omRefundLedger(matchId, uid, amount) {
   }
   return Math.round(+amount || 0) - left;
 }
+/* ── 돌려주기 한 곳 (10/31) ─────────────────────────────────
+   맞수가 판매자 · 카드 바로 결제로 바뀌었다 — 캐시가 없다. 카드로 낸 돈은 그 카드로 돌려준다(토스 부분취소).
+   토스 호출은 기다려야 해서 여기서는 <돌려줄 일>만 적고(om_refunds), 아래 일꾼(omRefundRun)이 보낸다.
+   실패하면 다시 시도하고, 8번 넘게 실패하면 관리자 화면에 남긴다. 카드 결제가 없는 돈(예전 캐시 결제)만 캐시로. */
+db.exec(`CREATE TABLE IF NOT EXISTS om_refunds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, match_id INTEGER, pay_id INTEGER, order_id TEXT,
+  payment_key TEXT NOT NULL, amount INTEGER NOT NULL, reason TEXT, status TEXT NOT NULL DEFAULT 'pending',
+  tries INTEGER DEFAULT 0, err TEXT, created_at BIGINT, done_at BIGINT)`);
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_omref_user ON om_refunds(user_id, id DESC)'); } catch (e) {}
+function omGiveBack(mid, uid, amount, reason) {
+  let left = Math.max(0, Math.round(+amount || 0));
+  if (!left) return 0;
+  const cards = db.prepare(`SELECT id, order_id, payment_key, amount, COALESCE(refunded,0) refunded FROM om_payments
+    WHERE match_id=? AND user_id=? AND status='paid' AND payment_key IS NOT NULL ORDER BY id`).all(mid, uid);
+  const queued = [];
+  for (const c of cards) {
+    if (left <= 0) break;
+    const take = Math.min(c.amount - c.refunded, left);
+    if (take <= 0) continue;
+    const r = db.prepare(`INSERT INTO om_refunds (user_id,match_id,pay_id,order_id,payment_key,amount,reason,status,created_at)
+      VALUES (?,?,?,?,?,?,?,'pending',?)`).run(uid, mid, c.id, c.order_id, c.payment_key, take, reason || '', Date.now());
+    queued.push(Number(r.lastInsertRowid));
+    left -= take;
+  }
+  if (queued.length) omRefundLedger(mid, uid, Math.round(+amount) - left);
+  if (left > 0) { cashAdd(uid, left, reason); omRefundLedger(mid, uid, left); }   // 카드 결제가 없는 몫(예전 캐시)만
+  if (queued.length && typeof omRefundKick === 'function') omRefundKick();
+  return Math.round(+amount);
+}
+/* 이 사람이 이 매치에 카드로 낸 돈 — 앱이 취소 화면에 <결제한 카드로 돌려드려요>를 띄울지 본다 */
+function omCardOf(mid, uid) {
+  const r = db.prepare(`SELECT COALESCE(SUM(amount),0) a, COALESCE(SUM(COALESCE(refunded,0)),0) rf, COUNT(*) n FROM om_payments
+    WHERE match_id=? AND user_id=? AND payment_key IS NOT NULL AND status IN ('paid','refunded')`).get(mid, uid);
+  if (!r || !r.n) return null;
+  const rc = db.prepare('SELECT receipt_url FROM om_payments WHERE match_id=? AND user_id=? AND receipt_url IS NOT NULL ORDER BY id DESC LIMIT 1').get(mid, uid);
+  return { method: 'card', paid: r.a, refunded: r.rf, left: r.a - r.rf, receipt: rc ? rc.receipt_url : null };
+}
 const OM_MAX_COURT_COST = 600000;   // 코트·캔볼 실비 상한 (건당) — 과다 입력으로 인한 부정 정산 방지
 
 function cashAmountError(amount) {
@@ -878,6 +918,8 @@ app.post('/pay/confirm', async (req, res) => {  // @external 결제창이 돌아
   if (!paymentKey || !orderId || amount == null) return res.status(400).json({ error: 'missing_params' });
   const ord = db.prepare('SELECT * FROM orders WHERE order_id=?').get(orderId);
   if (!ord) return res.status(404).json({ error: 'order_not_found' });
+  /* 오픈매치 참가비 — 캐시가 아니라 자리로 바뀐다 (10/31) */
+  if (ord.kind === 'om') { const r = await omPayConfirm(paymentKey, orderId, amount); return res.status(r.status).json(r.body); }
   if (ord.status === 'paid') return res.json({ ok: true, already: true, cash: getUser(ord.user_id).cash });
   if (ord.amount !== +amount) return res.status(400).json({ error: 'amount_mismatch' }); // 위변조 방지
   const secret = process.env.TOSS_SECRET_KEY;
@@ -901,24 +943,32 @@ app.post('/pay/confirm', async (req, res) => {  // @external 결제창이 돌아
 });
 
 // 토스 웹훅: 결제 상태를 비동기로 통지받아 이중 확인(멱등 처리). 토스 콘솔에 이 URL 등록.
+/* 10/31 — 웹훅 본문은 누구나 보낼 수 있다. 예전엔 {orderId, status:'DONE'} 만 보내면 아직 안 낸 주문(<부족분 충전> 주문 포함)에
+   캐시가 들어갔다. 이제 본문의 paymentKey 로 토스에 직접 물어 <정말 DONE 이고 · 주문번호 · 금액이 맞을 때만> 처리한다.
+   웹훅은 항상 200 으로 바로 답하고, 확인은 뒤에서 한다. */
 app.post('/pay/webhook', (req, res) => {  // @external 토스가 부름
-  try {
+  res.json({ ok: true });                 // 웹훅은 항상 200으로 응답
+  (async () => {
     const ev = req.body || {};
     const data = ev.data || ev;
-    const orderId = data.orderId; const status = data.status || ev.eventType;
-    if (orderId && (status === 'DONE' || status === 'PAYMENT_STATUS_CHANGED')) {
-      const ord = db.prepare('SELECT * FROM orders WHERE order_id=?').get(orderId);
-      if (ord && ord.status !== 'paid') {
-        const u = getUser(ord.user_id); const bal = u.cash + ord.cash;
-        db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
-        db.prepare("UPDATE orders SET status='paid' WHERE order_id=?").run(orderId);
-        db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-          .run(u.id, ord.cash, 'toss_webhook', bal, now());
-        sendPush(u.id, { title: '충전 완료', body: `M캐쉬 ${ord.cash} 충전됐어요` });
-      }
-    }
-    res.json({ ok: true });               // 웹훅은 항상 200으로 응답
-  } catch { res.json({ ok: true }); }
+    const orderId = String(data.orderId || ''), paymentKey = String(data.paymentKey || '');
+    if (!orderId || !paymentKey || !process.env.TOSS_SECRET_KEY) return;
+    const ord = db.prepare('SELECT * FROM orders WHERE order_id=?').get(orderId);
+    if (!ord || ord.status !== 'ready') return;
+    const r = await fetch(`${TOSS_API}/v1/payments/${encodeURIComponent(paymentKey)}`, { headers: { Authorization: tossAuth() } });
+    const pay = await r.json().catch(() => ({}));
+    if (!r.ok || pay.status !== 'DONE' || pay.orderId !== orderId || +pay.totalAmount !== +ord.amount) return;
+    const again = db.prepare('SELECT * FROM orders WHERE order_id=?').get(orderId);
+    if (!again || again.status !== 'ready') return;
+    /* 오픈매치 — 승인은 됐는데 우리가 못 적은 경우(서버가 승인 직후 꺼짐 등)만 여기서 자리를 넣는다 */
+    if (ord.kind === 'om') { if (OM_PAY_LOCK.has(orderId)) return; const out = omPaidJoin(again, paymentKey, pay.receipt && pay.receipt.url); if (!out.ok) omRefundKick(); return; }
+    const u = getUser(ord.user_id); const bal = u.cash + ord.cash;
+    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
+    db.prepare("UPDATE orders SET status='paid', payment_key=? WHERE order_id=?").run(paymentKey, orderId);
+    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
+      .run(u.id, ord.cash, 'toss_webhook', bal, now());
+    sendPush(u.id, { title: '충전 완료', body: `캐시 ${ord.cash.toLocaleString()}원이 충전됐어요` });
+  })().catch(e => console.error('[pay webhook]', e.message));
 });
 
 // 환불: 토스 결제 취소 API 호출 후 캐쉬 회수
@@ -3561,7 +3611,7 @@ function omSettle(mid) {
       /* 호스트 매치는 실제로 걷힌 돈만 돌려준다 — 결제 전 기록(paid)으로 캐시를 만들지 않는다 */
       /* 실제로 걷힌 돈만 돌려준다 — 모든 방식에서. 예전엔 호스트 매치가 아니면 결제 없이 적힌 paid 를 캐시로 만들어 줬다 (10/27) */
       const back = omPaidBy(mid, j.user_id);
-      if (back > 0) cashAdd(j.user_id, back, 'om_cancel_refund');
+      if (back > 0) omGiveBack(mid, j.user_id, back, 'om_cancel_refund');   // 카드로 낸 돈은 카드로 (10/31)
       if (m.mode === 'host') db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, j.user_id);
       sendPush(j.user_id, { icon: '🔔', title: '매치가 취소됐어요',
         body: `${m.loc} · 인원이 모이지 않아 전액 환불했어요` });
@@ -3578,7 +3628,7 @@ function omSettle(mid) {
     joins.forEach(j => {
       const diff = omPaidBy(mid, j.user_id) - finalPrice;   // 걷힌 돈 기준 — 결제 전 기록(paid)으로 차액 캐시를 만들지 않는다 (10/27)
       if (diff > 0) {
-        cashAdd(j.user_id, diff, 'om_price_refund');
+        omGiveBack(mid, j.user_id, diff, 'om_price_refund');   // 카드 부분취소 (10/31) — 예전엔 캐시
         db.prepare('UPDATE open_match_joins SET refund=? WHERE id=?').run(diff, j.id);
         refunded += diff;
       }
@@ -3795,6 +3845,10 @@ const OMH = {
   RAIN_AFTER_H: 1,   //            시작 1시간 뒤까지 (치다가 쏟아지는 날)
   RAIN_FREE: 3,      // 30일 안에 비 취소 3번까지는 벌점 없음 — 넘으면 보통 취소와 같다
   NOSHOW_BLOCK_D: 90,// 호스트 미참석이 확인되면 90일 동안 못 연다
+  /* 10/31 — 정산은 캐시가 아니라 맞수가 호스트 계좌로 직접 보낸다(지급대행 없음).
+     수고비만 소득이라 3.3%(사업소득 3% + 지방소득세 0.3%)를 떼고, 코트비 몫은 실비라 그대로 */
+  WITHHOLD: 0.033,
+  PAY_DUE_BD: 2,     // 정산 확정 뒤 영업일 2일째 입금 (주말 건너뜀 · 공휴일은 운영자가 하루 미룬다)
 };
 ['hours INTEGER', 'hour_cost INTEGER', 'ball_cost INTEGER', 'host_fee INTEGER', 'proof TEXT', 'venue_id INTEGER']
   .forEach(c => { try { db.exec(`ALTER TABLE open_matches ADD COLUMN ${c}`); } catch (e) {} });
@@ -3807,8 +3861,34 @@ try { db.exec('ALTER TABLE om_host_strikes ADD COLUMN kind TEXT'); } catch (e) {
 db.exec(`CREATE TABLE IF NOT EXISTS om_host_reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT, match_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
   note TEXT, created_at BIGINT, UNIQUE(match_id, user_id))`);
-/* 정산의 실비 · 수고비 나눔은 세금 신고용으로 여기에만 — 호스트 캐시 장부에는 한 줄로 */
-['expense INTEGER', 'fee INTEGER'].forEach(c => { try { db.exec(`ALTER TABLE om_payouts ADD COLUMN ${c}`); } catch (e) {} });
+/* 정산의 실비 · 수고비 나눔은 세금 신고용으로 여기에만.
+   10/31 — 캐시로 넣지 않고 계좌로 보낸다: gross(세전 합계) · tax(수고비 3.3%) · amount(보낼 돈 = gross − tax) · due_at(입금 예정) */
+['expense INTEGER', 'fee INTEGER', 'tax INTEGER DEFAULT 0', 'gross INTEGER', 'due_at BIGINT']
+  .forEach(c => { try { db.exec(`ALTER TABLE om_payouts ADD COLUMN ${c}`); } catch (e) {} });
+/* 코트비 몫 · 수고비 · 세금 · 받는 돈 — 정산 · 열기 미리보기 · 정산 화면이 같은 식을 쓴다.
+   수고비만 소득이라 세금은 수고비에만. 코트비 몫은 게스트 수 × 1인 몫(100원 아래 버림) */
+function omHostSplit(q, guests) {
+  const total = omHostPayout(q, guests);
+  const expense = Math.min(total, Math.floor(Math.max(0, guests) * q.share / 100 + 1e-7) * 100);
+  const fee = total - expense, tax = Math.round(fee * OMH.WITHHOLD);
+  return { total, expense, fee, tax, net: total - tax };
+}
+/* 계좌 가운데를 가린다 — "국민 123456-78-901234 최민혁" → "국민 ***-1234 · 최민혁" (호스트 정산 화면 · 결제 내역) */
+function omBankMask(b) {
+  const s = String(b || '').trim(); if (!s) return '';
+  const parts = s.split(/\s+/), digits = s.replace(/[^0-9]/g, '');
+  const bank = parts[0] && !/\d/.test(parts[0]) ? parts[0] : '';
+  const last = parts[parts.length - 1], holder = parts.length >= 2 && !/\d/.test(last) && last !== bank ? last : '';
+  return [bank, digits ? `***-${digits.slice(-4)}` : ''].filter(Boolean).join(' ') + (holder ? ` · ${holder}` : '');
+}
+/* 입금 예정일 — 정산 확정 뒤 영업일 n일째 한국 시간 0시 */
+function omPayDue(ms) {
+  const d = new Date((ms || Date.now()) + 9 * 3600e3);
+  let left = OMH.PAY_DUE_BD;
+  while (left > 0) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w !== 0 && w !== 6) left--; }
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime() - 9 * 3600e3;
+}
 
 /* 결제가 붙기 전에는 아무나 열 수 없다 — 참가비가 실제로 걷히지 않으면
    코트비를 먼저 낸 호스트만 손해를 본다. 신청할 때 참가비를 받는 길이 생기면 OM_HOST_LIVE=1.
@@ -3866,7 +3946,10 @@ function omHostMins(q, plays) {
 function omHostQuoteOut(b) {
   const q = omHostQuote(b.hour_cost, b.ball_cost, b.courts, b.hours);
   const plays = !(b.host_plays === false && q.courts >= 2);
-  const at = n => ({ people: n, payout: omHostPayout(q, omHostGuestsOf(n, plays)), cost: omHostCostP(q, n, plays) });
+  /* get — 이 인원이면 받는 돈의 나눔(코트비 몫 · 수고비 · 세금 · 받는 돈). 호스트 자기 돈이라 보여 준다 · 맞수 몫은 없다 (10/31) */
+  const at = n => { const G = omHostGuestsOf(n, plays), s = omHostSplit(q, G);
+    return { people: n, payout: omHostPayout(q, G), cost: omHostCostP(q, n, plays), guests: G,
+      get: { expense: s.expense, fee: s.fee, tax: s.tax, net: s.net } }; };
   return { courts: q.courts, hours: q.hours, cap: q.cap, per: q.hour >= 1000 ? q.per : 0,
            spent: q.court + q.ball, at: omHostMins(q, plays).map(at) };
 }
@@ -4035,23 +4118,22 @@ function omHostSettle(mid) {
   const collected = omCollected(mid);
   if (collected <= 0) return { error: 'no_payment', message: '걷힌 참가비가 없어 정산할 수 없어요' };
   const total = Math.min(omHostPayout(q, guests), collected);
-  /* 실비(코트 · 공)와 수고비를 나눠 적는다 — 수고비만 소득이다 */
+  /* 실비(코트 · 공)와 수고비를 나눠 적는다 — 수고비만 소득이라 세금(3.3%)은 수고비에서만 뗀다 */
   const expense = Math.min(total, Math.floor(guests * q.share / 100 + 1e-7) * 100);
-  const fee = total - expense;
+  const fee = total - expense, tax = Math.round(fee * OMH.WITHHOLD), net = total - tax;
   const hu = getUser(m.host_id);
   if (!hu) return { error: 'no_host' };
+  /* 10/31 — 캐시로 넣지 않는다. 맞수가 호스트 계좌로 보낼 <지급 대기>를 만들고, 운영자가 이체한 뒤 완료로 표시한다 */
+  const due = omPayDue(Date.now());
   tx(() => {
-    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at,expense,fee) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(mid, m.host_id, total, hu.bank_account || '', 'cash', now(), expense, fee);
-    const bal = (hu.cash || 0) + total;
-    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-      .run(m.host_id, total, 'om_host_payout', bal, now());
-    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, m.host_id);
+    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at,expense,fee,tax,gross,due_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(mid, m.host_id, net, hu.bank_account || '', 'requested', now(), expense, fee, tax, total, due);
     db.prepare('UPDATE open_matches SET settled=1, manager_fee=? WHERE id=?').run(total, mid);
   });
-  sendPush(m.host_id, { icon: '💰', title: '호스트 정산이 들어왔어요', link: `match:${mid}`,
-    body: `${m.loc} · ${total.toLocaleString()}원이 캐시로 들어왔어요` });
-  return { ok: true, total, expense, fee, guests, collected };
+  const dd = new Date(due + 9 * 3600e3);
+  sendPush(m.host_id, { icon: '💰', title: '호스트 정산이 확정됐어요', link: `match:${mid}`,
+    body: `${m.loc} · ${net.toLocaleString()}원 · ${dd.getUTCMonth() + 1}/${dd.getUTCDate()} 입금 예정` });
+  return { ok: true, total, expense, fee, tax, net, due_at: due, guests, collected };
 }
 
 /* 호스트가 취소한다 — 참가자는 언제나 전액 환불.
@@ -4081,7 +4163,7 @@ function omHostCancel(mid, uid, reason) {
       .run(now(), rain ? 'rain' : 'host', mid);
     guests.forEach(g => {
       const back = omPaidBy(mid, g.user_id);                 // 실제로 낸 돈 전부
-      if (back > 0) { cashAdd(g.user_id, back, 'om_host_cancel_refund'); refunded += back; }
+      if (back > 0) { omGiveBack(mid, g.user_id, back, 'om_host_cancel_refund'); refunded += back; }   // 카드로 낸 돈은 카드로 (10/31)
       db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, g.user_id);
     });
     if (guests.length) db.prepare('INSERT INTO om_host_strikes (user_id,match_id,created_at,kind) VALUES (?,?,?,?)').run(uid, mid, Date.now(), kind);
@@ -4133,7 +4215,7 @@ function omHostReview(mid, action) {
     db.prepare("UPDATE open_matches SET status='noshow', hold=0, settled=1, manager_fee=0, refunded_at=? WHERE id=?").run(now(), mid);
     guests.forEach(g => {
       const back = omPaidBy(mid, g.user_id);
-      if (back > 0) { cashAdd(g.user_id, back, 'om_host_noshow_refund'); refunded += back; }
+      if (back > 0) { omGiveBack(mid, g.user_id, back, 'om_host_noshow_refund'); refunded += back; }
       db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'").run(mid, g.user_id);
     });
     db.prepare("INSERT INTO om_host_strikes (user_id,match_id,created_at,kind) VALUES (?,?,?,'noshow')").run(m.host_id, mid, Date.now());
@@ -4168,9 +4250,17 @@ function omHostView(m, uid, people) {
       cost_full: omHostCostP(q, q.cap, P), cost_min: omHostCostP(q, min, P), proof: m.proof || null,
       hold: !!m.hold, reports });
     if (m.settled) {
-      try { const p = db.prepare('SELECT amount, created_at FROM om_payouts WHERE match_id=? AND user_id=? ORDER BY id DESC').get(m.id, m.host_id);
-        if (p) Object.assign(o, { paid: p.amount, paid_at: p.created_at }); } catch (e) {}
+      try { const p = db.prepare('SELECT * FROM om_payouts WHERE match_id=? AND user_id=? ORDER BY id DESC').get(m.id, m.host_id);
+        if (p) {
+          Object.assign(o, { paid: p.gross != null ? p.gross : p.amount, paid_at: p.created_at });
+          /* 10/31 정산 화면 — 코트비 몫 · 수고비 · 세금 · 보낼 돈 · 입금 예정 · 계좌(가운데 가림) */
+          if (p.status !== 'cash') o.payout = { gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0,
+            tax: p.tax || 0, amount: p.amount, status: p.status, due_at: p.due_at || null, paid_at: p.status === 'paid' ? p.paid_at : null,
+            settled_at: p.created_at, bank: omBankMask(p.bank) };
+        } } catch (e) {}
     }
+    /* 열 때 본 것과 같은 나눔 — 지금 인원 · 다 차면 (정산 전 미리보기) */
+    try { o.split_now = omHostSplit(q, G(people)); o.split_full = omHostSplit(q, G(q.cap)); } catch (e) {}
   }
   return o;
 }
@@ -4538,65 +4628,75 @@ app.post('/open-matches', auth, (req, res) => {
   // 매니저는 운영만 하고 경기에 참여하지 않는다 — 자동 참가 없음
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
-app.post('/open-matches/:id/join', auth, (req, res) => {
-  const mid = +req.params.id;
-  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
-  if (!m) return res.status(404).json({ error: 'not_found' });
-  if (m.status && m.status !== 'open') return res.status(400).json({ error: 'not_open' });
+/* ── 신청 검사 · 자리 넣기 · 알림 (10/31 나눔) ──
+   카드 결제(POST /open-matches/:id/pay)가 생겨 같은 검사를 두 번 쓴다 — 주문을 만들 때 한 번, 결제가 끝나 자리를 넣을 때 한 번.
+   결제하는 사이에 자리가 찰 수 있다. 그때는 결제를 바로 전액 취소한다(omPaidJoin). */
+function omJoinCheck(m, uid) {
+  const no = (status, body) => ({ status, body });
+  if (!m) return no(404, { error: 'not_found' });
+  if (m.status && m.status !== 'open') return no(400, { error: 'not_open' });
   /* 호스트 매치 — 모집 마감(시작 3시간 전)이 지나면 마감 처리를 기다리는 사이에도 받지 않는다 (10/27) */
   if (m.mode === 'host' && m.close_at && String(m.close_at).slice(0, 16) <= omKst(Date.now()))
-    return res.status(400).json({ error: 'closed', message: '모집이 마감됐어요' });
-  const ns = noShowCount(req.uid);                       // 상습 노쇼는 참가를 막는다
-  if (ns >= NOSHOW_LIMIT) return res.status(403).json({ error: 'noshow_blocked', count: ns, limit: NOSHOW_LIMIT });
-
-  const me = getUser(req.uid);
+    return no(400, { error: 'closed', message: '모집이 마감됐어요' });
+  const ns = noShowCount(uid);                       // 상습 노쇼는 참가를 막는다
+  if (ns >= NOSHOW_LIMIT) return no(403, { error: 'noshow_blocked', count: ns, limit: NOSHOW_LIMIT });
+  const me = getUser(uid);
   /* 성별이 없으면 남복·여복을 거를 수 없다 — 신청 전에 받아야 한다.
      관리자 화면에 성별 없는 회원이 이미 여럿 있다. */
   if (!me.gender && m.disc && m.disc !== 'any')
-    return res.status(400).json({ error: 'gender_required', message: '성별을 먼저 입력해 주세요' });
-  if (m.disc === 'men'   && me.gender !== 'M')
-    return res.status(403).json({ error: 'men_only',   message: '남자복식 매치예요' });
-  if (m.disc === 'women' && me.gender !== 'F')
-    return res.status(403).json({ error: 'women_only', message: '여자복식 매치예요' });
+    return no(400, { error: 'gender_required', message: '성별을 먼저 입력해 주세요' });
+  if (m.disc === 'men'   && me.gender !== 'M') return no(403, { error: 'men_only',   message: '남자복식 매치예요' });
+  if (m.disc === 'women' && me.gender !== 'F') return no(403, { error: 'women_only', message: '여자복식 매치예요' });
   /* 티어 — 호스트가 <모든 티어>로 열면 막지 않는다(초기에는 4명을 모으는 일이 실력을 맞추는 일보다 급하다).
      10/29 — 호스트가 <티어 정하기>로 범위를 걸었으면 그 범위 안만 받는다. 러브(배치 중)는 <모든 티어> 매치에만. */
-  if ((m.tier_min || m.tier_max) && m.host_id !== req.uid && !tierFits(tierOf(req.uid), m.tier_min, m.tier_max)) {
+  if ((m.tier_min || m.tier_max) && m.host_id !== uid && !tierFits(tierOf(uid), m.tier_min, m.tier_max)) {
     const lo = TIER_KO[m.tier_min] || TIER_KO.bronze, hi = TIER_KO[m.tier_max] || TIER_KO.challenger;
-    const t = tierOf(req.uid);
-    return res.status(403).json({ error: 'tier_out', message: t.placed ? `${lo} ~ ${hi}만 신청할 수 있는 매치예요` : '배치 중(러브)에는 모든 티어 매치에만 신청할 수 있어요' });
+    const t = tierOf(uid);
+    return no(403, { error: 'tier_out', message: t.placed ? `${lo} ~ ${hi}만 신청할 수 있는 매치예요` : '배치 중(러브)에는 모든 티어 매치에만 신청할 수 있어요' });
   }
-
-  // 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다
+  return null;
+}
+/* 자리 — 정원 · 혼복 성별 칸. 이미 들어와 있으면 통과 */
+function omSeatError(m, uid) {
+  const mid = m.id, me = getUser(uid);
+  if (db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, uid)) return null;
+  const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
+  if (cur >= (m.cap || 8)) return 'full';
+  /* 혼복은 성별 칸을 따로 잠근다 — 남은 자리가 있어도 내 성별 칸이 찼으면 못 들어간다 */
+  if (m.disc === 'mixed') {
+    const caps = omCaps(m), fill = omFilled(mid);
+    if (me.gender === 'M' && fill.m >= caps.m) return 'men_full';
+    if (me.gender === 'F' && fill.f >= caps.f) return 'women_full';
+  }
+  return null;
+}
+const OM_SEAT_MSG = { full: '정원이 찼어요', men_full: '남성 자리가 찼어요', women_full: '여성 자리가 찼어요' };
+/* 자리 넣기 — 두 사람이 마지막 한 자리에 동시에 신청해도 정원을 넘기지 않도록 잠근다. 실패하면 {status, body} */
+function omJoinInsert(m, uid) {
+  const mid = m.id;
   try {
     tx(() => {
-      const already = db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
-      if (!already) {
-        const cur = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
-        if (cur >= (m.cap || 8)) throw new Error('full');
-        /* 혼복은 성별 칸을 따로 잠근다 — 남은 자리가 있어도 내 성별 칸이 찼으면 못 들어간다 */
-        if (m.disc === 'mixed') {
-          const caps = omCaps(m), fill = omFilled(mid);
-          if (me.gender === 'M' && fill.m >= caps.m) throw new Error('men_full');
-          if (me.gender === 'F' && fill.f >= caps.f) throw new Error('women_full');
-        }
-      }
+      const e = omSeatError(m, uid);
+      if (e) throw new Error(e);
       db.prepare('INSERT OR IGNORE INTO open_match_joins (match_id,user_id,joined_at,paid) VALUES (?,?,?,?)')
-        .run(mid, req.uid, now(), omPriceFor(m, omMinCount(m)));
+        .run(mid, uid, now(), omPriceFor(m, omMinCount(m)));
       /* 첫 신청자가 모임장이 된다 — 권한이 아니라 역할이다 */
-      if (!m.leader_id) db.prepare('UPDATE open_matches SET leader_id=? WHERE id=?').run(req.uid, mid);
+      if (!m.leader_id) db.prepare('UPDATE open_matches SET leader_id=? WHERE id=?').run(uid, mid);
     });
   } catch (e) {
-    if (e.message === 'full') return res.status(409).json({ error: 'full', cap: m.cap });
-    if (e.message === 'men_full')   return res.status(409).json({ error: 'men_full',   message: '남성 자리가 찼어요' });
-    if (e.message === 'women_full') return res.status(409).json({ error: 'women_full', message: '여성 자리가 찼어요' });
+    if (OM_SEAT_MSG[e.message]) return { status: 409, body: e.message === 'full' ? { error: 'full', cap: m.cap } : { error: e.message, message: OM_SEAT_MSG[e.message] } };
     throw e;
   }
-  const isNewJoin = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid).joined_at > now() - 3000;
-  try { db.prepare('DELETE FROM om_seat_wait WHERE match_id=? AND user_id=?').run(mid, req.uid); } catch (e) {}   // 대기하다 들어왔으면 대기에서 뺀다
-
+  return null;
+}
+/* 들어온 뒤 — 대기에서 빼고, 호스트에게 알리고, 최소 인원을 막 채웠으면 성사 알림 */
+function omJoinAfter(m, uid) {
+  const mid = m.id;
+  const isNewJoin = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, uid).joined_at > now() - 3000;
+  try { db.prepare('DELETE FROM om_seat_wait WHERE match_id=? AND user_id=?').run(mid, uid); } catch (e) {}   // 대기하다 들어왔으면 대기에서 뺀다
   const after = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=?').get(mid).n;
-  if (isNewJoin && m.host_id && m.host_id !== req.uid)
-    sendPush(m.host_id, { icon: '🙋', title: '오픈매치 참가 신청', body: `${getUser(req.uid).name} 님 · ${after}/${m.cap}명` });
+  if (isNewJoin && m.host_id && m.host_id !== uid)
+    sendPush(m.host_id, { icon: '🙋', title: '오픈매치 참가 신청', body: `${getUser(uid).name} 님 · ${after}/${m.cap}명` });
   // 최소 인원을 막 채웠으면 전원에게 성사 알림 (내 신청으로 정확히 채워진 경우)
   if (isNewJoin && after === (m.min_cnt || 0)) {
     db.prepare('SELECT user_id FROM open_match_joins WHERE match_id=?').all(mid)
@@ -4604,6 +4704,20 @@ app.post('/open-matches/:id/join', auth, (req, res) => {
         body: `${m.dt} · ${m.loc} · ${after}명`, link: `match:${mid}` }));
     try { venueConfirm(null, mid); } catch (e) { console.error('venueConfirm', e); }  // 코트 확정 + 사장님 정산 예약
   }
+}
+app.post('/open-matches/:id/join', auth, (req, res) => {
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  const bad = omJoinCheck(m, req.uid);
+  if (bad) return res.status(bad.status).json(bad.body);
+  /* 카드 결제가 열린 뒤에는 참가비가 있는 매치를 결제 없이 넣지 않는다 — 결제(POST /open-matches/:id/pay)를 거쳐야 한다 (10/31).
+     이미 들어와 있으면(다시 누름) 그대로 둔다. 호스트 본인 자리는 참가비가 없다 */
+  if (omPayLive() && m.host_id !== req.uid && omPriceFor(m, omMinCount(m)) > 0
+      && !db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid))
+    return res.status(402).json({ error: 'pay_required', message: '카드로 결제하고 신청해 주세요' });
+  const no = omJoinInsert(m, req.uid);
+  if (no) return res.status(no.status).json(no.body);
+  omJoinAfter(m, req.uid);
   res.json(omView(db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid), req.uid));
 });
 // ══════════════════════════════════════════════════════════════
@@ -5518,7 +5632,10 @@ app.delete('/open-matches/:id/wait', auth, (req, res) => {
 });
 
 function omView(m, uid) {
-  return omHostHide(m, omViewAll(m, uid), uid);
+  const v = omHostHide(m, omViewAll(m, uid), uid);
+  /* 내가 카드로 낸 돈 — 취소 화면이 <결제한 카드로 돌려드려요>와 낸 금액을 쓴다 (10/31) */
+  if (uid) { try { const c = omCardOf(m.id, uid); if (c) v.my_pay = c; } catch (e) {} }
+  return v;
 }
 function omViewAll(m, uid) {
   /* sport_started(구력)를 함께 보낸다 — 앱은 이 값으로 등급을 계산한다.
@@ -5714,54 +5831,76 @@ app.get('/open-matches/:id', (req, res) => {
 });
 
 // 참가 취소
-app.delete('/open-matches/:id/join', auth, (req, res) => {
+/* ── 단계 환불 정책 (매치 시각은 KST 벽시계) ─────────────────
+   2일 전 100% · 1일 전 80% · 당일~90분 전 20% · 90분 이내 불가
+   + 신청 후 30분 이내는 하루 1회 무료 취소 (90분 이내 제외)
+   10/31 — 취소 화면(미리보기)과 실제 취소가 같은 값을 내도록 한 곳으로 모았다 */
+try { db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
+  id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`); } catch (e) {}
+function omCancelCalc(m, uid, joinedAt) {
+  const price = m.price || 0;
+  let pct = 100, free = 0, grace = false, used = 0;
+  const startMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
+  if (price > 0 && !isNaN(startMs)) {
+    const minLeft = (startMs - Date.now()) / 60000;
+    if (minLeft <= 90) return { error: 'too_late', message: '매치 시작 90분 이내에는 취소할 수 없어요' };
+    grace = !!joinedAt && (Date.now() - +joinedAt) <= 30 * 60e3;
+    const kstDay = ms => Math.floor((ms + 9 * 3600e3) / 86400e3);
+    const dDiff = kstDay(startMs) - kstDay(Date.now());
+    used = db.prepare('SELECT COUNT(*) n FROM cancel_logs WHERE user_id=? AND free=1 AND created_at>?')
+      .get(uid, Date.now() - 86400e3).n;
+    if (grace && used < 1) { pct = 100; free = 1; }
+    else if (dDiff >= 2) pct = 100;
+    else if (dDiff === 1) pct = 80;
+    else pct = 20;
+  }
+  const paid = omPaidBy(m.id, uid);                       // 실제로 낸 돈이 없으면 환불도 없다
+  /* 돌려주는 돈은 <참가비 × 비율>, 단 실제로 낸 돈보다 많을 수 없다 */
+  const refund = Math.min(Math.round(price * pct / 100), paid);
+  return { price, pct, free, paid, refund, fee: Math.max(0, paid - refund), grace, used_free: used > 0 };
+}
+/* 취소 화면 — 결제한 금액 · 취소 수수료 · 돌려받는 돈 · 어디로(카드) */
+app.get('/open-matches/:id/cancel-preview', auth, (req, res) => {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  const jr = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(m.id, req.uid);
+  if (!jr) return res.status(404).json({ error: 'not_joined' });
+  const c = omCancelCalc(m, req.uid, jr.joined_at);
+  if (c.error) return res.status(400).json(c);
+  const card = omCardOf(m.id, req.uid);
+  res.json({ ...c, method: card ? 'card' : (c.refund > 0 ? 'cash' : null) });
+});
+app.delete('/open-matches/:id/join', auth, async (req, res) => {
   const mid = +req.params.id;
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
   if (!m) return res.status(404).json({ error: 'not_found' });
   if (m.host_id === req.uid) return res.status(400).json({ error: 'host_cannot_leave' });
   const jr = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid);
   if (!jr) return res.status(404).json({ error: 'not_joined' });
+  const c = omCancelCalc(m, req.uid, jr.joined_at);
+  if (c.error) return res.status(400).json({ error: c.error, message: c.message });
   try { db.prepare('DELETE FROM om_lates WHERE match_id=? AND user_id=?').run(mid, req.uid); } catch (e) {}
-
-  /* ── 단계 환불 정책 (매치 시각은 KST 벽시계) ─────────────────
-     2일 전 100% · 1일 전 80% · 당일~90분 전 20% · 90분 이내 불가
-     + 신청 후 30분 이내는 하루 1회 무료 취소 (90분 이내 제외)     */
-  try { db.exec(`CREATE TABLE IF NOT EXISTS cancel_logs (
-    id INTEGER PRIMARY KEY, user_id INTEGER, match_id INTEGER, free INTEGER, refund INTEGER, created_at INTEGER)`); } catch (e) {}
-
-  const price = m.price || 0;
-  let pct = 100, freeGrace = 0;
-  const startMs = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00');
-  if (price > 0 && !isNaN(startMs)) {
-    const minLeft = (startMs - Date.now()) / 60000;
-    if (minLeft <= 90) return res.status(400).json({ error: 'too_late', message: '매치 시작 90분 이내에는 취소할 수 없어요' });
-    const grace = jr.joined_at && (Date.now() - jr.joined_at) <= 30 * 60e3;
-    const kstDay = ms => Math.floor((ms + 9 * 3600e3) / 86400e3);
-    const dDiff = kstDay(startMs) - kstDay(Date.now());
-    const usedFree = db.prepare('SELECT COUNT(*) n FROM cancel_logs WHERE user_id=? AND free=1 AND created_at>?')
-      .get(req.uid, Date.now() - 86400e3).n;
-    if (grace && usedFree < 1) { pct = 100; freeGrace = 1; }
-    else if (dDiff >= 2) pct = 100;
-    else if (dDiff === 1) pct = 80;
-    else pct = 20;
+  const { pct, free: freeGrace, paid, refund } = c;
+  /* 10/31 — 카드로 낸 돈은 그 카드로(토스 부분취소). 예전 캐시 결제분만 캐시로 */
+  const card = omCardOf(mid, req.uid);
+  tx(() => {
+    db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
+    if (refund > 0) omGiveBack(mid, req.uid, refund, 'match_refund');
+    db.prepare('INSERT INTO cancel_logs (user_id,match_id,free,refund,created_at) VALUES (?,?,?,?,?)')
+      .run(req.uid, mid, freeGrace, refund, Date.now());
+  });
+  /* 카드 취소는 지금 바로 보내 본다 — 실패해도 참가 취소는 끝났고, 일꾼이 다시 보낸다 */
+  let refund_state = null;
+  if (card && refund > 0) {
+    try { await omRefundRun(); } catch (e) {}
+    const r = db.prepare(`SELECT status FROM om_refunds WHERE match_id=? AND user_id=? ORDER BY id DESC LIMIT 1`).get(mid, req.uid);
+    refund_state = r ? r.status : 'pending';
   }
-  const paid = omPaidBy(mid, req.uid);                    // 실제로 낸 돈이 없으면 환불도 없다
-  const refund = Math.min(Math.round(price * pct / 100), paid);
-  db.prepare('DELETE FROM open_match_joins WHERE match_id=? AND user_id=?').run(mid, req.uid);
-  if (refund > 0) {                                       // 환불은 캐시로 — 출처를 남겨야 나중에 카드 취소로 돌려줄 수 있다
-    const u = getUser(req.uid);
-    const bal = (u.cash || 0) + refund;
-    db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, req.uid);
-    db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-      .run(req.uid, refund, 'match_refund', bal, now());
-    omRefundLedger(mid, req.uid, refund);                 // 일부 환불이면 그만큼만 (10/29 구조 점검)
-  }
-  db.prepare('INSERT INTO cancel_logs (user_id,match_id,free,refund,created_at) VALUES (?,?,?,?,?)')
-    .run(req.uid, mid, freeGrace, refund, Date.now());
   const me = getUser(req.uid);
   sendPush(m.host_id, { icon: '📣', title: '참가 취소', body: `${me.name} 님이 참가를 취소했어요 · ${m.dt || ''}` });
   try { omWaitNotify(mid); } catch (e) { console.error('om wait', e.message); }   // 자리가 났다 — 대기자에게
-  res.json({ ok: true, refund, pct, cash: me.cash });
+  res.json({ ok: true, refund, pct, cash: me.cash, method: card ? 'card' : (refund > 0 ? 'cash' : null), refund_state,
+    fee: card && refund < paid ? paid - refund : 0 });
 });
 app.patch('/open-matches/:id', auth, (req, res) => {
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(+req.params.id);
@@ -6661,6 +6800,7 @@ app.get('/pay/checkout', (req, res) => {
 </script></body></html>`);
 });
 app.get('/pay/done', async (req, res) => {  // @external 결제 뒤 브라우저가 돌아옴
+  if (req.query && req.query.kind === 'om') return omPayDone(req, res);   // 오픈매치 참가비 (10/31)
   const { paymentKey, orderId, amount, fail } = req.query || {};
   let msg = '<b>결제 처리 완료</b><p>앱으로 돌아가면 잔액이 갱신돼요.</p>';
   if (fail) msg = '<b>결제가 취소되거나 실패했어요</b><p>앱으로 돌아가 다시 시도해 주세요.</p>';
@@ -11180,7 +11320,11 @@ app.post('/admin/payouts/:id/paid', admin, (req, res) => {
   const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
   if (!p || p.status !== 'requested') return res.status(400).json({ error: 'bad_state' });
   db.prepare("UPDATE om_payouts SET status='paid', paid_at=? WHERE id=?").run(now(), p.id);
-  sendPush(p.user_id, { icon: '✅', title: '정산 이체가 완료됐어요', body: `운영 정산 ${(p.amount || 0).toLocaleString()}원이 입금됐어요` });
+  /* 호스트 정산(10/31)이면 매치로 · 그 밖(운영 매니저)은 예전 문장 */
+  const pm = p.match_id ? db.prepare('SELECT mode, loc FROM open_matches WHERE id=?').get(p.match_id) : null;
+  sendPush(p.user_id, pm && pm.mode === 'host'
+    ? { icon: '✅', title: '호스트 정산이 입금됐어요', link: `match:${p.match_id}`, body: `${pm.loc || ''} · ${(p.amount || 0).toLocaleString()}원을 보냈어요` }
+    : { icon: '✅', title: '정산 이체가 완료됐어요', body: `운영 정산 ${(p.amount || 0).toLocaleString()}원이 입금됐어요` });
   res.json({ ok: true });
 });
 app.post('/open-matches/:id/manager-apply', auth, limitWrite, (req, res) => {
@@ -11214,7 +11358,8 @@ app.post('/open-matches/:id/settle', auth, (req, res) => {
   if (m.settled) return res.status(400).json({ error: 'already_settled' });
   if (m.mode === 'host') {
     const r = omHostSettle(m.id);
-    return r.error ? res.status(400).json(r) : res.json({ ok: true, total: r.total });
+    /* 합계 · 보낼 돈(세금 뗀) · 입금 예정일만 — 맞수 몫은 없다 (10/31 계좌 정산) */
+    return r.error ? res.status(400).json(r) : res.json({ ok: true, total: r.total, net: r.net, due_at: r.due_at });
   }
   if (!m.manager_id) return res.status(400).json({ error: 'no_manager' });
 
@@ -16720,13 +16865,7 @@ function killMatch(m, why) {
     joins.forEach(j => {
       const paid = omPaidBy(m.id, j.user_id);               // 실제로 낸 돈만 돌려준다
       if (paid > 0) {
-        const u = getUser(j.user_id);
-        if (u) {
-          const bal = (u.cash || 0) + paid;
-          db.prepare('UPDATE users SET cash=? WHERE id=?').run(bal, u.id);
-          db.prepare('INSERT INTO cash_ledger (user_id,delta,reason,balance_after,created_at) VALUES (?,?,?,?,?)')
-            .run(u.id, paid, 'match_auto_cancel_refund', bal, now());
-        }
+        omGiveBack(m.id, j.user_id, paid, 'match_auto_cancel_refund');   // 카드로 낸 돈은 카드로 · 나머지는 캐시 (10/31)
         db.prepare("UPDATE om_payments SET status='refunded' WHERE match_id=? AND user_id=? AND status='paid'")
           .run(m.id, j.user_id);
       }
@@ -17724,6 +17863,363 @@ app.get('/pay/return-to/:orderId', auth, (req, res) => {
   if (!o) return res.status(404).json({ error: 'not_found' });
   res.json({ return_to: o.return_to || '', status: o.status, cash: o.cash });
 });
+
+/* ═══════════════════════════════════════════════════════════════
+   오픈매치 참가비 — 카드 바로 결제 (10/31)
+   맞수가 판매자: 게스트는 신청할 때 카드로 내고, 취소하면 그 카드로 돌려받는다. 캐시가 없다.
+   호스트에게는 경기 뒤 맞수가 계좌로 보낸다(지급대행 없이 · 운영자가 이체하고 완료로 표시).
+
+   흐름  앱 [12,800원 결제하고 신청]
+         → POST /open-matches/:id/pay        주문(orders · kind=om) — 신청 조건 · 자리 먼저 본다
+         → GET  /pay/om-checkout?orderId=     인앱 브라우저 — 토스 결제창(결제위젯 · 결제창형)을 바로 띄운다
+         → 토스 → GET /pay/done?kind=om       서버가 승인 → 자리 넣기 · om_payments 기록
+                                              (그사이 자리가 찼으면 결제를 바로 전액 취소)
+         → matsu://pay?order=…               앱으로 돌아와 <신청했어요> 화면
+   스위치  OM_PAY_LIVE=1 + TOSS_CLIENT_KEY · TOSS_SECRET_KEY(결제위젯 연동 키 gck/gsk). 없으면 꺼짐.
+   ═══════════════════════════════════════════════════════════════ */
+function omPayLive() {
+  return process.env.OM_PAY_LIVE === '1' && !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY);
+}
+['kind TEXT', 'match_id INTEGER', 'pay_err TEXT'].forEach(c => { try { db.exec(`ALTER TABLE orders ADD COLUMN ${c}`); } catch (e) {} });
+try { db.exec('ALTER TABLE om_payments ADD COLUMN receipt_url TEXT'); } catch (e) {}   // 토스 카드 영수증 주소 — 결제 내역 <영수증 보기>
+const TOSS_API = 'https://api.tosspayments.com';
+const tossAuth = () => 'Basic ' + Buffer.from(String(process.env.TOSS_SECRET_KEY || '') + ':').toString('base64');
+const OM_ORDER_TTL = 30 * 60e3;            // 결제창을 30분 넘게 붙잡고 있으면 다시 신청하게 한다(자리 · 가격이 바뀔 수 있다)
+function omOrderName(m) {
+  return `맞수 오픈매치 참가비 · ${String((m && m.loc) || '').slice(0, 40)}`.trim().slice(0, 100);
+}
+/* 한국 시간 벽시계 "2026-10-31T19:00" → "10월 31일 (토) 19:00" */
+function omKoWhen(s) {
+  const ms = Date.parse(String(s || '').slice(0, 16) + ':00+09:00'); if (isNaN(ms)) return '';
+  const d = new Date(ms + 9 * 3600e3), p = n => String(n).padStart(2, '0');
+  return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${'일월화수목금토'[d.getUTCDay()]}) ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+const escH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+app.post('/open-matches/:id/pay', auth, limitWrite, (req, res) => {
+  if (!omPayLive()) return res.status(402).json({ error: 'payments_not_ready', message: '카드 결제는 준비 중이에요' });
+  const mid = +req.params.id;
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid);
+  const bad = omJoinCheck(m, req.uid);
+  if (bad) return res.status(bad.status).json(bad.body);
+  if (m.host_id === req.uid) return res.status(400).json({ error: 'host_self', message: '내가 연 매치예요' });
+  if (db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, req.uid))
+    return res.status(409).json({ error: 'already_joined', message: '이미 신청한 매치예요' });
+  const seat = omSeatError(m, req.uid);
+  if (seat) return res.status(409).json({ error: seat, message: OM_SEAT_MSG[seat] });
+  const amount = omPriceFor(m, omMinCount(m));
+  if (!(amount > 0)) return res.status(400).json({ error: 'free_match', message: '참가비가 없는 매치예요' });
+  /* 토스 orderId — 6~64자 · 영문 숫자 - _ = 만 */
+  const orderId = `om_${mid}_${req.uid}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  db.prepare(`INSERT INTO orders (order_id,user_id,amount,cash,status,created_at,kind,match_id) VALUES (?,?,?,0,'ready',?, 'om', ?)`)
+    .run(orderId, req.uid, amount, Date.now(), mid);
+  const src = req.body && req.body.src === 'app' ? 'app' : 'web';
+  res.json({ ok: true, orderId, amount, orderName: omOrderName(m), path: `/pay/om-checkout?orderId=${encodeURIComponent(orderId)}&src=${src}` });
+});
+
+/* 앱으로 돌아가는 주소 — 안드로이드 크롬(맞춤 탭)은 matsu:// 스크립트 이동을 막을 때가 있어 intent:// 로 (로그인 복귀와 같다) */
+function omAppReturn(req, q) {
+  const qs = new URLSearchParams(q).toString();
+  return /Android/i.test(String(req.headers['user-agent'] || ''))
+    ? `intent://pay?${qs}#Intent;scheme=matsu;package=app.matsu;end` : `matsu://pay?${qs}`;
+}
+/* 결제창 · 결과 화면의 틀 — 맞수 색(주황 #f1631a · 잉크 #191f28) */
+function omPayPage(res, title, inner, script) {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(title)}</title>
+<style>
+  body{margin:0;background:#f7f6f3;color:#191f28;font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;letter-spacing:-.02em}
+  .w{max-width:480px;margin:0 auto;padding:28px 20px 40px;min-height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:16px}
+  .brand{font-size:15px;font-weight:800;color:#c2410c}
+  h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.04em;line-height:1.35}
+  .sub{font-size:15px;color:#4e5968;line-height:1.6;margin:0}
+  .card{background:#fff;border-radius:20px;box-shadow:inset 0 0 0 1.5px #ecebe7;padding:16px 18px}
+  .row{display:flex;align-items:center;font-size:15px;padding:6px 0}.row span{flex:1;color:#4e5968}.row b{font-weight:800}
+  .amt{font-size:22px;font-weight:800}
+  .ok{width:64px;height:64px;border-radius:50%;background:#f1631a;color:#fff;display:flex;align-items:center;justify-content:center}
+  .btn{display:flex;align-items:center;justify-content:center;height:56px;border-radius:28px;border:0;background:#f1631a;color:#fff;
+       font:inherit;font-size:17px;font-weight:800;text-decoration:none;cursor:pointer}
+  .btn.ghost{background:none;color:#4e5968;box-shadow:inset 0 0 0 1.5px #dedcd6;font-size:16px;height:52px}
+  .btn[hidden]{display:none}
+  .sp{flex:1}
+  .note{font-size:12.5px;color:#6b7684;line-height:1.6;margin:0}
+  .spin{width:28px;height:28px;border-radius:50%;border:3px solid #fde3d3;border-top-color:#f1631a;animation:r 1s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  #method,#agreement{background:#fff;border-radius:16px;overflow:hidden}
+</style></head><body><div class="w">${inner}</div>${script ? `<script>${script}</script>` : ''}</body></html>`);
+}
+function omSellerLine() {
+  const op = { name: process.env.OP_NAME || '', biz: process.env.OP_BIZ || '' };
+  return `판매자 맞수${op.name ? ` · 대표 ${escH(op.name)}` : ''}${op.biz ? ` · ${escH(op.biz)}` : ''} · 결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.`;
+}
+
+app.get('/pay/om-checkout', (req, res) => {  // @external 앱의 인앱 브라우저가 연다
+  const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND kind='om'").get(String(req.query.orderId || ''));
+  const src = req.query.src === 'app' ? 'app' : 'web';
+  const back = ord ? (src === 'app' ? omAppReturn(req, { order: ord.order_id, ok: 0 }) : '/') : '/';
+  const backBtn = `<a class="btn ghost" href="${escH(back)}">맞수로 돌아가기</a>`;
+  if (!ord) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>주문을 찾지 못했어요</h1><p class="sub">앱에서 다시 신청해 주세요.</p><span class="sp"></span>${backBtn}`);
+  if (ord.status !== 'ready') return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>이미 처리된 결제예요</h1><p class="sub">앱에서 신청 결과를 확인해 주세요.</p><span class="sp"></span>${backBtn}`);
+  if (Date.now() - (+ord.created_at || 0) > OM_ORDER_TTL) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>결제 시간이 지났어요</h1><p class="sub">자리와 참가비가 바뀌었을 수 있어요. 앱에서 다시 신청해 주세요.</p><span class="sp"></span>${backBtn}`);
+  if (!omPayLive()) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>카드 결제는 준비 중이에요</h1><span class="sp"></span>${backBtn}`);
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(ord.match_id) || {};
+  const base = `${req.protocol}://${req.get('host')}`;
+  const t = omKoWhen(m.start_at);
+  const P = {
+    key: process.env.TOSS_CLIENT_KEY || '', amount: ord.amount, orderId: ord.order_id, orderName: omOrderName(m),
+    ok: `${base}/pay/done?kind=om&src=${src}`, fail: `${base}/pay/done?kind=om&fail=1&src=${src}&oid=${encodeURIComponent(ord.order_id)}`,
+  };
+  const inner = `<div class="brand">맞수</div>
+    <h1>참가비를 결제해요</h1>
+    <div class="card"><div class="row"><span>${escH([m.loc || '오픈매치', m.court_no || ''].filter(Boolean).join(' '))}</span></div>
+      <div class="row"><span>${escH(t)}</span></div>
+      <div class="row" style="border-top:1px solid #f0efeb;margin-top:6px;padding-top:12px"><span>참가비</span><b class="amt">${Number(ord.amount).toLocaleString()}원</b></div></div>
+    <div id="st" style="display:flex;align-items:center;gap:12px"><span class="spin"></span><span class="sub">토스페이먼츠 결제창을 여는 중이에요</span></div>
+    <div id="method"></div><div id="agreement"></div>
+    <span class="sp"></span>
+    <button class="btn" id="go" hidden>${Number(ord.amount).toLocaleString()}원 결제하기</button>
+    ${backBtn}
+    <p class="note">${omSellerLine()}</p>`;
+  /* 결제창형(widgets.renderPaymentWindow)을 먼저 — 우리 화면에 고르는 칸 없이 토스 결제창이 바로 뜬다.
+     SDK 가 이 방식을 모르거나 실패하면 예전 주문서형(결제수단 고르기 + 결제하기 버튼)으로 */
+  const script = `
+var P=${JSON.stringify(P)};
+var st=document.getElementById('st'), go=document.getElementById('go');
+function say(t){ st.innerHTML='<span class="sub">'+t+'</span>'; }
+function boot(){
+  try{
+    var toss=TossPayments(P.key), widgets=toss.widgets({customerKey:TossPayments.ANONYMOUS});
+    var req=function(){ return widgets.requestPayment({orderId:P.orderId, orderName:P.orderName, successUrl:P.ok, failUrl:P.fail}); };
+    widgets.setAmount({currency:'KRW', value:P.amount}).then(function(){
+      if(typeof widgets.renderPaymentWindow!=='function') return order();
+      var open=function(){
+        say('토스페이먼츠 결제창에서 결제해 주세요');
+        return widgets.renderPaymentWindow({orderName:P.orderName}).then(function(w){
+          w.on('paymentRequest', function(){ req().catch(function(e){ say('결제하지 못했어요 · '+((e&&e.message)||'')); }); });
+          w.on('cancel', function(){ try{ w.destroy&&w.destroy(); }catch(x){} say('결제를 그만뒀어요 · 신청은 되지 않았어요'); go.hidden=false; go.onclick=function(){ go.hidden=true; open(); }; });
+        });
+      };
+      return open().catch(function(){ order(); });
+    }).catch(function(e){ say('결제창을 열지 못했어요 · '+((e&&e.message)||'')); });
+    function order(){
+      Promise.all([widgets.renderPaymentMethods({selector:'#method', variantKey:'DEFAULT'}), widgets.renderAgreement({selector:'#agreement', variantKey:'AGREEMENT'})])
+        .then(function(){ say('결제 수단을 고르고 결제해 주세요'); go.hidden=false; go.onclick=function(){ go.disabled=true; req().catch(function(){ go.disabled=false; }); }; })
+        .catch(function(e){ say('결제창을 열지 못했어요 · '+((e&&e.message)||'')); });
+    }
+  }catch(e){ say('결제창을 열지 못했어요 · '+((e&&e.message)||'')); }
+}
+var s=document.createElement('script'); s.src='https://js.tosspayments.com/v2/standard'; s.onload=boot;
+s.onerror=function(){ say('결제창을 불러오지 못했어요 · 인터넷 연결을 확인해 주세요'); };
+document.head.appendChild(s);`;
+  omPayPage(res, '맞수 결제', inner, script);
+});
+
+/* 승인 — 토스가 돌려준 paymentKey 로 서버가 최종 승인하고, 자리를 넣는다.
+   안드로이드는 같은 복귀 주소가 두 번 들어올 수 있어 주문마다 한 번만 */
+const OM_PAY_LOCK = new Set();
+function omPayState(ord) {
+  const p = db.prepare("SELECT 1 FROM om_payments WHERE order_id=?").get(ord.order_id);
+  const rf = db.prepare('SELECT status FROM om_refunds WHERE order_id=? AND reason=? ORDER BY id DESC LIMIT 1').get(ord.order_id, 'join_failed');
+  return { kind: 'om', order_id: ord.order_id, status: ord.status, ok: !!p, match_id: ord.match_id, amount: ord.amount,
+    error: ord.pay_err || null, refund: rf ? rf.status : null };
+}
+/* 결제는 됐는데 자리를 못 넣었다(그사이 자리가 참 · 마감 등) — 바로 전액 취소한다 */
+function omPaidJoin(ord, paymentKey, receiptUrl) {
+  const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(ord.match_id);
+  const uid = ord.user_id;
+  let bad = omJoinCheck(m, uid);
+  if (!bad && db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(m.id, uid))
+    bad = { status: 409, body: { error: 'already_joined', message: '이미 신청한 매치예요' } };
+  if (!bad) bad = omJoinInsert(m, uid);
+  if (bad) {
+    const err = String(bad.body.error || 'join_failed').slice(0, 40);
+    tx(() => {
+      db.prepare("UPDATE orders SET status='paid', payment_key=?, pay_err=? WHERE order_id=?").run(paymentKey, err, ord.order_id);
+      db.prepare(`INSERT INTO om_refunds (user_id,match_id,order_id,payment_key,amount,reason,status,created_at) VALUES (?,?,?,?,?,'join_failed','pending',?)`)
+        .run(uid, ord.match_id, ord.order_id, paymentKey, ord.amount, Date.now());
+    });
+    return { ok: false, kind: 'om', error: err, message: (bad.body.message || '신청하지 못했어요'), refund: 'pending', match_id: ord.match_id, amount: ord.amount };
+  }
+  tx(() => {
+    db.prepare("INSERT INTO om_payments (match_id,user_id,order_id,payment_key,amount,status,created_at,receipt_url) VALUES (?,?,?,?,?,'paid',?,?)")
+      .run(m.id, uid, ord.order_id, paymentKey, ord.amount, Date.now(), /^https:\/\//.test(String(receiptUrl || '')) ? String(receiptUrl).slice(0, 300) : null);
+    db.prepare("UPDATE orders SET status='paid', payment_key=? WHERE order_id=?").run(paymentKey, ord.order_id);
+  });
+  try { omJoinAfter(m, uid); } catch (e) { console.error('[om pay] after', e.message); }
+  return { ok: true, kind: 'om', match_id: m.id, amount: ord.amount };
+}
+async function omPayConfirm(paymentKey, orderId, amount) {
+  const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND kind='om'").get(String(orderId || ''));
+  if (!ord) return { status: 404, body: { error: 'order_not_found' } };
+  if (ord.status !== 'ready') return { status: 200, body: { ...omPayState(ord), already: true } };
+  if (ord.amount !== +amount) return { status: 400, body: { error: 'amount_mismatch' } };   // 위변조 방지
+  if (OM_PAY_LOCK.has(ord.order_id)) return { status: 409, body: { error: 'in_progress' } };
+  if (!process.env.TOSS_SECRET_KEY) return { status: 500, body: { error: 'toss_secret_not_set' } };
+  OM_PAY_LOCK.add(ord.order_id);
+  try {
+    const r = await fetch(`${TOSS_API}/v1/payments/confirm`, {
+      method: 'POST', headers: { Authorization: tossAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentKey, orderId: ord.order_id, amount: ord.amount }) });
+    const pay = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      db.prepare('UPDATE orders SET pay_err=? WHERE order_id=?').run(String(pay.code || 'confirm_failed').slice(0, 60), ord.order_id);
+      return { status: 402, body: { error: 'toss_confirm_failed', code: pay.code || null, message: pay.message || null } };
+    }
+    const out = omPaidJoin(ord, paymentKey, pay.receipt && pay.receipt.url);
+    if (!out.ok) { try { await omRefundRun(); } catch (e) {} out.refund = omPayState(db.prepare('SELECT * FROM orders WHERE order_id=?').get(ord.order_id)).refund; }
+    return { status: 200, body: out };
+  } catch (e) { return { status: 500, body: { error: String(e.message || e).slice(0, 120) } }; }
+  finally { OM_PAY_LOCK.delete(ord.order_id); }
+}
+/* 토스가 돌려보내는 곳 — 승인하고, 결과를 보여 주고, 앱으로 돌려보낸다 */
+async function omPayDone(req, res) {
+  const q = req.query || {};
+  const oid = String(q.orderId || q.oid || '');
+  const src = q.src === 'app' ? 'app' : 'web';
+  let ok = false, h = '', sub = '';
+  if (q.fail) {
+    const canceled = /CANCEL/i.test(String(q.code || ''));
+    h = canceled ? '결제를 그만뒀어요' : '결제하지 못했어요';
+    sub = canceled ? '신청은 되지 않았어요. 다시 신청하려면 앱에서 버튼을 눌러 주세요.' : `${escH(String(q.message || '').slice(0, 80))} · 신청은 되지 않았어요.`;
+  } else if (q.paymentKey && oid) {
+    const r = await omPayConfirm(String(q.paymentKey), oid, +q.amount);
+    const b = r.body || {};
+    if (b.ok) { ok = true; h = '신청했어요'; sub = `${Number(b.amount || 0).toLocaleString()}원을 카드로 결제했어요.`; }
+    else if (b.kind === 'om') { h = '자리가 먼저 찼어요'; sub = `${escH(b.message || '신청하지 못했어요')} · 결제는 바로 취소했어요. 카드사에 따라 영업일 며칠 걸릴 수 있어요.`; }
+    else if (b.error === 'in_progress') { h = '결제를 확인하고 있어요'; sub = '잠시 뒤 앱에서 신청 결과를 확인해 주세요.'; }
+    else { h = '결제를 확인하지 못했어요'; sub = '카드에서 돈이 빠져나갔다면 자동으로 취소돼요 · 문제가 계속되면 내정보 › 문의하기로 알려 주세요.'; }
+  } else { h = '결제 정보를 찾지 못했어요'; sub = '앱에서 신청 결과를 확인해 주세요.'; }
+  const back = src === 'app' ? omAppReturn(req, { order: oid, ok: ok ? 1 : 0 }) : '/';
+  const icon = ok ? `<span class="ok"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>` : '';
+  omPayPage(res, ok ? '신청했어요' : '맞수 결제', `<div class="brand">맞수</div>${icon}<h1>${h}</h1><p class="sub">${sub}</p>
+    <span class="sp"></span><a class="btn" href="${escH(back)}">맞수로 돌아가기</a>
+    ${src === 'app' ? '<p class="note" style="text-align:center">앱이 열리지 않으면 이 창을 닫아 주세요</p>' : '<p class="note" style="text-align:center">이 창을 닫고 맞수로 돌아가도 돼요</p>'}`,
+    src === 'app' ? `setTimeout(function(){ location.href=${JSON.stringify(back)}; }, ${ok ? 900 : 1600});` : '');
+}
+/* 앱이 돌아와서 묻는다 — 내 주문만 */
+app.get('/pay/om-status/:orderId', auth, (req, res) => {
+  const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND user_id=? AND kind='om'").get(String(req.params.orderId), req.uid);
+  if (!ord) return res.status(404).json({ error: 'not_found' });
+  res.json(omPayState(ord));
+});
+
+/* ── 카드 돌려주기 일꾼 ──
+   om_refunds 의 pending 을 토스 결제 취소(부분취소 cancelAmount)로 보낸다.
+   같은 줄을 두 번 보내지 않게 sending 으로 먼저 잡고, 멱등키(Idempotency-Key)를 줄 번호로 줘서 다시 보내도 두 번 취소되지 않는다.
+   8번 실패하면 failed — 관리자 화면 <카드 환불 실패>에서 다시 보낼 수 있다. */
+const OMR_WHY = { match_refund: '참가 취소', om_host_cancel_refund: '호스트 매치 취소', om_host_noshow_refund: '호스트 미참석',
+  om_cancel_refund: '인원 미달 자동 취소', om_price_refund: '확정 인원 참가비 차액', match_auto_cancel_refund: '매치 자동 취소',
+  join_failed: '자리 마감 · 결제 즉시 취소' };
+const OMR_MAX_TRIES = 8;
+async function omRefundRun() {
+  if (!process.env.TOSS_SECRET_KEY) return 0;
+  const rows = db.prepare("SELECT * FROM om_refunds WHERE status='pending' ORDER BY id LIMIT 30").all();
+  let done = 0;
+  for (const r of rows) {
+    if (!db.prepare("UPDATE om_refunds SET status='sending' WHERE id=? AND status='pending'").run(r.id).changes) continue;
+    let ok = false, err = '';
+    try {
+      const resp = await fetch(`${TOSS_API}/v1/payments/${encodeURIComponent(r.payment_key)}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: tossAuth(), 'Content-Type': 'application/json', 'Idempotency-Key': `matsu-omr-${r.id}` },
+        body: JSON.stringify({ cancelReason: OMR_WHY[r.reason] || '오픈매치 참가비 환불', cancelAmount: r.amount }) });
+      const j = await resp.json().catch(() => ({}));
+      ok = resp.ok;
+      if (!ok) err = `${j.code || resp.status} ${j.message || ''}`.trim().slice(0, 200);
+    } catch (e) { err = String(e.message || e).slice(0, 200); }
+    if (ok) {
+      db.prepare("UPDATE om_refunds SET status='done', done_at=?, err=NULL WHERE id=?").run(Date.now(), r.id);
+      if (r.reason === 'join_failed' && r.order_id) db.prepare("UPDATE orders SET status='refunded', refunded=amount WHERE order_id=?").run(r.order_id);
+      done++;
+    } else {
+      const t = (r.tries || 0) + 1;
+      db.prepare('UPDATE om_refunds SET status=?, tries=?, err=? WHERE id=?').run(t >= OMR_MAX_TRIES ? 'failed' : 'pending', t, err, r.id);
+      if (t >= OMR_MAX_TRIES) console.error('[om refund] 실패', r.id, err);
+    }
+  }
+  return done;
+}
+function omRefundKick() { setTimeout(() => { omRefundRun().catch(e => console.error('[om refund]', e.message)); }, 30); }
+/* ── 카드 돌려주기 일꾼 끝 ── */
+try { db.exec("UPDATE om_refunds SET status='pending' WHERE status='sending'"); } catch (e) {}   // 보내다 서버가 꺼졌으면 다시(멱등키라 안전)
+setInterval(() => { omRefundRun().catch(e => console.error('[om refund]', e.message)); }, 5 * 60e3);
+
+/* 결제 내역 — 오픈매치 카드 결제 · 환불. 캐시는 없다(예전 캐시가 남아 있으면 cash 로만 알려 준다) */
+const omKstMonth = ms => { const d = new Date((ms || Date.now()) + 9 * 3600e3); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - 9 * 3600e3; };
+app.get('/me/payments', auth, (req, res) => {
+  const pays = db.prepare(`SELECT p.id, p.match_id, p.amount, COALESCE(p.refunded,0) refunded, p.status, p.created_at, p.receipt_url,
+      m.loc, m.start_at, m.end_at, m.status mstatus,
+      (SELECT 1 FROM open_match_joins j WHERE j.match_id=p.match_id AND j.user_id=p.user_id) joined
+    FROM om_payments p LEFT JOIN open_matches m ON m.id=p.match_id
+    WHERE p.user_id=? AND p.payment_key IS NOT NULL ORDER BY p.id DESC LIMIT 60`).all(req.uid);
+  const refunds = db.prepare(`SELECT r.id, r.match_id, r.amount, r.reason, r.status, r.created_at, r.done_at, m.loc, m.start_at,
+      (SELECT amount FROM om_payments WHERE id=r.pay_id) paid
+    FROM om_refunds r LEFT JOIN open_matches m ON m.id=r.match_id WHERE r.user_id=? ORDER BY r.id DESC LIMIT 60`).all(req.uid);
+  const nowK = omKst(Date.now()), mon = omKstMonth();
+  const out = pays.map(p => ({ id: p.id, match_id: p.match_id, amount: p.amount, refunded: p.refunded, at: +p.created_at,
+    loc: p.loc || '', start_at: p.start_at || '', receipt: p.receipt_url || null,
+    state: !p.joined ? (p.refunded ? 'cancelled' : 'left') : p.mstatus === 'cancelled' ? 'match_cancelled'
+      : String(p.end_at || p.start_at || '') < nowK ? 'done' : 'joined' }));
+  const rf = refunds.map(r => ({ id: r.id, match_id: r.match_id, amount: r.amount, paid: r.paid || null, reason: r.reason,
+    status: r.status === 'sending' ? 'pending' : r.status, at: +r.created_at, done_at: r.done_at ? +r.done_at : null, loc: r.loc || '', start_at: r.start_at || '' }));
+  res.json({ pays: out, refunds: rf,
+    month: { paid: out.filter(p => p.at >= mon).reduce((a, p) => a + p.amount, 0),
+             refund: rf.filter(r => r.at >= mon && r.status !== 'failed').reduce((a, r) => a + r.amount, 0) },
+    cash: (getUser(req.uid) || {}).cash || 0 });
+});
+/* 호스트 — 내 정산(계좌로 받는 돈) */
+app.get('/me/host-payouts', auth, (req, res) => {
+  const rows = db.prepare(`SELECT p.*, m.loc, m.start_at FROM om_payouts p LEFT JOIN open_matches m ON m.id=p.match_id
+    WHERE p.user_id=? AND p.status IN ('requested','paid') ORDER BY p.id DESC LIMIT 40`).all(req.uid);
+  res.json(rows.map(p => ({ id: p.id, match_id: p.match_id, loc: p.loc || '', start_at: p.start_at || '',
+    gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0, tax: p.tax || 0, amount: p.amount,
+    status: p.status, due_at: p.due_at ? +p.due_at : null, paid_at: p.paid_at ? +p.paid_at : null, bank: omBankMask(p.bank) })));
+});
+
+/* ── 관리자 · 호스트 정산 지급 ──
+   이체는 은행 앱에서 하고 여기서 <이체 완료>로 표시한다(POST /admin/payouts/:id/paid — 호스트에게 입금 알림).
+   맨 위 숫자: 이번 주 보낼 돈 · 지난주 보낸 돈 · 이번 달(결제일 기준) 결제 − 환불 − 호스트 지급 = 맞수 몫.
+   카드 수수료 · 세금은 계약 요율을 모르는 채로 지어내지 않는다 — <빼기 전>으로만 적는다. */
+const omKstWeek = ms => { const d = new Date((ms || Date.now()) + 9 * 3600e3); const w = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - w) - 9 * 3600e3; };
+app.get('/admin/host-payouts', admin, (req, res) => {
+  const st = req.query.st === 'paid' ? 'paid' : 'requested';
+  const rows = db.prepare(`SELECT p.*, u.name, u.bank_account, m.loc, m.start_at, m.mode, m.proof, m.proof_ok, m.courts, m.hours,
+      (SELECT COUNT(*) FROM open_match_joins j WHERE j.match_id=p.match_id) people
+    FROM om_payouts p JOIN users u ON u.id=p.user_id LEFT JOIN open_matches m ON m.id=p.match_id
+    WHERE p.status=? ORDER BY ${st === 'paid' ? 'p.paid_at DESC' : 'COALESCE(p.due_at,0) ASC, p.id ASC'} LIMIT 200`).all(st)
+    .map(p => ({ id: p.id, match_id: p.match_id, user_id: p.user_id, name: p.name, loc: p.loc || '', start_at: p.start_at || '',
+      people: p.people || 0, courts: p.courts || null, mode: p.mode || '', proof: p.proof || null, proof_ok: !!p.proof_ok,
+      gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0, tax: p.tax || 0, amount: p.amount,
+      bank: p.bank || p.bank_account || '', status: p.status, due_at: p.due_at ? +p.due_at : null,
+      created_at: +p.created_at || null, paid_at: p.paid_at ? +p.paid_at : null }));
+  const wk = omKstWeek(), mon = omKstMonth();
+  const due = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE status='requested' AND COALESCE(due_at,0) < ?`).get(wk + 7 * 864e5);
+  const wait = db.prepare(`SELECT COUNT(*) n FROM om_payouts p JOIN users u ON u.id=p.user_id
+    WHERE p.status='requested' AND COALESCE(NULLIF(p.bank,''), NULLIF(u.bank_account,'')) IS NULL`).get().n;
+  const last = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE status='paid' AND CAST(paid_at AS INTEGER) >= ? AND CAST(paid_at AS INTEGER) < ?`).get(wk - 7 * 864e5, wk);
+  const paidM = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM om_payments WHERE payment_key IS NOT NULL AND CAST(created_at AS INTEGER) >= ?`).get(mon).s;
+  const refM = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM om_refunds WHERE status<>'failed' AND created_at >= ?`).get(mon).s;
+  const hostM = db.prepare(`SELECT COALESCE(SUM(COALESCE(gross,amount)),0) s FROM om_payouts WHERE status IN ('requested','paid') AND gross IS NOT NULL AND CAST(created_at AS INTEGER) >= ?`).get(mon).s;
+  const failed = db.prepare(`SELECT COUNT(*) n FROM om_refunds WHERE status='failed'`).get().n;
+  res.json({ rows, summary: { due_n: due.n, due_sum: due.s, wait_n: wait, last_n: last.n, last_sum: last.s,
+    month: { paid: paidM, refund: refM, host: hostM, matsu: paidM - refM - hostM }, refund_failed: failed } });
+});
+/* 카드 환불 실패 — 다시 보내기 */
+app.get('/admin/om-refunds', admin, (req, res) => {
+  const st = ['failed', 'pending', 'done'].includes(req.query.st) ? req.query.st : 'failed';
+  res.json(db.prepare(`SELECT r.*, u.name, m.loc FROM om_refunds r LEFT JOIN users u ON u.id=r.user_id LEFT JOIN open_matches m ON m.id=r.match_id
+    WHERE r.status=? ORDER BY r.id DESC LIMIT 100`).all(st).map(r => ({ ...r, created_at: +r.created_at, done_at: r.done_at ? +r.done_at : null })));
+});
+app.post('/admin/om-refunds/:id/retry', admin, async (req, res) => {
+  const r = db.prepare('SELECT * FROM om_refunds WHERE id=?').get(+req.params.id);
+  if (!r || !['failed', 'pending'].includes(r.status)) return res.status(400).json({ error: 'bad_state' });
+  db.prepare("UPDATE om_refunds SET status='pending', tries=0 WHERE id=?").run(r.id);
+  try { await omRefundRun(); } catch (e) {}
+  res.json(db.prepare('SELECT id, status, err FROM om_refunds WHERE id=?').get(r.id));
+});
+/* ═══ 오픈매치 카드 결제 끝 ═══ */
 
 /* 정적 서빙·에러 핸들러·listen 은 <모든 라우트가 등록된 뒤>여야 한다.
    예전에는 이 줄들이 파일 중간에 있어서, 아래쪽에 정의된 32개 라우트가
