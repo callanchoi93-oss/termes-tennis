@@ -30,6 +30,11 @@ button{font:inherit;color:inherit;cursor:pointer}
 .nav{display:flex;gap:28px;flex:1}
 .nav a{color:#e8ecfa;font-size:16px;font-weight:600;padding:6px 0;border-bottom:2.5px solid transparent}
 .nav a.on{color:#fff;font-weight:800;border-bottom-color:var(--or)}
+/* 로그인한 회원 — 위 줄 오른쪽 내 이름(누르면 내정보) */
+.hme{display:flex;align-items:center;gap:10px;color:#fff;font-size:16px;font-weight:700;white-space:nowrap}
+.hme span{width:32px;height:32px;border-radius:50%;background:#dfe5fb;color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800}
+.dlg .pcweb{display:none;margin-top:14px;font-size:15px;font-weight:800;color:var(--ort);text-decoration:underline;text-underline-offset:4px}
+.dlg .pcweb.on{display:inline-block}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border:0;border-radius:24px;font-size:16px;font-weight:800;white-space:nowrap}
 .btn.or{background:var(--or);color:#fff}
 .btn.navy{background:var(--navy);color:#fff}
@@ -221,6 +226,7 @@ body.map .land{display:none}
 .dlg .mb{display:none}
 /* 휴대폰 */
 @media (max-width:860px){
+  .hme{font-size:0;gap:0}
   .nav,.hd .wrap>.btn.navy{display:none}
   .hd .wrap{height:56px;justify-content:space-between}
   .hero{padding:24px 0 34px}.hero .wrap{min-height:0}
@@ -457,7 +463,7 @@ body.map .land{display:none}
 
 <div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="dlgT"><div class="dlg">
   <div class="tabs"><span class="t1">맞수</span><span class="t2" id="dlgA"></span><span class="t3" id="dlgB"></span></div>
-  <div class="cd"><div><h3 id="dlgT"></h3><dl id="dlgL"></dl><p class="nt" id="dlgN"></p>
+  <div class="cd"><div><h3 id="dlgT"></h3><dl id="dlgL"></dl><p class="nt" id="dlgN"></p><a class="pcweb" id="dlgPc" href="/app">이 컴퓨터에서 보기 ›</a>
       <div class="mb"><a class="btn or" href="/get" data-store id="dlgStore">App Store에서 받기</a><a class="btn white" href="/app" id="dlgWeb" style="box-shadow:inset 0 0 0 1.5px var(--line);color:var(--ink)">웹에서 보기</a></div></div>
     <div class="qrb"><div class="qr" id="dlgQ"></div><p>폰 카메라로 찍어 주세요</p></div></div>
   <button class="x" id="dlgX" aria-label="닫기">✕</button>
@@ -476,6 +482,12 @@ const CFG=Object.assign({ios:'https://apps.apple.com/kr/app/id6793127517',androi
 const mobile=()=>matchMedia('(max-width:860px)').matches;
 /* 로그인한 회원이면 위 줄 <클럽>은 내 클럽 화면(/app — PC 에서는 PC 모양)으로 */
 try{ if(localStorage.getItem('matsu_jwt')) $$('[data-pcapp]').forEach(a=>{ a.href='/app#'+a.dataset.pcapp; }); }catch(e){}
+/* 로그인한 회원 — 위 줄에 내 이름(웹 앱 위 줄과 같은 모양). 서버가 모르는 토큰이면 아무것도 안 바꾼다 */
+let ME=null;
+(async()=>{ let t=null; try{ t=localStorage.getItem('matsu_jwt'); }catch(e){} if(!t) return;
+  try{ const r=await fetch('/me',{headers:{Authorization:'Bearer '+t}}); if(!r.ok) return; const u=await r.json(); const nm=String((u&&u.name)||'').trim(); if(!nm) return;
+    ME=u; const a=document.createElement('a'); a.className='hme'; a.href='/app#me'; a.innerHTML=`<span>${esc(nm.slice(0,1))}</span>${esc(nm)}`;
+    const w=$('.hd .wrap'); if(w) w.appendChild(a); }catch(e){} })();
 
 /* QR — 가운데 맞수 표시(오류 정정 H) */
 function qrSvg(path){
@@ -561,6 +573,8 @@ function openDlg(kind,arg){
   $('#dlgN').textContent=D.n;
   $('#dlgQ').innerHTML=qrSvg('/get'+(D.m?`?m=${D.m}`:''));
   $('#dlgStore').href=storeHref(D.m); $('#dlgWeb').href='/app'+(D.m?`?match=${D.m}`:'');
+  /* 로그인한 회원이면 PC 에서도 바로 — 매치는 웹 앱 매치 화면, 클럽은 내 클럽 화면 */
+  const pw=D.m?`/app?match=${D.m}`:kind==='club'?'/app#club':''; $('#dlgPc').href=pw||'/app'; $('#dlgPc').classList.toggle('on',!!(ME&&pw));
   $('#ov').classList.add('on'); $('#dlgX').focus();
 }
 function closeDlg(){ $('#ov').classList.remove('on'); if(LAST&&LAST.focus) LAST.focus(); }

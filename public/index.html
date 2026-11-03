@@ -11817,7 +11817,7 @@ body:has(> .cxg){ background:#231777;display:block;height:auto;min-height:100%;m
   html.pc body{display:block;background:#b8c6f2;overflow:hidden}
   html.pc #pcTop{display:block;position:relative;z-index:200;background:#1b2a6b;color:#fff}
   #pcTop .w{max-width:1280px;margin:0 auto;padding:0 40px;height:68px;display:flex;align-items:center;gap:46px}
-  #pcTop .lg{display:flex;align-items:center;gap:9px;color:#fff;font-weight:900;font-size:24px;letter-spacing:-.01em;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}
+  #pcTop .lg{display:flex;align-items:center;gap:9px;color:#fff;font-weight:900;font-size:24px;letter-spacing:-.01em;cursor:pointer;background:none;border:0;padding:0;font-family:inherit;text-decoration:none}
   #pcTop .lg svg{width:38px;height:33px}
   #pcTop nav{display:flex;gap:32px;flex:1}
   #pcTop nav a{color:#e8ecfa;font-size:16px;font-weight:600;padding:8px 0;border-bottom:2.5px solid transparent;cursor:pointer;text-decoration:none}
@@ -11832,6 +11832,7 @@ body:has(> .cxg){ background:#231777;display:block;height:auto;min-height:100%;m
   /* 클럽이 아닌 화면 — 지금 앱 화면을 가운데에 */
   html.pc .app{margin:22px auto;height:calc(100vh - 112px);height:calc(100dvh - 112px);min-height:0;border-radius:30px}
   html.pc .fullov.on:not(#auth){animation:none!important}
+  html.pc:not(.pcclub) #scroll{scrollbar-width:thin;scrollbar-color:#cfd4dc transparent}
   /* 클럽 화면 — 앱 머리 · 아래 탭 대신 PC 틀 */
   html.pcclub .app{max-width:none;margin:0;height:calc(100vh - 68px);height:calc(100dvh - 68px);border-radius:0;box-shadow:none;background:#b8c6f2}
   html.pcclub .appbar,html.pcclub .tabbar,html.pcclub .demo-tag{display:none!important}
@@ -56968,16 +56969,17 @@ const PC_BELL = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" str
 const PC_CHEV = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#191f28" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const PC_EYE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const PC_SRCH = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.4-3.4"/></svg>';
-function pcTier() { try { openTierGuide(); } catch (e) {} }
 function pcTopDraw() {
   const el = document.getElementById('pcTop'); if (!el || !PC_ON) return;
   const v = state.view, u = state.serverUser || null;
-  const on = { match: v === 'match' || v === 'venue', club: v === 'club', league: v === 'league' };
-  const nav = [['match', '오픈매치', "tabGo('match')"], ['club', '클럽', "tabGo('club')"], ['league', '맞수 리그', "go('league')"], ['tier', '티어', 'pcTier()']];
+  const on = { club: v === 'club' };
+  /* 홈 · 오픈매치 · 맞수 리그 · 티어는 PC 시안대로 만든 홈페이지(/)에 있다 — 거기로 간다. 클럽만 여기(PC 클럽 화면) */
+  const nav = [['match', '오픈매치', '/#matches'], ['club', '클럽', ''], ['league', '맞수 리그', '/#league'], ['tier', '티어', '/#tier']];
   const nm = u && u.name ? String(u.name) : '';
   const h = `<div class="w">
-    <button class="lg" onclick="tabGo('home')" aria-label="맞수 홈"><svg viewBox="0 0 834 714" aria-hidden="true"><use href="#matsuMark"/></svg>MATSU</button>
-    <nav aria-label="메뉴">${nav.map(([k, l, a]) => `<a href="#" class="${on[k] ? 'on' : ''}" onclick="${a};return false">${l}</a>`).join('')}</nav>
+    <a class="lg" href="/" aria-label="맞수 홈"><svg viewBox="0 0 834 714" aria-hidden="true"><use href="#matsuMark"/></svg>MATSU</a>
+    <nav aria-label="메뉴">${nav.map(([k, l, h]) => h ? `<a href="${h}">${l}</a>`
+      : `<a href="#" class="${on[k] ? 'on' : ''}" onclick="tabGo('club');return false">${l}</a>`).join('')}</nav>
     <div class="rt"><a href="/#get" target="_blank" rel="noopener">앱 받기</a>
       ${nm ? `<button class="bl" onclick="toggleNotif(event)" aria-label="알림">${PC_BELL}<i></i></button>
       <button class="me" onclick="tabGo('me')"><span>${esc(nm.slice(0, 1))}</span>${esc(nm)}</button>` : ''}</div></div>`;
@@ -56986,10 +56988,24 @@ function pcTopDraw() {
 function pcSync() {
   const want = pcWant();
   if (want !== PC_ON) { PC_ON = want; document.documentElement.classList.toggle('pc', want); }
+  pcLand();
   const club = pcClubOn();
   document.documentElement.classList.toggle('pcclub', club);
   pcTopDraw();
   return club;
+}
+/* PC 첫 화면은 내 클럽 — PC 위 줄에는 <홈>이 없어서, 앱 홈(휴대폰 화면)으로 시작하면 왜 휴대폰 모양이냐는 말을 듣는다.
+   처음 열 때 한 번만: 로그인했고 · 내 클럽이 있고 · 링크(?invite= · ?match= …)로 온 게 아니고 · 떠 있는 창이 없을 때.
+   그다음에 아래 탭 <홈>을 직접 누르면 그대로 앱 홈을 보여준다. PC 홈은 홈페이지(/) — 위 MATSU 를 누르면 그리로 */
+let PC_LAND = Date.now();
+function pcLand() {
+  if (!PC_LAND) return;
+  if (Date.now() - PC_LAND > 15000 || (state.view && state.view !== 'home')) { PC_LAND = 0; return; }
+  if (!PC_ON || typeof SERVER_OK === 'undefined' || !SERVER_OK || !authToken() || !(state.myClubs || []).length || location.search) return;
+  const ov = document.getElementById('ov'), g = document.getElementById('guestOv');
+  if ((ov && ov.classList.contains('on')) || (g && g.classList.contains('on')) || nfxTopOv()) return;
+  PC_LAND = 0;
+  setTimeout(() => { if (state.view === 'home') tabGo('club'); }, 0);
 }
 /* 앱이 클럽 화면을 그린 뒤 — PC 면 PC 틀로 다시 그린다(데이터를 부르는 일은 앱 화면이 이미 했다) */
 function pcAfterClub() { if (pcSync()) pcRenderClub(); }
