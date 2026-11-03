@@ -459,7 +459,7 @@ app.get('/config', (_, res) => {
        새 요청이 늘지 않는다. */
     maint: maintOn() ? { msg: MAINT.msg || '잠시 점검 중이에요', until: MAINT.until || 0 } : null,
     /* 스토어 주소 — 앱이 자기 플랫폼에 맞는 쪽을 골라 쓴다 */
-    android_app_url: process.env.ANDROID_APP_URL || '',
+    android_app_url: AND_URL(),   // 맞수 Google Play (11/3 공개) — ANDROID_APP_URL 로 바꿀 수 있음
     /* 지도는 볼 때 받아온다 — 앱에 넣지 않아 크기가 안 늘어난다 */
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     ios_app_url: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517',   // 맞수 App Store
@@ -11004,7 +11004,7 @@ app.get('/r/:t', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.type('html').send(cbShareHTML(cbShareView(data, ev, club.name), {
     token, base, img: sh.img_at ? `${base}/r/${token}.png?v=${sh.img_at}` : '', mark: cbMarkSymbol(),
-    ios: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517', android: process.env.ANDROID_APP_URL || '' }));
+    ios: process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517', android: process.env.ANDROID_APP_URL || 'https://play.google.com/store/apps/details?id=app.matsu' }));
 });
 /* ── 대진 결과 공유 끝 ── */
 
@@ -20465,6 +20465,8 @@ app.get('/kmap.html', (_req, res) => {
    · 홈페이지는 사람 정보를 싣지 않는다 — 매치 목록도 시각 · 코트 · 종목 · 남은 자리 · 조건 · 참가비만 */
 const SITE_FILE = path.join(PUBLIC_DIR, 'site', 'index.html');
 const IOS_URL = () => process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517';
+/* 맞수 Google Play — 11/3 공개. 함수 선언이라 파일 위쪽(/config · 대진 공유)에서도 쓴다 */
+function AND_URL() { return process.env.ANDROID_APP_URL || 'https://play.google.com/store/apps/details?id=app.matsu'; }
 let SITE_CACHE = { t: 0, html: '' };
 /* 홈페이지 바닥 사업자 정보 — 한 줄로 이어 쓰면 읽기 어려워 <이름표 · 값> 짝으로 나눈다(11/3).
    OP_BIZ 는 <상호 데메테르 · 사업자등록번호 … · 주소 …> 처럼 · 로 이어 적는다 — 아는 이름표면 짝으로, 아니면 값만 */
@@ -20488,7 +20490,7 @@ function siteHTML() {
   let t = 0; try { t = fs.statSync(SITE_FILE).mtimeMs; } catch (e) { return null; }
   if (t !== SITE_CACHE.t) SITE_CACHE = { t, raw: fs.readFileSync(SITE_FILE, 'utf8') };
   const o = opInfo();
-  const cfg = { ios: IOS_URL(), android: process.env.ANDROID_APP_URL || '', email: o.email || '' };
+  const cfg = { ios: IOS_URL(), android: AND_URL(), email: o.email || '' };
   return SITE_CACHE.raw.replace('<!--SITE_FOOT-->', siteFoot())
     .replace('/*SITE_CFG*/null', JSON.stringify(cfg).replace(/</g, '\\u003c'));
 }
@@ -20512,13 +20514,13 @@ app.get('/app', (req, res) => {                            // @external 웹 앱 
   sendWebApp(req, res);
 });
 app.get('/app/', appSlashRedirect);
-/* QR · 휴대폰 버튼 — 아이폰은 App Store, 안드로이드는 스토어 주소가 있으면 거기 · 없으면 웹 앱, 컴퓨터는 홈페이지 */
+/* QR · 휴대폰 버튼 — 아이폰은 App Store, 안드로이드는 Google Play, 컴퓨터는 홈페이지 */
 app.get('/get', (req, res) => {  // @external
   const ua = String(req.headers['user-agent'] || '');
   const m = intOrNull(req.query.m);
   const web = '/app' + (m ? `?match=${m}` : '');
   if (/iPhone|iPad|iPod/i.test(ua)) return res.redirect(302, IOS_URL());
-  if (/Android/i.test(ua)) return res.redirect(302, process.env.ANDROID_APP_URL || web);
+  if (/Android/i.test(ua)) return res.redirect(302, AND_URL());
   res.redirect(302, m ? web : '/');
 });
 /* 홈페이지 <이번 주 오픈매치> — 오늘부터 7일 안 · 아직 자리가 있는 매치만, 사람 정보 없이 */
