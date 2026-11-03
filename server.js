@@ -18030,13 +18030,15 @@ app.get('/pay/om-checkout', (req, res) => {  // @external 앱의 인앱 브라�
   const P = {
     key: process.env.TOSS_CLIENT_KEY || '', amount: ord.amount, orderId: ord.order_id, orderName: omOrderName(m),
     ok: `${base}/pay/done?kind=om&src=${src}`, fail: `${base}/pay/done?kind=om&fail=1&src=${src}&oid=${encodeURIComponent(ord.order_id)}`,
+    /* 결제대행사 이름은 계약한 곳만(PG_NAME) — 없으면 그냥 <결제창> */
+    win: `${process.env.PG_NAME ? process.env.PG_NAME + ' ' : ''}결제창`,
   };
   const inner = `<div class="brand">맞수</div>
     <h1>참가비를 결제해요</h1>
     <div class="card"><div class="row"><span>${escH([m.loc || '오픈매치', m.court_no || ''].filter(Boolean).join(' '))}</span></div>
       <div class="row"><span>${escH(t)}</span></div>
       <div class="row" style="border-top:1px solid #f0efeb;margin-top:6px;padding-top:12px"><span>참가비</span><b class="amt">${Number(ord.amount).toLocaleString()}원</b></div></div>
-    <div id="st" style="display:flex;align-items:center;gap:12px"><span class="spin"></span><span class="sub">토스페이먼츠 결제창을 여는 중이에요</span></div>
+    <div id="st" style="display:flex;align-items:center;gap:12px"><span class="spin"></span><span class="sub">${escH(P.win)}을 여는 중이에요</span></div>
     <div id="method"></div><div id="agreement"></div>
     <span class="sp"></span>
     <button class="btn" id="go" hidden>${Number(ord.amount).toLocaleString()}원 결제하기</button>
@@ -18055,7 +18057,7 @@ function boot(){
     widgets.setAmount({currency:'KRW', value:P.amount}).then(function(){
       if(typeof widgets.renderPaymentWindow!=='function') return order();
       var open=function(){
-        say('토스페이먼츠 결제창에서 결제해 주세요');
+        say(P.win+'에서 결제해 주세요');
         return widgets.renderPaymentWindow({orderName:P.orderName}).then(function(w){
           w.on('paymentRequest', function(){ req().catch(function(e){ say('결제하지 못했어요 · '+((e&&e.message)||'')); }); });
           w.on('cancel', function(){ try{ w.destroy&&w.destroy(); }catch(x){} say('결제를 그만뒀어요 · 신청은 되지 않았어요'); go.hidden=false; go.onclick=function(){ go.hidden=true; open(); }; });
@@ -20424,7 +20426,10 @@ function indexCache() {
   console.log(`[web] index.html ${Math.round(raw.length / 1024)}KB → br ${Math.round(_indexC.br.length / 1024)}KB · gzip ${Math.round(_indexC.gz.length / 1024)}KB`);
   return _indexC;
 }
-app.get(['/', '/index.html'], (req, res, next) => {
+/* 웹 앱(index.html)을 압축해 보낸다 — /index.html · /app 이 쓴다.
+   11/3: 예전엔 이 길이 첫 화면(/)과 /index.html 을 함께 맡아 첫 화면을 먼저 가로챘다 — 그래서 홈페이지(/)를 만들어 두고도
+   / 에서는 늘 웹 앱이 떴다(PC 위 줄 MATSU · 오픈매치를 눌러도 홈페이지가 안 나온 이유). / 는 아래 홈페이지 길이 맡는다 */
+function sendIndexFast(req, res, next) {
   let c;
   try { c = indexCache(); } catch (e) { return next(); }        // 파일이 없으면 예전처럼 static 에 맡긴다
   res.set({
@@ -20438,7 +20443,8 @@ app.get(['/', '/index.html'], (req, res, next) => {
   if (/\bbr\b/.test(ae)) { res.set('Content-Encoding', 'br'); return res.send(c.br); }
   if (/\bgzip\b/.test(ae)) { res.set('Content-Encoding', 'gzip'); return res.send(c.gz); }
   res.send(c.raw);
-});
+}
+app.get('/index.html', sendIndexFast);
 
 /* ── iOS 앱 지도 창 ──
    iOS 앱(capacitor://localhost)은 카카오에 주소를 등록할 수 없어 지도 SDK 가 막힌다.
@@ -20460,12 +20466,23 @@ app.get('/kmap.html', (_req, res) => {
 const SITE_FILE = path.join(PUBLIC_DIR, 'site', 'index.html');
 const IOS_URL = () => process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/id6793127517';
 let SITE_CACHE = { t: 0, html: '' };
+/* 홈페이지 바닥 사업자 정보 — 한 줄로 이어 쓰면 읽기 어려워 <이름표 · 값> 짝으로 나눈다(11/3).
+   OP_BIZ 는 <상호 데메테르 · 사업자등록번호 … · 주소 …> 처럼 · 로 이어 적는다 — 아는 이름표면 짝으로, 아니면 값만 */
+const SITE_BIZ_KEYS = /^(상호|사업자등록번호|사업자 등록번호|대표자?|주소|사업장 주소|사업장|고객센터|전화|통신판매업 ?신고(?:번호)?|호스팅)\s*[:：]?\s*(.+)$/;
+function siteBizPairs(o) {
+  const L = String(o.biz || '').split(/\s*·\s*/).filter(Boolean).map(p => { const m = p.match(SITE_BIZ_KEYS); return m ? [m[1], m[2]] : ['', p]; });
+  if (o.name && !L.some(x => /^대표/.test(x[0]))) L.splice(Math.min(1, L.length), 0, ['대표', o.name]);   // 상호 바로 다음
+  if (o.mailorder) L.push(['통신판매업 신고', o.mailorder]);
+  if (o.tel) L.push(['고객센터', o.tel]);
+  if (o.email) L.push(['이메일', o.email]);
+  return L;
+}
 function siteFoot() {
-  const o = opInfo();
-  const rows = [o.biz, o.name ? `대표 ${o.name}` : '', o.mailorder ? `통신판매업 신고 ${o.mailorder}` : '',
-    o.tel ? `고객센터 ${o.tel}` : '', o.email ? `이메일 ${o.email}` : ''].filter(Boolean);
-  return `<p class="biz">${rows.map(escH).join('<i> · </i>')}</p>
-    <p class="biz">판매자 맞수 · 결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</p>`;
+  const o = opInfo(), L = siteBizPairs(o);
+  const co = (L.find(x => x[0] === '상호') || [])[1] || '맞수';
+  return `<dl class="bizl">${L.map(([k, v]) => `<div>${k ? `<dt>${escH(k)}</dt>` : ''}<dd>${escH(v)}</dd></div>`).join('')}</dl>
+    <p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p>
+    <p class="copy">© ${new Date().getFullYear()} ${escH(co)}</p>`;
 }
 function siteHTML() {
   let t = 0; try { t = fs.statSync(SITE_FILE).mtimeMs; } catch (e) { return null; }
@@ -20475,20 +20492,26 @@ function siteHTML() {
   return SITE_CACHE.raw.replace('<!--SITE_FOOT-->', siteFoot())
     .replace('/*SITE_CFG*/null', JSON.stringify(cfg).replace(/</g, '\\u003c'));
 }
-function sendWebApp(res) { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(PUBLIC_DIR, 'index.html')); }
+function sendWebApp(req, res) { return sendIndexFast(req, res, () => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(PUBLIC_DIR, 'index.html')); }); }
 app.get('/', (req, res) => {  // @external 홈페이지 · 예전 링크(/?…)는 웹 앱으로
   const q = req.originalUrl.indexOf('?');
   if (q >= 0 && req.originalUrl.length > q + 1) return res.redirect(302, '/app' + req.originalUrl.slice(q));
   const h = siteHTML();
-  if (!h) return sendWebApp(res);                          // 홈페이지 파일이 없으면 예전처럼 웹 앱
+  if (!h) return sendWebApp(req, res);                     // 홈페이지 파일이 없으면 예전처럼 웹 앱
   res.set('Cache-Control', 'no-cache');
   res.type('html').send(h);
 });
-app.get('/app', (req, res) => sendWebApp(res));            // @external 웹 앱 (기존 회원 웹 로그인)
-app.get('/app/', (req, res) => {                           // 끝에 / 가 붙으면 그림 · 글꼴 주소가 어긋난다 — /app 으로
+/* 끝에 / 가 붙으면(/app/) 그림 · 글꼴 주소가 어긋난다 — /app 으로.
+   Express 는 /app 길에 /app/ 도 함께 보내므로(끝 / 를 가리지 않음) 따로 둔 길로는 닿지 않았다 — 한 길 안에서 가른다 */
+function appSlashRedirect(req, res) {
   const q = req.originalUrl.indexOf('?');
   res.redirect(301, '/app' + (q >= 0 ? req.originalUrl.slice(q) : ''));
+}
+app.get('/app', (req, res) => {                            // @external 웹 앱 (기존 회원 웹 로그인)
+  if (String(req.originalUrl || '').split('?')[0].endsWith('/')) return appSlashRedirect(req, res);
+  sendWebApp(req, res);
 });
+app.get('/app/', appSlashRedirect);
 /* QR · 휴대폰 버튼 — 아이폰은 App Store, 안드로이드는 스토어 주소가 있으면 거기 · 없으면 웹 앱, 컴퓨터는 홈페이지 */
 app.get('/get', (req, res) => {  // @external
   const ua = String(req.headers['user-agent'] || '');
