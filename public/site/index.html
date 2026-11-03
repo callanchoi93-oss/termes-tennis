@@ -174,14 +174,20 @@ img.deco{height:auto}
 .mq span{margin:0 18px}.mq i{font-style:normal;color:var(--or)}
 @keyframes mq{to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){.mq div{animation:none}}
-.ft{background:var(--deep);color:#c9cfe8;padding:26px 0 40px;font-size:13px}
-.ft .top{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.ft{background:var(--deep);color:#c9cfe8;padding:30px 0 44px;font-size:13px}
+.ft .top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-bottom:22px;border-bottom:1px solid rgba(255,255,255,.1)}
 .ft .logo{font-size:18px}.ft .logo svg{width:28px;height:24px}
 .ft nav{display:flex;gap:18px;flex-wrap:wrap;margin-left:auto}
 .ft nav a{color:#e8ecfa}
 .ft nav a.u{text-decoration:underline;text-underline-offset:3px}
-.ft .biz{margin:14px 0 0;line-height:1.7;color:#aab2d6}
-.ft .biz i{font-style:normal;opacity:.6}
+/* 사업자 정보 — 이름표(옅게) · 값(밝게) 짝 */
+.ft .bizl{display:flex;flex-wrap:wrap;gap:10px 32px;margin:22px 0 0;padding:0}
+.ft .bizl div{display:flex;align-items:baseline;gap:10px;min-width:0}
+.ft .bizl dt{flex:none;color:#8a93c0;font-size:12.5px}
+.ft .bizl dd{margin:0;color:#eef1fb;font-size:13.5px;font-weight:600;letter-spacing:0;overflow-wrap:anywhere}
+.ft .sell{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 0;color:#aab2d6;line-height:1.6}
+.ft .sell b{flex:none;font-size:12px;font-weight:800;color:#fff;background:rgba(255,255,255,.1);border-radius:999px;padding:4px 11px}
+.ft .copy{margin:18px 0 0;font-size:12px;color:#737dab}
 .sticky{display:none}
 /* 지도 보기 */
 .mapv{display:none;background:var(--navy);min-height:calc(100vh - 64px)}
@@ -252,6 +258,9 @@ body.map .land{display:none}
   .tr .txt{padding-bottom:20px}
   .qrcard,.ap .deco{display:none}
   .ft nav{margin-left:0}
+  .ft .bizl{flex-direction:column;gap:9px}
+  .ft .bizl dt{width:96px}
+  .ft .sell{align-items:flex-start;flex-direction:column;gap:8px}
   .sticky{display:block;position:fixed;left:0;right:0;bottom:0;z-index:40;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,transparent,rgba(15,26,79,.9) 40%)}
   .sticky .btn{width:100%;height:52px}
   body{padding-bottom:76px}
@@ -645,9 +654,15 @@ window.addEventListener('resize',()=>{ if(document.body.classList.contains('map'
 
 /* 바닥 사업자 정보 — 서버가 넣어 준다. 파일을 그대로 열었을 때만 /config 로 채운다 */
 async function foot(){
-  if(!$('#biz .biz')) try{ const c=await (await fetch('/config')).json(); const o=c.op||{};
-    const rows=[o.biz,o.name?`대표 ${o.name}`:'',o.mailorder?`통신판매업 신고 ${o.mailorder}`:'',o.tel?`고객센터 ${o.tel}`:'',o.email?`이메일 ${o.email}`:''].filter(Boolean);
-    $('#biz').innerHTML=`<p class="biz">${rows.map(esc).join('<i> · </i>')}</p><p class="biz">판매자 맞수 · 결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</p>`;
+  if(!$('#biz .bizl')) try{ const c=await (await fetch('/config')).json(); const o=c.op||{};
+    /* 서버(siteFoot)와 같은 모양 — 이름표 · 값 짝 */
+    const K=/^(상호|사업자등록번호|사업자 등록번호|대표자?|주소|사업장 주소|사업장|고객센터|전화|통신판매업 ?신고(?:번호)?|호스팅)\s*[:：]?\s*(.+)$/;
+    const L=String(o.biz||'').split(/\s*·\s*/).filter(Boolean).map(p=>{ const m=p.match(K); return m?[m[1],m[2]]:['',p]; });
+    if(o.name&&!L.some(x=>/^대표/.test(x[0]))) L.splice(Math.min(1,L.length),0,['대표',o.name]);
+    if(o.mailorder) L.push(['통신판매업 신고',o.mailorder]); if(o.tel) L.push(['고객센터',o.tel]); if(o.email) L.push(['이메일',o.email]);
+    const co=(L.find(x=>x[0]==='상호')||[])[1]||'맞수';
+    $('#biz').innerHTML=`<dl class="bizl">${L.map(([k,v])=>`<div>${k?`<dt>${esc(k)}</dt>`:''}<dd>${esc(v)}</dd></div>`).join('')}</dl>
+      <p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p><p class="copy">© ${new Date().getFullYear()} ${esc(co)}</p>`;
     if(!CFG.email&&o.email) CFG.email=o.email; if(c.ios_app_url) CFG.ios=c.ios_app_url; if(c.android_app_url) CFG.android=c.android_app_url; fixStore();
   }catch(e){}
   $('#mailLink').href=`mailto:${CFG.email||''}?subject=${encodeURIComponent('[맞수] 문의')}`;
