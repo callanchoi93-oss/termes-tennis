@@ -3509,68 +3509,119 @@ async function drawPayouts(){
     : `<div class="empty">정산할 건이 없어요</div>`}</div>`);
 }
 
-/* ── 호스트 정산 지급 (10/31) ──
-   맞수가 판매자 · 지급대행 없이 운영자가 직접 이체한다. 은행 앱에서 보내고 여기서 <이체 완료로 표시> → 호스트에게 입금 알림.
+/* ── 호스트 정산 지급 (11/9 — PG 정산지급대행) ──
+   맞수는 호스트에게 이체하지 않는다(전자금융거래법 · 카카오페이 검토 의견). 순서:
+     ① 정산 받기 등록 — 호스트가 앱에서 등록하면 <등록 확인 중>. 판매자 등록 파일을 내려받아 PG 관리자(지급대행 · 셀러)에 올리고
+        <본인인증 대기>로 표시 → 호스트가 PG 알림톡 · 메일로 본인인증 → PG에서 승인되면 <등록 완료>로 표시
+     ② 지급 대기 — 경기가 끝나 정산이 확정된 건. 등록 완료 · 영수증 있는 건만 지급 요청 파일에 담긴다.
+        파일을 PG 관리자(지급대행 · 지급 요청)에 올리고 <지급 요청함>으로 표시 → PG가 보내면 <입금 완료>(호스트에게 알림)
    보낼 돈 = 코트비 · 공(게스트 몫) + 수고비 − 세금(수고비의 3.3%). 맨 위 맞수 몫은 카드 수수료 · 세금을 빼기 전 값이다
-   (계약 요율을 지어내지 않는다). 대량이체 파일은 지금 목록 그대로 CSV(엑셀) — 은행마다 양식이 달라 열 이름은 바꿔 쓴다. */
-let HPAY=null;
-function hpBankParts(b){
-  const parts=String(b||'').trim().split(/\s+/).filter(Boolean);
-  const bank=parts[0]&&!/\d/.test(parts[0])?parts[0]:'';
-  const last=parts[parts.length-1]||'', holder=parts.length>=2&&!/\d/.test(last)&&last!==bank?last:'';
-  const acct=parts.filter(x=>/\d/.test(x)).join('').replace(/[^0-9]/g,'');   // 대량이체 파일은 숫자만
-  return {bank, acct, holder};
-}
+   (계약 요율을 지어내지 않는다). 파일 열 이름은 PG 양식에 맞춰 바꿔 쓴다(PG마다 다르다). */
+let HPAY=null, HPS=null, HPS_ST='';
+const HP_ST={submitted:['등록 확인 중','o'],kyc:['본인인증 대기','go'],approved:['등록 완료','g'],rejected:['반려',''],none:['등록 전','o']};
 function hpMD(t, wd){ const d=new Date(+t||0); return !t||isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()}${wd?` (${'일월화수목금토'[d.getDay()]})`:''}`; }
+function hpYMD(t){ const d=new Date(+t||0); return !t||isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function hpCsvSave(name, head, lines){
+  const q=v=>{ const t=String(v==null?'':v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const blob=new Blob(['﻿'+[head.map(q).join(','),...lines.map(l=>l.map(q).join(','))].join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  const d=new Date(); a.download=`${name}-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
 async function drawHostPay(){
   const sub=SUB||'due';
-  const tabs=[['due','지급 대기'],['paid','지급 완료'],['refund','카드 환불 실패']];
+  const tabs=[['due','지급 대기'],['sellers','정산 받기 등록'],['paid','입금 완료'],['refund','카드 환불 실패']];
   $('app').innerHTML=shell(subTabs(tabs)+skel(3));
   if(sub==='refund') return drawOmRefunds(tabs);
+  if(sub==='sellers') return drawPaySellers(tabs);
   let d; try{ d=await api('/admin/host-payouts'+(sub==='paid'?'?st=paid':'')); }
   catch(e){ toast(e.message||'불러오지 못했어요'); d={rows:[],summary:{month:{}}}; }
   HPAY=d;
-  const S=d.summary||{}, M=S.month||{}, rows=d.rows||[];
-  BADGE.hostpay=S.due_n||'';
+  const S=d.summary||{}, M=S.month||{}, rows=d.rows||[], pg=d.pg||'PG사';
+  BADGE.hostpay=(S.due_n||0)+(S.sellers_n||0)||'';
   const sum=`<div class="hpay-sum">
-    <div class="card"><span>이번 주 지급 예정</span><b>${fmt(S.due_sum)}원</b><em>${fmt(S.due_n)}건${S.wait_n?` · 계좌 없음 ${fmt(S.wait_n)}건`:''}</em></div>
-    <div class="card"><span>지난주 지급 완료</span><b>${fmt(S.last_sum)}원</b><em>${fmt(S.last_n)}건</em></div>
+    <div class="card"><span>이번 주 지급 예정</span><b>${fmt(S.due_sum)}원</b><em>${fmt(S.due_n)}건${S.wait_n?` · 정산 받기 등록 전 ${fmt(S.wait_n)}건`:''}</em></div>
+    <div class="card"><span>지난주 입금 완료</span><b>${fmt(S.last_sum)}원</b><em>${fmt(S.last_n)}건</em></div>
     <div class="card"><span>이번 달 맞수 몫 <small>· 카드 수수료 · 세금 빼기 전</small></span><b class="or">${fmt(M.matsu)}원</b>
       <em>결제 ${fmt(M.paid)} − 환불 ${fmt(M.refund)} − 호스트 지급 ${fmt(M.host)}</em></div></div>`;
-  const warn=S.refund_failed?`<div class="warn">카드 환불이 <b>${fmt(S.refund_failed)}건</b> 실패했어요 · 확인해 주세요<u onclick="SUB='refund';render()">보기</u></div>`:'';
-  const act=r=>{
-    if(r.status==='paid') return `<span class="hp-done">${esc(hpMD(r.paid_at))} 보냄</span>`;
-    if(!r.bank) return `<button class="b" disabled>계좌 받으면 지급</button>`;
-    if(!r.proof) return `<button class="b" disabled>영수증 받으면 지급</button>`;
-    return `<button class="b hp-go" onclick="hpPaid(${+r.id})">이체 완료로 표시</button>`;
+  const warn=(S.refund_failed?`<div class="warn">카드 환불이 <b>${fmt(S.refund_failed)}건</b> 실패했어요 · 확인해 주세요<u onclick="SUB='refund';render()">보기</u></div>`:'')
+    +(S.sellers_n?`<div class="warn">정산 받기 등록 <b>${fmt(S.sellers_n)}건</b>이 PG 등록 · 본인인증을 기다려요<u onclick="SUB='sellers';render()">보기</u></div>`:'');
+  const stage=r=>{
+    if(r.status==='paid') return `<span class="hp-done">${esc(hpMD(r.paid_at))} 입금</span>`;
+    if(r.stage==='wait_seller') return `<button class="b" disabled>등록 완료 후</button>`;
+    if(!r.proof) return `<button class="b" disabled>영수증 받으면</button>`;
+    if(r.stage==='requested') return `<span class="hp-done">${esc(hpMD(r.pg_req_at))} 요청</span> <button class="b hp-go" onclick="hpPaid(${+r.id})">입금 완료</button> <button class="b" onclick="hpFail(${+r.id})">실패</button>`;
+    return `<button class="b" onclick="hpReq([${+r.id}])">지급 요청함</button>`;
   };
   const rc=r=>r.proof?`<a class="tag ${r.proof_ok?'g':'o'}" href="${esc(r.proof)}" target="_blank" rel="noopener">${r.proof_ok?'확인':'올림'}</a>`:'<span class="tag">없음</span>';
+  const sl=r=>{ const t=HP_ST[r.seller_status]||HP_ST.none; return `${r.seller_ref?`<b>${esc(r.seller_ref)}</b>`:''}<span class="tag ${t[1]}">${t[0]}</span>${r.fail_reason?`<span>실패 · ${esc(r.fail_reason)}</span>`:''}`; };
+  const ready=rows.filter(r=>r.status==='requested'&&r.stage==='ready'&&r.proof);
   const tbl=rows.length?`<div class="card hp-tw"><table class="hp-t"><thead><tr>
-      <th>경기</th><th>호스트</th><th class="n">코트비</th><th class="n">수고비</th><th class="n">세금 3.3%</th><th class="n">보낼 돈</th><th>계좌</th><th>영수증</th><th>${sub==='paid'?'보낸 날':'지급'}</th></tr></thead><tbody>
+      <th>경기</th><th>호스트</th><th class="n">코트비</th><th class="n">수고비</th><th class="n">세금 3.3%</th><th class="n">보낼 돈</th><th>PG 판매자</th><th>영수증</th><th>${sub==='paid'?'입금':'지급'}</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td><b>${esc(String(r.start_at||'').replace('T',' ').slice(5))}</b><span>${esc(r.loc||'')} · ${fmt(r.people)}명${r.due_at&&r.status!=='paid'?` · ${esc(hpMD(r.due_at,true))} 예정`:''}</span></td>
       <td>${esc(r.name||'')}</td><td class="n">${fmt(r.expense)}</td><td class="n">${fmt(r.fee)}</td><td class="n">−${fmt(r.tax)}</td>
-      <td class="n"><b>${fmt(r.amount)}</b></td><td>${r.bank?esc(r.bank):'<span class="tag o">없음</span>'}</td><td>${rc(r)}</td><td>${act(r)}</td></tr>`).join('')}
-    </tbody></table></div>`:`<div class="card"><div class="empty">${sub==='paid'?'보낸 정산이 아직 없어요':'보낼 정산이 없어요'}</div></div>`;
-  $('app').innerHTML=shell(subTabs(tabs)+warn+sum+`<div class="hp-hd"><p>이체는 은행 앱에서 하고, 여기서 <b>이체 완료</b>로 표시해요. 표시하면 호스트에게 입금 알림이 가요.</p>
-      ${sub==='due'&&rows.length?`<button class="b on" onclick="hpCsv()">대량이체 파일 내려받기</button>`:''}</div>`+tbl+
-    `<div class="note">확정된 호스트 매치만 올라와요(경기 끝나고 12시간 뒤 자동 · 호스트가 먼저 받으면 바로). 코트비는 게스트 몫(1인 몫 × 게스트 수), 세금은 수고비에만 떼요 — 원천징수 신고 자료는 내려받은 파일의 수고비 · 세금 열을 쓰면 돼요.</div>`);
+      <td class="n"><b>${fmt(r.amount)}</b></td><td>${sl(r)}</td><td>${rc(r)}</td><td>${stage(r)}</td></tr>`).join('')}
+    </tbody></table></div>`:`<div class="card"><div class="empty">${sub==='paid'?'입금된 정산이 아직 없어요':'보낼 정산이 없어요'}</div></div>`;
+  $('app').innerHTML=shell(subTabs(tabs)+warn+sum+`<div class="hp-hd"><p>맞수는 이체하지 않아요. <b>지급 요청 파일</b>을 ${esc(pg)} 관리자(지급대행)에 올리고 <b>지급 요청함</b>으로 표시해요. ${esc(pg)}가 보내면 <b>입금 완료</b>로 표시하면 호스트에게 알림이 가요.</p>
+      ${sub==='due'&&ready.length?`<button class="b on" onclick="hpCsv()">지급 요청 파일 (${fmt(ready.length)}건)</button><button class="b" onclick="hpReq(${JSON.stringify(ready.map(r=>r.id))})">모두 지급 요청함으로</button>`:''}</div>`+tbl+
+    `<div class="note">확정된 호스트 매치만 올라와요(경기 끝나고 12시간 뒤 자동 · 호스트가 먼저 받으면 바로). 정산 받기 등록이 끝나고(본인인증까지) 영수증이 있는 건만 지급 요청 파일에 담겨요. 코트비는 게스트 몫(1인 몫 × 게스트 수), 세금은 수고비에만 떼요 — 원천징수 신고 자료로 쓰세요.</div>`);
+}
+async function hpReq(ids){
+  if(!ids||!ids.length) return;
+  if(!confirm(`${ids.length}건을 PG 관리자에 지급 요청으로 올렸나요?\n\n올린 뒤에 표시해 주세요. PG가 보내면 <입금 완료>로 바꿔요.`)) return;
+  try{ const r=await api('/admin/payouts/pg-request',{method:'POST',body:JSON.stringify({ids})}); toast(`${fmt(r.n)}건을 지급 요청함으로 표시했어요`); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
 }
 async function hpPaid(id){
   const r=((HPAY||{}).rows||[]).find(x=>x.id===id); if(!r) return;
-  if(!confirm(`${r.name} 님께 ${fmt(r.amount)}원을 보냈나요?\n${r.bank}\n\n완료로 표시하면 호스트에게 입금 알림이 가요.`)) return;
-  try{ await api(`/admin/payouts/${id}/paid`,{method:'POST',body:'{}'}); toast('이체 완료로 표시했어요'); render(); }
+  if(!confirm(`${r.name} 님 정산 ${fmt(r.amount)}원이 PG에서 입금됐나요?\n\n완료로 표시하면 호스트에게 입금 알림이 가요.`)) return;
+  try{ await api(`/admin/payouts/${id}/paid`,{method:'POST',body:'{}'}); toast('입금 완료로 표시했어요'); render(); }
   catch(e){ toast(e.message||'처리하지 못했어요'); }
 }
+async function hpFail(id){
+  const reason=prompt('지급이 안 된 이유 (호스트에게 알림으로 가요)','계좌 정보가 맞지 않아요'); if(reason==null) return;
+  try{ await api(`/admin/payouts/${id}/fail`,{method:'POST',body:JSON.stringify({reason})}); toast('실패로 표시했어요 · 다시 요청할 수 있어요'); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
+}
+/* 지급 요청 파일 — PG 관리자 지급대행 일괄 등록용. 맞수는 셀러 ID · 금액 · 지급일만 넘긴다(계좌는 PG에 등록된 판매자 것) */
 function hpCsv(){
-  const rows=((HPAY||{}).rows||[]).filter(r=>r.status==='requested');
-  const q=v=>{ const t=String(v==null?'':v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
-  const head=['은행','계좌번호','예금주','보낼 돈','받는 분 통장 표시','호스트','경기','구장','코트비(게스트 몫)','수고비','세금(3.3%)','세전 합계','입금 예정'];
-  const lines=rows.map(r=>{ const b=hpBankParts(r.bank);
-    return [b.bank,b.acct,b.holder||r.name,r.amount,'맞수정산',r.name,String(r.start_at||'').replace('T',' '),r.loc,r.expense,r.fee,r.tax,r.gross,hpMD(r.due_at)].map(q).join(','); });
-  const blob=new Blob(['﻿'+[head.join(','),...lines].join('\r\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  const d=new Date(); a.download=`matsu-host-payouts-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.csv`;
-  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  const rows=((HPAY||{}).rows||[]).filter(r=>r.status==='requested'&&r.stage==='ready'&&r.proof);
+  hpCsvSave('matsu-pg-payouts',['셀러ID','지급금액','지급일','지급 설명','참조번호','호스트','경기','구장','코트비(게스트 몫)','수고비','세금(3.3%)','세전 합계'],
+    rows.map(r=>[r.seller_ref,r.amount,hpYMD(r.due_at),'맞수 호스트 정산',`MATSU-PO-${r.id}`,r.name,String(r.start_at||'').replace('T',' '),r.loc,r.expense,r.fee,r.tax,r.gross]));
+}
+/* 정산 받기 등록 — PG 판매자(개인) 등록 · 본인인증 · 승인 */
+async function drawPaySellers(tabs){
+  let d; try{ d=await api('/admin/payout-sellers'+(HPS_ST?`?st=${HPS_ST}`:'')); }catch(e){ toast(e.message||'불러오지 못했어요'); d={rows:[],count:{}}; }
+  HPS=d; const C=d.count||{}, rows=d.rows||[], pg=d.pg||'PG사';
+  const chips=[['','전체'],['submitted','등록 확인 중'],['kyc','본인인증 대기'],['approved','등록 완료'],['rejected','반려']].map(([k,t])=>
+    `<button class="b${HPS_ST===k?' on':''}" onclick="HPS_ST='${k}';render()">${t}${k&&C[k]?` ${fmt(C[k])}`:''}</button>`).join(' ');
+  const act=r=>r.status==='submitted'?`<button class="b hp-go" onclick="hpsSet(${+r.user_id},'kyc')">PG에 올림 → 본인인증 대기</button> <button class="b" onclick="hpsSet(${+r.user_id},'rejected')">반려</button>`
+    :r.status==='kyc'?`<button class="b hp-go" onclick="hpsSet(${+r.user_id},'approved')">등록 완료</button> <button class="b" onclick="hpsSet(${+r.user_id},'rejected')">반려</button>`
+    :r.status==='approved'?`<span class="hp-done">${esc(hpMD(r.approved_at))} 완료</span>`:`<span class="hp-done">${esc(r.reason||'')}</span>`;
+  const sub=rows.filter(r=>r.status==='submitted');
+  const tbl=rows.length?`<div class="card hp-tw"><table class="hp-t"><thead><tr><th>셀러 ID</th><th>이름</th><th>휴대폰 · 이메일</th><th>계좌</th><th>상태</th><th class="n">기다리는 정산</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>{ const t=HP_ST[r.status]||HP_ST.none; return `<tr><td><b>${esc(r.ref_id)}</b><span>${esc(hpMD(r.submitted_at))} 요청</span></td>
+      <td><b>${esc(r.name||'')}</b><span>${esc(r.nick||'')}</span></td><td>${esc(r.phone||'')}<span>${esc(r.email||'')}</span></td>
+      <td>${esc(r.bank||'')} ${esc(r.account||'')}<span>예금주 ${esc(r.holder||'')}</span></td><td><span class="tag ${t[1]}">${t[0]}</span></td>
+      <td class="n">${r.waiting&&r.waiting.n?`<b>${fmt(r.waiting.s)}원</b><span>${fmt(r.waiting.n)}건</span>`:'—'}</td><td>${act(r)}</td></tr>`; }).join('')}
+    </tbody></table></div>`:`<div class="card"><div class="empty">정산 받기 등록이 없어요</div></div>`;
+  $('app').innerHTML=shell(subTabs(tabs)+`<div class="hp-hd"><p>호스트가 앱에서 등록하면 <b>등록 확인 중</b>이에요. 판매자 등록 파일을 ${esc(pg)} 관리자(지급대행 · 셀러 등록)에 올리고 <b>본인인증 대기</b>로 표시하면, 호스트에게 본인인증 안내가 가요. ${esc(pg)}에서 승인되면 <b>등록 완료</b>로 표시해요.</p>
+      ${sub.length?`<button class="b on" onclick="hpsCsv()">판매자 등록 파일 (${fmt(sub.length)}건)</button>`:''}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--s3)">${chips}</div>`+tbl+
+    `<div class="note">개인 판매자는 이름과 예금주가 같은 본인 명의 계좌만 받아요. 호스트가 정보를 바꾸면 다시 <b>등록 확인 중</b>이 되고, 아직 지급 요청하지 않은 정산은 새 정보로 보내요.</div>`);
+}
+async function hpsSet(uid, status){
+  let reason='';
+  if(status==='rejected'){ reason=prompt('반려 이유 (호스트에게 알림으로 가요)','계좌 예금주가 이름과 달라요'); if(reason==null) return; }
+  else if(!confirm(status==='kyc'?'PG 관리자에 판매자로 올렸나요?\n호스트에게 본인인증 안내 알림이 가요.':'PG에서 본인인증 · 승인이 끝났나요?\n호스트에게 등록 완료 알림이 가요.')) return;
+  try{ await api(`/admin/payout-sellers/${uid}`,{method:'POST',body:JSON.stringify({status,reason})}); toast('바꿨어요'); render(); }
+  catch(e){ toast(e.message||'처리하지 못했어요'); }
+}
+/* 판매자 등록 파일 — PG 관리자 셀러 일괄 등록용(개인) */
+function hpsCsv(){
+  const rows=((HPS||{}).rows||[]).filter(r=>r.status==='submitted');
+  hpCsvSave('matsu-pg-sellers',['셀러ID','분류','대표자명','은행','계좌번호','예금주','전화번호','이메일'],
+    rows.map(r=>[r.ref_id,'개인',r.name,r.bank,r.account,r.holder,r.phone,r.email]));
 }
 /* 카드 환불 실패 — 토스 취소가 8번 넘게 안 된 것. 사유를 보고 다시 보내거나 토스 관리자에서 직접 취소한다 */
 async function drawOmRefunds(tabs){
