@@ -3853,7 +3853,7 @@ const OMH = {
   RAIN_AFTER_H: 1,   //            시작 1시간 뒤까지 (치다가 쏟아지는 날)
   RAIN_FREE: 3,      // 30일 안에 비 취소 3번까지는 벌점 없음 — 넘으면 보통 취소와 같다
   NOSHOW_BLOCK_D: 90,// 호스트 미참석이 확인되면 90일 동안 못 연다
-  /* 10/31 — 정산은 캐시가 아니라 맞수가 호스트 계좌로 직접 보낸다(지급대행 없음).
+  /* 11/9 — 정산은 PG 정산지급대행으로 보낸다(맞수가 호스트 계좌로 직접 이체하지 않는다 · 아래 PAYOUT 설명).
      수고비만 소득이라 3.3%(사업소득 3% + 지방소득세 0.3%)를 떼고, 코트비 몫은 실비라 그대로 */
   WITHHOLD: 0.033,
   PAY_DUE_BD: 2,     // 정산 확정 뒤 영업일 2일째 입금 (주말 건너뜀 · 공휴일은 운영자가 하루 미룬다)
@@ -3889,6 +3889,77 @@ function omBankMask(b) {
   const last = parts[parts.length - 1], holder = parts.length >= 2 && !/\d/.test(last) && last !== bank ? last : '';
   return [bank, digits ? `***-${digits.slice(-4)}` : ''].filter(Boolean).join(' ') + (holder ? ` · ${holder}` : '');
 }
+/* ══ 호스트 정산 = PG 정산지급대행 (11/9) ══
+   맞수가 참가비를 받아 그 일부를 호스트 계좌로 직접 보내면 전자금융거래법상 전자지급결제대행업(PG업)에 해당할 수 있다
+   (카카오페이 독립몰 검토 의견). 그래서 맞수는 호스트에게 돈을 직접 보내지 않는다.
+     · 호스트는 PG 지급대행에 <판매자(개인)>로 등록하고 PG 본인인증을 마친다 — payout_sellers
+       submitted(등록 요청) → kyc(PG 본인인증 대기 · 알림톡/메일 링크) → approved(지급 가능) · rejected(다시 등록)
+     · 맞수는 <누구에게 · 얼마를 · 언제> 지급 요청만 PG 에 넣는다. 실제 이체는 PG 가 맞수 정산금에서 한다.
+       om_payouts: requested(정산 확정 · 지급 대기) → pg_req_at(PG 에 지급 요청) → paid(PG 입금 완료)
+     · 지금은 PG 관리자 화면(엑셀 일괄 등록)으로 넣는다 — 운영자가 관리자 페이지에서 파일을 내려받아 올리고 상태를 표시한다.
+       PG API 가 연결되면 같은 칸(status · pg_req_at · paid)을 API 가 채운다. */
+db.exec(`CREATE TABLE IF NOT EXISTS payout_sellers (
+  user_id INTEGER PRIMARY KEY, ref_id TEXT UNIQUE, kind TEXT DEFAULT 'INDIVIDUAL',
+  name TEXT, phone TEXT, email TEXT, bank TEXT, account TEXT, holder TEXT,
+  status TEXT DEFAULT 'submitted', reason TEXT, pg_id TEXT,
+  agreed_at BIGINT, submitted_at BIGINT, kyc_at BIGINT, approved_at BIGINT, updated_at BIGINT)`);
+['pg_req_at BIGINT', 'seller_ref TEXT', 'fail_reason TEXT']
+  .forEach(c => { try { db.exec(`ALTER TABLE om_payouts ADD COLUMN ${c}`); } catch (e) {} });
+const PAYOUT = {
+  pg: () => String(process.env.PAYOUT_PG || '').trim(),          // 화면에 적을 PG 이름(예: 토스페이먼츠) — 비우면 <PG사>
+  ST: ['submitted', 'kyc', 'approved', 'rejected'],
+  LABEL: { submitted: '등록 확인 중', kyc: '본인인증 대기', approved: '등록 완료', rejected: '다시 등록해 주세요' },
+};
+function payoutSeller(uid) { try { return db.prepare('SELECT * FROM payout_sellers WHERE user_id=?').get(uid) || null; } catch (e) { return null; } }
+const poRef = uid => 'MATSU' + String(uid).padStart(7, '0');            // PG 에 넣는 셀러 ID (영문 · 숫자만)
+const poDigits = v => String(v == null ? '' : v).replace(/[^0-9]/g, '');
+const poPhoneMask = p => { const d = poDigits(p); return d.length >= 10 ? `${d.slice(0, 3)}-****-${d.slice(-4)}` : ''; };
+const poAcctMask = a => { const d = poDigits(a); return d ? `***-${d.slice(-4)}` : ''; };
+/* 호스트에게 보이는 모양 — 계좌는 끝 넷만, 전화는 가운데 가림 */
+function payoutSellerOut(r) {
+  if (!r) return { status: 'none', label: '등록 전', pg: PAYOUT.pg() };
+  return { status: r.status, label: PAYOUT.LABEL[r.status] || r.status, reason: r.status === 'rejected' ? (r.reason || '') : '',
+    name: r.name || '', phone: poPhoneMask(r.phone), email: r.email || '', bank: r.bank || '',
+    account: poAcctMask(r.account), holder: r.holder || '', ref_id: r.ref_id, pg: PAYOUT.pg(),
+    submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null };
+}
+/* 등록 · 바꾸기 — 이름 · 휴대폰 · 이메일 · 본인 명의 계좌. 바꾸면 PG 에 다시 올려야 하니 <등록 확인 중>으로 */
+function payoutSellerSave(uid, b) {
+  const E = (error, message) => ({ status: 400, error, message });
+  const name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 20);
+  const email = String(b.email || '').trim().slice(0, 80);
+  const bank = String(b.bank || '').trim().slice(0, 20), holder = String(b.holder || '').replace(/\s+/g, ' ').trim().slice(0, 20);
+  const old = payoutSeller(uid);
+  const account = b.account ? poDigits(b.account) : (old ? old.account : '');   // 바꾸지 않을 때는 비워 보낸다(화면엔 가린 값만 있다)
+  const phone = b.phone ? poDigits(b.phone) : (old ? old.phone : '');
+  if (name.length < 2) return E('bad_name', '이름을 적어 주세요');
+  if (!/^01\d{8,9}$/.test(phone)) return E('bad_phone', '휴대폰 번호를 확인해 주세요');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return E('bad_email', '이메일을 확인해 주세요');
+  if (!bank) return E('bad_bank', '은행을 골라 주세요');
+  if (!/^\d{8,16}$/.test(account)) return E('bad_account', '계좌번호를 확인해 주세요');
+  if (holder !== name) return E('holder_mismatch', '본인 명의 계좌만 등록할 수 있어요');
+  if (!b.agree) return E('agree_required', '정산지급대행 이용에 동의해 주세요');
+  const t = Date.now();
+  const same = old && old.name === name && old.phone === phone && old.email === email && old.bank === bank && old.account === account && old.holder === holder;
+  if (same) return { ok: true, seller: payoutSellerOut(old), changed: false };
+  tx(() => {
+    if (old) db.prepare(`UPDATE payout_sellers SET name=?, phone=?, email=?, bank=?, account=?, holder=?, status='submitted', reason=NULL,
+        agreed_at=?, submitted_at=?, updated_at=? WHERE user_id=?`).run(name, phone, email, bank, account, holder, t, t, t, uid);
+    else db.prepare(`INSERT INTO payout_sellers (user_id, ref_id, name, phone, email, bank, account, holder, status, agreed_at, submitted_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?, 'submitted', ?,?,?)`).run(uid, poRef(uid), name, phone, email, bank, account, holder, t, t, t);
+    /* 아직 PG 에 넣지 않은 지급은 새 판매자 정보로 — 이미 넣은 것은 PG 쪽에서 처리 */
+    db.prepare(`UPDATE om_payouts SET seller_ref=? WHERE user_id=? AND status='requested' AND pg_req_at IS NULL`).run(poRef(uid), uid);
+  });
+  return { ok: true, seller: payoutSellerOut(payoutSeller(uid)), changed: true };
+}
+/* 지급 단계 — 앱 정산 화면 · 관리자 목록이 같은 말을 쓴다 */
+function payoutStage(p, sl) {
+  if (p.status === 'paid') return 'paid';
+  if (p.pg_req_at) return 'requested';
+  if (!sl || sl.status !== 'approved') return 'wait_seller';
+  return 'ready';
+}
+
 /* 입금 예정일 — 정산 확정 뒤 영업일 n일째 한국 시간 0시 */
 function omPayDue(ms) {
   const d = new Date((ms || Date.now()) + 9 * 3600e3);
@@ -3977,10 +4048,11 @@ function omHostStatus(uid) {
     AND COALESCE(kind,'cancel')='cancel'`).get(uid, Date.now() - 30 * 864e5).n;
   const noshow = !!db.prepare(`SELECT 1 FROM om_host_strikes WHERE user_id=? AND kind='noshow' AND created_at>?`)
     .get(uid, Date.now() - OMH.NOSHOW_BLOCK_D * 864e5);
-  const bank = !!String(u.bank_account || '').trim();
-  /* 호스트 조건은 정산 계좌 하나 — 코트비 · 수고비를 보내 드릴 곳 */
+  /* 호스트 조건은 <정산 받기 등록> 하나 (11/9) — PG 정산지급대행 판매자 등록.
+     등록 요청만 해도 열 수 있다(정산은 경기 뒤라 그사이 PG 본인인증을 마치면 된다) · 반려되면 다시 등록해야 연다 */
+  const sl = payoutSeller(uid);
   const checks = [
-    { k: 'bank',   ok: bank, v: bank ? '등록됨' : '' },
+    { k: 'seller', ok: !!sl && sl.status !== 'rejected', v: sl ? sl.status : '' },
   ];
   const live = process.env.OM_HOST_LIVE === '1' || omHostBeta(uid);
   const blocked = strikes >= OMH.STRIKES || noshow;
@@ -4003,7 +4075,7 @@ function omHostStatus(uid) {
   const hosted_all = db.prepare(`SELECT COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'
     AND status IN ('open','confirmed')`).get(uid).n;
   /* 비율(이용료)은 앱에 보내지 않는다 — 정원 · 마감 · 리드타임만 */
-  return { checks, games, manner, hosted, hosted_all, strikes, noshow, blocked, live, recent, rating, rating_n,
+  return { checks, seller: payoutSellerOut(sl), games, manner, hosted, hosted_all, strikes, noshow, blocked, live, recent, rating, rating_n,
            max_courts: hosted < OMH.FIRST_N ? 1 : 3, first_n: OMH.FIRST_N,
            ok: live && !blocked && checks.every(c => c.ok),
            rules: { per_court: OMH.PER_COURT, close_h: OMH.CLOSE_H, lead_h: OMH.LEAD_H } };
@@ -4131,16 +4203,18 @@ function omHostSettle(mid) {
   const fee = total - expense, tax = Math.round(fee * OMH.WITHHOLD), net = total - tax;
   const hu = getUser(m.host_id);
   if (!hu) return { error: 'no_host' };
-  /* 10/31 — 캐시로 넣지 않는다. 맞수가 호스트 계좌로 보낼 <지급 대기>를 만들고, 운영자가 이체한 뒤 완료로 표시한다 */
+  /* 11/9 — <지급 대기>를 만든다. 돈은 PG 정산지급대행이 호스트의 PG 판매자 계좌로 보낸다(맞수는 지급 요청만) */
   const due = omPayDue(Date.now());
+  const sl = payoutSeller(m.host_id);
   tx(() => {
-    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at,expense,fee,tax,gross,due_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(mid, m.host_id, net, hu.bank_account || '', 'requested', now(), expense, fee, tax, total, due);
+    db.prepare(`INSERT INTO om_payouts (match_id,user_id,amount,bank,status,created_at,expense,fee,tax,gross,due_at,seller_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(mid, m.host_id, net, '', 'requested', now(), expense, fee, tax, total, due, sl ? sl.ref_id : null);
     db.prepare('UPDATE open_matches SET settled=1, manager_fee=? WHERE id=?').run(total, mid);
   });
   const dd = new Date(due + 9 * 3600e3);
   sendPush(m.host_id, { icon: '💰', title: '호스트 정산이 확정됐어요', link: `match:${mid}`,
-    body: `${m.loc} · ${net.toLocaleString()}원 · ${dd.getUTCMonth() + 1}/${dd.getUTCDate()} 입금 예정` });
+    body: sl && sl.status === 'approved' ? `${m.loc} · ${net.toLocaleString()}원 · ${dd.getUTCMonth() + 1}/${dd.getUTCDate()} 입금 예정`
+      : `${m.loc} · ${net.toLocaleString()}원 · 정산 받기 등록(본인인증)을 마치면 보내 드려요` });
   return { ok: true, total, expense, fee, tax, net, due_at: due, guests, collected };
 }
 
@@ -4264,7 +4338,8 @@ function omHostView(m, uid, people) {
           /* 10/31 정산 화면 — 코트비 몫 · 수고비 · 세금 · 보낼 돈 · 입금 예정 · 계좌(가운데 가림) */
           if (p.status !== 'cash') o.payout = { gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0,
             tax: p.tax || 0, amount: p.amount, status: p.status, due_at: p.due_at || null, paid_at: p.status === 'paid' ? p.paid_at : null,
-            settled_at: p.created_at, bank: omBankMask(p.bank) };
+            settled_at: p.created_at, pg_req_at: p.pg_req_at ? +p.pg_req_at : null,
+            stage: payoutStage(p, payoutSeller(m.host_id)), seller: payoutSellerOut(payoutSeller(m.host_id)) };
         } } catch (e) {}
     }
     /* 열 때 본 것과 같은 나눔 — 지금 인원 · 다 차면 (정산 전 미리보기) */
@@ -11367,7 +11442,6 @@ app.post('/me/bank', auth, (req, res) => {
     db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(bank, req.uid);
     if (bank) {
       try { moved += db.prepare(`UPDATE cash_withdrawals SET bank=? WHERE user_id=? AND status='requested' AND bank_part>0`).run(bank, req.uid).changes; } catch (e) {}
-      try { moved += db.prepare(`UPDATE om_payouts SET bank=? WHERE user_id=? AND status='requested'`).run(bank, req.uid).changes; } catch (e) {}
     }
   });
   res.json({ ...db.prepare('SELECT * FROM users WHERE id=?').get(req.uid), moved });
@@ -11380,11 +11454,16 @@ app.get('/admin/payouts', admin, (_req, res) => {
 app.post('/admin/payouts/:id/paid', admin, (req, res) => {
   const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
   if (!p || p.status !== 'requested') return res.status(400).json({ error: 'bad_state' });
+  /* 호스트 정산은 PG 에 지급 요청을 넣은 뒤에만 완료로 — 맞수가 직접 이체하지 않는다 (11/9) */
+  if (p.match_id && !p.pg_req_at) {
+    const pm0 = db.prepare('SELECT mode FROM open_matches WHERE id=?').get(p.match_id);
+    if (pm0 && pm0.mode === 'host') return res.status(400).json({ error: 'pg_not_requested', message: 'PG 에 지급 요청을 넣은 뒤 완료로 표시해요' });
+  }
   db.prepare("UPDATE om_payouts SET status='paid', paid_at=? WHERE id=?").run(now(), p.id);
   /* 호스트 정산(10/31)이면 매치로 · 그 밖(운영 매니저)은 예전 문장 */
   const pm = p.match_id ? db.prepare('SELECT mode, loc FROM open_matches WHERE id=?').get(p.match_id) : null;
   sendPush(p.user_id, pm && pm.mode === 'host'
-    ? { icon: '✅', title: '호스트 정산이 입금됐어요', link: `match:${p.match_id}`, body: `${pm.loc || ''} · ${(p.amount || 0).toLocaleString()}원을 보냈어요` }
+    ? { icon: '✅', title: '호스트 정산이 입금됐어요', link: `match:${p.match_id}`, body: `${pm.loc || ''} · ${(p.amount || 0).toLocaleString()}원 · ${PAYOUT.pg() || 'PG사'} 정산지급대행으로 보냈어요` }
     : { icon: '✅', title: '정산 이체가 완료됐어요', body: `운영 정산 ${(p.amount || 0).toLocaleString()}원이 입금됐어요` });
   res.json({ ok: true });
 });
@@ -18231,42 +18310,102 @@ app.get('/me/payments', auth, (req, res) => {
              refund: rf.filter(r => r.at >= mon && r.status !== 'failed').reduce((a, r) => a + r.amount, 0) },
     cash: (getUser(req.uid) || {}).cash || 0 });
 });
-/* 호스트 — 내 정산(계좌로 받는 돈) */
+/* 호스트 — 내 정산(PG 정산지급대행으로 받는 돈) */
 app.get('/me/host-payouts', auth, (req, res) => {
+  const sl = payoutSeller(req.uid);
   const rows = db.prepare(`SELECT p.*, m.loc, m.start_at FROM om_payouts p LEFT JOIN open_matches m ON m.id=p.match_id
     WHERE p.user_id=? AND p.status IN ('requested','paid') ORDER BY p.id DESC LIMIT 40`).all(req.uid);
   res.json(rows.map(p => ({ id: p.id, match_id: p.match_id, loc: p.loc || '', start_at: p.start_at || '',
     gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0, tax: p.tax || 0, amount: p.amount,
-    status: p.status, due_at: p.due_at ? +p.due_at : null, paid_at: p.paid_at ? +p.paid_at : null, bank: omBankMask(p.bank) })));
+    status: p.status, stage: payoutStage(p, sl), due_at: p.due_at ? +p.due_at : null, pg_req_at: p.pg_req_at ? +p.pg_req_at : null,
+    paid_at: p.paid_at ? +p.paid_at : null })));
+});
+/* 호스트 — 정산 받기 등록(PG 정산지급대행 판매자) 보기 · 등록 · 바꾸기 */
+app.get('/me/payout-seller', auth, (req, res) => res.json(payoutSellerOut(payoutSeller(req.uid))));
+app.post('/me/payout-seller', auth, (req, res) => {
+  const r = payoutSellerSave(req.uid, req.body || {});
+  if (r.error) return res.status(r.status || 400).json({ error: r.error, message: r.message });
+  res.json(r);
+});
+/* 관리자 — PG 판매자 등록 목록(PG 관리자 화면에 올릴 정보 · 전체 계좌) · 상태 바꾸기 */
+app.get('/admin/payout-sellers', admin, (req, res) => {
+  const st = PAYOUT.ST.includes(req.query.st) ? req.query.st : null;
+  const rows = db.prepare(`SELECT s.*, u.name uname FROM payout_sellers s LEFT JOIN users u ON u.id=s.user_id
+    ${st ? 'WHERE s.status=?' : ''} ORDER BY COALESCE(s.submitted_at,0) DESC LIMIT 300`).all(...(st ? [st] : []));
+  const cnt = {}; db.prepare('SELECT status, COUNT(*) n FROM payout_sellers GROUP BY status').all().forEach(r => { cnt[r.status] = r.n; });
+  res.json({ rows: rows.map(r => ({ user_id: r.user_id, ref_id: r.ref_id, kind: r.kind || 'INDIVIDUAL', name: r.name, nick: r.uname || '',
+    phone: r.phone, email: r.email, bank: r.bank, account: r.account, holder: r.holder, status: r.status, reason: r.reason || '',
+    pg_id: r.pg_id || '', submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null,
+    waiting: db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE user_id=? AND status='requested'`).get(r.user_id) })),
+    count: cnt, pg: PAYOUT.pg() });
+});
+app.post('/admin/payout-sellers/:uid', admin, (req, res) => {
+  const uid = +req.params.uid, b = req.body || {}, r = payoutSeller(uid);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  if (!PAYOUT.ST.includes(b.status)) return res.status(400).json({ error: 'bad_status' });
+  const t = Date.now(), reason = String(b.reason || '').slice(0, 120), pgId = b.pg_id != null ? String(b.pg_id).slice(0, 60) : r.pg_id;
+  db.prepare(`UPDATE payout_sellers SET status=?, reason=?, pg_id=?, updated_at=?,
+      kyc_at=CASE WHEN ?='kyc' THEN ? ELSE kyc_at END, approved_at=CASE WHEN ?='approved' THEN ? ELSE approved_at END WHERE user_id=?`)
+    .run(b.status, b.status === 'rejected' ? reason : null, pgId, t, b.status, t, b.status, t, uid);
+  const pg = PAYOUT.pg() || 'PG사';
+  const msg = { kyc: { title: '정산 받기 — 본인인증을 해 주세요', body: `${pg}에서 보낸 카카오톡 · 메일의 링크로 본인인증을 마치면 정산을 받을 수 있어요` },
+    approved: { title: '정산 받기 등록이 끝났어요', body: `이제 경기가 끝나면 ${pg} 정산지급대행으로 받아요` },
+    rejected: { title: '정산 받기 등록을 다시 해 주세요', body: reason || '등록한 정보를 확인해 주세요' } }[b.status];
+  if (msg) try { sendPush(uid, { icon: '🏦', link: 'payout-seller', ...msg }); } catch (e) {}
+  res.json(payoutSellerOut(payoutSeller(uid)));
+});
+/* 관리자 — PG 에 지급 요청을 넣었다고 표시(파일을 올린 뒤) · 지급 실패(PG 반려) */
+app.post('/admin/payouts/pg-request', admin, (req, res) => {
+  const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(Number).filter(Boolean).slice(0, 500);
+  const t = Date.now(); let n = 0;
+  ids.forEach(id => { const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(id);
+    if (!p || p.status !== 'requested' || p.pg_req_at) return;
+    const sl = payoutSeller(p.user_id); if (!sl || sl.status !== 'approved') return;
+    n += db.prepare('UPDATE om_payouts SET pg_req_at=?, seller_ref=?, fail_reason=NULL WHERE id=?').run(t, sl.ref_id, id).changes; });
+  res.json({ ok: true, n });
+});
+app.post('/admin/payouts/:id/fail', admin, (req, res) => {
+  const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
+  if (!p || p.status !== 'requested') return res.status(400).json({ error: 'bad_state' });
+  const reason = String((req.body || {}).reason || '').slice(0, 120);
+  db.prepare('UPDATE om_payouts SET pg_req_at=NULL, fail_reason=? WHERE id=?').run(reason || 'PG 지급 실패', p.id);
+  try { sendPush(p.user_id, { icon: '⚠️', title: '정산 지급이 안 됐어요', link: p.match_id ? `match:${p.match_id}` : 'payout-seller',
+    body: `${reason || '등록한 계좌를 확인해 주세요'} · 확인되면 다시 보내 드려요` }); } catch (e) {}
+  res.json({ ok: true });
 });
 
-/* ── 관리자 · 호스트 정산 지급 ──
-   이체는 은행 앱에서 하고 여기서 <이체 완료>로 표시한다(POST /admin/payouts/:id/paid — 호스트에게 입금 알림).
+/* ── 관리자 · 호스트 정산 지급 (11/9 — PG 정산지급대행) ──
+   맞수는 이체하지 않는다. 지급 요청 파일을 내려받아 PG 관리자 화면에 올리고 <지급 요청함>으로 표시 →
+   PG 가 보내면 <입금 완료>로 표시한다(POST /admin/payouts/:id/paid — 호스트에게 입금 알림).
    맨 위 숫자: 이번 주 보낼 돈 · 지난주 보낸 돈 · 이번 달(결제일 기준) 결제 − 환불 − 호스트 지급 = 맞수 몫.
    카드 수수료 · 세금은 계약 요율을 모르는 채로 지어내지 않는다 — <빼기 전>으로만 적는다. */
 const omKstWeek = ms => { const d = new Date((ms || Date.now()) + 9 * 3600e3); const w = (d.getUTCDay() + 6) % 7;
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - w) - 9 * 3600e3; };
 app.get('/admin/host-payouts', admin, (req, res) => {
   const st = req.query.st === 'paid' ? 'paid' : 'requested';
-  const rows = db.prepare(`SELECT p.*, u.name, u.bank_account, m.loc, m.start_at, m.mode, m.proof, m.proof_ok, m.courts, m.hours,
+  const rows = db.prepare(`SELECT p.*, u.name, m.loc, m.start_at, m.mode, m.proof, m.proof_ok, m.courts, m.hours,
       (SELECT COUNT(*) FROM open_match_joins j WHERE j.match_id=p.match_id) people
     FROM om_payouts p JOIN users u ON u.id=p.user_id LEFT JOIN open_matches m ON m.id=p.match_id
-    WHERE p.status=? ORDER BY ${st === 'paid' ? 'p.paid_at DESC' : 'COALESCE(p.due_at,0) ASC, p.id ASC'} LIMIT 200`).all(st)
-    .map(p => ({ id: p.id, match_id: p.match_id, user_id: p.user_id, name: p.name, loc: p.loc || '', start_at: p.start_at || '',
+    WHERE p.status=? AND COALESCE(m.mode,'')='host' ORDER BY ${st === 'paid' ? 'p.paid_at DESC' : 'COALESCE(p.due_at,0) ASC, p.id ASC'} LIMIT 200`).all(st)
+    .map(p => { const sl = payoutSeller(p.user_id);
+      return { id: p.id, match_id: p.match_id, user_id: p.user_id, name: p.name, loc: p.loc || '', start_at: p.start_at || '',
       people: p.people || 0, courts: p.courts || null, mode: p.mode || '', proof: p.proof || null, proof_ok: !!p.proof_ok,
       gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0, tax: p.tax || 0, amount: p.amount,
-      bank: p.bank || p.bank_account || '', status: p.status, due_at: p.due_at ? +p.due_at : null,
-      created_at: +p.created_at || null, paid_at: p.paid_at ? +p.paid_at : null }));
+      status: p.status, stage: payoutStage(p, sl), seller_ref: sl ? sl.ref_id : null, seller_status: sl ? sl.status : 'none',
+      seller_name: sl ? sl.name : '', fail_reason: p.fail_reason || '', due_at: p.due_at ? +p.due_at : null,
+      pg_req_at: p.pg_req_at ? +p.pg_req_at : null, created_at: +p.created_at || null, paid_at: p.paid_at ? +p.paid_at : null }; });
   const wk = omKstWeek(), mon = omKstMonth();
   const due = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE status='requested' AND COALESCE(due_at,0) < ?`).get(wk + 7 * 864e5);
-  const wait = db.prepare(`SELECT COUNT(*) n FROM om_payouts p JOIN users u ON u.id=p.user_id
-    WHERE p.status='requested' AND COALESCE(NULLIF(p.bank,''), NULLIF(u.bank_account,'')) IS NULL`).get().n;
+  /* 정산 받기 등록(PG 판매자)이 아직 안 끝나 지급 요청을 못 넣는 건 */
+  const wait = db.prepare(`SELECT COUNT(*) n FROM om_payouts p LEFT JOIN payout_sellers s ON s.user_id=p.user_id
+    WHERE p.status='requested' AND COALESCE(s.status,'')<>'approved'`).get().n;
   const last = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE status='paid' AND CAST(paid_at AS INTEGER) >= ? AND CAST(paid_at AS INTEGER) < ?`).get(wk - 7 * 864e5, wk);
   const paidM = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM om_payments WHERE payment_key IS NOT NULL AND CAST(created_at AS INTEGER) >= ?`).get(mon).s;
   const refM = db.prepare(`SELECT COALESCE(SUM(amount),0) s FROM om_refunds WHERE status<>'failed' AND created_at >= ?`).get(mon).s;
   const hostM = db.prepare(`SELECT COALESCE(SUM(COALESCE(gross,amount)),0) s FROM om_payouts WHERE status IN ('requested','paid') AND gross IS NOT NULL AND CAST(created_at AS INTEGER) >= ?`).get(mon).s;
   const failed = db.prepare(`SELECT COUNT(*) n FROM om_refunds WHERE status='failed'`).get().n;
-  res.json({ rows, summary: { due_n: due.n, due_sum: due.s, wait_n: wait, last_n: last.n, last_sum: last.s,
+  const sellers_n = db.prepare(`SELECT COUNT(*) n FROM payout_sellers WHERE status IN ('submitted','kyc')`).get().n;
+  res.json({ rows, pg: PAYOUT.pg(), summary: { due_n: due.n, due_sum: due.s, wait_n: wait, sellers_n, last_n: last.n, last_sum: last.s,
     month: { paid: paidM, refund: refM, host: hostM, matsu: paidM - refM - hostM }, refund_failed: failed } });
 });
 /* 카드 환불 실패 — 다시 보내기 */
