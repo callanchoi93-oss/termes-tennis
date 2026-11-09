@@ -12732,6 +12732,8 @@ app.post('/admin/log/:id/undo', admin, (req, res) => {
         .run(u.bid, u.key, u.a, u.b, 0, now());
       db.prepare('UPDATE brackets SET updated_at=? WHERE id=?').run(now(), u.bid);
     }
+    else if (u.kind === 'post_show') db.prepare('UPDATE posts SET hidden=0 WHERE id=?').run(u.id);           // 11/9 글 숨김 되돌리기
+    else if (u.kind === 'comment_show') db.prepare('UPDATE comments SET hidden=0 WHERE id=?').run(u.id);     // 11/9 댓글 숨김 되돌리기
     else return res.status(400).json({ error: 'unknown_kind' });
   } catch (e) { return res.status(500).json({ error: 'undo_failed' }); }
   db.prepare('UPDATE admin_log SET undone=1 WHERE id=?').run(r.id);
@@ -15462,7 +15464,41 @@ app.get('/admin/errors', admin, (req, res) => {
   /* 어느 빌드에서 나는지 — 옛 앱만의 문제인지 새 앱도인지 가른다 */
   const builds = db.prepare(`SELECT COALESCE(NULLIF(build,''),'모름') b, COUNT(*) n
     FROM client_errors WHERE at > ? GROUP BY b ORDER BY n DESC LIMIT 8`).all(since);
-  res.json({ days, total, groups, builds });
+  /* 11/9 관리자 시안 — 날마다(14일) · 오류마다 해결 표시 · 빌드 · 새 빌드 처음 본 날 */
+  let daily = [], latest = null;
+  try {
+    const d0 = Date.now() - 14 * 864e5;
+    daily = db.prepare(`SELECT CAST((at + 9*3600000)/86400000 AS INTEGER) d,
+        SUM(CASE WHEN kind IN ('net','timeout') THEN 0 ELSE 1 END) code, SUM(CASE WHEN kind IN ('net','timeout') THEN 1 ELSE 0 END) net
+      FROM client_errors WHERE at > ? GROUP BY d ORDER BY d`).all(d0);
+    const bs = db.prepare(`SELECT build b, MIN(at) first FROM client_errors WHERE COALESCE(build,'')<>'' AND build<>'web' GROUP BY build`).all();
+    bs.forEach(x => { if (!latest || appVerCmp(x.b, latest.b) > 0) latest = x; });
+  } catch (e) {}
+  const R = {}; try { db.prepare('SELECT sig, at FROM err_resolved').all().forEach(r => { R[r.sig] = r.at; }); } catch (e) {}
+  groups.forEach(g => {
+    g.resolved_at = R[g.sig] || null;
+    try { g.builds = db.prepare(`SELECT COALESCE(NULLIF(build,''),'모름') b, COUNT(*) n FROM client_errors WHERE sig=? AND at > ? GROUP BY b ORDER BY n DESC LIMIT 4`).all(g.sig, since); } catch (e) { g.builds = []; }
+    g.only_old = !!(latest && g.builds.length && g.builds.every(x => x.b !== latest.b));
+    g.fresh = !!(latest && g.first >= latest.first && g.builds.some(x => x.b === latest.b));
+  });
+  res.json({ days, total, groups, builds, daily, latest });
+});
+try { db.exec(`CREATE TABLE IF NOT EXISTS err_resolved (sig TEXT PRIMARY KEY, at INTEGER)`); } catch (e) {}
+app.post('/admin/errors/resolve', admin, (req, res) => {
+  const sig = String((req.body || {}).sig || ''); if (!sig) return res.status(400).json({ error: 'sig' });
+  if ((req.body || {}).on === false) db.prepare('DELETE FROM err_resolved WHERE sig=?').run(sig);
+  else db.prepare('INSERT OR REPLACE INTO err_resolved (sig, at) VALUES (?,?)').run(sig, Date.now());
+  alog(req, (req.body || {}).on === false ? '오류 해결 취소' : '오류 해결함', 'error', null, { sig: sig.slice(0, 80) }, null);
+  res.json({ ok: true });
+});
+/* 그 오류를 겪은 회원 — 이름 · 기기 · 앱 버전 · 클럽 · 마지막 때 */
+app.get('/admin/errors/people', admin, (req, res) => {
+  const sig = String(req.query.sig || ''); const days = Math.min(30, Math.max(1, +req.query.days || 3));
+  try {
+    res.json(db.prepare(`SELECT e.user_id id, u.name, MAX(e.at) at, MAX(e.plat) plat, MAX(e.build) build,
+        (SELECT c.name FROM club_members cm JOIN clubs c ON c.id=cm.club_id WHERE cm.user_id=e.user_id ORDER BY cm.joined_at LIMIT 1) club
+      FROM client_errors e LEFT JOIN users u ON u.id=e.user_id WHERE e.sig=? AND e.at > ? GROUP BY COALESCE(e.user_id,-1) ORDER BY at DESC LIMIT 30`).all(sig, Date.now() - days * 864e5));
+  } catch (e) { res.json([]); }
 });
 app.delete('/admin/errors', admin, (req, res) => {
   const d = Math.max(0, +req.query.olderThanDays || 0);
@@ -15493,9 +15529,15 @@ function oldAppUsers(plat) {
     return !u.app_ver || appVerCmp(short(u.app_ver), short(top[p])) < 0; })
     .map(u => Object.assign(u, { plat: P(u) }));
 }
-function noticeTargets(to, clubId) {
+function noticeTargets(to, clubId, userIds) {
   if (to === 'oldv' || to === 'oldv_ios' || to === 'oldv_android')
     return oldAppUsers(to === 'oldv' ? '' : to.slice(5)).map(u => u.id);
+  /* 11/9 관리자 회원 목록에서 고른 사람들에게만 — 번호 목록(최대 500명) */
+  if (to === 'users') {
+    const ids = [...new Set(String(userIds || '').split(',').map(x => +x).filter(x => x > 0))].slice(0, 500);
+    if (!ids.length) return [];
+    return db.prepare(`SELECT id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids).map(r => r.id);
+  }
   if (to === 'club' && clubId)
     return db.prepare(`SELECT user_id id FROM club_members WHERE club_id=?`).all(+clubId).map(r => r.id);
   if (to === 'dormant')
@@ -15510,7 +15552,7 @@ function noticeTargets(to, clubId) {
 }
 app.get('/admin/notify/count', admin, (req, res) => {
   const to = String(req.query.to || 'all');
-  const n = noticeTargets(to, req.query.club).length;
+  const n = noticeTargets(to, req.query.club, req.query.users).length;
   /* 옛 버전이면 기기별 수와 지금 가장 새 버전도 같이 — 문구에 <1.2.3으로 업데이트>를 바로 쓸 수 있게 */
   if (to.startsWith('oldv')) {
     const by = {}, latest = {};
@@ -15527,8 +15569,22 @@ app.post('/admin/notify', admin, async (req, res) => {
   const title = String(b.title || '').trim().slice(0, 60);
   const body = String(b.body || '').trim().slice(0, 200);
   if (!title) return res.status(400).json({ error: 'title_required' });
-  const ids = noticeTargets(String(b.to || 'all'), b.club);
+  const users = Array.isArray(b.users) ? b.users.join(',') : (b.users || '');
+  const ids = noticeTargets(String(b.to || 'all'), b.club, users);
   if (!ids.length) return res.json({ sent: 0 });
+  /* 예약 — 지금보다 뒤 · 14일 안 · 밤 9시 ~ 아침 8시(한국 시각)는 받지 않는다 */
+  const at = +b.send_at || 0;
+  if (at && at > Date.now() + 60e3) {
+    const kh = new Date(at + 9 * 36e5).getUTCHours();
+    if (kh >= 21 || kh < 8) return res.status(400).json({ error: 'quiet_hours' });
+    if (at > Date.now() + 14 * 864e5) return res.status(400).json({ error: 'too_far' });
+    const r = db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), at);
+    alog(req, '공지 예약', 'notify', r.lastInsertRowid, { to: b.to || 'all', n: ids.length, title, at }, null);
+    return res.json({ scheduled: true, id: r.lastInsertRowid, n: ids.length, send_at: at });
+  }
+  try { db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at,sent_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), null, Date.now()); } catch (e) {}
   alog(req, '공지 보냄', 'notify', null, { to: b.to || 'all', n: ids.length, title }, null);
   res.json({ sent: ids.length });          // 먼저 답하고 뒤에서 보낸다 — 수백 명이면 오래 걸린다
   for (const id of ids) {
@@ -15538,6 +15594,31 @@ app.post('/admin/notify', admin, async (req, res) => {
   console.log(`[notify] ${ids.length}명 · ${title}`);
 });
 
+/* 11/9 공지 기록 · 예약 — 보낸 공지 목록(다시 쓰기)과 <언제: 예약>. 예약은 1분마다 때가 된 것을 보낸다(밤 9시 ~ 아침 8시는 못 잡는다) */
+try { db.exec(`CREATE TABLE IF NOT EXISTS admin_notices (id INTEGER PRIMARY KEY AUTOINCREMENT, to_kind TEXT, club_id INTEGER, users TEXT,
+  title TEXT, body TEXT, icon TEXT, link TEXT, label TEXT, n INTEGER, by_who TEXT, created_at INTEGER, send_at INTEGER, sent_at INTEGER, cancelled INTEGER DEFAULT 0)`); } catch (e) {}
+async function noticeSendNow(row) {
+  const ids = noticeTargets(row.to_kind || 'all', row.club_id, row.users);
+  db.prepare('UPDATE admin_notices SET sent_at=?, n=? WHERE id=?').run(Date.now(), ids.length, row.id);
+  for (const id of ids) {
+    try { await sendPush(id, { icon: row.icon || '📢', title: row.title, body: row.body, link: row.link || null }); } catch (e) {}
+  }
+  console.log(`[notify] ${ids.length}명 · ${row.title}`);
+  return ids.length;
+}
+setInterval(() => { try {
+  db.prepare('SELECT * FROM admin_notices WHERE sent_at IS NULL AND COALESCE(cancelled,0)=0 AND send_at IS NOT NULL AND send_at<=?').all(Date.now())
+    .forEach(r => { noticeSendNow(r).catch(() => {}); });
+} catch (e) {} }, 60e3);
+app.get('/admin/notices', admin, (_req, res) => {
+  try { res.json(db.prepare('SELECT id,to_kind,club_id,title,body,icon,link,label,n,by_who,created_at,send_at,sent_at,cancelled FROM admin_notices ORDER BY COALESCE(send_at,created_at) DESC LIMIT 30').all()); }
+  catch (e) { res.json([]); }
+});
+app.post('/admin/notices/:id/cancel', admin, (req, res) => {
+  const r = db.prepare('UPDATE admin_notices SET cancelled=1 WHERE id=? AND sent_at IS NULL').run(+req.params.id);
+  if (r.changes) alog(req, '공지 예약 취소', 'notify', +req.params.id, {}, null);
+  res.json({ ok: !!r.changes });
+});
 /* ── 서버 상태 ── Railway 는 디스크가 차면 조용히 죽는다 */
 app.get('/admin/health', admin, (_req, res) => {
   const out = { uptime: Math.floor(process.uptime()), node: process.version,
@@ -15850,6 +15931,9 @@ app.get('/admin/users', admin, (req, res) => {
     u.last_seen, u.last_plat, u.last_region, u.app_ver, u.app_plat, u.app_seen,
     (SELECT c.region FROM club_members cm JOIN clubs c ON c.id=cm.club_id
       WHERE cm.user_id=u.id ORDER BY cm.joined_at LIMIT 1) AS club_region,
+    (SELECT c.name FROM club_members cm JOIN clubs c ON c.id=cm.club_id
+      WHERE cm.user_id=u.id ORDER BY cm.joined_at LIMIT 1) AS club_name,
+    (SELECT cm.role FROM club_members cm WHERE cm.user_id=u.id ORDER BY cm.joined_at LIMIT 1) AS club_role,
     COALESCE(u.rating_doubles,1000) AS rating_doubles,
     (SELECT COUNT(*) FROM matches WHERE status='confirmed'
       AND (home_user_id=u.id OR away_user_id=u.id)) AS tier_games,
@@ -15937,7 +16021,8 @@ app.get('/admin/posts', admin, (req, res) => {
   if (kind === 'lounge') {
     const rows = db.prepare(`SELECT p.id, p.title, p.body, p.category, p.created_at, p.hidden, p.user_id,
         COALESCE(u.name, p.anon_nick, '') who,
-        (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comments
+        (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) comments,
+        (SELECT COUNT(*) FROM reports r WHERE r.target_type='post' AND r.target_id=p.id AND r.status='open') reports
       FROM posts p LEFT JOIN users u ON u.id=p.user_id
       ${q ? 'WHERE (p.title LIKE ? OR p.body LIKE ? OR u.name LIKE ?)' : ''}
       ORDER BY p.created_at DESC LIMIT 100`).all(...(q ? [like, like, like] : []));
@@ -16013,6 +16098,78 @@ app.get('/admin/feed', admin, (_req, res) => {
   });
 });
 
+/* 11/9 관리자 시안 — 신고는 같은 대상끼리 묶어서(누가 · 왜) · 처리 메모 · 숨기기/반려/쓴 사람 정지. 글 자세히(신고 · 댓글) · 댓글 숨기기 */
+for (const q of ['ALTER TABLE reports ADD COLUMN action TEXT', 'ALTER TABLE reports ADD COLUMN memo TEXT', 'ALTER TABLE reports ADD COLUMN resolved_at INTEGER',
+  'ALTER TABLE comments ADD COLUMN hidden INTEGER DEFAULT 0']) { try { db.exec(q); } catch (e) {} }
+function repTarget(type, id) {
+  try {
+    if (type === 'post') {
+      const p = db.prepare('SELECT p.*, COALESCE(u.name, p.anon_nick, \'\') who FROM posts p LEFT JOIN users u ON u.id=p.user_id WHERE p.id=?').get(id);
+      if (!p) return null;
+      const cm = (() => { try { return db.prepare('SELECT COUNT(*) n FROM comments WHERE post_id=?').get(id).n; } catch (e) { return 0; } })();
+      return { kind: '글', id, title: p.title || '', body: String(p.body || '').slice(0, 400), where: '라운지' + (p.category ? ' · ' + p.category : ''),
+        who: p.who, user_id: p.user_id, created_at: p.created_at, hidden: p.hidden ? 1 : 0, likes: p.likes ?? p.like_count ?? null, views: p.views ?? p.view_count ?? null, comments: cm };
+    }
+    if (type === 'dm' || type === 'user') {
+      const u = db.prepare('SELECT id, name FROM users WHERE id=?').get(id);
+      return u ? { kind: '회원', id, title: u.name, body: '', where: '회원 #' + u.id, who: u.name, user_id: u.id } : null;
+    }
+  } catch (e) {}
+  return { kind: type, id, title: '#' + id, body: '' };
+}
+function repAuthor(uid) {
+  if (!uid) return null;
+  try {
+    const u = db.prepare('SELECT id, name, created_at, COALESCE(suspended,0) suspended FROM users WHERE id=?').get(uid); if (!u) return null;
+    const prev = db.prepare(`SELECT r.reason, r.action, r.resolved_at FROM reports r LEFT JOIN posts p ON r.target_type='post' AND p.id=r.target_id
+      WHERE r.status<>'open' AND (p.user_id=? OR (r.target_type IN ('dm','user') AND r.target_id=?)) ORDER BY r.id DESC LIMIT 5`).all(uid, uid);
+    const club = (() => { try { return db.prepare('SELECT c.name FROM club_members cm JOIN clubs c ON c.id=cm.club_id WHERE cm.user_id=? ORDER BY cm.joined_at LIMIT 1').get(uid)?.name || null; } catch (e) { return null; } })();
+    return { ...u, club, prev };
+  } catch (e) { return null; }
+}
+app.get('/admin/reports2', admin, (req, res) => {
+  const done = req.query.done === '1';
+  const rows = db.prepare(`SELECT r.*, u.name reporter FROM reports r LEFT JOIN users u ON u.id=r.reporter_id
+    WHERE ${done ? "r.status<>'open'" : "r.status='open'"} ORDER BY r.id DESC LIMIT ${done ? 300 : 500}`).all();
+  const G = new Map();
+  rows.forEach(r => { const k = r.target_type + ':' + r.target_id;
+    if (!G.has(k)) G.set(k, { key: k, type: r.target_type, target_id: r.target_id, ids: [], who: [], last: 0, action: r.action || null, resolved_at: r.resolved_at || null });
+    const g = G.get(k); g.ids.push(r.id); g.who.push({ name: r.reporter || ('#' + r.reporter_id), reason: r.reason || '', created_at: r.created_at }); g.last = Math.max(g.last, +r.created_at || 0); });
+  const out = [...G.values()].map(g => { const t = repTarget(g.type, g.target_id);
+    const R = {}; g.who.forEach(w => { const k = String(w.reason || '기타').split(/[·:\-]/)[0].trim() || '기타'; R[k] = (R[k] || 0) + 1; });
+    const reason = Object.keys(R).sort((a, b) => R[b] - R[a])[0] || '기타';
+    return { ...g, reason, same: Object.keys(R).length === 1, n: g.who.length, target: t, author: done ? null : repAuthor(t && t.user_id) }; });
+  out.sort((a, b) => done ? (b.resolved_at || b.last) - (a.resolved_at || a.last) : (b.n - a.n) || (b.last - a.last));
+  res.json(out.slice(0, done ? 40 : 100));
+});
+app.post('/admin/reports2/resolve', admin, (req, res) => {
+  const b = req.body || {}; const type = String(b.type || ''), tid = +b.target_id || 0, action = String(b.action || 'dismiss');
+  if (!type || !tid) return res.status(400).json({ error: 'target' });
+  const t = repTarget(type, tid);
+  if (action === 'hide' && type === 'post') db.prepare('UPDATE posts SET hidden=1 WHERE id=?').run(tid);
+  if (action === 'suspend' && t && t.user_id) db.prepare('UPDATE users SET suspended=1 WHERE id=?').run(t.user_id);
+  const reps = db.prepare("SELECT * FROM reports WHERE status='open' AND target_type=? AND target_id=?").all(type, tid);
+  db.prepare("UPDATE reports SET status='reviewed', action=?, memo=?, resolved_at=? WHERE status='open' AND target_type=? AND target_id=?")
+    .run(action, String(b.memo || '').slice(0, 200), Date.now(), type, tid);
+  const msg = action === 'hide' ? '신고하신 글을 숨겼어요' : action === 'suspend' ? '신고하신 회원의 이용을 멈췄어요' : '신고를 검토했지만 조치하지 않았어요';
+  reps.forEach(r => { if (r.reporter_id) { try { sendPush(r.reporter_id, { icon: '🛡️', title: '신고 처리 결과', body: msg }); } catch (e) {} } });
+  alog(req, action === 'hide' ? '글 숨김' : action === 'suspend' ? '회원 정지' : '신고 반려', type === 'post' ? 'post' : 'user', tid,
+    { title: t && t.title, n: reps.length, memo: b.memo || '' }, action === 'hide' && type === 'post' ? { kind: 'post_show', id: tid } : null);
+  res.json({ ok: true, n: reps.length });
+});
+app.get('/admin/posts/:id/detail', admin, (req, res) => {
+  const id = +req.params.id; const t = repTarget('post', id); if (!t) return res.status(404).json({ error: 'not_found' });
+  let reports = [], comments = [];
+  try { reports = db.prepare(`SELECT r.reason, r.created_at, r.status, u.name FROM reports r LEFT JOIN users u ON u.id=r.reporter_id WHERE r.target_type='post' AND r.target_id=? ORDER BY r.id DESC LIMIT 20`).all(id); } catch (e) {}
+  try { comments = db.prepare(`SELECT c.id, c.body, c.created_at, COALESCE(c.hidden,0) hidden, COALESCE(u.name, '') name FROM comments c LEFT JOIN users u ON u.id=c.user_id WHERE c.post_id=? ORDER BY c.id DESC LIMIT 50`).all(id); } catch (e) {}
+  res.json({ post: t, reports, comments });
+});
+app.post('/admin/comments/:id/hide', admin, (req, res) => {
+  const on = (req.body || {}).on !== false;
+  try { db.prepare('UPDATE comments SET hidden=? WHERE id=?').run(on ? 1 : 0, +req.params.id); } catch (e) { return res.status(400).json({ error: 'no_column' }); }
+  alog(req, on ? '댓글 숨김' : '댓글 다시 보임', 'comment', +req.params.id, {}, on ? { kind: 'comment_show', id: +req.params.id } : null);
+  res.json({ ok: true });
+});
 app.post('/admin/posts/:id/hide', admin, (req, res) => {
   db.prepare('UPDATE posts SET hidden=1 WHERE id=?').run(+req.params.id);
   db.prepare("UPDATE reports SET status='actioned' WHERE target_type='post' AND target_id=?").run(+req.params.id);
