@@ -11196,9 +11196,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS banners (
   id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT, link TEXT, created_at TEXT)`);
 try { db.exec('ALTER TABLE banners ADD COLUMN sort INTEGER DEFAULT 0'); } catch (e) {}
 try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catch (e) {}   // home | bracket | club_xc | club_new | match
+/* 11/9 배너 기간 · 켜고 끄기 — 끄면 지우지 않고 내린다 · 기간이 끝나면 저절로 안 보인다 */
+for (const q of ['ALTER TABLE banners ADD COLUMN title TEXT', 'ALTER TABLE banners ADD COLUMN starts_at INTEGER', 'ALTER TABLE banners ADD COLUMN ends_at INTEGER',
+  'ALTER TABLE banners ADD COLUMN enabled INTEGER DEFAULT 1']) { try { db.exec(q); } catch (e) {} }
 app.get('/banners', (req, res) => {
-  const slot = String(req.query.slot || 'home');
-  res.json(db.prepare("SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? ORDER BY sort ASC, id DESC LIMIT 5").all(slot));
+  const slot = String(req.query.slot || 'home'), t = Date.now();
+  res.json(db.prepare(`SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? AND COALESCE(enabled,1)=1
+    AND (starts_at IS NULL OR starts_at<=?) AND (ends_at IS NULL OR ends_at>?) ORDER BY sort ASC, id DESC LIMIT 5`).all(slot, t, t));
 });
 /* 로그인 만료 현황 — 관리자 <현황>에 띄운다.
    fresh: 7일 안에 접속(토큰이 자동 갱신됨) · stale: 7~30일(다음 접속 때 갱신) · expired: 30일 넘음(풀림) */
@@ -11218,7 +11222,7 @@ app.get('/admin/banner-slots', admin, (_req, res) => {
   res.json({ slots: ['home', 'bracket', 'club_xc', 'club_new', 'match'] });
 });
 app.get('/admin/banners', admin, (_req, res) => {
-  res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all());
+  res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at,title,starts_at,ends_at,COALESCE(enabled,1) enabled FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all());
 });
 // 배너 순서 저장 — ids 배열 순서 = 노출 순서
 app.patch('/admin/banners/order', admin, (req, res) => {
@@ -11244,8 +11248,30 @@ app.post('/admin/banners', admin, (req, res) => {
   const slot = SLOTS.includes(String(b.slot || '')) ? String(b.slot) : 'home';
   if (b.slot && !SLOTS.includes(String(b.slot)))
     return res.status(400).json({ error: 'bad_slot', allowed: SLOTS });
-  db.prepare('INSERT INTO banners (image,link,slot,created_at) VALUES (?,?,?,?)')
-    .run(url, String(b.link || '').slice(0, 300), slot, now());
+  const r = db.prepare('INSERT INTO banners (image,link,slot,created_at,title,starts_at,ends_at,enabled) VALUES (?,?,?,?,?,?,?,1)')
+    .run(url, String(b.link || '').slice(0, 300), slot, now(), String(b.title || '').slice(0, 60) || null, +b.starts_at || null, +b.ends_at || null);
+  alog(req, '배너 올림', 'banner', r.lastInsertRowid, { slot, title: b.title || '' }, null);
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+/* 배너 고치기 — 자리 · 링크 · 제목 · 기간 · 켜고 끄기 · 그림 바꾸기 */
+app.patch('/admin/banners/:id', admin, (req, res) => {
+  const id = +req.params.id, b = req.body || {};
+  const old = db.prepare('SELECT * FROM banners WHERE id=?').get(id); if (!old) return res.status(404).json({ error: 'not_found' });
+  const SLOTS = ['home', 'bracket', 'club_xc', 'club_new', 'match'];
+  if (b.slot != null && !SLOTS.includes(String(b.slot))) return res.status(400).json({ error: 'bad_slot', allowed: SLOTS });
+  let image = old.image;
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec(String(b.image || ''));
+  if (m) {
+    const buf = Buffer.from(m[3], 'base64');
+    if (buf.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'too_large' });
+    const name = 'bn_' + Date.now() + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]);
+    fs.writeFileSync(UPLOAD_DIR + '/' + name, buf); image = '/uploads/' + name;
+  }
+  const v = (k, f) => (b[k] === undefined ? old[k] : f(b[k]));
+  db.prepare('UPDATE banners SET image=?, link=?, slot=?, title=?, starts_at=?, ends_at=?, enabled=? WHERE id=?').run(image,
+    v('link', x => String(x || '').slice(0, 300)), v('slot', x => String(x)), v('title', x => String(x || '').slice(0, 60) || null),
+    v('starts_at', x => +x || null), v('ends_at', x => +x || null), v('enabled', x => (x ? 1 : 0)), id);
+  alog(req, b.enabled === false ? '배너 내림' : b.enabled === true && !old.enabled ? '배너 켬' : '배너 고침', 'banner', id, { title: b.title || old.title || '' }, null);
   res.json({ ok: true });
 });
 app.delete('/admin/banners/:id', admin, (req, res) => {
@@ -12334,9 +12360,74 @@ app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.jso
 const ADMIN_KEY = process.env.ADMIN_KEY || 'matsu-admin';
 function admin(req, res, next) {
   // 키는 반드시 헤더로. URL 쿼리는 브라우저 히스토리·서버 로그에 그대로 남는다.
-  if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(403).json({ error: 'admin_only' });
+  const k = req.headers['x-admin-key'];
+  if (k && k === ADMIN_KEY) { req.adminRole = 'owner'; return next(); }
+  /* 11/9 스태프 열쇠 — 사람마다 따로 · 메뉴마다 보기(GET) · 손대기(그 밖) · 잠그면 바로 막힌다.
+     메뉴에 묶이지 않은 주소(계정 · 작업 기록 · 교류전 · 맞수컵 · 서버 등)는 대표 열쇠만 */
+  const st = staffByKey(k);
+  if (!st) return res.status(403).json({ error: 'admin_only' });
+  const m = staffMenu(req.path);
+  let P = {}; try { P = JSON.parse(st.perms || '{}') || {}; } catch (e) {}
+  const ok = m === '*' || (m && P[m] && (req.method === 'GET' ? P[m].v : P[m].e));
+  if (!ok) return res.status(403).json({ error: 'no_permission', menu: m || null });
+  req.adminRole = 'staff'; req.staff = st;
+  if (!st.last_seen || Date.now() - st.last_seen > 60e3) { try { db.prepare('UPDATE admin_staff SET last_seen=? WHERE id=?').run(Date.now(), st.id); } catch (e) {} }
   next();
 }
+try { db.exec(`CREATE TABLE IF NOT EXISTS admin_staff (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, key_hash TEXT UNIQUE, perms TEXT,
+  created_at INTEGER, created_by TEXT, last_seen INTEGER, locked INTEGER DEFAULT 0)`); } catch (e) {}
+function staffHash(k) { return crypto.createHash('sha256').update('matsu-staff:' + String(k || '')).digest('hex'); }
+function staffByKey(k) {
+  if (!k || String(k).length < 16) return null;
+  try { return db.prepare('SELECT * FROM admin_staff WHERE key_hash=? AND COALESCE(locked,0)=0').get(staffHash(k)) || null; } catch (e) { return null; }
+}
+/* 주소 → 메뉴. 앞에서부터 처음 맞는 것. null 은 대표 열쇠만 */
+const STAFF_MENU = [['/admin/staff', null], ['/admin/managers', null], ['/admin/venue-accounts', null], ['/admin/log', null],
+  ['/admin/users.csv', 'export'], ['/admin/export', 'export'], ['/admin/me', '*'], ['/admin/badges', '*'], ['/admin/search', '*'],
+  ['/admin/stats', 'stats'], ['/admin/session-health', 'stats'], ['/admin/push-status', 'stats'],
+  ['/admin/errors', 'errors'], ['/admin/bracket-quality', 'errors'], ['/admin/grade-moves', 'errors'],
+  ['/admin/users', 'users'], ['/admin/clubs', 'users'],
+  ['/admin/posts', 'posts'], ['/admin/reports', 'posts'], ['/admin/comments', 'posts'], ['/admin/talk', 'posts'],
+  ['/admin/notify', 'notify'], ['/admin/notices', 'notify'],
+  ['/admin/host-', 'pay'], ['/admin/om', 'pay'], ['/admin/open-matches', 'pay'], ['/admin/payout', 'pay'],
+  ['/admin/venue', 'venue'], ['/admin/banner', 'venue'], ['/admin/maint', 'venue'], ['/admin/config', 'venue']];
+function staffMenu(p) { const r = STAFF_MENU.find(([pre]) => p === pre || String(p).startsWith(pre)); return r ? r[1] : null; }
+function ownerOnly(req, res, next) { if (req.adminRole !== 'owner') return res.status(403).json({ error: 'owner_only' }); next(); }
+const STAFF_KEYS = ['stats', 'errors', 'users', 'posts', 'notify', 'pay', 'venue', 'export'];
+function staffPerms(p) { const o = {}; STAFF_KEYS.forEach(k => { const x = (p || {})[k] || {}; const e = !!x.e; o[k] = { v: !!(x.v || e), e }; }); return JSON.stringify(o); }
+app.get('/admin/me', admin, (req, res) => {
+  if (req.adminRole === 'owner') return res.json({ role: 'owner', name: '', perms: null });
+  let P = {}; try { P = JSON.parse(req.staff.perms || '{}'); } catch (e) {}
+  res.json({ role: 'staff', id: req.staff.id, name: req.staff.name, perms: P });
+});
+app.get('/admin/staff', admin, ownerOnly, (_req, res) => {
+  res.json(db.prepare('SELECT id,name,perms,created_at,created_by,last_seen,COALESCE(locked,0) locked FROM admin_staff ORDER BY id').all()
+    .map(r => { let P = {}; try { P = JSON.parse(r.perms || '{}'); } catch (e) {} return { ...r, perms: P }; }));
+});
+app.post('/admin/staff', admin, ownerOnly, (req, res) => {
+  const b = req.body || {}; const name = String(b.name || '').trim().slice(0, 24);
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  const key = 'stf_' + crypto.randomBytes(18).toString('base64url');
+  const r = db.prepare('INSERT INTO admin_staff (name,key_hash,perms,created_at,created_by,locked) VALUES (?,?,?,?,?,0)')
+    .run(name, staffHash(key), staffPerms(b.perms || { stats: { v: 1 } }), Date.now(), adminWho(req));
+  alog(req, '스태프 초대', 'staff', r.lastInsertRowid, { name }, null);
+  res.json({ ok: true, id: r.lastInsertRowid, key });           // 열쇠는 이때 한 번만 보여 준다(서버엔 해시만)
+});
+app.patch('/admin/staff/:id', admin, ownerOnly, (req, res) => {
+  const id = +req.params.id, b = req.body || {}; const o = db.prepare('SELECT * FROM admin_staff WHERE id=?').get(id);
+  if (!o) return res.status(404).json({ error: 'not_found' });
+  db.prepare('UPDATE admin_staff SET name=?, perms=?, locked=? WHERE id=?').run(b.name != null ? String(b.name).trim().slice(0, 24) || o.name : o.name,
+    b.perms != null ? staffPerms(b.perms) : o.perms, b.locked != null ? (b.locked ? 1 : 0) : o.locked, id);
+  alog(req, b.locked === true ? '스태프 잠금' : b.locked === false ? '스태프 잠금 풂' : '스태프 권한 바꿈', 'staff', id, { name: o.name }, null);
+  res.json({ ok: true });
+});
+app.post('/admin/staff/:id/rekey', admin, ownerOnly, (req, res) => {
+  const id = +req.params.id; const o = db.prepare('SELECT * FROM admin_staff WHERE id=?').get(id); if (!o) return res.status(404).json({ error: 'not_found' });
+  const key = 'stf_' + crypto.randomBytes(18).toString('base64url');
+  db.prepare('UPDATE admin_staff SET key_hash=? WHERE id=?').run(staffHash(key), id);
+  alog(req, '스태프 열쇠 새로', 'staff', id, { name: o.name }, null);
+  res.json({ ok: true, key });
+});
 
 /* 아래 두 화면은 admin 미들웨어와 ADMIN_KEY 가 만들어진 <뒤에> 있어야 한다.
    앞쪽(1300줄대)에 두었더니 ADMIN_KEY 가 아직 초기화되기 전이라
@@ -12628,12 +12719,17 @@ app.get('/admin/export/:what', admin, (req, res) => {
   const what = req.params.what;
   const ymd = t => t ? new Date(t).toISOString().slice(0, 10) : '';
   let rows, cols, name;
+  /* 11/9 무엇을 — 회원: 전체 · 30일 접속 · 한 클럽(?club=) / 클럽: 전체 · 활동 중 · 잠든 클럽 / 정산(hostpay): 이번 달 · 지난달 · 기간(?from=&to=) */
+  const f = String(req.query.f || ''), club = +req.query.club || 0;
+  let label = { users: '회원 명단', clubs: '클럽 목록', payouts: '정산 내역', hostpay: '정산 내역' }[what] || what;
   if (what === 'users') {
+    const W = f === 'active30' ? `WHERE u.last_seen > ${Date.now() - 30 * 864e5}` : club ? `WHERE u.id IN (SELECT user_id FROM club_members WHERE club_id=${club})` : '';
+    label += f === 'active30' ? ' · 30일 접속' : club ? ' · 클럽' : ' · 전체';
     rows = db.prepare(`SELECT u.id, u.name, u.email, u.gender, u.provider,
         u.created_at, u.last_seen, u.last_plat, u.last_region, u.app_ver, u.app_plat,
         (SELECT GROUP_CONCAT(c.name, ' / ') FROM club_members m
           LEFT JOIN clubs c ON c.id=m.club_id WHERE m.user_id=u.id) clubs
-      FROM users u ORDER BY u.id`).all()
+      FROM users u ${W} ORDER BY u.id`).all()
       .map(r => ({ ...r, created_at: ymd(r.created_at), last_seen: ymd(r.last_seen),
         gender: r.gender === 'F' ? '여성' : r.gender === 'M' ? '남성' : '' }));
     cols = [['id','번호'],['name','이름'],['email','이메일'],['gender','성별'],
@@ -12644,16 +12740,31 @@ app.get('/admin/export/:what', admin, (req, res) => {
     rows = db.prepare('SELECT * FROM payouts ORDER BY id DESC LIMIT 5000').all();
     cols = Object.keys(rows[0] || { id: 1 }).map(k => [k, k]);
     name = 'payouts';
+  } else if (what === 'hostpay') {
+    const d = new Date(Date.now() + 9 * 36e5); let a, b;
+    if (f === 'last') { a = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1) - 9 * 36e5; b = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - 9 * 36e5; label += ' · 지난달'; }
+    else if (f === 'range') { a = +new Date(req.query.from || 0) || 0; b = (+new Date(req.query.to || 0) || Date.now()) + 864e5; label += ' · 기간'; }
+    else { a = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - 9 * 36e5; b = Date.now() + 864e5; label += ' · 이번 달'; }
+    const ts = v => typeof v === 'number' ? v : (+new Date(v) || 0);
+    rows = db.prepare(`SELECT p.*, u.name host FROM om_payouts p LEFT JOIN users u ON u.id=p.user_id ORDER BY p.id DESC LIMIT 5000`).all()
+      .filter(r => { const t = ts(r.created_at); return t >= a && t < b; })
+      .map(r => ({ ...r, created_at: ymd(ts(r.created_at)), paid_at: r.paid_at ? ymd(ts(r.paid_at)) : '' }));
+    const KO = { id: '번호', match_id: '경기', host: '호스트', user_id: '회원번호', court: '코트비', court_fee: '코트비', fee: '수고비', gross: '세전 합계', tax: '세금 3.3%', amount: '보낼 돈', status: '상태', created_at: '확정일', paid_at: '입금일' };
+    cols = Object.keys(rows[0] || { id: 1, match_id: 1, host: 1, amount: 1, status: 1, created_at: 1, paid_at: 1 }).filter(k => k !== 'bank').map(k => [k, KO[k] || k]);
+    name = 'hostpay';
   } else if (what === 'clubs') {
+    const act = `(SELECT MAX(u.last_seen) FROM club_members m JOIN users u ON u.id=m.user_id WHERE m.club_id=c.id)`;
+    const W = f === 'alive' ? `WHERE ${act} > ${Date.now() - 30 * 864e5}` : f === 'sleep' ? `WHERE COALESCE(${act},0) <= ${Date.now() - 30 * 864e5}` : '';
+    label += f === 'alive' ? ' · 활동 중' : f === 'sleep' ? ' · 잠든 클럽' : ' · 전체';
     rows = db.prepare(`SELECT c.id, c.name, c.sport, c.sido, c.sigungu,
         (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members
-      FROM clubs c ORDER BY members DESC`).all();
+      FROM clubs c ${W} ORDER BY members DESC`).all();
     cols = [['id','번호'],['name','이름'],['sport','종목'],['sido','시도'],
       ['sigungu','시군구'],['members','회원수']];
     name = 'clubs';
   } else return res.status(400).json({ error: 'unknown' });
 
-  alog(req, '내려받음', what, null, { rows: rows.length }, null);
+  alog(req, '내려받음', what, null, { rows: rows.length, label }, null);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition',
     `attachment; filename="matsu-${name}-${new Date().toISOString().slice(0,10)}.csv"`);
@@ -12689,7 +12800,10 @@ try { db.exec('CREATE INDEX IF NOT EXISTS ix_alog_at ON admin_log(at)'); } catch
 
 function adminWho(req) {
   /* 관리자 열쇠는 하나뿐이라 사람을 가릴 수 없다. 화면이 보내주면 그걸 쓴다. */
-  return String(req.headers['x-admin-who'] || '').slice(0, 24) || '관리자';
+  if (req.staff && req.staff.name) return String(req.staff.name).slice(0, 24);      // 스태프 열쇠면 그 사람 이름
+  let w = String(req.headers['x-admin-who'] || '');
+  try { w = decodeURIComponent(w); } catch (e) {}
+  return w.replace(/[\u0000-\u001f]/g, '').slice(0, 24) || '관리자';
 }
 function alog(req, action, target, targetId, detail, undo) {
   try {
