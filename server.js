@@ -46,6 +46,20 @@ process.on('unhandledRejection', (e) => {
   console.error((e && e.stack) || '');
 });
 const app = express();
+/* 11/10 — async 주소가 던진 오류도 맨 아래 오류 처리기로 보낸다.
+   Express 4 는 async 함수가 던진 오류를 잡지 않는다 — try 밖에서 오류가 나면 응답 없이 멈춰서 앱이 시간 초과까지 기다렸다.
+   주소를 달 때 처리기를 한 겹 감싸 둔다(새로 다는 주소도 저절로 적용). app.get('설정 이름')처럼 처리기가 없는 호출은 그대로 지나간다 */
+function asyncSafe(app) {
+  ['get', 'post', 'put', 'patch', 'delete'].forEach(m => {
+    const orig = app[m].bind(app);
+    app[m] = (path, ...fns) => orig(path, ...fns.map(f => (typeof f !== 'function' || f.length > 3) ? f : function (req, res, next) {
+      try { const r = f.call(this, req, res, next); if (r && typeof r.then === 'function') r.then(null, e => next(e || new Error('async_route_failed'))); return r; }
+      catch (e) { next(e || new Error('route_failed')); }
+    }));
+  });
+  return app;
+}
+asyncSafe(app);
 app.set('trust proxy', 1);   // Railway 프록시 뒤 — req.ip 가 실제 클라이언트 IP 가 되게
 /* CORS — APP_ORIGIN 이 있으면 그 도메인과 네이티브 앱만 허용한다.
    같은 도메인 요청은 CORS 를 타지 않으므로 웹은 영향 없다. */
@@ -66,7 +80,8 @@ app.use((_req, res, next) => {
   res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');   // 위치는 우리 페이지만(<내 위치> · 근처 코트) — 예전엔 웹에서 막혀 있었다 (10/29 구조 점검)
   next();
 });              // 운영 시 origin 화이트리스트로 제한하세요
-app.use(express.json({ limit: '6mb' }));   // 3MB 사진의 base64(≈4MB) + 여유
+app.use(express.json({ limit: '6mb',   // 3MB 사진의 base64(≈4MB) + 여유
+  verify: (req, res, buf) => { if (String(req.url || '').startsWith('/pay/portone/')) req.rawBody = buf.toString('utf8'); } }));   // 포트원 웹훅 서명은 원문으로 확인
 
 // ── 인증 유틸 ──
 
@@ -1626,7 +1641,8 @@ app.get('/clubs/:id/public', (req, res) => {
      한 번 와서 네 판 이긴 사람이 1위가 되면 순위가 농담이 된다. */
   const dayTotal = new Set(logs.map(r => r.date)).size;
   const minDays = dayTotal >= 2 ? 2 : 1;
-  const ranking = Object.keys(pts)
+  /* 11/10 — 클럽이 <개인 기록만>을 골랐으면 클럽 소개(가입 전 화면)에도 시즌 순위를 싣지 않는다. 지난 모임 기록은 그대로 */
+  const ranking = c.rank_scope === 'me' ? [] : Object.keys(pts)
     .map(nm => {
       const dn = (dayCnt[nm] || new Set()).size || 1;
       return { name: maskName(nm), pts: pts[nm], days: dn,
@@ -3820,8 +3836,8 @@ function omQuote(court, ball, courts, hours) {
    참가비는 <1인 기준>으로 계산한다.
      코트비 · 공값  ÷ 전체 인원(호스트 포함)   — 실비 그대로, 웃돈 없음
      + 호스트 수고비  게스트 1인 · 시간당 750원
-     ÷ (1 − 15%)     맞수 이용료 — 게스트가 낸 참가비의 15% (10/28)
-   그래서 몇 명이 모이든 게스트 참가비가 같고,
+     + 맞수 이용료   총 발생 비용(코트비 + 캔볼 값)의 15% ÷ 게스트 자리 수 (11/10 · 10/28~11/9 는 게스트가 낸 참가비의 15%)
+   그래서 몇 명이 모이든 게스트 참가비가 같고(코트 수 · 운영만 여부에 따라서만 조금 다르다),
    호스트는 크게 열수록 이득이다(1코트 반값 · 2코트부터 무료).
 
    예전처럼 <호스트 몫을 게스트 수로 나누면> 인원이 적을수록 게스트가 비싸진다.
@@ -3837,7 +3853,7 @@ function omQuote(court, ball, courts, hours) {
 const OMH = {
   PER_COURT: 6,      // 코트당 6명 — 넷이 치고 둘이 쉰다
   FEE_PH: 750,       // 호스트 수고비 — 게스트 1인 · 시간당 (2시간 1,500 · 3시간 2,250)
-  RATE: 0.15,        // 맞수 이용료 — 게스트 결제액(참가비)의 15% (10/28 · 예전엔 1인 코트비 몫의 40% = 결제액의 약 25%)
+  RATE: 0.15,        // 맞수 이용료 — 총 발생 비용(코트비 + 캔볼 값)의 15% (11/10 · 10/28~11/9 는 게스트 결제액의 15%)
   HOUR_MAX: 150000,  // 1면 1시간 대관료 상한 — 잘못 넣은 값으로 참가비가 튀지 않게
   RATE_MIN: 1000,    // 1면 1시간 대관료 하한 — 공공코트는 시간당 2,000원부터 있다
   BALL_MAX: 15000,   // 공 1캔 값 상한
@@ -3910,6 +3926,133 @@ const PAYOUT = {
   ST: ['submitted', 'kyc', 'approved', 'rejected'],
   LABEL: { submitted: '등록 확인 중', kyc: '본인인증 대기', approved: '등록 완료', rejected: '다시 등록해 주세요' },
 };
+/* ══ 11/10 포트원(PortOne) — 결제 · 파트너 정산 ══
+   스위치 두 개(둘 다 비어 있으면 예전과 똑같다 · 토스 코드는 지우지 않고 남겨 둔다):
+     PAY_PG=portone      오픈매치 참가비 결제창 · 결제 확인 · 웹훅 · 카드 환불이 포트원으로 간다
+                         (여전히 OM_PAY_LIVE=1 이어야 열린다 — 결제 스위치는 운영자가 켠다)
+     PAYOUT_MODE=portone 정산 받기 등록 → 포트원 파트너 등록(예금주 확인 포함),
+                         정산 확정 → 관리자가 <포트원에 정산 등록>(수동 정산 건) → 포트원 콘솔에서 지급 → <입금 완료>
+   키는 Railway 환경변수에만 둔다. 시험 키 · 시험 채널은 운영 서버에 넣지 않는다.
+   포트원 문서로 확인한 것: SDK 주소 · requestPayment 칸 · GET /payments/{id} 의 status(PAID) · amount.total ·
+     파트너(contact · type.whtPayer.birthdate) · 예금주 조회 · 수동 정산 건(partnerId · settlementAmount · memo) · 정산 건 조회 · 삭제 경로.
+   기억으로 넣어 포트원에 한 번 더 맞춰 볼 것: 취소의 reason · currentCancellableAmount, 수동 정산 건의 settlementDate · isForTest,
+     웹훅 서명 머리 이름(Standard Webhooks), 은행 코드 일부, 생년월일 모양(YYYY-MM-DD),
+     원천징수 대상자(whtPayer)에게 포트원이 3.3%를 스스로 떼는지 → PORTONE_WHT 로 고른다(정하기 전에는 정산 등록을 막는다). */
+const PORTONE = {
+  pay: () => String(process.env.PAY_PG || '').trim().toLowerCase() === 'portone',
+  payout: () => String(process.env.PAYOUT_MODE || '').trim().toLowerCase() === 'portone',
+  /* 시험 서버만 바꾼다 — https 이거나 이 컴퓨터(127.0.0.1 · localhost)만 받는다 */
+  base: () => {
+    const v = String(process.env.PORTONE_API_BASE || '').trim().replace(/\/+$/, '');
+    return /^https:\/\/[^/]+$/.test(v) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(v) ? v : 'https://api.portone.io';
+  },
+  store: () => String(process.env.PORTONE_STORE_ID || '').trim(),
+  channel: m => String((m === 'KAKAOPAY' && process.env.PORTONE_CHANNEL_KEY_KAKAOPAY) || process.env.PORTONE_CHANNEL_KEY || '').trim(),
+  secret: () => String(process.env.PORTONE_API_SECRET || '').trim(),
+  hook: () => String(process.env.PORTONE_WEBHOOK_SECRET || '').trim(),
+  sdk: () => { const v = String(process.env.PORTONE_SDK_URL || '').trim(); return /^https:\/\//.test(v) ? v : 'https://cdn.portone.io/v2/browser-sdk.js'; },
+  currency: () => String(process.env.PORTONE_CURRENCY || 'CURRENCY_KRW').trim(),
+  /* 결제 버튼 — CARD(카드) · KAKAOPAY · NAVERPAY · TOSSPAY(간편결제 · 계약한 것만) */
+  methods: () => { const m = String(process.env.PORTONE_PAY_METHODS || 'CARD,KAKAOPAY').toUpperCase().split(/[\s,]+/)
+    .filter(x => ['CARD', 'KAKAOPAY', 'NAVERPAY', 'TOSSPAY'].includes(x)); return m.length ? [...new Set(m)] : ['CARD']; },
+  contract: () => String(process.env.PORTONE_CONTRACT_ID || '').trim(),
+  /* 원천징수를 누가 떼나 — matsu: 맞수가 수고비의 3.3%를 떼고 <보낼 돈>을 정산 건으로 / portone: 세전 합계를 넣고 포트원이 뗀다 */
+  wht: () => { const v = String(process.env.PORTONE_WHT || '').trim().toLowerCase(); return v === 'matsu' || v === 'portone' ? v : ''; },
+  ptype: () => String(process.env.PORTONE_PARTNER_TYPE || '').trim().toUpperCase() === 'NON_WHT_PAYER' ? 'NON_WHT_PAYER' : 'WHT_PAYER',
+  test: () => process.env.PORTONE_TEST === '1',
+  payReady: () => !!(PORTONE.store() && PORTONE.channel('CARD') && PORTONE.secret()),
+};
+PAYOUT.flow = () => PORTONE.payout() ? 'portone' : 'file';
+['birth TEXT', 'po_err TEXT', 'po_status TEXT', 'po_sync_at BIGINT']
+  .forEach(c => { try { db.exec(`ALTER TABLE payout_sellers ADD COLUMN ${c}`); } catch (e) {} });
+['pg_transfer_id TEXT', 'pg_status TEXT', 'pg_err TEXT']
+  .forEach(c => { try { db.exec(`ALTER TABLE om_payouts ADD COLUMN ${c}`); } catch (e) {} });
+async function poApi(method, path, body) {
+  const secret = PORTONE.secret();
+  if (!secret) return { ok: false, status: 0, body: { type: 'NO_SECRET', message: 'PORTONE_API_SECRET 이 없어요' } };
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch(PORTONE.base() + path, { method, signal: ctl.signal,
+      headers: { Authorization: 'PortOne ' + secret, 'Content-Type': 'application/json' },
+      body: body == null ? undefined : JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, body: j || {} };
+  } catch (e) { return { ok: false, status: 0, body: { type: 'NETWORK', message: String(e.message || e).slice(0, 120) } }; }
+  finally { clearTimeout(t); }
+}
+const poErr = r => `${(r.body && r.body.type) || r.status || 'ERR'} ${(r.body && r.body.message) || ''}`.trim().slice(0, 200);
+const poQ = () => PORTONE.store() ? `?storeId=${encodeURIComponent(PORTONE.store())}` : '';
+/* 은행 이름 → 포트원 은행 코드. 문서에서 본 것: KDB · IBK · SHINHAN. 나머지는 포트원 은행 목록으로 맞춰 본다 —
+   틀린 게 있으면 코드를 고치지 않고 PORTONE_BANKS='{"새마을금고":"KFCC"}' 처럼 환경변수로 덮는다 */
+const PO_BANK_RX = [[/지역\s*농협|단위\s*농협|축협/, 'LOCAL_NONGHYUP'], [/카카오/, 'KAKAO'], [/토스/, 'TOSS'], [/케이\s*뱅크|^K\s*뱅크/i, 'K_BANK'],
+  [/국민|^KB/i, 'KOOKMIN'], [/신한/, 'SHINHAN'], [/우리/, 'WOORI'], [/하나|KEB/i, 'HANA'], [/농협|^NH/i, 'NONGHYUP'], [/기업|IBK/i, 'IBK'],
+  [/새마을/, 'KFCC'], [/우체국/, 'POST'], [/SC|제일/i, 'STANDARD_CHARTERED'], [/씨티|citi/i, 'CITI'], [/수협/, 'SUHYUP'], [/부산/, 'BUSAN'],
+  [/대구|iM\s*뱅크/i, 'DAEGU'], [/경남/, 'KYONGNAM'], [/광주/, 'KWANGJU'], [/전북/, 'JEONBUK'], [/제주/, 'JEJU'], [/신협/, 'SHINHYUP'], [/산업|KDB/i, 'KDB']];
+function poBank(name) {
+  const n = String(name || '').trim(); if (!n) return '';
+  try { const o = JSON.parse(process.env.PORTONE_BANKS || '{}'); if (o && typeof o[n] === 'string' && /^[A-Z_]{2,40}$/.test(o[n])) return o[n]; } catch (e) {}
+  const hit = PO_BANK_RX.find(([rx]) => rx.test(n)); return hit ? hit[1] : '';
+}
+/* 생년월일 — 앱은 8자리(19900101)로 보낸다. 저장 · 포트원 전송은 YYYY-MM-DD */
+function poBirth(v) {
+  const d = String(v == null ? '' : v).replace(/[^0-9]/g, '');
+  if (!/^(19|20)\d{6}$/.test(d)) return '';
+  const y = +d.slice(0, 4), m = +d.slice(4, 6), dd = +d.slice(6, 8), t = new Date(Date.UTC(y, m - 1, dd));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== dd || t.getTime() > Date.now()) return '';
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+}
+/* 포트원 파트너 등록 · 바꾸기 — 예금주를 먼저 확인하고(이름과 같아야 한다) 파트너로 올린다.
+   결과: approved(지급 가능) · submitted(포트원 승인 대기 · 잠깐 안 됨 — 관리자가 다시) · rejected(호스트가 고쳐서 다시) */
+const PO_SYNC_LOCK = new Set();
+async function poPartnerSync(uid) {
+  if (!PORTONE.payout()) return { error: 'portone_off' };
+  if (PO_SYNC_LOCK.has(uid)) return { error: 'in_progress' };
+  const sl = payoutSeller(uid); if (!sl) return { error: 'no_seller' };
+  const t = Date.now();
+  const keep = err => { db.prepare('UPDATE payout_sellers SET po_err=?, po_sync_at=?, updated_at=? WHERE user_id=?').run(String(err).slice(0, 200), t, t, uid); return { error: 'portone_failed', message: err }; };
+  const reject = why => {
+    db.prepare(`UPDATE payout_sellers SET status='rejected', reason=?, po_err=NULL, po_sync_at=?, updated_at=? WHERE user_id=?`).run(why, t, t, uid);
+    try { sendPush(uid, { icon: '🏦', link: 'payout-seller', title: '정산 받기 등록을 다시 해 주세요', body: why }); } catch (e) {}
+    return { ok: true, status: 'rejected', reason: why };
+  };
+  if (!PORTONE.secret() || !PORTONE.contract()) return keep('PORTONE_API_SECRET · PORTONE_CONTRACT_ID 를 먼저 넣어 주세요');
+  const bank = poBank(sl.bank);
+  if (!bank) return reject('이 은행은 아직 정산 받기에 쓸 수 없어요 · 다른 은행 계좌로 등록해 주세요');
+  if (!sl.birth) return reject('생년월일을 적어 주세요');
+  PO_SYNC_LOCK.add(uid);
+  try {
+    const num = poDigits(sl.account);
+    const h = await poApi('GET', `/platform/bank-accounts/${encodeURIComponent(bank)}/${encodeURIComponent(num)}/holder`);
+    if (!h.ok) {
+      if (h.status === 400 || h.status === 404) return reject('계좌를 확인하지 못했어요 · 은행과 계좌번호를 확인해 주세요');
+      return keep('예금주 조회 실패 · ' + poErr(h));
+    }
+    const holder = String(h.body.holderName || '').trim();
+    if (holder.replace(/\s+/g, '') !== String(sl.name || '').replace(/\s+/g, '')) return reject('예금주가 이름과 달라요 · 본인 명의 계좌만 등록할 수 있어요');
+    const type = PORTONE.ptype() === 'NON_WHT_PAYER' ? { nonWhtPayer: { birthdate: sl.birth } } : { whtPayer: { birthdate: sl.birth } };
+    const body = { name: sl.name, contact: { name: sl.name, phoneNumber: sl.phone, email: sl.email },
+      account: { bank, currency: 'KRW', number: num, holder, ...(h.body.accountVerificationId ? { accountVerificationId: h.body.accountVerificationId } : {}) },
+      memo: `맞수 호스트 · 회원 ${uid}`, tags: ['matsu-host'], type };
+    let r = sl.pg_id ? await poApi('PATCH', `/platform/partners/${encodeURIComponent(sl.pg_id)}`, body)
+      : await poApi('POST', '/platform/partners', { id: sl.ref_id, defaultContractId: PORTONE.contract(), ...body });
+    /* 이미 있는 파트너(예전에 등록하다 끊김) — 같은 id 로 바꾸기 */
+    if (!r.ok && !sl.pg_id && (r.status === 409 || /ALREADY/i.test(String(r.body.type || ''))))
+      r = await poApi('PATCH', `/platform/partners/${encodeURIComponent(sl.ref_id)}`, body);
+    if (!r.ok) return keep('파트너 등록 실패 · ' + poErr(r));
+    const p = r.body.partner || r.body || {}, pst = String(p.status || '').toUpperCase();
+    const st = pst === 'APPROVED' ? 'approved' : pst === 'REJECTED' ? 'rejected' : 'submitted';
+    const pid = String(p.id || sl.pg_id || sl.ref_id).slice(0, 60);
+    db.prepare(`UPDATE payout_sellers SET status=?, reason=?, pg_id=?, po_status=?, po_err=NULL, po_sync_at=?, updated_at=?,
+        approved_at=CASE WHEN ?='approved' THEN ? ELSE approved_at END WHERE user_id=?`)
+      .run(st, st === 'rejected' ? '포트원 파트너 심사에서 반려됐어요 · 정보를 확인해 주세요' : null, pid, pst || null, t, t, st, t, uid);
+    if (st !== 'submitted') try { sendPush(uid, st === 'approved'
+      ? { icon: '🏦', link: 'payout-seller', title: '정산 받기 등록이 끝났어요', body: `이제 경기가 끝나면 ${PAYOUT.pg() || '결제대행사'}로 정산을 받아요` }
+      : { icon: '🏦', link: 'payout-seller', title: '정산 받기 등록을 다시 해 주세요', body: '포트원 파트너 심사에서 반려됐어요 · 정보를 확인해 주세요' }); } catch (e) {}
+    return { ok: true, status: st, partner_status: pst || null };
+  } finally { PO_SYNC_LOCK.delete(uid); }
+}
+/* 한국 날짜 YYYY-MM-DD (정산일) */
+const poKstDate = ms => { const d = new Date((ms || Date.now()) + 9 * 3600e3); return d.toISOString().slice(0, 10); };
 function payoutSeller(uid) { try { return db.prepare('SELECT * FROM payout_sellers WHERE user_id=?').get(uid) || null; } catch (e) { return null; } }
 const poRef = uid => 'MATSU' + String(uid).padStart(7, '0');            // PG 에 넣는 셀러 ID (영문 · 숫자만)
 const poDigits = v => String(v == null ? '' : v).replace(/[^0-9]/g, '');
@@ -3917,8 +4060,11 @@ const poPhoneMask = p => { const d = poDigits(p); return d.length >= 10 ? `${d.s
 const poAcctMask = a => { const d = poDigits(a); return d ? `***-${d.slice(-4)}` : ''; };
 /* 호스트에게 보이는 모양 — 계좌는 끝 넷만, 전화는 가운데 가림 */
 function payoutSellerOut(r) {
-  if (!r) return { status: 'none', label: '등록 전', pg: PAYOUT.pg() };
-  return { status: r.status, label: PAYOUT.LABEL[r.status] || r.status, reason: r.status === 'rejected' ? (r.reason || '') : '',
+  const flow = PAYOUT.flow ? PAYOUT.flow() : 'file';
+  if (!r) return { status: 'none', label: '등록 전', pg: PAYOUT.pg(), flow };
+  /* 포트원(11/10)은 PG 본인인증 없이 예금주 확인 → 파트너 등록이라 <등록 확인 중> 대신 <계좌 확인 중> */
+  const label = flow === 'portone' && r.status === 'submitted' ? '계좌 확인 중' : (PAYOUT.LABEL[r.status] || r.status);
+  return { status: r.status, label, flow, birth: r.birth ? `${String(r.birth).slice(0, 4)}년생` : '', reason: r.status === 'rejected' ? (r.reason || '') : '',
     name: r.name || '', phone: poPhoneMask(r.phone), email: r.email || '', bank: r.bank || '',
     account: poAcctMask(r.account), holder: r.holder || '', ref_id: r.ref_id, pg: PAYOUT.pg(),
     submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null };
@@ -3939,14 +4085,19 @@ function payoutSellerSave(uid, b) {
   if (!/^\d{8,16}$/.test(account)) return E('bad_account', '계좌번호를 확인해 주세요');
   if (holder !== name) return E('holder_mismatch', '본인 명의 계좌만 등록할 수 있어요');
   if (!b.agree) return E('agree_required', '정산지급대행 이용에 동의해 주세요');
+  /* 생년월일 — 포트원 파트너(개인)에 필요하다(11/10). 바꾸지 않을 때는 비워 보낸다 */
+  if (b.birth && !poBirth(b.birth)) return E('bad_birth', '생년월일 8자리를 확인해 주세요 (예: 19900101)');
+  const birth = b.birth ? poBirth(b.birth) : (old ? old.birth || '' : '');
+  if (PORTONE.payout() && !birth) return E('bad_birth', '생년월일 8자리를 적어 주세요 (예: 19900101)');
   const t = Date.now();
-  const same = old && old.name === name && old.phone === phone && old.email === email && old.bank === bank && old.account === account && old.holder === holder;
+  const same = old && old.name === name && old.phone === phone && old.email === email && old.bank === bank && old.account === account && old.holder === holder
+    && (old.birth || '') === birth;
   if (same) return { ok: true, seller: payoutSellerOut(old), changed: false };
   tx(() => {
-    if (old) db.prepare(`UPDATE payout_sellers SET name=?, phone=?, email=?, bank=?, account=?, holder=?, status='submitted', reason=NULL,
-        agreed_at=?, submitted_at=?, updated_at=? WHERE user_id=?`).run(name, phone, email, bank, account, holder, t, t, t, uid);
-    else db.prepare(`INSERT INTO payout_sellers (user_id, ref_id, name, phone, email, bank, account, holder, status, agreed_at, submitted_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?, 'submitted', ?,?,?)`).run(uid, poRef(uid), name, phone, email, bank, account, holder, t, t, t);
+    if (old) db.prepare(`UPDATE payout_sellers SET name=?, phone=?, email=?, bank=?, account=?, holder=?, birth=?, status='submitted', reason=NULL, po_err=NULL,
+        agreed_at=?, submitted_at=?, updated_at=? WHERE user_id=?`).run(name, phone, email, bank, account, holder, birth || null, t, t, t, uid);
+    else db.prepare(`INSERT INTO payout_sellers (user_id, ref_id, name, phone, email, bank, account, holder, birth, status, agreed_at, submitted_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?, 'submitted', ?,?,?)`).run(uid, poRef(uid), name, phone, email, bank, account, holder, birth || null, t, t, t);
     /* 아직 PG 에 넣지 않은 지급은 새 판매자 정보로 — 이미 넣은 것은 PG 쪽에서 처리 */
     db.prepare(`UPDATE om_payouts SET seller_ref=? WHERE user_id=? AND status='requested' AND pg_req_at IS NULL`).run(poRef(uid), uid);
   });
@@ -3979,19 +4130,24 @@ function omHostBeta(uid) {
 /* 한국 시간 벽시계 "YYYY-MM-DDTHH:mm" — start_at · end_at · close_at 이 모두 이 모양이다 */
 const omKst = ms => new Date(ms + 9 * 3600e3).toISOString().slice(0, 16);
 
-function omHostQuote(hourCost, ballCost, courts, hours) {
+function omHostQuote(hourCost, ballCost, courts, hours, plays) {
   const C = Math.min(3, Math.max(1, Math.trunc(+courts || 1)));
   const H = (+hours === 3) ? 3 : 2;
   const hour = Math.min(OMH.HOUR_MAX, Math.max(0, Math.round(+hourCost || 0)));
   const ballEach = Math.min(OMH.BALL_MAX, Math.max(0, Math.round(+ballCost || 0)));
   const cap = C * OMH.PER_COURT;
-  const court = hour * C * H, ball = ballEach * C;           // 공은 코트당 1캔
+  const court = hour * C * H, ball = ballEach * C;           // 캔볼은 코트당 1캔 (안 넣으면 0원 — 11/10 부터 앱 기본값)
   const share = (court + ball) / cap;                         // 호스트까지 똑같이 나눈 1인 몫
   const fee = OMH.FEE_PH * H;
+  /* 11/10 — 맞수 몫 = 총 발생 비용(코트비 + 캔볼 값)의 15%. 게스트 자리 수로 나눠 1인 참가비에 얹는다 —
+     자리가 다 차면 맞수 몫이 총 비용의 15%가 된다(100원 올림의 끝수는 맞수 줄이 받는다).
+     게스트 자리 = 정원 − 1(같이 치는 호스트) · 운영만 하는 호스트(2코트부터)는 정원 전부.
+     예) 1면 · 2시간 · 66,000원 — 1인 몫 11,000 + 수고비 1,500 + 맞수 9,900 ÷ 5 = 14,480 → 14,500원
+     (10/28~11/9 는 게스트 결제액의 15% = (몫 + 수고비) ÷ 0.85. PG 카드 수수료는 지금도 이 몫 안에서 낸다) */
+  const seats = (plays === false && C >= 2) ? cap : cap - 1;
+  const matsu = (court + ball) * OMH.RATE / seats;
   /* 1e-7 — 나눗셈 끝수(154,499.999…)가 100원 내림 · 올림을 한 칸 틀리게 만들지 않게 */
-  /* 참가비 = (코트 · 공 몫 + 수고비) ÷ (1 − 15%) — 게스트가 낸 돈의 15% 가 맞수 몫, 85% 가 호스트에게 간다.
-     배민(중개 2~7.8% + 결제 · 배달 따로) · 에어비앤비(호스트 15.5%) · 아고다(15~20%) 사이. PG 카드 수수료(약 3.7%)도 이 안에서 낸다 */
-  const per = Math.ceil((share + fee) / (1 - OMH.RATE) / 100 - 1e-7) * 100;
+  const per = Math.ceil((share + fee + matsu) / 100 - 1e-7) * 100;
   /* 화면에 적는 줄은 합이 참가비와 꼭 맞아야 한다 — 맞수 줄이 끝수를 받는다 */
   const court_pp = Math.round(court / cap / 100) * 100;
   const ball_pp = Math.round(ball / cap / 100) * 100;
@@ -4023,7 +4179,7 @@ function omHostMins(q, plays) {
 /* 매치 열기 화면용 견적 — 게스트 참가비와 호스트 결과만. 이용료 · 수고비 · 비율은 싣지 않는다.
    at = 고를 수 있는 최소 인원마다 <돌려받는 돈 · 내 부담> (호스트가 손해 보는 인원은 싣지 않는다) */
 function omHostQuoteOut(b) {
-  const q = omHostQuote(b.hour_cost, b.ball_cost, b.courts, b.hours);
+  const q = omHostQuote(b.hour_cost, b.ball_cost, b.courts, b.hours, b.host_plays !== false);
   const plays = !(b.host_plays === false && q.courts >= 2);
   /* get — 이 인원이면 받는 돈의 나눔(코트비 몫 · 수고비 · 세금 · 받는 돈). 호스트 자기 돈이라 보여 준다 · 맞수 몫은 없다 (10/31) */
   const at = n => { const G = omHostGuestsOf(n, plays), s = omHostSplit(q, G);
@@ -4111,7 +4267,7 @@ function omHostCreate(uid, b) {
   const hour = Math.round(+b.hour_cost);
   if (!(hour >= OMH.RATE_MIN && hour <= OMH.HOUR_MAX)) return err(400, 'bad_hour_cost', '1면 1시간 대관료를 확인해 주세요');
   const ballEach = b.ball_cost == null || b.ball_cost === '' ? 0 : Math.round(+b.ball_cost);
-  if (!(ballEach >= 0 && ballEach <= OMH.BALL_MAX)) return err(400, 'bad_ball_cost', '공 1캔 값을 확인해 주세요');
+  if (!(ballEach >= 0 && ballEach <= OMH.BALL_MAX)) return err(400, 'bad_ball_cost', '캔볼 1캔 값을 확인해 주세요');
 
   const disc = ['mixed', 'men', 'women', 'any'].includes(b.disc) ? b.disc : 'mixed';
   if (!u.gender) return err(400, 'gender_required', '성별을 먼저 입력해 주세요');
@@ -4128,7 +4284,7 @@ function omHostCreate(uid, b) {
   /* 맞수는 중개만 한다 — 코트 규정 · 예약 양도 · 웃돈의 책임은 호스트에게 있다는 데 동의해야 연다 */
   if (!(b.agree === true || b.agree === 1 || b.agree === '1')) return err(400, 'agree_required', '호스트 확인 사항에 동의해 주세요');
 
-  const q = omHostQuote(hour, ballEach, courts, hours);
+  const q = omHostQuote(hour, ballEach, courts, hours, plays);
   /* 최소 인원은 호스트가 정한다 — 단, 호스트가 게스트보다 더 내게 되는 인원은 고를 수 없다(omHostMins) */
   const mins = omHostMins(q, plays);
   const minCnt = Math.min(q.cap, Math.max(mins[mins.length - 1], Math.trunc(+b.min_cnt) || (mins[1] || mins[0])));
@@ -4193,7 +4349,7 @@ function omHostSettle(mid) {
   if (m.status !== 'confirmed') return { error: 'not_confirmed' };
   const endMs = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
   if (isNaN(endMs) || Date.now() < endMs) return { error: 'not_finished', message: '경기가 끝난 뒤에 정산돼요' };
-  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours);
+  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours, m.host_plays !== 0);
   const guests = db.prepare('SELECT COUNT(*) n FROM open_match_joins WHERE match_id=? AND user_id!=?').get(mid, m.host_id).n;
   const collected = omCollected(mid);
   if (collected <= 0) return { error: 'no_payment', message: '걷힌 참가비가 없어 정산할 수 없어요' };
@@ -4312,9 +4468,9 @@ function omHostReview(mid, action) {
 /* 화면용 — 참가비가 어디로 가는지 줄마다. 호스트에게는 받을 돈까지 */
 function omHostView(m, uid, people) {
   if (m.mode !== 'host') return null;
-  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours);
+  const q = omHostQuote(m.hour_cost, m.ball_cost, m.courts, m.hours, m.host_plays !== 0);
   /* share_pp — 코트비 · 공을 모두가 나눈 1인 몫(100원 단위). 참가비 = 이 몫 + 진행비(수고비 · 맞수 몫을 합친 한 줄) — 맞수 몫만 따로는 보이지 않는다 (10/28) */
-  const o = { hours: q.hours, courts: q.courts, cap: q.cap, per: q.per, has_proof: !!m.proof, proof_ok: !!m.proof_ok,
+  const o = { hours: q.hours, courts: q.courts, cap: q.cap, per: intOrNull(m.price) || q.per, has_proof: !!m.proof, proof_ok: !!m.proof_ok,
     share_pp: Math.round((q.court + q.ball) / q.cap / 100) * 100 };
   if (m.court_no) o.court_no = m.court_no;
   let reports = 0;
@@ -6151,6 +6307,9 @@ app.patch('/clubs/:id/profile', auth, (req, res) => {
       catch (e) { console.error('[auto home]', e.message); }
     }
   }
+  /* 11/10 랭킹 공개 범위 — top(상위 30% · 기본) · all(전체 공개) · me(개인 기록만). 운영진이 고른다 */
+  if (has('rank_scope') && ['top', 'all', 'me'].includes(req.body.rank_scope))
+    db.prepare('UPDATE clubs SET rank_scope=? WHERE id=?').run(req.body.rank_scope, c.id);
   res.json(db.prepare('SELECT * FROM clubs WHERE id=?').get(c.id));
 });
 // 가입 구력 조건 (클럽장/임원만) · null 로 보내면 제한 해제
@@ -7323,6 +7482,8 @@ app.get('/clubs/:id/my-summary', auth, (req, res) => {
     if (me) { out.w = me.w; out.l = me.g - me.w - me.d; out.d = me.d;
               out.wr = me.wr; out.days = me.dayN; }
     if (i >= 0) { out.rank = i + 1; out.total = rank.length; }
+    /* 11/10 — 클럽이 <개인 기록만>을 골랐으면 내 순위 숫자도 싣지 않는다(홈 카드의 <홈에 내 순위 보기>) */
+    if (typeof clubRankScope === 'function' && clubRankScope(cid) === 'me') { out.rank = null; out.total = 0; }
     out.season_days = sDays.size; out.season_g = sG; out.mates = sMates.size;
     if (rank.length) out.clubWr = Math.round(
       rank.reduce((a, r) => a + r.wr, 0) / rank.length);
@@ -10588,8 +10749,17 @@ app.get('/clubs/:id/rankings', auth, (req, res) => {
     FROM club_members cm JOIN users u ON u.id=cm.user_id
     WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
     ORDER BY u.rating DESC, attended DESC, u.name`).all(cid);
-  res.json(rows);
+  /* 11/10 — 클럽이 고른 공개 범위대로: all = 전체 · top = 상위 30%(최소 3명) + 내 줄 · me = 내 줄만. 운영진은 언제나 전체 */
+  const scope = clubRankScope(cid);
+  if (scope === 'all' || isOfficer(cid, req.uid)) return res.json(rows);
+  const cut = scope === 'me' ? 0 : (rows.length <= 3 ? rows.length : Math.max(3, Math.ceil(rows.length * 0.3)));
+  res.json(rows.filter((r, i) => i < cut || r.user_id === req.uid));
 });
+try { db.exec('ALTER TABLE clubs ADD COLUMN rank_scope TEXT'); } catch (e) {}   // 랭킹 공개 범위 — 비어 있으면 top
+function clubRankScope(cid) {
+  try { const v = (db.prepare('SELECT rank_scope FROM clubs WHERE id=?').get(cid) || {}).rank_scope; return v === 'all' || v === 'me' ? v : 'top'; }
+  catch (e) { return 'top'; }
+}
 
 // ══════════════════════════════════════════════════════════════
 //  이용약관 · 개인정보처리방침 — 앱스토어 심사와 카카오 검수 요구사항
@@ -10764,7 +10934,71 @@ const DB_DIR = path.dirname(process.env.DB_PATH || './matsu.db');
 //  Railway 볼륨이 마운트돼 있어야 재배포에도 살아남는다.
 // ══════════════════════════════════════════════════════════════
 const BK_DIR = path.join(DB_DIR, 'backups');
+/* 11/10 — 백업이 DB 와 같은 볼륨에만 있으면 볼륨이 날아갈 때 같이 사라진다. 그래서:
+     ① 상태를 남긴다(마지막으로 만든 때 · 밖으로 보낸 때 · 내려받은 때) — 관리자 › 점검 › 백업
+     ② 관리자 화면에서 바로 내려받는다(GET /admin/backup/latest — 예전엔 curl 로만)
+     ③ 바깥 저장소(S3 호환)가 설정돼 있으면 만들 때마다 한 벌 올린다
+     ④ 실패하거나, 밖으로 옮긴 지 7일이 넘으면 대표에게 알린다(opsAlert) */
+try { db.exec(`CREATE TABLE IF NOT EXISTS ops_state (key TEXT PRIMARY KEY, value TEXT, at BIGINT)`); } catch (e) {}
+function opsSet(k, v) {
+  try { db.prepare('INSERT INTO ops_state (key,value,at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, at=excluded.at')
+    .run(String(k), String(v == null ? '' : v).slice(0, 300), Date.now()); } catch (e) {}
+}
+function opsGet(k) { try { return db.prepare('SELECT value, at FROM ops_state WHERE key=?').get(String(k)) || null; } catch (e) { return null; } }
+function bkFiles() { try { return fs.readdirSync(BK_DIR).filter(f => f.startsWith('matsu-')).sort(); } catch (e) { return []; } }
+
+/* 바깥 저장소(S3 호환 — Cloudflare R2 · AWS S3 · Backblaze B2 같은 곳). 네 값이 다 있을 때만 켜진다:
+     BACKUP_S3_ENDPOINT(https://…) · BACKUP_S3_BUCKET · BACKUP_S3_KEY · BACKUP_S3_SECRET   (+ BACKUP_S3_REGION — 기본 auto)
+   올리는 이름은 요일마다 하나(7개가 돌아가며 덮인다) + 매달 1일 것 하나 — 지우는 권한이 없어도 용량이 끝없이 늘지 않는다.
+   열쇠는 Railway 환경변수에만 둔다. */
+function bkS3() {
+  const e = process.env, ep = String(e.BACKUP_S3_ENDPOINT || '').trim().replace(/\/+$/, '');
+  const okUrl = /^https:\/\/[^/]+$/.test(ep) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(ep);   // http 는 이 컴퓨터(시험)만
+  if (!okUrl || !e.BACKUP_S3_BUCKET || !e.BACKUP_S3_KEY || !e.BACKUP_S3_SECRET) return null;
+  return { endpoint: ep, bucket: String(e.BACKUP_S3_BUCKET).trim(), key: String(e.BACKUP_S3_KEY).trim(),
+    secret: String(e.BACKUP_S3_SECRET).trim(), region: String(e.BACKUP_S3_REGION || 'auto').trim(),
+    prefix: String(e.BACKUP_S3_PREFIX || 'matsu').replace(/^\/+|\/+$/g, '') };
+}
+/* AWS Signature V4 — 새 패키지 없이 node:crypto 로 서명한다(AWS 문서의 시험 값으로 맞춰 본다 — 시험 83) */
+function sigV4({ method, host, path: p, query, headers, payloadHash, region, service, key, secret, amzDate }) {
+  const hx = d => crypto.createHash('sha256').update(d).digest('hex');
+  const hm = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
+  const H = {}; Object.entries({ host, 'x-amz-date': amzDate, ...(headers || {}) }).forEach(([k, v]) => { H[k.toLowerCase()] = String(v).trim().replace(/\s+/g, ' '); });
+  const names = Object.keys(H).sort();
+  const canon = [method, p, query || '', names.map(k => `${k}:${H[k]}\n`).join(''), names.join(';'), payloadHash].join('\n');
+  const date = amzDate.slice(0, 8), scope = `${date}/${region}/${service}/aws4_request`;
+  const toSign = ['AWS4-HMAC-SHA256', amzDate, scope, hx(canon)].join('\n');
+  const signingKey = hm(hm(hm(hm('AWS4' + secret, date), region), service), 'aws4_request');
+  const signature = crypto.createHmac('sha256', signingKey).update(toSign).digest('hex');
+  return { signature, scope, signedHeaders: names.join(';'), signingKey: signingKey.toString('hex'),
+    authorization: `AWS4-HMAC-SHA256 Credential=${key}/${scope}, SignedHeaders=${names.join(';')}, Signature=${signature}` };
+}
+async function s3Put(cfg, objKey, buf) {
+  const u = new URL(`${cfg.endpoint}/${encodeURIComponent(cfg.bucket)}/${objKey.split('/').map(encodeURIComponent).join('/')}`);
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');           // 20261110T031245Z
+  const payloadHash = crypto.createHash('sha256').update(buf).digest('hex');
+  const sg = sigV4({ method: 'PUT', host: u.host, path: u.pathname, query: '', headers: { 'x-amz-content-sha256': payloadHash },
+    payloadHash, region: cfg.region, service: 's3', key: cfg.key, secret: cfg.secret, amzDate });
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 120000);
+  try {
+    const r = await fetch(u, { method: 'PUT', body: buf, signal: ctl.signal,
+      headers: { 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, 'content-type': 'application/gzip', authorization: sg.authorization } });
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`${r.status} ${String(t).replace(/\s+/g, ' ').slice(0, 140)}`.trim()); }
+  } finally { clearTimeout(tm); }
+}
+/* 밖으로 옮긴 지(자동 올리기 · 내려받기) 7일이 넘었으면 일주일에 한 번 알린다.
+   <마지막으로 성공한 때>(backup_offsite_ok)를 본다 — 한 번 실패했다고 어제 올린 것까지 없는 셈 치지 않는다 */
+function bkStaleCheck() {
+  const t = Date.now(), W = 7 * 864e5;
+  const off = opsGet('backup_offsite_ok'), dl = opsGet('backup_download');
+  if ((off && t - (+off.at || 0) < W) || (dl && t - (+dl.at || 0) < W)) return false;
+  return opsAlert('backup_stale:' + Math.floor(t / W), 'DB 백업이 서버 안에만 있어요', '관리자 › 점검 › 백업에서 내려받거나 바깥 저장소를 연결해 주세요');
+}
+let BK_BUSY = false;
 async function backupNow() {
+  if (BK_BUSY) return { ok: false, error: 'busy' };
+  BK_BUSY = true;
+  const out = { ok: false };
   try {
     fs.mkdirSync(BK_DIR, { recursive: true });
     const stamp = new Date().toISOString().slice(0, 10);
@@ -10776,20 +11010,66 @@ async function backupNow() {
       try { fs.unlinkSync(dest); } catch (e) {}         // VACUUM INTO 는 기존 파일이 있으면 실패
       db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);   // WAL 포함 일관된 스냅샷
     }
-    const files = fs.readdirSync(BK_DIR).filter(f => f.startsWith('matsu-')).sort();
+    const files = bkFiles();
     while (files.length > 14) fs.unlinkSync(path.join(BK_DIR, files.shift()));
+    out.ok = true; out.file = path.basename(dest); out.size = fs.statSync(dest).size;
+    opsSet('backup_local', `${out.file}|${out.size}`);
     console.log('[backup] 완료 →', dest);
-  } catch (e) { console.error('[backup] 실패:', e.message); }
+    const cfg = bkS3();
+    if (cfg) {
+      try {
+        /* 파일을 통째로 메모리에 올려 묶는다 — DB 가 아주 커지면 서버 메모리가 모자라 서버가 죽을 수 있다.
+           기본 800MB(BACKUP_S3_MAX_MB)를 넘으면 올리지 않고 알린다(그때는 나눠 올리는 방식으로 바꿔야 한다) */
+        const maxMb = +process.env.BACKUP_S3_MAX_MB > 0 ? +process.env.BACKUP_S3_MAX_MB : 800;
+        if (out.size > maxMb * 1048576) throw new Error(`백업 파일이 ${Math.round(out.size / 1048576)}MB 라 올리지 않았어요(한도 ${maxMb}MB) · 관리자 화면에서 내려받아 주세요`);
+        const gz = await new Promise((ok, no) => zlib.gzip(fs.readFileSync(dest), (e, b) => e ? no(e) : ok(b)));
+        const d = new Date(Date.now() + 9 * 3600e3);                         // 한국 날짜
+        const keys = [`${cfg.prefix}/matsu-d${d.getUTCDay()}.db.gz`];
+        if (d.getUTCDate() === 1) keys.push(`${cfg.prefix}/matsu-${d.toISOString().slice(0, 7)}.db.gz`);
+        for (const k of keys) await s3Put(cfg, k, gz);
+        out.offsite = { ok: true, keys, size: gz.length };
+        opsSet('backup_offsite', `ok|${keys[0]}|${gz.length}`); opsSet('backup_offsite_ok', keys[0]);
+        console.log('[backup] 밖으로 보냄 →', keys.join(', '));
+      } catch (e) {
+        out.offsite = { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+        opsSet('backup_offsite', `fail|${out.offsite.error}`);
+        console.error('[backup] 밖으로 보내기 실패:', out.offsite.error);
+        opsAlert('backup_offsite', '백업을 바깥 저장소로 보내지 못했어요', out.offsite.error);
+      }
+    }
+  } catch (e) {
+    out.error = String((e && e.message) || e).slice(0, 200);
+    console.error('[backup] 실패:', out.error);
+    opsAlert('backup_failed', 'DB 백업을 만들지 못했어요', out.error);
+  } finally { BK_BUSY = false; }
+  try { bkStaleCheck(); } catch (e) {}
+  return out;
+}
+function bkStatus() {
+  const files = bkFiles(), last = files[files.length - 1] || null;
+  let size = null, at = null;
+  if (last) try { const st = fs.statSync(path.join(BK_DIR, last)); size = st.size; at = Math.round(st.mtimeMs); } catch (e) {}
+  const off = opsGet('backup_offsite'), okAt = opsGet('backup_offsite_ok'), dl = opsGet('backup_download'), o = off ? String(off.value).split('|') : [];
+  /* offsite — 마지막 시도(ok · at · key · error)와 마지막으로 성공한 때(ok_at) */
+  return { local: { n: files.length, file: last, size, at },
+    offsite: { on: !!bkS3(), ok: o[0] === 'ok', at: off ? +off.at : null, key: o[0] === 'ok' ? o[1] : null, error: o[0] === 'fail' ? o.slice(1).join('|') : null,
+      ok_at: okAt ? +okAt.at : null },
+    downloaded_at: dl ? +dl.at : null };
 }
 if (process.env.BACKUPS !== 'off') {
   setTimeout(backupNow, 60_000);                        // 부팅 1분 후 한 번
   setInterval(backupNow, 24 * 3600 * 1000).unref?.();   // 이후 24시간마다
 }
-app.post('/admin/backup', admin, async (_req, res) => { await backupNow(); res.json({ ok: true }); });  // @external 내가 curl 로 부름
-app.get('/admin/backup/latest', admin, (_req, res) => {  // @external 내가 curl 로 부름
+app.post('/admin/backup', admin, async (_req, res) => {  // 관리자 › 점검 › 백업 <지금 백업>
+  try { const r = await backupNow(); res.json({ ...r, status: bkStatus() }); }
+  catch (e) { res.status(500).json({ ok: false, error: 'backup_failed' }); }
+});
+app.get('/admin/backup/status', admin, (_req, res) => res.json(bkStatus()));
+app.get('/admin/backup/latest', admin, (_req, res) => {  // 관리자 › 점검 › 백업 <내려받기>
   try {
-    const files = fs.readdirSync(BK_DIR).filter(f => f.startsWith('matsu-')).sort();
+    const files = bkFiles();
     if (!files.length) return res.status(404).json({ error: 'no_backup' });
+    opsSet('backup_download', files[files.length - 1]);
     res.download(path.join(BK_DIR, files[files.length - 1]));
   } catch (e) { res.status(500).json({ error: 'backup_read_failed' }); }
 });
@@ -12361,11 +12641,17 @@ const ADMIN_KEY = process.env.ADMIN_KEY || 'matsu-admin';
 function admin(req, res, next) {
   // 키는 반드시 헤더로. URL 쿼리는 브라우저 히스토리·서버 로그에 그대로 남는다.
   const k = req.headers['x-admin-key'];
-  if (k && k === ADMIN_KEY) { req.adminRole = 'owner'; return next(); }
+  /* 11/10 — 열쇠를 여러 번 틀린 접속(IP)은 10분 동안 열쇠를 아예 보지 않는다(맞히기 방지) */
+  const blk = ADMIN_FAIL.get(String(req.ip || 'unknown'));
+  if (blk && blk.until > Date.now()) {
+    try { res.set && res.set('Retry-After', String(Math.ceil((blk.until - Date.now()) / 1000))); } catch (e) {}
+    return res.status(429).json({ error: 'too_many_attempts', message: '열쇠를 여러 번 틀렸어요 · 10분 뒤에 다시 해 주세요' });
+  }
+  if (k && adminKeyOk(k)) { req.adminRole = 'owner'; return next(); }
   /* 11/9 스태프 열쇠 — 사람마다 따로 · 메뉴마다 보기(GET) · 손대기(그 밖) · 잠그면 바로 막힌다.
      메뉴에 묶이지 않은 주소(계정 · 작업 기록 · 교류전 · 맞수컵 · 서버 등)는 대표 열쇠만 */
   const st = staffByKey(k);
-  if (!st) return res.status(403).json({ error: 'admin_only' });
+  if (!st) { if (k) adminFailed(req, k); return res.status(403).json({ error: 'admin_only' }); }
   const m = staffMenu(req.path);
   let P = {}; try { P = JSON.parse(st.perms || '{}') || {}; } catch (e) {}
   const ok = m === '*' || (m && P[m] && (req.method === 'GET' ? P[m].v : P[m].e));
@@ -12373,6 +12659,26 @@ function admin(req, res, next) {
   req.adminRole = 'staff'; req.staff = st;
   if (!st.last_seen || Date.now() - st.last_seen > 60e3) { try { db.prepare('UPDATE admin_staff SET last_seen=? WHERE id=?').run(Date.now(), st.id); } catch (e) {} }
   next();
+}
+/* 틀린 열쇠 세기 — IP 마다 10분에 <서로 다른> 틀린 열쇠 10개까지.
+   같은 틀린 열쇠는 몇 번을 보내도 한 번으로 센다 — 열쇠를 바꾼 뒤 예전 열쇠가 저장된 관리자 화면이 한꺼번에 여러 주소를 불러도 막히지 않고,
+   맞히려는 쪽은 어차피 매번 다른 열쇠를 넣어야 한다. 열쇠 없이 온 요청 · 맞는 열쇠는 세지 않는다.
+   서버가 다시 뜨면 잊는다. 비교는 해시끼리 — 길이 · 걸린 시간으로 열쇠가 새지 않게 */
+const ADMIN_FAIL = new Map(), ADMIN_FAIL_MAX = 10, ADMIN_FAIL_WIN = 10 * 60e3;
+function adminKeyOk(k) {
+  try { const h = v => crypto.createHash('sha256').update(String(v)).digest(); return crypto.timingSafeEqual(h(k), h(ADMIN_KEY)); } catch (e) { return false; }
+}
+function adminFailed(req, k) {
+  const ip = String(req.ip || 'unknown'), t = Date.now();
+  if (ADMIN_FAIL.size > 5000) ADMIN_FAIL.clear();
+  let f = ADMIN_FAIL.get(ip);
+  if (!f || t - f.at > ADMIN_FAIL_WIN) { f = { keys: new Set(), at: t, until: 0 }; ADMIN_FAIL.set(ip, f); }
+  f.keys.add(crypto.createHash('sha256').update(String(k)).digest('hex').slice(0, 16));
+  if (f.keys.size >= ADMIN_FAIL_MAX && !f.until) {
+    f.until = t + ADMIN_FAIL_WIN;
+    console.error('[admin] 틀린 열쇠가 많아 10분 막아요', ip);
+    if (typeof opsAlert === 'function') opsAlert('admin_key:' + ip, '관리자 열쇠를 여러 번 틀린 접속이 있었어요', `그 접속을 10분 동안 막았어요 (${ip})`);
+  }
 }
 try { db.exec(`CREATE TABLE IF NOT EXISTS admin_staff (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, key_hash TEXT UNIQUE, perms TEXT,
   created_at INTEGER, created_by TEXT, last_seen INTEGER, locked INTEGER DEFAULT 0)`); } catch (e) {}
@@ -12514,10 +12820,12 @@ app.post('/admin/push-test', admin, async (req, res) => {
   const rows = db.prepare('SELECT token, platform FROM devices WHERE user_id=?').all(uid);
   if (!rows.length) return res.json({ ok: false, reason: '그 회원의 기기가 등록돼 있지 않아요' });
   const out = [];
-  for (const r of rows.filter(x => x.platform === 'ios')) {
-    const rr = await apnsSend(r.token, { title: '시험 알림', body: '이 알림이 보이면 잘 되고 있어요' });
-    out.push({ platform: 'ios', ...rr });
-  }
+  try {
+    for (const r of rows.filter(x => x.platform === 'ios')) {
+      const rr = await apnsSend(r.token, { title: '시험 알림', body: '이 알림이 보이면 잘 되고 있어요' });
+      out.push({ platform: 'ios', ...rr });
+    }
+  } catch (e) { return res.status(500).json({ ok: false, error: 'push_failed', message: String(e && e.message || e).slice(0, 120) }); }
   res.json({ ok: true, sent: out, note: out.length ? '' : 'iOS 기기가 없어요' });
 });
 
@@ -12666,6 +12974,48 @@ app.get('/admin/purge-list', admin, (_req, res) => {  // @external 내가 curl �
     clubs: db.prepare(`SELECT c.id, c.name, c.sport,
       (SELECT COUNT(*) FROM club_members m WHERE m.club_id=c.id) members FROM clubs c ORDER BY c.id`).all(),
   });
+});
+
+/* ── 운영 알림 (11/10) ──────────────────────────────────────────
+   카드 환불 실패 · 정산 <확인 필요> · 결제 대조 · 백업 실패는 관리자 화면을 열어야만 보였다.
+   앱 오류처럼 대표(ADMIN_UIDS)에게 먼저 알린다. 같은 일로 계속 울리지 않게 열쇠(key)마다 하루 한 번.
+   받을 사람이 정해져 있지 않아도 기록은 남는다 — 관리자 › 점검 › 운영 알림. */
+try { db.exec(`CREATE TABLE IF NOT EXISTS ops_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT, title TEXT, body TEXT, at BIGINT, sent INTEGER DEFAULT 0)`); } catch (e) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS ix_ops_alerts_key ON ops_alerts(key, id)'); } catch (e) {}
+function opsAlert(key, title, body) {
+  try {
+    const t = Date.now(), k = String(key).slice(0, 80);
+    const last = db.prepare('SELECT at FROM ops_alerts WHERE key=? ORDER BY id DESC LIMIT 1').get(k);
+    if (last && t - (+last.at || 0) < 864e5) return false;
+    const ids = (process.env.ADMIN_UIDS || '').split(',').map(x => +String(x).trim()).filter(Boolean);
+    db.prepare('INSERT INTO ops_alerts (key,title,body,at,sent) VALUES (?,?,?,?,?)')
+      .run(k, String(title || '').slice(0, 80), String(body || '').slice(0, 200), t, ids.length);
+    ids.forEach(uid => { try { Promise.resolve(sendPush(uid, { icon: '🚨', title: String(title || ''), body: String(body || ''), link: '/admin.html' })).catch(() => {}); } catch (e) {} });
+    console.log('[ops alert]', k, title);
+    return true;
+  } catch (e) { console.error('[ops alert]', e && e.message); return false; }
+}
+/* 돈 점검 — 한 시간마다. 알림은 종류마다 하루 한 번(opsAlert).
+     ① 카드 환불이 3시간 넘게 <대기> — 보통 40분 안에 끝나거나 <실패>로 넘어간다. 오래 대기면 결제대행사 열쇠가 빠진 것
+     ② 입금 예정일이 하루 넘게 지났는데 아직 안 보낸 호스트 정산(정산 받기 등록이 끝난 호스트만 — 보낼 수 있는 건) */
+function opsMoneyCheck() {
+  const t = Date.now(), out = { refund_stuck: 0, payout_overdue: 0 };
+  try {
+    out.refund_stuck = db.prepare("SELECT COUNT(*) n FROM om_refunds WHERE status IN ('pending','sending') AND created_at < ?").get(t - 3 * 3600e3).n;
+    if (out.refund_stuck) opsAlert('refund_stuck', `카드 환불 ${out.refund_stuck}건이 3시간 넘게 대기 중이에요`, '결제대행사 열쇠(환경변수)가 그대로 있는지 확인해 주세요 · 관리자 › 호스트 정산');
+  } catch (e) {}
+  try {
+    out.payout_overdue = db.prepare(`SELECT COUNT(*) n FROM om_payouts p JOIN payout_sellers s ON s.user_id=p.user_id
+      WHERE p.status='requested' AND p.pg_req_at IS NULL AND s.status='approved' AND p.due_at IS NOT NULL AND p.due_at < ?`).get(t - 864e5).n;
+    if (out.payout_overdue) opsAlert('payout_overdue', `입금 예정일이 지난 호스트 정산 ${out.payout_overdue}건`, '관리자 › 호스트 정산에서 보내 주세요');
+  } catch (e) {}
+  return out;
+}
+setTimeout(() => { try { opsMoneyCheck(); } catch (e) {} }, 90e3).unref?.();
+setInterval(() => { try { opsMoneyCheck(); } catch (e) {} }, 3600e3).unref?.();
+app.get('/admin/ops-alerts', admin, (_req, res) => {
+  const rows = db.prepare('SELECT id, key, title, body, at, sent FROM ops_alerts ORDER BY id DESC LIMIT 30').all();
+  res.json({ rows: rows.map(r => ({ ...r, at: +r.at })), alert_to: (process.env.ADMIN_UIDS || '').split(',').map(x => x.trim()).filter(Boolean).length });
 });
 
 /* ── 오류 알림 ────────────────────────────────────────────────────
@@ -14031,7 +14381,7 @@ function venuePhotoList(x) {
 function venueRateOut(v, lat, lng) {
   const r = venueRate(v.id), o = r && r.off;
   const ph = venuePhotoList(v.photos);
-  const per = r ? omHostQuote(r.hour, 6000, 2, 2).per : null;
+  const per = r ? omHostQuote(r.hour, 0, 1, 2).per : null;
   let dist = null;
   if (isFinite(lat) && isFinite(lng) && v.lat != null && v.lng != null) {
     const R = 6371, dLa = (v.lat - lat) * Math.PI / 180, dLo = (v.lng - lng) * Math.PI / 180;
@@ -14046,7 +14396,7 @@ function venueRateOut(v, lat, lng) {
     photo: ph[0] ? (ph[0].thumb || ph[0].url) : null, photo_n: ph.length, logo: v.logo || null,
     lights: v.lights || null, parking: v.parking || null,
     indoor_n: v.indoor_n != null ? v.indoor_n : null, outdoor_n: v.outdoor_n != null ? v.outdoor_n : null,
-    per_in: o && o.in ? omHostQuote(o.in, 6000, 2, 2).per : null, per_out: o && o.out ? omHostQuote(o.out, 6000, 2, 2).per : null,
+    per_in: o && o.in ? omHostQuote(o.in, 0, 1, 2).per : null, per_out: o && o.out ? omHostQuote(o.out, 0, 1, 2).per : null,
     rate_note: o ? o.note : null, rate_by: o ? o.by : null, rate_at: o ? o.at : null };
 }
 app.get('/venues/rates', optAuth, (req, res) => {
@@ -18289,8 +18639,11 @@ app.get('/pay/return-to/:orderId', auth, (req, res) => {
    스위치  OM_PAY_LIVE=1 + TOSS_CLIENT_KEY · TOSS_SECRET_KEY(결제위젯 연동 키 gck/gsk). 없으면 꺼짐.
    ═══════════════════════════════════════════════════════════════ */
 function omPayLive() {
-  return process.env.OM_PAY_LIVE === '1' && !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY);
+  if (process.env.OM_PAY_LIVE !== '1') return false;
+  if (omIsPortone()) return PORTONE.payReady();                      // 11/10 포트원 — 상점 · 채널 · API 시크릿
+  return !!(process.env.TOSS_SECRET_KEY && process.env.TOSS_CLIENT_KEY);
 }
+function omIsPortone() { return String(process.env.PAY_PG || '').trim().toLowerCase() === 'portone'; }
 ['kind TEXT', 'match_id INTEGER', 'pay_err TEXT'].forEach(c => { try { db.exec(`ALTER TABLE orders ADD COLUMN ${c}`); } catch (e) {} });
 try { db.exec('ALTER TABLE om_payments ADD COLUMN receipt_url TEXT'); } catch (e) {}   // 토스 카드 영수증 주소 — 결제 내역 <영수증 보기>
 const TOSS_API = 'https://api.tosspayments.com';
@@ -18320,8 +18673,9 @@ app.post('/open-matches/:id/pay', auth, limitWrite, (req, res) => {
   if (seat) return res.status(409).json({ error: seat, message: OM_SEAT_MSG[seat] });
   const amount = omPriceFor(m, omMinCount(m));
   if (!(amount > 0)) return res.status(400).json({ error: 'free_match', message: '참가비가 없는 매치예요' });
-  /* 토스 orderId — 6~64자 · 영문 숫자 - _ = 만 */
-  const orderId = `om_${mid}_${req.uid}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  /* 토스 orderId — 6~64자 · 영문 숫자 - _ = 만. 포트원 paymentId 는 PG 마다 다르다(NHN KCP 40자 · 특수문자 안 됨) — 영문 숫자만 40자 안으로 */
+  const rnd = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const orderId = omIsPortone() ? `OM${mid}U${req.uid}T${rnd}`.slice(0, 40) : `om_${mid}_${req.uid}_${rnd}`;
   db.prepare(`INSERT INTO orders (order_id,user_id,amount,cash,status,created_at,kind,match_id) VALUES (?,?,?,0,'ready',?, 'om', ?)`)
     .run(orderId, req.uid, amount, Date.now(), mid);
   const src = req.body && req.body.src === 'app' ? 'app' : 'web';
@@ -18375,6 +18729,7 @@ app.get('/pay/om-checkout', (req, res) => {  // @external 앱의 인앱 브라�
   if (Date.now() - (+ord.created_at || 0) > OM_ORDER_TTL) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>결제 시간이 지났어요</h1><p class="sub">자리와 참가비가 바뀌었을 수 있어요. 앱에서 다시 신청해 주세요.</p><span class="sp"></span>${backBtn}`);
   if (!omPayLive()) return omPayPage(res, '맞수 결제', `<div class="brand">맞수</div><h1>카드 결제는 준비 중이에요</h1><span class="sp"></span>${backBtn}`);
   const m = db.prepare('SELECT * FROM open_matches WHERE id=?').get(ord.match_id) || {};
+  if (omIsPortone()) return omPortoneCheckout(req, res, ord, m, src, backBtn);   // 11/10 포트원 결제창
   const base = `${req.protocol}://${req.get('host')}`;
   const t = omKoWhen(m.start_at);
   const P = {
@@ -18487,20 +18842,22 @@ async function omPayConfirm(paymentKey, orderId, amount) {
 }
 /* 토스가 돌려보내는 곳 — 승인하고, 결과를 보여 주고, 앱으로 돌려보낸다 */
 async function omPayDone(req, res) {
-  const q = req.query || {};
-  const oid = String(q.orderId || q.oid || '');
+  const q = { ...(req.query || {}) };
+  if (q.pg === 'portone' && q.code) q.fail = '1';                    // 포트원 — 결제창에서 실패 · 그만둠
+  const oid = String(q.orderId || q.oid || q.paymentId || '');
   const src = q.src === 'app' ? 'app' : 'web';
   let ok = false, h = '', sub = '';
   if (q.fail) {
-    const canceled = /CANCEL/i.test(String(q.code || ''));
+    const canceled = /CANCEL/i.test(String(q.code || '')) || /취소/.test(String(q.message || ''));
     h = canceled ? '결제를 그만뒀어요' : '결제하지 못했어요';
     sub = canceled ? '신청은 되지 않았어요. 다시 신청하려면 앱에서 버튼을 눌러 주세요.' : `${escH(String(q.message || '').slice(0, 80))} · 신청은 되지 않았어요.`;
-  } else if (q.paymentKey && oid) {
-    const r = await omPayConfirm(String(q.paymentKey), oid, +q.amount);
+  } else if ((q.paymentKey || q.pg === 'portone') && oid) {
+    const r = q.pg === 'portone' ? await omPortoneConfirm(oid) : await omPayConfirm(String(q.paymentKey), oid, +q.amount);
     const b = r.body || {};
     if (b.ok) { ok = true; h = '신청했어요'; sub = `${Number(b.amount || 0).toLocaleString()}원을 카드로 결제했어요.`; }
     else if (b.kind === 'om') { h = '자리가 먼저 찼어요'; sub = `${escH(b.message || '신청하지 못했어요')} · 결제는 바로 취소했어요. 카드사에 따라 영업일 며칠 걸릴 수 있어요.`; }
     else if (b.error === 'in_progress') { h = '결제를 확인하고 있어요'; sub = '잠시 뒤 앱에서 신청 결과를 확인해 주세요.'; }
+    else if (b.error === 'not_paid') { h = '결제가 끝나지 않았어요'; sub = '신청은 되지 않았어요. 다시 신청하려면 앱에서 버튼을 눌러 주세요.'; }
     else { h = '결제를 확인하지 못했어요'; sub = '카드에서 돈이 빠져나갔다면 자동으로 취소돼요 · 문제가 계속되면 내정보 › 문의하기로 알려 주세요.'; }
   } else { h = '결제 정보를 찾지 못했어요'; sub = '앱에서 신청 결과를 확인해 주세요.'; }
   const back = src === 'app' ? omAppReturn(req, { order: oid, ok: ok ? 1 : 0 }) : '/app';
@@ -18510,11 +18867,189 @@ async function omPayDone(req, res) {
     ${src === 'app' ? '<p class="note" style="text-align:center">앱이 열리지 않으면 이 창을 닫아 주세요</p>' : '<p class="note" style="text-align:center">이 창을 닫고 맞수로 돌아가도 돼요</p>'}`,
     src === 'app' ? `setTimeout(function(){ location.href=${JSON.stringify(back)}; }, ${ok ? 900 : 1600});` : '');
 }
+/* ── 포트원 결제 (PAY_PG=portone · 11/10) ──
+   결제창: 포트원 브라우저 SDK(PortOne.requestPayment). 휴대폰은 결제창이 redirectUrl 로 돌려보내고,
+   PC 는 약속(Promise)이 끝나면 같은 주소로 보낸다 → /pay/done?kind=om&pg=portone&paymentId=…
+   서버는 결제창이 준 값을 믿지 않는다 — GET /payments/{paymentId} 로 포트원에 직접 물어
+   <PAID 이고 · 금액이 주문과 같을 때만> 자리를 넣는다(금액이 다르면 바로 전액 취소). */
+const PO_METHOD = {
+  CARD: { label: '카드로 결제', req: { payMethod: 'CARD' } },
+  KAKAOPAY: { label: '카카오페이', req: { payMethod: 'EASY_PAY', easyPay: { easyPayProvider: 'KAKAOPAY' } } },
+  NAVERPAY: { label: '네이버페이', req: { payMethod: 'EASY_PAY', easyPay: { easyPayProvider: 'NAVERPAY' } } },
+  TOSSPAY: { label: '토스페이', req: { payMethod: 'EASY_PAY', easyPay: { easyPayProvider: 'TOSSPAY' } } },
+};
+function omPortoneCheckout(req, res, ord, m, src, backBtn) {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const u = (typeof getUser === 'function' && getUser(ord.user_id)) || {};
+  const cust = { customerId: `matsu-${ord.user_id}` };
+  const nm = String(u.real_name || u.name || '').trim(); if (nm) cust.fullName = nm.slice(0, 20);
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(u.email || ''))) cust.email = String(u.email);
+  if (/^01\d{8,9}$/.test(poDigits(u.phone))) cust.phoneNumber = poDigits(u.phone);
+  const ms = PORTONE.methods().filter(k => PORTONE.channel(k));
+  const P = {
+    sdk: PORTONE.sdk(), back: src === 'app' ? omAppReturn(req, { order: ord.order_id, ok: 0 }) : '/app',
+    done: `${base}/pay/done?kind=om&pg=portone&src=${src}`,
+    base: { storeId: PORTONE.store(), paymentId: ord.order_id, orderName: omOrderName(m), totalAmount: ord.amount,
+      currency: PORTONE.currency(), customer: cust, redirectUrl: `${base}/pay/done?kind=om&pg=portone&src=${src}` },
+    m: Object.fromEntries(ms.map(k => [k, { channelKey: PORTONE.channel(k), ...PO_METHOD[k].req }])),
+    win: `${process.env.PG_NAME ? process.env.PG_NAME + ' ' : ''}결제창`,
+  };
+  const t = omKoWhen(m.start_at);
+  const inner = `<div class="brand">맞수</div>
+    <h1>참가비를 결제해요</h1>
+    <div class="card"><div class="row"><span>${escH([m.loc || '오픈매치', m.court_no || ''].filter(Boolean).join(' '))}</span></div>
+      <div class="row"><span>${escH(t)}</span></div>
+      <div class="row" style="border-top:1px solid #f0efeb;margin-top:6px;padding-top:12px"><span>참가비</span><b class="amt">${Number(ord.amount).toLocaleString()}원</b></div></div>
+    <div id="st" style="display:flex;align-items:center;gap:12px"><span class="spin"></span><span class="sub">${escH(P.win)}을 준비하는 중이에요</span></div>
+    <span class="sp"></span>
+    <div id="ms" style="display:flex;flex-direction:column;gap:10px">${ms.map((k, i) =>
+      `<button class="btn${k === 'KAKAOPAY' ? ' kp' : i ? ' ghost' : ''}" data-m="${k}" disabled>${escH(PO_METHOD[k].label)} · ${Number(ord.amount).toLocaleString()}원</button>`).join('')}</div>
+    ${backBtn}
+    <p class="note">${omSellerLine()}</p>
+    <style>.btn.kp{background:#fee500;color:#191919}.btn:disabled{opacity:.5;cursor:default}</style>`;
+  const script = `
+var P=${JSON.stringify(P).replace(/</g, '\\u003c')};
+var st=document.getElementById('st'), bs=[].slice.call(document.querySelectorAll('#ms .btn'));
+function say(t){ st.innerHTML='<span class="sub">'+t+'</span>'; }
+function lock(on){ bs.forEach(function(b){ b.disabled=on; }); }
+function pay(k){
+  lock(true); say(P.win+'에서 결제해 주세요');
+  var q={}; for(var a in P.base) q[a]=P.base[a]; for(var b in P.m[k]) q[b]=P.m[k][b];
+  PortOne.requestPayment(q).then(function(r){
+    /* PC 는 여기로 끝난다(휴대폰은 결제창이 redirectUrl 로 바로 보낸다) */
+    if(!r){ lock(false); say('결제를 그만뒀어요 · 신청은 되지 않았어요'); return; }
+    if(r.code!=null){ lock(false); say(/취소|cancel/i.test(String(r.message||r.pgMessage||''))?'결제를 그만뒀어요 · 신청은 되지 않았어요':'결제하지 못했어요 · '+String(r.message||'').slice(0,80)); return; }
+    say('결제를 확인하고 있어요');
+    location.href=P.done+'&paymentId='+encodeURIComponent(r.paymentId||P.base.paymentId);
+  }).catch(function(e){ lock(false); say('결제창을 열지 못했어요 · '+((e&&e.message)||'')); });
+}
+function boot(){
+  if(!window.PortOne||!bs.length){ say('결제창을 불러오지 못했어요'); return; }
+  bs.forEach(function(b){ b.onclick=function(){ pay(b.getAttribute('data-m')); }; });
+  lock(false); say('결제 수단을 골라 주세요');
+}
+var s=document.createElement('script'); s.src=P.sdk; s.onload=boot;
+s.onerror=function(){ say('결제창을 불러오지 못했어요 · 인터넷 연결을 확인해 주세요'); };
+document.head.appendChild(s);`;
+  return omPayPage(res, '맞수 결제', inner, script);
+}
+/* 포트원에 직접 물어 확인하고 자리를 넣는다 — 돌아오는 주소 · 웹훅이 같은 함수를 쓴다(주문마다 한 번) */
+async function omPortoneConfirm(paymentId) {
+  const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND kind='om'").get(String(paymentId || ''));
+  if (!ord) return { status: 404, body: { error: 'order_not_found' } };
+  if (ord.status !== 'ready') return { status: 200, body: { ...omPayState(ord), already: true } };
+  if (OM_PAY_LOCK.has(ord.order_id)) return { status: 409, body: { error: 'in_progress' } };
+  if (!PORTONE.secret()) return { status: 500, body: { error: 'portone_secret_not_set' } };
+  OM_PAY_LOCK.add(ord.order_id);
+  try {
+    const r = await poApi('GET', `/payments/${encodeURIComponent(ord.order_id)}${poQ()}`);
+    if (!r.ok) {
+      db.prepare('UPDATE orders SET pay_err=? WHERE order_id=?').run(('lookup ' + poErr(r)).slice(0, 60), ord.order_id);
+      return { status: 502, body: { error: 'portone_lookup_failed' } };
+    }
+    const p = r.body || {}, st = String(p.status || '').toUpperCase(), total = +((p.amount || {}).total);
+    if (st !== 'PAID') {
+      db.prepare('UPDATE orders SET pay_err=? WHERE order_id=?').run(('status ' + (st || '?')).slice(0, 60), ord.order_id);
+      return { status: 402, body: { error: 'not_paid', status: st || null } };
+    }
+    const key = 'portone:' + ord.order_id;
+    if (total !== +ord.amount || (p.storeId && PORTONE.store() && p.storeId !== PORTONE.store())) {
+      /* 위변조 — 결제된 금액 그대로 바로 돌려준다(자리는 넣지 않는다) */
+      tx(() => {
+        db.prepare("UPDATE orders SET status='paid', payment_key=?, pay_err='amount_mismatch' WHERE order_id=?").run(key, ord.order_id);
+        db.prepare(`INSERT INTO om_refunds (user_id,match_id,order_id,payment_key,amount,reason,status,created_at) VALUES (?,?,?,?,?,'join_failed','pending',?)`)
+          .run(ord.user_id, ord.match_id, ord.order_id, key, total > 0 ? total : ord.amount, Date.now());
+      });
+      console.error('[portone] 금액 불일치', ord.order_id, total, ord.amount);
+      if (typeof opsAlert === 'function') opsAlert('amount_mismatch', '금액이 다른 결제가 들어와 취소했어요', `주문 금액과 결제 금액이 달랐어요(${ord.order_id}) · 카드 환불을 확인해 주세요`);
+      try { await omRefundRun(); } catch (e) {}
+      return { status: 400, body: { error: 'amount_mismatch' } };
+    }
+    const out = omPaidJoin(ord, key, typeof p.receiptUrl === 'string' ? p.receiptUrl : null);
+    if (!out.ok) { try { await omRefundRun(); } catch (e) {} out.refund = omPayState(db.prepare('SELECT * FROM orders WHERE order_id=?').get(ord.order_id)).refund; }
+    return { status: 200, body: out };
+  } catch (e) { return { status: 500, body: { error: String(e.message || e).slice(0, 120) } }; }
+  finally { OM_PAY_LOCK.delete(ord.order_id); }
+}
+/* 포트원 카드 돌려주기 — 부분 취소. 두 번 취소되지 않게 <지금 남은 취소 가능 금액>을 같이 보낸다
+   (포트원이 가진 잔액과 다르면 취소하지 않고 실패 → 관리자 <카드 환불 실패>에서 확인) */
+async function poCancel(r) {
+  const key = String(r.payment_key || ''), pid = key.slice('portone:'.length);
+  /* 자리에 들어간 결제(om_payments)만 잔액을 안다 — 자리 마감 · 금액 불일치 즉시 취소는 전액이라 두 번 취소될 수 없다 */
+  const paid = (db.prepare('SELECT amount FROM om_payments WHERE payment_key=?').get(key) || {}).amount;
+  const back = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM om_refunds WHERE payment_key=? AND status='done' AND id<>?").get(key, r.id).s;
+  const body = { storeId: PORTONE.store() || undefined, amount: r.amount, reason: OMR_WHY[r.reason] || '오픈매치 참가비 환불' };
+  if (paid > 0) body.currentCancellableAmount = Math.max(0, paid - back);
+  const x = await poApi('POST', `/payments/${encodeURIComponent(pid)}/cancel`, body);
+  return { ok: x.ok, err: x.ok ? '' : poErr(x) };
+}
+/* Standard Webhooks 서명(웹훅 V2) — webhook-id · webhook-timestamp · webhook-signature(v1,<base64>) ·
+   서명할 글 = id.timestamp.body · 열쇠 = whsec_ 뒤의 base64. 서명이 맞아도 결제는 포트원에 다시 물어서 처리한다. */
+function poHookOk(req) {
+  const sec = PORTONE.hook(); if (!sec) return true;
+  const id = String(req.headers['webhook-id'] || ''), ts = String(req.headers['webhook-timestamp'] || ''), sig = String(req.headers['webhook-signature'] || '');
+  if (!id || !/^\d+$/.test(ts) || !sig || typeof req.rawBody !== 'string') return false;
+  if (Math.abs(Date.now() / 1000 - +ts) > 300) return false;
+  let key; try { key = Buffer.from(sec.replace(/^whsec_/, ''), 'base64'); } catch (e) { return false; }
+  const want = crypto.createHmac('sha256', key).update(`${id}.${ts}.${req.rawBody}`).digest();
+  return sig.split(' ').some(s => { const [v, b] = s.split(','); if (v !== 'v1' || !b) return false;
+    let got; try { got = Buffer.from(b, 'base64'); } catch (e) { return false; }
+    return got.length === want.length && crypto.timingSafeEqual(got, want); });
+}
+/* 결제 대조 (11/10) — 결제창에서 결제는 끝났는데 돌아오는 주소 · 웹훅을 둘 다 놓친 주문을 찾는다.
+   포트원은 결제창에서 결제가 바로 끝나서, 서버가 모르면 게스트는 돈만 나가고 자리도 환불도 없다.
+   <대기> 주문을 포트원에 물어 PAID 면 자리를 넣고(못 넣으면 바로 취소), 아니면 손대지 않는다.
+   주문마다 3분 · 10분 · 30분 · 1시간 · 3시간 · 12시간 · 24시간 뒤, 일곱 번까지만 묻는다. */
+const OM_SWEEP_AT = [3, 10, 30, 60, 180, 720, 1440].map(m => m * 60e3);
+['chk_n INTEGER DEFAULT 0', 'chk_at BIGINT'].forEach(c => { try { db.exec(`ALTER TABLE orders ADD COLUMN ${c}`); } catch (e) {} });
+async function omPortoneSweep() {
+  const out = { checked: 0, fixed: 0 };
+  if (!omIsPortone() || !PORTONE.secret()) return out;
+  const t = Date.now();
+  /* 볼 때가 된 주문만, 새 것부터 40건 — 버려진 옛 주문이 자리를 다 차지해 새 주문을 못 보는 일이 없게 */
+  const rows = db.prepare(`SELECT order_id, user_id, match_id, created_at, COALESCE(chk_n,0) chk_n FROM orders
+    WHERE kind='om' AND status='ready' AND COALESCE(chk_n,0) < ? AND created_at > ? ORDER BY created_at DESC LIMIT 600`).all(OM_SWEEP_AT.length, t - 3 * 864e5)
+    .filter(o => t - (+o.created_at || 0) >= OM_SWEEP_AT[o.chk_n]).slice(0, 40);
+  for (const o of rows) {
+    if (OM_PAY_LOCK.has(o.order_id)) continue;                   // 지금 돌아오는 주소 · 웹훅이 처리하는 중
+    db.prepare('UPDATE orders SET chk_n=COALESCE(chk_n,0)+1, chk_at=? WHERE order_id=?').run(t, o.order_id);
+    out.checked++;
+    const r = await poApi('GET', `/payments/${encodeURIComponent(o.order_id)}${poQ()}`);
+    if (!r.ok || String((r.body || {}).status || '').toUpperCase() !== 'PAID') continue;   // 결제하지 않았거나 아직 — 그대로 둔다
+    const c = await omPortoneConfirm(o.order_id);                // 자리 넣기 · 자리가 없으면 바로 취소 · 금액이 다르면 취소
+    const b = c.body || {};
+    if (b.already || !(b.ok || b.kind === 'om' || b.error === 'amount_mismatch')) continue;   // 그새 돌아오는 주소 · 웹훅이 처리했으면 알리지 않는다
+    out.fixed++;
+    console.log('[portone sweep]', o.order_id, c.status, b.error || 'ok');
+    /* 결과 화면을 못 본 게스트에게 알린다 */
+    try { if (typeof sendPush === 'function') sendPush(o.user_id, b.ok
+      ? { icon: '🎾', title: '신청이 완료됐어요', link: `match:${o.match_id}`, body: '결제가 확인돼 자리를 잡았어요' }
+      : { icon: '↩️', title: '결제를 취소했어요', link: `match:${o.match_id}`, body: '자리를 잡지 못해 결제를 바로 취소했어요 · 카드사에 따라 며칠 걸릴 수 있어요' }); } catch (e) {}
+    if (typeof opsAlert === 'function') opsAlert('sweep:' + o.order_id, '결제 대조로 주문 1건을 처리했어요',
+      b.ok ? '결제는 됐는데 신청이 안 돼 있던 주문에 자리를 넣었어요' : '결제는 됐는데 자리를 넣지 못해 결제를 취소했어요 · 카드 환불을 확인해 주세요');
+  }
+  return out;
+}
+setInterval(() => { omPortoneSweep().catch(e => console.error('[portone sweep]', e.message)); }, 5 * 60e3);
 /* 앱이 돌아와서 묻는다 — 내 주문만 */
 app.get('/pay/om-status/:orderId', auth, (req, res) => {
   const ord = db.prepare("SELECT * FROM orders WHERE order_id=? AND user_id=? AND kind='om'").get(String(req.params.orderId), req.uid);
   if (!ord) return res.status(404).json({ error: 'not_found' });
   res.json(omPayState(ord));
+});
+/* 포트원 웹훅(V2) — 결제창을 닫아 돌아오는 주소를 못 탔을 때의 안전망. 본문은 믿지 않고 포트원에 다시 묻는다 */
+app.post('/pay/portone/webhook', (req, res) => {  // @external 포트원이 부름
+  if (!poHookOk(req)) { console.error('[portone webhook] 서명이 맞지 않아요 — PORTONE_WEBHOOK_SECRET 을 확인해 주세요'); return res.status(400).json({ error: 'bad_signature' }); }
+  res.json({ ok: true });
+  (async () => {
+    const ev = req.body || {}, d = ev.data || {}, type = String(ev.type || ''), pid = String(d.paymentId || '');
+    if (!pid || (d.storeId && PORTONE.store() && d.storeId !== PORTONE.store())) return;
+    if (type !== 'Transaction.Paid') { console.log('[portone webhook]', type, pid); return; }
+    const ord = db.prepare("SELECT status FROM orders WHERE order_id=? AND kind='om'").get(pid);
+    if (!ord || ord.status !== 'ready') return;
+    const r = await omPortoneConfirm(pid);
+    console.log('[portone webhook] paid', pid, r.status, (r.body || {}).error || 'ok');
+  })().catch(e => console.error('[portone webhook]', e.message));
 });
 
 /* ── 카드 돌려주기 일꾼 ──
@@ -18526,13 +19061,17 @@ const OMR_WHY = { match_refund: '참가 취소', om_host_cancel_refund: '호스�
   join_failed: '자리 마감 · 결제 즉시 취소' };
 const OMR_MAX_TRIES = 8;
 async function omRefundRun() {
-  if (!process.env.TOSS_SECRET_KEY) return 0;
+  const tossOn = !!process.env.TOSS_SECRET_KEY, poOn = !!process.env.PORTONE_API_SECRET;   // 11/10 — 결제마다 받은 곳(토스 · 포트원)으로 돌려준다
+  if (!tossOn && !poOn) return 0;
   const rows = db.prepare("SELECT * FROM om_refunds WHERE status='pending' ORDER BY id LIMIT 30").all();
   let done = 0;
   for (const r of rows) {
+    const isPo = String(r.payment_key || '').startsWith('portone:');
+    if (isPo ? !poOn : !tossOn) continue;
     if (!db.prepare("UPDATE om_refunds SET status='sending' WHERE id=? AND status='pending'").run(r.id).changes) continue;
     let ok = false, err = '';
     try {
+      if (isPo) { const x = await poCancel(r); ok = x.ok; err = x.err; } else {
       const resp = await fetch(`${TOSS_API}/v1/payments/${encodeURIComponent(r.payment_key)}/cancel`, {
         method: 'POST',
         headers: { Authorization: tossAuth(), 'Content-Type': 'application/json', 'Idempotency-Key': `matsu-omr-${r.id}` },
@@ -18540,6 +19079,7 @@ async function omRefundRun() {
       const j = await resp.json().catch(() => ({}));
       ok = resp.ok;
       if (!ok) err = `${j.code || resp.status} ${j.message || ''}`.trim().slice(0, 200);
+      }
     } catch (e) { err = String(e.message || e).slice(0, 200); }
     if (ok) {
       db.prepare("UPDATE om_refunds SET status='done', done_at=?, err=NULL WHERE id=?").run(Date.now(), r.id);
@@ -18548,7 +19088,9 @@ async function omRefundRun() {
     } else {
       const t = (r.tries || 0) + 1;
       db.prepare('UPDATE om_refunds SET status=?, tries=?, err=? WHERE id=?').run(t >= OMR_MAX_TRIES ? 'failed' : 'pending', t, err, r.id);
-      if (t >= OMR_MAX_TRIES) console.error('[om refund] 실패', r.id, err);
+      if (t >= OMR_MAX_TRIES) { console.error('[om refund] 실패', r.id, err);
+        if (typeof opsAlert === 'function') { let n = 1; try { n = db.prepare("SELECT COUNT(*) n FROM om_refunds WHERE status='failed'").get().n; } catch (e) {}
+          opsAlert('refund_failed', `카드 환불 ${n}건이 실패했어요`, '관리자 › 호스트 정산 › 카드 환불 실패에서 다시 보내 주세요'); } }
     }
   }
   return done;
@@ -18593,9 +19135,15 @@ app.get('/me/host-payouts', auth, (req, res) => {
 });
 /* 호스트 — 정산 받기 등록(PG 정산지급대행 판매자) 보기 · 등록 · 바꾸기 */
 app.get('/me/payout-seller', auth, (req, res) => res.json(payoutSellerOut(payoutSeller(req.uid))));
-app.post('/me/payout-seller', auth, (req, res) => {
+app.post('/me/payout-seller', auth, async (req, res) => {
   const r = payoutSellerSave(req.uid, req.body || {});
   if (r.error) return res.status(r.status || 400).json({ error: r.error, message: r.message });
+  /* 11/10 포트원 — 바꿨거나 아직 확인 중이면 바로 예금주 확인 → 파트너 등록(10초 안에 다시 누르면 기다린다) */
+  const sl = PORTONE.payout() && payoutSeller(req.uid);
+  if (sl && (r.changed || sl.status === 'submitted') && Date.now() - (+sl.po_sync_at || 0) > 10e3) {
+    try { await poPartnerSync(req.uid); } catch (e) { console.error('[portone partner]', e.message); }
+    r.seller = payoutSellerOut(payoutSeller(req.uid));
+  }
   res.json(r);
 });
 /* 관리자 — PG 판매자 등록 목록(PG 관리자 화면에 올릴 정보 · 전체 계좌) · 상태 바꾸기 */
@@ -18606,9 +19154,10 @@ app.get('/admin/payout-sellers', admin, (req, res) => {
   const cnt = {}; db.prepare('SELECT status, COUNT(*) n FROM payout_sellers GROUP BY status').all().forEach(r => { cnt[r.status] = r.n; });
   res.json({ rows: rows.map(r => ({ user_id: r.user_id, ref_id: r.ref_id, kind: r.kind || 'INDIVIDUAL', name: r.name, nick: r.uname || '',
     phone: r.phone, email: r.email, bank: r.bank, account: r.account, holder: r.holder, status: r.status, reason: r.reason || '',
-    pg_id: r.pg_id || '', submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null,
+    pg_id: r.pg_id || '', birth: r.birth || '', po_err: r.po_err || '', po_status: r.po_status || '',
+    submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null,
     waiting: db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE user_id=? AND status='requested'`).get(r.user_id) })),
-    count: cnt, pg: PAYOUT.pg() });
+    count: cnt, pg: PAYOUT.pg(), flow: PAYOUT.flow() });
 });
 app.post('/admin/payout-sellers/:uid', admin, (req, res) => {
   const uid = +req.params.uid, b = req.body || {}, r = payoutSeller(uid);
@@ -18627,6 +19176,7 @@ app.post('/admin/payout-sellers/:uid', admin, (req, res) => {
 });
 /* 관리자 — PG 에 지급 요청을 넣었다고 표시(파일을 올린 뒤) · 지급 실패(PG 반려) */
 app.post('/admin/payouts/pg-request', admin, (req, res) => {
+  if (PAYOUT.flow() === 'portone') return res.status(400).json({ error: 'use_portone', message: '포트원 정산은 <포트원에 정산 등록>으로 넣어요' });
   const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(Number).filter(Boolean).slice(0, 500);
   const t = Date.now(); let n = 0;
   ids.forEach(id => { const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(id);
@@ -18635,11 +19185,17 @@ app.post('/admin/payouts/pg-request', admin, (req, res) => {
     n += db.prepare('UPDATE om_payouts SET pg_req_at=?, seller_ref=?, fail_reason=NULL WHERE id=?').run(t, sl.ref_id, id).changes; });
   res.json({ ok: true, n });
 });
-app.post('/admin/payouts/:id/fail', admin, (req, res) => {
+app.post('/admin/payouts/:id/fail', admin, async (req, res) => {
   const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
   if (!p || p.status !== 'requested') return res.status(400).json({ error: 'bad_state' });
   const reason = String((req.body || {}).reason || '').slice(0, 120);
-  db.prepare('UPDATE om_payouts SET pg_req_at=NULL, fail_reason=? WHERE id=?').run(reason || 'PG 지급 실패', p.id);
+  /* 11/10 포트원 정산 건 — 지울 수 있을 때(예정 · 처리 중)만 지우고 다시 넣게 한다. 이미 지급됐으면 콘솔에서 본다 */
+  if (p.pg_transfer_id) {
+    const r = await poApi('DELETE', `/platform/transfers/${encodeURIComponent(p.pg_transfer_id)}`);
+    if (!r.ok && r.status !== 404) return res.status(400).json({ error: 'portone_delete_failed',
+      message: `포트원에서 이 정산 건을 지우지 못했어요 · 포트원 콘솔에서 확인해 주세요 (${poErr(r)})` });
+  }
+  db.prepare('UPDATE om_payouts SET pg_req_at=NULL, fail_reason=?, pg_transfer_id=NULL, pg_status=NULL, pg_err=NULL WHERE id=?').run(reason || 'PG 지급 실패', p.id);
   try { sendPush(p.user_id, { icon: '⚠️', title: '정산 지급이 안 됐어요', link: p.match_id ? `match:${p.match_id}` : 'payout-seller',
     body: `${reason || '등록한 계좌를 확인해 주세요'} · 확인되면 다시 보내 드려요` }); } catch (e) {}
   res.json({ ok: true });
@@ -18664,7 +19220,8 @@ app.get('/admin/host-payouts', admin, (req, res) => {
       gross: p.gross != null ? p.gross : p.amount, expense: p.expense || 0, fee: p.fee || 0, tax: p.tax || 0, amount: p.amount,
       status: p.status, stage: payoutStage(p, sl), seller_ref: sl ? sl.ref_id : null, seller_status: sl ? sl.status : 'none',
       seller_name: sl ? sl.name : '', fail_reason: p.fail_reason || '', due_at: p.due_at ? +p.due_at : null,
-      pg_req_at: p.pg_req_at ? +p.pg_req_at : null, created_at: +p.created_at || null, paid_at: p.paid_at ? +p.paid_at : null }; });
+      pg_req_at: p.pg_req_at ? +p.pg_req_at : null, created_at: +p.created_at || null, paid_at: p.paid_at ? +p.paid_at : null,
+      pg_transfer_id: p.pg_transfer_id || '', pg_status: p.pg_status || '', pg_err: p.pg_err || '' }; });
   const wk = omKstWeek(), mon = omKstMonth();
   const due = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE status='requested' AND COALESCE(due_at,0) < ?`).get(wk + 7 * 864e5);
   /* 정산 받기 등록(PG 판매자)이 아직 안 끝나 지급 요청을 못 넣는 건 */
@@ -18676,8 +19233,86 @@ app.get('/admin/host-payouts', admin, (req, res) => {
   const hostM = db.prepare(`SELECT COALESCE(SUM(COALESCE(gross,amount)),0) s FROM om_payouts WHERE status IN ('requested','paid') AND gross IS NOT NULL AND CAST(created_at AS INTEGER) >= ?`).get(mon).s;
   const failed = db.prepare(`SELECT COUNT(*) n FROM om_refunds WHERE status='failed'`).get().n;
   const sellers_n = db.prepare(`SELECT COUNT(*) n FROM payout_sellers WHERE status IN ('submitted','kyc')`).get().n;
-  res.json({ rows, pg: PAYOUT.pg(), summary: { due_n: due.n, due_sum: due.s, wait_n: wait, sellers_n, last_n: last.n, last_sum: last.s,
+  res.json({ rows, pg: PAYOUT.pg(), flow: PAYOUT.flow(), wht: PORTONE.wht(), summary: { due_n: due.n, due_sum: due.s, wait_n: wait, sellers_n, last_n: last.n, last_sum: last.s,
     month: { paid: paidM, refund: refM, host: hostM, matsu: paidM - refM - hostM }, refund_failed: failed } });
+});
+/* ── 관리자 · 포트원 파트너 정산 (PAYOUT_MODE=portone · 11/10) ──
+   ① 정산 받기 등록 → 예금주 확인 · 파트너 등록(호스트가 등록하면 바로 · 안 되면 여기서 <포트원 다시 등록>)
+   ② 지급 대기 → <포트원에 정산 등록>: 수동 정산 건을 만든다(두 번 만들지 않게 CREATING 으로 먼저 잡는다)
+   ③ <포트원 상태 맞추기>: 정산 건 · 파트너 상태를 받아 온다 → 포트원 콘솔에서 지급되면 <입금 완료>(호스트 알림) */
+app.post('/admin/payout-sellers/:uid/portone', admin, async (req, res) => {
+  const uid = +req.params.uid;
+  if (!PORTONE.payout()) return res.status(400).json({ error: 'portone_off', message: 'PAYOUT_MODE=portone 일 때만 써요' });
+  if (!payoutSeller(uid)) return res.status(404).json({ error: 'not_found' });
+  try {
+    const r = await poPartnerSync(uid);
+    if (r.error && r.error !== 'portone_failed') return res.status(400).json(r);
+    res.json({ ...r, seller: payoutSellerOut(payoutSeller(uid)) });
+  } catch (e) { console.error('[portone partner]', e && e.message); res.status(500).json({ error: 'server_error', message: '처리하지 못했어요 · 잠시 뒤 다시 해 주세요' }); }
+});
+app.post('/admin/payouts/portone-transfer', admin, async (req, res) => {
+  if (!PORTONE.payout()) return res.status(400).json({ error: 'portone_off', message: 'PAYOUT_MODE=portone 일 때만 써요' });
+  const wht = PORTONE.wht();
+  if (!wht) return res.status(400).json({ error: 'wht_unset', message: '원천징수를 누가 떼는지 먼저 정해 주세요 (PORTONE_WHT=matsu 또는 portone)' });
+  if (!PORTONE.secret()) return res.status(400).json({ error: 'no_secret', message: 'PORTONE_API_SECRET 이 없어요' });
+  const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(Number).filter(Boolean).slice(0, 100);
+  const out = { ok: true, n: 0, errors: [] };
+  try {
+  for (const id of ids) {
+    const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(id);
+    if (!p || p.status !== 'requested' || p.pg_req_at || p.pg_transfer_id) { out.errors.push({ id, error: 'bad_state' }); continue; }
+    const m = p.match_id ? db.prepare('SELECT proof FROM open_matches WHERE id=?').get(p.match_id) : null;
+    if (m && !m.proof) { out.errors.push({ id, error: 'no_receipt' }); continue; }
+    const sl = payoutSeller(p.user_id);
+    if (!sl || sl.status !== 'approved' || !sl.pg_id) { out.errors.push({ id, error: 'seller_not_ready' }); continue; }
+    if (!db.prepare("UPDATE om_payouts SET pg_status='CREATING', pg_err=NULL WHERE id=? AND pg_transfer_id IS NULL AND COALESCE(pg_status,'')<>'CREATING'").run(id).changes) {
+      out.errors.push({ id, error: 'in_progress' }); continue; }
+    /* matsu: 맞수가 수고비의 3.3%를 뗀 <보낼 돈> / portone: 세전 합계(포트원이 원천징수) */
+    const amt = wht === 'portone' ? (p.gross != null ? p.gross : p.amount) : p.amount;
+    const body = { partnerId: sl.pg_id, settlementAmount: amt, settlementDate: poKstDate(Math.max(Date.now(), +p.due_at || 0)),
+      memo: `맞수 오픈매치 ${p.match_id || ''} 호스트 정산 · MATSU-PO-${p.id}` };
+    if (PORTONE.test()) body.isForTest = true;
+    const r = await poApi('POST', '/platform/transfers/manual', body);
+    const tr = (r.body && (r.body.transfer || r.body)) || {};
+    if (!r.ok || !tr.id) {
+      /* 포트원이 분명히 거절(4xx)했으면 풀어 준다. 응답이 없거나 모양이 다르면 CREATING 그대로 —
+         포트원 콘솔에서 만들어졌는지 보고 <실패>로 풀어야 다시 넣을 수 있다(두 번 보내지 않게) */
+      if (r.status >= 400 && r.status < 500) db.prepare('UPDATE om_payouts SET pg_status=NULL, pg_err=? WHERE id=?').run(poErr(r), id);
+      else { db.prepare('UPDATE om_payouts SET pg_err=? WHERE id=?').run('응답을 못 받았어요 · 포트원 콘솔에서 이 정산 건이 만들어졌는지 확인해 주세요', id);
+        if (typeof opsAlert === 'function') opsAlert('transfer_unknown', '포트원 정산 등록을 확인해 주세요', '응답을 못 받은 정산 건이 있어요 · 포트원 콘솔에서 만들어졌는지 본 뒤 <풀기>를 눌러 주세요'); }
+      out.errors.push({ id, error: poErr(r) }); continue;
+    }
+    db.prepare('UPDATE om_payouts SET pg_req_at=?, seller_ref=?, pg_transfer_id=?, pg_status=?, pg_err=NULL, fail_reason=NULL WHERE id=?')
+      .run(Date.now(), sl.ref_id, String(tr.id).slice(0, 80), String(tr.status || 'SCHEDULED').toUpperCase().slice(0, 30), id);
+    out.n++;
+  }
+  } catch (e) { console.error('[portone transfer]', e && e.message); out.ok = false; out.error = 'server_error'; out.message = '처리하다 멈췄어요 · 목록을 새로 고쳐 확인해 주세요'; }
+  res.json(out);
+});
+app.post('/admin/payouts/portone-sync', admin, async (req, res) => {
+  if (!PORTONE.payout() || !PORTONE.secret()) return res.status(400).json({ error: 'portone_off', message: 'PAYOUT_MODE=portone · PORTONE_API_SECRET 이 있어야 해요' });
+  const out = { ok: true, transfers: 0, sellers: 0, errors: [] }, t = Date.now();
+  try {
+  for (const p of db.prepare("SELECT id, pg_transfer_id FROM om_payouts WHERE status='requested' AND pg_transfer_id IS NOT NULL ORDER BY id LIMIT 100").all()) {
+    const r = await poApi('GET', `/platform/transfers/${encodeURIComponent(p.pg_transfer_id)}`);
+    if (!r.ok) { out.errors.push({ id: p.id, error: poErr(r) }); continue; }
+    const st = String(((r.body.transfer || r.body) || {}).status || '').toUpperCase().slice(0, 30);
+    if (st) { db.prepare('UPDATE om_payouts SET pg_status=? WHERE id=?').run(st, p.id); out.transfers++; }
+  }
+  for (const s of db.prepare("SELECT user_id, pg_id FROM payout_sellers WHERE status='submitted' AND pg_id IS NOT NULL LIMIT 100").all()) {
+    const r = await poApi('GET', `/platform/partners/${encodeURIComponent(s.pg_id)}`);
+    if (!r.ok) { out.errors.push({ user_id: s.user_id, error: poErr(r) }); continue; }
+    const pst = String(((r.body.partner || r.body) || {}).status || '').toUpperCase();
+    const st = pst === 'APPROVED' ? 'approved' : pst === 'REJECTED' ? 'rejected' : 'submitted';
+    db.prepare(`UPDATE payout_sellers SET status=?, po_status=?, po_sync_at=?, reason=?, approved_at=CASE WHEN ?='approved' THEN ? ELSE approved_at END WHERE user_id=?`)
+      .run(st, pst || null, t, st === 'rejected' ? '포트원 파트너 심사에서 반려됐어요 · 정보를 확인해 주세요' : null, st, t, s.user_id);
+    if (st !== 'submitted') try { sendPush(s.user_id, st === 'approved'
+      ? { icon: '🏦', link: 'payout-seller', title: '정산 받기 등록이 끝났어요', body: `이제 경기가 끝나면 ${PAYOUT.pg() || '결제대행사'}로 정산을 받아요` }
+      : { icon: '🏦', link: 'payout-seller', title: '정산 받기 등록을 다시 해 주세요', body: '포트원 파트너 심사에서 반려됐어요 · 정보를 확인해 주세요' }); } catch (e) {}
+    out.sellers++;
+  }
+  } catch (e) { console.error('[portone sync]', e && e.message); out.ok = false; out.error = 'server_error'; out.message = '맞추다 멈췄어요 · 잠시 뒤 다시 해 주세요'; }
+  res.json(out);
 });
 /* 카드 환불 실패 — 다시 보내기 */
 app.get('/admin/om-refunds', admin, (req, res) => {
@@ -20966,6 +21601,7 @@ app.use(express.static(PUBLIC_DIR));
 // 에러는 JSON으로 — 라우트가 터져도 화면이 원인을 읽을 수 있게
 app.use((err, req, res, _next) => {
   console.error(err);
+  if (res.headersSent) return;               // 답을 보낸 뒤에 난 오류 — 기록만 한다(두 번 보내려다 또 터지지 않게)
   res.status(500).json({ error: String((err && err.message) || err).slice(0, 300) });
 });
 /* 짝 기능이 생기기 전에 낸 엔트리는 pair 가 비어 있다.
