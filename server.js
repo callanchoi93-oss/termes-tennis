@@ -83,6 +83,96 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '6mb',   // 3MB 사진의 base64(≈4MB) + 여유
   verify: (req, res, buf) => { if (String(req.url || '').startsWith('/pay/portone/')) req.rawBody = buf.toString('utf8'); } }));   // 포트원 웹훅 서명은 원문으로 확인
 
+/* ══ 계좌번호 암호화 (11/11) ══
+   개인정보의 안전성 확보조치 기준 제7조 — 이용자의 계좌번호는 암호화해서 저장한다. 예전에는 글자 그대로 저장했고 DB 백업에도 그대로 들어갔다.
+     · 열쇠는 Railway 변수 DATA_KEY 하나(24자 이상 · 아무 글자). 없으면 예전처럼 그대로 저장한다 — 동작이 달라지지 않는다.
+     · 저장 모양  enc:v1:<열쇠 지문 8자>:<base64url(iv 12 · tag 16 · 암호문)>  — AES-256-GCM, 값마다 새 iv
+     · 잠그기(acctEnc)는 <밖에서 막 들어온 값>에만 쓴다 — 늘 새로 잠근다. 들어온 값에 암호문 표시가 있으면 표시를 지운 뒤 잠근다
+       (훔친 백업의 암호문을 자기 계좌 칸에 넣고 서버더러 풀어 달라는 길을 막는다). 칸에서 칸으로 옮길 때는 잠긴 값을 그대로 옮긴다.
+     · 풀기(acctDec)는 계좌 칸을 읽는 자리에서만 쓴다. 잠기지 않은 값(예전 값)은 그대로, 열쇠가 다르면 빈 값(틀린 계좌로 돈이 나가지 않게).
+     · 고치지 못한 길로 암호문이 화면에 나가려 하면 <풀지 않고> 지워서 보내고, 어느 주소였는지 관리자 › 점검에 남긴다.
+     · 열쇠를 바꿀 때  새 값을 DATA_KEY, 예전 값을 DATA_KEY_OLD 에 → 다음 훑기(서버가 뜰 때 · 하루 한 번 · 관리자 단추)에 새 열쇠로 다시 잠근다
+     · 대상  출금 · 정산 계좌(users.bank_account · cash_withdrawals.bank · om_payouts.bank · payout_sellers.account) ·
+             구장 정산 계좌(venues.bank_no · bank) · 클럽 회비 계좌(club_accounts.number) · 맞수컵 입금 계좌(brackets.data 의 pay.no)
+   DATA_KEY 를 잃으면 암호화한 계좌번호는 되살릴 수 없다(회원이 다시 적어야 한다). DB 백업과 다른 곳에 따로 보관한다. */
+const ACCT_MAGIC = 'enc:v1:';
+const ACCT_STATE = { curRaw: undefined, oldRaw: undefined, cur: null, old: null, bad: 0, badAt: 0, any: false, leak: new Map() };
+function acctKeys() {
+  const e = process.env, S = ACCT_STATE;
+  const mk = raw => {
+    const v = String(raw == null ? '' : raw).trim();
+    if (v.length < 24) return null;                                   // 짧은 열쇠는 없는 것으로 친다(관리자 화면이 알려 준다)
+    const key = crypto.scryptSync(v, 'matsu-acct-v1', 32);
+    return { key, kid: crypto.createHash('sha256').update(key).digest('hex').slice(0, 8) };
+  };
+  if (e.DATA_KEY !== S.curRaw) { S.curRaw = e.DATA_KEY; S.cur = mk(e.DATA_KEY); }
+  if (e.DATA_KEY_OLD !== S.oldRaw) { S.oldRaw = e.DATA_KEY_OLD; S.old = mk(e.DATA_KEY_OLD); }
+  return S;
+}
+function acctOn() { return !!acctKeys().cur; }
+function acctIsEnc(v) { return typeof v === 'string' && v.startsWith(ACCT_MAGIC); }
+/* 밖에서 들어온 글자에서 암호문 표시를 지운다 — 회원이 보낸 값이 <이미 잠긴 값>인 척하지 못하게 */
+function acctClean(v) { return typeof v === 'string' && v.indexOf(ACCT_MAGIC) >= 0 ? v.split(ACCT_MAGIC).join('enc-v1-') : v; }
+/* 잠그기 — 밖에서 막 들어온 값(또는 방금 푼 값)에만. 빈 값 · 글자가 아닌 값은 그대로. 열쇠가 없으면 표시만 지우고 그대로 */
+function acctEnc(v) {
+  if (typeof v !== 'string' || !v) return v;
+  v = acctClean(v);
+  const k = acctKeys().cur;
+  if (!k) return v;
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', k.key, iv);
+  const ct = Buffer.concat([c.update(v, 'utf8'), c.final()]);
+  return `${ACCT_MAGIC}${k.kid}:${Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64url')}`;
+}
+/* 풀기 — 잠기지 않은 값(예전 값 · 빈 값 · 숫자)은 그대로. 열쇠가 없거나 다르면 '' (잘못 푼 값을 계좌로 쓰지 않는다) */
+function acctDec(v) {
+  if (!acctIsEnc(v)) return v;
+  const S = acctKeys(), m = /^enc:v1:([0-9a-f]{8}):([A-Za-z0-9_-]+)$/.exec(v);
+  const k = m && (S.cur && S.cur.kid === m[1] ? S.cur : S.old && S.old.kid === m[1] ? S.old : null);
+  if (k) {
+    try {
+      const b = Buffer.from(m[2], 'base64url'), d = crypto.createDecipheriv('aes-256-gcm', k.key, b.subarray(0, 12));
+      d.setAuthTag(b.subarray(12, 28));
+      return Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8');
+    } catch (e) {}
+  }
+  S.bad++; S.badAt = Date.now();
+  return '';
+}
+/* 응답에 섞인 암호문을 지운 사본 — 풀지 않는다(아무 칸에나 든 암호문을 풀어 주면, 훔친 암호문을 글에 적어 풀어 보는 길이 생긴다) */
+function acctScrub(o, depth) {
+  const d = depth || 0;
+  if (typeof o === 'string') return o.indexOf(ACCT_MAGIC) < 0 ? o : o.replace(/enc:v1:[0-9a-f]{8}:[A-Za-z0-9_-]+/g, '');
+  if (!o || typeof o !== 'object' || d > 12 || Buffer.isBuffer(o) || o instanceof Date) return o;
+  if (Array.isArray(o)) return o.map(x => acctScrub(x, d + 1));
+  const r = {};
+  for (const k of Object.keys(o)) r[k] = acctScrub(o[k], d + 1);
+  return r;
+}
+/* 안전망 — 암호문이 그대로 화면에 나가지 않게(회원 눈에 enc:v1:… 가 보이지 않게) 지워서 보내고 주소를 남긴다.
+   열쇠가 없고 DB 에 잠긴 값도 없으면 아무것도 하지 않는다(예전과 똑같다).
+   JSON 글자는 한 번만 만든다 — 암호문이 없으면 그 글자를 그대로 보낸다(express 의 res.json 과 같은 머리글) */
+app.use((req, res, next) => {
+  if (!acctOn() && !ACCT_STATE.any) return next();
+  const json = res.json;
+  res.json = function (body) {
+    try {
+      const s = JSON.stringify(body);
+      if (typeof s === 'string') {
+        if (s.includes(ACCT_MAGIC) && /enc:v1:[0-9a-f]{8}:[A-Za-z0-9_-]{20,}/.test(s)) {
+          const k = `${req.method} ${(req.route && req.route.path) || String(req.path || '').slice(0, 60)}`;
+          const L = ACCT_STATE.leak; if (L.size < 60 || L.has(k)) L.set(k, { n: ((L.get(k) || {}).n || 0) + 1, at: Date.now() });
+          return json.call(this, acctScrub(body));
+        }
+        if (!this.get('Content-Type')) this.set('Content-Type', 'application/json');
+        return this.send(s);
+      }
+    } catch (e) {}
+    return json.call(this, body);
+  };
+  next();
+});
+/* ══ 끝 · 계좌번호 암호화(잠그기 · 풀기) ══ */
+
 // ── 인증 유틸 ──
 
 // ══════════════════════════════════════════════════════════════
@@ -255,7 +345,7 @@ function tryUid(req) {
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id=?').get(id);
 /* 내 정보로 내보낼 때 — 비밀번호 해시 · 개발용 PIN · 토큰 세대는 본인에게도 보내지 않는다 (10/29 구조 점검) */
 const USER_SECRET_COLS = ['pw_hash', 'pw_salt', 'dev_pin', 'token_version'];
-function userOut(u) { if (!u) return u; const o = { ...u }; USER_SECRET_COLS.forEach(k => { delete o[k]; }); return o; }
+function userOut(u) { if (!u) return u; const o = { ...u }; USER_SECRET_COLS.forEach(k => { delete o[k]; }); if (o.bank_account) o.bank_account = acctDec(o.bank_account); return o; }
 /* 프로필 대표 사진 한 장 — users.photos(JSON 배열)의 첫 장. 없거나 깨졌으면 null (10/28) */
 function userFace(photos) {
   try { const a = photos ? JSON.parse(photos) : []; const u = Array.isArray(a) ? a.find(x => typeof x === 'string' && x) : null; return u || null; }
@@ -389,9 +479,12 @@ app.post('/auth/review-login', limitLogin, (req, res) => {
   let u = db.prepare('SELECT * FROM users WHERE provider_id=?').get(pid);
   if (!u) {
     const r = db.prepare(`INSERT INTO users (provider,provider_id,name,gender,region,sport,anon_nick,created_at)
-      VALUES ('review',?,?,?,?,?,?,?)`).run(pid, cleanName(RN, '심사'), '남성', '경기 용인', 'tennis', anonNick(pid), now());
+      VALUES ('review',?,?,?,?,?,?,?)`).run(pid, cleanName(RN, '심사'), 'M', '경기 용인', 'tennis', anonNick(pid), now());
     u = getUser(rid(r));
     db.prepare('UPDATE users SET cash=0 WHERE id=?').run(u.id);
+  } else if (u.gender !== 'M' && u.gender !== 'F') {       // 11/11 — 예전에 <남성>으로 만들어진 심사 계정을 고쳐 둔다
+    db.prepare("UPDATE users SET gender='M' WHERE id=?").run(u.id);
+    u = getUser(u.id);
   }
   res.json({ token: sign(u), user: userOut(u) });
 });
@@ -433,11 +526,15 @@ function serverCan() {
 }
 
 /* 사업자 정보 — 11/2 대표가 알려준 값을 기본으로 쓰고, Railway Variables(OP_*)가 있으면 그 값이 이긴다.
-   사업장 주소 · 고객센터 전화 · 통신판매업 신고번호는 아직 받지 않았다 — 지어내지 않고 비워 둔다(비면 화면에 줄째로 안 나온다). */
+   사업장 주소(OP_ADDR) · 고객센터 전화(OP_TEL) · 통신판매업 신고번호(OP_MAILORDER)는 아직 받지 않았다 — 지어내지 않고 비워 둔다(비면 화면에 줄째로 안 나온다). */
 const OP_DEFAULT = { name: '최민혁', company: '데메테르', regno: '637-21-02479', email: 'callanchoi93@gmail.com' };
 function opInfo() {
+  /* 11/10 주소 칸(OP_ADDR) — OP_BIZ 에 이미 주소를 적었으면 그쪽이 이긴다. 가운뎃점은 칸을 가르는 글자라 빈칸으로 바꾼다 */
+  const addr = String(process.env.OP_ADDR || '').replace(/\s*·\s*/g, ' ').trim();
+  let biz = process.env.OP_BIZ || `상호 ${OP_DEFAULT.company} · 사업자등록번호 ${OP_DEFAULT.regno}`;
+  if (addr && !/(^|·)\s*(주소|사업장 주소|사업장)\s/.test(biz)) biz += ` · 주소 ${addr}`;
   return { name: process.env.OP_NAME || OP_DEFAULT.name,
-    biz: process.env.OP_BIZ || `상호 ${OP_DEFAULT.company} · 사업자등록번호 ${OP_DEFAULT.regno}`,
+    biz,
     tel: process.env.OP_TEL || '', email: process.env.OP_EMAIL || process.env.SUPPORT_EMAIL || OP_DEFAULT.email,
     mailorder: process.env.OP_MAILORDER || '', hosting: process.env.OP_HOSTING || '' };
 }
@@ -448,7 +545,12 @@ app.get('/config', (_, res) => {
     google_client_id: process.env.GOOGLE_CLIENT_ID || '',
     kakao_js_key: process.env.KAKAO_JS_KEY || '',
     name_login: !IS_PROD || process.env.ALLOW_DEV_LOGIN === '1',   // 카카오 키 전까지의 임시 입구
-    review_login: !!(process.env.REVIEW_NAME && process.env.REVIEW_PIN),   // 스토어 심사용 계정 입구
+    /* 11/11(1111c) 심사용 계정 입구가 열렸는지 — 칸 이름을 review_login → review_link 로 바꿨다.
+       1111b 로 만든 화면(그 판으로 빌드한 앱 · 그때 받아 둔 웹)은 review_login 을 보고 로그인 화면 맨 아래에 입구를 그렸다.
+       그 이름으로는 더 알리지 않으니 어느 판의 화면에서도 로그인 화면에 입구가 뜨지 않는다. 지금 판은 /app?review=1 로 들어온 창에서만 이 값을 본다.
+       빈칸뿐인 아이디는 닫힌 것 — 로그인 주소와 같은 기준 */
+    review_link: !!(String(process.env.REVIEW_NAME || '').trim() && process.env.REVIEW_PIN),
+    site_league_off: /^(off|0|false|no|hide)$/i.test(String(process.env.SITE_LEAGUE || '').trim()),   // 11/11 홈페이지의 <맞수 리그> 칸을 숨긴 동안 — 앱 PC 위 줄의 메뉴도 뺀다
     kakao_redirect_uri: process.env.KAKAO_REDIRECT_URI || '',
     kakao_native_redirect_uri: process.env.KAKAO_NATIVE_REDIRECT_URI || '',   // iOS 앱: 딥링크 복귀용
     /* 앱에서 카카오톡을 직접 여는 데 쓰는 네이티브 앱 키.
@@ -1056,7 +1158,7 @@ app.get('/me/cash', auth, (req, res) => {
   const u = getUser(req.uid);
   const rows = db.prepare(`SELECT delta, reason, balance_after, created_at FROM cash_ledger
     WHERE user_id=? ORDER BY id DESC LIMIT 30`).all(req.uid);
-  res.json({ ...src, bank: u.bank_account || '', history: rows,
+  res.json({ ...src, bank: acctDec(u.bank_account) || '', history: rows,
              withholdRate: WITHHOLD_RATE, dueAt: nextBusinessDay(Date.now(), 3) });
 });
 /* 출금 미리보기 — 얼마가 카드로, 얼마가 계좌로, 세금은 얼마인지
@@ -1164,7 +1266,7 @@ app.get('/me/cash/withdrawals', auth, (req, res) => {
 /* 관리자 — 계좌이체를 실제로 보낸 뒤 완료 처리 */
 app.get('/admin/withdrawals', admin, (_req, res) => {
   res.json(db.prepare(`SELECT w.*, u.name FROM cash_withdrawals w JOIN users u ON u.id=w.user_id
-    WHERE w.status='requested' ORDER BY w.id ASC LIMIT 100`).all());
+    WHERE w.status='requested' ORDER BY w.id ASC LIMIT 100`).all().map(w => ({ ...w, bank: acctDec(w.bank) })));
 });
 app.post('/admin/withdrawals/:id/paid', admin, (req, res) => {
   const w = db.prepare('SELECT * FROM cash_withdrawals WHERE id=?').get(+req.params.id);
@@ -3899,7 +4001,7 @@ function omHostSplit(q, guests) {
 }
 /* 계좌 가운데를 가린다 — "국민 123456-78-901234 최민혁" → "국민 ***-1234 · 최민혁" (호스트 정산 화면 · 결제 내역) */
 function omBankMask(b) {
-  const s = String(b || '').trim(); if (!s) return '';
+  const s = String(acctDec(b) || '').trim(); if (!s) return '';
   const parts = s.split(/\s+/), digits = s.replace(/[^0-9]/g, '');
   const bank = parts[0] && !/\d/.test(parts[0]) ? parts[0] : '';
   const last = parts[parts.length - 1], holder = parts.length >= 2 && !/\d/.test(last) && last !== bank ? last : '';
@@ -4053,18 +4155,20 @@ async function poPartnerSync(uid) {
 }
 /* 한국 날짜 YYYY-MM-DD (정산일) */
 const poKstDate = ms => { const d = new Date((ms || Date.now()) + 9 * 3600e3); return d.toISOString().slice(0, 10); };
-function payoutSeller(uid) { try { return db.prepare('SELECT * FROM payout_sellers WHERE user_id=?').get(uid) || null; } catch (e) { return null; } }
+function payoutSeller(uid) {            // 11/11 — 계좌번호는 풀어서 돌려준다(저장은 잠긴 값)
+  try { const r = db.prepare('SELECT * FROM payout_sellers WHERE user_id=?').get(uid) || null; if (r && r.account) r.account = acctDec(r.account); return r; } catch (e) { return null; }
+}
 const poRef = uid => 'MATSU' + String(uid).padStart(7, '0');            // PG 에 넣는 셀러 ID (영문 · 숫자만)
 const poDigits = v => String(v == null ? '' : v).replace(/[^0-9]/g, '');
 const poPhoneMask = p => { const d = poDigits(p); return d.length >= 10 ? `${d.slice(0, 3)}-****-${d.slice(-4)}` : ''; };
-const poAcctMask = a => { const d = poDigits(a); return d ? `***-${d.slice(-4)}` : ''; };
+const poAcctMask = a => { const d = poDigits(acctDec(a)); return d ? `***-${d.slice(-4)}` : ''; };
 /* 호스트에게 보이는 모양 — 계좌는 끝 넷만, 전화는 가운데 가림 */
 function payoutSellerOut(r) {
   const flow = PAYOUT.flow ? PAYOUT.flow() : 'file';
-  if (!r) return { status: 'none', label: '등록 전', pg: PAYOUT.pg(), flow };
+  if (!r) return { status: 'none', label: '등록 전', pg: PAYOUT.pg(), flow, enc: acctOn() };
   /* 포트원(11/10)은 PG 본인인증 없이 예금주 확인 → 파트너 등록이라 <등록 확인 중> 대신 <계좌 확인 중> */
   const label = flow === 'portone' && r.status === 'submitted' ? '계좌 확인 중' : (PAYOUT.LABEL[r.status] || r.status);
-  return { status: r.status, label, flow, birth: r.birth ? `${String(r.birth).slice(0, 4)}년생` : '', reason: r.status === 'rejected' ? (r.reason || '') : '',
+  return { status: r.status, label, flow, enc: acctOn(), birth: r.birth ? `${String(r.birth).slice(0, 4)}년생` : '', reason: r.status === 'rejected' ? (r.reason || '') : '',
     name: r.name || '', phone: poPhoneMask(r.phone), email: r.email || '', bank: r.bank || '',
     account: poAcctMask(r.account), holder: r.holder || '', ref_id: r.ref_id, pg: PAYOUT.pg(),
     submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null };
@@ -4095,9 +4199,9 @@ function payoutSellerSave(uid, b) {
   if (same) return { ok: true, seller: payoutSellerOut(old), changed: false };
   tx(() => {
     if (old) db.prepare(`UPDATE payout_sellers SET name=?, phone=?, email=?, bank=?, account=?, holder=?, birth=?, status='submitted', reason=NULL, po_err=NULL,
-        agreed_at=?, submitted_at=?, updated_at=? WHERE user_id=?`).run(name, phone, email, bank, account, holder, birth || null, t, t, t, uid);
+        agreed_at=?, submitted_at=?, updated_at=? WHERE user_id=?`).run(name, phone, email, bank, acctEnc(account), holder, birth || null, t, t, t, uid);
     else db.prepare(`INSERT INTO payout_sellers (user_id, ref_id, name, phone, email, bank, account, holder, birth, status, agreed_at, submitted_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?, 'submitted', ?,?,?)`).run(uid, poRef(uid), name, phone, email, bank, account, holder, birth || null, t, t, t);
+        VALUES (?,?,?,?,?,?,?,?,?, 'submitted', ?,?,?)`).run(uid, poRef(uid), name, phone, email, bank, acctEnc(account), holder, birth || null, t, t, t);
     /* 아직 PG 에 넣지 않은 지급은 새 판매자 정보로 — 이미 넣은 것은 PG 쪽에서 처리 */
     db.prepare(`UPDATE om_payouts SET seller_ref=? WHERE user_id=? AND status='requested' AND pg_req_at IS NULL`).run(poRef(uid), uid);
   });
@@ -5368,6 +5472,7 @@ function removePhoto(url) {
   const p = path.join(UPLOAD_DIR, name);
   if (!p.startsWith(path.resolve(UPLOAD_DIR))) return;
   try { fs.unlinkSync(p); } catch {}
+  upbForget(name);                                         // 11/11 — 바깥 저장소의 사본도 지울 차례로
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -7533,13 +7638,13 @@ app.post('/clubs/:id/brackets', auth, (req, res) => {
   let id;
   if (prev) {
     db.prepare('UPDATE brackets SET sport=?,courts=?,data=?,published=?,event_id=?,updated_at=? WHERE id=?')
-      .run(String(sport), courts, JSON.stringify(data), publish, event_id, t, prev.id);
+      .run(String(sport), courts, acctClean(JSON.stringify(data)), publish, event_id, t, prev.id);
     id = prev.id;
     db.prepare('DELETE FROM bracket_scores WHERE bracket_id=?').run(id);   // 재편성 → 점수 초기화
     db.prepare('DELETE FROM bracket_timers WHERE bracket_id=?').run(id);
   } else {
     const r = db.prepare(`INSERT INTO brackets (club_id,event_id,sport,fmt,date,courts,data,published,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(cid, event_id, String(sport), String(fmt), String(date), courts, JSON.stringify(data), publish, req.uid, t, t);
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(cid, event_id, String(sport), String(fmt), String(date), courts, acctClean(JSON.stringify(data)), publish, req.uid, t, t);
     id = rid(r);
   }
   if (publish) notifyClub(cid, req.uid, '📢', '대진이 발행됐어요', `${date || '오늘'} · ${fmt} 대진을 확인하세요`);
@@ -8145,7 +8250,7 @@ function cupCfg(b) {
     title: d.title || '맞수 리그',
     start: d.start || '09:00',
     place: d.place || '',
-    pay: d.pay || null,
+    pay: d.pay ? { ...d.pay, no: acctDec(d.pay.no) } : null,      // 11/11 — 입금 계좌번호는 풀어서
     fee: d.fee != null ? +d.fee : CUP_FEE,
     deposit: d.deposit != null ? +d.deposit : CUP_DEPOSIT,
     /* 매치 방식 — 화면이 <1세트 6게임 노애드> / <20분 단타임> 을 고른다 */
@@ -8846,13 +8951,13 @@ app.patch('/cup/:bid', auth, (req, res) => {
   let data = {}; try { data = JSON.parse(b.data || '{}'); } catch (e) {}
   data.pay = data.pay || {};
   if (q.bank != null) data.pay.bank = String(q.bank).trim().slice(0, 20);
-  if (q.account != null) data.pay.no = String(q.account).replace(/[^0-9-]/g, '').slice(0, 30);
+  if (q.account != null) data.pay.no = acctEnc(String(q.account).replace(/[^0-9-]/g, '').slice(0, 30));
   if (q.holder != null) data.pay.holder = String(q.holder).trim().slice(0, 20);
   if (q.place != null) data.place = String(q.place).trim().slice(0, 40);
   if (q.title != null) data.title = String(q.title).trim().slice(0, 60);
   db.prepare('UPDATE brackets SET data=?, updated_at=? WHERE id=?')
     .run(JSON.stringify(data), now(), b.id);
-  res.json({ ok: true, pay: data.pay, place: data.place || '' });
+  res.json({ ok: true, pay: { ...data.pay, no: acctDec(data.pay.no) }, place: data.place || '' });
 });
 
 /* 추첨 — 자리를 섞고 대진을 만든다. 참가 클럽 앞에서 돌린다. */
@@ -8940,7 +9045,7 @@ app.get('/admin/cups', admin, (_req, res) => {
     const live = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status!='cancelled'").get(r.id).n;
     const paid = db.prepare("SELECT COUNT(*) n FROM cup_entries WHERE bracket_id=? AND status='confirmed'").get(r.id).n;
     return { id: r.id, date: r.date, open: !!r.published,
-      title: d.title || '맞수 리그', place: d.place || '', pay: d.pay || null,
+      title: d.title || '맞수 리그', place: d.place || '', pay: d.pay ? { ...d.pay, no: acctDec(d.pay.no) } : null,
       host: (db.prepare('SELECT name FROM clubs WHERE id=?').get(r.club_id) || {}).name || '',
       host_id: r.club_id, teams: live, paid, drawn: cupDrawn(d),
       income: paid * cupCfg(d).fee, money: cupMoney(cupCfg(d), paid),
@@ -8968,7 +9073,7 @@ app.post('/admin/cups', admin, (req, res) => {
     start: String(b.start || '09:00').slice(0, 5),
     place: b.place_tbd ? '' : String(b.place || '').trim().slice(0, 40),
     pay: { bank: String(b.bank || '').trim().slice(0, 20),
-      no: String(b.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
+      no: acctEnc(String(b.account || '').replace(/[^0-9-]/g, '').slice(0, 30)),
       holder: String(b.holder || '').trim().slice(0, 20) },
     teams: [], rounds: [] };
   const r = db.prepare(`INSERT INTO brackets
@@ -9032,7 +9137,7 @@ app.get('/admin/cups/:bid', admin, (req, res) => {
       WHERE entry_id=? ORDER BY COALESCE(pair,9), gender DESC, id`).all(r.id);
   });
   res.json({ id: b.id, date: b.date, open: !!b.published, title: d.title || '',
-    place: d.place || '', pay: d.pay || null, start: d.start || '09:00',
+    place: d.place || '', pay: d.pay ? { ...d.pay, no: acctDec(d.pay.no) } : null, start: d.start || '09:00',
     drawn: cupDrawn(d), rounds: d.rounds || [], teams: d.teams || [],
     entries: rows, courts: b.courts,
     fee: cupCfg(d).fee, deposit: cupCfg(d).deposit, prize_pct: cupCfg(d).prize_pct,
@@ -9102,7 +9207,7 @@ app.post('/admin/cups/:bid/act', admin, (req, res) => {
     if (q.place_tbd) d.place = '';                     // 장소 미정
     if (q.bank != null || q.account != null || q.holder != null) {
       d.pay = { bank: String(q.bank || '').trim().slice(0, 20),
-        no: String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30),
+        no: acctEnc(String(q.account || '').replace(/[^0-9-]/g, '').slice(0, 30)),
         holder: String(q.holder || '').trim().slice(0, 20) };
     }
     const num = (v, lo, hi) => { const n = Math.round(+v); return (n >= lo && n <= hi) ? n : null; };
@@ -9669,7 +9774,7 @@ app.get('/cup/invite/:token', (req, res) => {
       fee: cupCfg(b.data).fee, deposit: cupCfg(b.data).deposit,
       min_teams: cupCfg(b.data).min_teams, max_teams: cupCfg(b.data).max_teams, cfg,
       place: (() => { try { return JSON.parse(b.data || '{}').place || ''; } catch (x) { return ''; } })(),
-      pay: (() => { try { return JSON.parse(b.data || '{}').pay || null; } catch (x) { return null; } })() },
+      pay: (() => { try { const p = JSON.parse(b.data || '{}').pay || null; return p ? { ...p, no: acctDec(p.no) } : null; } catch (x) { return null; } })() },
     title: cupCfg(b.data).title,
     roster, need: { n: CUP_ROSTER_N, male: CUP_ROSTER_M, female: CUP_ROSTER_F },
     /* 초청받은 클럽도 맞수를 쓴다. 이 대회의 목적이 그것이다 —
@@ -10296,13 +10401,15 @@ app.post('/clubs/:id/bank', auth, (req, res) => {
   if (!bank || !number) return res.status(400).json({ error: 'bank_required' });
   db.prepare(`INSERT INTO club_accounts (club_id,bank,number,holder,updated_at) VALUES (?,?,?,?,?)
     ON CONFLICT(club_id) DO UPDATE SET bank=excluded.bank,number=excluded.number,holder=excluded.holder,updated_at=excluded.updated_at`)
-    .run(cid, String(bank), String(number), String(holder), now());
+    .run(cid, String(bank), acctEnc(String(number)), String(holder), now());
   res.json({ ok: true });
 });
 app.get('/clubs/:id/bank', auth, (req, res) => {
   const cid = +req.params.id;
   if (!isMember(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
-  res.json(db.prepare('SELECT bank,number,holder FROM club_accounts WHERE club_id=?').get(cid) || {});
+  const acc = db.prepare('SELECT bank,number,holder FROM club_accounts WHERE club_id=?').get(cid) || {};
+  if (acc.number) acc.number = acctDec(acc.number);
+  res.json(acc);
 });
 
 // 이번 달 회비 고지 생성 (임원진 · 프리미엄)
@@ -10420,6 +10527,7 @@ app.post('/clubs/:id/dues/remind', auth, (req, res) => {
   const only = intOrNull(req.body && req.body.user_id);   // 특정 회원만 지정
   const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid);
   const bank = db.prepare('SELECT bank,number FROM club_accounts WHERE club_id=?').get(cid);
+  if (bank && bank.number) bank.number = acctDec(bank.number);
   const t = now();
 
   let rows = db.prepare(`SELECT d.id, d.user_id, d.amount, d.reminded_at, u.name
@@ -10448,6 +10556,7 @@ app.get('/me/dues/unpaid', auth, (req, res) => {
     FROM dues d JOIN clubs c ON c.id=d.club_id
     LEFT JOIN club_accounts a ON a.club_id=d.club_id
     WHERE d.user_id=? AND d.status='unpaid' ORDER BY d.period DESC`).all(req.uid);
+  rows.forEach(r => { if (r.number) r.number = acctDec(r.number); });
   res.json(rows);
 });
 
@@ -10973,7 +11082,7 @@ function sigV4({ method, host, path: p, query, headers, payloadHash, region, ser
   return { signature, scope, signedHeaders: names.join(';'), signingKey: signingKey.toString('hex'),
     authorization: `AWS4-HMAC-SHA256 Credential=${key}/${scope}, SignedHeaders=${names.join(';')}, Signature=${signature}` };
 }
-async function s3Put(cfg, objKey, buf) {
+async function s3Put(cfg, objKey, buf, ctype) {
   const u = new URL(`${cfg.endpoint}/${encodeURIComponent(cfg.bucket)}/${objKey.split('/').map(encodeURIComponent).join('/')}`);
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');           // 20261110T031245Z
   const payloadHash = crypto.createHash('sha256').update(buf).digest('hex');
@@ -10982,7 +11091,7 @@ async function s3Put(cfg, objKey, buf) {
   const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 120000);
   try {
     const r = await fetch(u, { method: 'PUT', body: buf, signal: ctl.signal,
-      headers: { 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, 'content-type': 'application/gzip', authorization: sg.authorization } });
+      headers: { 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, 'content-type': ctype || 'application/gzip', authorization: sg.authorization } });
     if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`${r.status} ${String(t).replace(/\s+/g, ' ').slice(0, 140)}`.trim()); }
   } finally { clearTimeout(tm); }
 }
@@ -11383,6 +11492,7 @@ function omInvSweep(nowMs) {
   } catch (e) { return 0; }
   rows.forEach(r => {
     try { fs.unlinkSync(path.join(UPLOAD_DIR, `i_${r.code}.png`)); } catch (e) {}
+    upbForget(`i_${r.code}.png`);
     db.prepare('UPDATE om_invites SET img_at=NULL WHERE code=?').run(r.code);
   });
   return rows.length;
@@ -11744,18 +11854,22 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_payouts (
 app.post('/me/bank', auth, (req, res) => {
   const bank = String((req.body && req.body.bank) || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   let moved = 0;
+  const locked = acctEnc(bank);                            // 11/11 — 계좌는 잠가서 저장한다(DATA_KEY 가 없으면 예전처럼 그대로)
   tx(() => {
-    db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(bank, req.uid);
+    db.prepare('UPDATE users SET bank_account=? WHERE id=?').run(locked, req.uid);
     if (bank) {
-      try { moved += db.prepare(`UPDATE cash_withdrawals SET bank=? WHERE user_id=? AND status='requested' AND bank_part>0`).run(bank, req.uid).changes; } catch (e) {}
+      try { moved += db.prepare(`UPDATE cash_withdrawals SET bank=? WHERE user_id=? AND status='requested' AND bank_part>0`).run(locked, req.uid).changes; } catch (e) {}
     }
   });
-  res.json({ ...db.prepare('SELECT * FROM users WHERE id=?').get(req.uid), moved });
+  const me = db.prepare('SELECT * FROM users WHERE id=?').get(req.uid) || {};
+  ['pw_hash', 'pw_salt', 'dev_pin', 'token_version'].forEach(k => { delete me[k]; });      // 비밀 칸은 본인에게도 보내지 않는다(userOut 과 같은 목록)
+  if (me.bank_account) me.bank_account = acctDec(me.bank_account);
+  res.json({ ...me, moved });
 });
 app.get('/admin/payouts', admin, (_req, res) => {
   res.json(db.prepare(`SELECT p.*, u.name FROM om_payouts p JOIN users u ON u.id=p.user_id
     WHERE p.status='requested' ORDER BY p.id DESC LIMIT 100`).all()
-    .map(p => ({ ...p, bank: p.bank || (db.prepare('SELECT bank_account FROM users WHERE id=?').get(p.user_id) || {}).bank_account || '' })));
+    .map(p => ({ ...p, bank: acctDec(p.bank) || acctDec((db.prepare('SELECT bank_account FROM users WHERE id=?').get(p.user_id) || {}).bank_account) || '' })));
 });
 app.post('/admin/payouts/:id/paid', admin, (req, res) => {
   const p = db.prepare('SELECT * FROM om_payouts WHERE id=?').get(+req.params.id);
@@ -16950,7 +17064,7 @@ app.delete('/venue/slots/:id', auth, venueGuard, (req, res) => {
    사장님이 직접 등록·변경한다. 계좌가 없으면 입금을 보낼 수 없다. */
 app.get('/venue/bank', auth, venueGuard, (req, res) => {
   const v = req.venue;
-  res.json({ bank_name: v.bank_name || '', bank_no: v.bank_no || '',
+  res.json({ bank_name: v.bank_name || '', bank_no: acctDec(v.bank_no) || '',
              bank_holder: v.bank_holder || '', biz_no: v.biz_no || '',
              updated_at: v.bank_at || null });
 });
@@ -16970,7 +17084,7 @@ app.post('/venue/bank', auth, venueGuard, (req, res) => {
 
   db.prepare(`UPDATE venues SET bank_name=?, bank_no=?, bank_holder=?, biz_no=?, bank_at=?,
               bank=? WHERE id=?`)
-    .run(name, no, holder, biz, now(), `${name} ${no}`, req.venue.id);
+    .run(name, acctEnc(no), holder, biz, now(), acctEnc(`${name} ${no}`), req.venue.id);
   res.json({ ok: true });
 });
 
@@ -17012,7 +17126,7 @@ app.get('/venue/statements/:ym', auth, venueGuard, (req, res) => {
   };
   res.json({
     ym, times: rows.length, ...splitVat(total), vat_included: VAT_INCLUDED,
-    venue: { name: req.venue.name, bank: req.venue.bank || '', biz_no: req.venue.biz_no || '' },
+    venue: { name: req.venue.name, bank: acctDec(req.venue.bank) || '', biz_no: req.venue.biz_no || '' },
     list: rows.map(r => { const ids = jparse(r.court_ids, []);
       return { ...r, court_ids: ids, courts: courtNames(ids) }; })
   });
@@ -17861,7 +17975,7 @@ app.post('/admin/staff-accounts/:id/suspend', admin, (req, res) => {
 /* ── 맞수 관리자 : 구장·코트 등록 ───────────────── */
 app.get('/admin/venues', admin, (_req, res) => {
   const list = db.prepare('SELECT * FROM venues ORDER BY id DESC').all().map(v => ({
-    ...v, photos: jparse(v.photos, []),
+    ...v, bank: acctDec(v.bank), bank_no: acctDec(v.bank_no), photos: jparse(v.photos, []),
     courts: db.prepare('SELECT * FROM venue_courts WHERE venue_id=? ORDER BY no').all(v.id)
              .map(c => ({ ...c, name: courtName(c), photos: jparse(c.photos, []) })),
     open_slots: db.prepare("SELECT COUNT(*) n FROM venue_slots WHERE venue_id=? AND status='open'").get(v.id).n,
@@ -17882,7 +17996,7 @@ app.post('/admin/venues', admin, (req, res) => {
   const r = db.prepare(`INSERT INTO venues (name,owner_id,sido,sigungu,addr,phone,memo,photos,bank,source,kind,created_at)
                         VALUES (?,?,?,?,?,?,?,?,?,'owner',?,?)`)
     .run(name, ownerId, b.sido || '', b.sigungu || '', b.addr || '', b.phone || '', b.memo || '',
-         JSON.stringify(Array.isArray(b.photos) ? b.photos.slice(0, 8) : []), b.bank || '',
+         JSON.stringify(Array.isArray(b.photos) ? b.photos.slice(0, 8) : []), acctEnc(String(b.bank || '')),
          'private', now());
   res.json({ ok: true, id: rid(r) });
 });
@@ -17892,7 +18006,7 @@ app.patch('/admin/venues/:id', admin, (req, res) => {
   const b = req.body || {};
   const f = [], a = [];
   ['name', 'sido', 'sigungu', 'addr', 'phone', 'memo', 'bank'].forEach(k => {
-    if (b[k] != null) { f.push(`${k}=?`); a.push(String(b[k])); }
+    if (b[k] != null) { f.push(`${k}=?`); a.push(k === 'bank' ? acctEnc(String(b[k])) : String(b[k])); }
   });
   if (b.owner_id != null) { f.push('owner_id=?'); a.push(intOrNull(b.owner_id)); }
   if (b.active != null) { f.push('active=?'); a.push(b.active ? 1 : 0); }
@@ -18022,6 +18136,8 @@ app.get('/admin/venue-payouts/by-venue', admin, (_req, res) => {
     if (!byId.has(r.venue_id)) {
       const v = db.prepare(`SELECT id,name,bank_name,bank_no,bank_holder,biz_no,bank
         FROM venues WHERE id=?`).get(r.venue_id) || { id: r.venue_id, name: '(삭제된 구장)' };
+      if (v.bank_no) v.bank_no = acctDec(v.bank_no);
+      if (v.bank) v.bank = acctDec(v.bank);
       byId.set(r.venue_id, { venue: v, total: 0, ids: [], list: [] });
     }
     const g = byId.get(r.venue_id);
@@ -18135,7 +18251,7 @@ app.post('/admin/venue-slots/:id/release', admin, (req, res) => {
 app.get('/admin/venue-payouts', admin, (_req, res) => {
   res.json(db.prepare(`SELECT p.*, v.name venue, v.bank, s.date, s.start, s.end
     FROM venue_payouts p LEFT JOIN venues v ON v.id=p.venue_id LEFT JOIN venue_slots s ON s.id=p.slot_id
-    ORDER BY p.status='paid', p.id DESC LIMIT 80`).all());
+    ORDER BY p.status='paid', p.id DESC LIMIT 80`).all().map(p => ({ ...p, bank: acctDec(p.bank) })));
 });
 app.post('/admin/venue-payouts/:id/paid', admin, (req, res) => {
   const r = db.prepare("UPDATE venue_payouts SET status='paid', paid_at=? WHERE id=? AND status='pending'")
@@ -18652,6 +18768,9 @@ const OM_ORDER_TTL = 30 * 60e3;            // 결제창을 30분 넘게 붙잡�
 function omOrderName(m) {
   return `맞수 오픈매치 참가비 · ${String((m && m.loc) || '').slice(0, 40)}`.trim().slice(0, 100);
 }
+/* 포트원 결제창에 넘기는 주문명(11/10) — 결제대행사마다 제한이 다르다(나이스정보통신: 40Byte 이내 · % & | $ - + = [ ] 금지).
+   한글을 3바이트로 세어도 29바이트인 고정 문구 — 코트 이름은 넣지 않는다(길이 · 특수문자가 제각각이다) */
+const PO_ORDER_NAME = '맞수 오픈매치 참가비';
 /* 한국 시간 벽시계 "2026-10-31T19:00" → "10월 31일 (토) 19:00" */
 function omKoWhen(s) {
   const ms = Date.parse(String(s || '').slice(0, 16) + ':00+09:00'); if (isNaN(ms)) return '';
@@ -18889,7 +19008,7 @@ function omPortoneCheckout(req, res, ord, m, src, backBtn) {
   const P = {
     sdk: PORTONE.sdk(), back: src === 'app' ? omAppReturn(req, { order: ord.order_id, ok: 0 }) : '/app',
     done: `${base}/pay/done?kind=om&pg=portone&src=${src}`,
-    base: { storeId: PORTONE.store(), paymentId: ord.order_id, orderName: omOrderName(m), totalAmount: ord.amount,
+    base: { storeId: PORTONE.store(), paymentId: ord.order_id, orderName: PO_ORDER_NAME, totalAmount: ord.amount,
       currency: PORTONE.currency(), customer: cust, redirectUrl: `${base}/pay/done?kind=om&pg=portone&src=${src}` },
     m: Object.fromEntries(ms.map(k => [k, { channelKey: PORTONE.channel(k), ...PO_METHOD[k].req }])),
     win: `${process.env.PG_NAME ? process.env.PG_NAME + ' ' : ''}결제창`,
@@ -19153,7 +19272,7 @@ app.get('/admin/payout-sellers', admin, (req, res) => {
     ${st ? 'WHERE s.status=?' : ''} ORDER BY COALESCE(s.submitted_at,0) DESC LIMIT 300`).all(...(st ? [st] : []));
   const cnt = {}; db.prepare('SELECT status, COUNT(*) n FROM payout_sellers GROUP BY status').all().forEach(r => { cnt[r.status] = r.n; });
   res.json({ rows: rows.map(r => ({ user_id: r.user_id, ref_id: r.ref_id, kind: r.kind || 'INDIVIDUAL', name: r.name, nick: r.uname || '',
-    phone: r.phone, email: r.email, bank: r.bank, account: r.account, holder: r.holder, status: r.status, reason: r.reason || '',
+    phone: r.phone, email: r.email, bank: r.bank, account: acctDec(r.account), holder: r.holder, status: r.status, reason: r.reason || '',
     pg_id: r.pg_id || '', birth: r.birth || '', po_err: r.po_err || '', po_status: r.po_status || '',
     submitted_at: r.submitted_at ? +r.submitted_at : null, approved_at: r.approved_at ? +r.approved_at : null,
     waiting: db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(amount),0) s FROM om_payouts WHERE user_id=? AND status='requested'`).get(r.user_id) })),
@@ -21502,6 +21621,419 @@ app.get('/kmap.html', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'kmap.html'));
 });
 
+/* ══ 계좌번호 암호화 — 예전 값 옮기기 · 상태 · 관리자 (11/11) ══
+   잠그기 · 풀기(acctEnc · acctDec)는 맨 위에 있다. 여기는 이미 저장된 값을 훑어 잠그는 일과 관리자 › 점검에 보여 줄 숫자.
+   칸 이름은 아래 목록에 박아 둔다(밖에서 받은 글자를 SQL 에 끼워 넣지 않는다) */
+const ACCT_COLS = [
+  ['users', 'bank_account', '출금 계좌'], ['cash_withdrawals', 'bank', '출금 신청'], ['om_payouts', 'bank', '정산 건'],
+  ['payout_sellers', 'account', '정산 받기 등록'], ['venues', 'bank_no', '구장 정산 계좌'], ['venues', 'bank', '구장 정산 계좌(한 줄)'],
+  ['club_accounts', 'number', '클럽 회비 계좌'],
+];
+/* 맞수컵 입금 계좌 — brackets.data(JSON) 안의 pay.no */
+function acctCupRows(fn) {
+  let last = 0;
+  for (let guard = 0; guard < 400; guard++) {
+    let rows = [];
+    try { rows = db.prepare(`SELECT id, data FROM brackets WHERE id > ? AND data LIKE '%"pay"%' ORDER BY id LIMIT 200`).all(last); } catch (e) { return; }
+    if (!rows.length) return;
+    for (const r of rows) {
+      last = r.id;
+      let d = null; try { d = JSON.parse(r.data || '{}'); } catch (e) { continue; }
+      if (d && d.pay && typeof d.pay === 'object' && typeof d.pay.no === 'string' && d.pay.no) fn(r, d);
+    }
+  }
+}
+/* 한 값의 상태 — cur(지금 열쇠로 잠김) · other(다른 열쇠 · 못 읽는 값) · plain(잠기지 않음) */
+function acctKind(v, kid) {
+  if (!acctIsEnc(v)) return 'plain';
+  return kid && v.startsWith(ACCT_MAGIC + kid + ':') ? 'cur' : 'other';
+}
+function acctStatus() {
+  const S = acctKeys(), kid = S.cur ? S.cur.kid : '', rows = [];
+  let plain = 0, enc = 0, other = 0;
+  for (const [t, c, label] of ACCT_COLS) {
+    const o = { label, n: 0, enc: 0, plain: 0, other: 0 };
+    try {
+      for (const r of db.prepare(`SELECT ${c} v FROM ${t} WHERE ${c} IS NOT NULL AND ${c} <> ''`).all()) { o.n++; const k = acctKind(r.v, kid); o[k === 'cur' ? 'enc' : k]++; }
+    } catch (e) { continue; }
+    if (o.n) rows.push(o);
+    plain += o.plain; enc += o.enc; other += o.other;
+  }
+  const cup = { label: '맞수컵 입금 계좌', n: 0, enc: 0, plain: 0, other: 0 };
+  acctCupRows((_r, d) => { cup.n++; const k = acctKind(d.pay.no, kid); cup[k === 'cur' ? 'enc' : k]++; });
+  if (cup.n) { rows.push(cup); plain += cup.plain; enc += cup.enc; other += cup.other; }
+  ACCT_STATE.any = enc + other > 0;
+  const short = !S.cur && String(process.env.DATA_KEY || '').trim().length > 0;      // 값은 넣었는데 24자보다 짧다
+  const last = opsGet('acct_sweep');
+  return { on: !!S.cur, kid, short, has_old: !!S.old, rows, total: { n: plain + enc + other, enc, plain, other },
+    sweep_at: last ? +last.at : null, sweep: last ? String(last.value) : '',
+    leaks: [...ACCT_STATE.leak.entries()].map(([path, v]) => ({ path, n: v.n, at: v.at })).sort((a, b) => b.at - a.at).slice(0, 12) };
+}
+/* 훑기 — 잠기지 않은 값을 잠그고, 예전 열쇠(DATA_KEY_OLD)로 잠긴 값을 새 열쇠로 다시 잠근다. 못 푸는 값은 그대로 둔다 */
+function acctSweep() {
+  const S = acctKeys();
+  if (!S.cur) return { ok: false, error: 'no_key' };
+  const kid = S.cur.kid, out = { ok: true, moved: 0, rekeyed: 0, unreadable: 0 };
+  const conv = v => {
+    const k = acctKind(v, kid);
+    if (k === 'cur') return null;
+    if (k === 'plain') { out.moved++; return acctEnc(v); }
+    const p = acctDec(v);
+    if (!p) { out.unreadable++; return null; }
+    out.rekeyed++; return acctEnc(p);
+  };
+  for (const [t, c] of ACCT_COLS) {
+    try {
+      const todo = db.prepare(`SELECT rowid id, ${c} v FROM ${t} WHERE ${c} IS NOT NULL AND ${c} <> '' AND ${c} NOT LIKE ?`).all(ACCT_MAGIC + kid + ':%');
+      if (!todo.length) continue;
+      const up = db.prepare(`UPDATE ${t} SET ${c}=? WHERE rowid=? AND ${c}=?`);
+      tx(() => { for (const r of todo) { const n = conv(r.v); if (n) up.run(n, r.id, r.v); } });      // 그사이 바뀐 값은 건드리지 않는다
+    } catch (e) { out.error = String((e && e.message) || e).slice(0, 160); }
+  }
+  try {
+    const todo = [];
+    acctCupRows((r, d) => { if (acctKind(d.pay.no, kid) !== 'cur') todo.push([r, d]); });
+    if (todo.length) {
+      const up = db.prepare('UPDATE brackets SET data=? WHERE id=? AND data=?');
+      tx(() => { for (const [r, d] of todo) { const n = conv(d.pay.no); if (n) { d.pay.no = n; up.run(JSON.stringify(d), r.id, r.data); } } });
+    }
+  } catch (e) { out.error = String((e && e.message) || e).slice(0, 160); }
+  opsSet('acct_sweep', `${out.moved}|${out.rekeyed}|${out.unreadable}`);
+  if (out.moved || out.rekeyed) console.log(`[acct] 계좌번호 잠금 — 새로 ${out.moved}건 · 열쇠 바꿈 ${out.rekeyed}건 · 못 읽음 ${out.unreadable}건`);
+  return out;
+}
+/* 서버가 뜰 때 — 열쇠가 사라졌거나 바뀌었으면 크게 알린다. 그다음 훑는다 */
+function acctBoot() {
+  try {
+    const st = acctStatus(), S = acctKeys();
+    if (!S.cur) {
+      if (st.total.enc + st.total.other > 0) {
+        console.error('[경고] 암호화된 계좌번호가 있는데 DATA_KEY 가 없습니다(또는 24자보다 짧습니다). 예전 값을 Railway Variables 에 다시 넣으세요.');
+        opsAlert('acct_key_missing', '계좌번호를 풀 열쇠가 없어요', 'Railway 의 DATA_KEY 가 비었거나 24자보다 짧아요 · 예전 값을 다시 넣어 주세요');
+      }
+      return;
+    }
+    const was = opsGet('acct_kid');
+    if (was && was.value && was.value !== S.cur.kid && !(S.old && S.old.kid === was.value) && st.total.other > 0) {
+      console.error('[경고] DATA_KEY 가 바뀌었습니다. 예전 열쇠로 잠근 계좌번호 %d건을 읽을 수 없습니다. 예전 값을 DATA_KEY_OLD 에 넣으면 새 열쇠로 옮깁니다.', st.total.other);
+      opsAlert('acct_key_changed', '계좌번호 열쇠가 바뀌었어요', `예전 열쇠로 잠근 ${st.total.other}건을 읽을 수 없어요 · 예전 값을 DATA_KEY_OLD 에 넣어 주세요`);
+    }
+    opsSet('acct_kid', S.cur.kid);
+    const r = acctSweep();
+    if (r.unreadable) opsAlert('acct_unreadable', '읽을 수 없는 계좌번호가 있어요', `${r.unreadable}건 · 열쇠가 달라요 — 관리자 › 점검에서 확인해 주세요`);
+  } catch (e) { console.error('[acct boot]', e && e.message); }
+}
+if (process.env.ACCT_SWEEP !== 'off') {
+  setTimeout(acctBoot, 20_000).unref?.();                         // 표가 다 만들어진 뒤에
+  setInterval(() => { try { if (acctOn()) acctSweep(); } catch (e) {} }, 24 * 3600 * 1000).unref?.();
+}
+app.get('/admin/acct/status', admin, (_req, res) => res.json(acctStatus()));          // 관리자 › 점검 › 계좌번호 암호화 (대표 열쇠만 — 스태프 메뉴에 없다)
+app.post('/admin/acct/sweep', admin, (req, res) => {                                  // <지금 잠그기>
+  const r = acctSweep();
+  if (!r.ok) return res.status(400).json({ error: r.error, message: 'Railway 에 DATA_KEY(24자 이상)를 먼저 넣어 주세요' });
+  try { alog(req, '계좌번호 잠금', 'acct', null, { moved: r.moved, rekeyed: r.rekeyed, unreadable: r.unreadable }, null); } catch (e) {}
+  res.json({ ...r, status: acctStatus() });
+});
+/* ══ 끝 · 계좌번호 암호화(훑기 · 관리자) ══ */
+
+/* ══ 사진 백업 (11/11) ══
+   DB 백업에는 사진이 들지 않는다 — 회원이 올린 사진(UPLOAD_DIR)은 볼륨에만 있어서, 볼륨이 사라지면 되살릴 길이 없었다.
+     ① 바깥 저장소(BACKUP_S3_…)가 있으면 새 사진 · 바뀐 사진만 <prefix>/uploads/<이름> 으로 올린다(한 시간마다 · 한 번에 400장 · 300MB 까지)
+     ② 관리자 › 점검 › 백업 <사진 묶음 내려받기>(tar) — 바깥 저장소가 없어도 밖에 한 벌 둘 수 있다
+     ③ 서버에 없는 사진을 누가 열면 바깥 저장소에서 가져와 다시 놓는다 — 볼륨을 새로 만든 뒤 DB 만 되살려도 사진이 돌아온다
+        (올린 기록에 있는 이름만 가져온다 — 아무 이름이나 바깥 저장소에 물어보지 않는다)
+     ④ 회원이 지운 사진은 바깥 저장소에서도 지운다. 지우는 권한이 없는 열쇠면 <지움> 표시만 남기고 되살리지 않는다
+     ⑤ 되살리려면 저장소 열쇠에 <읽기> 권한이 있어야 한다(올리기는 쓰기 권한만으로 된다) — 하루 한 번 한 장을 받아 보고, 안 되면 관리자 화면에 알린다
+   올린 기록: upload_backups(name · size · mtime · at · gone — 0 있음 · 1 지울 차례 · 2 지우지 못함) */
+try { db.exec(`CREATE TABLE IF NOT EXISTS upload_backups (name TEXT PRIMARY KEY, size INTEGER, mtime BIGINT, at BIGINT, gone INTEGER DEFAULT 0)`); } catch (e) {}
+const UPB_RX = /^[A-Za-z0-9][A-Za-z0-9_.-]{1,78}\.(png|jpe?g|webp)$/i;
+const UPB_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+const upbMime = n => UPB_MIME[String(n).split('.').pop().toLowerCase()] || 'application/octet-stream';
+const upbKey = (cfg, n) => `${cfg.prefix}/uploads/${n}`;
+function upbLocal() {
+  const out = []; let names = [];
+  try { names = fs.readdirSync(UPLOAD_DIR); } catch (e) { return out; }
+  for (const n of names) {
+    if (!UPB_RX.test(n)) continue;
+    try { const st = fs.statSync(path.join(UPLOAD_DIR, n)); if (st.isFile()) out.push({ name: n, size: st.size, mtime: Math.round(st.mtimeMs) }); } catch (e) {}
+  }
+  return out;
+}
+/* 바깥 저장소 — 가져오기 · 지우기(올리기 s3Put 과 같은 서명) */
+async function s3Send(cfg, method, objKey, ms) {
+  const u = new URL(`${cfg.endpoint}/${encodeURIComponent(cfg.bucket)}/${objKey.split('/').map(encodeURIComponent).join('/')}`);
+  const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const payloadHash = crypto.createHash('sha256').update('').digest('hex');
+  const sg = sigV4({ method, host: u.host, path: u.pathname, query: '', headers: { 'x-amz-content-sha256': payloadHash },
+    payloadHash, region: cfg.region, service: 's3', key: cfg.key, secret: cfg.secret, amzDate });
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms || 30000);
+  try {
+    const r = await fetch(u, { method, signal: ctl.signal, headers: { 'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, authorization: sg.authorization } });
+    const buf = method === 'GET' && r.ok ? Buffer.from(await r.arrayBuffer()) : null;
+    if (!buf) { try { await r.arrayBuffer(); } catch (e) {} }
+    return { ok: r.ok, status: r.status, buf };
+  } finally { clearTimeout(tm); }
+}
+let UPB_BUSY = false, UPB_STAT = { t: 0, v: null };
+const upbHave = () => { try { return new Map(db.prepare('SELECT name,size,mtime,gone FROM upload_backups').all().map(r => [r.name, r])); } catch (e) { return new Map(); } };
+const upbSame = (h, f) => !!h && !h.gone && +h.size === f.size && +h.mtime === f.mtime;
+/* 새 사진 · 바뀐 사진을 올린다. 한 번에 max 장 · 300MB 까지(남은 것은 다음 차례) */
+async function uploadsBackupNow(opt) {
+  const cfg = bkS3();
+  if (!cfg) return { ok: false, error: 'no_offsite' };
+  if (UPB_BUSY) return { ok: false, error: 'busy' };
+  UPB_BUSY = true; UPB_STAT.t = 0;
+  const max = Math.max(1, Math.min(5000, +((opt || {}).max) || 400)), maxBytes = 300 * 1048576;
+  const out = { ok: true, sent: 0, bytes: 0, failed: 0, left: 0, removed: 0 };
+  try {
+    const have = upbHave(), todo = upbLocal().filter(f => !upbSame(have.get(f.name), f));
+    const put = db.prepare(`INSERT INTO upload_backups (name,size,mtime,at,gone) VALUES (?,?,?,?,0)
+      ON CONFLICT(name) DO UPDATE SET size=excluded.size, mtime=excluded.mtime, at=excluded.at, gone=0`);
+    for (const f of todo) {
+      if (out.sent >= max || out.bytes >= maxBytes || out.failed >= 5) break;
+      try {
+        const buf = fs.readFileSync(path.join(UPLOAD_DIR, f.name));
+        await s3Put(cfg, upbKey(cfg, f.name), buf, upbMime(f.name));
+        put.run(f.name, buf.length, f.mtime, Date.now());
+        out.sent++; out.bytes += buf.length;
+      } catch (e) { out.failed++; out.error = String((e && e.message) || e).slice(0, 200); }
+    }
+    out.left = Math.max(0, todo.length - out.sent);
+    /* 회원이 지운 사진 — 바깥 저장소에서도 지운다(한 번에 50장). 403 이면 지울 권한이 없는 열쇠다 — 다시 시도하지 않는다 */
+    for (const r of db.prepare('SELECT name FROM upload_backups WHERE gone=1 LIMIT 50').all()) {
+      try {
+        const d = await s3Send(cfg, 'DELETE', upbKey(cfg, r.name));
+        if (d.ok || d.status === 404) { db.prepare('DELETE FROM upload_backups WHERE name=?').run(r.name); out.removed++; }
+        else if (d.status === 403) db.prepare('UPDATE upload_backups SET gone=2 WHERE name=?').run(r.name);
+      } catch (e) {}
+    }
+    /* 되살릴 수 있는 열쇠인가 — 방금 올린(또는 가장 최근에 올린) 사진 한 장을 받아 본다. 된다고 확인한 뒤로는 하루 한 번만 */
+    try {
+      const chk = opsGet('uploads_read');
+      if (!out.failed && (!chk || String(chk.value) !== 'ok' || Date.now() - (+chk.at || 0) > 864e5)) {
+        const one = db.prepare('SELECT name FROM upload_backups WHERE gone=0 ORDER BY at DESC LIMIT 1').get();
+        if (one) { const g = await s3Send(cfg, 'GET', upbKey(cfg, one.name), 20000); opsSet('uploads_read', g.ok ? 'ok' : `fail|${g.status}`); }
+      }
+    } catch (e) {}
+    if (out.failed) {
+      opsSet('uploads_offsite', `fail|${out.error || ''}`);
+      opsAlert('uploads_offsite', '사진을 바깥 저장소로 보내지 못했어요', out.error || '');
+    } else {
+      opsSet('uploads_offsite', `ok|${out.sent}|${out.left}`);
+      if (!out.left) opsSet('uploads_offsite_ok', String(out.sent));
+    }
+    if (out.sent || out.removed) console.log(`[backup] 사진 ${out.sent}장을 밖으로 보냄 · 남은 ${out.left}장 · 지움 ${out.removed}장`);
+  } catch (e) {
+    out.ok = false; out.error = String((e && e.message) || e).slice(0, 200);
+    console.error('[backup] 사진 보내기 실패:', out.error);
+  } finally { UPB_BUSY = false; UPB_STAT.t = 0; }
+  return out;
+}
+/* <지금 사진 보내기> — 남은 게 없을 때까지 이어서(최대 15분). 요청은 바로 돌려보내고 뒤에서 돈다 */
+let UPB_LOOP = false;
+async function uploadsBackupLoop() {
+  if (UPB_LOOP) return;
+  UPB_LOOP = true;
+  const until = Date.now() + 15 * 60e3;
+  try {
+    for (;;) {
+      const r = await uploadsBackupNow({ max: 400 });
+      if (!r.ok || r.failed || !r.left || Date.now() > until) break;
+    }
+  } catch (e) {} finally { UPB_LOOP = false; }
+}
+/* 회원이 사진을 지웠다 — 올린 기록에 <지울 차례>로 적는다(다음 차례에 바깥 저장소에서도 지운다 · 되살리지 않는다) */
+function upbForget(name) {
+  try {
+    const n = String(name || '');
+    if (!UPB_RX.test(n)) return;
+    db.prepare('UPDATE upload_backups SET gone=1, at=? WHERE name=? AND gone=0').run(Date.now(), n);
+    UPB_STAT.t = 0;
+  } catch (e) {}
+}
+function upbStatus(fresh) {
+  const t = Date.now();
+  if (!fresh && UPB_STAT.v && t - UPB_STAT.t < 30000) return { ...UPB_STAT.v, busy: UPB_BUSY || UPB_LOOP };
+  const loc = upbLocal(), have = upbHave();
+  let bytes = 0, out = 0, kept = 0, lost = 0;
+  const names = new Set(loc.map(f => f.name));
+  loc.forEach(f => { bytes += f.size; if (upbSame(have.get(f.name), f)) out++; });
+  have.forEach(h => { if (!h.gone) { kept++; if (!names.has(h.name)) lost++; } });
+  const off = opsGet('uploads_offsite'), okAt = opsGet('uploads_offsite_ok'), dl = opsGet('uploads_download'), rs = opsGet('uploads_restored'), rd = opsGet('uploads_read');
+  const o = off ? String(off.value).split('|') : [];
+  const v = { n: loc.length, bytes,
+    offsite: { on: !!bkS3(), out, left: loc.length - out, kept, lost, at: off ? +off.at : null, ok: o[0] === 'ok',
+      error: o[0] === 'fail' ? o.slice(1).join('|') : null, ok_at: okAt ? +okAt.at : null,
+      read: rd ? String(rd.value) === 'ok' : null },                      // 되살릴 수 있나 — null: 아직 모름 · false: 읽기 권한 없음
+    downloaded_at: dl ? +dl.at : null, downloaded_n: dl ? +dl.value || 0 : 0,
+    restored: rs ? +rs.value || 0 : 0, restored_at: rs ? +rs.at : null };
+  UPB_STAT = { t, v };
+  return { ...v, busy: UPB_BUSY || UPB_LOOP };
+}
+if (process.env.BACKUPS !== 'off') {
+  setTimeout(() => { uploadsBackupNow().catch(() => {}); }, 3 * 60_000).unref?.();      // 부팅 3분 뒤(DB 백업 다음)
+  setInterval(() => { uploadsBackupNow().catch(() => {}); }, 3600 * 1000).unref?.();     // 이후 한 시간마다
+}
+app.get('/admin/backup/photos', admin, (_req, res) => res.json(upbStatus(true)));
+app.post('/admin/backup/photos', admin, (_req, res) => {                                // 관리자 › 점검 › 백업 <지금 사진 보내기>
+  if (!bkS3()) return res.status(400).json({ error: 'no_offsite', message: '바깥 저장소(BACKUP_S3_…)를 먼저 연결해 주세요' });
+  uploadsBackupLoop();
+  res.json({ ok: true, started: true, status: upbStatus(true) });
+});
+/* 사진 묶음 내려받기 — 열쇠는 머리글로만 받으니 브라우저가 바로 받을 주소를 한 번만 쓰는 표로 내준다(60초 · 한 번) */
+const UPB_DL = new Map();
+app.post('/admin/backup/photos/link', admin, (_req, res) => {
+  const t = crypto.randomBytes(18).toString('base64url'), now_ = Date.now();
+  for (const [k, exp] of UPB_DL) if (exp < now_) UPB_DL.delete(k);
+  UPB_DL.set(t, now_ + 60000);
+  const st = upbStatus(true);
+  res.json({ url: '/admin/backup/photos.tar?t=' + t, n: st.n, bytes: st.bytes });
+});
+function tarHead(name, size, mtime) {
+  const b = Buffer.alloc(512);
+  b.write(name, 0, 100, 'utf8');
+  b.write('0000644\0', 100); b.write('0000000\0', 108); b.write('0000000\0', 116);
+  b.write(size.toString(8).padStart(11, '0') + '\0', 124);
+  b.write(Math.floor(mtime / 1000).toString(8).padStart(11, '0') + '\0', 136);
+  b.write('        ', 148);                                       // 합계 자리 — 빈칸 여덟으로 두고 센다
+  b.write('0', 156);
+  b.write('ustar\0', 257); b.write('00', 263);
+  let sum = 0; for (let i = 0; i < 512; i++) sum += b[i];
+  b.write(sum.toString(8).padStart(6, '0') + '\0 ', 148);
+  return b;
+}
+app.get('/admin/backup/photos.tar', async (req, res) => {
+  const t = String(req.query.t || ''), exp = UPB_DL.get(t);
+  UPB_DL.delete(t);
+  if (!exp || exp < Date.now()) return res.status(403).json({ error: 'link_expired', message: '내려받기 주소가 지났어요 · 관리자 화면에서 다시 눌러 주세요' });
+  const files = upbLocal().sort((a, b) => a.name < b.name ? -1 : 1);
+  const d = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  res.set({ 'Content-Type': 'application/x-tar', 'Content-Disposition': `attachment; filename="matsu-photos-${d}.tar"`, 'Cache-Control': 'no-store' });
+  let gone = false; res.on('close', () => { gone = true; });
+  const write = chunk => new Promise(ok => { if (gone) return ok(); if (res.write(chunk)) ok(); else res.once('drain', ok); });
+  let n = 0;
+  try {
+    for (const f of files) {
+      if (gone) break;
+      let buf; try { buf = fs.readFileSync(path.join(UPLOAD_DIR, f.name)); } catch (e) { continue; }
+      await write(tarHead('uploads/' + f.name, buf.length, f.mtime));
+      await write(buf);
+      const pad = (512 - (buf.length % 512)) % 512; if (pad) await write(Buffer.alloc(pad));
+      n++;
+    }
+    if (!gone) { res.end(Buffer.alloc(1024)); opsSet('uploads_download', String(n)); UPB_STAT.t = 0; }
+  } catch (e) { try { res.destroy(); } catch (x) {} }
+});
+/* 서버에 없는 사진 — 올린 기록에 있으면 바깥 저장소에서 가져와 다시 놓는다. 위의 /uploads 정적 파일이 못 찾았을 때만 여기로 온다 */
+const UPB_PULL = new Map();
+app.get('/uploads/:name', async (req, res, next) => {
+  const n = String(req.params.name || '');
+  if (!UPB_RX.test(n)) return next();
+  let row = null; try { row = db.prepare('SELECT name,gone FROM upload_backups WHERE name=?').get(n); } catch (e) {}
+  const cfg = row && !row.gone ? bkS3() : null;
+  if (!cfg) return next();
+  try {
+    let p = UPB_PULL.get(n);
+    if (!p) {
+      if (UPB_PULL.size >= 8) { res.set('Retry-After', '2'); return res.status(503).end(); }      // 한꺼번에 여덟 장까지만
+      p = (async () => {
+        const r = await s3Send(cfg, 'GET', upbKey(cfg, n), 20000);
+        if (!r.ok || !r.buf || !r.buf.length || r.buf.length > 4 * 1048576) throw new Error('pull ' + r.status);
+        const file = path.join(UPLOAD_DIR, n), tmp = `${file}.part${process.pid}`;
+        fs.writeFileSync(tmp, r.buf); fs.renameSync(tmp, file);
+        const st = fs.statSync(file);
+        db.prepare('UPDATE upload_backups SET size=?, mtime=? WHERE name=?').run(st.size, Math.round(st.mtimeMs), n);      // 다시 올리지 않게
+        const c = opsGet('uploads_restored'); opsSet('uploads_restored', String((c ? +c.value || 0 : 0) + 1));
+        UPB_STAT.t = 0;
+        return r.buf;
+      })().finally(() => { UPB_PULL.delete(n); });
+      UPB_PULL.set(n, p);
+    }
+    const buf = await p;
+    res.set('Cache-Control', 'public, max-age=0');
+    res.type(upbMime(n)).send(buf);
+  } catch (e) { next(); }
+});
+/* ══ 끝 · 사진 백업 ══ */
+
+/* ══ 카드사 심사 준비 점검 (11/11) — 관리자 › 점검 ══
+   결제대행사(나이스페이)가 보낸 <카드사 심사 준비 체크사항> 다섯 가지를 지금 서버 상태로 본다:
+     ① 하단정보(상호 · 대표자 · 사업자번호 · 주소 · 전화)  ② 상품 2~3개 이상  ③ 결제창  ④ TEST · 샘플 문구  ⑤ 심사용 계정
+   열쇠 · 비밀번호 · 심사 아이디는 내보내지 않는다(있다 · 없다만). 대표 열쇠만 본다(스태프 메뉴에 없다).
+   (1111c) ⑤는 <심사 담당자가 로그인해서 결제창까지 갈 수 있나>로 본다 — 심사용 계정은 쓸 때만 따진다.
+   상품은 <지금 홈페이지에 실제로 떠 있는 매치>만 센다 — 지어낸 매치를 넣는 길은 만들지 않는다. */
+const PG_BAD_WORD = /테스트|샘플|데모|임시|test|sample|demo|dummy/i;
+function pgIds(v) { return String(v || '').split(',').map(x => +String(x).trim()).filter(Boolean); }
+function pgCheck() {
+  /* ① 홈페이지 바닥에 실제로 찍히는 짝으로 본다(OP_BIZ 로 적었든 OP_ADDR 로 적었든) */
+  const o = opInfo(), pairs = siteBizPairs(o);
+  const got = rx => pairs.some(x => rx.test(String(x[0] || '')) && String(x[1] || '').trim());
+  const FOOT = [['company', '상호', /^상호$/], ['name', '대표자명', /^대표/], ['regno', '사업자번호', /사업자 ?등록번호/],
+    ['addr', '주소', /주소|사업장/], ['tel', '전화번호', /고객센터|전화/]];
+  const miss = FOOT.filter(([, , rx]) => !got(rx)).map(x => x[0]);
+
+  /* ② 홈페이지에 지금 떠 있는 매치 — 20초 묵은 값 말고 지금 장부로 */
+  const closed = process.env.OM_OPEN === '0' || /^(true|1|on|yes)$/i.test(String(process.env.OM_PRELAUNCH || '').trim());
+  let ms = [];
+  if (!closed) { try { ms = siteMatchesNow(); } catch (e) { ms = []; } }
+  const owners = new Set([...pgIds(process.env.OM_HOST_BETA), ...pgIds(process.env.ADMIN_UIDS)]);
+  const rows = ms.map(m => {
+    let r = {}; try { r = db.prepare('SELECT host_id, venue_id, tier_min, tier_max, disc FROM open_matches WHERE id=?').get(m.id) || {}; } catch (e) {}
+    let photo = false;
+    try { if (r.venue_id) { const v = db.prepare('SELECT photos FROM venues WHERE id=?').get(r.venue_id); photo = !!(v && venuePhotoList(v.photos).length); } } catch (e) {}
+    const allTier = !(r.tier_min || r.tier_max);
+    /* 심사 계정(남성 · 티어 없음)이 결제창까지 갈 수 있는 매치 — 모든 티어 · 참가비 있음 · 남자 자리 있음 */
+    const can = allTier && +m.price > 0 && r.disc !== 'women' && (m.left_m == null || +m.left_m > 0);
+    return { id: m.id, start_at: m.start_at, loc: m.loc, price: +m.price || 0, tier: m.tier, disc: m.disc, left: m.left,
+      all_tier: allTier, photo, own: !r.host_id || owners.has(+r.host_id), bad: PG_BAD_WORD.test(String(m.loc || '')), can };
+  });
+  /* 대표가 열지 않은, 참가비 있는 매치 — 홈페이지에 안 뜨는 것(꽉 찬 매치 · 더 먼 날짜)까지 센다.
+     결제를 켜면 이 참가비도 맞수로 들어오고, 그 돈을 호스트에게 넘기는 일에는 지급대행 계약이 필요하다 */
+  let othersAll = 0;
+  try {
+    const nowMs = Date.now(), today = new Date(nowMs + 9 * 3600e3).toISOString().slice(0, 10);
+    othersAll = db.prepare(`SELECT * FROM open_matches WHERE (status IS NULL OR status IN ('open','confirmed'))
+      AND start_at IS NOT NULL AND substr(start_at,1,10) >= ?`).all(today)
+      .filter(m => (+m.price > 0 || +m.base_price > 0) && m.host_id && !owners.has(+m.host_id) && Date.parse(String(m.start_at).slice(0, 16) + ':00+09:00') > nowMs).length;
+  } catch (e) {}
+
+  /* ③ 결제창 — 스위치 · 키가 있는지만(값은 보지 않는다). 나이스 심사는 포트원의 나이스 채널로 뜬 결제창을 본다 */
+  const po = omIsPortone();
+  const keys = po ? { store: !!PORTONE.store(), channel: !!PORTONE.channel('CARD'), secret: !!PORTONE.secret(), hook: !!PORTONE.hook() }
+    : { client: !!process.env.TOSS_CLIENT_KEY, secret: !!process.env.TOSS_SECRET_KEY };
+  const test = po ? PORTONE.test() : /^test_/.test(String(process.env.TOSS_CLIENT_KEY || '')) || /^test_/.test(String(process.env.TOSS_SECRET_KEY || ''));
+  let live = false; try { live = !!omPayLive(); } catch (e) {}
+  const pay = { on: process.env.OM_PAY_LIVE === '1', live, pg: po ? 'portone' : 'toss', keys, methods: po ? PORTONE.methods() : null, test };
+
+  /* ④ 심사자가 보는 화면에 걸릴 만한 말 */
+  const league = !siteLeagueOff();
+  const hits = [];
+  if (league) hits.push({ k: 'league' });
+  if (!live) hits.push({ k: 'pay_wait' });
+  rows.filter(r => r.bad).forEach(r => hits.push({ k: 'name', loc: r.loc }));
+  const noPhoto = rows.filter(r => !r.photo).length;
+  if (noPhoto) hits.push({ k: 'photo', n: noPhoto });
+
+  /* ⑤ 로그인 — 맞수는 로그인해야 결제된다(비회원 결제 없음). 심사 담당자는 카카오 · 구글로 가입해 들어오고(티어 없는 새 계정),
+     아이디 · 비밀번호를 달라고 할 때만 심사용 계정을 쓴다. 어느 쪽이든 <모든 티어> · 참가비 있는 매치가 있어야 결제창까지 간다(can_n) */
+  const RN = String(process.env.REVIEW_NAME || '').trim(), RP = String(process.env.REVIEW_PIN || '');
+  let made = false;
+  if (RN) { try { made = !!db.prepare('SELECT 1 FROM users WHERE provider_id=?').get('review-' + crypto.createHash('sha256').update(RN).digest('hex').slice(0, 16)); } catch (e) {} }
+  const review = { on: !!(RN && RP), short: !!RP && RP.length < 8, bad_name: PG_BAD_WORD.test(RN), made, can_n: rows.filter(r => r.can).length };
+
+  const items = [
+    { k: 'footer', ok: !miss.length, miss, mailorder: !!o.mailorder },
+    { k: 'products', ok: rows.length >= 3, n: rows.length, need: 3, days: siteDays(), closed, rows: rows.slice(0, 6), others: rows.filter(r => !r.own && r.price > 0).length,
+      others_all: othersAll, beta_n: pgIds(process.env.OM_HOST_BETA).length },      // beta_n — 매치를 열 수 있게 적어 둔 계정 수(OM_HOST_LIVE 가 꺼져 있으면 이 계정만 연다)
+    { k: 'pay', ok: live && po && !test, ...pay },
+    { k: 'words', ok: !hits.length, hits },
+    { k: 'review', ok: review.can_n > 0 && (!review.on || (!review.short && !review.bad_name)), ...review },
+  ];
+  return { at: Date.now(), ok_n: items.filter(x => x.ok).length, items, host_open: process.env.OM_HOST_LIVE === '1' };
+}
+app.get('/admin/pg-check', admin, (_req, res) => res.json(pgCheck()));               // 관리자 › 점검 › 카드사 심사 준비 (대표 열쇠만 — 스태프 메뉴에 없다)
+/* ══ 끝 · 카드사 심사 준비 점검 ══ */
+
 /* ═══ 웹 홈페이지 (11/2) ═══════════════════════════════════════════════
    주소 첫 화면(/)은 홈페이지(public/site/index.html), 웹 앱은 /app.
    · 이미 퍼진 링크는 주소 뒤에 값이 붙어 있다(/?invite= · /?match= · /?cup= · /?xinv= · /?xc= · 로그인 ?code= …)
@@ -21513,6 +22045,19 @@ const IOS_URL = () => process.env.IOS_APP_URL || 'https://apps.apple.com/kr/app/
 /* 맞수 Google Play — 11/3 공개. 함수 선언이라 파일 위쪽(/config · 대진 공유)에서도 쓴다 */
 function AND_URL() { return process.env.ANDROID_APP_URL || 'https://play.google.com/store/apps/details?id=app.matsu'; }
 let SITE_CACHE = { t: 0, html: '' };
+/* 11/11 카드사 심사 준비 — 스위치 둘(둘 다 비어 있으면 예전과 똑같다)
+     SITE_DAYS=30     매치 표에 싣는 기간(기본 7일 · 8~60). 7일보다 길면 <이번 주> 대신 <다가오는>으로 적는다
+     SITE_LEAGUE=off  <맞수 리그 · 준비 중 · TBD> 칸과 메뉴를 싣지 않는다(일정이 정해지면 이 값을 지운다)
+   손보기는 틀과 고정 문구에만 한다 — 매치 · 코트 이름 같은 자료에는 대지 않는다 */
+function siteDays() { const n = Math.round(+process.env.SITE_DAYS || 0); return n >= 8 && n <= 60 ? n : 7; }
+function siteLeagueOff() { return /^(off|0|false|no|hide)$/i.test(String(process.env.SITE_LEAGUE || '').trim()); }
+function siteTune(h) {
+  h = String(h || '');
+  if (siteLeagueOff()) h = h.replace(/<!--SITE_LGN-->[\s\S]*?<!--\/SITE_LGN-->/g, '').replace(/<!--SITE_LG-->[\s\S]*?<!--\/SITE_LG-->/g, '')
+    .split('점수 · 리그 신청은').join('점수는');
+  if (siteDays() > 7) h = h.split('이번 주 열린 ').join('열린 ').split('이번 주 전체').join('전체').split('이번 주 ').join('다가오는 ');
+  return h;
+}
 /* 홈페이지 바닥 사업자 정보 — 한 줄로 이어 쓰면 읽기 어려워 <이름표 · 값> 짝으로 나눈다(11/3).
    OP_BIZ 는 <상호 데메테르 · 사업자등록번호 … · 주소 …> 처럼 · 로 이어 적는다 — 아는 이름표면 짝으로, 아니면 값만 */
 const SITE_BIZ_KEYS = /^(상호|사업자등록번호|사업자 등록번호|대표자?|주소|사업장 주소|사업장|고객센터|전화|통신판매업 ?신고(?:번호)?|호스팅)\s*[:：]?\s*(.+)$/;
@@ -21531,13 +22076,66 @@ function siteFoot() {
     <p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p>
     <p class="copy">© ${new Date().getFullYear()} ${escH(co)}</p>`;
 }
+/* ── 11/10 홈페이지에 <무엇을 얼마에 파는지>를 글자로 ──
+   결제대행사 심사(사전 점검 로봇 포함)와 검색 로봇은 화면이 뜬 뒤 불러오는 목록을 못 읽는다.
+   ① 이번 주 오픈매치 표를 서버가 먼저 그려 넣는다 — 브라우저는 같은 자료로 같은 모양을 다시 그린다(아래 rowHTML 과 한 짝)
+   ② <오픈매치 참가 안내> — 상품 · 참가비 · 결제 · 이용 · 취소 · 환불. 숫자는 코드(OM_CANCEL_RULE · OMH)와 실제 열린 매치에서 읽는다.
+      참가비 줄은 SITE_PRICE(운영자가 적은 문구)가 있으면 그것, 없으면 이번 주 열린 매치의 실제 금액, 그것도 없으면 <매치마다 달라요> */
+const SITE_DOW = '일월화수목금토';
+const siteWon = n => String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '원';
+const SITE_TIER_CLS = { bronze: 1, silver: 1, gold: 1, platinum: 1, diamond: 1, challenger: 1 };
+function siteRowHTML(m, i) {
+  const t = String(m.start_at || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  const d = t ? { md: `${+t[2]}/${+t[3]}`, dow: SITE_DOW[new Date(Date.UTC(+t[1], +t[2] - 1, +t[3])).getUTCDay()], hm: `${t[4]}:${t[5]}` } : { md: '', dow: '', hm: '' };
+  const left = m.left_m != null && m.left_f != null ? `남 ${m.left_m} · 여 ${m.left_f} 남음` : `${m.left}자리 남음`;
+  const kind = `${m.disc}${m.courts ? ` · ${m.courts}코트` : ''}`;
+  const n = Math.min(6, m.cap || 0), f = n ? Math.round((m.cur / m.cap) * n) : 0;
+  const dots = n ? `<i>${Array.from({ length: n }, (_, k) => `<u class="${k < f ? '' : 'o'}"></u>`).join('')}</i>` : '';
+  return `<div class="row${i === 0 ? ' hi' : ''}" data-m="${+m.id}" role="button" tabindex="0" aria-label="${escH(`${d.md} ${d.hm} ${m.loc} ${siteWon(m.price)} 신청`)}">
+    <div class="tm"><small>${d.md} (${d.dow})${m.soon ? '<span class="soon">곧 확정</span>' : ''}</small><b>${d.hm}</b></div>
+    <div class="ct"><b>${escH(m.loc)}</b><small>${escH(m.area || '')}</small><small class="mb">${escH(kind)} · ${escH(left)}</small></div>
+    <div class="kd">${escH(kind)}</div>
+    <div class="dots">${dots}<span>${escH(left)}</span></div>
+    <div class="cond"><span class="chip ${SITE_TIER_CLS[m.tier_key] ? m.tier_key : ''}">${escH(m.tier)}</span></div>
+    <div class="pr">${siteWon(m.price)}</div>
+    <div class="go"><span class="arr">→</span><button class="btn or sm" tabindex="-1">신청하기</button></div></div>`;
+}
+function siteRowsHTML(ms) {
+  if (!ms.length) return `<div class="empty"><b>이번 주 열린 매치가 아직 없어요</b>
+    치고 싶은 코트를 골라 두면 사람이 모일 때 매치가 열려요.</div>`;
+  return ms.slice(0, 6).map(siteRowHTML).join('');
+}
+function siteProd(ms) {
+  const R = OM_CANCEL_RULE, ps = ms.map(m => +m.price || 0).filter(p => p > 0);
+  const lo = ps.length ? Math.min(...ps) : 0, hi = ps.length ? Math.max(...ps) : 0;
+  const set = String(process.env.SITE_PRICE || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const price = set || (ps.length ? (lo === hi ? `1인 ${siteWon(lo)}` : `1인 ${siteWon(lo)} ~ ${siteWon(hi)}`) : '매치마다 달라요');
+  const note = set ? '매치마다 1인 참가비가 위 표와 신청 화면에 미리 표시돼요.'
+    : ps.length ? '이번 주 열린 매치 기준이에요. 매치마다 1인 참가비가 위 표와 신청 화면에 미리 표시돼요.'
+    : '1인 참가비는 매치마다 위 표와 신청 화면에 미리 표시돼요.';
+  let live = false; try { live = !!omPayLive(); } catch (e) {}
+  const pay = live ? '<b>신청할 때 앱에서 결제</b>카드 · 간편결제로 결제해요. 판매자는 맞수이고, 결제와 환불은 맞수가 책임져요.'
+    : '<b>카드 · 간편결제 (준비 중)</b>결제가 열리면 신청할 때 앱에서 결제해요. 판매자는 맞수이고, 결제와 환불은 맞수가 책임져요.';
+  return `<div class="prod" id="prod" aria-labelledby="prodt"><h3 id="prodt">오픈매치 참가 안내</h3><dl>
+    <div><dt>상품</dt><dd><b>오픈매치 참가 · 1인 1자리</b>맞수 파트너 호스트가 코트를 잡고 진행하는 테니스 매치에 한 자리로 참가해요. 혼자 신청해도 돼요.</dd></div>
+    <div><dt>참가비</dt><dd><b>${escH(price)}</b>코트 · 공 비용의 1인 몫과 진행비가 들어 있어요. ${note}</dd></div>
+    <div><dt>결제</dt><dd>${pay}</dd></div>
+    <div><dt>이용</dt><dd><b>매치 일시에 그 코트에서</b>인원이 모이면 매치가 확정돼요. 매치는 최대 ${OMH.FAR_D}일 뒤 일정까지 열려요.</dd></div>
+    <div><dt>취소 · 환불</dt><dd><b>경기 ${R.full_days}일 전까지 전액</b>1일 전 ${R.d1_pct}% · 당일 시작 ${R.lock_min}분 전까지 ${R.day_pct}%를 돌려드려요. 인원 미달 · 호스트 취소 · 비로 매치가 열리지 않으면 전액 돌려드려요. <a href="/refund">취소 · 환불 정책</a></dd></div>
+  </dl></div>`;
+}
 function siteHTML() {
   let t = 0; try { t = fs.statSync(SITE_FILE).mtimeMs; } catch (e) { return null; }
   if (t !== SITE_CACHE.t) SITE_CACHE = { t, raw: fs.readFileSync(SITE_FILE, 'utf8') };
   const o = opInfo();
   const cfg = { ios: IOS_URL(), android: AND_URL(), email: o.email || '' };
-  return SITE_CACHE.raw.replace('<!--SITE_FOOT-->', siteFoot())
-    .replace('/*SITE_CFG*/null', JSON.stringify(cfg).replace(/</g, '\\u003c'));
+  let ms = []; try { ms = siteMatches(); } catch (e) { ms = []; }       // 목록이 탈 나도 홈페이지는 뜬다(브라우저가 다시 받는다)
+  /* 바꿔 넣는 글은 함수로 — 글 안의 $ 가 바꾸기 기호로 읽히지 않게 */
+  return siteTune(SITE_CACHE.raw).replace('<!--SITE_FOOT-->', () => siteFoot())
+    .replace(/<!--SITE_OM-->[\s\S]*?<!--\/SITE_OM-->/, () => ms.length ? siteRowsHTML(ms) : siteTune(siteRowsHTML(ms)))
+    .replace('<!--SITE_PROD-->', () => siteTune(siteProd(ms)))
+    .replace('/*SITE_MS*/null', () => JSON.stringify(ms).replace(/</g, '\\u003c'))
+    .replace('/*SITE_CFG*/null', () => JSON.stringify(cfg).replace(/</g, '\\u003c'));
 }
 function sendWebApp(req, res) { return sendIndexFast(req, res, () => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(PUBLIC_DIR, 'index.html')); }); }
 app.get('/', (req, res) => {  // @external 홈페이지 · 예전 링크(/?…)는 웹 앱으로
@@ -21572,10 +22170,22 @@ app.get('/get', (req, res) => {  // @external
 const SITE_DISC = { mixed: '혼복', men: '남복', women: '여복', any: '복식' };
 app.get('/site/matches', (req, res) => {  // @external
   res.set('Cache-Control', 'public, max-age=60');
-  if (process.env.OM_OPEN === '0' || /^(true|1|on|yes)$/i.test(String(process.env.OM_PRELAUNCH || '').trim())) return res.json({ matches: [] });
-  const now = Date.now(), until = now + 7 * 864e5;
+  res.json({ matches: siteMatches(), at: Date.now() });
+});
+/* 홈페이지에 싣는 매치 — 7일 안(SITE_DAYS 로 60일까지) · 자리 남은 것만 · 사람 정보 없이. 주소(/site/matches)와 첫 화면(서버가 그려 넣는 표)이 같이 쓴다.
+   첫 화면을 열 때마다 장부를 뒤지지 않게 20초 동안은 같은 답을 돌려준다 */
+let SITE_MS_CACHE = { t: 0, v: [] };
+function siteMatches() {
+  if (process.env.OM_OPEN === '0' || /^(true|1|on|yes)$/i.test(String(process.env.OM_PRELAUNCH || '').trim())) return [];
+  if (Date.now() - SITE_MS_CACHE.t < 20000) return SITE_MS_CACHE.v;
+  const v = siteMatchesNow(); SITE_MS_CACHE = { t: Date.now(), v };
+  return v;
+}
+function siteMatchesNow() {
+  const now = Date.now(), until = now + siteDays() * 864e5;
+  const today = new Date(now + 9 * 3600e3).toISOString().slice(0, 10);       // 한국 날짜(매치 시각은 한국 벽시계로 적혀 있다)
   const rows = db.prepare(`SELECT * FROM open_matches WHERE (status IS NULL OR status IN ('open','confirmed'))
-    AND start_at IS NOT NULL AND COALESCE(sport,'tennis')='tennis' ORDER BY start_at LIMIT 300`).all();
+    AND start_at IS NOT NULL AND substr(start_at,1,10) >= ? AND COALESCE(sport,'tennis')='tennis' ORDER BY start_at LIMIT 300`).all(today);
   const out = [];
   for (const m of rows) {
     const st = Date.parse(String(m.start_at).slice(0, 16) + ':00+09:00');
@@ -21594,8 +22204,8 @@ app.get('/site/matches', (req, res) => {  // @external
       lat: v.lat != null ? +v.lat : null, lng: v.lng != null ? +v.lng : null });
     if (out.length >= 20) break;
   }
-  res.json({ matches: out, at: now });
-});
+  return out;
+}
 
 app.use(express.static(PUBLIC_DIR));
 // 에러는 JSON으로 — 라우트가 터져도 화면이 원인을 읽을 수 있게
