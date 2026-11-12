@@ -1038,6 +1038,17 @@ body{background:var(--bg2)}
 .bslot{padding:16px 0;border-top:1px solid var(--ln3)} .bslot:first-of-type{border-top:0}
 .bslot .sh3{display:flex;align-items:baseline;gap:8px;margin-bottom:8px} .bslot .sh3 b{font-size:15.5px;font-weight:800} .bslot .sh3 span{font-size:13px;color:var(--mut)} .bslot .sh3 i{margin-left:auto;font-style:normal;font-size:13px;color:var(--mut)}
 .bempty{border:1.5px dashed #d6d1c7;border-radius:14px;padding:20px;text-align:center;color:var(--mut);font-size:14px;cursor:pointer}
+/* 11/11 점검 — 백업 칸의 묶음 제목(DB · 사진) · 단추 줄 · 계좌번호 암호화 표 */
+.bksub{font-size:12.5px;font-weight:800;color:var(--mut);margin:20px 0 0;padding-bottom:6px;border-bottom:1px solid var(--ln3)}
+.c2h + .bksub{margin-top:0}
+.bkbtn{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.acrow{display:grid;grid-template-columns:minmax(0,1fr) 62px 62px 62px;padding:9px 0;border-bottom:1px solid var(--ln3);font-size:14.5px}
+.acrow > span{color:var(--ink3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acrow > b{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.acrow.h{font-size:12.5px;margin-top:8px;padding-bottom:6px} .acrow.h > span,.acrow.h > b{color:var(--mut);font-weight:500}
+.acrow > b.y{color:var(--yel)} .acrow > b.r{color:var(--red2)}
+.mono2{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;letter-spacing:0}
+.pgsub{display:block;font-size:13px;color:var(--mut);margin-top:4px;line-height:1.5;font-weight:400}
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -3773,7 +3784,7 @@ async function drawHostPay(){
       <td>${esc(r.name||'')}</td><td class="n">${fmt(r.expense)}</td><td class="n">${fmt(r.fee)}</td><td class="n">−${fmt(r.tax)}</td>
       <td class="n"><b>${fmt(r.amount)}</b></td><td>${sl(r)}</td><td>${rc(r)}</td><td>${stage(r)}</td></tr>`).join('')}
     </tbody></table></div>`:`<div class="card"><div class="empty">${sub==='paid'?'입금된 정산이 아직 없어요':'보낼 정산이 없어요'}</div></div>`;
-  $('app').innerHTML=shell(subTabs(tabs)+warn+sum+`<div class="hp-hd">${d.flow==='portone'?`<p>맞수는 이체하지 않아요. <b>포트원에 정산 등록</b>하면 포트원 정산 건이 만들어져요. 포트원에서 지급되면 <b>입금 완료</b>로 표시하면 호스트에게 알림이 가요.${d.wht?'':' <b>PORTONE_WHT</b>(원천징수를 누가 떼나)를 먼저 정해 주세요.'}</p>`:''}${d.flow==='portone'?'':`<p>맞수는 이체하지 않아요. <b>지급 요청 파일</b>을 ${esc(pg)} 관리자(지급대행)에 올리고 <b>지급 요청함</b>으로 표시해요. ${esc(pg)}가 보내면 <b>입금 완료</b>로 표시하면 호스트에게 알림이 가요.</p>`}
+  $('app').innerHTML=shell(subTabs(tabs)+warn+sum+`<div class="hp-hd">${d.flow==='portone'?`<p>맞수는 이체하지 않아요. <b>포트원에 정산 등록</b>하면 포트원 정산 건이 만들어져요. 포트원에서 지급되면 <b>입금 완료</b>로 표시하면 호스트에게 알림이 가요.${d.wht?'':' <b>PORTONE_WHT</b>(원천징수를 누가 떼나)를 먼저 정해 주세요.'}</p>`:''}${d.flow==='portone'?'':`<p>맞수는 이체하지 않아요. <b>지급 요청 파일</b>을 ${esc(pg)} 관리자(지급대행)에 올리고 <b>지급 요청함</b>으로 표시해요. ${esc(pg)}${josaIG(pg)} 보내면 <b>입금 완료</b>로 표시하면 호스트에게 알림이 가요.</p>`}
       ${d.flow==='portone'?`${sub==='due'&&ready.length?`<button class="b on" onclick="hpPo(${JSON.stringify(ready.map(r=>r.id))})">포트원에 정산 등록 (${fmt(ready.length)}건)</button>`:''}<button class="b" onclick="hpPoSync()">포트원 상태 맞추기</button>`
         :sub==='due'&&ready.length?`<button class="b on" onclick="hpCsv()">지급 요청 파일 (${fmt(ready.length)}건)</button><button class="b" onclick="hpReq(${JSON.stringify(ready.map(r=>r.id))})">모두 지급 요청함으로</button>`:''}</div>`+tbl+
     `<div class="note">확정된 호스트 매치만 올라와요(경기 끝나고 12시간 뒤 자동 · 호스트가 먼저 받으면 바로). 정산 받기 등록이 끝나고(본인인증까지) 영수증이 있는 건만 지급 요청 파일에 담겨요. 코트비는 게스트 몫(1인 몫 × 게스트 수), 세금은 수고비에만 떼요 — 원천징수 신고 자료로 쓰세요.</div>`);
@@ -4831,6 +4842,8 @@ const hm=t=>{ const d=new Date(t); const h=d.getHours(); return `${h<12?'오전'
 drawMaint=async function(){
   const m=await api('/admin/maint');
   let BK=null, OA=null; try{ BK=await api('/admin/backup/status'); }catch(e){} try{ OA=await api('/admin/ops-alerts'); }catch(e){}
+  let PH=null, AC=null; try{ PH=await api('/admin/backup/photos'); }catch(e){} try{ AC=await api('/admin/acct/status'); }catch(e){}      // 11/11 — 예전 서버 · 스태프 열쇠면 못 받는다(그 칸만 안 그린다)
+  let PGC=null; try{ PGC=await api('/admin/pg-check'); }catch(e){}      // 11/11 카드사 심사 준비
   let c={}; try{ c=await api('/admin/config'); }catch(e){}
   let L=[]; try{ L=await api('/admin/log?days=90'); }catch(e){}
   const on=m.on && (!m.until || Date.now()<m.until), left=m.until?Math.max(0,Math.round((m.until-Date.now())/60000)):0;
@@ -4867,7 +4880,7 @@ drawMaint=async function(){
         <b style="display:block;font-size:15px;margin-top:2px">${c.om_venues?`구장 ${esc(c.om_venues)}곳과 이야기하고 있어요`:'구장과 이야기하고 있어요'}${c.om_first_regions?` · ${esc(c.om_first_regions)}부터 열려요`:''}</b></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:14px"><button class="b2 k" onclick="omCfgSave().then(()=>render())">저장</button><button class="b2" onclick="omCfgClear().then(()=>render())">비우기</button>
         <span style="font-size:12.5px;color:var(--mut)">비우면 숫자 없이 「구장과 이야기하고 있어요」만</span></div></div>
-    ${bkCardHTML(BK)}${opsCardHTML(OA)}
+    ${bkCardHTML(BK,PH)}${acctCardHTML(AC)}${pgCardHTML(PGC)}${opsCardHTML(OA)}
     <div class="c2"><div class="c2h"><b>지난 점검</b><span class="r">90일</span></div>${hist.length?hist.reverse().slice(0,8).map(hrow).join(''):'<div class="nt">90일 안에 점검한 적이 없어요</div>'}</div>
   </div>`);
 };
@@ -4876,7 +4889,7 @@ drawMaint=async function(){
    운영 알림은 카드 환불 실패 · 결제 대조 · 백업 실패 · 틀린 열쇠처럼 대표에게 먼저 알린 일의 기록 */
 function bkSize(n){ return n==null?'':n>=1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'KB'; }
 function bkWhen(t){ if(!t) return ''; const d=new Date(+t), p=n=>String(n).padStart(2,'0'); return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; }
-function bkCardHTML(B){
+function bkCardHTML(B, P){
   if(!B) return '';
   const L=B.local||{}, O=B.offsite||{}, W=7*864e5, now=Date.now();
   const outOk=(O.ok_at&&now-O.ok_at<W) || (B.downloaded_at&&now-B.downloaded_at<W);      // 마지막으로 <성공한> 때 기준 — 한 번 실패해도 어제 올린 건 남아 있다
@@ -4884,12 +4897,149 @@ function bkCardHTML(B){
     :O.ok?`<i class="bd2 g">보냄</i> ${esc(bkWhen(O.at))} · ${esc(O.key||'')}`
     :O.error?`<i class="bd2 r">실패</i> ${esc(bkWhen(O.at))} · ${esc(O.error)}${O.ok_at?` · 마지막으로 보낸 날 ${esc(bkWhen(O.ok_at))}`:''}`:'<i class="bd2 y">아직 안 보냄</i> 다음 백업 때 올려요';
   const kv=(l,v)=>`<div class="kv2" style="grid-template-columns:120px minmax(0,1fr)"><span>${l}</span><b style="font-weight:500">${v}</b></div>`;
-  return `<div class="c2" id="bkCard"><div class="c2h"><b>백업</b><span class="r">${outOk?'<i class="bd2 g">밖에도 있어요</i>':'<i class="bd2 r">서버 안에만 있어요</i>'}</span></div>
+  const dbBtn=`<button class="b2 k" onclick="bkDownload()">${DL_ICO}백업 내려받기</button><button class="b2" onclick="bkNow()">지금 백업${O.on?' · 밖으로 보내기':''}</button>`;
+  /* 11/11 사진 — DB 백업에는 사진이 들지 않는다. 사진 상태를 받지 못하면(예전 서버) DB 줄만 그린다 */
+  if(!P) return `<div class="c2" id="bkCard"><div class="c2h"><b>백업</b><span class="r">${outOk?'<i class="bd2 g">밖에도 있어요</i>':'<i class="bd2 r">서버 안에만 있어요</i>'}</span></div>
     ${kv('마지막 백업', L.file?`${esc(bkWhen(L.at))} · ${esc(bkSize(L.size))} · ${L.n}개 보관`:'아직 없어요')}
     ${kv('바깥 저장소', off)}
     ${kv('내려받은 날', B.downloaded_at?esc(bkWhen(B.downloaded_at)):'한 번도 없어요')}
     <div class="nt">백업은 DB와 같은 볼륨에 쌓여요. 볼륨이 사라지면 같이 사라지니, 내려받아 두거나 바깥 저장소를 연결해 주세요. 파일에는 회원 정보가 모두 들어 있어요 — 안전한 곳에만 두세요.</div>
-    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="b2 k" onclick="bkDownload()">${DL_ICO}백업 내려받기</button><button class="b2" onclick="bkNow()">지금 백업${O.on?' · 밖으로 보내기':''}</button></div></div>`;
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">${dbBtn}</div></div>`;
+  const F=P.offsite||{}, dlOk=P.downloaded_at&&now-P.downloaded_at<W;
+  const phOk=!P.n || (F.on&&!F.left&&!F.error) || dlOk;
+  const phOff=!F.on?'<i class="bd2 n">연결 전</i> <span style="color:var(--mut)">바깥 저장소를 연결하면 새 사진을 한 시간마다 보내요</span>'
+    :F.error?`<i class="bd2 r">실패</i> ${esc(bkWhen(F.at))} · ${esc(F.error)}`
+    :F.left?(P.busy?`<i class="bd2 b">보내는 중</i> ${fmt(F.out)}장 보냄 · ${fmt(F.left)}장 남음`:`<i class="bd2 y">${fmt(F.left)}장 남음</i> ${fmt(F.out)}장 보냄 · 한 시간마다 400장씩 보내요`)
+    :P.n?`<i class="bd2 g">모두 보냄</i> ${fmt(F.out)}장${F.ok_at||F.at?` · ${esc(bkWhen(F.ok_at||F.at))}`:''}`:'<i class="bd2 n">보낼 사진 없음</i>';
+  const head=!outOk?'<i class="bd2 r">서버 안에만 있어요</i>':phOk?'<i class="bd2 g">밖에도 있어요</i>'
+    :F.on&&!F.error?`<i class="bd2 y">사진 ${fmt(F.left)}장이 아직 서버 안에만 있어요</i>`:'<i class="bd2 r">사진은 서버 안에만 있어요</i>';
+  return `<div class="c2" id="bkCard"><div class="c2h"><b>백업</b><span class="r">${head}</span></div>
+    <div class="bksub">DB</div>
+    ${kv('마지막 백업', L.file?`${esc(bkWhen(L.at))} · ${esc(bkSize(L.size))} · ${L.n}개 보관`:'아직 없어요')}
+    ${kv('바깥 저장소', off)}
+    ${kv('내려받은 날', B.downloaded_at?esc(bkWhen(B.downloaded_at)):'한 번도 없어요')}
+    <div class="bkbtn">${dbBtn}</div>
+    <div class="bksub" id="bkPh">사진</div>
+    ${kv('서버의 사진', P.n?`${fmt(P.n)}장 · ${esc(bkSize(P.bytes))}`:'아직 없어요')}
+    ${kv('바깥 저장소', phOff)}
+    ${kv('내려받은 날', P.downloaded_at?`${esc(bkWhen(P.downloaded_at))} · ${fmt(P.downloaded_n)}장`:'한 번도 없어요')}
+    ${F.on&&F.read===false?kv('되살리기', '<i class="bd2 r">읽기 권한 없음</i> 저장소 열쇠가 올리기만 돼요 · 읽기 권한을 더해야 사라진 사진을 되살릴 수 있어요'):''}
+    ${F.lost?kv('서버에 없는 사진', `<i class="bd2 o">${fmt(F.lost)}장</i> 누가 열면 바깥 저장소에서 되살려요`):''}
+    ${P.restored?kv('되살린 사진', `${fmt(P.restored)}장${P.restored_at?` · 마지막 ${esc(bkWhen(P.restored_at))}`:''}`):''}
+    <div class="bkbtn"><button class="b2 k" onclick="phDownload()" ${P.n?'':'disabled'}>${DL_ICO}사진 묶음 내려받기</button>${F.on?`<button class="b2" onclick="phNow()" ${F.left&&!P.busy?'':'disabled'}>${P.busy?'보내는 중…':'지금 사진 보내기'}</button>`:''}</div>
+    <div class="nt">DB 백업에는 사진이 들어 있지 않아요. 사진은 새로 올라온 것만 바깥 저장소로 따로 보내고, 서버에서 사라진 사진은 누가 열 때 바깥 저장소에서 되살려요. 둘 다 볼륨이 사라지면 같이 사라지니 내려받아 두거나 바깥 저장소를 연결해 주세요. 백업 파일에는 회원 정보가 모두 들어 있어요 — 안전한 곳에만 두세요.</div></div>`;
+}
+/* 11/11 이 · 가 — 받침에 맞춘다(<나이스정보통신가 보내면>이 나오던 것). 한글이 아닌 글자로 끝나면 <가> */
+function josaIG(word){
+  const w=String(word||'').trim(), c=w.charCodeAt(w.length-1);
+  return (c>=0xAC00 && c<=0xD7A3 && (c-0xAC00)%28) ? '이' : '가';
+}
+/* ── 11/11 계좌번호 암호화 (점검 화면) ── 열쇠는 Railway 의 DATA_KEY. 여기서는 상태 · 건수만 본다(열쇠는 화면에 나오지 않는다) */
+function acctCardHTML(A){
+  if(!A) return '';
+  const T=A.total||{}, locked=(T.enc||0)+(T.other||0);
+  const kv=(l,v)=>`<div class="kv2" style="grid-template-columns:120px minmax(0,1fr)"><span>${l}</span><b style="font-weight:500">${v}</b></div>`;
+  const head=!A.on?(locked?'<i class="bd2 r">열쇠가 없어요</i>':A.short?'<i class="bd2 r">열쇠가 짧아요</i>':'<i class="bd2 n">꺼짐</i>')
+    :T.other?`<i class="bd2 r">읽을 수 없는 계좌 ${fmt(T.other)}건</i>`:T.plain?`<i class="bd2 y">${fmt(T.plain)}건 남음</i>`:'<i class="bd2 g">켜짐</i>';
+  const state=A.on?`켜짐 · 열쇠 지문 <span class="mono2">${esc(A.kid)}</span>${A.has_old?' · 예전 열쇠도 들어 있어요':''}`
+    :locked?'Railway 의 DATA_KEY 가 비었거나 24자보다 짧아요 — <b>예전 값을 다시 넣어 주세요</b>'
+    :A.short?'DATA_KEY 가 24자보다 짧아요 — 더 긴 값으로 넣어 주세요':'꺼짐 — 계좌번호가 글자 그대로 저장돼요';
+  const rows=(A.rows||[]).map(r=>`<div class="acrow"><span>${esc(r.label)}</span><b>${fmt(r.enc)}</b><b class="${r.plain?'y':''}">${fmt(r.plain)}</b><b class="${r.other?'r':''}">${fmt(r.other)}</b></div>`).join('');
+  const can=A.on&&(T.plain||(T.other&&A.has_old));
+  const note=!A.on&&!locked?'Railway 에 <b>DATA_KEY</b>(24자 이상 · 아무 글자)를 넣으면 계좌번호를 암호화해서 저장하고, 이미 저장된 계좌도 서버가 다시 뜰 때 잠가요. 넣기 전에는 지금처럼 동작해요.'
+    :'열쇠(DATA_KEY)를 잃으면 암호화한 계좌번호는 되살릴 수 없어요 — 회원이 다시 적어야 해요. DB 백업과 다른 곳(비밀번호 관리 앱)에 따로 보관해 주세요.';
+  return `<div class="c2" id="acCard"><div class="c2h"><b>계좌번호 암호화</b><span class="r">${head}</span></div>
+    ${kv('상태', state)}
+    ${T.n?kv('저장된 계좌', `${fmt(T.n)}건 · 잠김 ${fmt(T.enc)}건${T.plain?` · 그대로 ${fmt(T.plain)}건`:''}${T.other?` · 못 읽음 ${fmt(T.other)}건`:''}`):kv('저장된 계좌','아직 없어요')}
+    ${T.other&&A.on?kv('읽을 수 없는 계좌', `다른 열쇠로 잠긴 값이에요 · ${A.has_old?'&lt;지금 잠그기&gt;를 누르면 새 열쇠로 옮겨요':'예전 DATA_KEY 를 <b>DATA_KEY_OLD</b> 에 넣으면 새 열쇠로 옮겨요'}`):''}
+    ${rows?`<div class="acrow h"><span>어디에</span><b>잠김</b><b>그대로</b><b>못 읽음</b></div>${rows}`:''}
+    ${(A.leaks||[]).length?kv('확인할 주소', `<span style="color:var(--red2)">암호문이 그대로 나가려던 곳 ${fmt(A.leaks.length)}곳 — 지워서 보냈어요</span><br><span class="mono2">${A.leaks.slice(0,4).map(x=>esc(x.path)).join(' · ')}</span>`):''}
+    <div class="nt">${note}</div>
+    ${can?`<div class="bkbtn"><button class="b2 k" onclick="acctSweepNow()">지금 잠그기</button></div>`:''}</div>`;
+}
+/* ── 11/11 카드사 심사 준비 (점검 화면) ── 결제대행사가 보낸 체크사항 다섯 가지를 지금 서버 상태로 본다. 열쇠 · 비밀번호 값은 받지 않는다(있다 · 없다만) */
+function pgWhen(s){ const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/); if(!m) return '';
+  const d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3])); return `${+m[2]}/${+m[3]} (${'일월화수목금토'[d.getUTCDay()]}) ${m[4]}:${m[5]}`; }
+function pgCardHTML(G){
+  if(!G||!Array.isArray(G.items)) return '';
+  const it=k=>G.items.find(x=>x.k===k)||{};
+  const F=it('footer'), P=it('products'), Y=it('pay'), W=it('words'), R=it('review');
+  const kv=(l,v)=>`<div class="kv2" style="grid-template-columns:120px minmax(0,1fr)"><span>${l}</span><b style="font-weight:500">${v}</b></div>`;
+  const ok='<i class="bd2 g">준비됨</i>', no=t=>`<i class="bd2 r">${t||'남음'}</i>`, wn=t=>`<i class="bd2 y">${t}</i>`;
+  const env=t=>`<span class="mono2">${t}</span>`, sub=t=>`<span class="pgsub">${t}</span>`, red=t=>sub(`<span style="color:var(--red2)">${t}</span>`);
+  const left=5-(+G.ok_n||0);
+  const head=left<=0?'<i class="bd2 g">다섯 가지 모두 준비됨</i>':`<i class="bd2 ${left<=2?'y':'r'}">${left}가지 남음</i>`;
+  /* ① 하단정보 — 홈페이지 바닥에 실제로 찍히는 값 */
+  const FK={company:['상호','OP_BIZ'],name:['대표자명','OP_NAME'],regno:['사업자번호','OP_BIZ'],addr:['주소','OP_ADDR'],tel:['전화번호','OP_TEL']};
+  const miss=(F.miss||[]).filter(k=>FK[k]);
+  const f1=F.ok?`${ok} 상호 · 대표자명 · 사업자번호 · 주소 · 전화번호가 홈페이지 바닥에 나와요`
+    :`${no(`${miss.length}개 비어 있음`)} ${miss.map(k=>FK[k][0]).join(' · ')} — Railway 에 ${[...new Set(miss.map(k=>FK[k][1]))].map(env).join(' · ')}`;
+  const f2=F.mailorder?sub('통신판매업 신고번호도 나와요'):sub(`통신판매업 신고를 했다면 ${env('OP_MAILORDER')} 에 번호를 넣어 주세요`);
+  /* ② 상품 — 지금 홈페이지에 떠 있는 매치(실제로 열린 것만) */
+  const n=+P.n||0;
+  const p1=P.closed?`${no('닫힘')} 오픈매치가 닫혀 있어 홈페이지에 매치가 안 떠요(${env('OM_OPEN')} · ${env('OM_PRELAUNCH')})`
+    :`${n>=3?ok:n>=2?wn(`${n}개`):no(`${n}개`)} 홈페이지에 떠 있는 매치 ${fmt(n)}개 · 앞으로 ${fmt(P.days||7)}일 안, 자리 남은 것${n>=3?'':' — 3개 이상이면 준비됨'}`;
+  const prow=(P.rows||[]).map(r=>sub(`${esc(pgWhen(r.start_at))} · ${esc(r.loc||'')} · ${fmt(r.price)}원 · ${esc(r.tier||'')}${r.own?'':' · 다른 회원이 연 매치'}`)).join('');
+  /* 대표가 열지 않은 매치 — 홈페이지에 안 뜨는 것(꽉 찬 매치 · 더 먼 날짜)까지 센 값이 더 크면 그 값을 쓴다 */
+  const oth=Math.max(+P.others||0, +P.others_all||0);
+  const p3=oth?red(`다른 회원이 연 매치 ${fmt(oth)}개${oth>(+P.others||0)?'(꽉 찼거나 더 먼 날짜의 매치 포함)':''} — 결제를 켜면 이 참가비는 호스트에게 넘겨야 해요(지급대행 계약 필요)`):'';
+  const p4=G.host_open?red(`매치 열기가 누구에게나 열려 있어요(${env('OM_HOST_LIVE=1')}) — 지급대행 계약 전이면 꺼 주세요`):'';
+  /* 매치가 모자란데 열 수 있는 계정이 없을 때만 — 무엇을 넣어야 열리는지 */
+  const p5=(!P.closed&&n<3&&!G.host_open&&P.beta_n===0)?sub(`지금은 매치를 열 수 있는 계정이 없어요 — ${env('OM_HOST_BETA')} 에 대표 계정의 회원 번호(회원 목록의 # 뒤 숫자)를 넣으면 그 계정만 열 수 있어요`):'';
+  /* ③ 결제창 — 스위치와 키가 있는지만 */
+  const KN=Y.pg==='portone'?{store:'PORTONE_STORE_ID',channel:'PORTONE_CHANNEL_KEY',secret:'PORTONE_API_SECRET'}:{client:'TOSS_CLIENT_KEY',secret:'TOSS_SECRET_KEY'};
+  const kmiss=Object.keys(KN).filter(k=>!(Y.keys||{})[k]).map(k=>env(KN[k]));
+  const y1=Y.test?`${no('시험 키')} 시험 키로 보여요 — 운영 서버에는 실연동 키만 넣어요`
+    :Y.pg!=='portone'?`${no()} 지금은 토스 결제창 설정이에요 — 나이스 심사에는 ${env('PAY_PG=portone')} 과 나이스 채널 키가 필요해요`
+    :Y.live?`${ok} 결제하기를 누르면 결제창이 떠요 · 포트원 ${esc((Y.methods||[]).join(' · '))}`
+    :kmiss.length?`${no()} 키가 비어 있어요 — ${kmiss.join(' · ')}`
+    :`${no('꺼짐')} 키는 들어 있어요 — 마지막에 ${env('OM_PAY_LIVE=1')} 을 켜면 결제창이 떠요`;
+  const y2=Y.pg==='portone'&&Y.live&&!(Y.keys||{}).hook?sub(`웹훅 시크릿(${env('PORTONE_WEBHOOK_SECRET')})이 비어 있어요 — 결제창을 닫고 나간 결제를 놓칠 수 있어요`):'';
+  /* ④ 심사자가 보는 화면에 걸릴 만한 말 */
+  const WT={league:()=>`홈페이지 &lt;맞수 리그&gt; 칸에 &lt;준비 중 · TBD&gt;가 보여요 — ${env('SITE_LEAGUE=off')} 로 숨겨요`,
+    pay_wait:()=>'홈페이지 참가 안내에 &lt;카드 · 간편결제 (준비 중)&gt;이 보여요 — 결제를 켜면 사라져요',
+    name:h=>`매치 장소 이름에 시험 · 샘플 같은 말이 있어요 — ${esc(h.loc||'')}`,
+    photo:h=>`코트 사진이 없는 매치 ${fmt(h.n)}개 — 화면에 &lt;예시 사진&gt;이라고 떠요. 실제 사진이 있는 코트로 열어 주세요`};
+  const hits=(W.hits||[]).filter(h=>WT[h.k]);
+  const w1=W.ok?`${ok} 심사자가 보는 화면에 걸릴 만한 말이 없어요`:`${no(`${hits.length}곳`)}${hits.map(h=>sub(WT[h.k](h))).join('')}`;
+  /* ⑤ 로그인 — 맞수는 로그인해야 결제된다(비회원 결제 없음). 심사 담당자는 카카오 · 구글로 가입해 들어온다.
+     새로 가입한 계정은 티어가 없어 <모든 티어> 매치에만 신청할 수 있다 — 그런 매치가 있어야 결제창까지 간다.
+     아이디 · 비밀번호를 달라고 할 때만 심사용 계정(REVIEW_NAME · REVIEW_PIN)을 쓴다 — 로그인 화면에는 보이지 않고 /app?review=1 주소에서만 열린다 */
+  const noCan='새로 가입한 계정이 신청할 수 있는 매치가 없어요 — &lt;모든 티어&gt;이고 참가비가 있는 매치를 열어 주세요';
+  const r1=!R.on?(R.can_n?`${ok} 카카오 · 구글로 가입하면 결제창까지 갈 수 있어요 · 새 계정이 신청할 수 있는 매치 ${fmt(R.can_n)}개`:`${no()} ${noCan}`)
+    :R.ok?`${ok} 심사용 계정이 열려 있어요 · 신청할 수 있는 매치 ${fmt(R.can_n)}개`
+    :`${wn('확인')} 심사용 계정은 열려 있어요`;
+  const r2=R.on?[R.short?'비밀번호가 8자보다 짧아요 — 더 길게 바꿔 주세요':'', R.bad_name?'아이디에 테스트 · 샘플 같은 말이 있어요 — 다른 아이디로 바꿔 주세요':'',
+    !R.can_n?noCan:''].filter(Boolean).map(red).join('')
+    +sub(`심사 담당자에게 줄 주소 — 홈페이지 주소 뒤에 ${env('/app?review=1')} (그 주소에서만 아이디 · 비밀번호 칸이 떠요 · 로그인 화면에는 보이지 않아요)`)
+    :sub(`아이디 · 비밀번호를 달라고 하면 — Railway 에 ${env('REVIEW_NAME')} · ${env('REVIEW_PIN')}(8자 이상)을 넣고, 홈페이지 주소 뒤에 ${env('/app?review=1')} 을 알려 줘요(로그인 화면에는 보이지 않아요)`);
+  return `<div class="c2" id="pgCard"><div class="c2h"><b>카드사 심사 준비</b><span class="r">${head}</span></div>
+    ${kv('① 하단정보', f1+f2)}
+    ${kv('② 상품', p1+prow+p5+p3+p4)}
+    ${kv('③ 결제창', y1+y2)}
+    ${kv('④ 문구', w1)}
+    ${kv('⑤ 로그인', r1+r2)}
+    <div class="nt">결제대행사가 보낸 &lt;카드사 심사 준비 체크사항&gt; 다섯 가지를 지금 서버 상태로 본 거예요. 상품은 실제로 열린 매치만 세요. 심사 담당자는 컴퓨터에서 홈페이지의 매치를 눌러 &lt;이 컴퓨터에서 신청하기&gt;로 들어와, 가입한 뒤 결제창까지 갈 수 있어요.${R.on?` 심사용 아이디 · 비밀번호는 결제대행사에만 전달하고, 심사가 끝나면 ${env('REVIEW_NAME')} · ${env('REVIEW_PIN')} 을 지워 주세요.`:''}</div></div>`;
+}
+async function phNow(){
+  toast('사진을 보내기 시작했어요…');
+  try{ await api('/admin/backup/photos',{method:'POST',body:'{}'}); setTimeout(render, 1500); setTimeout(render, 6000); }
+  catch(e){ toast(errMsg(e,'사진을 보내지 못했어요')); }
+}
+/* 사진 묶음 — 클 수 있어서 브라우저가 바로 받게 한다. 열쇠를 주소에 싣지 않으려고 60초 · 한 번만 쓰는 주소를 받아 온다 */
+async function phDownload(){
+  try{ const r=await api('/admin/backup/photos/link',{method:'POST',body:'{}'});
+    if(!r.n) return toast('아직 사진이 없어요');
+    toast(`사진 ${fmt(r.n)}장 · ${bkSize(r.bytes)} 묶음을 내려받아요 · 안전한 곳에 보관해 주세요`);
+    const a=document.createElement('a'); a.href=r.url; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(), 800);      // 서버가 <첨부>로 답해서 화면은 그대로 있고 파일만 받는다
+    setTimeout(render, 2500); }
+  catch(e){ toast(errMsg(e,'내려받지 못했어요')); }
+}
+async function acctSweepNow(){
+  toast('계좌번호를 잠그는 중이에요…');
+  try{ const r=await api('/admin/acct/sweep',{method:'POST',body:'{}'});
+    toast(r.unreadable?`잠갔어요 · 읽을 수 없는 계좌 ${fmt(r.unreadable)}건은 그대로예요`:`${fmt((r.moved||0)+(r.rekeyed||0))}건을 잠갔어요`); render(); }
+  catch(e){ toast(errMsg(e,'잠그지 못했어요')); }
 }
 function opsCardHTML(A){
   if(!A) return '';
@@ -5084,7 +5234,7 @@ drawHostPay=(function(o){ return async function(){
     ${kc('지난주 입금 완료',`${fmt(S.last_sum)}원`,`${fmt(S.last_n)}건`)}
     ${kc('이번 달 맞수 몫 · 카드 수수료 · 세금 빼기 전',`${fmt(M.matsu)}원`,`결제 ${fmt(M.paid)} − 환불 ${fmt(M.refund)} − 호스트 지급 ${fmt(M.host)}`,1)}</div>`;
   const STEPS=po?['정산 확정 · 경기 12시간 뒤','포트원에 정산 등록','포트원에서 지급','지급되면 입금 완료']
-    :['정산 확정 · 경기 12시간 뒤',`지급 요청 파일 → ${esc(pg)} 관리자에 올림`,'지급 요청함으로 표시',`${esc(pg)}가 보내면 입금 완료`];
+    :['정산 확정 · 경기 12시간 뒤',`지급 요청 파일 → ${esc(pg)} 관리자에 올림`,'지급 요청함으로 표시',`${esc(pg)}${josaIG(pg)} 보내면 입금 완료`];
   const whtWarn=po&&!d.wht?`<div class="wb2 y" style="margin:0 0 18px">⚠ <span style="opacity:1">원천징수를 누가 떼는지 정해야 포트원에 정산 등록을 할 수 있어요 · Railway 의 <b>PORTONE_WHT</b> (matsu 또는 portone)</span></div>`:'';
   const stepper=`<div style="display:flex;align-items:center;gap:10px;background:#f6f5f1;border-radius:16px;padding:12px 16px;margin-top:14px">${STEPS.map((t,i)=>`${i?'<i style="flex:1;height:1px;background:#dcd7cd;min-width:12px"></i>':''}<span style="display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:13.5px;${i+1===step?'font-weight:800':'color:var(--mut)'}">
       <i style="font-style:normal;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;${i+1<=step?'background:var(--ink3);color:#fff':'border:1.5px solid #cfc9bd'}">${i+1}</i>${t}</span>`).join('')}</div>`;

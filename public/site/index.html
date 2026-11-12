@@ -40,6 +40,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .hme span{width:32px;height:32px;border-radius:50%;background:#dfe5fb;color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800}
 .dlg .pcweb{display:none;margin-top:14px;font-size:15px;font-weight:800;color:var(--ort);text-decoration:underline;text-underline-offset:4px}
 .dlg .pcweb.on{display:inline-block}
+/* 11/11 매치 안내 창 — 컴퓨터에서는 누구나 <이 컴퓨터에서 신청하기>(단추). 로그인은 신청할 때 웹 앱이 받는다. 휴대폰에서는 아래 <웹에서 보기>가 그 일을 한다 */
+.dlg .pcweb.go{margin-top:20px;height:52px;padding:0 28px;border-radius:26px;background:var(--or);color:#fff;font-size:17px;text-decoration:none;align-items:center;justify-content:center}
+.dlg .pcweb.go.on{display:inline-flex}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border:0;border-radius:24px;font-size:16px;font-weight:800;white-space:nowrap}
 .btn.or{background:var(--or);color:#fff}
 .btn.navy{background:var(--navy);color:#fff}
@@ -120,6 +123,16 @@ img.deco{height:auto}
 .wish img{width:58px;height:auto;flex:none;margin:-14px 0 -14px -6px;filter:drop-shadow(0 4px 8px rgba(25,31,40,.14))}
 .wish p{flex:1;margin:0;font-size:15px;color:#333d4b}
 .wish p b{color:var(--ink)}
+/* 오픈매치 참가 안내 — 무엇을 얼마에 파는지(서버가 그려 넣는다) */
+.prod{margin-top:34px;background:#fff;border-radius:22px;padding:26px 30px 10px}
+.prod h3{margin:0 0 6px;font-size:21px;font-weight:900;letter-spacing:-.04em}
+.prod dl{margin:0}
+.prod dl>div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:16px;padding:15px 0;border-top:1px solid #efe9dc}
+.prod dl>div:first-child{border-top:0}
+.prod dt{font-size:13.5px;font-weight:700;color:#6b7684;padding-top:2px}
+.prod dd{margin:0;font-size:14.5px;line-height:1.65;color:#4e5968}
+.prod dd b{display:block;font-size:16.5px;font-weight:800;color:var(--ink);letter-spacing:-.03em;margin-bottom:2px}
+.prod dd a{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 /* 클럽 */
 .club{background:var(--lav);padding:40px 0 64px;border-radius:26px 26px 0 0}
 .club .wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;align-items:center}
@@ -258,6 +271,7 @@ body.map .land{display:none}
   .row .kd,.row .dots,.row .cond,.row .go{display:none}
   .row .ct small.mb{display:block}
   .wish{flex-direction:column;align-items:stretch;text-align:left}.wish img{display:none}.wish .btn{width:100%}
+  .prod{padding:20px 18px 6px;border-radius:18px}.prod dl>div{grid-template-columns:1fr;gap:4px;padding:13px 0}
   .club .wrap,.lg .wrap,.tr .wrap,.ap .wrap{grid-template-columns:1fr}
   .cards{display:none}
   .lg .wrap{position:relative}.cupw{position:absolute;right:-6px;top:-4px;width:auto}.cupw::before{display:none}.cupw img{height:210px;width:auto}
@@ -276,6 +290,7 @@ body.map .land{display:none}
   .mapv .in{grid-template-columns:1fr}.mapbox{height:380px;order:-1}
   .dlg .cd{grid-template-columns:1fr;padding:28px 22px 24px;gap:20px}
   .dlg h3{font-size:32px}.dlg .qrb{display:none}.dlg .mb{display:flex;flex-direction:column;gap:10px}
+  .dlg .pcweb.go,.dlg .pcweb.go.on{display:none}
   .dlg .x{top:44px}
   .tabs span{padding:0 18px 0 16px;font-size:14px}
 }
@@ -360,7 +375,7 @@ body.map .land{display:none}
 12 0 57 13 101 29 106 38 451 46 559 12z"/></g><circle cx="357" cy="539" r="71" fill="#fff"/><circle cx="490" cy="539" r="71" fill="#fff"/><circle cx="379" cy="533" r="47" fill="#0e1012"/><circle cx="513" cy="532" r="47" fill="#0e1012"/></symbol></svg>
 <header class="hd"><div class="wrap">
   <a class="logo" href="/" aria-label="맞수 MATSU 홈"><svg class="mk" viewBox="0 0 834 714"><use href="#matsuMark"/></svg>MATSU</a>
-  <nav class="nav" aria-label="메뉴"><a href="#matches" data-nav="matches">오픈매치</a><a href="#club" data-pcapp="club">클럽</a><a href="#league">맞수 리그</a><a href="#tier">티어</a></nav>
+  <nav class="nav" aria-label="메뉴"><a href="#matches" data-nav="matches">오픈매치</a><a href="#club" data-pcapp="club">클럽</a><!--SITE_LGN--><a href="#league">맞수 리그</a><!--/SITE_LGN--><a href="#tier">티어</a></nav>
   <button class="btn or sm" data-act="app">앱 받기</button>
 </div></header>
 
@@ -390,9 +405,10 @@ body.map .land{display:none}
       <div class="shd"><div><div class="lab">Open match</div><h2 class="h2" id="omt">이번 주 오픈매치</h2></div><a class="lnk" href="#matches">지도로 보기 →</a></div>
       <div class="tb" id="omList" aria-live="polite">
         <div class="th"><span>시간</span><span>코트</span><span>종류</span><span>남은 자리</span><span>신청 조건</span><span style="text-align:right">참가비 1인</span><span></span></div>
-        <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+        <!--SITE_OM--><div class="skel"></div><div class="skel"></div><div class="skel"></div><!--/SITE_OM-->
       </div>
       <div class="wish"><img src="/site/img/clock.webp" alt="" width="131" height="171"><p><b>원하는 시간이 없나요?</b> 치고 싶은 코트를 골라 두면, 사람이 모일 때 매치가 열려요</p><button class="btn navy sm" data-act="wish">매치 알림 받기</button></div>
+      <!--SITE_PROD-->
     </div></div>
   </section>
 
@@ -424,7 +440,7 @@ body.map .land{display:none}
     </div></div>
   </section>
 
-  <section class="sec" id="league" aria-labelledby="lgt">
+  <!--SITE_LG--><section class="sec" id="league" aria-labelledby="lgt">
     <div class="ftab" style="background:#2730a8;color:#fff;position:relative;z-index:2">맞수 리그</div>
     <div class="lg"><div class="wrap">
       <div class="txt">
@@ -436,7 +452,7 @@ body.map .land{display:none}
       </div>
       <div class="cupw"><img src="/site/img/cup.webp" alt="맞수컵" width="420" height="869"></div>
     </div></div>
-  </section>
+  </section><!--/SITE_LG-->
 
   <section class="sec" id="tier" aria-labelledby="tit">
     <div class="ftab" style="background:var(--lime);position:relative;z-index:2">티어</div>
@@ -537,7 +553,8 @@ function fixStore(){
 }
 
 /* ── 이번 주 오픈매치 ── */
-let MS=[], MERR=false, SEL=null, FLT='all';
+const MS0=/*SITE_MS*/null;                 // 서버가 첫 화면에 그려 넣은 목록(없으면 null — 아래에서 받아 온다)
+let MS=Array.isArray(MS0)?MS0:[], MERR=false, SEL=null, FLT='all';
 const TIER_CLS={bronze:'bronze',silver:'silver',gold:'gold',platinum:'platinum',diamond:'diamond',challenger:'challenger'};
 const dt=s=>{ const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/); if(!m) return null;
   const d=new Date(+m[1],+m[2]-1,+m[3]); return {md:`${+m[2]}/${+m[3]}`, dow:DOW[d.getDay()], hm:`${m[4]}:${m[5]}`}; };
@@ -553,7 +570,7 @@ function rowHTML(m,i){ const d=dt(m.start_at)||{};
     <div class="dots">${dots(m)}<span>${esc(leftTxt(m))}</span></div>
     <div class="cond"><span class="chip ${TIER_CLS[m.tier_key]||''}">${esc(m.tier)}</span></div>
     <div class="pr">${won(m.price)}</div>
-    <div class="go"><span class="arr">→</span><button class="btn or sm" tabindex="-1">앱에서 신청</button></div></div>`; }
+    <div class="go"><span class="arr">→</span><button class="btn or sm" tabindex="-1">신청하기</button></div></div>`; }
 function paintList(){
   const box=$('#omList'), head=box.querySelector('.th').outerHTML;
   if(!MS.length){ box.innerHTML=head+`<div class="empty"><b>${MERR?'매치를 불러오지 못했어요':'이번 주 열린 매치가 아직 없어요'}</b>
@@ -578,9 +595,9 @@ $('#mq').innerHTML=Array(4).fill(MQ.map(t=>`<span>${t}</span><i>✳</i>`).join('
 
 /* ── 앱 안내 창 ── */
 const DLG={
-  match:m=>{ const d=dt(m.start_at)||{}; return {a:'오픈매치',b:'자리 신청',t:'이 자리는<br>앱에서 신청해요',
+  match:m=>{ const d=dt(m.start_at)||{}, pc=!mobile(); return {a:'오픈매치',b:'자리 신청',t:pc?'이 자리에<br>신청해요':'이 자리는<br>앱에서 신청해요',
     rows:[['일시',`${d.md} (${d.dow}) ${d.hm}`],['코트',`${m.loc} · ${kindTxt(m)}`],['남은 자리',leftTxt(m).replace(' 남음','')],['참가비',won(m.price)]],
-    n:'앱을 받고 로그인하면 바로 신청할 수 있어요.', m:m.id}; },
+    n:pc?'이 컴퓨터에서 바로 신청하거나, 폰으로 QR 을 찍어 앱에서 신청할 수 있어요.':'앱을 받고 로그인하면 바로 신청할 수 있어요.', m:m.id}; },
   club:()=>({a:'클럽',b:'클럽 만들기',t:'클럽 운영은<br>앱에서 시작해요',rows:[['참석','누르면 대진까지 한 번에'],['기록','점수 · 시즌 랭킹'],['총무','회비 장부 · 출석 · 공지'],['초대','카톡방에 초대장 하나로']],
     n:'앱을 받고 클럽을 만들면 회원을 바로 초대할 수 있어요.'}),
   league:()=>({a:'맞수 리그',b:'참가 신청',t:'참가 신청은<br>앱에서 받아요',rows:[['일시','TBD'],['장소','TBD'],['참가비','TBD'],['우승','TBD']],
@@ -600,8 +617,10 @@ function openDlg(kind,arg){
   $('#dlgN').textContent=D.n;
   $('#dlgQ').innerHTML=qrSvg('/get'+(D.m?`?m=${D.m}`:''));
   $('#dlgStore').href=storeHref(D.m); $('#dlgWeb').href='/app'+(D.m?`?match=${D.m}`:'');
-  /* 로그인한 회원이면 PC 에서도 바로 — 매치는 웹 앱 매치 화면, 클럽은 내 클럽 화면 */
-  const pw=D.m?`/app?match=${D.m}`:kind==='club'?'/app#club':''; $('#dlgPc').href=pw||'/app'; $('#dlgPc').classList.toggle('on',!!(ME&&pw));
+  /* 컴퓨터에서도 바로 — 매치는 누구나 웹 앱의 매치 화면으로(11/11 · 로그인은 신청할 때 받는다), 클럽은 로그인한 회원만 내 클럽 화면으로 */
+  const pw=D.m?`/app?match=${D.m}`:kind==='club'?'/app#club':'', pcEl=$('#dlgPc');
+  pcEl.href=pw||'/app'; pcEl.textContent=D.m?'이 컴퓨터에서 신청하기':'이 컴퓨터에서 보기 ›';
+  pcEl.classList.toggle('go',!!D.m); pcEl.classList.toggle('on',!!(pw&&(D.m||ME)));
   $('#ov').classList.add('on'); $('#dlgX').focus();
 }
 function closeDlg(){ $('#ov').classList.remove('on'); if(LAST&&LAST.focus) LAST.focus(); }
