@@ -4650,10 +4650,13 @@ const hrvTags = s => { try { const a = JSON.parse(s || '[]'); return Array.isArr
 /* 호스트 한 줄 — 평균 별점 · 후기 수 · 연 횟수 · 취소 횟수(비 취소는 빼고, 미참석은 넣는다) */
 function hrvStats(hostId) {
   const r = db.prepare('SELECT AVG(stars) a, COUNT(*) n FROM om_host_reviews WHERE host_id=?').get(hostId) || {};
-  const o = db.prepare(`SELECT COUNT(*) n,
-      SUM(CASE WHEN status='noshow' OR (status='cancelled' AND COALESCE(cancel_reason,'host')<>'rain') THEN 1 ELSE 0 END) c
-    FROM open_matches WHERE host_id=? AND mode='host'`).get(hostId) || {};
-  return { avg: r.n ? Math.round(r.a * 10) / 10 : null, n: r.n || 0, opened: o.n || 0, cancels: o.c || 0 };
+  /* 11/12 — 연 매치(opened): 모집 중 · 확정된 매치만. 취소 · 미참석으로 끝난 매치는 세지 않는다(예전에는 다 셌다 — 열었다가 접은 매치까지 <연 매치>로 보였다)
+     취소(cancels): 게스트가 있던 호스트 취소(벌점이 붙은 것)와 미참석 확인만 — 벌점 규칙과 같다.
+       인원이 안 모여 자동 취소된 매치 · 운영자가 접은 매치 · 아무도 없을 때 접은 매치 · 비 취소는 세지 않는다 */
+  const o = db.prepare(`SELECT COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host' AND COALESCE(status,'open') IN ('open','confirmed')`).get(hostId) || {};
+  let c = 0;
+  try { c = db.prepare(`SELECT COUNT(*) n FROM om_host_strikes WHERE user_id=? AND COALESCE(kind,'cancel') IN ('cancel','noshow')`).get(hostId).n; } catch (e) {}
+  return { avg: r.n ? Math.round(r.a * 10) / 10 : null, n: r.n || 0, opened: o.n || 0, cancels: c || 0 };
 }
 /* 공개 리뷰에서 고른 항목 수 — 많은 순 */
 function hrvGood(hostId) {
@@ -4761,7 +4764,8 @@ function hostIntroOf(hid) { try { return (db.prepare('SELECT host_intro FROM use
 /* 호스트를 한 지 — 처음 매치를 연 때부터. 한 달이 안 됐거나 연 적이 없으면 <새 호스트> */
 function hostSince(hid, nowMs) {
   let r = {};
-  try { r = db.prepare(`SELECT MIN(host_agree_at) a, MIN(start_at) s, COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'`).get(hid) || {}; } catch (e) {}
+  try { r = db.prepare(`SELECT MIN(host_agree_at) a, MIN(start_at) s, COUNT(*) n FROM open_matches WHERE host_id=? AND mode='host'
+      AND COALESCE(status,'open') IN ('open','confirmed')`).get(hid) || {}; } catch (e) {}     // 11/12 취소된 매치는 빼고
   if (!r.n) return { months: 0, label: '새 호스트' };
   const s = r.s ? Date.parse(String(r.s).slice(0, 16) + ':00+09:00') : NaN;
   const first = Math.min(+r.a > 0 ? +r.a : Infinity, isNaN(s) ? Infinity : s);
@@ -4784,6 +4788,7 @@ function hostOpenNow(hid, nowMs) {
 function hostCourts(hid) {
   try {
     return db.prepare(`SELECT venue_id, MAX(loc) loc, COUNT(*) n, MAX(start_at) last FROM open_matches WHERE host_id=? AND mode='host'
+        AND COALESCE(status,'open') IN ('open','confirmed')
         GROUP BY COALESCE(CAST(venue_id AS TEXT), 'L:' || REPLACE(COALESCE(loc,''),' ','')) ORDER BY n DESC, last DESC LIMIT 3`).all(hid)
       .map(r => {
         const v = r.venue_id ? db.prepare('SELECT * FROM venues WHERE id=?').get(r.venue_id) : null;
@@ -10873,9 +10878,9 @@ function clubRankScope(cid) {
 // ══════════════════════════════════════════════════════════════
 //  이용약관 · 개인정보처리방침 — 앱스토어 심사와 카카오 검수 요구사항
 // ══════════════════════════════════════════════════════════════
-const LEGAL_CSS = `<style>body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:680px;margin:0 auto;padding:34px 22px 80px;color:#1b1813;background:#f5f2e9;line-height:1.75}
-h1{font-size:23px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:14px;color:#4a4237}ul{padding-left:18px}
-.sub{font-size:12px;color:#8a7f70}table{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:14px}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #e8e1d2;color:#4a4237}th{font-size:12.5px;color:#8a7f70;font-weight:600}td:last-child,th:last-child{text-align:right}.box{background:#fffdf8;border:1px solid #e8e1d2;border-radius:14px;padding:14px 16px;font-size:13px;color:#8a7f70;margin-top:30px}</style>`;
+const LEGAL_CSS = `<style>body{font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:680px;margin:0 auto;padding:34px 22px 80px;color:#191f28;background:#fff;line-height:1.75}
+h1{font-size:23px;margin-bottom:4px}h2{font-size:15px;margin:26px 0 8px}p,li{font-size:14px;color:#333d4b}ul{padding-left:18px}
+.sub{font-size:12px;color:#6b7684}table{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:14px}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #e5e8eb;color:#333d4b}th{font-size:12.5px;color:#6b7684;font-weight:600}td:last-child,th:last-child{text-align:right}.box{background:#fff;border:1px solid #e5e8eb;border-radius:14px;padding:14px 16px;font-size:13px;color:#6b7684;margin-top:30px}</style>`;
 
 // 법률 문서에 들어갈 운영자 정보. Railway Variables 에서 채운다.
 const OP_NAME  = opInfo().name;                      // 대표자
