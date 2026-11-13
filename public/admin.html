@@ -1049,6 +1049,8 @@ body{background:var(--bg2)}
 .acrow > b.y{color:var(--yel)} .acrow > b.r{color:var(--red2)}
 .mono2{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;letter-spacing:0}
 .pgsub{display:block;font-size:13px;color:var(--mut);margin-top:4px;line-height:1.5;font-weight:400}
+/* 11/13 문의함 — 좁은 화면은 결제 · 언제 칸을 빼고 내용을 짧게(자세히 판넬에 다 있다) */
+@media (max-width:1000px){ .iqtb .iqp,.iqtb .iqw{display:none} .iqtb td .t span{max-width:190px!important} .iqtb td{padding:12px 10px} }
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -1121,7 +1123,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치'],['hostpay','호스트 정산'],['venues','구장']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['inq','문의'],['hosts','호스트 매치'],['hostpay','호스트 정산'],['venues','구장']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -1297,6 +1299,7 @@ async function draw(){
   if(TAB==='matches') return drawMatches();
   if(TAB==='venues')  return drawVenues();
   if(TAB==='reports') return drawReports();
+  if(TAB==='inq')     return drawInq();
   if(TAB==='posts')   return drawPosts();
   if(TAB==='payouts') return drawPayouts();
   if(TAB==='hosts')   return drawHostMatches();
@@ -4242,6 +4245,7 @@ async function drawStats(){
     if(many) hot.push(['r','여러 사람에게 나는 오류','한 명만 겪는 게 아니면 코드 문제예요',`${many}종류`,'',`go('errors')`,'오류 보기']);
   }catch(e){}
   if(reps.length) hot.push(['r','처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,'',`go('reports')`,'신고 보기']);
+  if(BADGE && BADGE.inq) hot.push(['r','새 문의 · 환불 요청','앱에서 온 것이에요 · 답을 쓰면 회원에게 앱 알림이 가요',`${BADGE.inq}건`,'',`go('inq')`,'문의 보기']);   // 11/13
   if(sess && sess.expired>0) hot.push(['y','로그인이 풀린 회원','30일 넘게 안 열어서 다음에 다시 로그인해야 해요',`${fmt(sess.expired)}명`,'',`USEEN='old';go('users')`,'회원 보기']);
   /* 많은 사람에게 닿는 것부터 */
   const reach=[];
@@ -5678,6 +5682,76 @@ async function hpsPo(uid){
 }
 /* 예전 버튼(지급 요청함)을 눌러도 포트원이면 정산 등록으로 */
 hpReq=(function(o){ return function(ids){ return (HPAY&&HPAY.flow==='portone')?hpPo(ids):o(ids); }; })(hpReq);
+
+
+/* ═══ 11/13 문의함 — 앱에서 온 문의 · 환불 요청을 모아 본다(대표 열쇠만 · 스태프 메뉴에는 없다). 답을 쓰면 회원에게 앱 알림이 간다 ═══ */
+SUBT.inq='앱에서 온 문의 · 환불 요청 · 답을 쓰면 회원에게 앱 알림이 가요';
+let IQ_ST='open', IQ_ROWS=null, IQ_SEL=null, IQ_CNT={};
+const IQ_KIND={ask:['문의','n'], refund:['환불 요청','o'], bug:['오류 신고','r'], etc:['기타','n']};
+const IQ_STAT={new:['새로 옴','r'], doing:['처리 중','b'], done:['끝냄','n']};
+const IQ_RF={pending:'처리 중', done:'환불됨', failed:'실패 · 확인 필요'};
+const iqDay=ms=>{ if(!ms) return ''; const d=new Date(ms); return `${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+async function drawInq(){
+  const d=await api('/admin/inquiries?status='+IQ_ST);
+  IQ_ROWS=d.rows||[]; IQ_CNT=d.count||{};
+  const row=r=>{ const K=IQ_KIND[r.kind]||IQ_KIND.ask, S=IQ_STAT[r.status]||IQ_STAT.new;
+    return `<tr class="ck${IQ_SEL===r.id?' sel':''}" data-i="${r.id}" onclick="iqOpen(${+r.id},1)">
+    <td><i class="bd2 ${K[1]}">${K[0]}</i></td>
+    <td><div class="t"><b>${esc(r.name||('#'+r.user_id))}</b><span style="max-width:220px">${esc(String(r.body||'').replace(/\s+/g,' ').slice(0,60))}</span></div></td>
+    <td class="n iqp">${r.pay?`${fmt(r.pay.amount)}원`:''}</td>
+    <td><i class="bd2 ${S[1]}">${S[0]}</i>${r.reply?' <i class="bd2 g">답함</i>':''}</td>
+    <td class="n iqw" style="color:var(--mut);white-space:nowrap">${esc(ago(r.created_at).txt)}</td></tr>`; };
+  HDSEG='';
+  $('app').innerHTML=shell(`<div class="pg2"><div class="c2 tbw">
+      <div class="tbtop" style="display:flex;align-items:center;gap:12px"><div class="seg2">
+        <a class="${IQ_ST==='open'?'on':''}" onclick="IQ_ST='open';IQ_SEL=null;render()">처리할 것 <i>${(IQ_CNT.new||0)+(IQ_CNT.doing||0)}</i></a>
+        <a class="${IQ_ST==='done'?'on':''}" onclick="IQ_ST='done';IQ_SEL=null;render()">끝낸 것 <i>${IQ_CNT.done||0}</i></a></div></div>
+      ${IQ_ROWS.length?`<table class="tb2 iqtb"><thead><tr><th>종류</th><th>누가 · 내용</th><th class="n iqp">결제</th><th>상태</th><th class="n iqw">언제</th></tr></thead><tbody>${IQ_ROWS.map(row).join('')}</tbody></table>`
+        :`<div class="tbft" style="justify-content:center;padding:36px">${IQ_ST==='done'?'끝낸 문의가 없어요':'처리할 문의가 없어요 · 조용한 게 좋은 겁니다'}</div>`}
+      <div class="tbft"><span>앱의 <b style="font-weight:700">설정 › 문의하기</b>와 <b style="font-weight:700">결제 내역 › 문의 · 환불 요청</b>에서 온 것이에요. 새로 오면 운영 알림(ADMIN_UIDS)으로도 알려 드려요.</span></div></div>
+    <div id="iqn">${paneEmpty('줄을 누르면 내용과 답 쓰는 칸이 나와요')}</div></div>`);
+  const sel=IQ_ROWS.find(r=>r.id===IQ_SEL)||(wide()?IQ_ROWS[0]:null);
+  if(sel) iqOpen(sel.id);
+}
+function iqOpen(id, tap){
+  const r=(IQ_ROWS||[]).find(x=>x.id===id); if(!r||!$('iqn')) return; IQ_SEL=id;
+  document.querySelectorAll('tr.ck[data-i]').forEach(tr=>tr.classList.toggle('sel', +tr.dataset.i===id));
+  PANE_CLOSE=()=>{ IQ_SEL=null; document.querySelectorAll('tr.ck.sel').forEach(tr=>tr.classList.remove('sel')); $('iqn').innerHTML=paneEmpty('줄을 누르면 내용과 답 쓰는 칸이 나와요'); };
+  const K=IQ_KIND[r.kind]||IQ_KIND.ask, S=IQ_STAT[r.status]||IQ_STAT.new, p=r.pay;
+  const kv=(k,v)=>`<div class="kv2"><span>${k}</span><b>${v}</b></div>`;
+  const rf=(r.refunds||[]).map(x=>`${fmt(x.amount)}원 · ${esc(IQ_RF[x.status]||x.status||'')}${x.done_at?` · ${esc(iqDay(x.done_at))}`:''}`).join('<br>');
+  $('iqn').innerHTML=pane('문의 자세히', `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="bd2 ${K[1]}">${K[0]}</i><i class="bd2 ${S[1]}">${S[0]}</i>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--mut)">${esc(iqDay(r.created_at))}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="av2">${esc(String(r.name||'?')[0])}</span>
+        <b style="flex:1;min-width:0;font-size:16px">${esc(r.name||'이름 없음')} <span style="font-weight:500;color:var(--mut);font-size:13px">#${+r.user_id}${r.app_ver?` · 앱 ${esc(r.app_ver)}`:''}</span></b>
+        <button class="b2 sm" onclick="TAB='users';render().then(()=>openU(${+r.user_id}))">회원 보기</button></div>
+      <div style="white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.65;background:#faf9f6;border:1px solid var(--ln3);border-radius:14px;padding:14px 16px;margin-top:12px">${esc(r.body)}</div>
+      ${p?`<div class="sh" style="margin-top:20px">붙은 결제</div>
+        ${kv('매치', `오픈매치 #${+p.match_id||''} · ${esc(p.loc||'')}${p.start_at?` · ${esc(String(p.start_at).replace('T',' '))}`:''}`)}
+        ${kv('결제', `${fmt(p.amount)}원 · ${esc(iqDay(p.at))}${p.order_id?`<br><span style="font-weight:500;color:var(--mut);font-size:12.5px">주문 ${esc(p.order_id)}</span>`:''}`)}
+        ${kv('환불', (p.refunded||0)>0||rf ? `${(p.refunded||0)>0?`지금까지 ${fmt(p.refunded)}원`:''}${rf?`${(p.refunded||0)>0?'<br>':''}<span style="font-weight:500">${rf}</span>`:''}` : '아직 없음')}
+        <div class="nt">환불 자체는 여기서 일어나지 않아요 — 결제대행사 화면(또는 매치 취소)에서 처리한 뒤, 아래에 답을 남겨 주세요.</div>`:''}
+      <div class="sh" style="margin-top:20px">회원에게 보내는 답${r.replied_at?`<span class="r">${esc(iqDay(r.replied_at))}${r.replied_by?` · ${esc(r.replied_by)}`:''}</span>`:''}</div>
+      <textarea class="in2" id="iqReply" maxlength="2000" placeholder="답을 적어 주세요 · 보내면 회원의 앱 알림과 &lt;내 문의&gt;에 보여요">${esc(r.reply||'')}</textarea>
+      <div class="sh" style="margin-top:18px">메모<span class="r">회원에게는 안 보여요</span></div>
+      <textarea class="in2" id="iqMemo" maxlength="1000" style="min-height:70px" placeholder="처리하며 적어 둘 것">${esc(r.memo||'')}</textarea>`,
+    `<button class="b2 k" onclick="iqSave(${+r.id},'reply')">${r.reply?'답 고쳐 보내기':'답 보내기'}</button>
+     <button class="b2" onclick="iqSave(${+r.id},'memo')">메모만 저장</button><span class="sp"></span>
+     ${r.status==='done'?`<button class="b2" onclick="iqSave(${+r.id},'reopen')">다시 열기</button>`:`<button class="b2 or" onclick="iqSave(${+r.id},'done')">끝냄</button>`}`);
+  if(tap && !wide()) try{ $('iqn').scrollIntoView({block:'start', behavior:'smooth'}); }catch(e){}     // 휴대폰 — 자세히는 표 아래에 그려진다
+}
+async function iqSave(id, what){
+  const reply=(($('iqReply')||{}).value||'').trim(), memo=(($('iqMemo')||{}).value||'');
+  const body={memo};
+  if(what==='reply'){ if(!reply){ toast('답을 적어 주세요'); return; } body.reply=reply; }
+  if(what==='done'){ body.status='done'; if(reply) body.reply=reply; }
+  if(what==='reopen') body.status='doing';
+  try{ await api('/admin/inquiries/'+id, {method:'POST', body:JSON.stringify(body)});
+    toast(what==='reply'?'답을 보냈어요 · 회원에게 알림이 갔어요':what==='done'?'끝냄으로 옮겼어요':what==='reopen'?'다시 열었어요':'메모를 저장했어요');
+    render._bt=0; if(what==='done'||what==='reopen') IQ_SEL=null; render();
+  }catch(e){ toast(errMsg(e,'저장하지 못했어요')); }
+}
 
 /* 주소 끝(#users)으로 바로 그 화면을 연다 — 휴대폰 홈 화면에 화면별로 올려 둘 수 있다 */
 try{ const h=(location.hash||'').slice(1); if(/^\w+$/.test(h)) TAB=h; }catch(e){}
