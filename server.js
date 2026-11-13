@@ -562,6 +562,7 @@ app.get('/config', (_, res) => {
     // APPLE_CLIENT_ID 는 "웹ServicesID,iOS번들ID" 형태 — 웹에는 첫 값만 내려준다
     apple_client_id: (process.env.APPLE_CLIENT_ID || '').split(',')[0].trim(),
     support_email: process.env.SUPPORT_EMAIL || OP_DEFAULT.email,
+    ops_auto_premium: process.env.OPS_AUTO_PREMIUM === '1',  // 11/13 — 1 이면 정기 모임 자동 만들기 · 참석 독려가 프리미엄 클럽 전용(기본 꺼짐 = 모든 클럽)
     /* 첫 화면 아래 사업자 정보 — 전자상거래법상 운영자 표시. 비어 있는 값은 앱이 그리지 않는다. */
     op: opInfo(),
     pg_name: process.env.PG_NAME || '',                    // 결제대행사 이름 — 계약한 곳만(비면 앱이 이름을 안 적는다)
@@ -3214,6 +3215,7 @@ app.post('/clubs/:id/events', auth, (req, res) => {
     .run(cid, String(title), String(date || ''), String(tag || '정기'),
          String(place || '').trim().slice(0, 60) || null, vid, req.uid, now());
   notifyClub(cid, req.uid, '📅', '새 모임이 열렸어요', `${title}${date ? ' · ' + date : ''}`);
+  evYmdSync(rid(r), String(date || ''), req.body && req.body.ymd, null);        // 11/13
   res.json({ ok: true, id: rid(r) });
 });
 
@@ -3231,6 +3233,7 @@ app.patch('/clubs/:id/events/:eid', auth, (req, res) => {
   const vid2 = req.body && req.body.venue_id ? +req.body.venue_id : null;
   db.prepare('UPDATE club_events SET title=?, date=?, place=?, venue_id=COALESCE(?,venue_id) WHERE id=?')
     .run(title, date, place || null, vid2, eid);
+  evYmdSync(eid, date, (req.body || {}).ymd, ev.ymd);                           // 11/13
   // 참석 응답한 회원들에게 변경 알림
   db.prepare('SELECT DISTINCT user_id FROM event_attendees WHERE event_id=?').all(eid)
     .forEach(a => { if (a.user_id !== req.uid) sendPush(a.user_id,
@@ -12568,34 +12571,35 @@ function remindClosingMatches() {
   }
 }
 
-function remindTomorrowEvents() {
+function remindTomorrowEvents(nowMs) {
   // 내일 모임에 '참석' 응답한 회원에게 전날 알림 — 노쇼는 제재보다 예방이 먼저다
-  const d = new Date(Date.now() + 24 * 3600 * 1000);
-  const tomorrow = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const evs = db.prepare(`SELECT e.id, e.title, e.date, c.name club FROM club_events e
-    JOIN clubs c ON c.id=e.club_id WHERE substr(e.date,1,10)=?`).all(tomorrow);
+  /* 11/13 — 예전에는 날짜가 <2026-11-17> 꼴인 모임만 찾았다. 앱이 만드는 모임은 <11/17 (화) 19:00~22:00 · …> 꼴이라 한 번도 가지 않았다.
+     이제 두 꼴을 다 읽는다(한국 날짜로) · 밤 9시 ~ 아침 8시에는 보내지 않는다 */
+  if (f13Quiet(nowMs)) return;
+  const evs = db.prepare(`SELECT e.id, e.title, e.date, e.ymd, c.name club FROM club_events e
+    JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 200`).all();
   for (const ev of evs) {
+    if (evDaysLeft(ev, nowMs) !== 1) continue;
     if (!onceOnly('ev_soon', String(ev.id))) continue;
-    const going = db.prepare("SELECT user_id FROM event_attendees WHERE event_id=? AND status='going'").all(ev.id);
+    const going = db.prepare("SELECT user_id FROM event_attendees WHERE event_id=? AND (status IS NULL OR status='going')").all(ev.id);
+    const hm = (String(ev.date || '').match(/(\d{1,2}:\d{2})/) || [])[1];
     going.forEach(g => sendPush(g.user_id, {
       icon: '📅', title: '내일 모임이 있어요',
-      body: `${ev.club} · ${ev.title}${ev.date.length > 10 ? ' · ' + ev.date.slice(11, 16) : ''}`,
+      body: `${ev.club} · ${ev.title}${hm ? ' · ' + hm : ''}`,
     }));
   }
 }
 
 // 이번 주 모임 참석 넛지 — 3일 안에 모임이 있는데 아직 응답 안 한 회원에게 1회
-function remindRsvpNudge() {
-  const today = new Date();
+function remindRsvpNudge(nowMs) {
+  /* 11/13 — 서버 시간대가 아니라 한국 날짜로 센다 · 밤 9시 ~ 아침 8시에는 보내지 않는다(다음 차례에 간다) · 휴회 중인 회원은 뺀다 */
+  if (f13Quiet(nowMs)) return;
   const evs = db.prepare('SELECT e.*, c.name club FROM club_events e JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 60').all();
   for (const ev of evs) {
-    const mm = String(ev.date || '').match(/(\d{1,2})\/(\d{1,2})/);
-    if (!mm) continue;
-    const evDate = new Date(today.getFullYear(), +mm[1] - 1, +mm[2]);
-    const diff = Math.round((evDate - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 864e5);
-    if (diff < 0 || diff > 3) continue;                 // 지났거나 3일 넘게 남음
+    const diff = evDaysLeft(ev, nowMs);
+    if (diff == null || diff < 0 || diff > 3) continue; // 지났거나 3일 넘게 남음
     const members = db.prepare(`SELECT cm.user_id FROM club_members cm
-      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active')
+      WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') AND COALESCE(cm.resting,0)=0
         AND cm.user_id NOT IN (SELECT user_id FROM event_attendees WHERE event_id=?)`).all(ev.club_id, ev.id);
     members.forEach(m => {
       if (!onceOnly('rsvp_nudge', `${ev.id}:${m.user_id}`)) return;
@@ -15919,6 +15923,7 @@ app.get('/admin/search', admin, (req, res) => {
    메뉴에 숫자를 붙여 <어디를 눌러야 하는지> 를 먼저 알린다. */
 app.get('/admin/badges', admin, (_req, res) => {
   const out = {};
+  if (!_req.staff) { try { const n = db.prepare("SELECT COUNT(*) n FROM inquiries WHERE status='new'").get().n; if (n) out.inq = n; } catch (e) {} }   // 11/13 문의함
   try {
     /* 통신 실패는 신호가 약한 곳에서 나는 것이라 코드 문제가 아니다 —
        배지에 섞으면 <급한 일>이 아닌 것으로 알림이 울린다. */
@@ -22038,6 +22043,458 @@ function pgCheck() {
 }
 app.get('/admin/pg-check', admin, (_req, res) => res.json(pgCheck()));               // 관리자 › 점검 › 카드사 심사 준비 (대표 열쇠만 — 스태프 메뉴에 없다)
 /* ══ 끝 · 카드사 심사 준비 점검 ══ */
+
+/* ════════════════════════════════════════════════════════════════════════════
+   11/13 운영진 기능 · 캘린더 · 문의함 (p1113feat_srv.py 가 넣는다)
+     ① 정기 모임 자동 만들기 — 클럽마다 규칙(요일 · 시간 · 장소 · 며칠 전에 열지). 서버가 다음 모임을 만든다
+     ② 참석 독려 알림 — 운영진이 누르면 아직 참석 · 불참을 안 누른 회원에게만(휴회 회원 빼고 · 세 시간에 한 번)
+     ③ 캘린더 — 내 일정(참석 누른 모임 · 신청한 오픈매치)을 .ics 로. 회원마다 추측할 수 없는 주소
+     ④ 문의함 — 앱에서 남긴 문의 · 환불 요청을 관리자 화면에서 모아 본다. 답은 앱 알림으로
+   한국 시간은 서버 시간대와 상관없이 계산한다(UTC + 9시간을 UTC 칸으로 읽는다)
+   ════════════════════════════════════════════════════════════════════════════ */
+try { db.exec('ALTER TABLE club_events ADD COLUMN recur_id INTEGER'); } catch (e) {}   // 이 모임을 만든 정기 모임 규칙
+try { db.exec('ALTER TABLE club_events ADD COLUMN ymd TEXT'); } catch (e) {}            // 그 모임의 날짜(YYYY-MM-DD · date 글자에는 연도가 없다)
+try { db.exec('ALTER TABLE club_events ADD COLUMN nudged_at BIGINT'); } catch (e) {}    // 운영진이 마지막으로 참석 독려를 보낸 때
+try { db.exec('ALTER TABLE users ADD COLUMN cal_token TEXT'); } catch (e) {}            // 캘린더 구독 주소의 열쇠
+db.exec(`CREATE TABLE IF NOT EXISTS club_recur (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER NOT NULL, title TEXT NOT NULL, wday INTEGER NOT NULL,
+  time_range TEXT NOT NULL, place TEXT, venue_id INTEGER, open_days INTEGER NOT NULL DEFAULT 6,
+  active INTEGER NOT NULL DEFAULT 1, created_by INTEGER, created_at BIGINT)`);
+try { db.exec('ALTER TABLE club_recur ADD COLUMN start_ymd TEXT'); } catch (e) {}       // 이 날보다 앞의 모임은 만들지 않는다(운영진이 고른 첫 모임 날)
+try { db.exec('ALTER TABLE club_recur ADD COLUMN nudge INTEGER DEFAULT 0'); } catch (e) {} // 1 = 모임 전날 저녁, 아직 안 누른 회원에게 한 번 더 알린다
+db.exec(`CREATE TABLE IF NOT EXISTS club_recur_done (
+  recur_id INTEGER NOT NULL, ymd TEXT NOT NULL, event_id INTEGER, at BIGINT, PRIMARY KEY (recur_id, ymd))`);
+db.exec(`CREATE TABLE IF NOT EXISTS inquiries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'ask',
+  pay_id INTEGER, match_id INTEGER, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new',
+  memo TEXT, reply TEXT, replied_at BIGINT, replied_by TEXT, created_at BIGINT NOT NULL, updated_at BIGINT, app_ver TEXT)`);
+
+const F13_KST = 9 * 3600e3, F13_DAY = 864e5;
+const F13_WD = ['일', '월', '화', '수', '목', '금', '토'];
+/* 아래 넷은 함수 선언으로 둔다 — 앞쪽의 알림 함수(remindRsvpNudge · remindTomorrowEvents)도 부른다 */
+function f13Kst(ms) { return new Date((ms == null ? Date.now() : +ms) + 9 * 3600e3); }   // 한국 벽시계를 UTC 칸(getUTC…)으로 읽는다
+function f13Ymd(d) { return d.toISOString().slice(0, 10); }
+function f13YmdParts(ymd) { return String(ymd).split('-').map(Number); }
+function f13Quiet(ms) { const h = f13Kst(ms).getUTCHours(); return h < 8 || h >= 21; }      // 밤 9시 ~ 아침 8시(한국 시간) — 알림을 보내지 않는 때
+
+/* ── ① 정기 모임 자동 만들기 ──────────────────────────────────────────────
+   OPS_AUTO_PREMIUM=1 이면 프리미엄 클럽만 쓴다(기본 꺼짐 — 모든 클럽) */
+const OPS_AUTO_PREMIUM = process.env.OPS_AUTO_PREMIUM === '1';
+const RECUR_MAX = 7;                                         // 클럽 하나에 규칙 일곱 개까지(요일마다 하나면 충분하다)
+function recurAllowed(cid) { return !OPS_AUTO_PREMIUM || isPremium(cid); }
+function recurGate(cid, res) {
+  if (recurAllowed(cid)) return true;
+  res.status(402).json({ error: 'premium_required', upgrade: 'club_premium', price: PREMIUM_WON }); return false;
+}
+/* 다음에 열릴 날 — 오늘(한국 날짜)부터 가장 가까운 그 요일. 오늘이 그 요일인데 시작 시각이 지났으면 다음 주 */
+function recurNextYmd(r, nowMs) {
+  const k = f13Kst(nowMs), today = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate());
+  let add = ((+r.wday) - k.getUTCDay() + 7) % 7;
+  if (add === 0) { const hm = recurStartHm(r); if (hm && k.toISOString().slice(11, 16) >= hm) add = 7; }
+  let ymd = f13Ymd(new Date(today + add * F13_DAY));
+  /* 운영진이 첫 모임을 몇 주 뒤로 골랐으면 — 그 앞의 주는 건너뛴다 */
+  if (r.start_ymd && /^\d{4}-\d{2}-\d{2}$/.test(r.start_ymd)) {
+    for (let i = 0; i < 60 && ymd < r.start_ymd; i++) { const [y, m, d] = f13YmdParts(ymd); ymd = f13Ymd(new Date(Date.UTC(y, m - 1, d + 7))); }
+  }
+  return ymd;
+}
+function recurStartHm(r) { const m = String(r.time_range || '').match(/^(\d{1,2}):(\d{2})/); return m ? String(m[1]).padStart(2, '0') + ':' + m[2] : ''; }
+/* 모임 글자 — 앱이 손으로 만들 때와 같은 모양: <11/17 (화) 19:00~22:00 · 용인테니스파크 3번 · 4번> */
+function recurDateText(r, ymd) {
+  const [y, m, d] = f13YmdParts(ymd);
+  return `${m}/${d} (${F13_WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}) ${r.time_range}${r.place ? ` · ${r.place}` : ''}`;
+}
+/* 여는 때 — 모임 날의 open_days 일 전 아침 9시(한국 시간). 새 모임 알림이 밤에 가지 않게 */
+function recurOpenAt(r, ymd) { const [y, m, d] = f13YmdParts(ymd); return Date.UTC(y, m - 1, d) - (+r.open_days || 6) * F13_DAY; }
+function recurOut(r, nowMs) {
+  const ymd = recurNextYmd(r, nowMs);
+  const done = db.prepare('SELECT event_id FROM club_recur_done WHERE recur_id=? AND ymd=?').get(r.id, ymd);
+  /* 만든 기록은 있는데 모임이 없다 = 운영진이 지웠다(그 주는 쉼 · <다시 열기>로 되살린다) */
+  const live = !!(done && done.event_id && db.prepare('SELECT 1 FROM club_events WHERE id=?').get(done.event_id));
+  return { id: r.id, title: r.title, wday: r.wday, time_range: r.time_range, place: r.place || '', venue_id: r.venue_id || null,
+    open_days: r.open_days, active: !!r.active, nudge: !!r.nudge, next_ymd: ymd, next_text: recurDateText(r, ymd),
+    next_open_at: recurOpenAt(r, ymd), next_made: live, next_skip: !!done && !live };
+}
+/* 한 번 만들기 — 같은 규칙 · 같은 날은 한 번뿐. 운영진이 그 모임을 지워도(이번 주는 쉼) 다시 만들지 않는다 */
+function recurMake(r, ymd) {
+  const ins = db.prepare('INSERT OR IGNORE INTO club_recur_done (recur_id, ymd, at) VALUES (?,?,?)').run(r.id, ymd, now());
+  if (!ins.changes) return null;
+  const dateTxt = recurDateText(r, ymd), md = dateTxt.split(' ')[0];
+  /* 그날 같은 이름의 모임을 누가 손으로 이미 만들어 뒀으면 또 만들지 않는다(연도가 없는 글자라 최근 것만 본다) */
+  const dup = db.prepare(`SELECT id FROM club_events WHERE club_id=? AND title=? AND (ymd=? OR (ymd IS NULL AND date LIKE ? AND created_at > ?)) LIMIT 1`)
+    .get(r.club_id, r.title, ymd, md + ' %', now() - 200 * F13_DAY);
+  if (dup) { db.prepare('UPDATE club_recur_done SET event_id=? WHERE recur_id=? AND ymd=?').run(dup.id, r.id, ymd); return null; }
+  const x = db.prepare(`INSERT INTO club_events (club_id,title,date,tag,place,venue_id,created_by,created_at,recur_id,ymd)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(r.club_id, r.title, dateTxt, '정기', r.place || null, r.venue_id || null, r.created_by || null, now(), r.id, ymd);
+  const eid = rid(x);
+  db.prepare('UPDATE club_recur_done SET event_id=? WHERE recur_id=? AND ymd=?').run(eid, r.id, ymd);
+  notifyClub(r.club_id, null, '📅', '새 모임이 열렸어요', `${r.title} · ${dateTxt}`);
+  return eid;
+}
+/* 전날 저녁(한국 시간 18 ~ 21시) — 규칙에서 <전날 한 번 더 알리기>를 켠 모임에, 아직 안 누른 회원에게 한 번 */
+function recurEveNudge(nowMs) {
+  const t = nowMs || now(), kh = f13Kst(t).getUTCHours();
+  if (kh < 18 || kh >= 21) return 0;
+  let n = 0;
+  db.prepare(`SELECT e.*, c.name club FROM club_events e JOIN club_recur r ON r.id=e.recur_id AND r.nudge=1 AND r.active=1
+      JOIN clubs c ON c.id=e.club_id ORDER BY e.id DESC LIMIT 200`).all().forEach(ev => {
+    try {
+      if (evDaysLeft(ev, t) !== 1 || !recurAllowed(ev.club_id)) return;
+      if (!onceOnly('recur_eve', String(ev.id))) return;
+      nudgeTargets(ev, null).forEach(u => { n++; sendPush(u, { icon: '🎾', title: '내일 모임 · 참석 여부를 알려 주세요', body: `${ev.club} · ${ev.title} ${ev.date}`, link: 'club' }); });
+    } catch (e) { console.error('[recur eve]', ev.id, e && e.message); }
+  });
+  return n;
+}
+function recurTick(nowMs) {
+  const t = nowMs || now(), kh = f13Kst(t).getUTCHours();
+  if (kh < 9 || kh >= 21) return 0;                          // 아침 9시 ~ 밤 9시(한국 시간)에만 만든다 — 알림이 밤에 가지 않게
+  try { recurEveNudge(t); } catch (e) { console.error('[recur eve]', e && e.message); }
+  let n = 0;
+  db.prepare('SELECT r.* FROM club_recur r JOIN clubs c ON c.id=r.club_id WHERE r.active=1 ORDER BY r.id').all().forEach(r => {
+    try {
+      if (!recurAllowed(r.club_id)) return;
+      const ymd = recurNextYmd(r, t);
+      if (t < recurOpenAt(r, ymd)) return;
+      if (recurMake(r, ymd)) n++;
+    } catch (e) { console.error('[recur]', r.id, e && e.message); }
+  });
+  return n;
+}
+if (process.env.RECUR !== 'off') {
+  setTimeout(() => { try { recurTick(); } catch (e) { console.error('[recur tick]', e && e.message); } }, 45_000).unref?.();
+  setInterval(() => { try { recurTick(); } catch (e) { console.error('[recur tick]', e && e.message); } }, 10 * 60e3).unref?.();
+}
+function recurBody(b, res) {
+  const title = String((b && b.title) || '').trim().slice(0, 40);
+  const wday = intOrNull(b && b.wday);
+  const tr = String((b && b.time_range) || '').replace(/\s+/g, '');
+  const mt = tr.match(/^(\d{1,2}):(\d{2})~(\d{1,2}):(\d{2})$/);
+  if (!title) { res.status(400).json({ error: 'title_required', message: '모임 이름을 적어 주세요' }); return null; }
+  if (wday == null || wday < 0 || wday > 6) { res.status(400).json({ error: 'bad_wday', message: '요일을 골라 주세요' }); return null; }
+  if (!mt || +mt[1] > 23 || +mt[3] > 24 || +mt[2] > 59 || +mt[4] > 59) { res.status(400).json({ error: 'bad_time', message: '시작 · 끝 시간을 골라 주세요' }); return null; }
+  let od = intOrNull(b && b.open_days); if (od == null) od = 6; od = Math.min(13, Math.max(1, od));
+  return { title, wday, time_range: tr, place: String((b && b.place) || '').trim().slice(0, 60) || null,
+    venue_id: b && b.venue_id ? +b.venue_id : null, open_days: od, nudge: b && b.nudge ? 1 : 0 };
+}
+app.get('/clubs/:id/recur', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const t = now();
+  res.json({ allowed: recurAllowed(cid), premium_only: OPS_AUTO_PREMIUM, max: RECUR_MAX,
+    rules: db.prepare('SELECT * FROM club_recur WHERE club_id=? ORDER BY wday, time_range, id').all(cid).map(r => recurOut(r, t)) });
+});
+app.post('/clubs/:id/recur', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only', message: '운영진만 정할 수 있어요' });
+  if (!recurGate(cid, res)) return;
+  const v = recurBody(req.body, res); if (!v) return;
+  /* 같은 요일 · 같은 시간 · 같은 이름이면 새로 만들지 않고 그 규칙을 고친다(다시 켠다) */
+  const same = db.prepare('SELECT * FROM club_recur WHERE club_id=? AND wday=? AND time_range=? AND title=?').get(cid, v.wday, v.time_range, v.title);
+  let id;
+  if (same) {
+    db.prepare('UPDATE club_recur SET place=?, venue_id=?, open_days=?, nudge=?, active=1 WHERE id=?').run(v.place, v.venue_id, v.open_days, v.nudge, same.id); id = same.id;
+  } else {
+    if (db.prepare('SELECT COUNT(*) n FROM club_recur WHERE club_id=?').get(cid).n >= RECUR_MAX)
+      return res.status(400).json({ error: 'too_many', message: `정기 모임 규칙은 ${RECUR_MAX}개까지 둘 수 있어요` });
+    id = rid(db.prepare(`INSERT INTO club_recur (club_id,title,wday,time_range,place,venue_id,open_days,nudge,active,created_by,created_at)
+      VALUES (?,?,?,?,?,?,?,?,1,?,?)`).run(cid, v.title, v.wday, v.time_range, v.place, v.venue_id, v.open_days, v.nudge, req.uid, now()));
+  }
+  /* 방금 손으로 만든 모임에서 규칙을 만들었으면 — 그 모임이 그 주의 것이다(같은 날을 또 만들지 않는다) */
+  const fe = intOrNull(req.body && req.body.from_event), fy = String((req.body && req.body.from_ymd) || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fy)) {
+    const [y, m, d] = f13YmdParts(fy);
+    if (new Date(Date.UTC(y, m - 1, d)).getUTCDay() === v.wday) {      // 그 날이 정말 그 요일일 때만
+      db.prepare('UPDATE club_recur SET start_ymd=? WHERE id=?').run(fy, id);
+      const ev = fe ? db.prepare('SELECT id FROM club_events WHERE id=? AND club_id=?').get(fe, cid) : null;
+      if (ev) {
+        db.prepare('INSERT OR IGNORE INTO club_recur_done (recur_id, ymd, event_id, at) VALUES (?,?,?,?)').run(id, fy, fe, now());
+        db.prepare('UPDATE club_events SET recur_id=?, ymd=COALESCE(ymd,?) WHERE id=?').run(id, fy, fe);
+      }
+    }
+  }
+  res.json({ ok: true, rule: recurOut(db.prepare('SELECT * FROM club_recur WHERE id=?').get(id), now()) });
+});
+app.patch('/clubs/:id/recur/:rid', auth, (req, res) => {
+  const cid = +req.params.id, id = +req.params.rid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const r = db.prepare('SELECT * FROM club_recur WHERE id=? AND club_id=?').get(id, cid);
+  if (!r) return res.status(404).json({ error: 'no_rule' });
+  const b = req.body || {};
+  if (b.active != null) {
+    if (b.active && !recurGate(cid, res)) return;
+    db.prepare('UPDATE club_recur SET active=? WHERE id=?').run(b.active ? 1 : 0, id);
+  }
+  if (b.open_days != null) { const od = Math.min(13, Math.max(1, intOrNull(b.open_days) || 6)); db.prepare('UPDATE club_recur SET open_days=? WHERE id=?').run(od, id); }
+  if (b.nudge != null) db.prepare('UPDATE club_recur SET nudge=? WHERE id=?').run(b.nudge ? 1 : 0, id);
+  res.json({ ok: true, rule: recurOut(db.prepare('SELECT * FROM club_recur WHERE id=?').get(id), now()) });
+});
+/* 다음 모임을 지금 연다 — 여는 날을 기다리지 않고. 그 모임을 지웠다가 다시 열고 싶을 때도 이것 */
+app.post('/clubs/:id/recur/:rid/make', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id, id = +req.params.rid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  if (!recurGate(cid, res)) return;
+  const r = db.prepare('SELECT * FROM club_recur WHERE id=? AND club_id=?').get(id, cid);
+  if (!r) return res.status(404).json({ error: 'no_rule' });
+  const ymd = recurNextYmd(r, now());
+  const done = db.prepare('SELECT event_id FROM club_recur_done WHERE recur_id=? AND ymd=?').get(id, ymd);
+  if (done) {
+    const ev = done.event_id ? db.prepare('SELECT id FROM club_events WHERE id=?').get(done.event_id) : null;
+    if (ev) return res.json({ ok: true, exists: true, id: ev.id, ymd });
+    db.prepare('DELETE FROM club_recur_done WHERE recur_id=? AND ymd=?').run(id, ymd);   // 지운 모임 — 운영진이 다시 열겠다고 눌렀다
+  }
+  const eid = recurMake(r, ymd);
+  if (!eid) { const d2 = db.prepare('SELECT event_id FROM club_recur_done WHERE recur_id=? AND ymd=?').get(id, ymd);
+    return res.json({ ok: true, exists: true, id: (d2 && d2.event_id) || null, ymd }); }   // 같은 날 같은 이름의 모임이 이미 있다
+  res.json({ ok: true, id: eid, ymd });
+});
+app.delete('/clubs/:id/recur/:rid', auth, (req, res) => {
+  const cid = +req.params.id, id = +req.params.rid;
+  if (!isOfficer(cid, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  const r = db.prepare('DELETE FROM club_recur WHERE id=? AND club_id=?').run(id, cid);
+  if (!r.changes) return res.status(404).json({ error: 'no_rule' });
+  res.json({ ok: true });                                    // 이미 만들어진 모임은 그대로 둔다
+});
+
+/* ── ② 참석 독려 알림(운영진이 누른다) ────────────────────────────────────
+   자동 독려(remindRsvpNudge — 모임 사흘 전부터 한 사람에게 한 번)는 예전부터 있다. 이것은 운영진이 <지금> 보내는 것 */
+const NUDGE_GAP = 3 * 3600e3;                               // 같은 모임에는 세 시간에 한 번
+/* 모임 날이 오늘(한국 날짜)보다 며칠 뒤인가 — 날짜를 못 읽으면 null */
+function evDaysLeft(ev, nowMs) {
+  const k = f13Kst(nowMs), today = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate());
+  const iso = (ev.ymd && /^\d{4}-\d{2}-\d{2}$/.test(ev.ymd)) ? ev.ymd : (String(ev.date || '').match(/^(\d{4}-\d{2}-\d{2})/) || [])[1];
+  if (iso) { const [y, m, d] = f13YmdParts(iso); return Math.round((Date.UTC(y, m - 1, d) - today) / 864e5); }
+  const mm = String(ev.date || '').match(/(\d{1,2})\/(\d{1,2})/); if (!mm) return null;
+  let diff = Math.round((Date.UTC(k.getUTCFullYear(), +mm[1] - 1, +mm[2]) - today) / 864e5);
+  if (diff < -180) diff = Math.round((Date.UTC(k.getUTCFullYear() + 1, +mm[1] - 1, +mm[2]) - today) / 864e5);   // 12월에 보는 1월 모임
+  return diff;
+}
+/* 모임의 날짜 칸(ymd)을 글자(date)와 맞춘다 — 앱이 보내 준 날이 글자의 <월/일>과 같을 때만 믿는다.
+   예전 앱은 ymd 를 보내지 않는다 — 날짜를 다른 날로 고쳤는데 ymd 가 옛날 것이면 비운다 */
+function evYmdSync(eid, dateTxt, ymdIn, ymdWas) {
+  try {
+    const md = String(dateTxt || '').match(/(\d{1,2})\/(\d{1,2})/);
+    const fits = y => !!(md && /^\d{4}-\d{2}-\d{2}$/.test(String(y || '')) && +String(y).slice(5, 7) === +md[1] && +String(y).slice(8, 10) === +md[2]);
+    if (fits(ymdIn)) { if (ymdIn !== ymdWas) db.prepare('UPDATE club_events SET ymd=? WHERE id=?').run(String(ymdIn), eid); }
+    else if (ymdWas && !fits(ymdWas)) db.prepare('UPDATE club_events SET ymd=NULL WHERE id=?').run(eid);
+  } catch (e) {}
+}
+function nudgeTargets(ev, exceptUid) {
+  return db.prepare(`SELECT cm.user_id FROM club_members cm
+    WHERE cm.club_id=? AND (cm.status IS NULL OR cm.status='active') AND COALESCE(cm.resting,0)=0
+      AND cm.user_id NOT IN (SELECT user_id FROM event_attendees WHERE event_id=?)`).all(ev.club_id, ev.id)
+    .map(r => r.user_id).filter(u => u !== exceptUid);
+}
+/* 아직 안 누른 회원의 이름(클럽 명단에 적힌 이름 먼저) — 운영진 화면에만 */
+function nudgeNames(ev, ids) {
+  if (!ids.length) return [];
+  try {
+    return db.prepare(`SELECT COALESCE(NULLIF(cm.alias,''), u.name) AS name FROM club_members cm JOIN users u ON u.id=cm.user_id
+      WHERE cm.club_id=? AND cm.user_id IN (${ids.map(() => '?').join(',')}) ORDER BY name LIMIT 30`).all(ev.club_id, ...ids).map(r => r.name).filter(Boolean);
+  } catch (e) { return []; }
+}
+function nudgeInfo(ev, uid, withNames) {
+  const t = now(), left = evDaysLeft(ev, t), last = ev.nudged_at ? +ev.nudged_at : null;
+  const wait = last && t - last < NUDGE_GAP ? Math.ceil((NUDGE_GAP - (t - last)) / 60e3) : 0;
+  const ids = nudgeTargets(ev, uid);
+  const o = { waiting: ids.length, last, wait_min: wait, past: left != null && left < 0, allowed: recurAllowed(ev.club_id) };
+  if (withNames) o.names = nudgeNames(ev, ids.slice(0, 200));
+  return o;
+}
+app.get('/events/:id/nudge', auth, (req, res) => {
+  const ev = db.prepare('SELECT * FROM club_events WHERE id=?').get(+req.params.id);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(ev.club_id, req.uid)) return res.status(403).json({ error: 'officer_only' });
+  res.json(nudgeInfo(ev, req.uid, true));
+});
+app.post('/events/:id/nudge', auth, limitWrite, (req, res) => {
+  const ev = db.prepare('SELECT e.*, c.name club FROM club_events e JOIN clubs c ON c.id=e.club_id WHERE e.id=?').get(+req.params.id);
+  if (!ev) return res.status(404).json({ error: 'no_event' });
+  if (!isOfficer(ev.club_id, req.uid)) return res.status(403).json({ error: 'officer_only', message: '운영진만 보낼 수 있어요' });
+  if (!recurGate(ev.club_id, res)) return;
+  const info = nudgeInfo(ev, req.uid);
+  if (info.past) return res.status(400).json({ error: 'past_event', message: '지난 모임이에요' });
+  if (!info.waiting) return res.json({ ok: true, sent: 0 });           // 모두 눌렀다 — 보낼 사람이 없다(세 시간 한도도 쓰지 않는다)
+  if (info.wait_min) return res.status(429).json({ error: 'too_soon', wait_min: info.wait_min, message: `조금 전에 보냈어요 · ${info.wait_min}분 뒤에 다시 보낼 수 있어요` });
+  const ids = nudgeTargets(ev, req.uid);
+  db.prepare('UPDATE club_events SET nudged_at=? WHERE id=?').run(now(), ev.id);
+  ids.forEach(u => sendPush(u, { icon: '🎾', title: '참석 여부를 알려 주세요', body: `${ev.club} · ${ev.title} ${ev.date} — 참석 · 불참을 눌러 주세요`, link: 'club' }));
+  res.json({ ok: true, sent: ids.length });
+});
+
+/* ── ③ 캘린더(.ics) ───────────────────────────────────────────────────────
+   캘린더 앱은 로그인 없이 주소만으로 읽는다 — 그래서 회원마다 추측할 수 없는 열쇠를 주소에 넣는다(바꾸면 예전 주소는 끊긴다) */
+function calToken(uid, fresh) {
+  const u = db.prepare('SELECT cal_token FROM users WHERE id=?').get(uid);
+  if (!u) return null;
+  if (u.cal_token && !fresh) return u.cal_token;
+  const t = crypto.randomBytes(18).toString('base64url');
+  db.prepare('UPDATE users SET cal_token=? WHERE id=?').run(t, uid);
+  return t;
+}
+const icsEsc = v => String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+/* 한 줄은 75바이트까지 — 넘으면 다음 줄을 빈칸으로 시작해 잇는다(글자 중간을 자르지 않는다) */
+function icsFold(line) {
+  const out = []; let cur = '', n = 0;
+  for (const ch of line) { const b = Buffer.byteLength(ch); if (n + b > 73) { out.push(cur); cur = ' ' + ch; n = 1 + b; } else { cur += ch; n += b; } }
+  out.push(cur); return out.join('\r\n');
+}
+const icsUtc = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+/* 클럽 모임의 시작 · 끝(진짜 시각) — date 글자(<11/17 (화) 19:00~22:00 · …>)에서 읽는다. 연도는 ymd 가 있으면 그것, 없으면 만든 때로 미룬다 */
+function calEventTime(ev) {
+  const m = String(ev.date || '').match(/(\d{1,2})\/(\d{1,2})(?:[^0-9]*?(\d{1,2}):(\d{2})(?:\s*~\s*(\d{1,2}):(\d{2}))?)?/);
+  if (!m) return null;
+  let y;
+  if (ev.ymd && /^\d{4}-/.test(ev.ymd)) y = +String(ev.ymd).slice(0, 4);
+  else {
+    const c = f13Kst(+ev.created_at || Date.now()); y = c.getUTCFullYear();
+    if (Date.UTC(y, +m[1] - 1, +m[2]) < Date.UTC(y, c.getUTCMonth(), c.getUTCDate()) - 60 * F13_DAY) y += 1;   // 만든 때보다 두 달 넘게 앞이면 다음 해
+  }
+  const mo = +m[1] - 1, d = +m[2];
+  if (m[3] == null || m[4] == null) return { allDay: true, y, mo, d };
+  const s = Date.UTC(y, mo, d, +m[3], +m[4]) - F13_KST;
+  let e = m[5] != null ? Date.UTC(y, mo, d, +m[5], +m[6]) - F13_KST : s + 2 * 3600e3;
+  if (e <= s) e += F13_DAY;                                  // 자정을 넘기는 모임
+  return { s, e };
+}
+function calRows(uid, onlyEvent) {
+  const out = [], t = now(), from = t - 30 * F13_DAY;
+  const evs = onlyEvent
+    ? db.prepare(`SELECT e.*, c.name club FROM club_events e JOIN clubs c ON c.id=e.club_id WHERE e.id=?
+        AND EXISTS (SELECT 1 FROM club_members cm WHERE cm.club_id=e.club_id AND cm.user_id=? AND (cm.status IS NULL OR cm.status='active'))`).all(+onlyEvent, uid)
+    : db.prepare(`SELECT e.*, c.name club FROM club_events e JOIN clubs c ON c.id=e.club_id
+        JOIN event_attendees a ON a.event_id=e.id AND a.user_id=? AND (a.status IS NULL OR a.status='going')
+        JOIN club_members cm ON cm.club_id=e.club_id AND cm.user_id=a.user_id AND (cm.status IS NULL OR cm.status='active')
+        ORDER BY e.id DESC LIMIT 80`).all(uid);
+  evs.forEach(ev => {
+    const w = calEventTime(ev); if (!w) return;
+    const end = w.allDay ? Date.UTC(w.y, w.mo, w.d + 1) - F13_KST : w.e;
+    if (!onlyEvent && end < from) return;
+    const place = String(ev.place || (String(ev.date || '').split('·').slice(1).join('·')) || '').trim();
+    out.push({ uid: `ev${ev.id}@matsu`, w, title: `${ev.title} · ${ev.club}`, loc: place, desc: `맞수 · ${ev.club} ${ev.tag || '모임'}`, at: +ev.created_at || t });
+  });
+  if (!onlyEvent) {
+    db.prepare(`SELECT m.* FROM open_matches m WHERE COALESCE(m.status,'open') <> 'cancelled' AND m.start_at IS NOT NULL
+        AND (m.host_id=? OR EXISTS (SELECT 1 FROM open_match_joins j WHERE j.match_id=m.id AND j.user_id=?)) ORDER BY m.id DESC LIMIT 60`).all(uid, uid)
+      .forEach(m => {
+        const s = Date.parse(String(m.start_at).slice(0, 16) + ':00+09:00'); if (isNaN(s)) return;
+        let e = m.end_at ? Date.parse(String(m.end_at).slice(0, 16) + ':00+09:00') : NaN; if (isNaN(e) || e <= s) e = s + 2 * 3600e3;
+        if (e < from) return;
+        out.push({ uid: `om${m.id}@matsu`, w: { s, e }, title: `오픈매치 · ${m.loc || ''}`.trim(), loc: m.loc || '', desc: '맞수 오픈매치', at: +m.created_at || t });
+      });
+  }
+  return out;
+}
+function calIcs(rows, name) {
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MATSU//KO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    `X-WR-CALNAME:${icsEsc(name || '맞수 일정')}`, 'X-WR-TIMEZONE:Asia/Seoul', 'REFRESH-INTERVAL;VALUE=DURATION:PT6H', 'X-PUBLISHED-TTL:PT6H'];
+  const p2 = n => String(n).padStart(2, '0'), stamp = icsUtc(now());
+  rows.forEach(r => {
+    L.push('BEGIN:VEVENT', `UID:${r.uid}`, `DTSTAMP:${stamp}`);
+    if (r.w.allDay) { const a = new Date(Date.UTC(r.w.y, r.w.mo, r.w.d)), b = new Date(Date.UTC(r.w.y, r.w.mo, r.w.d + 1));
+      L.push(`DTSTART;VALUE=DATE:${a.getUTCFullYear()}${p2(a.getUTCMonth() + 1)}${p2(a.getUTCDate())}`, `DTEND;VALUE=DATE:${b.getUTCFullYear()}${p2(b.getUTCMonth() + 1)}${p2(b.getUTCDate())}`); }
+    else L.push(`DTSTART:${icsUtc(r.w.s)}`, `DTEND:${icsUtc(r.w.e)}`);
+    L.push(`SUMMARY:${icsEsc(r.title)}`);
+    if (r.loc) L.push(`LOCATION:${icsEsc(r.loc)}`);
+    if (r.desc) L.push(`DESCRIPTION:${icsEsc(r.desc)}`);
+    L.push('END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  return L.map(icsFold).join('\r\n') + '\r\n';
+}
+app.get('/me/calendar', auth, (req, res) => {
+  const tk = calToken(req.uid); if (!tk) return res.status(404).json({ error: 'no_user' });
+  res.json({ path: `/cal/${tk}.ics`, n: calRows(req.uid).filter(r => (r.w.allDay ? Date.UTC(r.w.y, r.w.mo, r.w.d + 1) - F13_KST : r.w.e) >= now()).length });
+});
+app.post('/me/calendar/reset', auth, limitWrite, (req, res) => {
+  const tk = calToken(req.uid, true); if (!tk) return res.status(404).json({ error: 'no_user' });
+  res.json({ ok: true, path: `/cal/${tk}.ics` });
+});
+/* /cal/<열쇠>.ics — 내 일정 전체.  /cal/<열쇠>.ics?e=<모임 번호> — 그 모임 하나(내 클럽의 모임일 때만) */
+app.get('/cal/:file', (req, res) => {
+  const m = String(req.params.file || '').match(/^([A-Za-z0-9_-]{16,64})\.ics$/);
+  if (!m) return res.status(404).type('text/plain').send('not found');
+  const u = db.prepare('SELECT id FROM users WHERE cal_token=?').get(m[1]);
+  if (!u) return res.status(404).type('text/plain').send('not found');
+  const one = intOrNull(req.query && req.query.e);
+  const rows = calRows(u.id, one || null);
+  if (one && !rows.length) return res.status(404).type('text/plain').send('not found');
+  res.set('Content-Type', 'text/calendar; charset=utf-8');
+  res.set('Content-Disposition', `${one ? 'attachment' : 'inline'}; filename="matsu${one ? '-' + one : ''}.ics"`);
+  res.set('Cache-Control', 'private, max-age=300');
+  res.send(calIcs(rows, '맞수 일정'));
+});
+
+/* ── ④ 문의함 ─────────────────────────────────────────────────────────────
+   앱의 <문의하기>가 남긴다. 환불 요청이면 내 결제 하나를 붙인다. 관리자 화면(대표 열쇠)에서 모아 보고, 답을 쓰면 앱 알림으로 간다 */
+const INQ_KINDS = ['ask', 'refund', 'bug', 'etc'], INQ_ST = ['new', 'doing', 'done'];
+const INQ_NEW = { ask: '새 문의가 왔어요', refund: '새 환불 요청이 왔어요', bug: '새 오류 신고가 왔어요', etc: '새 문의가 왔어요' };
+const INQ_ANS = { ask: '문의에 답이 왔어요', refund: '환불 요청에 답이 왔어요', bug: '오류 신고에 답이 왔어요', etc: '문의에 답이 왔어요' };
+function inqPay(payId) {
+  if (!payId) return null;
+  try {
+    const p = db.prepare(`SELECT p.id, p.user_id, p.match_id, p.order_id, p.amount, COALESCE(p.refunded,0) refunded, p.status, p.created_at, m.loc, m.start_at, m.status mstatus
+      FROM om_payments p LEFT JOIN open_matches m ON m.id=p.match_id WHERE p.id=?`).get(payId);
+    return p || null;
+  } catch (e) { return null; }
+}
+function inqOut(r, forAdmin) {
+  const p = inqPay(r.pay_id);
+  const o = { id: r.id, kind: r.kind, body: r.body, status: r.status, reply: r.reply || '', replied_at: r.replied_at ? +r.replied_at : null, created_at: +r.created_at,
+    pay: p ? { id: p.id, match_id: p.match_id, amount: p.amount, refunded: p.refunded, loc: p.loc || '', start_at: p.start_at || '', at: +p.created_at } : null };
+  if (forAdmin) { Object.assign(o, { user_id: r.user_id, name: r.name || '', memo: r.memo || '', replied_by: r.replied_by || '', updated_at: r.updated_at ? +r.updated_at : null, app_ver: r.app_ver || '' });
+    if (o.pay) o.pay.order_id = p.order_id || ''; }                                    // 결제대행사 화면에서 찾을 주문 번호 — 관리자에게만
+  return o;
+}
+app.post('/inquiries', auth, limitWrite, (req, res) => {
+  const b = req.body || {};
+  const kind = INQ_KINDS.includes(b.kind) ? b.kind : 'ask';
+  const body = String(b.body || '').trim().slice(0, 2000);
+  if (body.length < 5) return res.status(400).json({ error: 'body_required', message: '내용을 조금 더 적어 주세요' });
+  if (db.prepare('SELECT COUNT(*) n FROM inquiries WHERE user_id=? AND created_at > ?').get(req.uid, now() - F13_DAY).n >= 10)
+    return res.status(429).json({ error: 'too_many', message: '오늘은 문의를 많이 남기셨어요 · 내일 다시 남겨 주세요' });
+  let payId = intOrNull(b.pay_id), matchId = null;
+  if (payId) { const p = inqPay(payId); if (!p || p.user_id !== req.uid) payId = null; else matchId = p.match_id || null; }
+  if (kind === 'refund' && !payId) return res.status(400).json({ error: 'pay_required', message: '어느 결제인지 골라 주세요' });
+  const id = rid(db.prepare(`INSERT INTO inquiries (user_id,kind,pay_id,match_id,body,status,created_at,updated_at,app_ver) VALUES (?,?,?,?,?,'new',?,?,?)`)
+    .run(req.uid, kind, payId, matchId, body, now(), now(), String(req.headers['x-app-build'] || req.headers['x-build'] || '').slice(0, 40)));
+  try { opsAlert('inq:' + id, INQ_NEW[kind], body.slice(0, 80)); } catch (e) {}
+  res.json({ ok: true, id });
+});
+app.get('/me/inquiries', auth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM inquiries WHERE user_id=? ORDER BY id DESC LIMIT 40').all(req.uid).map(r => inqOut(r, false)));
+});
+app.get('/admin/inquiries', admin, (req, res) => {
+  const st = String((req.query && req.query.status) || 'open');
+  const where = st === 'all' ? '' : st === 'done' ? "WHERE q.status='done'" : "WHERE q.status IN ('new','doing')";
+  const rows = db.prepare(`SELECT q.*, u.name FROM inquiries q LEFT JOIN users u ON u.id=q.user_id ${where} ORDER BY (q.status='new') DESC, q.id DESC LIMIT 200`).all();
+  const cnt = {}; db.prepare('SELECT status, COUNT(*) n FROM inquiries GROUP BY status').all().forEach(r => { cnt[r.status] = r.n; });
+  res.json({ rows: rows.map(r => {
+    const o = inqOut(r, true);
+    if (o.pay) { try { o.refunds = db.prepare('SELECT id, amount, status, reason, created_at, done_at FROM om_refunds WHERE pay_id=? ORDER BY id DESC LIMIT 5').all(o.pay.id); } catch (e) { o.refunds = []; } }
+    return o; }), count: { new: cnt.new || 0, doing: cnt.doing || 0, done: cnt.done || 0 } });
+});
+app.post('/admin/inquiries/:id', admin, (req, res) => {
+  const id = +req.params.id, b = req.body || {};
+  const q = db.prepare('SELECT * FROM inquiries WHERE id=?').get(id);
+  if (!q) return res.status(404).json({ error: 'no_inquiry' });
+  const sets = [], vals = [];
+  if (b.status != null) { if (!INQ_ST.includes(b.status)) return res.status(400).json({ error: 'bad_status' }); sets.push('status=?'); vals.push(b.status); }
+  if (b.memo != null) { sets.push('memo=?'); vals.push(String(b.memo).slice(0, 1000)); }
+  const reply = b.reply != null ? String(b.reply).trim().slice(0, 2000) : null;
+  if (reply) { sets.push('reply=?', 'replied_at=?', 'replied_by=?'); vals.push(reply, now(), String(adminWho(req) || '').slice(0, 40));
+    if (b.status == null && q.status === 'new') { sets.push('status=?'); vals.push('doing'); } }
+  if (!sets.length) return res.status(400).json({ error: 'nothing' });
+  sets.push('updated_at=?'); vals.push(now());
+  db.prepare(`UPDATE inquiries SET ${sets.join(', ')} WHERE id=?`).run(...vals, id);
+  if (reply && reply !== (q.reply || '')) {
+    try { Promise.resolve(sendPush(q.user_id, { icon: '💬', title: INQ_ANS[q.kind] || INQ_ANS.ask, body: reply.slice(0, 90), link: 'inquiry' })).catch(() => {}); } catch (e) {}
+  }
+  try { alog(req, '문의 처리', 'inquiry', id, { status: b.status || null, reply: !!reply }, null); } catch (e) {}
+  res.json({ ok: true });
+});
+/* ═══ 11/13 운영진 기능 · 캘린더 · 문의함 끝 ═══ */
 
 /* ═══ 웹 홈페이지 (11/2) ═══════════════════════════════════════════════
    주소 첫 화면(/)은 홈페이지(public/site/index.html), 웹 앱은 /app.
