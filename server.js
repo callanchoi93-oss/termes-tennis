@@ -60,7 +60,7 @@ function asyncSafe(app) {
   return app;
 }
 asyncSafe(app);
-app.set('trust proxy', 1);   // Railway 프록시 뒤 — req.ip 가 실제 클라이언트 IP 가 되게
+app.set('trust proxy', 1);   // Railway 프록시 뒤. 접속한 사람의 IP 는 clientIp(req)(X-Forwarded-For 맨 앞)로 읽는다 — req.ip 는 앞단 주소일 수 있다(11/15)
 /* CORS — APP_ORIGIN 이 있으면 그 도메인과 네이티브 앱만 허용한다.
    같은 도메인 요청은 CORS 를 타지 않으므로 웹은 영향 없다. */
 const ALLOWED = [
@@ -421,6 +421,10 @@ function cleanName(s, fallback) {
   const t = String(s == null ? '' : s).replace(/[<>"'`\\\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
   return t || fallback || '회원';
 }
+/* 11/15 한 줄 글 — 태그 글자 · 따옴표 · 줄바꿈을 거르고 n 자로 자른다(지역 · 구력 같은 칸). 화면이 escape 를 빠뜨려도 스크립트가 되지 않게 */
+function cleanLine(s, n) {
+  return String(s == null ? '' : s).replace(/[<>"'`\\\u0000-\u0008\u000e-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, n || 40);   // 줄바꿈 · 탭은 빈칸으로
+}
 
 try { db.exec('ALTER TABLE users ADD COLUMN dev_pin TEXT'); } catch (e) { /* 이미 있음 */ }
 const pinHash = (pid, pin) => crypto.createHash('sha256').update(pid + ':' + String(pin)).digest('hex');
@@ -597,7 +601,7 @@ app.get('/config', (_, res) => {
 //  브라우저 → 네이버 동의창 → code 받아옴 → 서버가 code 로 토큰 교환 → 프로필 조회
 //  env: NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_REDIRECT_URI
 // ══════════════════════════════════════════════════════════════
-app.post('/auth/naver', async (req, res) => {
+app.post('/auth/naver', limitLogin, async (req, res) => {
   const { code, state } = req.body || {};
   const id = process.env.NAVER_CLIENT_ID, secret = process.env.NAVER_CLIENT_SECRET;
   if (!code || !id || !secret) return res.status(400).json({ error: 'missing_code_or_env' });
@@ -861,7 +865,7 @@ async function appleKeys() {
   _appleKeys = { keys: r.keys, ts: Date.now() };
   return r.keys;
 }
-app.post('/auth/apple', async (req, res) => {
+app.post('/auth/apple', limitLogin, async (req, res) => {
   const { id_token, name } = req.body || {};
   if (!id_token) return res.status(400).json({ error: 'no_id_token' });
   try {
@@ -992,9 +996,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS om_refunds (
   payment_key TEXT NOT NULL, amount INTEGER NOT NULL, reason TEXT, status TEXT NOT NULL DEFAULT 'pending',
   tries INTEGER DEFAULT 0, err TEXT, created_at BIGINT, done_at BIGINT)`);
 try { db.exec('CREATE INDEX IF NOT EXISTS ix_omref_user ON om_refunds(user_id, id DESC)'); } catch (e) {}
+try { db.exec('ALTER TABLE om_payments ADD COLUMN test INTEGER'); } catch (e) {}   // 11/14 시험 결제 표시
 function omGiveBack(mid, uid, amount, reason) {
   let left = Math.max(0, Math.round(+amount || 0));
   if (!left) return 0;
+  /* 11/14 — 시험 결제(PORTONE_TEST)로 들어온 자리는 결제를 이미 전액 취소했다. 돌려줄 돈도, 캐시도 없다 */
+  try { if (db.prepare('SELECT 1 FROM om_payments WHERE match_id=? AND user_id=? AND test=1').get(mid, uid)) return 0; } catch (e) {}
   const cards = db.prepare(`SELECT id, order_id, payment_key, amount, COALESCE(refunded,0) refunded FROM om_payments
     WHERE match_id=? AND user_id=? AND status='paid' AND payment_key IS NOT NULL ORDER BY id`).all(mid, uid);
   const queued = [];
@@ -1290,6 +1297,40 @@ app.get('/me', auth, (req, res) => {
   try { venue_like_n = db.prepare('SELECT COUNT(*) n FROM venue_likes WHERE user_id=?').get(u.id).n; } catch (e) {}
   res.json({ ...userOut(u), played_doubles: pd, venues_rep, venue_like_n });
 });
+/* 11/15 내 정보 글 칸 — 태그 글자를 거르고 칸마다 길이를 자른다. 예전엔 받은 값을 그대로(길이 제한도 없이) 저장했다.
+   구력 시작(sport_started)은 {"tennis":"2019-05"} 모양만 남긴다 — 앱은 글(JSON)로도, 묶음으로도 보낸다 */
+const ME_TEXT_MAX = { gender: 10, region: 30, sport: 20, exp: 20, handed: 10, backhand: 10, style: 20, phone: 20 };
+function meText(k, v) {
+  if (k === 'sport_started') {
+    let o = v;
+    if (typeof v === 'string') { try { o = JSON.parse(v); } catch (e) { o = null; } }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    const out = {};
+    for (const [sp, ym] of Object.entries(o).slice(0, 12))
+      if (/^[a-z][a-z0-9_-]{1,23}$/.test(sp) && /^\d{4}(-\d{1,2}){0,2}$/.test(String(ym))) out[sp] = String(ym);
+    return JSON.stringify(out);
+  }
+  if (v == null || typeof v === 'object') return null;
+  return cleanLine(v, ME_TEXT_MAX[k] || 40);
+}
+/* 이미 저장된 글 — 클럽 지역 · 내 정보 글 칸에 태그 글자나 지나친 길이가 남아 있으면 같은 규칙으로 고친다(서버가 뜰 때 한 번) */
+function fixStoredText() {
+  let n = 0;
+  const bad = (v, max) => typeof v === 'string' && (/[<>"'`\\\u0000-\u001f\u007f]/.test(v) || v.length > max);
+  try {
+    for (const r of db.prepare("SELECT id, region FROM clubs WHERE region IS NOT NULL AND region <> ''").all())
+      if (bad(r.region, 30)) { db.prepare('UPDATE clubs SET region=? WHERE id=?').run(cleanLine(r.region, 30), r.id); n++; }
+  } catch (e) {}
+  for (const [k, max] of Object.entries(ME_TEXT_MAX)) {
+    try {
+      for (const r of db.prepare(`SELECT id, ${k} v FROM users WHERE ${k} IS NOT NULL AND ${k} <> ''`).all())
+        if (bad(r.v, max)) { db.prepare(`UPDATE users SET ${k}=? WHERE id=?`).run(cleanLine(r.v, max), r.id); n++; }
+    } catch (e) {}                                     // 옛 DB 에 칸이 없으면 건너뛴다
+  }
+  if (n) console.log('[boot] 저장된 글 %d 칸을 고쳤어요(태그 글자 · 길이)', n);
+  return n;
+}
+try { fixStoredText(); } catch (e) { console.error('[boot] fixStoredText', e && e.message); }
 app.patch('/me', auth, (req, res) => {
   /* name 이 빠져 있어서 <이름 바꾸기> 가 저장되지 않았다.
      화면은 서버가 돌려준 값을 그대로 믿으므로 잠깐 바뀐 것처럼 보였다가,
@@ -1313,8 +1354,7 @@ app.patch('/me', auth, (req, res) => {
     /* 프로필 사진 — 그림 주소만 6장까지 (10/29 보안) */
     if (k === 'photos') { sets.push('photos=?'); vals.push(JSON.stringify(safeImgList(req.body.photos, 6))); continue; }
     sets.push(`${k}=?`);
-    vals.push(nums.includes(k) ? intOrNull(req.body[k])
-      : typeof req.body[k]==='object' ? JSON.stringify(req.body[k]) : req.body[k]);
+    vals.push(nums.includes(k) ? intOrNull(req.body[k]) : meText(k, req.body[k]));   // 11/15 — 글 칸은 거르고 자른다(meText)
   }
   if (sets.length) {
     try { db.prepare(`UPDATE users SET ${sets.join(',')} WHERE id=?`).run(...vals, req.uid); }
@@ -1358,6 +1398,7 @@ const cleanGrade = v => GRADE_STEPS.includes(String(v || '')) ? String(v) : null
 app.post('/clubs', auth, (req, res) => {
   let { name, sport, region } = req.body;
   name = cleanName(name, '').slice(0, 24);
+  region = cleanLine(region, 30);                     // 11/15 — 지역도 거른다(예전엔 그대로 저장돼 앱 클럽 상세에서 스크립트가 돌았다)
   if (!name || !sport) return res.status(400).json({ error: 'name_sport_required' });
   /* 이름 품질 — 'dd', 'ㅇㅇ' 같은 테스트 이름이 공개 목록에 올라오는 걸 막는다 */
   if (name.length < 2)
@@ -4002,14 +4043,6 @@ function omHostSplit(q, guests) {
   const fee = total - expense, tax = Math.round(fee * OMH.WITHHOLD);
   return { total, expense, fee, tax, net: total - tax };
 }
-/* 계좌 가운데를 가린다 — "국민 123456-78-901234 최민혁" → "국민 ***-1234 · 최민혁" (호스트 정산 화면 · 결제 내역) */
-function omBankMask(b) {
-  const s = String(acctDec(b) || '').trim(); if (!s) return '';
-  const parts = s.split(/\s+/), digits = s.replace(/[^0-9]/g, '');
-  const bank = parts[0] && !/\d/.test(parts[0]) ? parts[0] : '';
-  const last = parts[parts.length - 1], holder = parts.length >= 2 && !/\d/.test(last) && last !== bank ? last : '';
-  return [bank, digits ? `***-${digits.slice(-4)}` : ''].filter(Boolean).join(' ') + (holder ? ` · ${holder}` : '');
-}
 /* ══ 호스트 정산 = PG 정산지급대행 (11/9) ══
    맞수가 참가비를 받아 그 일부를 호스트 계좌로 직접 보내면 전자금융거래법상 전자지급결제대행업(PG업)에 해당할 수 있다
    (카카오페이 독립몰 검토 의견). 그래서 맞수는 호스트에게 돈을 직접 보내지 않는다.
@@ -4037,7 +4070,8 @@ const PAYOUT = {
                          (여전히 OM_PAY_LIVE=1 이어야 열린다 — 결제 스위치는 운영자가 켠다)
      PAYOUT_MODE=portone 정산 받기 등록 → 포트원 파트너 등록(예금주 확인 포함),
                          정산 확정 → 관리자가 <포트원에 정산 등록>(수동 정산 건) → 포트원 콘솔에서 지급 → <입금 완료>
-   키는 Railway 환경변수에만 둔다. 시험 키 · 시험 채널은 운영 서버에 넣지 않는다.
+   키는 Railway 환경변수에만 둔다. 시험 채널은 PG 심사(포트원 테스트 연동) 동안만 대표가 정해서 넣는다 — PORTONE_TEST=1 과 함께(11/14).
+     시험 결제는 자리는 넣고 결제는 바로 전액 취소한다(poTestCancel) — 카드 승인 · 간편결제 출금이 실제로 일어나기 때문이다.
    포트원 문서로 확인한 것: SDK 주소 · requestPayment 칸 · GET /payments/{id} 의 status(PAID) · amount.total ·
      파트너(contact · type.whtPayer.birthdate) · 예금주 조회 · 수동 정산 건(partnerId · settlementAmount · memo) · 정산 건 조회 · 삭제 경로.
    기억으로 넣어 포트원에 한 번 더 맞춰 볼 것: 취소의 reason · currentCancellableAmount, 수동 정산 건의 settlementDate · isForTest,
@@ -4052,7 +4086,9 @@ const PORTONE = {
     return /^https:\/\/[^/]+$/.test(v) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(v) ? v : 'https://api.portone.io';
   },
   store: () => String(process.env.PORTONE_STORE_ID || '').trim(),
-  channel: m => String((m === 'KAKAOPAY' && process.env.PORTONE_CHANNEL_KEY_KAKAOPAY) || process.env.PORTONE_CHANNEL_KEY || '').trim(),
+  /* 11/14 — 결제 수단마다 채널을 따로 둘 수 있다(PORTONE_CHANNEL_KEY_TOSSPAY · _KAKAOPAY · _NAVERPAY). 없으면 카드 채널 하나로 */
+  own: m => m !== 'CARD' && !!String(process.env['PORTONE_CHANNEL_KEY_' + m] || '').trim(),
+  channel: m => String((m !== 'CARD' && process.env['PORTONE_CHANNEL_KEY_' + m]) || process.env.PORTONE_CHANNEL_KEY || '').trim(),
   secret: () => String(process.env.PORTONE_API_SECRET || '').trim(),
   hook: () => String(process.env.PORTONE_WEBHOOK_SECRET || '').trim(),
   sdk: () => { const v = String(process.env.PORTONE_SDK_URL || '').trim(); return /^https:\/\//.test(v) ? v : 'https://cdn.portone.io/v2/browser-sdk.js'; },
@@ -7294,11 +7330,6 @@ const _SEP = /[\s\-\u00b7_/|,()\[\]{}<>+*~^$#!?"'`]/g;
 
 function _keywordText(t) {                       // . 과 @ 는 남긴다 (이메일·도메인 판정)
   return String(t || '').toLowerCase().replace(/[０-９]/g, c => _FULLW[c]).replace(_SEP, '');
-}
-function _digitText(t) {                          // 숫자만 뽑아낸다 (구분자·한글숫자 우회 차단)
-  let x = String(t || '').toLowerCase().replace(/[０-９]/g, c => _FULLW[c]);
-  Object.entries(_HANGUL_NUM).forEach(([k, v]) => { x = x.split(k).join(v); });
-  return x.replace(/[^0-9]/g, '');
 }
 const _KEYWORD_RULES = [
   { re: /openkakao|open\.kakao|kakao\.com|오픈채팅|오카방|톡방/,          reason: '오픈채팅 링크' },
@@ -12759,13 +12790,13 @@ if (process.env.REMINDERS !== 'off') {
 app.post('/admin/run-reminders', admin, (_req, res) => { runReminders(); res.json({ ok: true }); });  // @external 내가 curl 로 부름
 
 // ── 운영자 대시보드 API ──
-// 접근키: env ADMIN_KEY (미설정 시 데모용 'matsu-admin'). 헤더 x-admin-key 또는 ?key=
+// 접근키: env ADMIN_KEY (운영에서는 꼭 넣어야 뜬다). 헤더 x-admin-key 로만 받는다(주소 ?key= 는 받지 않는다)
 const ADMIN_KEY = process.env.ADMIN_KEY || 'matsu-admin';
 function admin(req, res, next) {
   // 키는 반드시 헤더로. URL 쿼리는 브라우저 히스토리·서버 로그에 그대로 남는다.
   const k = req.headers['x-admin-key'];
   /* 11/10 — 열쇠를 여러 번 틀린 접속(IP)은 10분 동안 열쇠를 아예 보지 않는다(맞히기 방지) */
-  const blk = ADMIN_FAIL.get(String(req.ip || 'unknown'));
+  const blk = ADMIN_FAIL.get(adminIp(req));          // 11/15 — req.ip 는 Railway 앞단(공용) 주소일 수 있다 · 다른 곳과 같은 IP 로 센다(adminIp)
   if (blk && blk.until > Date.now()) {
     try { res.set && res.set('Retry-After', String(Math.ceil((blk.until - Date.now()) / 1000))); } catch (e) {}
     return res.status(429).json({ error: 'too_many_attempts', message: '열쇠를 여러 번 틀렸어요 · 10분 뒤에 다시 해 주세요' });
@@ -12791,8 +12822,13 @@ const ADMIN_FAIL = new Map(), ADMIN_FAIL_MAX = 10, ADMIN_FAIL_WIN = 10 * 60e3;
 function adminKeyOk(k) {
   try { const h = v => crypto.createHash('sha256').update(String(v)).digest(); return crypto.timingSafeEqual(h(k), h(ADMIN_KEY)); } catch (e) { return false; }
 }
+/* 11/15 열쇠 틀림을 셀 IP — 다른 곳(clientIp · 요청 제한)과 같은 방법: X-Forwarded-For 맨 앞, 없으면 req.ip.
+   req.ip(trust proxy 1)는 Railway 앞단(공용) 주소일 수 있어, 한 사람이 열쇠를 여러 번 틀리면 모두가 10분 막힐 수 있었다 */
+function adminIp(req) {
+  return String(String((req.headers && req.headers['x-forwarded-for']) || '').split(',')[0].trim() || req.ip || 'unknown');
+}
 function adminFailed(req, k) {
-  const ip = String(req.ip || 'unknown'), t = Date.now();
+  const ip = adminIp(req), t = Date.now();
   if (ADMIN_FAIL.size > 5000) ADMIN_FAIL.clear();
   let f = ADMIN_FAIL.get(ip);
   if (!f || t - f.at > ADMIN_FAIL_WIN) { f = { keys: new Set(), at: t, until: 0 }; ADMIN_FAIL.set(ip, f); }
@@ -13573,15 +13609,6 @@ function effDepth(venueId, size) {
   const reach = nearestVenueKm(venueId) / 2;
   const room = Math.floor(reach / (Math.sqrt(3) * 0.2));   // 칸이 200m 밑이면 겹을 줄인다
   return Math.max(1, Math.min(want, room || 1));
-}
-/* 클럽 활동 인원 — 순위표는 클럽 수십 개를 훑으니 한 번 부른 값은 들고 있는다 */
-const _sizeCache = new Map();
-function sizeOfClub(clubId) {
-  const hit = _sizeCache.get(clubId);
-  if (hit && Date.now() - hit.t < 60e3) return hit.n;
-  const n = shareActiveMembers(clubId, Date.now() - SHARE_ACT_DAYS * 864e5);
-  _sizeCache.set(clubId, { n, t: Date.now() });
-  return n;
 }
 const cellsOf = d => 3 * d * (d + 1) + 1;      // 겹 수 → 칸 수 (옛 방식, 남겨둠)
 
@@ -16599,7 +16626,7 @@ app.post('/admin/reports/:id/resolve', admin, (req, res) => {
 });
 // ── 운영자 삭제 권한 ──
 // 이용약관 위반 게시물을 운영자가 직접 지운다.
-// x-admin-key 헤더 또는 ?key= 로 인증. ADMIN_KEY 는 Railway Variables 에 있다.
+// x-admin-key 헤더로 인증. ADMIN_KEY 는 Railway Variables 에 있다.
 /* 글 관리 — 라운지(posts)와 구장톡·전국톡(court_posts)을 한 화면에서 훑고 지운다.
    신고가 안 들어온 글도 운영자가 먼저 볼 수 있어야 한다. */
 app.get('/admin/posts', admin, (req, res) => {
@@ -18983,7 +19010,7 @@ async function omPayDone(req, res) {
   } else if ((q.paymentKey || q.pg === 'portone') && oid) {
     const r = q.pg === 'portone' ? await omPortoneConfirm(oid) : await omPayConfirm(String(q.paymentKey), oid, +q.amount);
     const b = r.body || {};
-    if (b.ok) { ok = true; h = '신청했어요'; sub = `${Number(b.amount || 0).toLocaleString()}원을 카드로 결제했어요.`; }
+    if (b.ok) { ok = true; h = '신청했어요'; sub = b.test ? `시험 결제라 ${Number(b.amount || 0).toLocaleString()}원은 바로 취소했어요 · 신청은 그대로예요.` : `${Number(b.amount || 0).toLocaleString()}원을 카드로 결제했어요.`; }
     else if (b.kind === 'om') { h = '자리가 먼저 찼어요'; sub = `${escH(b.message || '신청하지 못했어요')} · 결제는 바로 취소했어요. 카드사에 따라 영업일 며칠 걸릴 수 있어요.`; }
     else if (b.error === 'in_progress') { h = '결제를 확인하고 있어요'; sub = '잠시 뒤 앱에서 신청 결과를 확인해 주세요.'; }
     else if (b.error === 'not_paid') { h = '결제가 끝나지 않았어요'; sub = '신청은 되지 않았어요. 다시 신청하려면 앱에서 버튼을 눌러 주세요.'; }
@@ -19020,12 +19047,14 @@ function omPortoneCheckout(req, res, ord, m, src, backBtn) {
     done: `${base}/pay/done?kind=om&pg=portone&src=${src}`,
     base: { storeId: PORTONE.store(), paymentId: ord.order_id, orderName: PO_ORDER_NAME, totalAmount: ord.amount,
       currency: PORTONE.currency(), customer: cust, redirectUrl: `${base}/pay/done?kind=om&pg=portone&src=${src}` },
-    m: Object.fromEntries(ms.map(k => [k, { channelKey: PORTONE.channel(k), ...PO_METHOD[k].req }])),
+    /* 토스페이를 따로 계약한 채널(PORTONE_CHANNEL_KEY_TOSSPAY)이면 EASY_PAY 만 보낸다 — 포트원 토스페이 예시와 같다 (11/14) */
+    m: Object.fromEntries(ms.map(k => [k, { channelKey: PORTONE.channel(k), ...(k === 'TOSSPAY' && PORTONE.own(k) ? { payMethod: 'EASY_PAY' } : PO_METHOD[k].req) }])),
     win: `${process.env.PG_NAME ? process.env.PG_NAME + ' ' : ''}결제창`,
   };
   const t = omKoWhen(m.start_at);
   const inner = `<div class="brand">맞수</div>
-    <h1>참가비를 결제해요</h1>
+    <h1>참가비를 결제해요</h1>${PORTONE.test() ? `
+    <p class="note" id="poTest" style="margin:0 0 14px;padding:11px 14px;border-radius:12px;background:#fff6e3;color:#6b4a0c;font-weight:600;text-align:left">시험 결제예요 · 결제하면 맞수가 바로 전액 취소해요</p>` : ''}
     <div class="card"><div class="row"><span>${escH([m.loc || '오픈매치', m.court_no || ''].filter(Boolean).join(' '))}</span></div>
       <div class="row"><span>${escH(t)}</span></div>
       <div class="row" style="border-top:1px solid #f0efeb;margin-top:6px;padding-top:12px"><span>참가비</span><b class="amt">${Number(ord.amount).toLocaleString()}원</b></div></div>
@@ -19095,10 +19124,27 @@ async function omPortoneConfirm(paymentId) {
       return { status: 400, body: { error: 'amount_mismatch' } };
     }
     const out = omPaidJoin(ord, key, typeof p.receiptUrl === 'string' ? p.receiptUrl : null);
+    /* 11/14 시험 결제 — 자리는 그대로 두고 결제는 바로 전액 취소한다 */
+    if (out.ok && PORTONE.test()) { try { if (poTestCancel(ord)) { out.test = true; await omRefundRun(); } } catch (e) { console.error('[portone test]', e.message); } }
     if (!out.ok) { try { await omRefundRun(); } catch (e) {} out.refund = omPayState(db.prepare('SELECT * FROM orders WHERE order_id=?').get(ord.order_id)).refund; }
     return { status: 200, body: out };
   } catch (e) { return { status: 500, body: { error: String(e.message || e).slice(0, 120) } }; }
   finally { OM_PAY_LOCK.delete(ord.order_id); }
+}
+/* 11/14 시험 결제(PORTONE_TEST=1) — 시험 채널도 카드사 승인이 났다가 밤에 취소되는데, 나이스는 일부만 취소하면
+   나머지가 저절로 취소되지 않고, 간편결제는 실제로 돈이 빠진다. 그래서 자리를 넣은 뒤 바로 전액을 취소한다.
+   장부에는 <다 돌려준 결제>로 적어(refunded=amount · test=1) 정산 · 환불 계산에서 0원이 되게 하고,
+   그 사람이 나중에 참가를 취소해도 캐시로 돌려주지 않는다(omGiveBack 이 test 결제를 본다). */
+try { db.exec('ALTER TABLE om_payments ADD COLUMN test INTEGER'); } catch (e) {}
+function poTestCancel(ord) {
+  const pay = db.prepare('SELECT id, amount FROM om_payments WHERE order_id=? ORDER BY id DESC LIMIT 1').get(ord.order_id);
+  if (!pay || !(+pay.amount > 0)) return false;
+  tx(() => {
+    db.prepare(`INSERT INTO om_refunds (user_id,match_id,pay_id,order_id,payment_key,amount,reason,status,created_at) VALUES (?,?,?,?,?,?,'test_cancel','pending',?)`)
+      .run(ord.user_id, ord.match_id, pay.id, ord.order_id, 'portone:' + ord.order_id, +pay.amount, Date.now());
+    db.prepare("UPDATE om_payments SET test=1, refunded=amount, status='refunded' WHERE id=?").run(pay.id);
+  });
+  return true;
 }
 /* 포트원 카드 돌려주기 — 부분 취소. 두 번 취소되지 않게 <지금 남은 취소 가능 금액>을 같이 보낸다
    (포트원이 가진 잔액과 다르면 취소하지 않고 실패 → 관리자 <카드 환불 실패>에서 확인) */
@@ -19187,7 +19233,7 @@ app.post('/pay/portone/webhook', (req, res) => {  // @external 포트원이 부�
    8번 실패하면 failed — 관리자 화면 <카드 환불 실패>에서 다시 보낼 수 있다. */
 const OMR_WHY = { match_refund: '참가 취소', om_host_cancel_refund: '호스트 매치 취소', om_host_noshow_refund: '호스트 미참석',
   om_cancel_refund: '인원 미달 자동 취소', om_price_refund: '확정 인원 참가비 차액', match_auto_cancel_refund: '매치 자동 취소',
-  join_failed: '자리 마감 · 결제 즉시 취소' };
+  join_failed: '자리 마감 · 결제 즉시 취소', test_cancel: '시험 결제 자동 취소' };
 const OMR_MAX_TRIES = 8;
 async function omRefundRun() {
   const tossOn = !!process.env.TOSS_SECRET_KEY, poOn = !!process.env.PORTONE_API_SECRET;   // 11/10 — 결제마다 받은 곳(토스 · 포트원)으로 돌려준다
@@ -19881,14 +19927,6 @@ function withGrade(players) {
     } catch (e) {}
     return { ...p, grade: p.grade || g };
   });
-}
-/* 팀 평균 — 글자 하나로는 두 사람의 무게가 안 보인다. C=1 · B=2 · A=3 · S=4 로 세어 평균을 낸다 */
-function teamGrade(players) {
-  const V = { C: 1, B: 2, A: 3, S: 4 };
-  const xs = (players || []).map(p => V[(p.grade || '').toUpperCase()]).filter(Boolean);
-  if (!xs.length) return null;
-  const avg = xs.reduce((a, b) => a + b, 0) / xs.length;
-  return ['C', 'B', 'A', 'S'][Math.max(0, Math.min(3, Math.round(avg) - 1))];
 }
 
 app.get('/exchange/:id/games', auth, (req, res) => {
@@ -21446,8 +21484,6 @@ function xcSquadAt(roster, mix, r) {
   return out.map(g => ({ kind: g.kind, lv: xcLevel(g.p[0]) + xcLevel(g.p[1]),
     players: g.p.map(x => ({ id: x.id, name: x.name })) }));
 }
-/* 예전 이름 — 1회차 조를 뜻한다 */
-function xcSquad(roster, mix) { return xcSquadAt(roster, mix, 0); }
 
 /* 대진 — 회차마다 양쪽 클럽의 조를 새로 짜고, 같은 종목끼리 <무게가 비슷한 조>를 맞붙인다.
 
@@ -22496,6 +22532,44 @@ app.post('/admin/inquiries/:id', admin, (req, res) => {
 });
 /* ═══ 11/13 운영진 기능 · 캘린더 · 문의함 끝 ═══ */
 
+/* ══ 11/14 오픈매치 참가자 정보 — 매치 화면에서 얼굴을 누르면 뜨는 창 ══
+   볼 수 있는 사람: 그 매치의 호스트와 신청한 사람. 신청하기 전에는 locked(앱이 이름 · 티어만 그린다).
+   주는 것: 이름 · 성별 · 티어 · 구력 · 매너 점수(fairplayOf — 내정보와 같은 값 · 주의 구간도 그대로) · 후기 수 ·
+            끝난 오픈매치 수 · MVP 수 · 나와 함께 친 매치 수 · (호스트에게만) 신청한 때.
+   주지 않는 것: 연락처 · 지역 · 나이 · 사진 · 후기를 쓴 사람 · 어디서 쳤는지(사는 곳이 드러날 수 있다). */
+function omPcPlayed(uid, now16) {
+  /* 끝난 매치(취소 · 노쇼 빼고) — 신청한 매치 + 호스트로 연 매치 중 직접 친 것(운영만 한 매치는 빼고) */
+  return db.prepare(`SELECT m.id FROM open_matches m WHERE COALESCE(m.status,'') NOT IN ('cancelled','noshow')
+      AND COALESCE(NULLIF(m.end_at,''), m.start_at) IS NOT NULL AND COALESCE(NULLIF(m.end_at,''), m.start_at) < ?
+      AND (EXISTS (SELECT 1 FROM open_match_joins j WHERE j.match_id=m.id AND j.user_id=?)
+           OR (m.host_id=? AND COALESCE(m.host_plays,1)<>0))`).all(now16, uid, uid).map(r => r.id);
+}
+app.get('/open-matches/:id/player/:uid', auth, (req, res) => {
+  const mid = +req.params.id, tid = +req.params.uid;
+  const m = mid ? db.prepare('SELECT * FROM open_matches WHERE id=?').get(mid) : null;
+  if (!m || !tid) return res.status(404).json({ error: 'not_found' });
+  const inM = uid => uid === m.host_id || !!db.prepare('SELECT 1 FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, uid);
+  if (!inM(tid)) return res.status(404).json({ error: 'not_in_match' });
+  if (!inM(req.uid)) return res.status(403).json({ error: 'locked', message: '이 매치에 신청하면 볼 수 있어요' });
+  const u = getUser(tid);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const t = tierOf(tid), fp = fairplayOf(tid);
+  const now16 = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16);   // 매치 시각은 한국 시각 그대로 적혀 있다
+  const mine = omPcPlayed(tid, now16);
+  const seen = new Set(mine);
+  const together = tid === req.uid ? null : omPcPlayed(req.uid, now16).filter(x => seen.has(x)).length;
+  const mvp = (db.prepare('SELECT COUNT(*) n FROM mvps WHERE user_id=?').get(tid) || {}).n || 0;
+  const out = { id: tid, name: u.name, gender: u.gender === 'F' ? 'F' : u.gender === 'M' ? 'M' : null,
+    tier: t.name, tier_key: t.key, placed: !!t.placed, sport_started: u.sport_started || null,
+    fairplay: { score: fp.score, reviews: fp.reviews }, om_games: mine.length, mvp, together,
+    host: tid === m.host_id, me: tid === req.uid };
+  if (req.uid === m.host_id && tid !== m.host_id) {
+    const j = db.prepare('SELECT joined_at FROM open_match_joins WHERE match_id=? AND user_id=?').get(mid, tid);
+    out.joined_at = (j && j.joined_at) || null;
+  }
+  res.json(out);
+});
+/* ══ 끝 · 오픈매치 참가자 정보 ══ */
 /* ═══ 웹 홈페이지 (11/2) ═══════════════════════════════════════════════
    주소 첫 화면(/)은 홈페이지(public/site/index.html), 웹 앱은 /app.
    · 이미 퍼진 링크는 주소 뒤에 값이 붙어 있다(/?invite= · /?match= · /?cup= · /?xinv= · /?xc= · 로그인 ?code= …)
