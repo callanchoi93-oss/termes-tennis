@@ -20,16 +20,12 @@
     h.appendChild(st);
   } else {
     var l=document.createElement('link'); l.rel='stylesheet';
-    l.href='https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css';
+    l.href='https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css';   // 11/15 — 화면에 나온 글자 묶음만 받는다
     h.appendChild(l);
   }
 })();
 </script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
-<!-- 대진 공유 이미지 전용 — 화면 본문에는 쓰지 않는다 -->
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">
-<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
+<script defer src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" crossorigin="anonymous"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <title>MATSU · 맞수</title>
 <meta property="og:type" content="website">
@@ -7293,8 +7289,6 @@
   .hrv-lk{display:inline-block;margin-top:16px;font-size:15px;color:#333d4b;text-decoration:underline;text-underline-offset:4px;cursor:pointer}
   .hrv-ft{gap:0}.hrv-ft button{flex:1}
   .hrv-ft button[disabled]{opacity:.45}
-  .omxb-gs{display:flex;gap:14px;margin:4px 0 2px;font-size:14px;color:#6b7684}
-  .omxb-gs b{color:#191f28;font-weight:800;font-variant-numeric:tabular-nums}
   .omxb-rows .r .v>span em.pf{display:block;font-style:normal;margin-top:5px;font-size:13px;font-weight:700;color:#0a8a5c}
   .omxb-ppl .p.a .omxb-av{background:#c9cdd2}
   .omxb-ppl .p.a b{color:#6b7684;font-weight:600}
@@ -12767,6 +12761,67 @@ html.vwn .omh-2 > div > i{width:34px;height:34px}
 /* 내가 연 매치 › 정산 표 — 320 폰에서 두 금액이 붙어 보이던 것 */
 html.vwn2 .omh7-money{padding-left:14px}
 html.vwn2 .omh7-money .v,html.vwn2 .omh7-money .l{font-size:14px}
+
+/* 11/14 오픈매치 참가자 정보 창 — 매치 화면 위에 한 겹 더(시안: 오픈매치 참가자 정보 시안)
+   색은 맞수 토큰만 쓴다 — 잉크 --ink · 회색 --gray · 옅은 회색 --lgray · 면 --felt · 선 --line ·
+   주황 --coral(막대 · 단추 · 고른 테두리) / --coral-d(주황 글자 · MVP 숫자 — 내정보의 MVP 와 같은 색) / --coral-s(주황 면) */
+.omxb-ppl button.p{border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.omxb-ppl button.p:focus-visible{outline:2px solid var(--coral);outline-offset:3px;border-radius:12px}
+.pc5ov{position:fixed;inset:0;z-index:99980;background:rgba(11,14,18,.55);display:flex;align-items:flex-end;justify-content:center}
+.pc5sh{position:relative;width:100%;max-width:440px;max-height:92%;overflow-y:auto;box-sizing:border-box;background:#fff;border-radius:28px 28px 0 0;padding:10px 0 calc(24px + env(safe-area-inset-bottom));color:var(--ink);letter-spacing:-.02em;animation:sheetUp .32s cubic-bezier(.22,1.1,.36,1)}
+html.pc .pc5ov{align-items:center}
+html.pc .pc5sh{max-width:480px;border-radius:24px;max-height:86%;padding-bottom:24px}
+.pc5sh .hdl{width:40px;height:4px;border-radius:99px;background:var(--felt-d);margin:0 auto}
+.pc5hd{display:flex;align-items:center;padding:8px 10px 0 22px}
+.pc5hd h3{flex:1;min-width:0;margin:0;font-size:20px;font-weight:800;letter-spacing:-.03em;color:var(--ink)}
+.pc5x{flex:none;width:44px;height:44px;border:0;background:none;padding:0;color:var(--gray);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.pc5tabs{position:relative;display:flex;gap:8px;padding:8px 22px 0;overflow-x:auto;scrollbar-width:none}
+.pc5tabs::-webkit-scrollbar{display:none}
+.pc5tab{flex:none;display:flex;align-items:center;gap:7px;height:44px;padding:0 16px 0 7px;border:0;border-radius:999px;background:var(--felt);color:var(--gray);font:inherit;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap}
+.pc5tab.on{background:var(--coral-s);box-shadow:inset 0 0 0 1.5px var(--coral);color:var(--coral-d);font-weight:700}
+.pc5tab i{flex:none;width:30px;height:30px;border-radius:50%;color:#fff;font-style:normal;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.pc5id{display:flex;align-items:center;gap:14px;padding:18px 22px 0}
+.pc5id > i{flex:none;width:64px;height:64px;border-radius:50%;color:#fff;font-style:normal;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.pc5id .nm{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.pc5id .nm b{font-size:22px;font-weight:800;letter-spacing:-.03em;color:var(--ink);word-break:keep-all}
+.pc5id .sb{margin-top:6px;font-size:14px;color:var(--gray);word-break:keep-all}
+.pc5chip{font-size:13px;font-weight:700;color:var(--gray);background:var(--felt);border-radius:8px;padding:4px 9px;white-space:nowrap}
+.pc5chip.nw{color:var(--coral-d);background:var(--coral-s)}
+.pc5fp{margin:16px 22px 0;padding:16px 18px;border-radius:20px;background:#fff;box-shadow:inset 0 0 0 1.5px var(--line)}
+.pc5fp .tp{display:flex;align-items:center;gap:10px}
+.pc5fp .tp span{flex:1;min-width:0;font-size:15px;font-weight:700;color:var(--ink)}
+.pc5fp .tp em{font-style:normal;font-size:13px;color:var(--gray);white-space:nowrap}
+.pc5fp .tp svg{flex:none;color:var(--lgray)}
+.pc5fp .sc{display:block;margin-top:2px;font-size:32px;font-weight:800;letter-spacing:-.05em;line-height:1.25;color:var(--ink);font-variant-numeric:tabular-nums}
+.pc5fp .sc.no{font-size:22px;letter-spacing:-.03em;line-height:1.4;color:var(--ink2)}
+.pc5sk{display:block;width:108px;height:32px;margin-top:6px;border-radius:10px;background:var(--felt)}
+.pc5zn{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
+.pc5zn > div{position:relative;min-width:0}
+.pc5zn i{display:block;height:6px;border-radius:3px;background:var(--line)}
+.pc5zn .on i{background:var(--coral)}
+.pc5zn em{position:absolute;top:-4px;width:14px;height:14px;margin-left:-7px;box-sizing:border-box;border-radius:50%;background:#fff;border:3px solid var(--coral)}
+.pc5zn span{display:block;margin-top:8px;font-size:13px;color:var(--gray);white-space:nowrap}
+.pc5zn .on span{font-weight:800;color:var(--ink)}
+.pc5st{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:12px 22px 0;padding:16px 0;border-radius:18px;background:var(--felt);text-align:center}
+.pc5st > div{min-width:0;padding:0 4px}
+.pc5st > div + div{border-left:1px solid var(--felt-d)}
+.pc5st .l{font-size:13px;color:var(--gray)}
+.pc5st b{display:block;margin-top:4px;font-size:22px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.pc5st b.mv{color:var(--coral-d)}
+.pc5st b.dim{color:var(--lgray)}
+.pc5st .lk{display:flex;justify-content:center;margin-top:8px;color:var(--lgray)}
+.pc5row{display:flex;align-items:center;gap:12px;margin:12px 22px 0;padding:14px 16px;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1.5px var(--line)}
+.pc5row .k{flex:none;font-size:15px;color:var(--gray)}
+.pc5row b{flex:1;min-width:0;text-align:right;font-size:15px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.pc5pv{display:flex;align-items:flex-start;gap:8px;margin:12px 22px 0;padding:12px 14px;border-radius:14px;background:var(--felt);font-size:13px;line-height:1.55;color:var(--gray);word-break:keep-all}
+.pc5pv svg{flex:none;margin-top:2px;color:var(--lgray)}
+.pc5lk{margin:12px 22px 0;padding:14px 16px;border-radius:14px;background:var(--coral-s)}
+.pc5lk b{display:block;font-size:15px;font-weight:700;color:var(--coral-d);text-align:center}
+.pc5ld{padding:40px 22px;text-align:center;font-size:14px;color:var(--gray)}
+.pc5ok{display:block;width:calc(100% - 44px);height:56px;margin:16px 22px 0;border:0;border-radius:16px;background:var(--coral);color:#fff;font:inherit;font-size:17px;font-weight:700;cursor:pointer}
+.pc5no{display:block;width:calc(100% - 44px);height:48px;margin:6px 22px 0;border:0;border-radius:16px;background:none;color:var(--gray);font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+html.vwn2 .pc5id{gap:12px}
+html.vwn2 .pc5id > i{width:56px;height:56px;font-size:22px}
 </style>
 <script>/* QR Code Generator for JavaScript — Copyright (c) 2009 Kazuhiko Arase · MIT license · http://www.d-project.com/ */
 var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,(function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1}))},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(t,r){var e=n("友");if(2!=e.length||38726!=(e[0]<<8|e[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}((function(){return qrcode}));
@@ -13035,7 +13090,7 @@ const state={
     'dm:운영팀':{name:'Matsu 운영팀',type:'dm',color:'#00b884',msgs:[{them:1,t:'안녕하세요! 궁금한 점이 있으면 편하게 물어보세요.'}]},
   },
 };
-const BUILD='v1.2.9-1113e';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
+const BUILD='v1.2.9-1115b';   // 홈 세 칸 · 그림 분리 · 3D 심볼 · 댓글 이름 통일 · 앱 버전 알리기 · 리그 3D 우승컵 · 전국 코트 찾기 · 코트 지도 표시 · 대회 나이트 드로우 — 바뀌면 옛 캐시를 비운다
 /* 오늘 날짜는 반드시 '이 폰의 날짜'로 센다.
    toISOString() 은 UTC라, 한국 시간 자정~오전 9시 사이에는 하루 전 날짜를 돌려준다.
    그 시간대에 대진을 만들거나 열면 저장된 날짜와 오늘이 어긋나서
@@ -14437,15 +14492,6 @@ function enterKey(e){
 function esc(t){ return String(t==null?'':t)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-function timeAgo(ms){
-  const d = Date.now() - (+ms||0);
-  if(d < 60e3) return '방금';
-  if(d < 3600e3) return Math.floor(d/60e3)+'분 전';
-  if(d < 86400e3) return Math.floor(d/3600e3)+'시간 전';
-  if(d < 7*86400e3) return Math.floor(d/86400e3)+'일 전';
-  const t = new Date(+ms);
-  return `${t.getMonth()+1}.${String(t.getDate()).padStart(2,'0')}`;
-}
 
 /* ═══════════ 데모 데이터 제거 ═══════════
    서버가 붙어 있으면(SERVER_OK) 시연용 가짜 데이터를 모두 지운다.
@@ -16914,37 +16960,6 @@ function openQuickStart(){
   document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
 }
 /* ===== 알림 ===== */
-async function openCompareSrv(uid, name){
-  let me=null, op=null;
-  try{ [me, op] = await Promise.all([
-    api(`/users/${state.serverUser.id}/profile`), api(`/users/${uid}/profile`) ]); }catch(e){}
-  if(!me || !op){ toast('전적을 불러오지 못했어요'); return; }
-  const row=(l, a, b, hl)=>`<div style="display:flex;align-items:center;padding:10px 2px;border-top:1px solid #eceef0">
-    <div style="flex:1;text-align:right;font-weight:700;font-size:15px;color:${hl==='a'?'var(--coral-d)':'var(--ink)'}">${a}</div>
-    <div style="width:92px;text-align:center;font-size:12px;font-weight:400;color:var(--lgray)">${l}</div>
-    <div style="flex:1;font-weight:700;font-size:15px;color:${hl==='b'?'var(--coral-d)':'var(--ink)'}">${b}</div></div>`;
-  const wrA=(me.wins+me.losses)?Math.round(me.wins/(me.wins+me.losses)*100):0;
-  const wrB=(op.wins+op.losses)?Math.round(op.wins/(op.wins+op.losses)*100):0;
-  let h=`<div class="sh-top"><h3>전적 비교</h3><div class="cl" role="button" tabindex="0" onclick="closeOv()">×</div></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 6px 10px">
-      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:var(--coral);font-size:20px;margin:0 auto">${esc(me.name[0])}</div><div style="font-weight:400;font-size:15px;margin-top:6px">${esc(me.name)} (나)</div></div>
-      <div style="font-size:15px;font-weight:400;color:var(--lgray)">VS</div>
-      <div style="text-align:center;flex:1"><div class="lb-av" style="width:52px;height:52px;border-radius:50%;background:#181a1c;font-size:20px;margin:0 auto">${esc(op.name[0])}</div><div style="font-weight:400;font-size:15px;margin-top:6px">${esc(op.name)}</div></div></div>
-    <div class="card" style="padding:6px 14px">
-      ${row('레이팅', me.rating, op.rating, me.rating>=op.rating?'a':'b')}
-      ${row('지역 순위', me.rank+'위', op.rank+'위', me.rank<=op.rank?'a':'b')}
-      ${row('전적', `${me.wins}승 ${me.losses}패`, `${op.wins}승 ${op.losses}패`, wrA>=wrB?'a':'b')}
-      ${row('승률', wrA+'%', wrB+'%', wrA>=wrB?'a':'b')}
-      ${row('지역', esc(me.region||'—'), esc(op.region||'—'), '')}
-    </div>
-    <div class="note" style="text-align:left;margin-top:10px">예상 승률 <b>${Math.round(expScore(me.rating,op.rating)*100)}%</b> · 레이팅 차이 기준</div>
-    ${op.can_dm
-      ? `<button class="btn ghost" style="margin-top:12px" onclick="closeOv();openDM(${op.id},${jsArg(op.name)})">대화 걸기</button>`
-      : `<div class="note" style="text-align:left;margin-top:8px">대화는 <b>1:1 경기가 잡힌 뒤</b>부터 주고받을 수 있어요. 먼저 상대 찾기에서 신청해 보세요.</div>`}
-    `;
-  document.getElementById('sheet').innerHTML=h; document.getElementById('ov').classList.add('on');
-}
-function pushNotif(icon,title,sub){ state.notifs=state.notifs||[]; state.notifs.unshift({icon,title,sub,when:'방금'}); }
 function clubMembersList(){
   const c=AC(); if(!c) return [];
   // 서버가 붙어 있으면 실제 승인된 회원만. 없으면 빈 목록.
@@ -21183,8 +21198,8 @@ function clubStatusSet(n, id, v){
 function openClubDetail(n){
   const c=state.clubs.find(x=>x.n===n);if(!c)return;
   const st=clubStatusOf(n, (c.id!=null?c.id:null));
-  let h=`<div class="sh-top"><h3>${n}</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
-    <div class="sd">${c.r} · 회원 ${c.m}명</div>
+  let h=`<div class="sh-top"><h3>${esc(n)}</h3><div class="cl" role="button" tabindex="0" aria-label="닫기" onclick="closeOv()">×</div></div>
+    <div class="sd">${esc(c.r)} · 회원 ${c.m}명</div>
     <div style="font-size:13px;font-weight:400;color:var(--coral-d);margin:4px 0 6px">회비 안내</div>
     ${c.entry?`<div class="cond"><span>입회비</span><b>${c.entry.toLocaleString()}원</b></div>`:''}
     ${c.season?`<div class="cond"><span>연회비(시즌)</span><b>${c.season.toLocaleString()}원</b></div>`:''}
@@ -26505,7 +26520,7 @@ function myClubsBlock(){
     return `<button class="mcbig" onclick="openClubPage('${esc(n)}')">
       ${av||`<span class="lg">${esc(n.slice(0,1))}</span>`}
       <span class="c"><b>${esc(n)}</b>
-        <span class="s">${[c.r||c.region||'', c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
+        <span class="s">${[esc(c.r||c.region||''), c.m?`회원 ${c.m}명`:''].filter(Boolean).join(' · ')}</span>
         <!-- 알약에는 <언제 · 몇 명>만 남긴다. 모임 제목까지 넣으면 한 줄을 넘겨
              줄바꿈이 생기고, 제목은 눌러 들어가면 바로 나온다. -->
         ${ev?`<span class="t${/^오늘/.test(ev.when)?'':' later'}"><b>${esc(ev.when)}</b>${
@@ -42684,6 +42699,17 @@ function matsuMarkImage(color){
     }catch(e){ res(null); }
   });
 }
+/* 11/15 명조(고운바탕)는 대진 공유 그림에만 쓴다 — 앱을 켤 때 받지 않고, 그림을 그릴 때 한 번 받는다(앱 첫 화면이 바깥 글꼴 서버를 기다리지 않게).
+   느리면 2.5초만 기다리고 그린다(명조가 없으면 고딕) */
+function gowunCss(){
+  if(window._gowunP) return window._gowunP;
+  return window._gowunP=new Promise(res=>{
+    try{ const l=document.createElement('link'); l.rel='stylesheet';
+      l.href='https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap';
+      l.onload=l.onerror=()=>res(); document.head.appendChild(l); }catch(e){ res(); }
+    setTimeout(res, 2500);
+  });
+}
 async function cb2ShareImage(){
   if(!CB2 || !(CB2.games||[]).length){ toast('공유할 대진이 없어요'); return; }
   toast('이미지를 만드는 중…');
@@ -42742,7 +42768,8 @@ async function cb2ShareImage(){
        작은 글자(코트 번호·종류·메타)는 고딕이 또렷해 그대로 둔다. */
     const SANS="'Pretendard Variable',Pretendard,'SUIT Variable',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
     const SERIF="'Gowun Batang','Nanum Myeongjo','Apple SD Gothic Neo',"+SANS;
-    /* 웹폰트가 아직 안 받아졌으면 캔버스가 고딕으로 그려버린다 — 먼저 기다린다 */
+    /* 웹폰트가 아직 안 받아졌으면 캔버스가 고딕으로 그려버린다 — 먼저 기다린다(명조 CSS 는 여기서 처음 받는다) */
+    try{ await gowunCss(); }catch(e){}
     try{ if(document.fonts && document.fonts.load){
       await Promise.all([document.fonts.load("700 46px 'Gowun Batang'"),
                          document.fonts.load("400 27px 'Gowun Batang'")]);
@@ -50138,8 +50165,12 @@ function omxbHostFace(name, photo){
 function omxbPeople(m){
   const cap=omxCap(m), ps=(m.players||[]).slice(0,cap), hid=m.host&&m.host.id;
   const face=p=>{ const host=p.id===hid;
-    return `<div class="p">${host?omxbHostFace(p.name, m.host.photo):`<i class="omxb-av" style="background:${omxbCol(p.name)}">${esc(String(p.name||'?').slice(0,1))}</i>`}
-      <b>${esc(p.name||'')}</b><span>${esc(omxbTier(p.tier))}</span></div>`; };
+    /* 11/14 — 호스트 · 나를 뺀 참가자 얼굴은 눌러서 참가자 정보 창(pc5Open) */
+    const me5=(state.serverUser||{}).id, tap=!host&&!!p.id&&p.id!==me5;
+    (window._PC5M=window._PC5M||{})[m.id]=m;
+    const tg=tap?'button':'div', at=tap?` type="button" onclick="pc5Open(${+m.id},${+p.id})" aria-label="${esc(p.name||'')} · ${esc(omxbTier(p.tier))} — 참가자 정보 보기"`:'';
+    return `<${tg} class="p"${at}>${host?omxbHostFace(p.name, m.host.photo):`<i class="omxb-av" style="background:${omxbCol(p.name)}">${esc(String(p.name||'?').slice(0,1))}</i>`}
+      <b>${esc(p.name||'')}</b><span>${esc(omxbTier(p.tier))}</span></${tg}>`; };
   let h=ps.map(face).join('');
   const n=Math.min(cap,Math.max(ps.length,omxN(m)));                 // 명단을 못 받았어도 찬 자리는 찬 대로
   for(let i=ps.length;i<n;i++) h+=`<div class="p a"><i class="omxb-av">·</i><b>참가자</b><span></span></div>`;
@@ -50173,6 +50204,109 @@ function omxbFoot(m){
     dis?(omWaitable(m)?omWaitNote(m):''):(myLeft!=null?`${myLeft}자리 남음`:'')}</span></div>
     ${dis?omWaitBtn(m,dis):`<button onclick="joinMatch(${+m.id})">신청하기</button>`}</div>`;
 }
+/* ── 11/14 오픈매치 참가자 정보 창 ──────────────────────────
+   매치 화면 얼굴 줄에서 다른 참가자를 누르면 아래에서 올라온다(매치 화면은 뒤에 그대로).
+   위쪽 이름 칸으로 창을 닫지 않고 다른 참가자로 넘어간다. 신청하기 전에는 이름 · 티어만, 나머지는 자리만(서버도 locked).
+   서버 GET /open-matches/:id/player/:uid — 같은 매치 사람만. 옛 서버(주소 없음)면 <불러오지 못했어요>만. */
+const PC5_CACHE={};
+let PC5=null;                                          // { mid, m, ids, cur, locked }
+const PC5_X='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const PC5_LOCK=w=>`<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
+function pc5Open(mid, uid){
+  const m=(window._PC5M||{})[mid]; if(!m||!uid) return;
+  const me=(state.serverUser||{}).id, hid=m.host&&m.host.id, isHost=!!(m.is_host||(hid&&hid===me));
+  const ids=(m.players||[]).map(p=>p.id).filter(id=>id&&id!==me&&id!==hid);
+  if(!ids.includes(uid)) ids.unshift(uid);
+  PC5={ mid:+mid, m, ids, cur:+uid, locked:!(isHost||m.joined) };
+  pc5Draw(); pc5Load(+uid);
+}
+function pc5Pick(uid){ if(!PC5) return; PC5.cur=+uid; pc5Draw(); pc5Load(+uid); const sh=document.querySelector('#pc5Ov .pc5sh'); if(sh) sh.scrollTop=0; }
+function pc5Key(e){ if(e.key==='Escape') pc5Close(); }
+function pc5Close(){ const ov=document.getElementById('pc5Ov'); if(ov) ov.remove(); document.removeEventListener('keydown', pc5Key); PC5=null; }
+function pc5Shell(){
+  let ov=document.getElementById('pc5Ov');
+  if(!ov){
+    ov=document.createElement('div'); ov.className='pc5ov'; ov.id='pc5Ov';
+    ov.innerHTML='<div class="pc5sh" role="dialog" aria-modal="true" aria-label="참가자 정보"></div>';
+    ov.addEventListener('click', e=>{ if(e.target===ov) pc5Close(); });
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', pc5Key);
+  }
+  return ov.querySelector('.pc5sh');
+}
+async function pc5Load(uid){
+  if(!PC5||PC5.locked) return;
+  const mid=PC5.mid, key=mid+':'+uid;
+  if(PC5_CACHE[key]&&PC5_CACHE[key].ok) return;
+  try{ PC5_CACHE[key]={ ok:true, d:await api(`/open-matches/${+mid}/player/${+uid}`) }; }
+  catch(e){ const t=String((e&&e.message)||''); PC5_CACHE[key]=e&&e.status===403&&/locked/.test(t)?{ locked:true }:{ err:true }; }
+  if(PC5&&PC5.mid===mid&&PC5.cur===uid) pc5Draw();
+}
+function pc5Tier(n){
+  const t=(typeof TIER8!=='undefined'?TIER8:[]).find(x=>x.n===n||x.k===n);
+  return t?`<span class="pc5chip" style="background:${t.c};color:${t.t}">${esc(t.n)}</span>`:(n?`<span class="pc5chip">${esc(n)}</span>`:'');
+}
+function pc5Career(ss){ try{ const ym=JSON.parse(ss||'{}')[state.sport||'tennis']; const t=ym?careerTextFrom(ym):null; return t?`구력 ${t}`:''; }catch(e){ return ''; } }
+function pc5When(v){
+  if(v==null||v==='') return '';
+  const d=new Date(/^\d+$/.test(String(v))?+v:String(v)); if(isNaN(d)) return '';
+  const z=n=>String(n).padStart(2,'0');
+  return `${d.getMonth()+1}월 ${d.getDate()}일 (${OMX_WD[d.getDay()]}) ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+/* 매너 점수 막대 — 내정보 페어플레이와 같은 구간(69점 이하 주의 · 70~84점 보통 · 85점 이상 믿고 만나요) */
+function pc5Zones(sc, has){
+  const Z=[[0,69,'주의'],[70,84,'보통'],[85,100,'믿고 만나요']], zi=!has?-1:sc<=69?0:sc<=84?1:2;
+  return `<div class="pc5zn">${Z.map((z,i)=>{ const on=i===zi, pos=on?Math.max(6,Math.min(94,Math.round((sc-z[0])/Math.max(1,z[1]-z[0])*100))):0;
+    return `<div class="${on?'on':''}"><i></i>${on?`<em style="left:${pos}%" aria-hidden="true"></em>`:''}<span>${z[2]}</span></div>`; }).join('')}</div>`;
+}
+function pc5JoinBtn(m){
+  const cap=omxCap(m), n=omxN(m);
+  const blocked=(typeof omSeatBlocked==='function'&&!(typeof isGuest==='function'&&isGuest()))?omSeatBlocked(m):'';
+  if(n>=cap||m.status!=='open'||blocked) return '';
+  return `<button type="button" class="pc5ok" onclick="pc5Close();joinMatch(${+m.id})">이 매치 신청하기</button>`;
+}
+function pc5Draw(){
+  if(!PC5) return;
+  const sh=pc5Shell(), m=PC5.m, me=(state.serverUser||{}).id;
+  const p=(m.players||[]).find(x=>x.id===PC5.cur)||{ id:PC5.cur, name:'' };
+  const c=PC5_CACHE[PC5.mid+':'+PC5.cur]||null, d=c&&c.ok?c.d:null;
+  const isHost=!!(m.is_host||(m.host&&m.host.id===me)), locked=PC5.locked||!!(c&&c.locked);
+  const name=(d&&d.name)||p.name||'', g=(d&&d.gender)||p.gender, tier=(d&&d.tier)||omxbTier(p.tier);
+  const first=!!(d&&+d.om_games===0);
+  const tabs=PC5.ids.length>1?`<div class="pc5tabs">${PC5.ids.map(id=>{ const q=(m.players||[]).find(x=>x.id===id)||{}, on=id===PC5.cur;
+    return `<button type="button" class="pc5tab${on?' on':''}"${on?' aria-current="true"':''} onclick="pc5Pick(${+id})"><i style="background:${omxbCol(q.name)}" aria-hidden="true">${esc(String(q.name||'?').slice(0,1))}</i><span>${esc(q.name||'')}</span></button>`; }).join('')}</div>`:'';
+  /* 11/14 1114c — 꼭 필요한 것만: <이번 매치 ○성 자리>(성별 칸과 겹침) · 설명 문장 · 숫자 밑 작은 글 · 반기는 칸 · 개인정보 안내는 뺐다 */
+  const sub=locked?'':pc5Career((d&&d.sport_started)||p.sport_started);
+  const chips=`${g==='M'||g==='F'?`<span class="pc5chip">${g==='F'?'여':'남'}</span>`:''}${pc5Tier(tier)}${first?'<span class="pc5chip nw">첫 오픈매치</span>':''}`;
+  let h=`<div class="hdl" aria-hidden="true"></div><div class="pc5hd"><h3>참가자 정보</h3><button type="button" class="pc5x" aria-label="닫기" onclick="pc5Close()">${PC5_X}</button></div>${tabs}
+    <div class="pc5id"><i aria-hidden="true" style="background:${omxbCol(name)}">${esc(String(name||'?').slice(0,1))}</i><div style="min-width:0"><div class="nm"><b>${esc(name)}</b>${chips}</div>${sub?`<div class="sb">${esc(sub)}</div>`:''}</div></div>`;
+  if(locked){
+    h+=`<div class="pc5fp"><div class="tp"><span>매너 점수</span>${PC5_LOCK(16)}</div><i class="pc5sk" aria-hidden="true"></i>${pc5Zones(0,false)}</div>
+      <div class="pc5st">${['오픈매치','MVP','나와 함께'].map(l=>`<div><div class="l">${l}</div><span class="lk">${PC5_LOCK(20)}</span></div>`).join('')}</div>
+      <div class="pc5lk"><b>신청하면 볼 수 있어요</b></div>
+      ${pc5JoinBtn(m)}<button type="button" class="pc5no" onclick="pc5Close()">닫기</button>`;
+  } else if(!c){
+    h+=`<div class="pc5ld">불러오는 중…</div>`;
+  } else if(!d){
+    h+=`<div class="pc5pv">${PC5_LOCK(16)}<span>매너 점수 · 오픈매치 기록을 지금은 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.</span></div>
+      <button type="button" class="pc5ok" onclick="pc5Close()">확인</button>`;
+  } else {
+    const fp=d.fairplay||{}, rv=+fp.reviews||0, sc=+fp.score, tg=+d.together||0, gm=+d.om_games||0, mv=+d.mvp||0;
+    h+=`<div class="pc5fp"><div class="tp"><span>매너 점수</span><em>후기 ${rv}개</em></div>
+      ${rv?`<b class="sc">${sc}점</b>`:'<b class="sc no">아직 후기 없음</b>'}
+      ${pc5Zones(sc, rv>0)}</div>
+    <div class="pc5st">
+      <div><div class="l">오픈매치</div><b>${gm?`${gm}번`:'처음'}</b></div>
+      <div><div class="l">MVP</div>${mv?`<b class="mv">${mv}번</b>`:'<b class="dim">—</b>'}</div>
+      <div><div class="l">나와 함께</div><b>${tg?`${tg}번`:'처음'}</b></div></div>`;
+    if(isHost&&d.joined_at&&pc5When(d.joined_at)) h+=`<div class="pc5row"><span class="k">신청한 때</span><b>${esc(pc5When(d.joined_at))}</b></div>`;
+    h+=`<button type="button" class="pc5ok" onclick="pc5Close()">확인</button>`;
+  }
+  sh.innerHTML=h;
+  /* 다시 그리면 이름 칸이 맨 앞으로 돌아간다 — 보고 있는 사람 칸이 보이게 옆으로 민다(좁은 폰) */
+  const tb=sh.querySelector('.pc5tabs'), on=tb&&tb.querySelector('.pc5tab.on');
+  if(on&&tb.scrollWidth>tb.clientWidth){ const r=on.offsetLeft+on.offsetWidth+22-tb.clientWidth; if(r>0) tb.scrollLeft=r; }
+}
 function omxGuest(m){
   const cap=omxCap(m), n=omxN(m), min=omxMin(m), q=m.hq||{}, vi=m.venue_info||null;
   const dead=['cancelled','noshow'].includes(m.status);
@@ -50187,9 +50321,7 @@ function omxGuest(m){
   let h=omxbHero(vi&&vi.photo, HERO_MATCH, inner, omxbTop(m,true));
   h+=`<div class="omxb-sheet">`+omxStateBanner(m);
   h+=`<div class="omxb-ph"><b>참가자 ${n} / ${cap}명</b>${dead?'':`<span>${need?`${need}명 더 오면 확정`:n>=cap?'정원이 다 찼어요':'확정됐어요'}</span>`}</div>`+omxbPeople(m);
-  /* 혼복 — 남녀 자리가 따로 있으면 몇 자리 찼는지 (내 성별 자리가 남았는지가 먼저 궁금하다) */
-  const cp=m.caps||{}, fl=m.fill||{};
-  if((m.disc||'mixed')==='mixed'&&cp.m!=null) h+=`<div class="omxb-gs"><span>남자 자리 <b>${fl.m||0}/${cp.m}</b></span><span>여자 자리 <b>${fl.f||0}/${cp.f||0}</b></span></div>`;
+  /* 혼복 남녀 자리 줄은 뺐다(11/15) — 내 성별의 남은 자리는 아래 고정 줄(<N자리 남음>)이 말한다 */
   /* 정보 줄 */
   const share=q.share_pp||0, prog=Math.max(0,(m.price_base||m.price||0)-share);
   const cl=Date.parse(String(m.close_at||'').slice(0,16)+':00+09:00');
@@ -50545,7 +50677,8 @@ function omh7Faces(m){
   const cap=omxCap(m), me=(state.serverUser||{}).id, hid=(m.host&&m.host.id)||me;
   const ps=(m.players||[]).filter(p=>p.id!==hid);
   let h=`<div class="p">${omxbHostFace('나', m.host&&m.host.photo)}<b>호스트</b></div>`;
-  ps.slice(0,cap-1).forEach(p=>{ h+=`<div class="p"><i class="omxb-av" style="background:${omxbCol(p.name)}">${esc(String(p.name||'?').slice(0,1))}</i><b>${esc(omyShort(p.name||''))}</b></div>`; });
+  (window._PC5M=window._PC5M||{})[m.id]=m;                                  // 11/14 참가자 정보 창이 이 매치를 찾는다
+  ps.slice(0,cap-1).forEach(p=>{ h+=`<button type="button" class="p" onclick="pc5Open(${+m.id},${+p.id})" aria-label="${esc(p.name||'')} — 참가자 정보 보기"><i class="omxb-av" style="background:${omxbCol(p.name)}">${esc(String(p.name||'?').slice(0,1))}</i><b>${esc(omyShort(p.name||''))}</b></button>`; });
   const n=Math.min(cap, 1+ps.length);
   for(let i=n;i<cap;i++) h+=`<div class="p e"><i class="omxb-av">+</i><b>빈자리</b></div>`;
   return `<div class="omxb-ppl omh-ppl">${h}</div>`;
@@ -51451,7 +51584,7 @@ async function openMyPays(f){
   drawMyPays();
 }
 const OMP_RF={match_refund:'취소 환불', om_host_cancel_refund:'호스트 취소 환불', om_host_noshow_refund:'호스트 미참석 환불',
-  om_cancel_refund:'인원 미달 환불', om_price_refund:'참가비 차액 환불', match_auto_cancel_refund:'매치 취소 환불', join_failed:'자리 마감 · 결제 취소'};
+  om_cancel_refund:'인원 미달 환불', om_price_refund:'참가비 차액 환불', match_auto_cancel_refund:'매치 취소 환불', join_failed:'자리 마감 · 결제 취소', test_cancel:'시험 결제 취소'};
 const OMP_ST={joined:['참가 중','or'], left:['취소함',''], cancelled:['취소함',''], match_cancelled:['매치 취소',''], done:['경기 끝','']};
 function drawMyPays(){
   const v=MYPAYS||{pays:[],refunds:[],month:{}}, F=MYPAYS_F, mo=new Date().getMonth()+1;
@@ -57100,6 +57233,7 @@ function go(v, isBack){
   saveMatsu();
 }
 function closeOv(){
+  try{ if(document.getElementById('pc5Ov')) pc5Close(); }catch(e){}       // 11/14 참가자 정보 창도 같이
   try{ wakeOff(); }catch(e){}
   /* 시트를 닫으면 점수 시트 표시를 지운다 — 안 지우면 시계가 화면을 영영 다시 안 그린다 */
   if(typeof SC_OPEN!=='undefined') SC_OPEN=false;
@@ -57558,6 +57692,7 @@ try{ history.replaceState({matsu:1},''); history.pushState({matsu:1},''); }catch
 /* 맨 위에 떠 있는 한 겹을 닫는다 — 쓸어서 뒤로 · 상단 ‹ · 안드로이드 뒤로가 모두 이 순서를 따른다.
    예전엔 모임 화면 · 교류전 · 제안 · 소식 쓰기 같은 새 화면을 몰라서 쓸면 탭 밖(홈)으로 튕겼다. */
 function closeTopLayer(){
+  if(document.getElementById('pc5Ov')){ pc5Close(); return true; }       // 11/14 참가자 정보 창
   if(phvIsOpen()){ phvClose(); return true; }
   const g=document.getElementById('guestOv');
   if(g && g.classList.contains('on')){ try{ glClose(); }catch(e){ g.classList.remove('on'); } return true; }
@@ -58189,7 +58324,7 @@ function pcSched() {
       <label for="pcMemo">한마디 · 모임 댓글로 남아요</label>
       <input class="pcin" id="pcMemo" maxlength="80" placeholder="${st === 'absent' ? '예) 이번 주는 출장이에요' : '예) 30분 늦어요'}" value="${esc(memo)}" oninput="pcMemo('${sel.id}',this.value)">
       <button class="pcbtn" onclick="pcRsvSave('${sel.id}')">저장</button>`}
-      ${!past && typeof cb2CanEdit === 'function' && cb2CanEdit() ? `<button class="pclink" onclick="pcBuild('${sel.id}')">이 모임 대진 짜기</button>` : ''}
+      ${!past && typeof cb2CanEdit === 'function' && cb2CanEdit() ? `<button class="pclink" onclick="pcBuildEv('${sel.id}')">이 모임 대진 짜기</button>` : ''}
       ${who.length ? `<div class="who">${who.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}</div>`;
   }
   return { main, side };
@@ -58226,7 +58361,7 @@ async function pcRsvSave(id) {
     renderClub();
   } catch (e) { toast('저장하지 못했어요'); }
 }
-function pcBuild(id) { try { CB2_EVENT = +id || 0; window._bracketEventPicked = true; } catch (e) {} openClubBracketBuild(); }
+function pcBuildEv(id) { try { CB2_EVENT = +id || 0; window._bracketEventPicked = true; } catch (e) {} openClubBracketBuild(); }   // 11/15 — 예전 이름 pcBuild 는 PC 대진 짜기 그리기 함수와 겹쳐 덮였다
 
 /* ── 랭킹 ── 시즌 랭킹 표(평균 점수 · 승 · 참석 | 연간 · 상반기 · 하반기) | 내 기록 · 시즌 칭호
    공개 범위는 앱과 같다 — 회원은 상위 30%까지(내 순위는 오른쪽 내 기록에서 나만), 운영진은 전체 */
