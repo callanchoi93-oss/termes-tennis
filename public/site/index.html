@@ -691,7 +691,8 @@ async function foot(){
     if(o.mailorder) L.push(['통신판매업 신고',o.mailorder]); if(o.tel) L.push(['고객센터',o.tel]); if(o.email) L.push(['이메일',o.email]);
     const co=(L.find(x=>x[0]==='상호')||[])[1]||'맞수';
     $('#biz').innerHTML=`<dl class="bizl">${L.map(([k,v])=>`<div>${k?`<dt>${esc(k)}</dt>`:''}<dd>${esc(v)}</dd></div>`).join('')}</dl>
-      <p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p><p class="copy">© ${new Date().getFullYear()} ${esc(co)}</p>`;
+      ${c.om_pay_live?'<p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p>'
+        :'<p class="sell"><b>맞수</b><span>모집 · 대진을 돕는 무료 서비스예요. 오픈매치 참가비는 매치를 연 호스트에게 직접 보내요.</span></p>'}<p class="copy">© ${new Date().getFullYear()} ${esc(co)}</p>`;   /* 11/15 — 카드 결제를 꺼 두면 직접 송금(서버 siteFoot 과 같은 글) */
     if(!CFG.email&&o.email) CFG.email=o.email; if(c.ios_app_url) CFG.ios=c.ios_app_url; if(c.android_app_url) CFG.android=c.android_app_url; fixStore();
   }catch(e){}
   $('#mailLink').href=`mailto:${CFG.email||''}?subject=${encodeURIComponent('[맞수] 문의')}`;

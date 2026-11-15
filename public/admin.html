@@ -4679,11 +4679,13 @@ function pgCardHTML(G){
   /* ③ 결제창 — 스위치와 키가 있는지만 */
   const KN=Y.pg==='portone'?{store:'PORTONE_STORE_ID',channel:'PORTONE_CHANNEL_KEY',secret:'PORTONE_API_SECRET'}:{client:'TOSS_CLIENT_KEY',secret:'TOSS_SECRET_KEY'};
   const kmiss=Object.keys(KN).filter(k=>!(Y.keys||{})[k]).map(k=>env(KN[k]));
-  const y1=Y.test?`${no('테스트')} 포트원 테스트 채널로 결제창이 떠요 — 결제하면 맞수가 바로 전액 취소해요. 카드사 심사 전에 실연동 채널로 바꾸고 ${env('PORTONE_TEST')} 를 지워요`
-    :Y.pg!=='portone'?`${no()} 지금은 토스 결제창 설정이에요 — 나이스 심사에는 ${env('PAY_PG=portone')} 과 나이스 채널 키가 필요해요`
-    :Y.live?`${ok} 결제하기를 누르면 결제창이 떠요 · 포트원 ${esc((Y.methods||[]).join(' · '))}`
-    :kmiss.length?`${no()} 키가 비어 있어요 — ${kmiss.join(' · ')}`
-    :`${no('꺼짐')} 키는 들어 있어요 — 마지막에 ${env('OM_PAY_LIVE=1')} 을 켜면 결제창이 떠요`;
+  /* 11/15 — 시험 채널 표시는 결제창이 실제로 뜰 때(live)만. 예전엔 PORTONE_TEST=1 이면 스위치 · 키가 빠져 있어도 <결제창이 떠요>라고 했다 */
+  const y1=Y.pg!=='portone'?`${no()} 지금은 토스 결제창 설정이에요 — 나이스 심사에는 ${env('PAY_PG=portone')} 과 나이스 채널 키가 필요해요`
+    :!Y.live?(kmiss.length?`${no()} 키가 비어 있어요 — ${kmiss.join(' · ')}`
+      :`${no('꺼짐')} 키는 들어 있어요 — 마지막에 ${env('OM_PAY_LIVE=1')} 을 켜면 결제창이 떠요`)
+      +(Y.test?sub(`시험 모드(${env('PORTONE_TEST=1')})는 켜져 있어요 — 결제창이 뜨면 결제는 바로 전액 취소돼요`):'')
+    :Y.test?`${no('테스트')} 포트원 테스트 채널로 결제창이 떠요 — 결제하면 맞수가 바로 전액 취소해요. 카드사 심사 전에 실연동 채널로 바꾸고 ${env('PORTONE_TEST')} 를 지워요`
+    :`${ok} 결제하기를 누르면 결제창이 떠요 · 포트원 ${esc((Y.methods||[]).join(' · '))}`;
   const y2=Y.pg==='portone'&&Y.live&&!(Y.keys||{}).hook?sub(`웹훅 시크릿(${env('PORTONE_WEBHOOK_SECRET')})이 비어 있어요 — 결제창을 닫고 나간 결제를 놓칠 수 있어요`):'';
   /* ④ 심사자가 보는 화면에 걸릴 만한 말 */
   const WT={league:()=>`홈페이지 &lt;맞수 리그&gt; 칸에 &lt;준비 중 · TBD&gt;가 보여요 — ${env('SITE_LEAGUE=off')} 로 숨겨요`,
