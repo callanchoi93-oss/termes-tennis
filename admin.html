@@ -461,27 +461,8 @@ body.noscroll{ overflow:hidden }
 .h3c span{ display:block;font-size:12.5px;color:var(--lgray);margin-top:2px }
 .h3c.sm{ background:#faf8f4;border-radius:14px;margin:4px 0 10px;padding:12px 0 10px }
 .h3c.sm b{ font-size:22px }
-/* 2주 가입 막대 — 한 계열이라 범례 없음, 제목이 말한다. 칸 사이 2px, 위 끝만 둥글게 */
-.spk{ margin-top:14px;padding-top:12px;border-top:1px solid #f2efe8 }
-.spk .sh{ display:flex;align-items:baseline;font-size:12.5px;color:var(--gray) }
-.spk .sh b{ margin-left:auto;font-size:13px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums }
-.spk .bars{ display:flex;align-items:flex-end;gap:2px;height:46px;margin-top:8px;border-bottom:1px solid #ebe7df }
-.spk .bars i{ flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;cursor:pointer }
-.spk .bars s{ display:block;width:100%;max-width:24px;background:#eb6834;border-radius:4px 4px 0 0;text-decoration:none;min-height:0 }
-.spk .bars i:hover s,.spk .bars i.on s{ background:#c84f1f }
-.spk .ax{ display:flex;justify-content:space-between;font-size:11px;color:var(--lgray);margin-top:4px }
 .tot{ display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid #f2efe8;font-size:13px;color:var(--gray) }
 .tot b{ color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums }
-/* 미터 — 이번 달 모임을 연 클럽 */
-.meter{ padding:14px 16px 4px }
-.meter .mh{ display:flex;align-items:baseline;font-size:13.5px;color:var(--gray) }
-.meter .mh b{ margin-left:auto;font-size:20px;font-weight:750;color:var(--ink);letter-spacing:-.03em }
-.meter .mh b i{ font-style:normal;font-size:13px;font-weight:600;color:var(--lgray) }
-.meter .mt{ height:8px;border-radius:5px;background:#fbe3d6;margin-top:8px;overflow:hidden }
-.meter .mt s{ display:block;height:100%;background:#eb6834;border-radius:5px;text-decoration:none }
-.mfoot{ display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 16px 14px;font-size:13px;color:var(--gray) }
-.mfoot b{ color:var(--ink);font-weight:700 }
-.mfoot u{ margin-left:auto;text-decoration:none;color:#cf5418;font-weight:650 }
 /* 몫 막대 + 범례 */
 .shr{ display:flex;gap:2px;height:12px;margin:6px 0 12px }
 .shr s{ display:block;text-decoration:none;min-width:4px }
@@ -1049,6 +1030,8 @@ body{background:var(--bg2)}
 .acrow > b.y{color:var(--yel)} .acrow > b.r{color:var(--red2)}
 .mono2{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;letter-spacing:0}
 .pgsub{display:block;font-size:13px;color:var(--mut);margin-top:4px;line-height:1.5;font-weight:400}
+/* 11/13 문의함 — 좁은 화면은 결제 · 언제 칸을 빼고 내용을 짧게(자세히 판넬에 다 있다) */
+@media (max-width:1000px){ .iqtb .iqp,.iqtb .iqw{display:none} .iqtb td .t span{max-width:190px!important} .iqtb td{padding:12px 10px} }
 </style></head><body>
 <div class="wrap" id="app"></div>
 <div class="ov" id="ov" onclick="if(event.target===this)closeU()"><div class="sheet" id="sheet"></div></div>
@@ -1121,7 +1104,7 @@ const ago=t=>{
 const NAV=[
   ['오늘',       [['stats','현황']]],
   ['지켜보기',   [['errors','오류'],['bq','대진품질']]],
-  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['hosts','호스트 매치'],['hostpay','호스트 정산'],['venues','구장']]],
+  ['사람과 클럽',[['users','회원'],['clubs','클럽'],['posts','글 관리'],['notify','공지'],['reports','신고'],['inq','문의'],['hosts','호스트 매치'],['hostpay','호스트 정산'],['venues','구장']]],
   ['설정',       [['banners','배너'],['maint','점검'],['staff','계정']]],
   ['더 보기',    [['grades','등급이동'],['log','작업 기록'],['xctest','교류전'],
                  ['cup','MATSU CUP'],['export','내려받기']]],
@@ -1157,29 +1140,6 @@ const ICO={
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
 };
 const ico=(k,s)=>`<svg width="${s||22}" height="${s||22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k]||''}</svg>`;
-function shell(inner){
-  const item=([k,l])=>`<a class="${TAB===k?'on':''}" onclick="go('${k}')">${l}${
-        BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`;
-  const nav=NAV.map(([g,items])=>{
-    if(g==='더 보기'){
-      const open = NAV_MORE || items.some(x=>x[0]===TAB);
-      return `<div class="g gmore" onclick="navMore()">${g} <i>${open?'▾':'▸'}</i></div>`
-        + (open ? items.map(item).join('') : '');
-    }
-    return `<div class="g">${g}</div>` + items.map(item).join('');
-  }).join('') + (HIDDEN[TAB] ? `<div class="g">숨긴 탭</div>${item([TAB,HIDDEN[TAB]])}` : '');
-  /* 아래 탭바 — 넷은 바로 가고, 나머지는 <메뉴> 시트에서. 메뉴 숫자는 탭바에 없는 곳의 급한 일 합계 */
-  const inBar=TABBAR.some(x=>x[0]===TAB);
-  const restBadge=Object.keys(BADGE).filter(k=>!TABBAR.some(x=>x[0]===k)).reduce((a,k)=>a+(+BADGE[k]||0),0);
-  const bar=`<nav class="tabbar" aria-label="관리자 메뉴">${TABBAR.map(([k,l,ic])=>
-      `<a class="${TAB===k?'on':''}" onclick="go('${k}')">${ico(ic,23)}<span>${l}</span>${BADGE[k]?`<em>${BADGE[k]}</em>`:''}</a>`).join('')}
-    <a class="${inBar?'':'on'}" onclick="openMenu()">${ico('grid',23)}<span>${inBar?'메뉴':esc(tabLabel(TAB))}</span>${restBadge?`<em>${restBadge}</em>`:''}</a></nav>`;
-  return `<div class="nav">${nav}</div><div class="main">
-    <div class="hd"><h1>${esc(tabLabel(TAB))}</h1>
-      ${gsearchBox()}
-      <span class="who">${esc(key().slice(0,4))}···</span>
-      <button class="ib" onclick="openSearch()" aria-label="찾기">${ico('search',21)}</button></div>${inner}</div>${bar}`;
-}
 /* 메뉴 시트 — 모든 화면을 무리 지어 한 장에. 숨긴 탭은 빼고, 지금 화면은 칠한다 */
 function openMenu(){
   const row=([k,l])=>`<a class="${TAB===k?'on':''}" onclick="closeU();go('${k}')"><span>${l}</span>${
@@ -1282,10 +1242,6 @@ async function render(){
   /* 위에 붙는 머리 높이 — 회원 목록의 거르기 줄이 그 바로 아래에 붙는다 */
   try{ const h=document.querySelector('.main > .hd'); if(h) document.documentElement.style.setProperty('--hdh', h.offsetHeight+'px'); }catch(e){}
 }
-async function saveKey(){ const v=($('k')||{}).value||''; if(!v) return;
-  localStorage.setItem('matsu_admin_key', v.trim());
-  try{ await api('/admin/stats'); toast('접속했어요'); render(); }
-  catch(e){ localStorage.removeItem('matsu_admin_key'); toast('열쇠가 맞지 않아요'); render(); } }
 
 async function draw(){
   if(TAB==='stats')   return drawStats();
@@ -1297,6 +1253,7 @@ async function draw(){
   if(TAB==='matches') return drawMatches();
   if(TAB==='venues')  return drawVenues();
   if(TAB==='reports') return drawReports();
+  if(TAB==='inq')     return drawInq();
   if(TAB==='posts')   return drawPosts();
   if(TAB==='payouts') return drawPayouts();
   if(TAB==='hosts')   return drawHostMatches();
@@ -1351,98 +1308,14 @@ async function drawDead(){
    되돌리기는 <되돌릴 값을 미리 적어 둔> 것만 할 수 있다 —
    임의로 되돌리는 건 되돌리기가 아니라 뒷문이다. */
 let LOG_DAYS=14;
-async function drawLog(){
-  const rows=await api('/admin/log?days='+LOG_DAYS);
-  const when=t=>{ const m=Math.floor((Date.now()-t)/60000);
-    if(m<1) return '방금'; if(m<60) return m+'분 전';
-    if(m<1440) return Math.floor(m/60)+'시간 전'; return Math.floor(m/1440)+'일 전'; };
-  const days=[1,7,14,90].map(x=>`<span class="${LOG_DAYS===x?'on':''}"
-    onclick="LOG_DAYS=${x};render()">${x}일</span>`).join('');
-  const say=r=>{
-    const d=r.detail||{};
-    if(r.action==='성별 바꿈') return `${esc(d.name||'#'+r.target_id)} · ${
-      esc(d.from||'없음')} → ${esc(d.to||'없음')}`;
-    if(r.action==='공지 보냄') return `${esc(d.title||'')} · ${fmt(d.n||0)}명`;
-    if(r.action==='내려받음') return `${fmt(d.rows||0)}줄`;
-    if(r.action==='성별 일괄 채움') return `${fmt(d.count||0)}명`;
-    return Object.entries(d).map(([k,v])=>`${k} ${v}`).join(' · ');
-  };
-  $('app').innerHTML=shell(`
-    <div class="more">${days}</div>
-    <div class="card">${rows.length?rows.map(r=>`
-      <div class="rw"><div class="nm">
-        <b>${esc(r.action)}${r.undone?'<span class="tag">되돌림</span>':''}</b>
-        <span>${say(r)}</span>
-        <span class="rt">${esc(r.who)} · ${when(r.at)}</span></div>
-      ${r.canUndo?`<button class="b" onclick="undoLog(${r.id})">되돌리기</button>`:''}</div>`).join('')
-      :`<div class="empty">이 기간에 한 일이 없어요</div>`}</div>
-    <div class="note">되돌리기는 <b>한 명씩 바꾼 것</b>만 됩니다.
-      한 번에 여럿을 바꾼 일(성별 일괄 채움)은 되돌릴 값이 사람마다 달라
-      한 줄로 담으면 어긋나요 — 기록만 남깁니다.</div>`);
-}
 async function undoLog(id){
   if(!confirm('이 작업을 되돌릴까요?')) return;
   try{ await api('/admin/log/'+id+'/undo',{method:'POST'}); toast('되돌렸어요'); render(); }
   catch(e){ toast('되돌리지 못했어요'); }
 }
 
-/* ── 내려받기 ── 세무·정산 정리는 결국 표로 한다 */
-function drawExport(){
-  const item=(k,t,s)=>`<div class="rw"><div class="nm"><b>${t}</b><span>${s}</span></div>
-    <button class="b" onclick="dl('${k}')">CSV</button></div>`;
-  $('app').innerHTML=shell(`
-    <div class="card">
-      ${item('users','회원 명단','이름 · 이메일 · 성별 · 클럽 · 가입일 · 마지막 접속 · 지역')}
-      ${item('clubs','클럽 목록','이름 · 종목 · 지역 · 회원 수')}
-      ${item('payouts','정산 내역','정산 표 전체')}
-    </div>
-    <div class="note">엑셀에서 한글이 안 깨지게 저장돼요.
-      내려받은 기록은 <b>작업 기록</b>에 남습니다.</div>`);
-}
-function dl(what){
-  /* 파일 내려받기는 헤더를 실어야 해서 fetch 로 받아 그 자리에서 저장한다 */
-  fetch('/admin/export/' + what, { headers:{ 'x-admin-key': key() } })
-    .then(r=>{ if(!r.ok) throw 0; return r.blob(); })
-    .then(b=>{ const u=URL.createObjectURL(b), a=document.createElement('a');
-      a.href=u; a.download=`matsu-${what}.csv`; a.click(); URL.revokeObjectURL(u);
-      toast('내려받았어요'); })
-    .catch(()=>toast('내려받지 못했어요'));
-}
-
 /* ── 점검 모드 ────────────────────────────────────────────────────
    배포하는 몇 초 사이에 들어온 사람은 깨진 화면을 본다. */
-async function drawMaint(){
-  const m=await api('/admin/maint');
-  const left = m.until ? Math.max(0, Math.round((m.until-Date.now())/60000)) : 0;
-  $('app').innerHTML=shell(`
-    <div class="card">
-      <div class="ct">${m.on?'점검 중이에요':'평소대로 돌고 있어요'}</div>
-      ${m.on?`<div class="warn"><b>${esc(m.msg||'잠시 점검 중이에요')}</b>${
-        left?` · 약 ${left}분 남음`:''}</div>`:''}
-      <div class="fld"><label>회원에게 보일 문구</label>
-        <input id="mm" maxlength="120" value="${esc(m.msg||'')}"
-          placeholder="잠시 점검 중이에요 · 곧 돌아올게요"></div>
-      <div class="fld"><label>몇 분 동안 (비우면 끌 때까지)</label>
-        <input id="mn" type="number" min="1" max="180" placeholder="15"></div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="b ${m.on?'':'on'}" style="flex:1;padding:12px"
-          onclick="setMaint(1)">점검 켜기</button>
-        <button class="b ${m.on?'on':''}" style="flex:1;padding:12px"
-          onclick="setMaint(0)">끄기</button>
-      </div>
-    </div>
-    <div class="note">앱이 이미 부르고 있는 <code>/config</code> 에 실어 보내요 —
-      새 요청이 늘지 않습니다. <b>관리자 화면은 점검 중에도 열립니다</b>
-      (끄러 들어와야 하니까요).</div>`);
-}
-async function setMaint(on){
-  const msg=($('mm')||{}).value||'', minutes=+(($('mn')||{}).value||0);
-  if(on && !confirm('점검 모드를 켤까요?\n회원들에게 띠가 보입니다.')) return;
-  try{ await api('/admin/maint',{method:'POST',
-    body:JSON.stringify({on:!!on, msg, minutes})});
-    toast(on?'점검을 켰어요':'점검을 껐어요'); render(); }
-  catch(e){ toast('바꾸지 못했어요'); }
-}
 
 /* ── 앱 오류 ──────────────────────────────────────────────────────
    묶어서 보는 것이 전부다. <몇 명에게 났나>가 <몇 번 났나>보다 먼저다 —
@@ -1508,59 +1381,6 @@ let NT_TO='dormant', NT_N=null;
 /* 공지 보내기 — 받을 사람 수를 버튼 바로 옆에 크게. <옛 버전 앱>을 고르면 기기별 수와 최신 버전을 보여주고
    제목 · 내용을 업데이트 안내로 채워 둔다(비어 있을 때만). */
 let NT_INFO=null;
-async function drawNotify(){
-  const T=[['all','전체'],['active','최근 30일 접속'],['dormant','30일 이상 잠듦'],
-           ['ghost','가입 후 미접속'],['oldv','옛 버전 앱']];
-  const chips=T.map(([k,l])=>`<span class="${NT_TO===k?'on':''}"
-    onclick="NT_TO='${k}';NT_N=null;render()">${l}</span>`).join('');
-  if(NT_N===null){ try{ NT_INFO=await api('/admin/notify/count?to='+NT_TO); NT_N=NT_INFO.n; }catch(e){ NT_N=0; NT_INFO=null; } }
-  const old=NT_TO==='oldv';
-  const LT=(NT_INFO&&NT_INFO.latest)||{}, BY=(NT_INFO&&NT_INFO.by)||{};
-  const latestTx=Object.keys(LT).map(p=>`${platNm(p)} ${esc(LT[p])}`).join(' · ');
-  const verOne=[...new Set(Object.values(LT))];
-  const upBody=verOne.length===1
-    ? `App Store · Play 스토어에서 맞수를 최신 버전(${verOne[0]})으로 업데이트해 주세요 · 대진과 맞수컵이 더 좋아졌어요`
-    : 'App Store · Play 스토어에서 맞수를 최신 버전으로 업데이트해 주세요';
-  $('app').innerHTML=shell(`
-    <div class="card"><div class="ct">누구에게</div>
-      <div class="more" id="ntchips">${chips}</div>
-      <div class="kpi3" style="margin-top:12px">
-        <div><b class="${NT_N>200?'warn':''}">${fmt(NT_N)}</b><i>받을 사람</i></div>
-      </div>
-      ${old?`<div class="ntold">${Object.keys(BY).length?Object.keys(BY).map(p=>`<span>${platNm(p)} <b>${fmt(BY[p])}명</b></span>`).join(''):''}
-        ${latestTx?`<em>지금 가장 새 버전 · ${latestTx}</em>`:''}</div>
-        <div class="note">앱을 쓰면서 최신이 아닌 회원이에요(버전을 안 알려주는 옛 앱 포함) · 웹으로만 들어오는 회원은 빠져요.</div>`:''}
-      ${NT_TO==='all'?`<div class="note">전체 발송은 되돌릴 수 없어요 ·
-        정말 모두에게 가야 하는 내용인지 한 번 더 봐주세요.</div>`:''}
-    </div>
-    <div class="card"><div class="ct">무엇을</div>
-      <div class="fld"><label>제목</label>
-        <input id="nt" maxlength="60" placeholder="새 버전이 나왔어요" value="${old?'새 버전이 나왔어요':''}"></div>
-      <div class="fld"><label>내용</label>
-        <textarea id="nb" maxlength="200" rows="3" placeholder="대진이 더 공정해졌어요 · 업데이트해 주세요">${old?esc(upBody):''}</textarea></div>
-      <div class="frow">
-        <div class="fld"><label>아이콘</label>
-          <input id="ni" maxlength="4" value="${old?'⬆️':'📢'}"></div>
-        <div class="fld"><label>누르면 갈 곳 (비워도 돼요)</label>
-          <input id="nl" placeholder="home"></div>
-      </div>
-      <button class="b on" style="width:100%;padding:14px;margin-top:8px;font-size:var(--t2)"
-        onclick="sendNotice()" ${NT_N?'':'disabled'}>${NT_N?`${fmt(NT_N)}명에게 보내기`:'받을 사람이 없어요'}</button>
-      <div class="note">알림함에 남고 폰 알림도 함께 갑니다.${old?' 옛 앱은 알림을 눌러도 스토어로 바로 가지 않아요 — 내용에 <b>어디서 업데이트하는지</b>를 꼭 적어 주세요.':''}</div>
-    </div>`);
-  const on=document.querySelector('#ntchips span.on'); if(on) on.parentNode.scrollLeft=Math.max(0, on.offsetLeft-on.parentNode.offsetLeft-24);
-}
-async function sendNotice(){
-  const title=($('nt')||{}).value||'', body=($('nb')||{}).value||'';
-  if(!title.trim()) return toast('제목을 넣어주세요');
-  if(!confirm(`${fmt(NT_N)}명에게 보냅니다.\n\n${title}\n${body}`)) return;
-  try{
-    const r=await api('/admin/notify',{method:'POST',body:JSON.stringify({
-      to:NT_TO, title, body, icon:($('ni')||{}).value||'📢', link:($('nl')||{}).value||null })});
-    toast(`${fmt(r.sent)}명에게 보냈어요`);
-    $('nt').value=''; $('nb').value='';
-  }catch(e){ toast('보내지 못했어요'); }
-}
 
 /* ── 서버 상태 ── Railway 는 디스크가 차면 조용히 죽는다 */
 async function drawHealth(){
@@ -1723,123 +1543,6 @@ async function drawRegions(){
 /* ── 현황 ── 여는 이유는 대개 할 일을 찾기 위해서다. 맨 위에 <손볼 것>,
    그다음 <지금 쓰는 사람>(오늘 · 이번 주 · 이번 달 + 2주 가입 막대), <챙길 사람>(누르면 공지),
    <클럽이 돌아가나>, 기기 · 가입 경로, 알림 상태 순. */
-async function drawStats(){
-  /* 알림이 안 올 때 <키·토큰·발송> 중 어디가 문제인지 여기서 바로 본다. */
-  const [s, users, reps, push, sess] = await Promise.all([
-    api('/admin/stats'), api('/admin/users').catch(()=>[]), api('/admin/reports').catch(()=>[]),
-    api('/admin/push-status').catch(()=>null), api('/admin/session-health').catch(()=>null)
-  ]);
-  const noG=users.filter(u=>!gLabel(u.gender)).length;
-  const todo=[];
-  /* 로그인 만료 — 서버가 시크릿을 바꿨으면 전 회원이 풀린다 */
-  if(sess && sess.jwt_changed_at && Date.now()-sess.jwt_changed_at < 7*864e5)
-    todo.push(['서버 시크릿이 바뀌었어요','그 시점 이후 모든 회원이 다시 로그인해야 해요 · Railway 변수 JWT_SECRET 확인',
-      new Date(sess.jwt_changed_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}), `go('health')`,'red']);
-  if(sess && sess.expired>0)
-    todo.push(['로그인이 풀린 회원','30일 넘게 안 열어서 다음에 다시 로그인해야 해요 · 공지로 부를 수 있어요',`${sess.expired}명`,`USEEN='old';go('users')`,'gold']);
-  if(noG) todo.push(['성별이 빈 회원','대진에서 남복 · 혼복이 잘못 잡혀요',`${noG}명`,`USEEN='nog';go('users')`,'gold']);
-  /* 옛 버전 앱 — 새 기능(맞수컵 · 대진)이 안 보이는 회원. 누르면 그분들에게만 업데이트 안내 */
-  { const LV=latestVers(users); const ov=users.filter(u=>{ const a=appOf(u, LV); return a && a.old; }).length;
-    if(ov) todo.push(['옛 버전 앱을 쓰는 회원','새 기능이 안 보여요 · 누르면 업데이트 안내를 그분들에게만 보내요',`${ov}명`,`NT_TO='oldv';NT_N=null;go('notify')`,'gold']); }
-  if(reps.length) todo.push(['처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,`go('reports')`,'red']);
-  /* 여러 사람에게 나는 오류는 신고보다 먼저 — 제보가 오기 전에 알아야 하니까 */
-  try{ const er=await api('/admin/errors?days=3');
-    const many=(er.groups||[]).filter(g=>g.people>=3 && g.kind!=='net' && g.kind!=='timeout').length;
-    if(many) todo.unshift(['여러 사람에게 나는 오류','한 명만 겪는 게 아니면 코드 문제예요',`${many}종류`,`go('errors')`,'red']);
-  }catch(e){}
-
-  const todoBlock = todo.length ? `
-    <div class="sec"><b>손볼 것</b><em class="hot">${todo.length}</em></div>
-    <div class="card list">${todo.map(([t,d,n,act,tone])=>
-      `<a class="trow" onclick="${act}"><i class="dot ${tone}"></i>
-        <span class="t"><b>${t}</b><span>${d}</span></span><em>${n}</em>${ico('chev',16)}</a>`).join('')}</div>`
-    : `<div class="card calm"><b>지금 손볼 것이 없어요</b><span>조용한 게 좋은 겁니다</span></div>`;
-
-  /* ── 지금 쓰는 사람 — 총계보다 <오늘 · 이번 주 · 이번 달>이 진짜 지표다 ── */
-  const SU=(s.signups||[]);
-  const dayN={}; SU.forEach(x=>{ dayN[x.d]=x.n; });
-  const today=Math.floor(Date.now()/864e5);
-  const days=Array.from({length:14},(_,i)=>{ const d=today-13+i; return { d, n:dayN[d]||0 }; });
-  const sum14=days.reduce((a,x)=>a+x.n,0), max14=Math.max(1,...days.map(x=>x.n));
-  const md=d=>{ const t=new Date(d*864e5); return `${t.getMonth()+1}.${t.getDate()}`; };
-  const bars = SU.length ? `<div class="spk">
-      <div class="sh"><span>최근 2주 가입</span><b id="spkv">${fmt(sum14)}명</b></div>
-      <div class="bars" onmouseleave="spkTip()">${days.map(x=>`<i data-t="${md(x.d)} · ${x.n}명" onmouseenter="spkTip(this)" onclick="spkTip(this)"
-        ><s style="height:${x.n?Math.max(10,Math.round(x.n/max14*100)):0}%"></s></i>`).join('')}</div>
-      <div class="ax"><span>${md(days[0].d)}</span><span>오늘</span></div></div>` : '';
-  const live = s.dau==null ? '' : `
-    <div class="sec"><b>지금 쓰는 사람</b></div>
-    <div class="card">
-      <div class="h3c">
-        <div><b>${fmt(s.dau)}</b><span>오늘</span></div>
-        <div><b>${fmt(s.wau)}</b><span>이번 주</span></div>
-        <div><b>${fmt(s.mau)}</b><span>이번 달</span></div></div>
-      ${bars}
-      <div class="tot"><span>회원 <b>${fmt(s.users)}</b></span><span>클럽 <b>${fmt(s.clubs)}</b></span><span>오픈매치 <b>${fmt(s.open_matches!=null?s.open_matches:s.matches)}</b></span></div>
-    </div>
-    <div class="sec"><b>챙길 사람</b><span>누르면 그분들에게 보낼 공지가 열려요</span></div>
-    <div class="card list">
-      <a class="trow" onclick="NT_TO='ghost';NT_N=null;go('notify')"><span class="t"><b>가입하고 한 번도 안 들어옴</b>
-        <span>많으면 첫 화면에서 막히는 거예요</span></span><em class="${s.ghost?'hot':''}">${fmt(s.ghost)}명</em>${ico('chev',16)}</a>
-      <a class="trow" onclick="NT_TO='dormant';NT_N=null;go('notify')"><span class="t"><b>30일 넘게 잠듦</b>
-        <span>다시 부를 이유를 만들어 주세요</span></span><em class="${s.dormant?'hot':''}">${fmt(s.dormant)}명</em>${ico('chev',16)}</a>
-      <a class="trow" onclick="USEEN='new';go('users')"><span class="t"><b>이번 주 새로 가입</b>
-        <span>누가 들어왔는지 회원 목록에서 봐요</span></span><em>${fmt(s.newWeek)}명</em>${ico('chev',16)}</a>
-    </div>
-    <div class="sec"><b>클럽이 돌아가나</b></div>
-    <a class="card list" onclick="CF='sleep';go('clubs')" style="display:block">
-      <div class="meter"><div class="mh"><span>이번 달 모임을 연 클럽</span><b>${fmt(s.clubsAlive)}<i> / ${fmt(s.clubs)}곳</i></b></div>
-        <div class="mt"><s style="width:${s.clubs?Math.round(s.clubsAlive/s.clubs*100):0}%"></s></div></div>
-      <div class="mfoot"><span>이번 달 대진 <b>${fmt(s.bracketsMonth)}</b></span><span>교류전 <b>${fmt(s.exchanges)}</b></span>
-        ${s.clubs>s.clubsAlive?`<u>잠든 클럽 ${fmt(s.clubs-s.clubsAlive)}곳 보기 ›</u>`:''}</div></a>
-    ${share('어느 기기로 쓰나', s.byPlat, {ios:'아이폰 앱', web:'웹', android:'안드로이드 앱'}, '한 번이라도 접속한 회원 기준')}
-    ${share('어디로 가입했나', s.byProvider, {kakao:'카카오', google:'구글', apple:'애플', dev:'개발'})}`;
-
-  /* 알림 상태 — 준비됐는지, 폰이 몇 대 붙어 있는지 */
-  const ios=push ? ((push.devices||[]).find(d=>d.platform==='ios')||{}).n||0 : 0;
-  const web=push ? ((push.devices||[]).find(d=>d.platform==='web')||{}).n||0 : 0;
-  /* apns 가 없는 응답(옛 서버·설정 전)이 와도 화면 전체가 죽지 않게 */
-  const apns = (push && push.apns) || null;
-  const pushBlock = !push ? '' : `
-    <div class="sec"><b>알림</b></div>
-    <div class="card">
-      <div class="rw"><div class="nm">
-        <b>${!apns?'설정을 읽지 못했어요':apns.ready?'보낼 준비가 됐어요':'아직 설정이 덜 됐어요'}
-          <span class="tag ${apns&&apns.ready?'g':'o'}">${apns&&apns.ready?'APNs 켜짐':'미설정'}</span></b>
-        <span>${esc((apns&&apns.bundle_id)||'Bundle ID 없음')}${apns&&apns.key_id?` · 키 ${esc(apns.key_id)}`:''}</span></div></div>
-      <div class="rw"><div class="nm"><b>등록된 기기 ${ios+web}대</b>
-        <span>${ios?`아이폰 ${ios}대`:'아이폰 없음 · 앱에서 알림을 허용해야 등록돼요'}${web?` · 웹 ${web}대`:''}</span></div>
-        ${ios?'':`<span class="b">확인 필요</span>`}</div>
-      ${(()=>{
-        const ALL=push.tries||[];
-        const T=ALL.filter(t=>t.platform!=='diag'), Dg=ALL.filter(t=>t.platform==='diag');
-        if(!T.length && !Dg.length) return `<div class="rw"><div class="nm"><b>앱이 등록을 시도했나</b>
-          <span>아직 한 번도 없어요 · 앱에서 요청 자체가 오지 않았어요</span></div><span class="b">앱 확인</span></div>`;
-        const done=T.some(t=>t.result==='완료');
-        const noAuth=T.some(t=>/로그인 토큰 없음/.test(t.extra||''));
-        const t0=T[0];
-        const head = !T.length
-          ? `<div class="rw"><div class="nm"><b>등록 요청은 아직 없어요</b><span>아래 앱 기록에서 어디서 멈췄는지 보세요</span></div><span class="b">앱 확인</span></div>`
-          : `<div class="rw"><div class="nm"><b>${done?'등록까지 됐어요':noAuth?'요청은 왔는데 로그인이 안 실려 있어요':'요청은 왔는데 저장이 안 됐어요'}</b>
-            <span>${ymd(t0.at)} · ${esc(t0.platform)} · 토큰 ${t0.token_len}자 · ${esc(t0.result)}${t0.extra?' ('+esc(t0.extra)+')':''}${T.length>1?` · 시도 ${T.length}회`:''}</span></div>
-            ${done?'':`<span class="b">${noAuth?'로그인 확인':'서버 확인'}</span>`}</div>`;
-        return head + Dg.slice(0,4).map(t=>`<div class="rw"><div class="nm"><b style="font-weight:500">${esc(t.result)}</b>
-              <span>${esc(t.extra||'')}</span></div><span class="b" style="opacity:.6">${ymd(t.at)}</span></div>`).join('');
-      })()}
-      ${push.live_tokens==null?'':`<div class="rw"><div class="nm"><b>잠금화면 시계 ${push.live_tokens}대</b>
-        <span>${push.live_tokens?'라이브 액티비티가 붙어 있어요':'앱에서 ActivityKit 토큰이 아직 안 왔어요 · 알림 토큰과는 다른 값이에요'}</span></div></div>`}
-      ${(push.recent||[]).length?`<div class="rw"><div class="nm"><b>최근 등록</b>
-        <span>${push.recent.slice(0,3).map(r=>esc(r.name)+' · '+r.platform).join(' / ')}</span></div>
-        <button class="b" onclick="go('users')">시험 보내기</button></div>`:''}
-    </div>`;
-  $('app').innerHTML=shell(`${todoBlock}${live}${pushBlock}`);
-}
-/* 2주 가입 막대 — 누르거나 올리면 그날 숫자 */
-function spkTip(el){ const v=$('spkv'); if(!v) return;
-  document.querySelectorAll('.spk .bars i.on').forEach(x=>x.classList.remove('on'));
-  if(!el){ v.textContent=v.dataset.sum||v.textContent; return; }
-  if(!v.dataset.sum) v.dataset.sum=v.textContent;
-  el.classList.add('on'); v.textContent=el.dataset.t; }
 /* 몫 막대 — 한 줄 막대(칸 사이 2px 틈) + 아래 범례(색 점 · 이름 · 수 · %).
    색은 정체를 말할 뿐 글자는 늘 먹색. 세 칸까지는 주황 · 파랑 · 청록 순서 고정 */
 function share(title, rows, NM, note){
@@ -2922,20 +2625,6 @@ async function omCfgDraw(){
         코트가 확정되는 대로 여기에 올라옵니다${
           c.om_first_regions?` · 가장 먼저 열릴 곳은 <b>${c.om_first_regions}</b>이에요`:''}
       </div></div>`;
-}
-async function omCfgSave(){
-  const v=$('omV').value.trim(), r=$('omR').value.trim();
-  try{ await api('/admin/config',{method:'POST',
-        body:JSON.stringify({om_venues:v, om_first_regions:r})});
-    toast('저장했어요'); omCfgDraw(); }
-  catch(e){ toast('저장하지 못했어요'); }
-}
-async function omCfgClear(){
-  if(!confirm('숫자를 비울까요?\n앱에서는 「구장과 이야기하고 있어요」로만 나갑니다.')) return;
-  try{ await api('/admin/config',{method:'POST',
-        body:JSON.stringify({om_venues:'', om_first_regions:''})});
-    toast('비웠어요'); omCfgDraw(); }
-  catch(e){ toast('저장하지 못했어요'); }
 }
 /* 상대 클럽 붙이기 — 다른 계정으로 로그인해 신청하기가 번거롭다 */
 /* 지우기 전에 누가 지워지는지 먼저 보여준다 — 진짜 회원이 섞였는지 눈으로 확인할 수 있어야 한다 */
@@ -4242,6 +3931,7 @@ async function drawStats(){
     if(many) hot.push(['r','여러 사람에게 나는 오류','한 명만 겪는 게 아니면 코드 문제예요',`${many}종류`,'',`go('errors')`,'오류 보기']);
   }catch(e){}
   if(reps.length) hot.push(['r','처리 안 한 신고','확인하고 숨기거나 반려해요',`${reps.length}건`,'',`go('reports')`,'신고 보기']);
+  if(BADGE && BADGE.inq) hot.push(['r','새 문의 · 환불 요청','앱에서 온 것이에요 · 답을 쓰면 회원에게 앱 알림이 가요',`${BADGE.inq}건`,'',`go('inq')`,'문의 보기']);   // 11/13
   if(sess && sess.expired>0) hot.push(['y','로그인이 풀린 회원','30일 넘게 안 열어서 다음에 다시 로그인해야 해요',`${fmt(sess.expired)}명`,'',`USEEN='old';go('users')`,'회원 보기']);
   /* 많은 사람에게 닿는 것부터 */
   const reach=[];
@@ -4445,7 +4135,7 @@ const NT_LINKS=[['','없음 (알림함만)'],['home','홈'],['club','클럽 찾�
 function ntDefAt(){ const d=new Date(); d.setDate(d.getDate()+1); d.setHours(19,0,0,0); return d.getTime(); }
 function ntAtTxt(t){ const d=new Date(t); return `${d.getMonth()+1}월 ${d.getDate()}일 (${WD2[d.getDay()]}) ${d.getHours()<12?'오전':'오후'} ${((d.getHours()+11)%12)+1}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function ntAtShort(t){ const d=new Date(t); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()<12?'오전':'오후'} ${((d.getHours()+11)%12)+1}시${d.getMinutes()?' '+d.getMinutes()+'분':''}`; }
-drawNotify=async function(){
+async function drawNotify(){
   const T=[['all','전체'],['active','최근 30일 접속'],['dormant','30일 이상 잠듦'],['ghost','가입 후 미접속'],['oldv','옛 버전 앱']];
   const NC=window.NT_CLUB||null, NU=window.NT_USERS||[];
   const q=NT_TO==='club'&&NC?`&club=${NC.id}`:NT_TO==='users'?`&users=${NU.join(',')}`:'';
@@ -4528,7 +4218,7 @@ async function ntSelf(){
   try{ const r=await api('/admin/notify',{method:'POST',body:JSON.stringify({to:'users',users:[+me],title:t,body:b,icon:NT_ICON,link:NT_LINK||null,label:'나에게 시험'})});
     toast(r.sent?'나에게 보냈어요 · 폰을 확인해 주세요':'보낼 사람이 없어요 · 회원번호를 확인해 주세요'); }catch(e){ toast('보내지 못했어요'); }
 }
-sendNotice=async function(){
+async function sendNotice(){
   const title=($('nt')||{}).value||'', body=($('nb')||{}).value||'';
   if(!title.trim()) return toast('제목을 넣어주세요');
   const at=NT_WHEN==='at'?NT_AT:0;
@@ -4839,7 +4529,7 @@ function admWhoSet(){ const v=prompt('이 기기에서 쓸 이름(작업 기록�
 /* ── 점검 (시안 s02) ── 지금 상태 · 점검 켜기(문구 · 분 칩 · 끝나는 시각) · 앱 미리 보기 · 앱에 나가는 값 · 지난 점검 ── */
 let MT_MIN=30;
 const hm=t=>{ const d=new Date(t); const h=d.getHours(); return `${h<12?'오전':'오후'} ${((h+11)%12)+1}:${String(d.getMinutes()).padStart(2,'0')}`; };
-drawMaint=async function(){
+async function drawMaint(){
   const m=await api('/admin/maint');
   let BK=null, OA=null; try{ BK=await api('/admin/backup/status'); }catch(e){} try{ OA=await api('/admin/ops-alerts'); }catch(e){}
   let PH=null, AC=null; try{ PH=await api('/admin/backup/photos'); }catch(e){} try{ AC=await api('/admin/acct/status'); }catch(e){}      // 11/11 — 예전 서버 · 스태프 열쇠면 못 받는다(그 칸만 안 그린다)
@@ -4989,11 +4679,13 @@ function pgCardHTML(G){
   /* ③ 결제창 — 스위치와 키가 있는지만 */
   const KN=Y.pg==='portone'?{store:'PORTONE_STORE_ID',channel:'PORTONE_CHANNEL_KEY',secret:'PORTONE_API_SECRET'}:{client:'TOSS_CLIENT_KEY',secret:'TOSS_SECRET_KEY'};
   const kmiss=Object.keys(KN).filter(k=>!(Y.keys||{})[k]).map(k=>env(KN[k]));
-  const y1=Y.test?`${no('시험 키')} 시험 키로 보여요 — 운영 서버에는 실연동 키만 넣어요`
-    :Y.pg!=='portone'?`${no()} 지금은 토스 결제창 설정이에요 — 나이스 심사에는 ${env('PAY_PG=portone')} 과 나이스 채널 키가 필요해요`
-    :Y.live?`${ok} 결제하기를 누르면 결제창이 떠요 · 포트원 ${esc((Y.methods||[]).join(' · '))}`
-    :kmiss.length?`${no()} 키가 비어 있어요 — ${kmiss.join(' · ')}`
-    :`${no('꺼짐')} 키는 들어 있어요 — 마지막에 ${env('OM_PAY_LIVE=1')} 을 켜면 결제창이 떠요`;
+  /* 11/15 — 시험 채널 표시는 결제창이 실제로 뜰 때(live)만. 예전엔 PORTONE_TEST=1 이면 스위치 · 키가 빠져 있어도 <결제창이 떠요>라고 했다 */
+  const y1=Y.pg!=='portone'?`${no()} 지금은 토스 결제창 설정이에요 — 나이스 심사에는 ${env('PAY_PG=portone')} 과 나이스 채널 키가 필요해요`
+    :!Y.live?(kmiss.length?`${no()} 키가 비어 있어요 — ${kmiss.join(' · ')}`
+      :`${no('꺼짐')} 키는 들어 있어요 — 마지막에 ${env('OM_PAY_LIVE=1')} 을 켜면 결제창이 떠요`)
+      +(Y.test?sub(`시험 모드(${env('PORTONE_TEST=1')})는 켜져 있어요 — 결제창이 뜨면 결제는 바로 전액 취소돼요`):'')
+    :Y.test?`${no('테스트')} 포트원 테스트 채널로 결제창이 떠요 — 결제하면 맞수가 바로 전액 취소해요. 카드사 심사 전에 실연동 채널로 바꾸고 ${env('PORTONE_TEST')} 를 지워요`
+    :`${ok} 결제하기를 누르면 결제창이 떠요 · 포트원 ${esc((Y.methods||[]).join(' · '))}`;
   const y2=Y.pg==='portone'&&Y.live&&!(Y.keys||{}).hook?sub(`웹훅 시크릿(${env('PORTONE_WEBHOOK_SECRET')})이 비어 있어요 — 결제창을 닫고 나간 결제를 놓칠 수 있어요`):'';
   /* ④ 심사자가 보는 화면에 걸릴 만한 말 */
   const WT={league:()=>`홈페이지 &lt;맞수 리그&gt; 칸에 &lt;준비 중 · TBD&gt;가 보여요 — ${env('SITE_LEAGUE=off')} 로 숨겨요`,
@@ -5065,21 +4757,21 @@ async function bkDownload(){
     toast('내려받았어요 · 안전한 곳에 보관해 주세요'); setTimeout(render, 700); }
   catch(e){ toast(e.message||'내려받지 못했어요'); }
 }
-setMaint=async function(on){
+async function setMaint(on){
   const msg=($('mm')||{}).value||'', minutes=on?MT_MIN:0;
   if(on && !confirm(`점검을 ${minutes}분 켤까요?\n회원들에게 점검 화면이 보여요.`)) return;
   try{ await api('/admin/maint',{method:'POST',body:JSON.stringify({on:!!on, msg, minutes})}); toast(on?'점검을 켰어요':'점검을 껐어요'); render(); }
   catch(e){ toast('바꾸지 못했어요'); }
 };
 /* 저장 · 비우기가 끝난 뒤 화면을 다시 그릴 수 있게 약속을 돌려준다 */
-omCfgSave=async function(){ const v=$('omV').value.trim(), r=$('omR').value.trim();
+async function omCfgSave(){ const v=$('omV').value.trim(), r=$('omR').value.trim();
   try{ await api('/admin/config',{method:'POST',body:JSON.stringify({om_venues:v, om_first_regions:r})}); toast('저장했어요'); }catch(e){ toast('저장하지 못했어요'); } };
-omCfgClear=async function(){ if(!confirm('숫자를 비울까요?\n앱에서는 「구장과 이야기하고 있어요」로만 나갑니다.')) return;
+async function omCfgClear(){ if(!confirm('숫자를 비울까요?\n앱에서는 「구장과 이야기하고 있어요」로만 나갑니다.')) return;
   try{ await api('/admin/config',{method:'POST',body:JSON.stringify({om_venues:'', om_first_regions:''})}); toast('비웠어요'); }catch(e){ toast('저장하지 못했어요'); } };
 
 /* ── 내려받기 (시안 s15) ── 세 장(무엇을 · 들어가는 칸 · 내려받기) · 누가 내려받았나 ── */
 let EX_U='', EX_C='', EX_P='this';
-drawExport=async function(){
+async function drawExport(){
   let L=[]; try{ L=await api('/admin/log?days=90'); }catch(e){}
   let st={}; try{ st=await api('/admin/stats'); }catch(e){}
   const dl2=L.filter(r=>r.action==='내려받음');
@@ -5121,7 +4813,7 @@ let LG_CAT='', LG_WHO='', LG_Q='';
 const LG_CATS=[['user','회원',['user','users','gender','suspend']],['club','클럽',['club','clubs','role','grade']],['post','글 · 신고',['post','comment','report','talk']],
   ['notify','공지',['notify']],['pay','정산',['payout','hostpay','om_payout','seller','refund']],['set','설정',['maint','banner','config','venue','error']]];
 function lgCat(r){ const t=String(r.target||''); const c=LG_CATS.find(([,,ks])=>ks.some(k=>t.startsWith(k))); return c?c[0]:'etc'; }
-drawLog=async function(){
+async function drawLog(){
   const rows=await api('/admin/log?days='+LOG_DAYS);
   const say=r=>{ const d=r.detail||{};
     if(r.action==='성별 바꿈') return `${esc(d.name||'#'+r.target_id)} · ${esc(d.from||'없음')} → ${esc(d.to||'없음')}`;
@@ -5647,7 +5339,7 @@ async function staffNew(){ const nm=prompt('스태프 이름 · 작업 기록에
   try{ const r=await api('/admin/staff',{method:'POST',body:JSON.stringify({name:nm.trim(),perms:{stats:{v:1}}})}); STAFF_KEY_SHOWN={id:r.id,key:r.key}; AC_SEL=r.id; toast('스태프를 만들었어요 · 열쇠를 전해 주세요'); render(); }
   catch(e){ toast(errMsg(e,'만들지 못했어요')); } }
 /* 열쇠 넣기 — 스태프 열쇠는 현황을 못 볼 수도 있어 <나는 누구>로 확인한다 */
-saveKey=async function(){ const v=($('k')||{}).value||''; if(!v) return;
+async function saveKey(){ const v=($('k')||{}).value||''; if(!v) return;
   localStorage.setItem('matsu_admin_key', v.trim()); ADM_ME=null;
   try{ await api('/admin/me'); toast('접속했어요'); render(); }
   catch(e){ try{ await api('/admin/stats'); toast('접속했어요'); render(); }catch(e2){ localStorage.removeItem('matsu_admin_key'); toast(/여러 번 틀렸/.test((e2&&e2.message)||'')?e2.message:'열쇠가 맞지 않아요'); render(); } } };
@@ -5678,6 +5370,76 @@ async function hpsPo(uid){
 }
 /* 예전 버튼(지급 요청함)을 눌러도 포트원이면 정산 등록으로 */
 hpReq=(function(o){ return function(ids){ return (HPAY&&HPAY.flow==='portone')?hpPo(ids):o(ids); }; })(hpReq);
+
+
+/* ═══ 11/13 문의함 — 앱에서 온 문의 · 환불 요청을 모아 본다(대표 열쇠만 · 스태프 메뉴에는 없다). 답을 쓰면 회원에게 앱 알림이 간다 ═══ */
+SUBT.inq='앱에서 온 문의 · 환불 요청 · 답을 쓰면 회원에게 앱 알림이 가요';
+let IQ_ST='open', IQ_ROWS=null, IQ_SEL=null, IQ_CNT={};
+const IQ_KIND={ask:['문의','n'], refund:['환불 요청','o'], bug:['오류 신고','r'], etc:['기타','n']};
+const IQ_STAT={new:['새로 옴','r'], doing:['처리 중','b'], done:['끝냄','n']};
+const IQ_RF={pending:'처리 중', done:'환불됨', failed:'실패 · 확인 필요'};
+const iqDay=ms=>{ if(!ms) return ''; const d=new Date(ms); return `${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+async function drawInq(){
+  const d=await api('/admin/inquiries?status='+IQ_ST);
+  IQ_ROWS=d.rows||[]; IQ_CNT=d.count||{};
+  const row=r=>{ const K=IQ_KIND[r.kind]||IQ_KIND.ask, S=IQ_STAT[r.status]||IQ_STAT.new;
+    return `<tr class="ck${IQ_SEL===r.id?' sel':''}" data-i="${r.id}" onclick="iqOpen(${+r.id},1)">
+    <td><i class="bd2 ${K[1]}">${K[0]}</i></td>
+    <td><div class="t"><b>${esc(r.name||('#'+r.user_id))}</b><span style="max-width:220px">${esc(String(r.body||'').replace(/\s+/g,' ').slice(0,60))}</span></div></td>
+    <td class="n iqp">${r.pay?`${fmt(r.pay.amount)}원`:''}</td>
+    <td><i class="bd2 ${S[1]}">${S[0]}</i>${r.reply?' <i class="bd2 g">답함</i>':''}</td>
+    <td class="n iqw" style="color:var(--mut);white-space:nowrap">${esc(ago(r.created_at).txt)}</td></tr>`; };
+  HDSEG='';
+  $('app').innerHTML=shell(`<div class="pg2"><div class="c2 tbw">
+      <div class="tbtop" style="display:flex;align-items:center;gap:12px"><div class="seg2">
+        <a class="${IQ_ST==='open'?'on':''}" onclick="IQ_ST='open';IQ_SEL=null;render()">처리할 것 <i>${(IQ_CNT.new||0)+(IQ_CNT.doing||0)}</i></a>
+        <a class="${IQ_ST==='done'?'on':''}" onclick="IQ_ST='done';IQ_SEL=null;render()">끝낸 것 <i>${IQ_CNT.done||0}</i></a></div></div>
+      ${IQ_ROWS.length?`<table class="tb2 iqtb"><thead><tr><th>종류</th><th>누가 · 내용</th><th class="n iqp">결제</th><th>상태</th><th class="n iqw">언제</th></tr></thead><tbody>${IQ_ROWS.map(row).join('')}</tbody></table>`
+        :`<div class="tbft" style="justify-content:center;padding:36px">${IQ_ST==='done'?'끝낸 문의가 없어요':'처리할 문의가 없어요 · 조용한 게 좋은 겁니다'}</div>`}
+      <div class="tbft"><span>앱의 <b style="font-weight:700">설정 › 문의하기</b>와 <b style="font-weight:700">결제 내역 › 문의 · 환불 요청</b>에서 온 것이에요. 새로 오면 운영 알림(ADMIN_UIDS)으로도 알려 드려요.</span></div></div>
+    <div id="iqn">${paneEmpty('줄을 누르면 내용과 답 쓰는 칸이 나와요')}</div></div>`);
+  const sel=IQ_ROWS.find(r=>r.id===IQ_SEL)||(wide()?IQ_ROWS[0]:null);
+  if(sel) iqOpen(sel.id);
+}
+function iqOpen(id, tap){
+  const r=(IQ_ROWS||[]).find(x=>x.id===id); if(!r||!$('iqn')) return; IQ_SEL=id;
+  document.querySelectorAll('tr.ck[data-i]').forEach(tr=>tr.classList.toggle('sel', +tr.dataset.i===id));
+  PANE_CLOSE=()=>{ IQ_SEL=null; document.querySelectorAll('tr.ck.sel').forEach(tr=>tr.classList.remove('sel')); $('iqn').innerHTML=paneEmpty('줄을 누르면 내용과 답 쓰는 칸이 나와요'); };
+  const K=IQ_KIND[r.kind]||IQ_KIND.ask, S=IQ_STAT[r.status]||IQ_STAT.new, p=r.pay;
+  const kv=(k,v)=>`<div class="kv2"><span>${k}</span><b>${v}</b></div>`;
+  const rf=(r.refunds||[]).map(x=>`${fmt(x.amount)}원 · ${esc(IQ_RF[x.status]||x.status||'')}${x.done_at?` · ${esc(iqDay(x.done_at))}`:''}`).join('<br>');
+  $('iqn').innerHTML=pane('문의 자세히', `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i class="bd2 ${K[1]}">${K[0]}</i><i class="bd2 ${S[1]}">${S[0]}</i>
+        <span style="margin-left:auto;font-size:12.5px;color:var(--mut)">${esc(iqDay(r.created_at))}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="av2">${esc(String(r.name||'?')[0])}</span>
+        <b style="flex:1;min-width:0;font-size:16px">${esc(r.name||'이름 없음')} <span style="font-weight:500;color:var(--mut);font-size:13px">#${+r.user_id}${r.app_ver?` · 앱 ${esc(r.app_ver)}`:''}</span></b>
+        <button class="b2 sm" onclick="TAB='users';render().then(()=>openU(${+r.user_id}))">회원 보기</button></div>
+      <div style="white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.65;background:#faf9f6;border:1px solid var(--ln3);border-radius:14px;padding:14px 16px;margin-top:12px">${esc(r.body)}</div>
+      ${p?`<div class="sh" style="margin-top:20px">붙은 결제</div>
+        ${kv('매치', `오픈매치 #${+p.match_id||''} · ${esc(p.loc||'')}${p.start_at?` · ${esc(String(p.start_at).replace('T',' '))}`:''}`)}
+        ${kv('결제', `${fmt(p.amount)}원 · ${esc(iqDay(p.at))}${p.order_id?`<br><span style="font-weight:500;color:var(--mut);font-size:12.5px">주문 ${esc(p.order_id)}</span>`:''}`)}
+        ${kv('환불', (p.refunded||0)>0||rf ? `${(p.refunded||0)>0?`지금까지 ${fmt(p.refunded)}원`:''}${rf?`${(p.refunded||0)>0?'<br>':''}<span style="font-weight:500">${rf}</span>`:''}` : '아직 없음')}
+        <div class="nt">환불 자체는 여기서 일어나지 않아요 — 결제대행사 화면(또는 매치 취소)에서 처리한 뒤, 아래에 답을 남겨 주세요.</div>`:''}
+      <div class="sh" style="margin-top:20px">회원에게 보내는 답${r.replied_at?`<span class="r">${esc(iqDay(r.replied_at))}${r.replied_by?` · ${esc(r.replied_by)}`:''}</span>`:''}</div>
+      <textarea class="in2" id="iqReply" maxlength="2000" placeholder="답을 적어 주세요 · 보내면 회원의 앱 알림과 &lt;내 문의&gt;에 보여요">${esc(r.reply||'')}</textarea>
+      <div class="sh" style="margin-top:18px">메모<span class="r">회원에게는 안 보여요</span></div>
+      <textarea class="in2" id="iqMemo" maxlength="1000" style="min-height:70px" placeholder="처리하며 적어 둘 것">${esc(r.memo||'')}</textarea>`,
+    `<button class="b2 k" onclick="iqSave(${+r.id},'reply')">${r.reply?'답 고쳐 보내기':'답 보내기'}</button>
+     <button class="b2" onclick="iqSave(${+r.id},'memo')">메모만 저장</button><span class="sp"></span>
+     ${r.status==='done'?`<button class="b2" onclick="iqSave(${+r.id},'reopen')">다시 열기</button>`:`<button class="b2 or" onclick="iqSave(${+r.id},'done')">끝냄</button>`}`);
+  if(tap && !wide()) try{ $('iqn').scrollIntoView({block:'start', behavior:'smooth'}); }catch(e){}     // 휴대폰 — 자세히는 표 아래에 그려진다
+}
+async function iqSave(id, what){
+  const reply=(($('iqReply')||{}).value||'').trim(), memo=(($('iqMemo')||{}).value||'');
+  const body={memo};
+  if(what==='reply'){ if(!reply){ toast('답을 적어 주세요'); return; } body.reply=reply; }
+  if(what==='done'){ body.status='done'; if(reply) body.reply=reply; }
+  if(what==='reopen') body.status='doing';
+  try{ await api('/admin/inquiries/'+id, {method:'POST', body:JSON.stringify(body)});
+    toast(what==='reply'?'답을 보냈어요 · 회원에게 알림이 갔어요':what==='done'?'끝냄으로 옮겼어요':what==='reopen'?'다시 열었어요':'메모를 저장했어요');
+    render._bt=0; if(what==='done'||what==='reopen') IQ_SEL=null; render();
+  }catch(e){ toast(errMsg(e,'저장하지 못했어요')); }
+}
 
 /* 주소 끝(#users)으로 바로 그 화면을 연다 — 휴대폰 홈 화면에 화면별로 올려 둘 수 있다 */
 try{ const h=(location.hash||'').slice(1); if(/^\w+$/.test(h)) TAB=h; }catch(e){}
