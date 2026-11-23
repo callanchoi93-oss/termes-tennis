@@ -679,25 +679,59 @@ app.post('/auth/kakao/code', limitLogin, async (req, res) => {
    code 는 일회용·수 분 내 만료라 URL 노출 위험이 작다. */
 app.get('/oauth/app-return', (req, res) => {
   const provider = /^[a-z]+$/.test(String(req.query.provider || '')) ? req.query.provider : 'kakao';
+  const code = String(req.query.code || '');
   const q = new URLSearchParams({
     provider,
-    code: String(req.query.code || ''),
+    code,
     state: String(req.query.state || ''),
   });
+  /* 11/20(1120a) 카카오 · 네이버가 오류를 달고 돌려보냈으면(?error=…) 앱에 넘긴다 — 앱이 관리자 <앱 오류>에 남긴다.
+     예전엔 code 만 넘겨 앱은 <로그인이 취소됐어요>만 알았다 */
+  const err = String(req.query.error || '').replace(/[^\w.-]/g, '').slice(0, 60);
+  if (err) {
+    q.set('error', err);
+    const ed = String(req.query.error_description || '').slice(0, 120);
+    if (ed) q.set('error_description', ed);
+  }
   /* 안드로이드 크롬(맞춤 탭)은 matsu:// 로 스크립트 이동을 자주 막는다.
      intent:// 주소로 주면 크롬이 앱(app.matsu)을 직접 연다. iOS 는 그대로 matsu:// */
   const isAndroid = /Android/i.test(String(req.headers['user-agent'] || ''));
   const target = isAndroid
     ? `intent://oauth?${q.toString()}#Intent;scheme=matsu;package=app.matsu;end`
     : 'matsu://oauth?' + q.toString();
-  // 일부 브라우저는 302 로 커스텀 스킴 이동을 막는다 — HTML 폴백을 함께 준다
   res.set('Cache-Control', 'no-store');
-  res.send(`<!doctype html><meta charset="utf-8">
-<title>MATSU</title>
-<body style="font-family:-apple-system,sans-serif;display:flex;min-height:90vh;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#f7f5f0">
-<div style="font-size:15px;color:#555">앱으로 돌아가는 중이에요…</div>
-<a href="${target}" style="padding:12px 22px;background:#111;color:#fff;border-radius:12px;text-decoration:none;font-weight:600">앱 열기</a>
-<script>location.href=${JSON.stringify(target)};<\/script>`);
+  /* 11/20(1120a) 시험 스위치(기본 꺼짐) — OAUTH_RETURN_302=1 이면 안드로이드는 이 페이지 없이 바로 앱으로(302).
+     크롬 맞춤 탭이 스크립트 이동(location.href)을 막아 <앱 열기>를 한 번 더 눌러야 하던 경우를 줄이려는 것.
+     켰는데 앱으로 안 넘어가는 폰이 있으면 끄면 예전처럼 아래 페이지가 나온다. iOS 는 늘 아래 페이지 */
+  if (isAndroid && /^(1|on|true)$/i.test(String(process.env.OAUTH_RETURN_302 || ''))) {
+    res.status(302).set('Location', target);
+    return res.send('');
+  }
+  /* 스크립트 이동이 막혀도 사람이 한 번 누르면 된다 — <앱으로 돌아가기>를 크게, 무엇을 하면 되는지 한 줄로.
+     예전엔 <앱으로 돌아가는 중이에요…> 밑의 작은 <앱 열기>라, 멈춘 줄 알고 창을 닫았다가 처음부터 다시 누르는 일이 있었다 */
+  const who = provider === 'naver' ? '네이버' : provider === 'kakao' ? '카카오' : '';
+  const head = code ? `${who ? who + ' 확인이 끝났어요' : '확인이 끝났어요'}<br>앱으로 돌아갈게요` : '로그인을 마치지 못했어요';
+  const sub = code ? '앱으로 돌아가면 로그인이 마무리돼요. 자동으로 넘어가지 않으면 아래 <b>앱으로 돌아가기</b>를 눌러 주세요.'
+    : '앱으로 돌아가 다시 시도해 주세요.';
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수 — 앱으로 돌아가기</title>
+<style>
+  body{margin:0;background:#f7f6f3;color:#191f28;font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;letter-spacing:-.02em}
+  .w{max-width:440px;margin:0 auto;min-height:100vh;box-sizing:border-box;padding:32px 22px 34px;display:flex;flex-direction:column;gap:12px}
+  .brand{font-size:15px;font-weight:800;color:#c84a10}
+  h1{margin:4px 0 0;font-size:24px;font-weight:800;letter-spacing:-.04em;line-height:1.38}
+  .sub{margin:0;font-size:15px;color:#4e5968;line-height:1.6}
+  .sp{flex:1}
+  .btn{display:flex;align-items:center;justify-content:center;height:58px;border-radius:29px;background:#c84a10;color:#fff;font-size:18px;font-weight:800;text-decoration:none}
+  .note{margin:2px 0 0;font-size:13px;color:#6b7684;line-height:1.6;text-align:center}
+</style></head><body><div class="w">
+<div class="brand">맞수</div>
+<h1>${head}</h1>
+<p class="sub">${sub}</p>
+<div class="sp"></div>
+<a class="btn" id="go" href="${target}">앱으로 돌아가기</a>
+<p class="note">눌러도 그대로면 이 창을 닫고 맞수 앱에서 다시 시도해 주세요.</p>
+</div><script>location.href=${JSON.stringify(target)};<\/script></body></html>`);
 });
 
 // ── 종목별 프로필 (포지션·주발·영법 …) ──
@@ -6343,7 +6377,7 @@ function omView(m, uid) {
 function omViewAll(m, uid) {
   /* sport_started(구력)를 함께 보낸다 — 앱은 이 값으로 등급을 계산한다.
      빠뜨리면 참가자 전원이 '구력 미입력'으로 집계에서 빠지고 대진도 못 짠다. */
-  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender, u.sport_started FROM open_match_joins j
+  const joins = db.prepare(`SELECT j.user_id, u.name, u.rating, u.gender, u.sport_started, u.photos FROM open_match_joins j
     JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
   /* 호스트 얼굴 — 프로필 대표 사진(있으면). 매치 상세 · 호스트 페이지 · 후기 화면이 이니셜 대신 쓴다 (10/28) */
   const host = m.host_id ? (u => u ? { id: u.id, name: u.name, photo: userFace(u.photos) } : null)(
@@ -6428,7 +6462,8 @@ function omViewAll(m, uid) {
     photos: (()=>{ try { const p = m.photos ? JSON.parse(m.photos) : null; return Array.isArray(p) && p.length ? p : (m.photo ? [m.photo] : []); } catch (e) { return m.photo ? [m.photo] : []; } })(),
     cur: joins.length,
     players: joins.map(j => ({ id: j.user_id, name: LB.of.get(j.user_id) || j.name, code: userCode(j.user_id), rating: j.rating, gender: j.gender || '',
-                               sport_started: j.sport_started || null, tier: TJ.get(j.user_id).name })),
+                               sport_started: j.sport_started || null, tier: TJ.get(j.user_id).name,
+                               face: charFace(j.photos) })),                 // 11/17 1117a — 캐릭터 얼굴만(사진은 싣지 않는다 · charFace)
     /* 모이면 1인 참가비 — 일반 매치는 인원이 늘면 내려간다(차액은 캐시로). 호스트 매치는 늘 같다 */
     price_by: m.mode === 'host' ? null : (() => { const out = [], cap = Math.min(12, +m.cap || 0);
       for (let n = Math.max(2, need); n <= cap; n++) out.push({ n, price: omPriceFor(m, n) }); return out; })(),
@@ -6500,8 +6535,11 @@ app.post('/open-matches/:id/absent', auth, limitWrite, (req, res) => {
   if (to && to !== req.uid) sendPush(to, { icon: '⏱', title: '안 온 사람이 있대요', body: `${(getUser(target) || {}).name || ''} 님 · 알린 사람 ${n}명`, link: `match:${mid}` });
   res.json({ ok: true, reports: n });
 });
-/* 4명 매치는 대진이 정해져 있다 — 파트너를 한 번씩 바꿔 3게임 + 첫 짝으로 한 게임 더(11/16 시간 대진 · 모두 4게임).
-   4라운드(20분 게임 + 5분 전환 — 95분)가 안 들어가는 짧은 매치는 3게임 그대로. 앱의 omyBracket 과 같은 순서여야 한다 */
+/* 4명 매치는 대진이 정해져 있다 — 파트너를 한 번씩 바꿔 3게임 + 한 게임 더(11/16 시간 대진 · 모두 4게임).
+   4라운드(20분 게임 + 5분 전환 — 95분)가 안 들어가는 짧은 매치는 3게임 그대로. 앱의 omyBracket 과 같은 순서여야 한다
+   11/18 1118a — 한 번 더 치는 4게임은 세 가지 짝 가운데 티어 합이 가장 비슷한 짝(omAutoRepeat · 같으면 첫 짝 — 예전 그대로).
+   예전엔 늘 첫 짝(신청 순서 앞의 둘 | 뒤의 둘)이라, 먼저 신청한 두 사람이 둘 다 강하면 1 · 4게임이 둘 다 <강강 vs 약약>이었다.
+   1 ~ 3게임 순서는 그대로 둔다 — 아직 다시 빌드하지 않은 앱(옛 omyBracket)과 첫 점수의 게임 번호가 어긋나지 않게 */
 function omAutoBracket(m) {
   const rows = db.prepare(`SELECT j.user_id id, u.name FROM open_match_joins j JOIN users u ON u.id=j.user_id WHERE j.match_id=? ORDER BY j.id`).all(m.id);
   if (rows.length !== 4) return null;
@@ -6510,8 +6548,25 @@ function omAutoBracket(m) {
   const st = Date.parse(String(m.start_at || '').slice(0, 16) + ':00+09:00'), en = Date.parse(String(m.end_at || '').slice(0, 16) + ':00+09:00');
   const four = isNaN(st) || isNaN(en) || en <= st || (en - st) / 60e3 >= 4 * 25 - 5;
   const games = [{ r: 1, a: [a, b], b: [c, d], sa: null, sb: null }, { r: 2, a: [a, c], b: [b, d], sa: null, sb: null }, { r: 3, a: [a, d], b: [b, c], sa: null, sb: null }];
-  if (four) games.push({ r: 4, a: [a, b], b: [c, d], sa: null, sb: null });
+  if (four) {
+    /* 티어 순서(브론즈 1 … 챌린저 6) · 배치 중(러브)은 null. 명단의 tier(이름)와 같은 값이다(omView 가 같은 tierOf 로 내려 준다).
+       tierOf 는 시험이 이 함수만 떼어 볼 때 없을 수 있다 — 그때는 모두 null(예전 순서) */
+    const tv = rows.map(r => { const t = typeof tierOf === 'function' ? tierOf(r.id) : null; return t && t.placed ? TIER_ORDER.indexOf(t.key) : null; });
+    const k = omAutoRepeat(tv);
+    games.push({ r: 4, a: [...games[k].a], b: [...games[k].b], sa: null, sb: null });
+  }
   return { auto: true, rounds: games.length, gpp: games.length, gameMin: 25, courts: [{ no: 1, rounds: games }] };
+}
+/* 11/18 1118a — 4명 자동 대진에서 한 번 더 치는 짝(0 · 1 · 2 = 1 · 2 · 3게임의 짝). 앱 omAutoRepeat 와 글자까지 같은 셈이어야 한다.
+   tv: 신청 순서대로 사람마다 티어 순서 — 배치 중(null)은 이 매치에서 배치된 사람들의 평균(아무도 없으면 0)으로 본다.
+   두 팀 합의 차이가 가장 작은 짝 — 같으면 앞의 짝(모두 배치 중이거나 티어가 같으면 예전처럼 첫 짝) */
+function omAutoRepeat(tv) {
+  const pl = (tv || []).filter(v => v != null), mid = pl.length ? pl.reduce((x, y) => x + y, 0) / pl.length : 0;
+  const S = [0, 1, 2, 3].map(i => (tv && tv[i] != null ? tv[i] : mid));
+  const G = [[0, 1, 2, 3], [0, 2, 1, 3], [0, 3, 1, 2]].map(([w, x, y, z]) => Math.abs(S[w] + S[x] - S[y] - S[z]));
+  let k = 0;
+  for (let i = 1; i < 3; i++) if (G[i] < G[k] - 1e-9) k = i;
+  return k;
 }
 /* 11/16 식별코드 — 오픈매치 명단 · 대진에 적는 이름.
    한 매치에 같은 이름이 둘이면 <이름#식별코드>(김민준#K7M2), 아니면 이름 그대로. 대진에 이미 <이름#코드>로 적힌 사람은 계속 그 이름(중간에 한 명이 빠져도 대진과 명단이 어긋나지 않게).
@@ -23073,7 +23128,14 @@ app.post('/admin/inquiries/:id', admin, (req, res) => {
    볼 수 있는 사람: 그 매치의 호스트와 신청한 사람. 신청하기 전에는 locked(앱이 이름 · 티어만 그린다).
    주는 것: 이름 · 성별 · 티어 · 구력 · 매너 점수(fairplayOf — 내정보와 같은 값 · 주의 구간도 그대로) · 후기 수 ·
             끝난 오픈매치 수 · MVP 수 · 나와 함께 친 매치 수 · (호스트에게만) 신청한 때.
-   주지 않는 것: 연락처 · 지역 · 나이 · 사진 · 후기를 쓴 사람 · 어디서 쳤는지(사는 곳이 드러날 수 있다). */
+   주지 않는 것: 연락처 · 지역 · 나이 · 사진 · 후기를 쓴 사람 · 어디서 쳤는지(사는 곳이 드러날 수 있다).
+   11/17 1117a — 캐릭터 얼굴(face)은 준다: 프로필 첫 그림이 맞수 캐릭터(/img/char_….webp)일 때만 그 주소 · 사진이면 null(사진은 여전히 주지 않는다).
+     매치 화면의 참가자 줄(omViewAll players)도 같은 face 를 싣는다 — 대표님 "참가자 줄에 캐릭터 프로필 그림" */
+function charFace(photos) {
+  let u = null;
+  try { const a = photos ? JSON.parse(photos) : []; u = Array.isArray(a) ? a.find(x => typeof x === 'string' && x) || null : null; } catch (e) {}
+  return u && /^\/img\/char_[a-z_]+\.[0-9a-f]{8}\.webp$/.test(u) ? u : null;
+}
 function omPcPlayed(uid, now16) {
   /* 끝난 매치(취소 · 노쇼 빼고) — 신청한 매치 + 호스트로 연 매치 중 직접 친 것(운영만 한 매치는 빼고) */
   return db.prepare(`SELECT m.id FROM open_matches m WHERE COALESCE(m.status,'') NOT IN ('cancelled','noshow')
@@ -23097,7 +23159,7 @@ app.get('/open-matches/:id/player/:uid', auth, (req, res) => {
   const together = tid === req.uid ? null : omPcPlayed(req.uid, now16).filter(x => seen.has(x)).length;
   const mvp = (db.prepare('SELECT COUNT(*) n FROM mvps WHERE user_id=?').get(tid) || {}).n || 0;
   const out = { id: tid, name: u.name, code: userCode(tid), gender: u.gender === 'F' ? 'F' : u.gender === 'M' ? 'M' : null,
-    tier: t.name, tier_key: t.key, placed: !!t.placed, sport_started: u.sport_started || null,
+    tier: t.name, tier_key: t.key, placed: !!t.placed, sport_started: u.sport_started || null, face: charFace(u.photos),
     fairplay: { score: fp.score, reviews: fp.reviews }, om_games: mine.length, mvp, together,
     host: tid === m.host_id, me: tid === req.uid };
   if (req.uid === m.host_id && tid !== m.host_id) {
