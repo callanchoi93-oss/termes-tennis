@@ -1017,7 +1017,7 @@ body{background:var(--bg2)}
 .bnr .t{flex:1;min-width:0;cursor:pointer} .bnr .t b{display:block;font-size:15.5px;font-weight:800} .bnr .t span{font-size:13px;color:var(--mut)}
 .bnr.drag{opacity:.4} .bnr.over{box-shadow:inset 0 2px 0 var(--or2)}
 .bslot{padding:16px 0;border-top:1px solid var(--ln3)} .bslot:first-of-type{border-top:0}
-.bslot .sh3{display:flex;align-items:baseline;gap:8px;margin-bottom:8px} .bslot .sh3 b{font-size:15.5px;font-weight:800} .bslot .sh3 span{font-size:13px;color:var(--mut)} .bslot .sh3 i{margin-left:auto;font-style:normal;font-size:13px;color:var(--mut)}
+.bslot .sh3{display:flex;align-items:baseline;gap:8px;margin-bottom:8px} .bslot .sh3 b{font-size:15.5px;font-weight:800;white-space:nowrap;flex:none} .bslot .sh3 span{font-size:13px;color:var(--mut)} .bslot .sh3 i{margin-left:auto;font-style:normal;font-size:13px;color:var(--mut)}
 .bempty{border:1.5px dashed #d6d1c7;border-radius:14px;padding:20px;text-align:center;color:var(--mut);font-size:14px;cursor:pointer}
 /* 11/11 점검 — 백업 칸의 묶음 제목(DB · 사진) · 단추 줄 · 계좌번호 암호화 표 */
 .bksub{font-size:12.5px;font-weight:800;color:var(--mut);margin:20px 0 0;padding-bottom:6px;border-bottom:1px solid var(--ln3)}
@@ -3580,7 +3580,7 @@ async function drawBanners(){
      자리를 안 정해두면 배너를 올려도 앱이 어디에 그려야 할지 모른다.
      legacy 는 slot 이 비었거나 'club' 인 예전 데이터 — 홈·교류전 아래로 흡수한다. */
   const SLOT={
-    home:     {t:'홈 · 매치 알림 아래',        d:'홈 탭 가운데 — 이번 주 오픈매치 · 매치 알림 카드 바로 아래. 여러 장이면 4초마다 넘어가요 · 그림은 가로 5 : 세로 2'},
+    home:     {t:'홈 · 맨 위 히어로',          d:'홈 탭 맨 위 히어로 — 처음 온 사람은 밤하늘 첫 장 다음부터. 여러 장이면 5초마다 넘어가요 · 그림은 정사각(1170 × 1170) · 위 300 · 아래 190 은 머리 줄 · 물결에 가려질 수 있어요'},
     club_xc:  {t:'클럽 · 교류전 아래',        d:'교류전 블록과 클럽 찾기 사이'},
     club_new: {t:'클럽 · 새 클럽 만들기 아래', d:'아직 클럽이 없는 사람이 먼저 봐요'},
     bracket:  {t:'대진 도구 · 상단',          d:'앱이 ?slot=bracket 로 따로 받아가는 자리'},
@@ -3600,19 +3600,19 @@ async function drawBanners(){
 
   $('app').innerHTML=shell(`
     <div class="card flat"><div class="ct">배너 올리기</div>
-      <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
-        <select id="bslot" class="b" style="padding:8px 10px" onchange="bSlotHint()">
+      <div style="display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s2)">
+        <select id="bslot" class="b" style="padding:8px 10px;flex:1 1 180px;min-width:0" onchange="bSlotHint()">
           ${Object.entries(SLOT).map(([k,v])=>`<option value="${k}">${esc(v.t)}</option>`).join('')}</select>
         <input id="blink" placeholder="눌렀을 때 갈 주소 (선택)"
-          style="flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+          style="flex:1 1 180px;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
           font-size:var(--t2);font-family:inherit;font-weight:500"></div>
       <div style="display:flex;gap:var(--s2);margin-top:var(--s2)">
-        <input id="bfile" type="file" accept="image/*" style="flex:1;font-size:var(--t1)"
+        <input id="bfile" type="file" accept="image/*" style="flex:1;min-width:0;font-size:var(--t1)"
           onchange="bPreview(this)">
         <button class="b on" onclick="upBanner()">올리기</button></div>
       <img id="bprev" alt="" style="display:none;width:100%;max-width:360px;margin-top:var(--s2);
-        border-radius:12px;aspect-ratio:1200/456;object-fit:cover;background:#f4f1ea">
-      <div class="note" id="bhint">${esc(SLOT.home.d)} · 3MB 까지 · 1200×456 (가로 2.6 : 세로 1) 이 딱 맞아요</div></div>
+        border-radius:12px;aspect-ratio:1/1;object-fit:cover;background:#f4f1ea">
+      <div class="note" id="bhint">${esc(SLOT.home.d)} · 3MB 까지</div></div>
 
     ${groups.map(([k,list])=>`
       <div class="card"><div class="ct">${esc(SLOT[k].t)}
@@ -3622,7 +3622,7 @@ async function drawBanners(){
           <div class="rw">
             <img src="${esc(b.image||'')}" alt="" style="width:104px;aspect-ratio:1200/456;border-radius:9px;
               object-fit:cover;background:#f4f1ea;flex:none">
-            <div class="nm"><b>${i+1}번째<span class="tag">slot: ${esc(b.slot||'(비어 있음)')}</span></b>
+            <div class="nm"><b style="flex-wrap:wrap;row-gap:2px">${i+1}번째<span class="tag" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">slot: ${esc(b.slot||'(비어 있음)')}</span></b>
               <span>${esc(b.link||'링크 없음')}</span></div>
             <div class="seg3">
               <button class="b" onclick="moveBanner('${k}',${i},-1)" ${i===0?'disabled style="opacity:.35"':''}>↑</button>
@@ -3633,7 +3633,8 @@ async function drawBanners(){
 }
 function bSlotHint(){
   const k=($('bslot')||{}).value, S=CACHE.bslot||{}, n=$('bhint');
-  if(n && S[k]) n.textContent=S[k].d+' · 3MB 까지 · 1200×456 (가로 2.6 : 세로 1) 이 딱 맞아요';
+  if(n && S[k]) n.textContent=S[k].d+' · 3MB 까지'+(k==='home'?'':' · 1200×456 (가로 2.6 : 세로 1) 이 딱 맞아요');
+  const pv=$('bprev'); if(pv) pv.style.aspectRatio=(k==='home'?'1/1':'1200/456');
 }
 /* 올리기 전에 눈으로 한 번 — 세로로 긴 이미지를 올려놓고 나중에 발견하는 일이 잦다 */
 function bPreview(el){
@@ -5131,7 +5132,7 @@ async function vnAdd2(){ const nm=prompt('새 구장 이름'); if(!nm||!nm.trim(
 
 /* ── 배너 (시안 s19) ── 자리마다 · 끌어서 순서 · 켜고 끄기 · 예약됨 · 오른쪽 배너 고치기(자리 · 링크 · 기간 · 켜기 · 그림 바꾸기) ── */
 let BN_SEL=null, BN_NEW=null, BN_IMG=null, BN_DRAG=null;
-const BN_SLOT={ home:{t:'홈 · 매치 알림 아래',d:'홈 가운데(매치 알림 카드 아래) · 여러 장이면 4초마다 넘어가요 · 가로 5 : 세로 2',w:'앱 홈'}, club_xc:{t:'클럽 · 교류전 아래',d:'교류전 블록과 클럽 찾기 사이',w:'클럽 탭'},
+const BN_SLOT={ home:{t:'홈 · 맨 위 히어로',d:'홈 맨 위 히어로(처음 온 사람은 밤하늘 다음 장) · 5초마다 넘어가요 · 정사각 1170 × 1170 · 위 300 · 아래 190 은 가려질 수 있어요',w:'앱 홈'}, club_xc:{t:'클럽 · 교류전 아래',d:'교류전 블록과 클럽 찾기 사이',w:'클럽 탭'},
   club_new:{t:'클럽 · 새 클럽 만들기 아래',d:'아직 클럽이 없는 사람이 먼저 봐요',w:'클럽 탭'}, bracket:{t:'대진 도구 · 상단',d:'앱이 ?slot=bracket 로 따로 받아가는 자리',w:'대진 도구'}, match:{t:'오픈매치 · 상단',d:'오픈매치 탭 맨 위',w:'오픈매치 탭'} };
 const bnSlotOf=b=>BN_SLOT[b.slot]?b.slot:(b.slot==='club'?'club_xc':(!b.slot?'home':'home'));
 const bnD=t=>{ if(!t) return ''; const d=new Date(+t); return `${d.getMonth()+1}/${d.getDate()}`; };
@@ -5161,9 +5162,9 @@ function bnPane(){
   const b=BN_NEW?{slot:BN_NEW.slot, enabled:1}:(CACHE.banners||[]).find(x=>x.id===BN_SEL); if(!b){ el.innerHTML=paneEmpty('배너를 누르면 여기서 고쳐요'); return; }
   PANE_CLOSE=()=>{ BN_SEL=null; BN_NEW=null; document.querySelectorAll('.bnr.sel').forEach(r=>r.classList.remove('sel')); el.innerHTML=paneEmpty('배너를 누르면 여기서 고쳐요'); };
   const k=bnSlotOf(b), img=BN_IMG||b.image||'';
-  el.innerHTML=pane(BN_NEW?'새 배너':'배너 고치기', `<div style="font-size:13px;color:var(--mut);margin-bottom:8px">${BN_SLOT[k].w}에서 이 크기로 보여요 · 1200 × 456</div>
-      ${img?`<img id="bnpv" src="${esc(img)}" alt="" style="width:100%;aspect-ratio:1200/456;object-fit:cover;border-radius:16px;background:#f4f1ea;display:block">`
-        :`<label style="display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1200/456;border:1.5px dashed #d6d1c7;border-radius:16px;color:var(--mut);cursor:pointer">그림 고르기 · 1200 × 456 PNG · JPG<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="bnPick(this)"></label>`}
+  el.innerHTML=pane(BN_NEW?'새 배너':'배너 고치기', `<div style="font-size:13px;color:var(--mut);margin-bottom:8px">${BN_SLOT[k].w}에서 이 크기로 보여요 · ${k==='home'?'1170 × 1170':'1200 × 456'}</div>
+      ${img?`<img id="bnpv" src="${esc(img)}" alt="" style="width:100%;aspect-ratio:${k==='home'?'1/1':'1200/456'};object-fit:cover;border-radius:16px;background:#f4f1ea;display:block">`
+        :`<label style="display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:${k==='home'?'1/1':'1200/456'};border:1.5px dashed #d6d1c7;border-radius:16px;color:var(--mut);cursor:pointer">그림 고르기 · ${k==='home'?'1170 × 1170':'1200 × 456'} PNG · JPG<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="bnPick(this)"></label>`}
       <label class="fl2">제목 (관리 화면에서만 보여요)</label><input id="bnt" class="in2" maxlength="60" value="${esc(b.title||'')}" placeholder="예) 제1회 맞수 컨퍼런스 리그">
       <label class="fl2">자리</label><select id="bns" class="in2">${Object.entries(BN_SLOT).map(([s,v])=>`<option value="${s}" ${s===k?'selected':''}>${v.t}</option>`).join('')}</select>
       <label class="fl2">누르면 갈 곳</label><input id="bnl" class="in2" list="bnll" value="${esc(b.link||'')}" placeholder="비우면 눌러도 아무 데도 안 가요"><datalist id="bnll"><option value="club"><option value="match"><option value="lounge"><option value="me"><option value="/?cup=1"></datalist>
