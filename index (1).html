@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>맞수 MATSU — 혼자 나가도 한 판</title>
+<meta name="description" content="이번 주 열린 테니스 오픈매치에서 자리만 고르세요. 대진은 맞수가 짜 드려요. 클럽 대진 · 점수 · 랭킹 · 회비 장부도 한 곳에서.">
+<meta property="og:title" content="맞수 MATSU — 혼자 나가도 한 판">
+<meta property="og:description" content="이번 주 열린 테니스 오픈매치에서 자리만 고르세요. 대진은 맞수가 짜 드려요.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#f2f3ee">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/icon-192.png">
+<style>
+@font-face{font-family:'Pretendard';font-weight:45 920;font-display:swap;src:url('/fonts/PretendardVariable.woff2') format('woff2-variations'),url('/fonts/PretendardVariable.woff2') format('woff2')}
+/* 11/24 새 시안(PC 1440 · 휴대폰 390) — 옅은 바탕(--page) 위에 짙은 초록 판(--dk) · 라임 · 주황 · 크림 칸을 맞붙인 벤토.
+   표 · 참가 안내 · 바닥 사업자 정보는 서버가 그려 넣는 그대로(모양만 여기서) — 서버 표와 브라우저 표는 글자 하나 다르지 않다 */
+:root{--page:#f2f3ee;--ink:#111d15;--ink2:#464b45;--gray:#5e6a64;--dk:#153a2d;--dk2:#1f4a3b;--dk3:#2a5a47;--gr:#2f6e58;--lime:#e3f26b;--lime-ink:#1a3405;
+  --or:#f1621a;--ort:#c2410c;--cream:#fffaf0;--paper:#fff;--line:#e5e8eb;--line2:#d1d6db;--mint:#b9ddcf;
+  --wrap:1152px;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif}
+/* 다크 모드 — 삼성 인터넷 · 크롬(자동 어둡게)은 <다크 모드를 스스로 지원한다>고 밝힌 사이트는 색을 뒤집지 않는다.
+   맞수 홈페이지는 밤에도 같은 색을 쓴다(아래 dark 블록은 같은 색을 다시 적어 둔 것) */
+:root{color-scheme:light dark}
+@media (prefers-color-scheme:dark){html,body{background:var(--page);color:var(--ink)}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--page);color:var(--ink);letter-spacing:-.02em;-webkit-font-smoothing:antialiased;word-break:keep-all}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--or);outline-offset:2px}
+.wrap{max-width:calc(var(--wrap) + 40px);margin:0 auto;padding:0 20px}
+.mk{display:block}
+/* 머리 */
+.hd{position:sticky;top:0;z-index:30;background:var(--page)}
+.hd .wrap{display:flex;align-items:center;gap:32px;height:68px}
+.logo{display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:900;font-size:22px;letter-spacing:-.01em}
+.logo svg{width:34px;height:29px}
+.nav{display:flex;gap:24px;flex:1}
+.nav a{color:#3b433e;font-size:16px;font-weight:600;padding:10px 0;border-bottom:2px solid transparent}
+.nav a.on{color:var(--ink);font-weight:800;border-bottom-color:var(--or)}
+/* 로그인한 회원 — 위 줄 오른쪽 내 이름(누르면 내정보) */
+.hme{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;font-weight:700;white-space:nowrap}
+.hme span{width:32px;height:32px;border-radius:50%;background:var(--lime);color:var(--lime-ink);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;padding:0 24px;border:0;border-radius:26px;font-size:16px;font-weight:700;white-space:nowrap}
+.btn.or{background:var(--or);color:#fff}
+.btn.dk{background:#17392d;color:#fff}
+.btn.white{background:#fff;color:var(--ink)}
+.btn.sm{height:44px;padding:0 20px;font-size:15px;border-radius:22px}
+.btn svg{width:18px;height:18px;flex:none}
+.stores{display:flex;gap:8px;flex-wrap:wrap}
+.stores .btn[hidden]{display:none}
+.stores.one .btn span::after{content:'에서 받기'}
+.qr svg{display:block;width:100%;height:100%}
+.tagx{position:absolute;left:12px;bottom:12px;padding:3px 9px;border-radius:999px;background:rgba(10,20,15,.55);color:#fff;font-size:12px;font-weight:600;letter-spacing:0}
+/* 첫 화면 — 라임 · 주황 칸이 제목 한 줄(혼자 나가도 · 한 판.), 짙은 칸은 소개, 크림 칸은 앱 받기, 오른쪽은 사진 */
+.hero{padding:16px 0 0}
+.bento{display:grid;grid-template-columns:minmax(0,391fr) minmax(0,391fr) minmax(0,321fr);grid-template-rows:minmax(300px,auto) minmax(259px,auto);
+  grid-template-areas:'h1 h1 ph' 'lead cta ph';gap:12px;padding:12px;border-radius:32px;background:var(--dk)}
+.bento .h1{grid-area:h1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:0;font-size:clamp(56px,6.95vw,100px);line-height:1;font-weight:900;letter-spacing:-.05em}
+.bento .h1>span{display:flex;align-items:flex-end;padding:32px 32px 36px;border-radius:20px}
+.h1 .hl{background:var(--lime);color:var(--lime-ink)}
+.h1 .ho{background:var(--or);color:#fff}
+.bento .lead{grid-area:lead;display:flex;align-items:center;margin:0;padding:32px;border-radius:20px;background:var(--dk2);color:#f0fbf6;font-size:20px;line-height:1.7}
+.hcta{grid-area:cta;display:flex;align-items:center;gap:20px;padding:28px 32px;border-radius:20px;background:var(--cream)}
+.hcta .tx{flex:1;min-width:0}
+.tt{display:block;font-size:24px;font-weight:800;letter-spacing:-.03em;color:var(--ink)}
+.hcta .tx p{margin:4px 0 20px;font-size:14px;line-height:1.45;color:var(--ink2)}
+.hcta .stores{flex-direction:column;align-items:flex-start}
+.qrmini{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
+.qrmini .qr{width:130px;height:130px;padding:8px;border-radius:16px;background:#fff}
+.hph{grid-area:ph;position:relative;margin:0;min-height:300px;border-radius:20px;overflow:hidden;background:var(--dk2)}
+.hph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 40%}
+/* 칸 공통 */
+.sec{padding-top:112px}
+.h2{margin:0;font-size:48px;line-height:1.18;font-weight:900;letter-spacing:-.045em;color:var(--ink)}
+.sub{margin:16px 0 0;font-size:18px;line-height:1.65;color:#4b5751}
+.shd{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:24px}
+.lnk{display:inline-flex;align-items:center;gap:6px;min-height:44px;font-size:16px;font-weight:700;color:var(--ink)}
+.lnk svg{width:18px;height:18px}
+/* 이번 주 오픈매치 — 짙은 초록 판 · 위에 코트 사진 띠 · 줄마다 칸 */
+.om{border-radius:32px;overflow:hidden;background:var(--dk)}
+.ban{position:relative;height:212px;margin:0;background:var(--dk2)}
+.ban img{display:block;width:100%;height:100%;object-fit:cover}
+.tb{padding:0 12px 12px}
+.th,.row{display:grid;grid-template-columns:136px minmax(0,215fr) 115px minmax(0,190fr) 120px 116px 132px;align-items:center;gap:12px;padding:0 16px}
+.th{height:60px;font-size:13px;font-weight:600;color:var(--mint)}
+.row{min-height:94px;margin-top:8px;border-radius:16px;background:var(--dk2);color:#fff;cursor:pointer;transition:background .12s}
+.th+.row,.th+.skel,.th+.empty{margin-top:0}
+.row:hover,.row.hi{background:var(--dk3)}
+.row .tm small{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#bad9cc}
+.row .tm b{display:inline-block;margin-top:6px;padding:0 12px;border-radius:10px;background:var(--gr);font-size:28px;line-height:38px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.soon{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:rgba(227,242,107,.12);color:#eef59a;font-size:12px;font-weight:700;letter-spacing:0}
+.soon::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime)}
+.row .ct b{display:block;font-size:18px;font-weight:700}
+.row .ct small{display:block;margin-top:2px;font-size:13px;color:#c0ded2}
+.row .kd{font-size:14px;color:#d6faec}
+.dots{display:flex;align-items:center;gap:10px;font-size:14px;color:#d7f6e9}
+.dots i{display:flex;flex:none;gap:3px}
+.dots i u{width:12px;height:18px;border-radius:3px;background:var(--or)}
+.dots i u.o{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:rgba(255,255,255,.1);color:#e6faf3;font-size:13px;font-weight:700;white-space:nowrap}
+.chip::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:#cbdad4}
+.chip.bronze{background:rgba(231,147,99,.18);color:#f9e0c8}.chip.bronze::before{background:#e79363}
+.chip.silver{background:rgba(193,202,213,.16);color:#e9f6f4}.chip.silver::before{background:#c1cad5}
+.chip.gold{background:rgba(246,199,75,.16);color:#fbedb8}.chip.gold::before{background:#f6c74b}
+.chip.platinum{background:rgba(95,211,174,.16);color:#d6f8ec}.chip.platinum::before{background:#5fd3ae}
+.chip.diamond{background:rgba(127,178,255,.18);color:#e0ecff}.chip.diamond::before{background:#7fb2ff}
+.chip.challenger{background:rgba(169,139,255,.2);color:#ebe4ff}.chip.challenger::before{background:#a98bff}
+.row .pr{font-size:20px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums}
+.row .go{justify-self:end;display:flex;align-items:center}
+.row .go .arr{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;font-size:20px;font-weight:700}
+.row .go .btn{display:none}
+.row:hover .go .btn,.row.hi .go .btn{display:inline-flex}
+.row:hover .go .arr,.row.hi .go .arr{display:none}
+.empty{padding:48px 16px;text-align:center;color:#c0ded2;font-size:15px;line-height:1.7}
+.empty b{display:block;margin-bottom:4px;font-size:20px;color:#fff}
+.skel{height:94px;margin-top:8px;border-radius:16px;background:var(--dk2) linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent) 0 0/200% 100%;animation:sk 1.2s infinite}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+.wish{display:flex;align-items:center;gap:16px;margin-top:12px;padding:14px 16px 14px 20px;border-radius:24px;background:var(--paper)}
+.wish img{flex:none;width:56px;height:auto}
+.wish p{flex:1;margin:0;font-size:16px;line-height:1.5;color:var(--ink2)}
+.wish p b{color:var(--ink);font-weight:700}
+/* 오픈매치 참가 안내 — 무엇을 얼마에 파는지(서버가 그려 넣는다) */
+.prod{margin-top:24px;padding:32px 32px 12px;border-radius:28px;background:var(--paper)}
+.prod h3{margin:0 0 8px;font-size:22px;font-weight:800;letter-spacing:-.03em}
+.prod dl{margin:0}
+.prod dl>div{display:grid;grid-template-columns:136px minmax(0,1fr);gap:16px;padding:20px 0;border-top:1px solid var(--line)}
+.prod dl>div:first-child{border-top:0}
+.prod dt{padding-top:3px;font-size:13px;font-weight:600;color:var(--gray)}
+.prod dd{margin:0;font-size:15px;line-height:1.7;color:#4b5751}
+.prod dd b{display:block;margin-bottom:4px;font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.03em}
+.prod dd a{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+/* 세 장이면 한 판 */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:28px 0 0;padding:0;list-style:none}
+.steps .cd{position:relative;height:200px;border-radius:20px;overflow:hidden}
+.steps .n{position:absolute;left:15%;top:50%;transform:translateY(-50%);font-size:clamp(72px,8.9vw,128px);line-height:1;font-weight:900;letter-spacing:-.04em}
+.steps img{position:absolute;right:10%;top:50%;transform:translateY(-50%);width:auto;height:clamp(96px,10.4vw,150px)}
+.steps .s2 img{height:clamp(84px,8.9vw,128px)}
+.steps .s1{background:var(--gr)}.steps .s1 .n{color:#fffbea}
+.steps .s2{background:var(--lime)}.steps .s2 .n{color:#1a3c01}
+.steps .s3{background:var(--or)}.steps .s3 .n{color:#fff}
+.steps h3{margin:20px 0 0;font-size:20px;font-weight:800;letter-spacing:-.03em}
+.steps p{margin:6px 0 0;font-size:15px;line-height:1.55;color:var(--ink2)}
+/* 클럽 — 총무 일이 절반으로 */
+.club{display:grid;grid-template-columns:minmax(0,542fr) minmax(0,570fr);gap:40px;align-items:start}
+.feat{margin:36px 0 32px;padding:0;list-style:none;border-top:1px solid #dde1d9}
+.feat li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:16px;align-items:center;padding:16px 0;border-bottom:1px solid #dde1d9}
+.feat img{display:block;width:64px;height:64px;object-fit:contain}
+.feat b{display:block;font-size:17px;font-weight:800;letter-spacing:-.03em}
+.feat span{display:block;margin-top:6px;font-size:15px;line-height:1.5;color:var(--ink2)}
+.dj{position:relative;margin-top:8px;padding:28px 28px 16px;border-radius:32px;background:var(--dk);color:#fff}
+.dj .ex{position:absolute;left:24px;top:-14px;padding:5px 12px;border-radius:999px;background:#fff;color:var(--ink);font-size:13px;font-weight:700;box-shadow:0 2px 10px rgba(17,29,21,.14)}
+.dj .sc{position:absolute;right:4px;top:-48px;width:112px;height:auto;filter:drop-shadow(0 10px 14px rgba(0,0,0,.25))}
+.dj h4{margin:6px 0 12px;font-size:22px;font-weight:800;letter-spacing:-.03em}
+.dj h4 small{margin-left:8px;font-size:13px;font-weight:600;color:var(--mint);letter-spacing:-.01em}
+.dj .r{display:grid;grid-template-columns:52px minmax(0,1fr) 28px minmax(0,1fr) 60px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid rgba(255,255,255,.12);font-size:14px}
+.dj .r i{font-style:normal;font-size:13px;color:var(--mint)}
+.dj .r i.vs{font-size:12px;color:#a5c4b8}
+.dj .r em{justify-self:end;min-width:60px;padding:3px 0;border-radius:8px;background:var(--gr);font-style:normal;font-size:16px;font-weight:800;text-align:center;letter-spacing:.02em}
+.dj .r em.now{background:var(--or)}
+/* 맞수 리그 */
+.lgw{display:grid;grid-template-columns:minmax(0,684fr) minmax(0,456fr);gap:12px}
+.lgc{padding:40px;border-radius:24px;background:var(--gr);color:#fff}
+.lgh{display:flex;align-items:flex-end;flex-wrap:wrap;gap:8px 12px}
+.lgc .h2{color:#fff}
+.badge{margin-bottom:9px;padding:4px 10px;border-radius:8px;background:var(--dk2);color:#fff;font-size:13px;font-weight:700;letter-spacing:0}
+.lgc .sub{color:#d4f2e7}
+.info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:32px 0 28px}
+.info div{padding:12px 16px;border-radius:12px;background:var(--dk2)}
+.info small{display:block;font-size:12px;color:#caebde}
+.info b{display:block;margin-top:2px;font-size:17px;font-weight:800}
+.cupw{display:flex;align-items:center;justify-content:center;padding:32px;border-radius:24px;background:var(--gr)}
+.cupw img{display:block;width:auto;height:420px;max-width:100%;object-fit:contain}
+/* 티어 */
+.tier{display:grid;grid-template-columns:minmax(260px,1fr) minmax(0,667px);gap:40px;align-items:end}
+.pyr{display:block;width:100px;height:auto;margin:0 0 28px}
+.bars{display:flex;align-items:flex-end;gap:8px;height:378px}
+.bars button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;padding:10px;border:0;border-radius:10px;text-align:left;color:#0b1410}
+.bars button.w{color:#fff}
+.bars b{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.bars small{margin-top:2px;font-size:12px;font-weight:500}
+/* 앱 받기 */
+#get{padding-bottom:96px}
+.apb{display:grid;grid-template-columns:minmax(0,698fr) minmax(0,418fr);gap:12px;padding:12px;border-radius:32px;background:var(--dk)}
+.aor{display:flex;align-items:center;padding:48px 32px;border-radius:20px;background:var(--or)}
+.big{margin:0;color:#fff;font-size:clamp(48px,5.6vw,80px);line-height:1.08;font-weight:900;letter-spacing:-.05em}
+.acr{padding:32px;border-radius:20px;background:var(--cream)}
+.acr .tt{font-size:28px}
+.acr p.s{margin:8px 0 20px;font-size:14px;line-height:1.5;color:var(--ink2)}
+.acr p.s a{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.qrbig{width:max-content;margin:24px auto 0;text-align:center}
+.qrbig .qr{width:158px;height:158px;margin:0 auto;padding:10px;border-radius:16px;background:#fff}
+.qrbig p{margin:8px 0 0;font-size:12px;color:var(--ink2)}
+/* 바닥 (11/12 — 그 위에 흐르던 글자 띠는 뺐다) */
+.ft{background:var(--dk);color:#c6e3d8;padding:48px 0 56px;font-size:13px}
+.ft .top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-bottom:24px;border-bottom:1px solid rgba(255,255,255,.1)}
+.ft .logo{color:#fff;font-size:20px}.ft .logo svg{width:30px;height:26px}
+.ft nav{display:flex;flex-wrap:wrap;gap:0 20px;margin-left:auto}
+.ft nav a{display:inline-flex;align-items:center;min-height:44px;color:#e1fbf2;font-size:14px}
+.ft nav a.u{text-decoration:underline;text-underline-offset:3px}
+/* 사업자 정보 — 이름표(옅게) · 값(밝게) 짝 */
+.ft .bizl{display:flex;flex-wrap:wrap;gap:10px 32px;margin:28px 0 0;padding:0}
+.ft .bizl div{display:flex;align-items:baseline;gap:10px;min-width:0}
+.ft .bizl dt{flex:none;color:#a5c9bd;font-size:13px}
+.ft .bizl dd{margin:0;color:#ecfffa;font-size:14px;font-weight:700;letter-spacing:0;overflow-wrap:anywhere}
+.ft .sell{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0 0;color:#badcd0;font-size:14px;line-height:1.6}
+.ft .sell b{flex:none;padding:5px 12px;border-radius:999px;background:#285242;color:#fff;font-size:12px;font-weight:700}
+.ft .copy{margin:20px 0 0;font-size:13px;color:#a6cabc}
+/* 지도 보기 */
+.mapv{display:none;padding:16px 0 40px}
+body.map .mapv{display:block}
+body.map .land{display:none}
+.mapv .in{display:grid;grid-template-columns:minmax(340px,520px) minmax(0,1fr);gap:12px;min-height:calc(100vh - 124px)}
+.mapv .panel{padding:28px 24px;border-radius:28px;background:var(--paper)}
+.mapv .h2{font-size:32px}
+.flt{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 16px}
+.flt button{height:40px;padding:0 16px;border:0;border-radius:999px;background:#eef0ea;font-size:15px;font-weight:600;color:var(--ink)}
+.flt button.on{background:var(--dk);color:#fff}
+.mrow{display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 12px;border-radius:16px;cursor:pointer}
+.mrow+.mrow{margin-top:4px}
+.mrow.on,.mrow:hover{background:#edf3ee}
+.mrow .tm small{display:block;font-size:13px;color:var(--gray)}.mrow .tm b{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.mrow .c b{display:block;font-size:17px;font-weight:700}.mrow .c small{display:block;margin-top:3px;font-size:13px;color:var(--gray)}
+.mrow .p{font-size:18px;font-weight:800}
+.ml .empty{color:#4b5751}.ml .empty b{color:var(--ink)}
+.mapbox{position:relative;overflow:hidden;border-radius:28px;background:var(--dk)}
+.mapbox svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.mapbox .lbl{position:absolute;transform:translate(-50%,-50%);font-size:14px;color:#8fb5a6;pointer-events:none}
+.pin{position:absolute;transform:translate(-50%,-50%);border:0;border-radius:24px;background:#fff;color:var(--ink);font-size:15px;font-weight:800;padding:9px 14px;box-shadow:0 8px 18px rgba(0,0,0,.3)}
+.pin.on{background:var(--or);color:#fff;font-size:17px;padding:12px 18px;z-index:3}
+.pop{position:absolute;z-index:4;width:320px;padding:18px;border-radius:20px;background:var(--paper);box-shadow:0 20px 40px rgba(0,0,0,.35)}
+.pop small{font-size:13px;color:var(--gray)}.pop b{display:block;margin:4px 0;font-size:20px;font-weight:800}
+.pop p{margin:0 0 12px;font-size:14px;color:#4b5751}
+.pop .btn{width:100%}
+.nomap{position:absolute;inset:auto 20px 20px 20px;color:#b9ddcf;font-size:13px;text-align:center}
+/* 앱 안내 창 */
+.ov{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(9,24,18,.55)}
+.ov.on{display:flex}
+.dlg{position:relative;width:min(960px,100%)}
+.dlg .cd{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:40px;align-items:center;padding:40px 44px;border-radius:28px;background:var(--paper)}
+.dlg .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.dlg .tabs span{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:700}
+.dlg .tabs span:empty{display:none}
+.dlg .t1{background:var(--dk);color:#fff}.dlg .t2{background:var(--lime);color:var(--lime-ink)}.dlg .t3{background:var(--ort);color:#fff}
+.dlg h3{margin:0 0 24px;font-size:44px;line-height:1.15;font-weight:900;letter-spacing:-.045em;color:var(--ink)}
+.dlg dl{margin:0;border-top:1px solid var(--line)}
+.dlg dl div{display:grid;grid-template-columns:96px 1fr;padding:14px 0;border-bottom:1px solid var(--line);font-size:16px}
+.dlg dt{align-self:center;color:var(--gray);font-size:14px}.dlg dd{margin:0;font-weight:700;color:var(--ink)}
+.dlg .nt{margin:16px 0 0;font-size:15px;color:#4b5751}
+.dlg .qrb{padding:24px;border-radius:24px;background:var(--cream);text-align:center}
+.dlg .qrb .qr{width:100%;aspect-ratio:1;padding:12px;border-radius:16px;background:#fff}
+.dlg .qrb p{margin:12px 0 0;font-size:14px;font-weight:700;color:var(--ink)}
+.dlg .x{position:absolute;right:14px;top:14px;width:44px;height:44px;border:0;background:none;font-size:22px;color:var(--ink)}
+.dlg .mb{display:none}
+.dlg .pcweb{display:none;margin-top:14px;font-size:15px;font-weight:800;color:var(--ort);text-decoration:underline;text-underline-offset:4px}
+.dlg .pcweb.on{display:inline-block}
+/* 11/11 매치 안내 창 — 컴퓨터에서는 누구나 <이 컴퓨터에서 신청하기>(단추). 로그인은 신청할 때 웹 앱이 받는다. 휴대폰에서는 아래 <웹에서 보기>가 그 일을 한다 */
+.dlg .pcweb.go{margin-top:20px;height:52px;padding:0 28px;border-radius:26px;background:var(--or);color:#fff;font-size:17px;text-decoration:none;align-items:center;justify-content:center}
+.dlg .pcweb.go.on{display:inline-flex}
+/* 노트북 폭 — 첫 화면 QR 은 아래 <앱 받기> 칸에만 */
+@media (max-width:1180px){.qrmini{display:none}.dots i{display:none}
+  .th,.row{grid-template-columns:120px minmax(0,1.3fr) 100px minmax(0,1fr) 112px 104px 112px}
+  .row .tm small{flex-wrap:wrap;row-gap:4px;white-space:nowrap}}
+/* 표가 좁아지면(1000 이하) 줄을 칸으로 — 시간 · 날짜 / 코트 · 지역 · 종류 · 남은 자리 / 오른쪽 참가비 */
+@media (min-width:1001px){.row .ct small.mb{display:none}}
+@media (max-width:1000px){
+  .th{display:none}
+  .tb{padding-top:12px}
+  .row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'tm pr' 'ct pr';gap:10px 12px;padding:16px;min-height:0}
+  .row .tm{grid-area:tm;display:flex;align-items:center;gap:10px}
+  .row .tm b{order:-1;margin:0;padding:0 10px;font-size:24px;line-height:34px}
+  .row .tm small{flex-direction:column;align-items:flex-start;gap:4px}
+  .row .ct{grid-area:ct}.row .ct b{font-size:17px}
+  .row .pr{grid-area:pr;align-self:center;font-size:18px}
+  .row .kd,.row .dots,.row .cond,.row .go{display:none}
+  .row .ct small.mb{display:block}
+}
+/* 휴대폰 */
+@media (max-width:860px){
+  .wrap{padding:0 16px}
+  .hme{font-size:0;gap:0}
+  .nav{display:none}
+  .hd .wrap{height:60px;justify-content:space-between}
+  .hero{padding-top:8px}
+  .bento{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:'h1' 'cta' 'ph' 'lead';border-radius:24px}
+  .bento .h1{font-size:40px;line-height:1.05}
+  .bento .h1>span{align-items:center;min-height:150px;padding:20px;border-radius:16px}
+  .hcta{padding:24px 20px;border-radius:16px}
+  .hcta .tx p{margin-bottom:16px}
+  .hph{min-height:0;height:300px;border-radius:16px}
+  .bento .lead{padding:20px;border-radius:16px;font-size:16px;line-height:1.7}
+  .sec{padding-top:72px}
+  .h2{font-size:32px}
+  .sub{font-size:16px}
+  .shd{margin-bottom:20px}
+  .lnk{font-size:15px}
+  .om{border-radius:24px}
+  .ban{height:122px}
+  .wish{flex-direction:column;align-items:stretch;gap:16px;padding:20px}.wish img{display:none}.wish .btn{width:100%}
+  .prod{padding:24px 20px 8px;border-radius:24px}.prod h3{font-size:20px}.prod dl>div{grid-template-columns:1fr;gap:6px;padding:16px 0}
+  .steps{grid-template-columns:minmax(0,1fr);margin-top:24px}
+  .steps li{display:grid;grid-template-columns:120px minmax(0,1fr);gap:20px;align-items:center}
+  .steps .cd{height:120px;border-radius:16px}
+  .steps .n{left:14px;top:10px;transform:none;font-size:56px}
+  .steps img,.steps .s2 img{right:6px;top:auto;bottom:-2px;transform:none;height:86px}
+  .steps h3{margin:0}
+  .club,.lgw,.tier,.apb{grid-template-columns:minmax(0,1fr)}
+  .feat{margin:28px 0 24px}
+  .feat li{grid-template-columns:56px minmax(0,1fr)}.feat img{width:56px;height:56px}
+  .feat b{font-size:16px}.feat span{font-size:14px}
+  .dj{margin-top:48px;padding:24px 20px 12px;border-radius:24px}
+  .dj .sc{width:84px;top:-42px;right:-2px}
+  .dj .r{grid-template-columns:44px minmax(0,1fr) 22px minmax(0,1fr) 56px;font-size:13px}
+  .lgc{padding:24px}
+  .info{margin:24px 0}
+  .cupw{height:268px;padding:20px}.cupw img{height:228px}
+  .pyr{width:96px;margin-bottom:20px}
+  .bars{height:270px;gap:5px}
+  .bars button{align-items:center;padding:10px 0;border-radius:8px}
+  .bars b{writing-mode:vertical-rl;text-orientation:upright;font-size:13px;letter-spacing:0}
+  .bars small{display:none}
+  #get{padding-bottom:72px}
+  .apb{border-radius:24px}
+  .aor{min-height:180px;padding:24px 20px;border-radius:16px}
+  .big{font-size:40px}
+  .acr{padding:24px 20px;border-radius:16px}.acr .tt{font-size:24px}
+  .qrbig{display:none}
+  .ft{padding:40px 0 48px}
+  .ft nav{margin-left:0}
+  .ft .bizl{flex-direction:column;gap:10px}
+  .ft .bizl dt{width:104px}
+  .ft .sell{flex-direction:column;align-items:flex-start;gap:8px}
+  .mapv .in{grid-template-columns:minmax(0,1fr)}.mapbox{height:380px;order:-1}
+  .dlg .cd{grid-template-columns:1fr;gap:20px;padding:28px 22px 24px;border-radius:24px}
+  .dlg h3{font-size:32px}.dlg .qrb{display:none}.dlg .mb{display:flex;flex-direction:column;gap:10px}
+  .dlg .pcweb.go,.dlg .pcweb.go.on{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="matsuMark" viewBox="0 0 834 714"><g transform="translate(0.000000,714.000000) scale(0.100000,-0.100000)" fill="var(--brand,#ED7C30)" stroke="none"><path d="M5500 7010 c-8 -5 -51 -10 -95 -10 -77 0 -134 -14 -196 -45 -15 -8
+-45 -15 -66 -15 -21 0 -76 -14 -123 -30 -47 -16 -93 -30 -103 -30 -10 0 -43
+-13 -75 -28 -31 -16 -77 -35 -102 -42 -25 -8 -58 -23 -74 -34 -16 -10 -43 -24
+-60 -30 -35 -13 -216 -120 -290 -172 -74 -52 -146 -44 -248 27 -14 11 -31 19
+-38 19 -6 0 -32 16 -57 35 -26 20 -58 38 -72 42 -14 3 -46 19 -70 35 -25 15
+-51 28 -58 28 -8 0 -37 12 -65 26 -28 14 -77 34 -109 44 -31 10 -71 26 -88 34
+-16 9 -44 16 -61 16 -17 0 -45 8 -63 17 -41 21 -92 33 -187 43 -41 4 -95 13
+-120 20 -172 45 -667 45 -840 0 -25 -6 -70 -15 -100 -20 -104 -16 -217 -48
+-355 -101 -27 -10 -59 -19 -70 -19 -12 0 -42 -13 -68 -30 -26 -16 -53 -30 -59
+-30 -11 0 -57 -26 -201 -111 -27 -16 -53 -29 -58 -29 -19 0 -295 -215 -359
+-280 -36 -36 -78 -75 -94 -88 -16 -12 -45 -44 -66 -72 -21 -28 -49 -59 -64
+-71 -14 -11 -26 -29 -26 -40 0 -11 -7 -22 -15 -26 -9 -3 -23 -20 -33 -38 -9
+-18 -32 -51 -50 -73 -36 -43 -102 -149 -102 -163 0 -4 -14 -30 -30 -58 -17
+-28 -44 -74 -60 -102 -17 -28 -30 -55 -30 -60 0 -5 -17 -44 -38 -87 -21 -42
+-62 -151 -91 -242 -71 -223 -71 -223 -71 -251 0 -13 -8 -44 -17 -69 -70 -189
+-72 -1015 -3 -1280 6 -25 15 -70 20 -100 13 -83 25 -132 40 -160 7 -14 17 -42
+22 -62 4 -21 12 -55 16 -75 5 -21 14 -48 21 -61 7 -12 20 -49 31 -81 10 -32
+30 -81 44 -109 14 -28 26 -62 26 -75 0 -13 14 -44 30 -70 17 -26 30 -52 30
+-58 0 -14 74 -158 110 -215 16 -26 30 -54 30 -62 0 -8 13 -31 28 -51 15 -20
+48 -70 72 -111 24 -41 53 -84 65 -96 11 -12 31 -40 45 -63 13 -23 40 -59 60
+-81 19 -21 46 -58 60 -81 14 -23 49 -66 78 -95 28 -28 52 -57 52 -64 0 -6 27
+-37 60 -68 87 -83 88 -133 3 -186 -32 -20 -63 -36 -70 -36 -7 0 -34 -13 -60
+-30 -26 -16 -53 -30 -61 -30 -8 0 -31 -13 -52 -30 -21 -16 -49 -30 -62 -30
+-72 0 -255 -175 -321 -307 -126 -248 -93 -563 78 -751 74 -82 162 -162 177
+-162 5 0 26 -12 48 -26 82 -54 289 -81 435 -56 125 22 167 38 325 125 49 28
+200 97 211 97 5 0 31 16 56 35 26 20 58 38 72 42 13 3 60 28 103 55 44 26 85
+48 91 48 7 0 55 26 107 58 105 65 174 107 251 152 57 34 112 39 158 15 29 -14
+110 -44 231 -85 36 -12 77 -26 93 -31 15 -5 39 -13 55 -18 15 -6 45 -14 67
+-20 22 -5 65 -17 95 -26 73 -23 124 -35 190 -45 30 -5 75 -14 100 -20 60 -15
+145 -29 255 -41 50 -5 135 -14 190 -20 130 -14 784 -14 900 0 50 6 126 15 170
+20 112 14 173 25 225 44 25 9 65 17 89 17 25 0 61 5 80 11 34 10 48 15 119 38
+15 5 54 18 87 29 33 11 85 29 115 41 82 31 194 29 262 -5 28 -14 76 -34 108
+-44 32 -10 80 -30 108 -44 28 -14 61 -26 72 -26 11 0 37 -8 58 -18 34 -17 235
+-83 342 -113 25 -7 59 -19 75 -28 17 -8 50 -18 75 -23 110 -19 147 -27 180
+-38 108 -38 404 -53 487 -25 213 73 463 311 463 442 0 10 9 43 20 73 15 42 20
+80 20 163 0 88 -4 115 -20 147 -11 22 -20 54 -20 71 0 148 -335 446 -503 449
+-10 0 -35 9 -57 20 -22 11 -52 20 -68 20 -94 0 -59 112 85 270 13 14 23 33 23
+43 0 10 6 20 14 23 18 7 66 79 66 99 0 9 6 18 14 21 7 3 48 64 91 137 43 73
+90 154 106 180 16 27 29 52 29 57 0 5 14 31 30 57 17 26 30 54 30 63 0 9 13
+36 28 61 15 24 34 64 42 89 7 25 21 56 30 70 9 14 36 86 60 160 24 74 56 161
+72 192 17 34 28 74 28 98 0 22 8 53 17 67 25 38 43 92 43 131 0 19 12 68 27
+110 14 42 30 106 34 142 15 121 26 185 39 220 47 126 44 904 -3 1030 -9 25
+-17 56 -17 69 0 14 -4 38 -9 55 -5 17 -15 51 -22 76 -7 25 -21 62 -31 82 -10
+21 -18 51 -18 67 0 17 -13 59 -29 93 -16 35 -48 106 -71 158 -47 105 -48 107
+-100 200 -81 145 -203 320 -280 403 -57 61 -217 222 -262 262 -115 104 -510
+355 -559 355 -14 0 -46 14 -72 30 -26 17 -57 30 -68 30 -11 0 -33 7 -48 15
+-46 23 -114 45 -144 45 -15 0 -42 8 -60 17 -88 46 -830 90 -887 53z m475
+-1388 c93 -16 137 -27 170 -44 17 -8 50 -21 75 -29 48 -15 216 -129 239 -163
+8 -12 29 -34 45 -51 45 -44 86 -100 135 -185 24 -41 57 -97 72 -123 16 -27 29
+-53 29 -58 0 -6 8 -24 17 -42 18 -34 29 -79 44 -169 5 -32 14 -86 20 -120 14
+-78 14 -168 0 -275 -6 -46 -15 -118 -21 -160 -18 -148 -27 -198 -43 -243 -9
+-25 -17 -56 -17 -70 0 -28 -23 -97 -45 -141 -8 -15 -15 -42 -15 -59 0 -17 -7
+-44 -15 -61 -9 -16 -29 -69 -45 -118 -16 -50 -40 -112 -54 -140 -15 -28 -26
+-55 -26 -60 0 -6 -13 -32 -30 -58 -16 -26 -30 -54 -30 -63 0 -9 -13 -37 -30
+-63 -16 -26 -30 -52 -30 -58 0 -5 -14 -29 -30 -52 -37 -51 -128 -187 -154
+-230 -29 -46 -106 -147 -141 -183 -16 -17 -49 -53 -72 -80 -72 -84 -77 -89
+-123 -124 -25 -19 -56 -45 -70 -57 -52 -48 -111 -33 -230 57 -41 31 -90 65
+-107 74 -18 9 -33 20 -33 25 0 4 -37 34 -82 67 -101 72 -112 82 -299 267 -218
+215 -236 254 -169 360 17 26 30 52 30 58 0 5 11 32 25 59 13 27 31 66 39 87
+55 148 76 212 76 240 0 21 6 36 19 42 19 11 25 37 37 166 4 33 14 71 24 85 31
+43 51 288 52 610 0 288 -16 452 -55 560 -9 25 -17 56 -17 70 0 14 -9 50 -20
+80 -30 82 -27 150 8 182 38 34 88 68 102 68 7 0 24 8 38 18 15 10 65 31 112
+47 82 27 116 35 227 53 29 5 56 12 60 16 10 9 231 1 308 -12z m-3041 -41 c33
+-11 95 -30 136 -42 247 -75 276 -129 175 -329 -14 -27 -25 -59 -25 -70 0 -12
+-7 -35 -16 -52 -18 -34 -31 -71 -44 -128 -5 -19 -14 -53 -19 -75 -25 -100 -33
+-133 -42 -180 -44 -212 -43 -860 0 -1072 6 -29 15 -74 20 -100 17 -87 28 -127
+55 -205 44 -130 39 -179 -32 -257 -82 -91 -218 -227 -292 -291 -35 -30 -80
+-71 -100 -90 -48 -46 -71 -65 -150 -124 -36 -27 -73 -58 -83 -68 -56 -56 -119
+-22 -310 169 -136 135 -241 263 -280 339 -9 17 -23 34 -32 37 -8 4 -15 14 -15
+22 0 9 -18 43 -40 75 -22 32 -40 63 -40 69 0 5 -21 45 -48 88 -26 43 -54 98
+-62 123 -7 25 -26 71 -42 102 -15 32 -28 65 -28 75 0 21 -26 96 -43 127 -6 12
+-15 47 -19 79 -12 85 -26 165 -39 227 -15 70 -16 388 -1 455 14 62 30 141 40
+203 5 26 13 56 20 68 17 31 42 107 42 128 0 10 14 35 30 56 17 21 30 44 30 52
+0 50 211 314 315 393 43 34 145 95 156 95 5 0 30 14 56 30 26 17 56 30 67 30
+12 0 57 13 101 29 106 38 451 46 559 12z"/></g><circle cx="357" cy="539" r="71" fill="#fff"/><circle cx="490" cy="539" r="71" fill="#fff"/><circle cx="379" cy="533" r="47" fill="#0e1012"/><circle cx="513" cy="532" r="47" fill="#0e1012"/></symbol></svg>
+<header class="hd"><div class="wrap">
+  <a class="logo" href="/" aria-label="맞수 MATSU 홈"><svg class="mk" viewBox="0 0 834 714"><use href="#matsuMark"/></svg>MATSU</a>
+  <nav class="nav" aria-label="메뉴"><a href="#matches" data-nav="matches">오픈매치</a><a href="#club" data-pcapp="club">클럽</a><!--SITE_LGN--><a href="#league">맞수 리그</a><!--/SITE_LGN--><a href="#tier">티어</a></nav>
+  <button class="btn or sm" data-act="app">앱 받기</button>
+</div></header>
+
+<main class="land">
+  <section class="hero" aria-label="맞수 소개"><div class="wrap">
+    <div class="bento">
+      <h1 class="h1"><span class="hl">혼자 나가도</span> <span class="ho">한 판.</span></h1>
+      <p class="lead">같이 칠 사람이 없어도, 이번 주 열린 매치에서 자리만 고르세요. 대진은 맞수가 짜 드려요.</p>
+      <div class="hcta"><div class="tx"><b class="tt">앱 받기</b><p>아이폰 · 안드로이드 모두 받을 수 있어요</p>
+          <div class="stores"><a class="btn dk" href="https://apps.apple.com/kr/app/id6793127517" data-ios><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.5-1-2.4-4zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg><span>App Store</span></a><a class="btn dk" href="https://play.google.com/store/apps/details?id=app.matsu" data-and><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l9.1-9.1-9.1-9.1zm10.2 8.1L7.4 2.6l9.7 5.6-1.3 2.8zm1.3 4.8-9.7 5.6 8.4-8.4 1.3 2.8zm1-7 2.6 1.5c.8.5.8 1.6 0 2.1l-2.6 1.5-1.5-2.6 1.5-2.5z"/></svg><span>Google Play</span></a></div></div>
+        <div class="qrmini"><div class="qr" data-qr="/get"></div><span>폰 카메라로 찍으면 바로</span></div></div>
+      <figure class="hph"><img src="/site/img/hero_play.78376577.webp" alt="" width="642" height="1142"><figcaption class="tagx">예시 사진</figcaption></figure>
+    </div>
+  </div></section>
+
+  <section class="sec" id="open" aria-labelledby="omt"><div class="wrap">
+    <div class="shd"><h2 class="h2" id="omt">이번 주 오픈매치</h2><a class="lnk" href="#matches">지도로 보기<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+    <div class="om">
+      <figure class="ban"><img src="/site/img/court_ban.b92bf8af.webp" alt="" width="2304" height="460"><figcaption class="tagx">예시 사진</figcaption></figure>
+      <div class="tb" id="omList" aria-live="polite">
+        <div class="th"><span>시간</span><span>코트</span><span>종류</span><span>남은 자리</span><span>신청 조건</span><span style="text-align:right">참가비 1인</span><span></span></div>
+        <!--SITE_OM--><div class="skel"></div><div class="skel"></div><div class="skel"></div><!--/SITE_OM-->
+      </div>
+    </div>
+    <div class="wish"><img src="/site/img/bell.fe829897.webp" alt="" width="160" height="158"><p><b>원하는 시간이 없나요?</b> 치고 싶은 코트를 골라 두면, 사람이 모일 때 매치가 열려요</p><button class="btn dk sm" data-act="wish">매치 알림 받기</button></div>
+    <!--SITE_PROD-->
+  </div></section>
+
+  <section class="sec" id="how" aria-labelledby="hwt"><div class="wrap">
+    <h2 class="h2" id="hwt">세 장이면 한 판</h2>
+    <ol class="steps">
+      <li><div class="cd s1"><b class="n" aria-hidden="true">1</b><img src="/site/img/ic_phone.06316f9c.webp" alt="" width="259" height="360" loading="lazy"></div><div class="tx"><h3>앱 받기</h3><p>App Store · Google Play에서 받고 로그인해요.</p></div></li>
+      <li><div class="cd s2"><b class="n" aria-hidden="true">2</b><img src="/site/img/ic_pin.1ae32908.webp" alt="" width="196" height="300" loading="lazy"></div><div class="tx"><h3>자리 고르기</h3><p>시간 · 코트 · 남은 자리를 보고 한 자리를 골라요.</p></div></li>
+      <li><div class="cd s3"><b class="n" aria-hidden="true">3</b><img src="/site/img/ic_board.efeb1f75.webp" alt="" width="259" height="360" loading="lazy"></div><div class="tx"><h3>대진 받기</h3><p>대진은 맞수가 짜 드려요. 코트에 나가서 치면 돼요.</p></div></li>
+    </ol>
+  </div></section>
+
+  <section class="sec" id="club" aria-labelledby="clt"><div class="wrap club">
+    <div>
+      <h2 class="h2" id="clt">총무 일이<br>절반으로.</h2>
+      <p class="sub">대진 · 점수 · 랭킹 · 회비 장부를 한 곳에서.</p>
+      <ul class="feat">
+        <li><img src="/site/img/ic_check.071422c5.webp" alt="" width="142" height="192" loading="lazy"><div><b>참석만 누르면 대진까지</b><span>모임에 참석을 누르면 여섯 가지 방식으로 대진이 짜여요.</span></div></li>
+        <li><img src="/site/img/ic_ask.a21bda3c.webp" alt="" width="192" height="191" loading="lazy"><div><b>“지금 몇 게임 했지?” 끝</b><span>모두 정확히 네 게임. 코트가 비면 다음 경기를 알려줘요.</span></div></li>
+        <li><img src="/site/img/ic_rank.0e21c9d4.webp" alt="" width="175" height="192" loading="lazy"><div><b>점수 넣으면 랭킹이 쌓여요</b><span>경기 결과가 시즌 랭킹과 회원 실력에 바로 반영돼요.</span></div></li>
+        <li><img src="/site/img/ic_mail.2c4c7a41.webp" alt="" width="185" height="192" loading="lazy"><div><b>게스트도 초대장 하나로</b><span>카톡방에 초대장을 보내면 이름만 넣고 신청 완료.</span></div></li>
+      </ul>
+      <button class="btn or" data-act="club">앱에서 클럽 만들기</button>
+    </div>
+    <div class="dj" aria-hidden="true">
+      <span class="ex">예시 화면</span>
+      <img class="sc" src="/site/img/ic_score.02f20ae9.webp" alt="" width="237" height="240" loading="lazy">
+      <h4>오늘 대진<small>화요 정기모임 · 코트 1</small></h4>
+      <div class="r"><i>19:00</i><span>김하늘 · 이도윤</span><i class="vs">vs</i><span>박서준 · 최유나</span><em>6 : 3</em></div>
+      <div class="r"><i>19:30</i><span>정민호 · 한지우</span><i class="vs">vs</i><span>김하늘 · 최유나</span><em>4 : 6</em></div>
+      <div class="r"><i>20:00</i><span>이도윤 · 박서준</span><i class="vs">vs</i><span>정민호 · 강수연</span><em>6 : 4</em></div>
+      <div class="r"><i>20:30</i><span>한지우 · 강수연</span><i class="vs">vs</i><span>이도윤 · 최유나</span><em class="now">지금</em></div>
+    </div>
+  </div></section>
+
+  <!--SITE_LG--><section class="sec" id="league" aria-labelledby="lgt"><div class="wrap lgw">
+    <div class="lgc">
+      <div class="lgh"><h2 class="h2" id="lgt">제1회 맞수<br>컨퍼런스 리그</h2><span class="badge">준비 중</span></div>
+      <p class="sub">클럽 대 클럽으로 맞수컵을 두고 겨뤄요.</p>
+      <div class="info"><div><small>일시</small><b>TBD</b></div><div><small>장소</small><b>TBD</b></div><div><small>참가</small><b>TBD</b></div><div><small>우승</small><b>TBD</b></div></div>
+      <button class="btn or" data-act="league">앱에서 참가 신청</button>
+    </div>
+    <div class="cupw"><img src="/site/img/cup.webp" alt="맞수컵" width="420" height="869" loading="lazy"></div>
+  </div></section><!--/SITE_LG-->
+
+  <section class="sec" id="tier" aria-labelledby="tit"><div class="wrap tier">
+    <div><img class="pyr" src="/site/img/pyr.0af3a953.webp" alt="" width="180" height="180" loading="lazy"><h2 class="h2" id="tit">나는<br>어디쯤일까?</h2>
+      <p class="sub">2대2 경기 결과로 티어가 쌓여요.<br>오픈매치 신청 조건이 바로 이 티어예요.</p></div>
+    <div class="bars" id="bars"></div>
+  </div></section>
+
+  <section class="sec" id="get" aria-labelledby="apt"><div class="wrap">
+    <div class="apb">
+      <div class="aor"><h2 class="big" id="apt">다음 한 판은<br>앱에서.</h2></div>
+      <div class="acr"><b class="tt">지금 받기</b>
+        <p class="s">매치 신청 · 대진 · 점수 · 리그 신청은 앱에서 할 수 있어요. 이미 회원이면 <a href="/app">웹</a>에서도 돼요.</p>
+        <div class="stores"><a class="btn dk" href="https://apps.apple.com/kr/app/id6793127517" data-ios><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.5-1-2.4-4zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg><span>App Store</span></a><a class="btn dk" href="https://play.google.com/store/apps/details?id=app.matsu" data-and><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l9.1-9.1-9.1-9.1zm10.2 8.1L7.4 2.6l9.7 5.6-1.3 2.8zm1.3 4.8-9.7 5.6 8.4-8.4 1.3 2.8zm1-7 2.6 1.5c.8.5.8 1.6 0 2.1l-2.6 1.5-1.5-2.6 1.5-2.5z"/></svg><span>Google Play</span></a></div>
+        <div class="qrbig"><div class="qr" data-qr="/get"></div><p>폰 카메라로 찍어 주세요</p></div>
+      </div>
+    </div>
+  </div></section>
+</main>
+
+<section class="mapv" aria-label="이번 주 오픈매치 지도"><div class="wrap in">
+  <div class="panel"><h2 class="h2" id="mapTitle">이번 주 오픈매치</h2><div class="flt" id="flt"></div><div id="mapList" class="ml"></div></div>
+  <div class="mapbox" id="mapBox"></div>
+</div></section>
+
+<footer class="ft"><div class="wrap">
+  <div class="top"><a class="logo" href="/"><svg class="mk" viewBox="0 0 834 714"><use href="#matsuMark"/></svg>MATSU</a>
+    <nav aria-label="약관 · 문의"><a href="/terms">이용약관</a><a href="/privacy">개인정보처리방침</a><a href="/refund">취소 · 환불 정책</a><a href="#" id="mailLink">문의하기</a><a class="u" href="/app">기존 회원 웹 로그인</a></nav></div>
+  <div id="biz"><!--SITE_FOOT--></div>
+</div></footer>
+
+<div class="ov" id="ov" role="dialog" aria-modal="true" aria-labelledby="dlgT"><div class="dlg">
+  <div class="cd"><div><div class="tabs"><span class="t1">맞수</span><span class="t2" id="dlgA"></span><span class="t3" id="dlgB"></span></div>
+      <h3 id="dlgT"></h3><dl id="dlgL"></dl><p class="nt" id="dlgN"></p><a class="pcweb" id="dlgPc" href="/app">이 컴퓨터에서 보기 ›</a>
+      <div class="mb"><a class="btn or" href="/get" data-store id="dlgStore">App Store에서 받기</a><a class="btn white" href="/app" id="dlgWeb" style="box-shadow:inset 0 0 0 1.5px var(--line2);color:var(--ink)">웹에서 보기</a></div></div>
+    <div class="qrb"><div class="qr" id="dlgQ"></div><p>폰 카메라로 찍어 주세요</p></div></div>
+  <button class="x" id="dlgX" aria-label="닫기">✕</button>
+</div></div>
+
+<script src="/site/qr.js"></script>
+<script>
+const SITE=/*SITE_CFG*/null;
+(function(){
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const won=n=>(+n||0).toLocaleString('ko-KR')+'원';
+const DOW='일월화수목금토';
+const CFG=Object.assign({ios:'https://apps.apple.com/kr/app/id6793127517',android:'https://play.google.com/store/apps/details?id=app.matsu',email:''},SITE||{});
+if(!CFG.android) CFG.android='https://play.google.com/store/apps/details?id=app.matsu';
+const mobile=()=>matchMedia('(max-width:860px)').matches;
+/* 로그인한 회원이면 위 줄 <클럽>은 내 클럽 화면(/app — PC 에서는 PC 모양)으로 */
+try{ if(localStorage.getItem('matsu_jwt')) $$('[data-pcapp]').forEach(a=>{ a.href='/app#'+a.dataset.pcapp; }); }catch(e){}
+/* 로그인한 회원 — 위 줄에 내 이름(웹 앱 위 줄과 같은 모양). 서버가 모르는 토큰이면 아무것도 안 바꾼다 */
+let ME=null;
+(async()=>{ let t=null; try{ t=localStorage.getItem('matsu_jwt'); }catch(e){} if(!t) return;
+  try{ const r=await fetch('/me',{headers:{Authorization:'Bearer '+t}}); if(!r.ok) return; const u=await r.json(); const nm=String((u&&u.name)||'').trim(); if(!nm) return;
+    ME=u; const a=document.createElement('a'); a.className='hme'; a.href='/app#me'; a.innerHTML=`<span>${esc(nm.slice(0,1))}</span>${esc(nm)}`;
+    const w=$('.hd .wrap'); if(w) w.appendChild(a); }catch(e){} })();
+
+/* QR — 가운데 맞수 표시(오류 정정 H) */
+function qrSvg(path){
+  try{ const q=qrcode(0,'H'); q.addData(location.origin+path); q.make();
+    const n=q.getModuleCount(); let d='';
+    for(let r=0;r<n;r++) for(let c=0;c<n;c++) if(q.isDark(r,c)) d+=`M${c} ${r}h1v1h-1z`;
+    const L=n*0.24, o=(n-L)/2;
+    return `<svg viewBox="-1 -1 ${n+2} ${n+2}" role="img" aria-label="앱 받는 QR 코드"><path d="${d}" fill="#17392d"/>
+      <rect x="${o-.6}" y="${o-.6}" width="${L+1.2}" height="${L+1.2}" rx="1.4" fill="#fff"/>
+      <svg x="${o}" y="${o+L*.08}" width="${L}" height="${L*.84}" viewBox="0 0 834 714"><use href="#matsuMark" style="--brand:#17392d"/></svg></svg>`;
+  }catch(e){ return ''; }
+}
+function paintQR(){ $$('[data-qr]').forEach(el=>{ el.innerHTML=qrSvg(el.dataset.qr); }); }
+
+/* 휴대폰 — 아이폰은 App Store, 안드로이드는 Google Play 로 곧장(11/3 Play 공개) */
+function storeHref(m){ const ua=navigator.userAgent;
+  if(/iPhone|iPad|iPod/i.test(ua)) return CFG.ios;
+  if(/Android/i.test(ua)) return CFG.android || ('/app'+(m?`?match=${m}`:''));
+  return CFG.ios; }                                        // 컴퓨터 — App Store 페이지
+const IS_IOS=/iPhone|iPad|iPod/i.test(navigator.userAgent), IS_AND=/Android/i.test(navigator.userAgent);
+function fixStore(){
+  $$('[data-store]').forEach(a=>{ a.href=storeHref(); });
+  $$('[data-ios]').forEach(a=>{ a.href=CFG.ios; a.hidden=IS_AND; });
+  $$('[data-and]').forEach(a=>{ a.href=CFG.android; a.hidden=IS_IOS; });
+  /* 폰에서는 내 폰 스토어 하나만 — <App Store에서 받기> */
+  $$('.stores').forEach(b=>b.classList.toggle('one',IS_IOS||IS_AND));
+  const d=$('#dlgStore'); if(d) d.textContent=IS_AND?'Google Play에서 받기':'App Store에서 받기';
+}
+
+/* ── 이번 주 오픈매치 ── */
+const MS0=/*SITE_MS*/null;                 // 서버가 첫 화면에 그려 넣은 목록(없으면 null — 아래에서 받아 온다)
+let MS=Array.isArray(MS0)?MS0:[], MERR=false, SEL=null, FLT='all';
+const TIER_CLS={bronze:'bronze',silver:'silver',gold:'gold',platinum:'platinum',diamond:'diamond',challenger:'challenger'};
+const dt=s=>{ const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/); if(!m) return null;
+  const d=new Date(+m[1],+m[2]-1,+m[3]); return {md:`${+m[2]}/${+m[3]}`, dow:DOW[d.getDay()], hm:`${m[4]}:${m[5]}`}; };
+const leftTxt=m=>m.left_m!=null&&m.left_f!=null?`남 ${m.left_m} · 여 ${m.left_f} 남음`:`${m.left}자리 남음`;
+const kindTxt=m=>`${m.disc}${m.courts?` · ${m.courts}코트`:''}`;
+function dots(m){ const n=Math.min(6,m.cap||0); if(!n) return ''; const f=Math.round((m.cur/m.cap)*n);
+  return `<i>${Array.from({length:n},(_,i)=>`<u class="${i<f?'':'o'}"></u>`).join('')}</i>`; }
+function rowHTML(m,i){ const d=dt(m.start_at)||{};
+  return `<div class="row${i===0?' hi':''}" data-m="${m.id}" role="button" tabindex="0" aria-label="${esc(`${d.md} ${d.hm} ${m.loc} ${won(m.price)} 신청`)}">
+    <div class="tm"><small>${d.md} (${d.dow})${m.soon?'<span class="soon">곧 확정</span>':''}</small><b>${d.hm}</b></div>
+    <div class="ct"><b>${esc(m.loc)}</b><small>${esc(m.area||'')}</small><small class="mb">${esc(kindTxt(m))} · ${esc(leftTxt(m))}</small></div>
+    <div class="kd">${esc(kindTxt(m))}</div>
+    <div class="dots">${dots(m)}<span>${esc(leftTxt(m))}</span></div>
+    <div class="cond"><span class="chip ${TIER_CLS[m.tier_key]||''}">${esc(m.tier)}</span></div>
+    <div class="pr">${won(m.price)}</div>
+    <div class="go"><span class="arr">→</span><button class="btn or sm" tabindex="-1">신청하기</button></div></div>`; }
+function paintList(){
+  const box=$('#omList'), head=box.querySelector('.th').outerHTML;
+  if(!MS.length){ box.innerHTML=head+`<div class="empty"><b>${MERR?'매치를 불러오지 못했어요':'이번 주 열린 매치가 아직 없어요'}</b>
+    ${MERR?'잠시 뒤 다시 열어 주세요.':'치고 싶은 코트를 골라 두면 사람이 모일 때 매치가 열려요.'}</div>`; return; }
+  box.innerHTML=head+MS.slice(0,6).map(rowHTML).join('');
+}
+async function loadMatches(){
+  try{ const r=await fetch('/site/matches',{cache:'no-store'}); if(!r.ok) throw 0; const j=await r.json(); MS=(j&&j.matches)||[]; MERR=false; }
+  catch(e){ MS=[]; MERR=true; }
+  if(SEL==null&&MS[0]) SEL=MS[0].id;
+  paintList(); if(document.body.classList.contains('map')) paintMap();
+}
+
+/* ── 티어 막대 (비율은 서버 TIER_CUT 과 같다) ── */
+const TIERS=[['러브','배치 중','#5f6670',.16,1],['브론즈','나머지','#b9784e',.26],['실버','상위 60%','#a3aab3',.36],['골드','상위 30%','#e1ad2c',.47],
+  ['플래티넘','상위 15%','#2fa58a',.6],['다이아','상위 5%','#3f87e0',.76],['챌린저','상위 1%','#7b5bd6',.9,1]];
+$('#bars').innerHTML=TIERS.map(([n,p,c,h,w])=>`<button${w?' class="w"':''} style="height:${(h/.9*100).toFixed(1)}%;background:${c}" data-act="tier" aria-label="${n} ${p}"><b>${n}</b><small>${p}</small></button>`).join('');
+
+/* ── 앱 안내 창 ── */
+const DLG={
+  match:m=>{ const d=dt(m.start_at)||{}, pc=!mobile(); return {a:'오픈매치',b:'자리 신청',t:pc?'이 자리에<br>신청해요':'이 자리는<br>앱에서 신청해요',
+    rows:[['일시',`${d.md} (${d.dow}) ${d.hm}`],['코트',`${m.loc} · ${kindTxt(m)}`],['남은 자리',leftTxt(m).replace(' 남음','')],['참가비',won(m.price)]],
+    n:pc?'이 컴퓨터에서 바로 신청하거나, 폰으로 QR 을 찍어 앱에서 신청할 수 있어요.':'앱을 받고 로그인하면 바로 신청할 수 있어요.', m:m.id}; },
+  club:()=>({a:'클럽',b:'클럽 만들기',t:'클럽 운영은<br>앱에서 시작해요',rows:[['참석','누르면 대진까지 한 번에'],['기록','점수 · 시즌 랭킹'],['총무','회비 장부 · 출석 · 공지'],['초대','카톡방에 초대장 하나로']],
+    n:'앱을 받고 클럽을 만들면 회원을 바로 초대할 수 있어요.'}),
+  league:()=>({a:'맞수 리그',b:'참가 신청',t:'참가 신청은<br>앱에서 받아요',rows:[['일시','TBD'],['장소','TBD'],['참가비','TBD'],['우승','TBD']],
+    n:'일정과 조건이 정해지면 클럽 운영진이 앱에서 신청하고 엔트리를 내요.'}),
+  tier:()=>({a:'티어',b:'내 티어',t:'내 티어는<br>앱에서 확인해요',rows:[['처음','러브 · 배치 중'],['쌓이는 곳','2대2 경기 결과'],['쓰이는 곳','오픈매치 신청 · 개인리그']],
+    n:'앱에서 경기를 치르면 티어가 정해져요.'}),
+  wish:()=>({a:'오픈매치',b:'알림 받기',t:'매치 알림은<br>앱에서 받아요',rows:[['고르기','치고 싶은 코트'],['알림','사람이 모여 매치가 열리면'],['신청','알림에서 바로']],
+    n:'앱을 받고 로그인하면 알림을 켤 수 있어요.'}),
+  app:()=>({a:'앱',b:'받기',t:'다음 한 판은<br>앱에서',rows:[['아이폰','App Store'],['안드로이드','Google Play'],['웹','기존 회원 웹 로그인']],
+    n:'매치 신청 · 대진 · 점수 · 리그 신청은 앱에서 할 수 있어요.'}),
+};
+let LAST=null;
+function openDlg(kind,arg){
+  const D=DLG[kind](arg); LAST=document.activeElement;
+  $('#dlgA').textContent=D.a; $('#dlgB').textContent=D.b; $('#dlgT').innerHTML=D.t;
+  $('#dlgL').innerHTML=D.rows.map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
+  $('#dlgN').textContent=D.n;
+  $('#dlgQ').innerHTML=qrSvg('/get'+(D.m?`?m=${D.m}`:''));
+  $('#dlgStore').href=storeHref(D.m); $('#dlgWeb').href='/app'+(D.m?`?match=${D.m}`:'');
+  /* 컴퓨터에서도 바로 — 매치는 누구나 웹 앱의 매치 화면으로(11/11 · 로그인은 신청할 때 받는다), 클럽은 로그인한 회원만 내 클럽 화면으로 */
+  const pw=D.m?`/app?match=${D.m}`:kind==='club'?'/app#club':'', pcEl=$('#dlgPc');
+  pcEl.href=pw||'/app'; pcEl.textContent=D.m?'이 컴퓨터에서 신청하기':'이 컴퓨터에서 보기 ›';
+  pcEl.classList.toggle('go',!!D.m); pcEl.classList.toggle('on',!!(pw&&(D.m||ME)));
+  $('#ov').classList.add('on'); $('#dlgX').focus();
+}
+function closeDlg(){ $('#ov').classList.remove('on'); if(LAST&&LAST.focus) LAST.focus(); }
+$('#dlgX').onclick=closeDlg;
+$('#ov').addEventListener('click',e=>{ if(e.target.id==='ov') closeDlg(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#ov').classList.contains('on')) closeDlg(); });
+document.addEventListener('click',e=>{
+  const a=e.target.closest('[data-act]'); if(a){ e.preventDefault(); openDlg(a.dataset.act); return; }
+  const r=e.target.closest('[data-m]'); if(r){ const m=MS.find(x=>String(x.id)===r.dataset.m); if(m){ e.preventDefault(); openDlg('match',m); } }
+});
+document.addEventListener('keydown',e=>{ if(e.key!=='Enter') return; const r=e.target.closest&&e.target.closest('[data-m]');
+  if(r){ const m=MS.find(x=>String(x.id)===r.dataset.m); if(m) openDlg('match',m); } });
+
+/* ── 지도 보기 (#matches) — 실제 지도가 아니라 위치를 줄인 그림. 좌표가 있는 매치만 핀 ── */
+const PLACES=[['강남',37.4979,127.0276],['송파',37.5145,127.1059],['서초',37.4837,127.0324],['성남',37.4200,127.1265],['분당',37.3826,127.1190],
+  ['용인',37.2411,127.1776],['기흥',37.2805,127.1150],['수원',37.2636,127.0286],['안양',37.3943,126.9568],['과천',37.4292,126.9876],['하남',37.5393,127.2149],
+  ['광주',37.4295,127.2550],['의왕',37.3447,126.9683],['화성',37.1996,126.8312],['오산',37.1498,127.0772],['평택',36.9921,127.1129],['광명',37.4786,126.8646],
+  ['마포',37.5663,126.9019],['종로',37.5730,126.9794],['구리',37.5943,127.1296],['고양',37.6584,126.8320],['인천',37.4563,126.7052],['부천',37.5034,126.7660],['이천',37.2720,127.4350]];
+function areaKey(m){ return String(m.area||'').split(' ')[0]||''; }
+function paintMap(){
+  const list=MS.filter(m=>FLT==='all'||m.disc===FLT||areaKey(m)===FLT);
+  $('#mapTitle').textContent=MS.length?`이번 주 ${MS.length}곳`:'이번 주 오픈매치';
+  const discs=[...new Set(MS.map(m=>m.disc))], areas=[...new Set(MS.map(areaKey).filter(Boolean))];
+  const chips=[['all','이번 주 전체'],...areas.map(a=>[a,a]),...discs.map(d=>[d,d])];
+  $('#flt').innerHTML=chips.length>1?chips.map(([k,l])=>`<button class="${FLT===k?'on':''}" data-f="${esc(k)}">${esc(l)}</button>`).join(''):'';
+  $('#mapList').innerHTML=list.length?list.map(m=>{ const d=dt(m.start_at)||{};
+    return `<div class="mrow${SEL===m.id?' on':''}" data-pick="${m.id}" role="button" tabindex="0"><div class="tm"><small>${d.md} (${d.dow})</small><b>${d.hm}</b></div>
+      <div class="c"><b>${esc(m.loc)}</b><small>${esc(m.disc)} · ${esc(leftTxt(m))}</small></div><div class="p">${won(m.price)}</div></div>`; }).join('')
+    : `<div class="empty"><b>${MERR?'매치를 불러오지 못했어요':'이번 주 열린 매치가 아직 없어요'}</b>앱에서 매치 알림을 켜 두세요.</div>`;
+  const box=$('#mapBox'), W=box.clientWidth||800, H=box.clientHeight||600;
+  const pts=list.filter(m=>m.lat!=null&&m.lng!=null);
+  let la=pts.map(m=>m.lat), ln=pts.map(m=>m.lng);
+  if(!pts.length){ la=[37.30,37.55]; ln=[126.95,127.25]; }
+  let [a0,a1]=[Math.min(...la),Math.max(...la)], [o0,o1]=[Math.min(...ln),Math.max(...ln)];
+  const pad=Math.max(.06,(a1-a0)*.25,(o1-o0)*.2); a0-=pad; a1+=pad; o0-=pad; o1+=pad;
+  /* 가로세로 비율을 화면에 맞춘다 (위도 1도 ≈ 경도 1.26도) */
+  const k=W/H, span=Math.max((o1-o0)/1.26,(a1-a0)*k)/k, cy=(a0+a1)/2, cx=(o0+o1)/2;
+  a0=cy-span/2; a1=cy+span/2; o0=cx-span*k*1.26/2; o1=cx+span*k*1.26/2;
+  const X=lng=>(lng-o0)/(o1-o0)*100, Y=lat=>(a1-lat)/(a1-a0)*100;
+  const han=37.525, hy=Y(han);
+  let h=`<svg class="bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    ${hy>0&&hy<100?`<path d="M0 ${hy-2} C25 ${hy-6} 45 ${hy+4} 70 ${hy} S95 ${hy-5} 100 ${hy-1} L100 ${hy+3} C80 ${hy+1} 70 ${hy+6} 50 ${hy+5} S20 ${hy-1} 0 ${hy+3}Z" fill="#1f4a3b"/>`:''}
+    ${[18,42,66,88].map((x,i)=>`<path d="M${x} 0 C${x+6} 30 ${x-6} 60 ${x+3} 100" stroke="rgba(200,235,220,.16)" stroke-width=".25" fill="none" vector-effect="non-scaling-stroke"/>`).join('')}
+    ${[22,48,74].map(y=>`<path d="M0 ${y} C30 ${y-6} 60 ${y+8} 100 ${y-2}" stroke="rgba(200,235,220,.14)" stroke-width=".25" fill="none" vector-effect="non-scaling-stroke"/>`).join('')}</svg>`;
+  PLACES.forEach(([n,lat,lng])=>{ const x=X(lng), y=Y(lat); if(x>4&&x<96&&y>4&&y<96) h+=`<span class="lbl" style="left:${x}%;top:${y}%">${n}</span>`; });
+  const sel=pts.find(m=>m.id===SEL);
+  pts.forEach(m=>{ h+=`<button class="pin${m.id===SEL?' on':''}" style="left:${X(m.lng)}%;top:${Y(m.lat)}%" data-pick="${m.id}">${m.left}자리</button>`; });
+  if(sel){ const d=dt(sel.start_at)||{}, x=X(sel.lng), y=Y(sel.lat);
+    const up=y>55;                                         /* 아래쪽 핀이면 창을 위로 */
+    h+=`<div class="pop" style="left:clamp(10px,calc(${x}% - 160px),calc(100% - 330px));top:calc(${y}% ${up?'- 34px':'+ 34px'});${up?'transform:translateY(-100%)':''}">
+      <small>${d.md} (${d.dow}) ${d.hm} · ${esc(sel.disc)}</small><b>${esc(sel.loc)}</b><p>${esc(leftTxt(sel))} · ${won(sel.price)}</p>
+      <button class="btn or" data-m="${sel.id}">앱에서 신청</button></div>`; }
+  if(list.length&&!pts.length) h+=`<p class="nomap">위치가 등록된 코트가 없어 목록으로만 보여요</p>`;
+  box.innerHTML=h;
+}
+document.addEventListener('click',e=>{
+  const f=e.target.closest('[data-f]'); if(f){ FLT=f.dataset.f; SEL=null; paintMap(); return; }
+  const p=e.target.closest('[data-pick]'); if(p){ SEL=+p.dataset.pick; paintMap(); }
+});
+function route(){
+  const map=location.hash==='#matches';
+  document.body.classList.toggle('map',map);
+  $$('[data-nav]').forEach(a=>a.classList.toggle('on',map&&a.dataset.nav==='matches'));
+  if(map){ if(SEL==null&&MS[0]) SEL=MS[0].id; paintMap(); window.scrollTo(0,0); }
+}
+window.addEventListener('hashchange',route);
+window.addEventListener('resize',()=>{ if(document.body.classList.contains('map')) paintMap(); });
+
+/* 바닥 사업자 정보 — 서버가 넣어 준다. 파일을 그대로 열었을 때만 /config 로 채운다 */
+async function foot(){
+  if(!$('#biz .bizl')) try{ const c=await (await fetch('/config')).json(); const o=c.op||{};
+    /* 서버(siteFoot)와 같은 모양 — 이름표 · 값 짝 */
+    const K=/^(상호|사업자등록번호|사업자 등록번호|대표자?|주소|사업장 주소|사업장|고객센터|전화|통신판매업 ?신고(?:번호)?|호스팅)\s*[:：]?\s*(.+)$/;
+    const L=String(o.biz||'').split(/\s*·\s*/).filter(Boolean).map(p=>{ const m=p.match(K); return m?[m[1],m[2]]:['',p]; });
+    if(o.name&&!L.some(x=>/^대표/.test(x[0]))) L.splice(Math.min(1,L.length),0,['대표',o.name]);
+    if(o.mailorder) L.push(['통신판매업 신고',o.mailorder]); if(o.tel) L.push(['고객센터',o.tel]); if(o.email) L.push(['이메일',o.email]);
+    const co=(L.find(x=>x[0]==='상호')||[])[1]||'맞수';
+    $('#biz').innerHTML=`<dl class="bizl">${L.map(([k,v])=>`<div>${k?`<dt>${esc(k)}</dt>`:''}<dd>${esc(v)}</dd></div>`).join('')}</dl>
+      ${c.om_pay_live?'<p class="sell"><b>판매자 맞수</b><span>결제와 환불은 맞수가 책임지고, 경기는 맞수 파트너 호스트가 진행해요.</span></p>'
+        :'<p class="sell"><b>맞수</b><span>모집 · 대진을 돕는 무료 서비스예요. 오픈매치 참가비는 매치를 연 호스트에게 직접 보내요.</span></p>'}<p class="copy">© ${new Date().getFullYear()} ${esc(co)}</p>`;   /* 11/15 — 카드 결제를 꺼 두면 직접 송금(서버 siteFoot 과 같은 글) */
+    if(!CFG.email&&o.email) CFG.email=o.email; if(c.ios_app_url) CFG.ios=c.ios_app_url; if(c.android_app_url) CFG.android=c.android_app_url; fixStore();
+  }catch(e){}
+  $('#mailLink').href=`mailto:${CFG.email||''}?subject=${encodeURIComponent('[맞수] 문의')}`;
+}
+
+/* 앱으로 설치한 웹 앱(바로가기)이 여기로 오면 웹 앱으로 */
+try{ if(matchMedia('(display-mode: standalone)').matches) location.replace('/app'); }catch(e){}
+paintQR(); fixStore(); foot(); loadMatches(); route();
+})();
+</script>
+</body>
+</html>
