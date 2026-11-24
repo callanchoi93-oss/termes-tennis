@@ -15960,12 +15960,15 @@ app.get('/venues/:id/talk', optAuth, (req, res) => {
   /* 구장을 안 고른 채로 오면(클럽이 없는 사람) 전국톡만 본다 —
      전국톡은 클럽에 안 든 사람도 낄 수 있는 자리다. */
   const scope = (!vid || req.query.scope === 'all') ? 'all' : 'court';
-  const v = vid ? (db.prepare('SELECT name FROM venues WHERE id=?').get(vid) || {}) : {};
+  const v = vid ? (db.prepare('SELECT name, photos, logo FROM venues WHERE id=?').get(vid) || {}) : {};
+  /* 11/24(1124d) 라운지 새 배치 — 구장 줄에 코트 사진(작은 것 · 없으면 구장 로고) */
+  const vph = vid ? venuePhotoList(v.photos) : [];
+  const vpic = { venue_photo: vph[0] ? (vph[0].thumb || vph[0].url) : null, venue_logo: v.logo || null };
   /* 누가 이 코트를 쓰는지 — 글이 하나도 없어도 빈 방으로 느껴지지 않게 앞에 세운다 */
   const s = vid ? venueShares(vid) : { clubs: [] };
   const who = s.clubs.map(c => ({ club_id: c.club_id, name: c.name, wins: c.wins, size: c.size }));
   if (scope === 'court' && !atCourt(req.uid, vid))
-    return res.json({ scope, locked: true, posts: [], venue: v.name || '', clubs: who,
+    return res.json({ scope, locked: true, posts: [], venue: v.name || '', clubs: who, ...vpic,
       message: '이 구장을 홈으로 건 클럽만 보이는 공간이에요' });
   /* 말머리로 거른다 — 없으면 전체 */
   const cat = String(req.query.cat || '').trim();
@@ -16029,7 +16032,14 @@ app.get('/venues/:id/talk', optAuth, (req, res) => {
       ORDER BY p.views DESC LIMIT 3`).all(Date.now() - 7 * 864e5);
     picks.forEach(p => { p.cat_name = catName('all', p.cat); talkWho(p, p.venue_id, req.uid); });
   }
-  res.json({ scope, locked: false, posts, venue: v.name || '', clubs: who, my_nick: myNick,
+  /* 11/24(1124d) <전체 N> 칩 — 이 구장 글 전부(말머리 · 더 보기와 상관없이 · 가려진 글 · 안 보기로 한 사람 글은 뺀다).
+     seen_at — 내가 이 구장톡을 마지막으로 본 때(목록의 N 표시 · 앱은 이 응답을 받은 뒤 /talk/seen 을 부른다 · 처음이면 0) */
+  const count = scope === 'court'
+    ? db.prepare(`SELECT COUNT(*) n FROM court_posts p WHERE p.venue_id=? AND p.scope='court' ${hideSql}`).get(vid).n : null;
+  const seenRow = (scope === 'court' && req.uid)
+    ? db.prepare('SELECT seen_at FROM court_seen WHERE user_id=? AND venue_id=?').get(req.uid, vid) : null;
+  const seen_at = (scope === 'court' && req.uid) ? ((seenRow && seenRow.seen_at) || 0) : null;
+  res.json({ scope, locked: false, posts, venue: v.name || '', clubs: who, my_nick: myNick, ...vpic, count, seen_at,
     cats: scope === 'all' ? CAT_ALL : CAT_COURT, picks, total: rows.length,
     has_more, next_before: rows.length ? rows[rows.length - 1].id : null,
     guest: req.uid ? 0 : 1, guest_more: guest_more ? 1 : 0 });
