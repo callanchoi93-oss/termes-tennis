@@ -261,6 +261,22 @@ function sign(user) {
   const u = db.prepare('SELECT token_version FROM users WHERE id=?').get(user.id) || {};
   return jwt.sign({ id: user.id, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '30d' });
 }
+/* 11/25(1125b) 아이폰 <로그인이 자꾸 풀려요> — 웹은 토큰을 localStorage 에만 두는데,
+   iOS 사파리(7일 넘게 안 열면) · 카톡 같은 인앱 브라우저가 그 저장소를 비운다.
+   로그인 · 토큰 갱신 때 같은 토큰을 httpOnly 쿠키(matsu_s)로도 준다. /auth 경로에만 실려서 다른 요청에는 안 붙는다.
+   켤 때 저장소가 비어 있으면 앱이 GET /auth/resume 으로 되찾는다. 앱(capacitor://)은 다른 출처라 쿠키를 안 받는다 — 앱은 기기 저장소를 쓴다 */
+const SESS_COOKIE = 'matsu_s';
+function sessCookie(res, token) {
+  try { res.append('Set-Cookie', `${SESS_COOKIE}=${token}; Path=/auth; Max-Age=${30 * 86400}; HttpOnly; Secure; SameSite=Lax`); } catch (e) {}
+}
+function sessClear(res) {
+  try { res.append('Set-Cookie', `${SESS_COOKIE}=; Path=/auth; Max-Age=0; HttpOnly; Secure; SameSite=Lax`); } catch (e) {}
+}
+function sessCookieTok(req) {
+  const m = String(req.headers.cookie || '').match(/(?:^|;\s*)matsu_s=([A-Za-z0-9._-]+)/);
+  return m ? m[1] : '';
+}
+function isWebReq(req) { return !req.headers['x-client-platform'] || String(req.headers['x-client-platform']) === 'web'; }
 const SEEN = new Map();          // uid → 마지막으로 DB 에 쓴 시각
 const APPV = new Map();          // uid → 마지막으로 DB 에 쓴 앱 버전
 /* 앱(iOS · Android)이 헤더로 보내는 스토어 버전 — 예: '1.2.1 (28)'.
@@ -288,7 +304,11 @@ function auth(req, res, next) {
        결국 30일 넘게 앱을 안 연 사람만 풀린다. */
     try {
       const age = Date.now() / 1000 - (p.iat || 0);
-      if (age > 7 * 86400) res.set('X-New-Token', sign({ id: req.uid }));
+      if (age > 7 * 86400) {
+        const nt = sign({ id: req.uid });
+        res.set('X-New-Token', nt);
+        if (isWebReq(req)) sessCookie(res, nt);   // 11/25(1125b) 웹 백업 쿠키도 함께 30일 뒤로
+      }
     } catch (e) {}
     /* 마지막 접속 — 모든 요청이 이 문을 지나므로 여기 한 곳이면 된다.
        매 요청마다 쓰면 DB 가 바쁘니 5분에 한 번만 갱신한다. */
@@ -460,6 +480,30 @@ const WEB_BUILD = process.env.WEB_BUILD || 'v1.1.8';
 const WEB_BUILD_IOS = process.env.WEB_BUILD_IOS || WEB_BUILD;
 const WEB_BUILD_ANDROID = process.env.WEB_BUILD_ANDROID || WEB_BUILD;
 app.get('/version', (req, res) => res.json({ build: SRV_BUILD }));
+
+/* 11/25(1125b) /auth/* 가 토큰을 돌려주면(로그인 성공) 같은 토큰을 웹 백업 쿠키로도 — 로그인 길마다 따로 넣지 않게 한 곳에서 */
+app.use('/auth', (req, res, next) => {
+  const j = res.json.bind(res);
+  res.json = (b) => {
+    try { if (b && typeof b.token === 'string' && b.token && res.statusCode < 300 && isWebReq(req)) sessCookie(res, b.token); } catch (e) {}
+    return j(b);
+  };
+  next();
+});
+/* 켤 때 저장소가 비어 있으면 — 쿠키의 토큰이 아직 살아 있으면(만료 · 정지 · 전체 로그아웃이 아니면) 새 토큰을 준다 */
+app.get('/auth/resume', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const t = sessCookieTok(req);
+  if (!t) return res.json({ token: null });
+  try {
+    const p = jwt.verify(t, JWT_SECRET);
+    const u = db.prepare('SELECT id, suspended, token_version FROM users WHERE id=?').get(p.id);
+    if (!u || u.suspended || (p.tv || 0) !== (u.token_version || 0)) { sessClear(res); return res.json({ token: null }); }
+    return res.json({ token: sign({ id: u.id }) });
+  } catch (e) { sessClear(res); return res.json({ token: null }); }
+});
+/* 로그아웃 · 탈퇴 · 기기 정보 지우기 — 쿠키도 지운다 */
+app.post('/auth/forget', (req, res) => { sessClear(res); res.json({ ok: true }); });
 
 app.post('/auth/dev-login', limitLogin, (req, res) => {
   // 이름 로그인 — 카카오 키가 준비될 때까지의 임시 입구.
@@ -3131,6 +3175,81 @@ app.post('/clubs/:id/transfer-owner', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── 11/25(1125f) 회장 넘기기 — 받는 사람이 <수락>해야 넘어간다(대표님 시안 ③~⑥) ──
+   위 transfer-owner(바로 넘기기)는 옛 앱이 쓰므로 그대로 둔다. 새 앱은 요청 → 수락/거절 → (7일 지나면 저절로 취소).
+   한 클럽에 살아 있는 요청은 하나 — 새로 보내면 앞의 것은 취소. 넘어간 뒤 보낸 사람은 운영진으로 남는다. */
+db.exec(`CREATE TABLE IF NOT EXISTS club_owner_req (id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER NOT NULL, from_uid INTEGER NOT NULL,
+  to_uid INTEGER NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', done_at BIGINT)`);
+const OWNREQ_DAYS = 7;
+function ownReqName(cid, uid) {
+  const r = db.prepare(`SELECT COALESCE(NULLIF(m.alias,''), u.name) n FROM users u LEFT JOIN club_members m ON m.club_id=? AND m.user_id=u.id WHERE u.id=?`).get(cid, uid);
+  return (r && r.n) || '';
+}
+function ownReqLive(cid) {
+  const r = db.prepare(`SELECT * FROM club_owner_req WHERE club_id=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(cid);
+  if (!r) return null;
+  if (r.expires_at <= Date.now()) { db.prepare(`UPDATE club_owner_req SET status='expired', done_at=? WHERE id=?`).run(Date.now(), r.id); return null; }
+  return r;
+}
+function ownReqOut(cid, r) {
+  return r ? { id: r.id, from: { id: r.from_uid, name: ownReqName(cid, r.from_uid) }, to: { id: r.to_uid, name: ownReqName(cid, r.to_uid) },
+    created_at: r.created_at, expires_at: r.expires_at } : null;
+}
+app.get('/clubs/:id/owner-request', auth, (req, res) => {
+  const cid = +req.params.id;
+  const me = db.prepare(`SELECT role FROM club_members WHERE club_id=? AND user_id=? AND (status IS NULL OR status='active')`).get(cid, req.uid);
+  if (!me) return res.status(403).json({ error: 'member_only' });
+  const r = ownReqLive(cid);
+  /* 운영진 · 받는 사람에게만 보인다 */
+  if (!r || !(['owner', 'officer'].includes(me.role) || r.to_uid === req.uid)) return res.json({ req: null, mine: false });
+  res.json({ req: ownReqOut(cid, r), mine: r.to_uid === req.uid });
+});
+app.post('/clubs/:id/owner-request', auth, limitWrite, (req, res) => {
+  const cid = +req.params.id, uid = intOrNull(req.body && req.body.user_id);
+  if (!clubOwnerGuard(cid, req.uid)) return res.status(403).json({ error: 'owner_only', message: '회장만 넘길 수 있어요' });
+  if (!uid || uid === req.uid) return res.status(400).json({ error: 'bad_target' });
+  const t = db.prepare('SELECT role, status FROM club_members WHERE club_id=? AND user_id=?').get(cid, uid);
+  if (!t) return res.status(404).json({ error: 'not_member' });
+  if ((t.status && t.status !== 'active') || t.role === 'guest') return res.status(400).json({ error: 'not_active', message: '정회원 · 운영진에게만 넘길 수 있어요' });
+  const t0 = Date.now();
+  db.prepare(`UPDATE club_owner_req SET status='cancelled', done_at=? WHERE club_id=? AND status='pending'`).run(t0, cid);
+  const id = db.prepare(`INSERT INTO club_owner_req (club_id, from_uid, to_uid, created_at, expires_at) VALUES (?,?,?,?,?)`)
+    .run(cid, req.uid, uid, t0, t0 + OWNREQ_DAYS * 864e5).lastInsertRowid;
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  sendPush(uid, { icon: '👑', title: '회장을 맡아 달라는 요청이 왔어요', body: `${club.name || ''} · ${ownReqName(cid, req.uid)} 회장님이 보냈어요 · 7일 안에 답해 주세요`, link: `ownreq:${cid}` });
+  res.json({ ok: true, req: ownReqOut(cid, db.prepare('SELECT * FROM club_owner_req WHERE id=?').get(id)) });
+});
+app.delete('/clubs/:id/owner-request', auth, (req, res) => {
+  const cid = +req.params.id, r = ownReqLive(cid);
+  if (!r) return res.json({ ok: true, req: null });
+  if (r.from_uid !== req.uid) return res.status(403).json({ error: 'owner_only' });
+  db.prepare(`UPDATE club_owner_req SET status='cancelled', done_at=? WHERE id=?`).run(Date.now(), r.id);
+  res.json({ ok: true, req: null });
+});
+app.post('/clubs/:id/owner-request/:act', auth, (req, res) => {
+  const cid = +req.params.id, act = req.params.act, r = ownReqLive(cid);
+  if (!['accept', 'decline'].includes(act)) return res.status(404).json({ error: 'not_found' });
+  if (!r || r.to_uid !== req.uid) return res.status(404).json({ error: 'no_request', message: '요청이 없거나 기한이 지났어요' });
+  const club = db.prepare('SELECT name FROM clubs WHERE id=?').get(cid) || {};
+  if (act === 'decline') {
+    db.prepare(`UPDATE club_owner_req SET status='declined', done_at=? WHERE id=?`).run(Date.now(), r.id);
+    sendPush(r.from_uid, { icon: '🔔', title: '회장 넘기기를 거절했어요', body: `${club.name || ''} · ${ownReqName(cid, req.uid)} 님이 거절했어요` });
+    return res.json({ ok: true, status: 'declined' });
+  }
+  /* 그사이 보낸 사람이 회장이 아니게 됐거나 받는 사람이 빠졌으면 무른다 */
+  if (!clubOwnerGuard(cid, r.from_uid)) { db.prepare(`UPDATE club_owner_req SET status='cancelled', done_at=? WHERE id=?`).run(Date.now(), r.id); return res.status(409).json({ error: 'stale', message: '요청이 더 이상 유효하지 않아요' }); }
+  const t = db.prepare('SELECT role, status FROM club_members WHERE club_id=? AND user_id=?').get(cid, req.uid);
+  if (!t || (t.status && t.status !== 'active')) return res.status(400).json({ error: 'not_active' });
+  tx(() => {
+    db.prepare("UPDATE club_members SET role='owner' WHERE club_id=? AND user_id=?").run(cid, req.uid);
+    db.prepare("UPDATE club_members SET role='officer' WHERE club_id=? AND user_id=?").run(cid, r.from_uid);
+    db.prepare('UPDATE clubs SET owner_id=? WHERE id=?').run(req.uid, cid);
+    db.prepare(`UPDATE club_owner_req SET status='accepted', done_at=? WHERE id=?`).run(Date.now(), r.id);
+  });
+  sendPush(r.from_uid, { icon: '👑', title: '회장 넘기기가 끝났어요', body: `${club.name || ''} · ${ownReqName(cid, req.uid)} 님이 새 회장이에요 · 나는 운영진으로 남아요` });
+  res.json({ ok: true, status: 'accepted' });
+});
+
 /* ── 클럽 이름 변경 · 클럽 삭제 (클럽장 전용) ──────────────────────────
    앱에는 두 화면이 다 있는데 서버에 길이 없어 404 가 났다.
    이름 규칙은 POST /clubs 와 같은 것을 쓴다 — 만들 때는 막고 바꿀 때는
@@ -5625,7 +5744,9 @@ function geoTouch(uid, ip) {
 app.post('/me/logout-all', auth, (req, res) => {
   db.prepare('UPDATE users SET token_version = COALESCE(token_version,0) + 1 WHERE id=?').run(req.uid);
   const u = getUser(req.uid);
-  res.json({ ok: true, token: sign(u) });        // 지금 기기만 새 토큰으로 살려둔다
+  const nt = sign(u);
+  if (isWebReq(req)) sessCookie(res, nt);         // 11/25(1125b) 이 기기 웹 백업 쿠키도 새 토큰으로
+  res.json({ ok: true, token: nt });             // 지금 기기만 새 토큰으로 살려둔다
 });
 
 
@@ -17458,7 +17579,7 @@ app.post('/venue/password', auth, (req, res) => {
   const next = String((req.body && req.body.next) || '');
   if (next.length < 6) return res.status(400).json({ error: 'weak', message: '비밀번호는 6자 이상이어야 해요' });
   if (u.pw_hash !== pwHash(cur, u.pw_salt || ''))
-    return res.status(401).json({ error: 'bad_current', message: '현재 비밀번호가 맞지 않아요' });
+    return res.status(400).json({ error: 'bad_current', message: '현재 비밀번호가 맞지 않아요' });   // 11/25 401 이면 앱이 로그인 풀림으로 읽는다
   const salt = crypto.randomBytes(16).toString('hex');
   db.prepare('UPDATE users SET pw_salt=?, pw_hash=? WHERE id=?').run(salt, pwHash(next, salt), u.id);
   res.json({ ok: true });
@@ -19269,7 +19390,7 @@ app.post('/manager/password', auth, (req, res) => {
   const next = String((req.body && req.body.next) || '');
   if (next.length < 6) return res.status(400).json({ error: 'weak', message: '비밀번호는 6자 이상이어야 해요' });
   if (u.pw_hash !== pwHash(cur, u.pw_salt || ''))
-    return res.status(401).json({ error: 'bad_current', message: '현재 비밀번호가 맞지 않아요' });
+    return res.status(400).json({ error: 'bad_current', message: '현재 비밀번호가 맞지 않아요' });   // 11/25 401 이면 앱이 로그인 풀림으로 읽는다
   const salt = crypto.randomBytes(16).toString('hex');
   db.prepare('UPDATE users SET pw_salt=?, pw_hash=? WHERE id=?').run(salt, pwHash(next, salt), u.id);
   res.json({ ok: true });
