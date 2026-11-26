@@ -4178,6 +4178,7 @@ async function drawNotify(){
       <div class="fl2" style="color:var(--ink3);font-weight:800;font-size:14.5px;margin-top:22px">무엇을</div>
       <label class="fl2">제목</label><div class="cnt2"><input id="nt" class="in2" maxlength="60" placeholder="새 버전이 나왔어요" value="${esc(tt)}" oninput="ntPrev()"><span class="cn" id="ntc">${tt.length} / 60</span></div>
       <label class="fl2">내용</label><div class="cnt2"><textarea id="nb" class="in2" maxlength="200" rows="3" placeholder="대진이 더 공정해졌어요 · 업데이트해 주세요" oninput="ntPrev()">${esc(bb)}</textarea><span class="cn" id="nbc">${bb.length} / 200</span></div>
+      <label class="fl2">본문 · 글로 읽기 <span style="font-weight:400;color:var(--mut)">(선택 · 앱 알림 › 공지에서 누르면 이 글이 열려요 · 비우면 위 내용만)</span></label><div class="cnt2"><textarea id="nf" class="in2" maxlength="5000" rows="8" placeholder="업데이트에서 바뀐 것 · 이벤트 안내처럼 길게 쓸 글" oninput="$('nfc').textContent=this.value.length+' / 5000'">${esc(D&&D.f||'')}</textarea><span class="cn" id="nfc">${(D&&D.f||'').length} / 5000</span></div>
       <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:end">
         <div><label class="fl2">아이콘</label><div class="ico2">${NT_ICONS.map(([e,l])=>`<a class="${NT_ICON===e?'on':''}" title="${l}" onclick="NT_ICON='${e}';ntKeep();render()">${e}</a>`).join('')}</div><input id="ni" type="hidden" value="${esc(NT_ICON)}"></div>
         <div><label class="fl2">누르면 갈 곳</label><select id="nl" class="in2" onchange="NT_LINK=this.value">${NT_LINKS.map(([v,l])=>`<option value="${v}" ${NT_LINK===v?'selected':''}>${l}</option>`).join('')}</select></div></div>
@@ -4198,7 +4199,7 @@ async function drawNotify(){
 };
 function ntKeep(sw){ const t=$('nt'), b=$('nb');
   if(sw && NT_TO==='oldv'){ NT_DRAFT=null; NT_ICON='🔔'; return; }            // 옛 버전 안내 문구는 다른 대상으로 가져가지 않는다
-  if(t&&b) NT_DRAFT={to:NT_TO,t:t.value,b:b.value}; }
+  if(t&&b) NT_DRAFT={to:NT_TO,t:t.value,b:b.value,f:(($('nf')||{}).value||'')}; }
 function ntPrev(){ const t=$('nt'), b=$('nb'); if(!t||!b) return;
   $('ntc').textContent=`${t.value.length} / 60`; $('nbc').textContent=`${b.value.length} / 200`;
   $('pvt').textContent=t.value||'제목'; $('pvb').textContent=b.value||'내용'; }
@@ -4216,7 +4217,7 @@ async function ntSelf(){
   if(!me){ me=prompt('내 회원번호를 적어 주세요(한 번만 물어요) · 회원 자세히의 #번호'); if(!me) return; me=String(me).replace(/\D/g,''); try{ localStorage.setItem('adm_me_uid',me); }catch(e){} }
   const t=($('nt')||{}).value||'', b=($('nb')||{}).value||'';
   if(!t.trim()) return toast('제목을 넣어주세요');
-  try{ const r=await api('/admin/notify',{method:'POST',body:JSON.stringify({to:'users',users:[+me],title:t,body:b,icon:NT_ICON,link:NT_LINK||null,label:'나에게 시험'})});
+  try{ const r=await api('/admin/notify',{method:'POST',body:JSON.stringify({to:'users',users:[+me],title:t,body:b,full:(($('nf')||{}).value||'').trim()||undefined,icon:NT_ICON,link:NT_LINK||null,label:'나에게 시험'})});
     toast(r.sent?'나에게 보냈어요 · 폰을 확인해 주세요':'보낼 사람이 없어요 · 회원번호를 확인해 주세요'); }catch(e){ toast('보내지 못했어요'); }
 }
 async function sendNotice(){
@@ -4227,7 +4228,7 @@ async function sendNotice(){
   const NC=window.NT_CLUB||null;
   try{
     const r=await api('/admin/notify',{method:'POST',body:JSON.stringify({ to:NT_TO, club:NT_TO==='club'&&NC?NC.id:undefined,
-      users:NT_TO==='users'?(window.NT_USERS||[]):undefined, title, body, icon:NT_ICON||'📢', link:NT_LINK||null, send_at:at||undefined })});
+      users:NT_TO==='users'?(window.NT_USERS||[]):undefined, title, body, full:(($('nf')||{}).value||'').trim()||undefined, icon:NT_ICON||'📢', link:NT_LINK||null, send_at:at||undefined })});
     if(r.scheduled) toast(`${fmt(r.n)}명에게 ${ntAtShort(r.send_at)}에 보내요`);
     else toast(`${fmt(r.sent)}명에게 보냈어요`);
     NT_DRAFT=null; render();
@@ -5155,8 +5156,43 @@ drawBanners=(function(o){ return async function(){
     <div id="bpn"></div></div>`);
   if(BN_NEW) bnPane(); else { const sel=rows.find(b=>b.id===BN_SEL)||groups.find(([,l])=>l.length)?.[1][0]; if(sel){ bnOpen(sel.id); } else $('bpn').innerHTML=paneEmpty('배너를 누르면 여기서 고쳐요'); }
 }; })(drawBanners);
-function bnOpen(id){ BN_NEW=null; BN_IMG=null; BN_SEL=id; document.querySelectorAll('.bnr').forEach(r=>r.classList.toggle('sel', +r.dataset.b===id)); bnPane(); }
-function bnNew(slot){ BN_NEW={slot}; BN_IMG=null; BN_SEL=null; document.querySelectorAll('.bnr.sel').forEach(r=>r.classList.remove('sel')); bnPane(); }
+
+/* 11/25(1125h) 배너 랜딩 페이지 — 앱에서 배너를 누르면 열리는 한 페이지(제목 · 사진 여러 장 · 글 · 아래 단추) · 공유 주소 /e/번호 */
+let BN_LP=null;
+function bnLpInit(b){ if(BN_LP) return BN_LP; BN_LP={on:!!b.lp_on, title:b.lp_title||'', imgs:(b.lp_imgs||[]).slice(), body:b.lp_body||'', cta:b.lp_cta||'', cta_link:b.lp_cta_link||''}; return BN_LP; }
+function bnLpHTML(b){
+  const L=bnLpInit(b);
+  const seg=`<div style="display:flex;gap:6px;margin-top:6px">${[[0,'링크로 가기'],[1,'랜딩 페이지 열기']].map(([v,t])=>`<button class="b2${(!!L.on)===!!v?' k':''}" onclick="BN_LP.on=${v};bnLpRe()">${t}</button>`).join('')}</div>`;
+  if(!L.on) return `<label class="fl2">눌렀을 때</label>${seg}`;
+  return `<label class="fl2">눌렀을 때</label>${seg}
+    <div style="margin-top:12px;padding:16px;border-radius:16px;background:#f6f5f1">
+      <label class="fl2" style="margin-top:0">페이지 제목 (맨 위 줄)</label><input class="in2" maxlength="40" value="${esc(L.title)}" placeholder="예) 맞수 겨울 이벤트" oninput="BN_LP.title=this.value">
+      <label class="fl2">사진 (위에서부터 차례로 · 12장까지 · 한 장 3MB)</label>
+      <div style="display:flex;flex-direction:column;gap:8px">${L.imgs.map((u,i)=>`<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;padding:8px"><img src="${esc(u)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px">
+        <span style="flex:1;font-size:13px;color:var(--mut)">${i+1}번째</span><button class="b2 sm" ${i?'':'disabled'} onclick="bnLpMv(${i},-1)">↑</button><button class="b2 sm" ${i<L.imgs.length-1?'':'disabled'} onclick="bnLpMv(${i},1)">↓</button><button class="b2 sm rd" onclick="bnLpDel(${i})">빼기</button></div>`).join('')}
+        ${L.imgs.length<12?`<label style="display:flex;align-items:center;justify-content:center;height:56px;border:1.5px dashed #d6d1c7;border-radius:12px;color:var(--mut);cursor:pointer;background:#fff">＋ 사진 넣기 (여러 장 골라도 돼요)<input type="file" multiple accept="image/png,image/jpeg,image/webp" style="display:none" onchange="bnLpUp(this)"></label>`:''}</div>
+      <label class="fl2">글 (사진 아래 · 유의사항 같은 것 · 비워도 돼요)</label><textarea class="in2" rows="6" maxlength="4000" placeholder="[이벤트 유의사항]&#10;· …" oninput="BN_LP.body=this.value">${esc(L.body)}</textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><label class="fl2">아래 단추 글 (비우면 단추 없음)</label><input class="in2" maxlength="20" value="${esc(L.cta)}" placeholder="예) 매치 보러 가기" oninput="BN_LP.cta=this.value"></div>
+        <div><label class="fl2">단추 누르면 갈 곳</label><input class="in2" list="bnll" value="${esc(L.cta_link)}" placeholder="match · club · lounge · me · https://…" oninput="BN_LP.cta_link=this.value"></div></div>
+      <div class="nt" style="margin-top:10px">앱에서 ‹ · 밀어서 뒤로 · 공유 단추가 있어요. 공유하면 ${esc(location.origin)}/e/${b.id||'번호'} 주소가 가요(저장한 뒤 생겨요).</div></div>`;
+}
+function bnLpRe(){ const keep={t:$('bnt').value,s:$('bns').value,l:$('bnl').value,a:$('bna').value,b:$('bnb').value,e:$('bne').classList.contains('on')};
+  bnPane(); $('bnt').value=keep.t; $('bns').value=keep.s; $('bnl').value=keep.l; $('bna').value=keep.a; $('bnb').value=keep.b; $('bne').classList.toggle('on',keep.e); }
+function bnLpMv(i,d){ const a=BN_LP.imgs, j=i+d; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; bnLpRe(); }
+function bnLpDel(i){ BN_LP.imgs.splice(i,1); bnLpRe(); }
+async function bnLpUp(inp){
+  const fs=[...(inp.files||[])].slice(0, 12-BN_LP.imgs.length); if(!fs.length) return;
+  for(const f of fs){
+    if(f.size>3*1024*1024){ toast(`${f.name} — 3MB 까지 올릴 수 있어요`); continue; }
+    const d=await new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.onerror=()=>r(null); fr.readAsDataURL(f); });
+    if(!d) continue;
+    try{ const r=await api('/admin/banners/lp-img',{method:'POST',body:JSON.stringify({image:d})}); if(r&&r.url) BN_LP.imgs.push(r.url); }
+    catch(e){ toast(errMsg(e,'사진을 올리지 못했어요 · server.js 를 올렸는지 확인해 주세요')); break; }
+  }
+  bnLpRe(); toast('사진을 넣었어요 · 저장을 눌러야 앱에 보여요');
+}
+function bnOpen(id){ BN_NEW=null; BN_IMG=null; BN_SEL=id; BN_LP=null; document.querySelectorAll('.bnr').forEach(r=>r.classList.toggle('sel', +r.dataset.b===id)); bnPane(); }
+function bnNew(slot){ BN_NEW={slot}; BN_IMG=null; BN_SEL=null; BN_LP=null; document.querySelectorAll('.bnr.sel').forEach(r=>r.classList.remove('sel')); bnPane(); }
 function bnPane(){
   const el=$('bpn'); if(!el) return;
   const b=BN_NEW?{slot:BN_NEW.slot, enabled:1}:(CACHE.banners||[]).find(x=>x.id===BN_SEL); if(!b){ el.innerHTML=paneEmpty('배너를 누르면 여기서 고쳐요'); return; }
@@ -5168,6 +5204,7 @@ function bnPane(){
       <label class="fl2">제목 (관리 화면에서만 보여요)</label><input id="bnt" class="in2" maxlength="60" value="${esc(b.title||'')}" placeholder="예) 제1회 맞수 컨퍼런스 리그">
       <label class="fl2">자리</label><select id="bns" class="in2">${Object.entries(BN_SLOT).map(([s,v])=>`<option value="${s}" ${s===k?'selected':''}>${v.t}</option>`).join('')}</select>
       <label class="fl2">누르면 갈 곳</label><input id="bnl" class="in2" list="bnll" value="${esc(b.link||'')}" placeholder="비우면 눌러도 아무 데도 안 가요"><datalist id="bnll"><option value="club"><option value="match"><option value="lounge"><option value="me"><option value="/?cup=1"></datalist>
+      ${bnLpHTML(b)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div><label class="fl2">보이기 시작</label><input id="bna" type="date" class="in2" value="${bnYMD(b.starts_at)}"></div><div><label class="fl2">내리기</label><input id="bnb" type="date" class="in2" value="${bnYMD(b.ends_at)}"></div></div>
       <div style="display:flex;align-items:center;gap:12px;background:#f6f5f1;border-radius:14px;padding:14px 16px;margin-top:14px"><button id="bne" class="tg2${b.enabled?' on':''}" onclick="this.classList.toggle('on')"></button>
         <div><b style="display:block;font-size:14.5px">지금 보이는 중</b><span style="font-size:12.5px;color:var(--mut)">끄면 지우지 않고 내려요 · 기간이 끝나면 저절로 꺼져요</span></div></div>
@@ -5181,6 +5218,8 @@ function bnPick(inp){ const f=inp.files&&inp.files[0]; if(!f) return; if(f.size>
 async function bnSave(){
   const day=(v,end)=>{ if(!v) return null; const d=new Date(v+'T00:00:00'); if(isNaN(d)) return null; return d.getTime()+(end?864e5:0); };
   const body={ title:$('bnt').value.trim(), slot:$('bns').value, link:$('bnl').value.trim(), starts_at:day($('bna').value), ends_at:day($('bnb').value,1), enabled:$('bne').classList.contains('on') };
+  if(BN_LP){ if(BN_LP.on&&!BN_LP.imgs.length&&!BN_LP.body.trim()) return toast('랜딩 페이지에 사진이나 글을 넣어 주세요');
+    Object.assign(body,{lp_on:!!BN_LP.on, lp_title:BN_LP.title.trim(), lp_imgs:BN_LP.imgs, lp_body:BN_LP.body, lp_cta:BN_LP.cta.trim(), lp_cta_link:BN_LP.cta_link.trim()}); }
   if(body.starts_at&&body.ends_at&&body.ends_at<=body.starts_at) return toast('내리는 날이 시작보다 뒤여야 해요');
   try{
     if(BN_NEW){ if(!BN_IMG) return toast('그림을 골라주세요'); const r=await api('/admin/banners',{method:'POST',body:JSON.stringify({...body,image:BN_IMG})});
