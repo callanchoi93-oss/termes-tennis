@@ -12335,10 +12335,49 @@ try { db.exec("ALTER TABLE banners ADD COLUMN slot TEXT DEFAULT 'home'"); } catc
 /* 11/9 배너 기간 · 켜고 끄기 — 끄면 지우지 않고 내린다 · 기간이 끝나면 저절로 안 보인다 */
 for (const q of ['ALTER TABLE banners ADD COLUMN title TEXT', 'ALTER TABLE banners ADD COLUMN starts_at INTEGER', 'ALTER TABLE banners ADD COLUMN ends_at INTEGER',
   'ALTER TABLE banners ADD COLUMN enabled INTEGER DEFAULT 1']) { try { db.exec(q); } catch (e) {} }
+/* 11/25(1125h) 배너 랜딩 페이지 — 배너를 누르면 앱 안에서 열리는 한 페이지(제목 · 사진 여러 장 · 글 · 아래 단추). 공유 주소 /e/:id */
+for (const q of ['ALTER TABLE banners ADD COLUMN lp_on INTEGER DEFAULT 0', 'ALTER TABLE banners ADD COLUMN lp_title TEXT', 'ALTER TABLE banners ADD COLUMN lp_imgs TEXT',
+  'ALTER TABLE banners ADD COLUMN lp_body TEXT', 'ALTER TABLE banners ADD COLUMN lp_cta TEXT', 'ALTER TABLE banners ADD COLUMN lp_cta_link TEXT']) { try { db.exec(q); } catch (e) {} }
+function bnLpImgs(v) {
+  let a = v; if (typeof a === 'string') { try { a = JSON.parse(a); } catch (e) { a = []; } }
+  return (Array.isArray(a) ? a : []).map(x => String(x || '')).filter(x => /^\/uploads\/[A-Za-z0-9_.-]+$/.test(x)).slice(0, 12);
+}
+function bnLpFields(b, old) {
+  const has = k => b[k] !== undefined, o = old || {};
+  return { lp_on: has('lp_on') ? (b.lp_on ? 1 : 0) : (o.lp_on || 0),
+    lp_title: has('lp_title') ? (String(b.lp_title || '').trim().slice(0, 40) || null) : (o.lp_title || null),
+    lp_imgs: has('lp_imgs') ? JSON.stringify(bnLpImgs(b.lp_imgs)) : (o.lp_imgs || null),
+    lp_body: has('lp_body') ? (String(b.lp_body || '').trim().slice(0, 4000) || null) : (o.lp_body || null),
+    lp_cta: has('lp_cta') ? (String(b.lp_cta || '').trim().slice(0, 20) || null) : (o.lp_cta || null),
+    lp_cta_link: has('lp_cta_link') ? (String(b.lp_cta_link || '').trim().slice(0, 300) || null) : (o.lp_cta_link || null) };
+}
 app.get('/banners', (req, res) => {
   const slot = String(req.query.slot || 'home'), t = Date.now();
-  res.json(db.prepare(`SELECT id,image,link FROM banners WHERE COALESCE(slot,'home')=? AND COALESCE(enabled,1)=1
+  res.json(db.prepare(`SELECT id,image,link,lp_title title,COALESCE(lp_on,0) lp FROM banners WHERE COALESCE(slot,'home')=? AND COALESCE(enabled,1)=1
     AND (starts_at IS NULL OR starts_at<=?) AND (ends_at IS NULL OR ends_at>?) ORDER BY sort ASC, id DESC LIMIT 5`).all(slot, t, t));
+});
+/* 랜딩 페이지 한 장 — 로그인 없이(공유 받은 사람도 본다) · 내린 배너는 안 보인다 */
+app.get('/banners/:id/page', (req, res) => {
+  const b = db.prepare('SELECT id,image,lp_on,lp_title,lp_imgs,lp_body,lp_cta,lp_cta_link,COALESCE(enabled,1) enabled FROM banners WHERE id=?').get(+req.params.id || 0);
+  if (!b || !b.enabled || !b.lp_on) return res.status(404).json({ error: 'not_found' });
+  res.set('Cache-Control', 'no-cache');
+  res.json({ id: b.id, title: b.lp_title || '', imgs: bnLpImgs(b.lp_imgs), body: b.lp_body || '', cta: b.lp_cta || '', cta_link: b.lp_cta_link || '', image: b.image || '' });
+});
+/* 공유 주소 — 카톡 미리보기(제목 · 첫 사진)를 보여 주고 앱의 그 페이지로 */
+app.get('/e/:id', (req, res) => {
+  const b = db.prepare('SELECT id,image,lp_on,lp_title,lp_imgs,lp_body,COALESCE(enabled,1) enabled FROM banners WHERE id=?').get(+req.params.id || 0);
+  const H = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  if (!b || !b.enabled || !b.lp_on) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수</title><p style="font-family:sans-serif;text-align:center;margin-top:40vh;color:#4e5968">이벤트가 끝났거나 주소가 바뀌었어요</p>');
+  const base = `${req.protocol}://${req.get('host')}`, img = bnLpImgs(b.lp_imgs)[0] || b.image || '';
+  const go = `/app?lp=${b.id}`, desc = String(b.lp_body || '').replace(/\s+/g, ' ').slice(0, 80);
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<script>location.replace(${JSON.stringify(go)});</script>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>${H(b.lp_title || '맞수')}</title><meta property="og:type" content="website"><meta property="og:site_name" content="맞수">
+<meta property="og:title" content="${H(b.lp_title || '맞수')}"><meta property="og:description" content="${H(desc)}"><meta property="og:url" content="${H(base + '/e/' + b.id)}">
+${img ? `<meta property="og:image" content="${H(/^https?:/.test(img) ? img : base + img)}"><meta name="twitter:card" content="summary_large_image">` : ''}
+<meta http-equiv="refresh" content="0;url=${H(go)}"></head><body style="margin:0;background:#fff"></body></html>`);
 });
 /* 로그인 만료 현황 — 관리자 <현황>에 띄운다.
    fresh: 7일 안에 접속(토큰이 자동 갱신됨) · stale: 7~30일(다음 접속 때 갱신) · expired: 30일 넘음(풀림) */
@@ -12358,7 +12397,18 @@ app.get('/admin/banner-slots', admin, (_req, res) => {
   res.json({ slots: ['home', 'bracket', 'club_xc', 'club_new', 'match'] });
 });
 app.get('/admin/banners', admin, (_req, res) => {
-  res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at,title,starts_at,ends_at,COALESCE(enabled,1) enabled FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all());
+  res.json(db.prepare("SELECT id,image,link,sort,COALESCE(slot,'home') slot,created_at,title,starts_at,ends_at,COALESCE(enabled,1) enabled,COALESCE(lp_on,0) lp_on,lp_title,lp_imgs,lp_body,lp_cta,lp_cta_link FROM banners ORDER BY sort ASC, id DESC LIMIT 40").all()
+    .map(r => ({ ...r, lp_imgs: bnLpImgs(r.lp_imgs) })));
+});
+/* 11/25(1125h) 랜딩 페이지 사진 한 장씩 올리기 — 여러 장을 한 번에 보내면 6MB 를 넘는다 */
+app.post('/admin/banners/lp-img', admin, (req, res) => {
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/.exec(String((req.body || {}).image || ''));
+  if (!m) return res.status(400).json({ error: 'bad_image' });
+  const buf = Buffer.from(m[3], 'base64');
+  if (buf.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'too_large' });
+  const name = 'lp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '.' + (m[2] === 'jpeg' ? 'jpg' : m[2]);
+  fs.writeFileSync(UPLOAD_DIR + '/' + name, buf);
+  res.json({ ok: true, url: '/uploads/' + name });
 });
 // 배너 순서 저장 — ids 배열 순서 = 노출 순서
 app.patch('/admin/banners/order', admin, (req, res) => {
@@ -12384,8 +12434,10 @@ app.post('/admin/banners', admin, (req, res) => {
   const slot = SLOTS.includes(String(b.slot || '')) ? String(b.slot) : 'home';
   if (b.slot && !SLOTS.includes(String(b.slot)))
     return res.status(400).json({ error: 'bad_slot', allowed: SLOTS });
-  const r = db.prepare('INSERT INTO banners (image,link,slot,created_at,title,starts_at,ends_at,enabled) VALUES (?,?,?,?,?,?,?,1)')
-    .run(url, String(b.link || '').slice(0, 300), slot, now(), String(b.title || '').slice(0, 60) || null, +b.starts_at || null, +b.ends_at || null);
+  const L = bnLpFields(b, null);   // 11/25(1125h) 랜딩 페이지
+  const r = db.prepare('INSERT INTO banners (image,link,slot,created_at,title,starts_at,ends_at,enabled,lp_on,lp_title,lp_imgs,lp_body,lp_cta,lp_cta_link) VALUES (?,?,?,?,?,?,?,1,?,?,?,?,?,?)')
+    .run(url, String(b.link || '').slice(0, 300), slot, now(), String(b.title || '').slice(0, 60) || null, +b.starts_at || null, +b.ends_at || null,
+      L.lp_on, L.lp_title, L.lp_imgs, L.lp_body, L.lp_cta, L.lp_cta_link);
   alog(req, '배너 올림', 'banner', r.lastInsertRowid, { slot, title: b.title || '' }, null);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
@@ -12407,6 +12459,8 @@ app.patch('/admin/banners/:id', admin, (req, res) => {
   db.prepare('UPDATE banners SET image=?, link=?, slot=?, title=?, starts_at=?, ends_at=?, enabled=? WHERE id=?').run(image,
     v('link', x => String(x || '').slice(0, 300)), v('slot', x => String(x)), v('title', x => String(x || '').slice(0, 60) || null),
     v('starts_at', x => +x || null), v('ends_at', x => +x || null), v('enabled', x => (x ? 1 : 0)), id);
+  const L = bnLpFields(b, old);   // 11/25(1125h) 랜딩 페이지
+  db.prepare('UPDATE banners SET lp_on=?, lp_title=?, lp_imgs=?, lp_body=?, lp_cta=?, lp_cta_link=? WHERE id=?').run(L.lp_on, L.lp_title, L.lp_imgs, L.lp_body, L.lp_cta, L.lp_cta_link, id);
   alog(req, b.enabled === false ? '배너 내림' : b.enabled === true && !old.enabled ? '배너 켬' : '배너 고침', 'banner', id, { title: b.title || old.title || '' }, null);
   res.json({ ok: true });
 });
@@ -16906,6 +16960,8 @@ app.post('/admin/notify', admin, async (req, res) => {
   const b = req.body || {};
   const title = String(b.title || '').trim().slice(0, 60);
   const body = String(b.body || '').trim().slice(0, 200);
+  /* 11/25(1125h) 본문 — 앱 알림 › 공지에서 눌러 글처럼 읽는다(5000자) */
+  const full = String(b.full || '').trim().slice(0, 5000) || null;
   if (!title) return res.status(400).json({ error: 'title_required' });
   const users = Array.isArray(b.users) ? b.users.join(',') : (b.users || '');
   const ids = noticeTargets(String(b.to || 'all'), b.club, users);
@@ -16916,17 +16972,20 @@ app.post('/admin/notify', admin, async (req, res) => {
     const kh = new Date(at + 9 * 36e5).getUTCHours();
     if (kh >= 21 || kh < 8) return res.status(400).json({ error: 'quiet_hours' });
     if (at > Date.now() + 14 * 864e5) return res.status(400).json({ error: 'too_far' });
-    const r = db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), at);
+    const r = db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at,full) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), at, full);
     alog(req, '공지 예약', 'notify', r.lastInsertRowid, { to: b.to || 'all', n: ids.length, title, at }, null);
     return res.json({ scheduled: true, id: r.lastInsertRowid, n: ids.length, send_at: at });
   }
-  try { db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at,sent_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), null, Date.now()); } catch (e) {}
+  let nid = null;
+  try { nid = db.prepare(`INSERT INTO admin_notices (to_kind,club_id,users,title,body,icon,link,label,n,by_who,created_at,send_at,sent_at,full) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(String(b.to || 'all'), +b.club || null, users, title, body, b.icon || '📢', b.link || null, String(b.label || '').slice(0, 40), ids.length, String(req.headers['x-admin-key'] || '').slice(0, 4), Date.now(), null, Date.now(), full).lastInsertRowid; } catch (e) {}
   alog(req, '공지 보냄', 'notify', null, { to: b.to || 'all', n: ids.length, title }, null);
   res.json({ sent: ids.length });          // 먼저 답하고 뒤에서 보낸다 — 수백 명이면 오래 걸린다
+  /* 11/25(1125h) 알림함 · 폰 알림을 누르면 앱의 공지 글로 — 본문이 있거나 갈 곳을 안 골랐으면 notice:<번호> */
+  const plink = nid && (full || !b.link) ? `notice:${nid}` : (b.link || null);
   for (const id of ids) {
-    try { await sendPush(id, { icon: b.icon || '📢', title, body, link: b.link || null }); }
+    try { await sendPush(id, { icon: b.icon || '📢', title, body, link: plink }); }
     catch (e) {}
   }
   console.log(`[notify] ${ids.length}명 · ${title}`);
@@ -16935,11 +16994,13 @@ app.post('/admin/notify', admin, async (req, res) => {
 /* 11/9 공지 기록 · 예약 — 보낸 공지 목록(다시 쓰기)과 <언제: 예약>. 예약은 1분마다 때가 된 것을 보낸다(밤 9시 ~ 아침 8시는 못 잡는다) */
 try { db.exec(`CREATE TABLE IF NOT EXISTS admin_notices (id INTEGER PRIMARY KEY AUTOINCREMENT, to_kind TEXT, club_id INTEGER, users TEXT,
   title TEXT, body TEXT, icon TEXT, link TEXT, label TEXT, n INTEGER, by_who TEXT, created_at INTEGER, send_at INTEGER, sent_at INTEGER, cancelled INTEGER DEFAULT 0)`); } catch (e) {}
+try { db.exec('ALTER TABLE admin_notices ADD COLUMN full TEXT'); } catch (e) {}   // 11/25(1125h) 공지 본문(글로 읽기)
 async function noticeSendNow(row) {
   const ids = noticeTargets(row.to_kind || 'all', row.club_id, row.users);
   db.prepare('UPDATE admin_notices SET sent_at=?, n=? WHERE id=?').run(Date.now(), ids.length, row.id);
+  const plink = (row.full || !row.link) ? `notice:${row.id}` : row.link;   // 11/25(1125h)
   for (const id of ids) {
-    try { await sendPush(id, { icon: row.icon || '📢', title: row.title, body: row.body, link: row.link || null }); } catch (e) {}
+    try { await sendPush(id, { icon: row.icon || '📢', title: row.title, body: row.body, link: plink }); } catch (e) {}
   }
   console.log(`[notify] ${ids.length}명 · ${row.title}`);
   return ids.length;
@@ -16951,6 +17012,17 @@ setInterval(() => { try {
 app.get('/admin/notices', admin, (_req, res) => {
   try { res.json(db.prepare('SELECT id,to_kind,club_id,title,body,icon,link,label,n,by_who,created_at,send_at,sent_at,cancelled FROM admin_notices ORDER BY COALESCE(send_at,created_at) DESC LIMIT 30').all()); }
   catch (e) { res.json([]); }
+});
+/* 11/25(1125h) 앱 알림 › 공지 — 맞수가 보낸 공지 한 편을 글로 읽는다. 받은 사람만(알림함에 그 공지가 있는 사람) */
+app.get('/notices/:id', auth, (req, res) => {
+  const id = intOrNull(req.params.id);
+  if (!id) return res.status(404).json({ error: 'not_found' });
+  const got = db.prepare('SELECT 1 FROM notifications WHERE user_id=? AND link=? LIMIT 1').get(req.uid, `notice:${id}`);
+  if (!got) return res.status(404).json({ error: 'not_found' });
+  const r = db.prepare('SELECT id,title,body,full,icon,link,sent_at,created_at FROM admin_notices WHERE id=? AND sent_at IS NOT NULL AND COALESCE(cancelled,0)=0').get(id);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ id: r.id, title: r.title, body: r.body || '', full: r.full || '', at: r.sent_at || r.created_at, go: r.link && !/^notice:/.test(r.link) ? r.link : null });
 });
 app.post('/admin/notices/:id/cancel', admin, (req, res) => {
   const r = db.prepare('UPDATE admin_notices SET cancelled=1 WHERE id=? AND sent_at IS NULL').run(+req.params.id);
