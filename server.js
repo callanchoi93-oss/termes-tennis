@@ -1877,8 +1877,8 @@ app.get('/clubs/:id/public', (req, res) => {
              games: (d.games || []).length, done: gs.length, top: top ? maskName(top[0]) : '' };
   }).filter(x => x.done > 0);
 
-  /* 모임이 두 번 이상 있었으면 두 번 이상 나온 사람만 줄에 세운다 —
-     한 번 와서 네 판 이긴 사람이 1위가 되면 순위가 농담이 된다. */
+  /* 한 번 와서 네 판 이긴 사람이 1위가 되면 순위가 농담이 된다 — 11/26 부터는 25경기를 채운 사람만 줄에 세운다
+     (예전: 모임이 두 번 이상 있었으면 두 번 이상 나온 사람) */
   const dayTotal = new Set(logs.map(r => r.date)).size;
   const minDays = dayTotal >= 2 ? 2 : 1;
   /* 11/10 — 클럽이 <개인 기록만>을 골랐으면 클럽 소개(가입 전 화면)에도 시즌 순위를 싣지 않는다. 지난 모임 기록은 그대로 */
@@ -1888,7 +1888,7 @@ app.get('/clubs/:id/public', (req, res) => {
       return { name: maskName(nm), pts: pts[nm], days: dn,
                games: gameCnt[nm] || 0, avg: Math.round(pts[nm] / dn * 10) / 10 };
     })
-    .filter(r => r.days >= minDays)
+    .filter(r => r.games >= 25)   // 11/26 대표님 <랭킹은 25경기 이상 참여자만> (앱 rkMinG 와 같은 값)
     .sort((a, b) => b.avg - a.avg || b.pts - a.pts || b.games - a.games)
     .slice(0, 5)
     .map((r, i) => ({ pos: i + 1, ...r }));
@@ -2175,6 +2175,18 @@ app.get('/clubs/:id/monthly/me', auth, (req, res) => {
   res.json(db.prepare(`SELECT held_on, tier, rank, n, w, l, gd, dir, to_tier, created_at
     FROM monthly_results WHERE club_id=? AND user_id=?
     ORDER BY created_at DESC LIMIT 24`).all(cid, req.uid));
+});
+/* 11/26 KDK 조 나누기 — 클럽 회원마다 마지막 월례대회 자리(조 · 순위).
+   대표님 <KDK 는 월례대회 성적으로 · 월례대회가 없었으면 구력순> — held=false 면 앱이 구력순으로 나눈다 */
+app.get('/clubs/:id/monthly/latest', auth, (req, res) => {
+  const cid = +req.params.id;
+  if (!cbRole(cid, req.uid)) return res.status(403).json({ error: 'member_only' });
+  const rows = db.prepare(`SELECT m.user_id, m.tier, m.rank, m.n, m.held_on, m.to_tier
+    FROM monthly_results m
+    JOIN (SELECT user_id, MAX(held_on) h FROM monthly_results WHERE club_id=? GROUP BY user_id) x
+      ON x.user_id=m.user_id AND x.h=m.held_on
+    WHERE m.club_id=?`).all(cid, cid);
+  res.json({ held: rows.length > 0, rows });
 });
 
 app.post('/clubs/:id/promote', auth, (req, res) => {
@@ -6998,8 +7010,10 @@ app.put('/clubs/:id/tiers', auth, (req, res) => {
     if (/^\d+$/.test(String(k)) && ['A', 'B', 'C', 'D'].includes(v)) groups[String(k)] = v;
   });
   const clamp = (v, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.max(0, Math.min(10, n)); };
+  /* 11/26 조편성에서 뺀 회원(코치 등) — 회원 번호만 */
+  const excluded = [...new Set((Array.isArray(b.excluded) ? b.excluded : []).map(String).filter(k => /^\d+$/.test(k)))].slice(0, 400);
   const data = { groups, promote: clamp(b.promote, 2), relegate: clamp(b.relegate, 2),
-    skipFirst: b.skipFirst !== false, seeded: !!b.seeded };
+    skipFirst: b.skipFirst !== false, seeded: !!b.seeded, excluded };
   db.prepare(`INSERT INTO club_tiers (club_id,data,updated_at) VALUES (?,?,?)
     ON CONFLICT(club_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`)
     .run(cid, JSON.stringify(data), now());
@@ -8287,8 +8301,8 @@ app.get('/clubs/:id/my-summary', auth, (req, res) => {
     });
     /* 랭킹과 같은 기준 — 모임이 두 번 이상 있었으면 2회부터 순위에 넣는다 */
     const allDays = new Set(); brs.forEach(b => allDays.add(b.date || String(b.id)));
-    const MIN = allDays.size >= 2 ? 2 : 1;
-    const rank = list.filter(r => r.dayN >= MIN)
+    const MIN = allDays.size >= 2 ? 2 : 1;   // (예전 참석 조건 — 지금은 쓰지 않는다)
+    const rank = list.filter(r => r.g >= 25)   // 11/26 대표님 <랭킹은 25경기 이상 참여자만> (앱 rkMinG 와 같은 값)
       .sort((a, b) => b.avg - a.avg || b.gdAvg - a.gdAvg || b.g - a.g);
     const i = rank.findIndex(r => r.n === myName);
     const me = i >= 0 ? rank[i] : list.find(r => r.n === myName);
