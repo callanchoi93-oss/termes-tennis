@@ -12340,7 +12340,7 @@ for (const q of ['ALTER TABLE banners ADD COLUMN lp_on INTEGER DEFAULT 0', 'ALTE
   'ALTER TABLE banners ADD COLUMN lp_body TEXT', 'ALTER TABLE banners ADD COLUMN lp_cta TEXT', 'ALTER TABLE banners ADD COLUMN lp_cta_link TEXT']) { try { db.exec(q); } catch (e) {} }
 function bnLpImgs(v) {
   let a = v; if (typeof a === 'string') { try { a = JSON.parse(a); } catch (e) { a = []; } }
-  return (Array.isArray(a) ? a : []).map(x => String(x || '')).filter(x => /^\/uploads\/[A-Za-z0-9_.-]+$/.test(x)).slice(0, 12);
+  return (Array.isArray(a) ? a : []).map(x => String(x || '')).filter(x => /^\/uploads\/[A-Za-z0-9_.-]+$/.test(x)).slice(0, 20);   // 11/26 12 → 20 — 긴 디자인 그림을 나눠 올리면 장수가 는다
 }
 function bnLpFields(b, old) {
   const has = k => b[k] !== undefined, o = old || {};
@@ -12368,7 +12368,8 @@ app.get('/e/:id', (req, res) => {
   const b = db.prepare('SELECT id,image,lp_on,lp_title,lp_imgs,lp_body,COALESCE(enabled,1) enabled FROM banners WHERE id=?').get(+req.params.id || 0);
   const H = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   if (!b || !b.enabled || !b.lp_on) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맞수</title><p style="font-family:sans-serif;text-align:center;margin-top:40vh;color:#4e5968">이벤트가 끝났거나 주소가 바뀌었어요</p>');
-  const base = `${req.protocol}://${req.get('host')}`, img = bnLpImgs(b.lp_imgs)[0] || b.image || '';
+  /* 11/26 미리보기 그림은 배너 그림 먼저 — 랜딩 사진은 디자인을 통째로 넣은 긴 그림이라 카톡 칸에서 잘린다 */
+  const base = `${req.protocol}://${req.get('host')}`, img = (/^\/uploads\//.test(b.image || '') ? b.image : '') || bnLpImgs(b.lp_imgs)[0] || '';
   const go = `/app?lp=${b.id}`, desc = String(b.lp_body || '').replace(/\s+/g, ' ').slice(0, 80);
   res.set('Cache-Control', 'no-cache');
   res.type('html').send(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
